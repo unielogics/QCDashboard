@@ -31,6 +31,8 @@ import { LenderEditModal } from "@/components/LenderEditModal";
 import type { Lender } from "@/lib/types";
 import { ConnectLenderHealthCard } from "./ConnectLenderHealthCard";
 import { LenderLoansDrawer } from "./LenderLoansDrawer";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { Drawer } from "@/components/ds/Drawer";
 
 const PRODUCT_LABEL = new Map<string, string>(
   LoanTypeOptions.map((o) => [o.value, o.label]),
@@ -46,6 +48,7 @@ export default function LendersAdminPage() {
   const [editing, setEditing] = useState<Lender | null>(null);
   const [creating, setCreating] = useState(false);
   const [drilldown, setDrilldown] = useState<Lender | null>(null);
+  const [healthOpen, setHealthOpen] = useState(false);
 
   const { data: lenders = [], isLoading } = useLenders();
 
@@ -129,21 +132,22 @@ export default function LendersAdminPage() {
 
   return (
     <div className="grid">
-      {/* The "Super admin" eyebrow the inline version carried above the title.
-          PageHeader has no eyebrow slot, so it keeps its own line. */}
-      <div><CellChip tone="pet" className="caps">Super admin</CellChip></div>
       <PageHeader
-        title="Lenders"
-        lede="Roster of lending counter-parties. Adding products here is what makes a lender appear in each loan's Connect-Lender dropdown — and connecting one is what activates the redaction + outbound-email machinery."
+        title={<>Lenders <CellChip tone="mut">{visible.length} counterparties</CellChip></>}
+        lede="A lender only appears in a loan's connect dropdown once it has at least one product."
         actions={
-          <Btn variant="pri" onClick={() => setCreating(true)}>
-            <Icon name="plus" size={12} stroke={3} /> New lender
-          </Btn>
+          <>
+            <Btn variant="pri" onClick={() => setCreating(true)}>
+              <Icon name="plus" size={12} stroke={3} /> New lender
+            </Btn>
+            <PageActionMenu items={[
+              { label: "Connection health", onSelect: () => setHealthOpen(true) },
+              { label: "Lender packages", href: "/lender/packages" },
+              { label: "Rate sheet", href: "/rates" },
+            ]} />
+          </>
         }
       />
-
-      {/* Connect-Lender health probe — answers 'what is blocking it?' */}
-      <ConnectLenderHealthCard />
 
       {/* Search */}
       <Row>
@@ -252,6 +256,9 @@ export default function LendersAdminPage() {
       />
 
       <LenderLoansDrawer lender={drilldown} onClose={() => setDrilldown(null)} />
+      <Drawer open={healthOpen} onClose={() => setHealthOpen(false)} title="Lender connection health" sub="Review connectivity before using a lender in a funding file." width="lg">
+        <ConnectLenderHealthCard />
+      </Drawer>
     </div>
   );
 }

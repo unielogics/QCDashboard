@@ -22,7 +22,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
-import { stashRoomHandoff } from "@/lib/roomPlaidHandoff";
+import { stashApplicationRoomHandoff, stashRoomHandoff } from "@/lib/roomPlaidHandoff";
 import { apiBase } from "@/lib/api";
 import { Btn, CellChip, Field, Input, StatusLine, WarnLine, cx } from "@/components/ds";
 import {
@@ -31,6 +31,7 @@ import {
   type SignRequestedDocumentPayload,
 } from "@/components/intake/SignRequestedDocument";
 import { ContractSigner, type RoomContract } from "@/components/room/ContractSigner";
+import { EnvelopeSigner, type RoomEnvelope } from "@/components/room/EnvelopeSigner";
 
 type Signable = {
   id: string;
@@ -41,6 +42,20 @@ type Signable = {
   document_text: string;
 };
 
+type BankConnection = {
+  id: string;
+  institution_name: string | null;
+  accounts_label: string | null;
+  status: string;
+  environment: string;
+  error: string | null;
+  update_mode_reason: string | null;
+  update_mode_account_selection: boolean;
+  is_primary_operating: boolean;
+  last_pulled_at: string | null;
+  statement_months: string[];
+};
+
 type Features = {
   business_name: string;
   bank_connect_available: boolean;
@@ -48,9 +63,19 @@ type Features = {
   bank_consent_granted: boolean;
   /** Server-owned wording. Shown verbatim; never edited or echoed back. */
   bank_consent_disclosure: string;
+  bank_connections: BankConnection[];
   signable: Signable[];
   contracts: RoomContract[];
+  envelopes: RoomEnvelope[];
 };
+type RoomKind = "dealer" | "application";
+
+function bankUpdateMessage(connection: BankConnection): string {
+  if (connection.update_mode_reason === "new_accounts_available") return "New business accounts are available to add.";
+  if (connection.update_mode_reason === "pending_expiration") return "This authorization is expiring and needs renewal.";
+  if (connection.update_mode_reason === "pending_disconnect") return "This connection is scheduled to disconnect unless renewed.";
+  return connection.error || "Your bank needs you to confirm or repair this connection.";
+}
 
 function BankConnect({
   token,
@@ -58,6 +83,8 @@ function BankConnect({
   environment,
   consentGranted: initialConsent,
   disclosure,
+  connections,
+  roomKind,
   onConnected,
 }: {
   token: string;
@@ -67,9 +94,13 @@ function BankConnect({
   consentGranted: boolean;
   /** The exact wording the server will store against the grant. */
   disclosure: string;
+  connections: BankConnection[];
+  roomKind: RoomKind;
   onConnected: () => void;
 }) {
   const [linkToken, setLinkToken] = useState<string | null>(null);
+  const [linkMode, setLinkMode] = useState<"initial" | "update">("initial");
+  const [linkItemId, setLinkItemId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
@@ -83,25 +114,44 @@ function BankConnect({
     async (publicToken: string | null, metadata: { institution?: { name?: string } | null }) => {
       // react-plaid-link types the token as nullable; a null here means Link
       // closed without a grant and there is nothing to exchange.
-      if (!publicToken) return;
+      if ((linkMode === "initial" && !publicToken) || (linkMode === "update" && !linkItemId)) return;
       setBusy(true);
       setError(null);
       try {
-        const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/exchange`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            passcode,
-            public_token: publicToken,
-            institution_name: metadata?.institution?.name ?? null,
-          }),
-        });
+        const res = await fetch(
+          roomKind === "application"
+            ? linkMode === "update" && linkItemId
+              ? `${apiBase}/api/v1/application-profiles/public/room/${token}/plaid/${linkItemId}/update-complete`
+              : `${apiBase}/api/v1/application-profiles/public/room/${token}/plaid/exchange`
+            : linkMode === "update" && linkItemId
+              ? `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${linkItemId}/update-complete`
+              : `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/exchange`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(
+              linkMode === "update"
+                ? { passcode }
+                : {
+                    passcode,
+                    public_token: publicToken,
+                    institution_name: metadata?.institution?.name ?? null,
+                    is_primary_operating: connections.length === 0,
+                  },
+            ),
+          },
+        );
         if (!res.ok) {
           const body = (await res.json().catch(() => null)) as { detail?: string } | null;
           throw new Error(body?.detail || "The connection could not be completed.");
         }
-        const out = (await res.json()) as { message: string };
-        setDone(out.message);
+        const out = (await res.json()) as { message?: string };
+        setDone(
+          out.message ||
+            (linkMode === "update"
+              ? "Accounts updated. Verified bank evidence is refreshing now."
+              : "Bank connected. Verified bank evidence is refreshing now."),
+        );
         onConnected();
       } catch (e) {
         setError(e instanceof Error ? e.message : "The connection could not be completed.");
@@ -110,7 +160,7 @@ function BankConnect({
         setLinkToken(null);
       }
     },
-    [token, passcode, onConnected],
+    [token, passcode, onConnected, connections.length, linkItemId, linkMode, roomKind],
   );
 
   const { open, ready } = usePlaidLink({
@@ -125,16 +175,46 @@ function BankConnect({
     if (linkToken && ready) open();
   }, [linkToken, ready, open]);
 
+  useEffect(() => {
+    if (initialConsent) setConsentGranted(true);
+  }, [initialConsent]);
+
+  async function setPrimary(itemId: string) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        roomKind === "application"
+          ? `${apiBase}/api/v1/application-profiles/public/room/${token}/plaid/${itemId}/primary`
+          : `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${itemId}/primary`,
+        {
+          method: roomKind === "application" ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode, ...(roomKind === "application" ? { is_primary_operating: true } : {}) }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "The main operating bank could not be changed.");
+      }
+      onConnected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The main operating bank could not be changed.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function authorize() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/bank-consent`, {
+      const res = await fetch(`${apiBase}/api/v1/${roomKind === "application" ? "application-profiles" : "dealer-os"}/public/room/${token}/bank-consent`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         // The disclosure text is deliberately not sent — the server records the
         // wording it served, which is what makes the stored proof meaningful.
-        body: JSON.stringify({ passcode, consenter_name: signer.trim(), method: "self_web" }),
+        body: JSON.stringify({ passcode, consenter_name: signer.trim(), method: "self_web", granted: true }),
       });
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { detail?: string } | null;
@@ -152,7 +232,7 @@ function BankConnect({
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/link-token`, {
+      const res = await fetch(`${apiBase}/api/v1/${roomKind === "application" ? "application-profiles" : "dealer-os"}/public/room/${token}/plaid/link-token`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passcode }),
@@ -164,12 +244,18 @@ function BankConnect({
       const out = (await res.json()) as { link_token: string };
       // An OAuth bank navigates away from this page entirely, so everything
       // needed to finish the connection has to outlive the room's URL.
-      stashRoomHandoff({
+      const handoff = {
         linkToken: out.link_token,
         token,
         passcode,
         returnTo: window.location.href,
-      });
+        mode: "initial",
+        isPrimaryOperating: connections.length === 0,
+      } as const;
+      if (roomKind === "application") stashApplicationRoomHandoff(handoff);
+      else stashRoomHandoff(handoff);
+      setLinkMode("initial");
+      setLinkItemId(null);
       setLinkToken(out.link_token);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bank connection is not available right now.");
@@ -178,31 +264,127 @@ function BankConnect({
     }
   }
 
-  if (done) {
-    return (
-      <section className="panel mb">
-        <div className="panel-h">
-          <h2>Bank connection</h2>
-          <CellChip tone="ok">Connected</CellChip>
-        </div>
-        <div className="panel-b">
-          <p className="sub">{done}</p>
-        </div>
-      </section>
-    );
+  async function startUpdate(connection: BankConnection, accountSelectionEnabled: boolean) {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        roomKind === "application"
+          ? `${apiBase}/api/v1/application-profiles/public/room/${token}/plaid/${connection.id}/update-link-token`
+          : `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${connection.id}/update-link-token`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            passcode,
+            account_selection_enabled:
+              accountSelectionEnabled || connection.update_mode_account_selection,
+          }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "The bank connection could not be updated.");
+      }
+      const out = (await res.json()) as { link_token: string };
+      const handoff = {
+        linkToken: out.link_token,
+        token,
+        passcode,
+        returnTo: window.location.href,
+        mode: "update",
+        itemId: connection.id,
+      } as const;
+      if (roomKind === "application") stashApplicationRoomHandoff(handoff);
+      else stashRoomHandoff(handoff);
+      setLinkMode("update");
+      setLinkItemId(connection.id);
+      setLinkToken(out.link_token);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The bank connection could not be updated.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function disconnect(connection: BankConnection) {
+    if (!window.confirm("Disconnect this bank? Previously imported statement evidence will remain on the file.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        roomKind === "application"
+          ? `${apiBase}/api/v1/application-profiles/public/room/${token}/plaid/${connection.id}`
+          : `${apiBase}/api/v1/dealer-os/public/room/${token}/plaid/${connection.id}`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ passcode }),
+        },
+      );
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as { detail?: string } | null;
+        throw new Error(body?.detail || "The bank could not be disconnected.");
+      }
+      setDone("Bank disconnected. Previously imported evidence remains available.");
+      onConnected();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The bank could not be disconnected.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
     <section className="panel mb">
       <div className="panel-h">
-        <h2>Connect your bank</h2>
+        <h2>Connect business accounts</h2>
       </div>
       <div className="panel-b">
         <p className="sub">
-          A read-only connection through Plaid retrieves your bank statements directly, so you do
-          not have to download and upload them yourself. No credentials pass through Qualified
-          Commercial, and nothing can be moved or charged.
+          Connect every business operating account you want considered. Plaid provides read-only
+          balances and transaction history, and Qualified Commercial combines all connected banks
+          into one verified evidence view. No credentials pass through Qualified Commercial, and
+          nothing can be moved or charged.
         </p>
+        {connections.length > 0 ? (
+          <div className="mt" style={{ display: "grid", gap: 8 }}>
+            {connections.map((connection) => (
+              <div key={connection.id} className="filerow room-bank-row">
+                <div className="grow">
+                  <b>{connection.institution_name || "Connected institution"}</b>
+                  <span className="sub" style={{ display: "block", marginTop: 3 }}>
+                    {connection.accounts_label || "Account details syncing"} · {connection.statement_months.length} statement month{connection.statement_months.length === 1 ? "" : "s"}
+                  </span>
+                  {connection.update_mode_reason ? <span className="sub" style={{ display: "block", marginTop: 3 }}>{bankUpdateMessage(connection)}</span> : null}
+                </div>
+                <CellChip tone={connection.status === "active" ? "ok" : "warn"}>
+                  {connection.status}
+                </CellChip>
+                {connection.is_primary_operating ? (
+                  <CellChip tone="acc">Main operating bank</CellChip>
+                ) : (
+                  <Btn disabled={busy} onClick={() => setPrimary(connection.id)}>
+                    Make main
+                  </Btn>
+                )}
+                {connection.update_mode_reason && !connection.update_mode_account_selection ? (
+                  <Btn variant="pri" disabled={busy} onClick={() => startUpdate(connection, false)}>
+                    Repair connection
+                  </Btn>
+                ) : null}
+                <Btn
+                  variant={connection.update_mode_account_selection ? "pri" : undefined}
+                  disabled={busy}
+                  onClick={() => startUpdate(connection, true)}
+                >
+                  {connection.update_mode_account_selection ? "Review new accounts" : "Add accounts"}
+                </Btn>
+                <Btn disabled={busy} onClick={() => disconnect(connection)}>Disconnect</Btn>
+              </div>
+            ))}
+          </div>
+        ) : null}
         {environment === "sandbox" ? (
           <WarnLine className="mt">
             Test mode: this connection currently reaches Plaid&apos;s test institutions only.
@@ -248,7 +430,7 @@ function BankConnect({
               {/* `.btn:disabled` carries the dimmed state the inline opacity did. */}
               <Btn
                 variant="pri"
-                disabled={!agreed || !signer.trim() || busy}
+                disabled={!agreed || signer.trim().length < 2 || busy}
                 onClick={authorize}
               >
                 {busy ? "Recording…" : "Authorize and continue"}
@@ -258,10 +440,11 @@ function BankConnect({
         ) : (
           <div className="mt">
             <Btn variant="pri" disabled={busy} onClick={start}>
-              {busy ? "Opening…" : "Connect bank securely"}
+              {busy ? "Opening…" : connections.length ? "Add another institution" : "Connect bank securely"}
             </Btn>
           </div>
         )}
+        {done ? <StatusLine tone="ok" className="mt">{done}</StatusLine> : null}
         {error ? <StatusLine tone="bad" className="mt">{error}</StatusLine> : null}
       </div>
     </section>
@@ -272,15 +455,19 @@ export function RoomActions({
   token,
   passcode,
   onChanged,
+  view = "all",
 }: {
   token: string;
   passcode: string;
   /** Called after a connection or signature lands so the page can refresh its checklist. */
   onChanged: () => void;
+  view?: "all" | "banking" | "agreements";
 }) {
   const [features, setFeatures] = useState<Features | null>(null);
+  const [roomKind, setRoomKind] = useState<RoomKind>("dealer");
   const [signing, setSigning] = useState<Signable | null>(null);
   const [signingContract, setSigningContract] = useState<RoomContract | null>(null);
+  const [signingEnvelope, setSigningEnvelope] = useState<RoomEnvelope | null>(null);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
 
@@ -291,10 +478,40 @@ export function RoomActions({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passcode }),
       });
-      // A room with no case behind it (or an older link) simply has no extra
-      // capabilities; the page stays a plain upload room rather than erroring.
-      if (!res.ok) return;
-      setFeatures((await res.json()) as Features);
+      if (res.ok) {
+        setRoomKind("dealer");
+        setFeatures((await res.json()) as Features);
+        return;
+      }
+      const application = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/state`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode }),
+      });
+      if (!application.ok) return;
+      const state = (await application.json()) as {
+        business_name: string;
+        signable: Signable[];
+        banking: {
+          enabled: boolean;
+          environment: string;
+          consent_granted: boolean;
+          disclosure_text: string;
+          items: BankConnection[];
+        };
+      };
+      setRoomKind("application");
+      setFeatures({
+        business_name: state.business_name,
+        bank_connect_available: state.banking.enabled,
+        plaid_environment: state.banking.environment,
+        bank_consent_granted: state.banking.consent_granted,
+        bank_consent_disclosure: state.banking.disclosure_text,
+        bank_connections: state.banking.items,
+        signable: state.signable ?? [],
+        contracts: [],
+        envelopes: [],
+      });
     } catch {
       /* capabilities are additive; failure to load them is not a room failure */
     }
@@ -308,7 +525,10 @@ export function RoomActions({
     setSignBusy(true);
     setSignError(null);
     try {
-      const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/sign`, {
+      const res = await fetch(
+        roomKind === "application"
+          ? `${apiBase}/api/v1/application-profiles/public/room/${token}/sign`
+          : `${apiBase}/api/v1/dealer-os/public/room/${token}/sign`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passcode, ...payload }),
@@ -333,9 +553,32 @@ export function RoomActions({
   const signed = features.signable.filter((d) => d.signed);
   const contractsPending = (features.contracts ?? []).filter((c) => c.status === "out_for_signature");
   const contractsSigned = (features.contracts ?? []).filter((c) => c.status === "executed");
+  const envelopesPending = (features.envelopes ?? []).filter((envelope) => envelope.status === "out_for_signature");
+  const envelopesSigned = (features.envelopes ?? []).filter((envelope) => envelope.status === "executed");
 
   return (
     <>
+      {signingEnvelope ? (
+        <EnvelopeSigner
+          token={token}
+          passcode={passcode}
+          initialEnvelope={signingEnvelope}
+          onClose={() => setSigningEnvelope(null)}
+          onDone={() => { void load(); onChanged(); }}
+        />
+      ) : null}
+
+      {(view === "all" || view === "agreements") && !signingEnvelope && (envelopesPending.length > 0 || envelopesSigned.length > 0) ? (
+        <section className="panel mb">
+          <div className="panel-h"><h2>Application package</h2></div>
+          <div className="panel-b">
+            <p className="sub mb">Review every required program form in sequence. You will draw one signature and affirm that it applies to the complete listed package.</p>
+            {envelopesPending.map((envelope) => <div key={envelope.id} className="filerow"><b className="grow">{envelope.title}</b><CellChip tone="warn">{envelope.documents.length} document{envelope.documents.length === 1 ? "" : "s"}</CellChip><Btn variant="pri" onClick={() => setSigningEnvelope(envelope)}>Review package</Btn></div>)}
+            {envelopesSigned.map((envelope) => <div key={envelope.id} className="filerow"><b className="grow">{envelope.title}</b><CellChip tone="ok">Signed</CellChip>{envelope.bundle_download_url && <a className="btn" href={envelope.bundle_download_url} download>Download</a>}</div>)}
+          </div>
+        </section>
+      ) : null}
+
       {signingContract ? (
         <ContractSigner
           token={token}
@@ -349,7 +592,7 @@ export function RoomActions({
         />
       ) : null}
 
-      {!signingContract && (contractsPending.length > 0 || contractsSigned.length > 0) ? (
+      {(view === "all" || view === "agreements") && !signingContract && (contractsPending.length > 0 || contractsSigned.length > 0) ? (
         <section className="panel mb">
           <div className="panel-h">
             <h2>Agreements to sign</h2>
@@ -376,18 +619,23 @@ export function RoomActions({
           </div>
         </section>
       ) : null}
-      {features.bank_connect_available ? (
+      {(view === "all" || view === "banking") && features.bank_connect_available ? (
         <BankConnect
           token={token}
           passcode={passcode}
           environment={features.plaid_environment}
           consentGranted={features.bank_consent_granted}
           disclosure={features.bank_consent_disclosure}
-          onConnected={onChanged}
+          connections={features.bank_connections ?? []}
+          roomKind={roomKind}
+          onConnected={() => {
+            void load();
+            onChanged();
+          }}
         />
       ) : null}
 
-      {pending.length > 0 || signed.length > 0 ? (
+      {(view === "all" || view === "agreements") && (pending.length > 0 || signed.length > 0) ? (
         <section className="panel mb">
           <div className="panel-h">
             <h2>Signatures needed</h2>
@@ -421,7 +669,11 @@ export function RoomActions({
         </section>
       ) : null}
 
-      {signing ? (
+      {view === "agreements" && !signing && !signingContract && !signingEnvelope && pending.length === 0 && signed.length === 0 && contractsPending.length === 0 && contractsSigned.length === 0 && envelopesPending.length === 0 && envelopesSigned.length === 0 ? (
+        <div className="application-room-empty">There are no agreements waiting for signature.</div>
+      ) : null}
+
+      {(view === "all" || view === "agreements") && signing ? (
         <section className="panel mb">
           <div className="panel-b">
             <SignRequestedDocument

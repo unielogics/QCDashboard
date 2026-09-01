@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useUser } from "@clerk/nextjs";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
@@ -17,6 +17,7 @@ import {
   Lbl,
   PageHeader,
   Panel,
+  Row,
   Select,
   Table,
   Td,
@@ -45,11 +46,14 @@ import {
   useUpdateSettings,
   useUpdateUserRole,
   useUsers,
+  useSignedReferralCompanies,
 } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { parseIntStrict } from "@/lib/formCoerce";
 import { InviteMemberDialog } from "@/components/InviteMemberDialog";
+import { AddressInput } from "@/components/property/GoogleAddressInput";
 import type {
   AICadenceSettings,
   AppSettingsData,
@@ -61,9 +65,12 @@ import type {
   ReferralSettings,
   SecuritySettings,
   SimulatorSettings,
+  OperatorAccountAccessType,
 } from "@/lib/types";
 import { useInitSignatureUpload } from "@/hooks/useApi";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
+import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
+import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
 // Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
@@ -71,6 +78,8 @@ import { DealAnalyzerSection } from "./DealAnalyzerSection";
 const SECTIONS = [
   { id: "checklists", label: "Doc checklists", icon: "vault" as const, hidden: true },
   { id: "cadence", label: "AI cadence", icon: "ai" as const, hidden: true },
+  { id: "booking", label: "Booking page", icon: "cal" as const, hidden: false },
+  { id: "client_access", label: "Client access", icon: "shield" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
@@ -109,6 +118,7 @@ function defaultChecklist(loanType: string): LoanTypeChecklist {
 
 export default function SettingsPage() {
   const profile = useActiveProfile();
+  const router = useRouter();
   const searchParams = useSearchParams();
   // Deep-link: /settings?section=cadence opens that section directly.
   // Used by /admin/lending-ai legacy tiles to route into the right
@@ -208,6 +218,18 @@ export default function SettingsPage() {
 
   const canEdit = profile.role === Role.SUPER_ADMIN;
 
+  useEffect(() => {
+    const requested = searchParams.get("section");
+    if (requested && SECTIONS.some((item) => item.id === requested) && requested !== section) {
+      setSection(requested as SectionId);
+    }
+  }, [searchParams, section]);
+
+  const selectSection = (next: SectionId) => {
+    setSection(next);
+    router.replace(`/settings?section=${next}`, { scroll: false });
+  };
+
   const flash = (msg: string, isError = false) => {
     setSavedFlash(isError ? null : msg);
     setErrFlash(isError ? msg : null);
@@ -223,6 +245,16 @@ export default function SettingsPage() {
       flash(e instanceof Error ? e.message : "Save failed.", true);
     }
   };
+
+  const currentSettingsKey: keyof AppSettingsData | null = ({
+    checklists: "checklists",
+    cadence: "ai_cadence",
+    referrals: "referrals",
+    pricing: "pricing",
+    simulator: "simulator",
+    security: "security",
+    letterhead: "letterhead",
+  } as Partial<Record<SectionId, keyof AppSettingsData>>)[section] ?? null;
 
   if (isLoading && !draft) {
     return <div className="sub">Loading settings…</div>;
@@ -242,19 +274,15 @@ export default function SettingsPage() {
     <div className="grid">
       <PageHeader
         title="Settings"
-        actions={
-          <>
-            {canEdit
-              ? <CellChip tone="acc">Editing as super-admin</CellChip>
-              : <CellChip tone="warn">Read-only — super-admin required</CellChip>}
-            {error && (
-              <CellChip tone="warn">Backend /settings not deployed yet — preview mode (saves disabled)</CellChip>
-            )}
-            {savedFlash && <CellChip tone="ok">✓ {savedFlash}</CellChip>}
-            {errFlash && <CellChip tone="bad">{errFlash}</CellChip>}
-          </>
-        }
+        lede={section === "booking" ? "Account scheduling and availability" : canEdit ? "Super-admin configuration" : "Read-only"}
+        actions={<>{canEdit && currentSettingsKey ? <Btn variant="pri" onClick={() => handleSaveSection(currentSettingsKey)} disabled={!dirty || update.isPending}><Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save changes"}</Btn> : null}<PageActionMenu items={[{ label: "Lending AI", href: "/admin/lending-ai" }, { label: "Elara usage and controls", href: "/admin/token-usage" }]} /></>}
       />
+      <Row>
+        {canEdit ? <CellChip tone="acc">Editing as super-admin</CellChip> : <CellChip tone="warn">Read-only — super-admin required</CellChip>}
+        {error ? <CellChip tone="warn">Settings service unavailable · preview mode</CellChip> : null}
+        {savedFlash ? <CellChip tone="ok">{savedFlash}</CellChip> : null}
+        {errFlash ? <CellChip tone="bad">{errFlash}</CellChip> : null}
+      </Row>
 
       {/* Lending AI breadcrumb — shown when an admin arrives via a
           legacy tile in the Lending AI portal. Lets them step back. */}
@@ -269,8 +297,22 @@ export default function SettingsPage() {
 
       {/* A 220px rail beside a fluid body — a bespoke split, not two of the
           twelve cockpit columns, so this grid stays inline. */}
-      <div style={{ display: "grid", gridTemplateColumns: "220px 1fr", gap: 16, alignItems: "flex-start" }}>
+      <div className="settings-layout">
         <div className="card">
+          <div className="lbl" style={{ padding: "5px 8px 2px" }}>Account</div>
+          {SECTIONS.filter(s => !s.hidden && s.id === "booking").map((s) => (
+            <button
+              key={s.id}
+              onClick={() => selectSection(s.id)}
+              className={cx("pick", section === s.id && "on")}
+              style={{ width: "100%", textAlign: "left", font: "inherit" }}
+            >
+              <Icon name={s.icon} size={14} />
+              <span className="sp">{s.label}</span>
+            </button>
+          ))}
+          <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
+          <div className="lbl" style={{ padding: "5px 8px 2px" }}>Firm configuration</div>
           {/* Lending AI — the canonical home for AI configuration.
               Routes away (not an in-page section). Sits at the top of
               the sidebar so it's the first thing admins reach for.
@@ -287,10 +329,10 @@ export default function SettingsPage() {
           </Link>
           <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
 
-          {SECTIONS.filter(s => !s.hidden).map((s) => (
+          {SECTIONS.filter(s => !s.hidden && s.id !== "booking" && (s.id !== "client_access" || canEdit)).map((s) => (
             <button
               key={s.id}
-              onClick={() => setSection(s.id)}
+              onClick={() => selectSection(s.id)}
               // `.pick` (+ `.on`) is the sheet's selectable row: it owns the
               // frame, the hover and the selected tint. A <button> inherits
               // none of width, alignment or font from it.
@@ -321,6 +363,10 @@ export default function SettingsPage() {
               </div>
             </WarnLine>
           ) : null}
+
+          {section === "booking" && <BookingPageSettingsSection embedded />}
+          {section === "client_access" && canEdit ? <ClientAccessSection initialClientId={searchParams.get("client_id")} /> : null}
+          {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
 
           {section === "checklists" && (
             <ChecklistsSection
@@ -476,7 +522,7 @@ function ChecklistsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
   return (
     <Panel
       title="Per loan-type doc checklist"
-      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      actions={null}
     >
       {/* `.seg` is the sheet's tab strip; `.on` marks the selected loan type. */}
       <div className="seg" style={{ marginBottom: 14 }}>
@@ -682,7 +728,7 @@ function CadenceSection({ draft, setDraft, canEdit, dirty, onSave, saving }: Sec
   const set = (patch: Partial<AICadenceSettings>) => setDraft((d) => d && ({ ...d, ai_cadence: { ...ac, ...patch } }));
 
   return (
-    <Panel title="AI cadence & autonomy" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="AI cadence & autonomy">
       <div className="cg">
         <Field className="s6" label="Morning digest">
           <Input type="time" value={ac.morning_digest} onChange={(e) => set({ morning_digest: e.target.value })} disabled={!canEdit} />
@@ -719,7 +765,7 @@ function ReferralsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
   const set = (patch: Partial<ReferralSettings>) => setDraft((d) => d && ({ ...d, referrals: { ...r, ...patch } }));
 
   return (
-    <Panel title="Referral workflow" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="Referral workflow">
       <Toggle label="Require super-admin approval for self-claimed referrals" value={r.require_approval} onChange={(v) => set({ require_approval: v })} disabled={!canEdit} />
       <Toggle label="Auto-link from broker invite URL" value={r.auto_link_from_url} onChange={(v) => set({ auto_link_from_url: v })} disabled={!canEdit} />
       <Toggle label="Block re-attribution after first funded loan" value={r.block_re_attribution} onChange={(v) => set({ block_re_attribution: v })} disabled={!canEdit} />
@@ -751,7 +797,7 @@ function PricingSection({ draft, setDraft, canEdit, dirty, onSave, saving }: Sec
   const set = (patch: Partial<PricingSettings>) => setDraft((d) => d && ({ ...d, pricing: { ...p, ...patch } }));
 
   return (
-    <Panel title="Pricing & rate-sheet automation" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="Pricing & rate-sheet automation">
       <div className="cg">
         <Field className="s6" label="Daily rate-sheet pull">
           <Input type="time" value={p.daily_pull_time} onChange={(e) => set({ daily_pull_time: e.target.value })} disabled={!canEdit} />
@@ -810,7 +856,7 @@ function SecuritySection({ draft, setDraft, canEdit, dirty, onSave, saving }: Se
   const set = (patch: Partial<SecuritySettings>) => setDraft((d) => d && ({ ...d, security: { ...s, ...patch } }));
 
   return (
-    <Panel title="Security" actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}>
+    <Panel title="Security">
       <Toggle label="SSO (Okta)" sub="Enforce single sign-on for the operator console." value={s.sso_enabled} onChange={(v) => set({ sso_enabled: v })} disabled={!canEdit} />
 
       {/* Two-step verification is owned by Clerk, not by these settings.
@@ -876,7 +922,7 @@ function ConnectionsSection() {
   const connected = Boolean(data?.connected);
   const services: Array<{ key: string; label: string; desc: string; on: boolean }> = [
     { key: "gmail", label: "Gmail", desc: "Send loan & lender emails from your own address.", on: Boolean(data?.gmail_connected) },
-    { key: "calendar", label: "Google Calendar", desc: "Two-way sync with your calendar (coming soon).", on: Boolean(data?.calendar_connected) },
+    { key: "calendar", label: "Google Calendar", desc: "Two-way sync plus Google Meet creation for client bookings.", on: Boolean(data?.calendar_connected) },
     { key: "drive", label: "Google Drive", desc: "Attach Drive files to emails & share with the AI (coming soon).", on: Boolean(data?.drive_connected) },
   ];
 
@@ -888,6 +934,14 @@ function ConnectionsSection() {
       </div>
 
       {flash ? <div className="note">{flash}</div> : null}
+
+      {data?.oauth_configured === false ? (
+        <div className="mt">
+          <StatusLine kind="warn">
+            {data.oauth_configuration_message || "Google OAuth setup is required before accounts can connect."}
+          </StatusLine>
+        </div>
+      ) : null}
 
       {isLoading ? (
         <div className="sub mt">Loading connection status…</div>
@@ -906,8 +960,8 @@ function ConnectionsSection() {
                 {disconnect.isPending ? "Disconnecting…" : "Disconnect"}
               </Btn>
             ) : (
-              <Btn variant="pri" onClick={() => connect("gmail")} disabled={startOAuth.isPending}>
-                {startOAuth.isPending ? "Opening Google…" : "Connect Google"}
+              <Btn variant="pri" onClick={() => connect("gmail")} disabled={startOAuth.isPending || data?.oauth_configured === false}>
+                {data?.oauth_configured === false ? "Setup required" : startOAuth.isPending ? "Opening Google…" : "Connect Google"}
               </Btn>
             )}
           </div>
@@ -922,7 +976,7 @@ function ConnectionsSection() {
                 </div>
                 <CellChip tone={s.on ? "ok" : "mut"}>{s.on ? "On" : "Off"}</CellChip>
                 {connected && !s.on ? (
-                  <Btn size="sm" onClick={() => connect(s.key)} disabled={startOAuth.isPending}>Enable</Btn>
+                  <Btn size="sm" onClick={() => connect(s.key)} disabled={startOAuth.isPending || data?.oauth_configured === false}>Enable</Btn>
                 ) : null}
               </div>
             ))}
@@ -982,10 +1036,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
   const { data, isLoading, error } = useProviderSettings();
   const update = useUpdateProviderSettings();
   const [rentcastKey, setRentcastKey] = useState("");
-  const [googleServerKey, setGoogleServerKey] = useState("");
-  const [googleBrowserKey, setGoogleBrowserKey] = useState("");
-  const [googleIosKey, setGoogleIosKey] = useState("");
-  const [googleAndroidKey, setGoogleAndroidKey] = useState("");
+  const [addressProvider, setAddressProvider] = useState<"google" | "geoapify">("google");
   const [aiEnabled, setAiEnabled] = useState(true);
   const [ttlHours, setTtlHours] = useState(24);
   const [flash, setFlash] = useState<{ kind: "ok" | "err"; msg: string } | null>(null);
@@ -994,15 +1045,16 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
     if (!data) return;
     setAiEnabled(data.property_analysis_ai_enabled);
     setTtlHours(data.property_intelligence_cache_ttl_hours);
+    setAddressProvider(data.address_provider);
   }, [data]);
 
   const dirty =
     rentcastKey.trim() ||
-    googleServerKey.trim() ||
-    googleBrowserKey.trim() ||
-    googleIosKey.trim() ||
-    googleAndroidKey.trim() ||
-    (data && (aiEnabled !== data.property_analysis_ai_enabled || ttlHours !== data.property_intelligence_cache_ttl_hours));
+    (data && (
+      aiEnabled !== data.property_analysis_ai_enabled ||
+      ttlHours !== data.property_intelligence_cache_ttl_hours ||
+      addressProvider !== data.address_provider
+    ));
 
   const save = async () => {
     if (!canEdit) return;
@@ -1010,18 +1062,11 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
       property_analysis_ai_enabled: aiEnabled,
       property_intelligence_cache_ttl_hours: ttlHours,
     };
+    if (!data || addressProvider !== data.address_provider) payload.address_provider = addressProvider;
     if (rentcastKey.trim()) payload.rentcast_api_key = rentcastKey.trim();
-    if (googleServerKey.trim()) payload.google_server_api_key = googleServerKey.trim();
-    if (googleBrowserKey.trim()) payload.google_maps_browser_key = googleBrowserKey.trim();
-    if (googleIosKey.trim()) payload.google_maps_ios_key = googleIosKey.trim();
-    if (googleAndroidKey.trim()) payload.google_maps_android_key = googleAndroidKey.trim();
     try {
       await update.mutateAsync(payload);
       setRentcastKey("");
-      setGoogleServerKey("");
-      setGoogleBrowserKey("");
-      setGoogleIosKey("");
-      setGoogleAndroidKey("");
       setFlash({ kind: "ok", msg: "Provider settings saved." });
     } catch (e) {
       setFlash({ kind: "err", msg: e instanceof Error ? e.message : "Save failed." });
@@ -1047,14 +1092,26 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
           <div className="row">
             <StatusPill label="RentCast" ok={!!data?.rentcast_configured} />
             <StatusPill label="Google Places/Geocoding" ok={!!data?.google_server_configured} />
-            <StatusPill label="Google Maps web" ok={!!data?.google_maps_browser_key_configured} />
-            <StatusPill label="Google Maps iOS" ok={!!data?.google_maps_ios_key_configured} />
-            <StatusPill label="Google Maps Android" ok={!!data?.google_maps_android_key_configured} />
+            <StatusPill label="Geoapify" ok={!!data?.geoapify_configured} />
+            <StatusPill label={`${data?.address_provider === "geoapify" ? "Geoapify" : "Google"} active`} ok={!!data?.address_provider_ready} />
           </div>
 
           <div className="sub mt">
-            Keys are stored encrypted. Leave a field blank to keep the existing saved key.
+            Address search uses exactly the selected provider. Address credentials are configured only in the backend environment and are never sent to this browser.
           </div>
+
+          <Field label="Address autocomplete and resolution provider">
+            <Select value={addressProvider} onChange={(event) => setAddressProvider(event.target.value as "google" | "geoapify")} disabled={!canEdit}>
+              <option value="geoapify" disabled={!data?.geoapify_configured}>Geoapify{data?.geoapify_configured ? "" : " · backend key missing"}</option>
+              <option value="google" disabled={!data?.google_server_configured}>Google Places / Geocoding{data?.google_server_configured ? "" : " · backend key missing"}</option>
+            </Select>
+          </Field>
+
+          {!data?.address_provider_ready ? (
+            <StatusLine kind="warn">
+              The selected provider is unavailable. Configure its backend environment key before selecting it.
+            </StatusLine>
+          ) : null}
 
           {/* 1fr 1fr — a genuine 6 + 6 of the cockpit grid. */}
           <div className="cg mt">
@@ -1068,46 +1125,14 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
               onChange={setRentcastKey}
               disabled={!canEdit}
             />
-            <SecretField
-              className="s6"
-              label="Google Places and Geocoding key"
-              helper="Used by the API for address autocomplete, place lookup, and geocoding."
-              configured={!!data?.google_server_configured}
-              savedValue={data?.google_server_api_key ?? null}
-              value={googleServerKey}
-              onChange={setGoogleServerKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Maps web key"
-              helper="Used by the desktop web app for browser-based map and address features."
-              configured={!!data?.google_maps_browser_key_configured}
-              savedValue={data?.google_maps_browser_key ?? null}
-              value={googleBrowserKey}
-              onChange={setGoogleBrowserKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Maps iOS key"
-              helper="Use an iOS apps restriction with bundle ID com.qualifiedcommercial.mobile. Restrict APIs to Maps SDK for iOS and Places SDK for iOS if used."
-              configured={!!data?.google_maps_ios_key_configured}
-              savedValue={data?.google_maps_ios_key ?? null}
-              value={googleIosKey}
-              onChange={setGoogleIosKey}
-              disabled={!canEdit}
-            />
-            <SecretField
-              className="s6"
-              label="Google Maps Android key"
-              helper="Use an Android apps restriction with package com.qualifiedcommercial.mobile and the app signing SHA-1 fingerprint. Restrict APIs to Maps SDK for Android and Places SDK for Android if used."
-              configured={!!data?.google_maps_android_key_configured}
-              savedValue={data?.google_maps_android_key ?? null}
-              value={googleAndroidKey}
-              onChange={setGoogleAndroidKey}
-              disabled={!canEdit}
-            />
+            <div className="s6 panel pad">
+              <b>Address provider credentials</b>
+              <div className="sub mt6">Managed by backend deployment environment.</div>
+              <div className="row mt">
+                <StatusPill label="Geoapify" ok={!!data?.geoapify_configured} />
+                <StatusPill label="Google" ok={!!data?.google_server_configured} />
+              </div>
+            </div>
           </div>
 
           <div className="mt">
@@ -1227,8 +1252,22 @@ const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
   { value: Role.REGIONAL_MANAGER, label: "Regional Manager" },
   { value: Role.LOAN_EXEC, label: "Underwriter" },
   { value: Role.DEALER_PARTNER, label: "Dealer Partner" },
+  { value: Role.FIELD_REP, label: "Field Rep" },
   { value: Role.SUPER_ADMIN, label: "Super Admin" },
 ];
+
+const ACCOUNT_TYPE_OPTIONS: Array<{ value: OperatorAccountAccessType; label: string }> = [
+  { value: "funding", label: "Funding" },
+  { value: "field_desk", label: "Field Desk" },
+  { value: "audit", label: "Audit" },
+];
+
+function roleAccountTypes(role: Role): Set<OperatorAccountAccessType> {
+  if (role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC) return new Set(["funding", "field_desk", "audit"]);
+  if (role === Role.BROKER || role === Role.REGIONAL_MANAGER) return new Set(["funding"]);
+  if (role === Role.FIELD_REP) return new Set(["field_desk"]);
+  return new Set();
+}
 
 function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
   const { data: managers = [], isLoading, error } = useRegionalManagers();
@@ -1399,6 +1438,7 @@ function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").Portfolio
 
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { data: users, isLoading, error } = useUsers();
+  const { data: signedCompanies = [] } = useSignedReferralCompanies();
   const { data: me } = useCurrentUser();
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
@@ -1434,6 +1474,12 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
     deleteUser.mutate({ userId });
     setConfirmRevoke(null);
   };
+  const toggleAccountType = (userId: string, current: OperatorAccountAccessType[], product: OperatorAccountAccessType) => {
+    const next = current.includes(product)
+      ? current.filter((value) => value !== product)
+      : [...current, product];
+    updateRole.mutate({ userId, account_types: next });
+  };
 
   return (
     <>
@@ -1464,6 +1510,7 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
               { label: "Name" },
               { label: "Email" },
               { label: "Role", width: 160 },
+              { label: "Account access", width: 190 },
               { label: "Company / Agreement" },
               { label: "Joined", width: 110 },
               { label: "" },
@@ -1490,18 +1537,41 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                     </Select>
                   </Td>
                   <Td>
-                    {u.referral_partner_company_name ? (
-                      <>
-                        {u.referral_partner_company_name}{" "}
-                        {u.company_agreement_signed ? (
-                          <CellChip tone="ok">Signed</CellChip>
-                        ) : (
-                          <CellChip tone="bad">No agreement</CellChip>
-                        )}
-                      </>
-                    ) : (
-                      <span className="sub">—</span>
-                    )}
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {ACCOUNT_TYPE_OPTIONS.map((option) => {
+                        const inherited = roleAccountTypes(u.role).has(option.value);
+                        const active = u.account_types.includes(option.value);
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            className={cx("cellchip", active ? "c-acc" : "c-mut")}
+                            aria-pressed={active}
+                            title={inherited ? `${option.label} is included by the primary role` : `${active ? "Remove" : "Add"} ${option.label} access`}
+                            disabled={inherited || updateRole.isPending}
+                            onClick={() => toggleAccountType(u.id, u.account_types, option.value)}
+                            style={{ border: 0, cursor: inherited ? "default" : "pointer" }}
+                          >
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
+                      <Select
+                        aria-label={`Signed company for ${u.name}`}
+                        value={u.referral_partner_company_id ?? ""}
+                        disabled={updateRole.isPending}
+                        onChange={(event) => updateRole.mutate({ userId: u.id, referral_partner_company_id: event.target.value || null })}
+                        style={{ minWidth: 170, maxWidth: 260 }}
+                      >
+                        <option value="">No linked company</option>
+                        {signedCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                      </Select>
+                      {u.referral_partner_company_id && <CellChip tone="ok">Signed</CellChip>}
+                    </div>
                   </Td>
                   <Td>
                     {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
@@ -1554,7 +1624,7 @@ function SimulatorSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
   return (
     <Panel
       title="Borrower simulator"
-      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      actions={null}
     >
       <div className="sub">
         Defines the bounds the Simulate screen exposes to borrowers. Changes apply immediately to every borrower&apos;s
@@ -1684,7 +1754,7 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
   return (
     <Panel
       title="Firm letterhead — prequal PDF header & signature"
-      actions={canEdit && <SaveBtn dirty={dirty} saving={saving} onClick={onSave} />}
+      actions={null}
     >
       <div className="sub">
         Edits here change every pre-qualification letter generated from the next
@@ -1718,19 +1788,14 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
       {/* Office address (3 lines, top-right block on the letter) */}
       <Lbl className="mt">Office address (top-right of the letterhead)</Lbl>
       <div className="grid mt">
-        <Input
-          type="text"
-          value={lh.office_address_line_1}
-          onChange={(e) => set({ office_address_line_1: e.target.value })}
+        <AddressInput
+          label="Office address"
+          value={{ street: lh.office_address_line_1, city: lh.office_address_line_2 }}
           disabled={!canEdit}
-          placeholder="123 Financial Way, Suite 400"
-        />
-        <Input
-          type="text"
-          value={lh.office_address_line_2}
-          onChange={(e) => set({ office_address_line_2: e.target.value })}
-          disabled={!canEdit}
-          placeholder="Garfield, NJ 07026"
+          onChange={(next) => {
+            set({ office_address_line_1: next.street ?? "" });
+            set({ office_address_line_2: [next.city, next.state, next.zip].filter(Boolean).join(" ") });
+          }}
         />
         <Input
           type="text"

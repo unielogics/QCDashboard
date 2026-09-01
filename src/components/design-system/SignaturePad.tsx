@@ -34,31 +34,57 @@ export const SignaturePad = forwardRef<
      * survives at all; everything in the console leaves it off.
      */
     inkOnDark?: boolean;
+    onSignatureChange?: (hasSignature: boolean) => void;
+    ariaLabel?: string;
   }
 >(
-  function SignaturePad({ width = 560, height = 150, inkOnDark = false }, ref) {
+  function SignaturePad({
+    width = 560,
+    height = 150,
+    inkOnDark = false,
+    onSignatureChange,
+    ariaLabel = "Draw your signature",
+  }, ref) {
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const drawing = useRef(false);
 
     useImperativeHandle(ref, () => ({
       getDataUrl: () => canvasRef.current?.toDataURL("image/png") || "",
-      clear: () => clearCanvas(canvasRef.current),
+      clear: () => {
+        clearCanvas(canvasRef.current);
+        onSignatureChange?.(false);
+      },
       hasSignature: () => hasSignature(canvasRef.current),
-    }));
+    }), [onSignatureChange]);
+
+    const finishDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+      drawing.current = false;
+      if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      }
+      onSignatureChange?.(hasSignature(canvasRef.current));
+    };
 
     return (
       <canvas
         ref={canvasRef}
         width={width}
         height={height}
-        onPointerDown={(e) => startDraw(e, canvasRef.current, drawing, inkOnDark)}
+        role="img"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        onPointerDown={(e) => {
+          e.preventDefault();
+          e.currentTarget.setPointerCapture(e.pointerId);
+          startDraw(e, canvasRef.current, drawing, inkOnDark);
+        }}
         onPointerMove={(e) => moveDraw(e, canvasRef.current, drawing)}
-        onPointerUp={() => { drawing.current = false; }}
-        onPointerLeave={() => { drawing.current = false; }}
+        onPointerUp={finishDraw}
+        onPointerCancel={finishDraw}
         className={cx("sigpad", inkOnDark && "dark")}
         // `height` is a prop and drives the CSS box as well as the canvas
         // bitmap, so the two cannot diverge.
-        style={{ height }}
+        style={{ height, touchAction: "none" }}
       />
     );
   },
@@ -82,6 +108,7 @@ function startDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanv
 
 function moveDraw(event: ReactPointerEvent<HTMLCanvasElement>, canvas: HTMLCanvasElement | null, drawing: { current: boolean }) {
   if (!drawing.current || !canvas) return;
+  event.preventDefault();
   const ctx = canvas.getContext("2d");
   const pos = canvasPoint(event, canvas);
   if (!ctx || !pos) return;

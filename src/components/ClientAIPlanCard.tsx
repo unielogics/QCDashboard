@@ -35,6 +35,7 @@ import {
 } from "@/hooks/useApi";
 import { Btn, Callout, CellChip, Empty, ItemRow, Loading, Note, Panel, Sub, Textarea, type ChipTone } from "@/components/ds";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 
 interface Props {
   clientId: string;
@@ -44,6 +45,7 @@ interface Props {
 
 
 export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
+  const confirmAction = useConfirmAction();
   const { data: plan, isLoading, error: planErr } = useClientAIPlan(clientId, loanId ?? null);
   const { data: client } = useClient(clientId);
   const patch = usePatchClientAIPlan();
@@ -112,7 +114,13 @@ export function ClientAIPlanCard({ clientId, loanId, onOpenChat }: Props) {
   }
 
   async function onMarkReady() {
-    if (!confirm("Mark this client as ready for lending? This kicks off the lending hand-off.")) return;
+    const confirmed = await confirmAction({
+      title: "Mark client ready for lending",
+      body: "This starts the lending handoff and advances the client into the funding workflow.",
+      confirmLabel: "Start handoff",
+      reversible: false,
+    });
+    if (!confirmed) return;
     await markReady.mutateAsync(clientId);
   }
 

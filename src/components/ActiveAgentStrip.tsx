@@ -13,6 +13,7 @@
 import Link from "next/link";
 import { CellChip, Btn, ItemRow, Panel } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useClientAiAgents,
   useDealAiAgents,
@@ -27,6 +28,7 @@ type Props =
   | { dealId: string; clientId?: undefined };
 
 export function ActiveAgentStrip(props: Props) {
+  const confirmAction = useConfirmAction();
   const clientId = "clientId" in props ? props.clientId : undefined;
   const dealId = "dealId" in props ? props.dealId : undefined;
 
@@ -90,13 +92,15 @@ export function ActiveAgentStrip(props: Props) {
                   <Btn
                     size="sm"
                     className="danger"
-                    onClick={() => {
-                      if (
-                        confirm(
-                          "Remove this AI agent from this contact? It will stop working them but the audit row stays.",
-                        )
-                      )
-                        remove.mutate({
+                    onClick={async () => {
+                      const confirmed = await confirmAction({
+                        title: "Remove AI agent",
+                        body: "The agent will stop working this contact. Its audit history remains available.",
+                        confirmLabel: "Remove agent",
+                        tone: "danger",
+                        reversible: true,
+                      });
+                      if (confirmed) remove.mutate({
                           agentId: r.ai_agent_id,
                           leadId: r.lead_id,
                           clientId,

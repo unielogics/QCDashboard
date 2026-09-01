@@ -6,8 +6,9 @@ import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useInviteUser } from "@/hooks/useApi";
+import { useInviteUser, useSignedReferralCompanies } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import type { OperatorAccountAccessType } from "@/lib/types";
 
 interface Props {
   open: boolean;
@@ -26,10 +27,12 @@ const ROLE_OPTIONS: { value: Role; label: string; sub: string }[] = [
 
 export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const invite = useInviteUser();
+  const { data: signedCompanies = [] } = useSignedReferralCompanies();
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>(Role.BROKER);
-  const [companyName, setCompanyName] = useState("");
+  const [companyId, setCompanyId] = useState("");
+  const [accountTypes, setAccountTypes] = useState<OperatorAccountAccessType[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,7 +40,8 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
       setEmail("");
       setName("");
       setRole(Role.BROKER);
-      setCompanyName("");
+      setCompanyId("");
+      setAccountTypes([]);
       setErr(null);
     }
   }, [open]);
@@ -46,7 +50,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const valid =
     /\S+@\S+\.\S+/.test(email) &&
     name.trim().length > 0 &&
-    (!isDealerPartner || companyName.trim().length > 0);
+    (!isDealerPartner || companyId.length > 0);
 
   const submit = async () => {
     setErr(null);
@@ -55,7 +59,8 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
         email: email.trim(),
         name: name.trim(),
         role,
-        company_name: isDealerPartner ? companyName.trim() : undefined,
+        referral_partner_company_id: companyId || undefined,
+        account_types: accountTypes,
       });
       onInvited?.();
       onClose();
@@ -158,17 +163,37 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
         </div>
       </div>
 
+      <div>
+        <div style={{ fontSize: 10.5, fontWeight: 700, color: V.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+          Additional account access
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {(["funding", "field_desk", "audit"] as OperatorAccountAccessType[]).map((product) => {
+            const active = accountTypes.includes(product);
+            return (
+              <button
+                key={product}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setAccountTypes((current) => active ? current.filter((item) => item !== product) : [...current, product])}
+                style={{ ...inputStyle(), width: "auto", cursor: "pointer", background: active ? V.petrolSoft : V.surface2, borderColor: active ? V.petrol : V.line }}
+              >
+                {product === "funding" ? "Funding" : product === "field_desk" ? "Field Desk" : "Audit"}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 11, color: V.ink3, marginTop: 6 }}>The primary role controls permissions; access types add approved entry points.</div>
+      </div>
+
       {isDealerPartner ? (
-        <Field label="Company name">
-          <input
-            value={companyName}
-            onChange={(e) => setCompanyName(e.target.value)}
-            placeholder="Acme Auto Group LLC"
-            style={inputStyle()}
-          />
+        <Field label="Company with signed agreement">
+          <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} style={inputStyle()}>
+            <option value="">Select a signed company...</option>
+            {signedCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+          </select>
           <div style={{ fontSize: 11, color: V.ink3, marginTop: 6, lineHeight: 1.4 }}>
-            Their company must have a signed Referral Protection Agreement on file before they can use the
-            platform. If this company already exists, it will be linked automatically.
+            Only companies with an executed Referral Protection Agreement are available.
           </div>
         </Field>
       ) : null}

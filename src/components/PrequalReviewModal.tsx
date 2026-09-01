@@ -32,7 +32,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useUI } from "@/store/ui";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
-import { Btn, CellChip, CG, Field, IconBtn, Input, Linky, Note, Panel, Textarea, WarnLine, type ChipTone } from "@/components/ds";
+import { Btn, CellChip, CG, Field, IconBtn, Input, Linky, Note, Textarea, WarnLine, type ChipTone } from "@/components/ds";
 import {
   useApprovePrequalRequest,
   useRejectPrequalRequest,
@@ -445,27 +445,20 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           Single-column form per #facelift (the previous 2-col internal
           split made fields feel cramped); preview pane mirrors the actual
           PDF and updates as the operator types. */}
-      <div style={{
+      <div className="prequal-review-body" style={{
         flex: "1 1 auto",
         overflow: "hidden",
         display: "grid",
         gridTemplateColumns: "minmax(0, 1.2fr) minmax(0, 0.9fr)",
         alignItems: "stretch",
+        minHeight: 0,
       }}>
-        {/* ── FORM COLUMN: offer numbers → calculator → SOW (F&F) → letter terms → context ──
-            Grid rather than flex-column: `.panel` sets overflow:hidden, which
-            zeroes a flex item's automatic minimum size — as flex children the
-            panels would shrink and CLIP their own forms inside this scroller. */}
-        <div style={{
-          overflowY: "auto",
-          padding: "22px 28px 22px 32px",
-          display: "grid",
-          gap: 14,
-          alignContent: "start",
-          minWidth: 0,
-        }}>
+        {/* ── FORM COLUMN: one continuous underwriting form. Section rules
+            provide hierarchy without turning every field group into a card. */}
+        <div className="prequal-review-form-scroll">
+          <div className="prequal-review-form-sheet">
           {/* Offer numbers — primary action; previously "Approval values" */}
-          <Panel title="Offer numbers">
+          <PrequalFormSection number="01" title="Offer numbers">
             <CG>
               <NumField
                 className="s6"
@@ -485,7 +478,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                           ? `over ${Math.round(cap * 100)}% cap — lower the loan amount`
                           : `within ${Math.round(cap * 100)}% cap — OK to approve`}
                       </>
-                    : <>Add an ARV in the Scope of Work card to compute LTARV</>
+                    : <>Add an ARV in the Scope of Work section to compute LTARV</>
                 ) : (
                   <>
                     LTV {(ltv * 100).toFixed(1)}% ·{" "}
@@ -496,10 +489,11 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 )}
               </CellChip>
             </div>
-          </Panel>
+          </PrequalFormSection>
 
           {/* Calculator scenario — product-aware */}
-          <Panel
+          <PrequalFormSection
+            number="02"
             title="Calculator scenario"
             actions={<CellChip tone="acc">Saves to letter &amp; loan</CellChip>}
           >
@@ -527,11 +521,12 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 points={calcPoints} setPoints={setCalcPoints}
               />
             )}
-          </Panel>
+          </PrequalFormSection>
 
           {/* F&F-specific — Scope of Work + ARV admin overrides */}
           {request.loan_type === "fix_flip" ? (
-            <Panel
+            <PrequalFormSection
+              number="03"
               title="Scope of work · ARV"
               actions={<CellChip tone="acc">Hidden from PDF</CellChip>}
             >
@@ -570,12 +565,12 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                   </div>
                 );
               })()}
-            </Panel>
+            </PrequalFormSection>
           ) : null}
 
           {/* Letter terms — LLC, validity, underwriter notes. Renamed
               from "Letter details" per #facelift section grouping. */}
-          <Panel title="Letter terms">
+          <PrequalFormSection number={request.loan_type === "fix_flip" ? "04" : "03"} title="Letter terms">
             <div>
               <div className="row">
                 <span className="lbl">LLC / entity name</span>
@@ -634,10 +629,14 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 placeholder="e.g. Capped at 75% LTV per today's matrix. Call me if you need to discuss."
               />
             </div>
-          </Panel>
+          </PrequalFormSection>
 
           {/* Borrower's submission — context, moved to bottom as reference */}
-          <Panel title={"Borrower’s submission"}>
+          <PrequalFormSection
+            number={request.loan_type === "fix_flip" ? "05" : "04"}
+            title={"Borrower’s submission"}
+            muted
+          >
             <CG className="num">
               <ReadRow className="s6" label="Requested purchase" value={QC_FMT.usd(Number(request.purchase_price), 0)} />
               <ReadRow className="s6" label="Requested loan" value={QC_FMT.usd(Number(request.requested_loan_amount), 0)} />
@@ -663,8 +662,8 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
                 <span><b>Borrower notes:</b> {request.borrower_notes}</span>
               </Note>
             ) : null}
-          </Panel>
-
+          </PrequalFormSection>
+          </div>
         </div>
 
         {/* ── PREVIEW COLUMN: live letter mock that mirrors the PDF and
@@ -803,7 +802,32 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   );
 }
 
-// ── DSCR calculator card ───────────────────────────────────────────────
+function PrequalFormSection({
+  number,
+  title,
+  actions,
+  children,
+  muted = false,
+}: {
+  number: string;
+  title: string;
+  actions?: React.ReactNode;
+  children: React.ReactNode;
+  muted?: boolean;
+}) {
+  return (
+    <section className={`prequal-form-section${muted ? " is-reference" : ""}`}>
+      <header className="prequal-form-section-head">
+        <span className="prequal-form-section-number" aria-hidden="true">{number}</span>
+        <h3>{title}</h3>
+        {actions ? <div className="prequal-form-section-actions">{actions}</div> : null}
+      </header>
+      <div className="prequal-form-section-body">{children}</div>
+    </section>
+  );
+}
+
+// ── Calculator sections ────────────────────────────────────────────────
 
 function DscrCalc({
   loanNum, rate, setRate, term, setTerm, rent, setRent,

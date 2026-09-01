@@ -32,6 +32,7 @@ import {
   type ChipTone,
 } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useCurrentUser,
   useLenderPackageDownload,
@@ -68,6 +69,7 @@ type TermsDraft = {
 };
 
 export default function LenderPackageDetailPage() {
+  const confirmAction = useConfirmAction();
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const packageId = typeof params.id === "string" ? params.id : "";
@@ -121,7 +123,13 @@ export default function LenderPackageDetailPage() {
   };
 
   const handleNoQuote = async () => {
-    if (!window.confirm("Mark this package as no quote?")) return;
+    const confirmed = await confirmAction({
+      title: "Mark package as no quote",
+      body: "The QualifiedCommercial team will be notified that this lender will not quote the package.",
+      confirmLabel: "Mark no quote",
+      reversible: false,
+    });
+    if (!confirmed) return;
     setError(null);
     try {
       await noQuote.mutateAsync(packageId);

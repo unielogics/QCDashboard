@@ -51,7 +51,7 @@ export function ToolsDrawer({
           {groups.map((g) => (
             <div key={g.id}>
               {/* Was `.grp`, which globals scopes to `.nav .grp` — outside the
-                  nav it styled nothing, and `.app.rail .grp` hid these labels
+                  nav it styled nothing, and `.app.app--collapsed .grp` hid these labels
                   outright whenever the sidebar was collapsed. `.lbl` is the
                   same small-caps label and is not sidebar-scoped. */}
               <div className="lbl toolgrp">{g.label}</div>
@@ -78,7 +78,7 @@ export function ToolsDrawer({
 export function useToolsHotkey(onOpen: () => void) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "j") {
+      if ((e.metaKey || e.ctrlKey) && typeof e.key === "string" && e.key.toLowerCase() === "j") {
         e.preventDefault();
         onOpen();
       }

@@ -361,7 +361,7 @@ export function PreQualRequestModal({
                           setAddress(formatAddressParts(next));
                         }}
                         label="Target property address"
-                        helperText="Search Google and select the property, or use manual entry if the address is not listed."
+                        helperText="Select a verified property result, or use manual entry if the address is not listed."
                       />
                     </div>
 

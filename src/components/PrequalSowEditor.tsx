@@ -2,7 +2,7 @@
 
 // Shared scope-of-work editor for Fix & Flip prequal flows. Used by:
 //   - PreQualRequestModal (borrower side, step 2)
-//   - PrequalReviewModal (admin side, F&F card)
+//   - PrequalReviewModal (admin side, F&F section)
 //
 // Renders a small table — category / brief description / total $ —
 // with row-level remove + an Add Row affordance. Numeric column is

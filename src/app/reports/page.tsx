@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, type ReactNode } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { V } from "@/components/design-system/cssVars";
 import { Sparkline } from "@/components/design-system/primitives";
 import {
   CG,
+  Btn,
   CellChip,
   KpiRow,
   Note,
@@ -14,6 +15,9 @@ import {
 import { useDashboardReport, useLoans } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
 import { LoanType } from "@/lib/enums.generated";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { Icon } from "@/components/design-system/Icon";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 
 const STAGE_LABELS = ["Prequalified", "Collecting Docs", "Lender Connected", "Processing", "Closing", "Funded"];
 
@@ -70,6 +74,7 @@ export default function ReportsPage() {
   // reliably resolved. Everything else on this page is on the stylesheet.
   const { data: loans = [] } = useLoans();
   const { data: report } = useDashboardReport();
+  const [exportReviewOpen, setExportReviewOpen] = useState(false);
 
   const avgDscr = useMemo(() => {
     const set = loans.filter((l) => l.dscr != null).map((l) => Number(l.dscr));
@@ -93,9 +98,23 @@ export default function ReportsPage() {
 
   const pullPct = report?.pull_through != null ? Math.round(report.pull_through * 100) : null;
 
+  function exportPipelineCsv() {
+    const escape = (value: unknown) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const header = ["File", "Property", "Type", "Stage", "Amount", "DSCR"];
+    const rows = loans.map((loan) => [loan.deal_id, loan.address, loan.type, loan.stage, loan.amount, loan.dscr]);
+    const csv = [header, ...rows].map((row) => row.map(escape).join(",")).join("\r\n");
+    const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `qc-pipeline-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    setExportReviewOpen(false);
+  }
+
   return (
     <>
-      <PageHeader title="Reports" lede={`${loans.length} loans`} />
+      <PageHeader title="Reports" lede={`${loans.length} loans`} actions={<><Btn variant="pri" onClick={() => setExportReviewOpen(true)}><Icon name="download" size={13} /> Export</Btn><PageActionMenu items={[{ label: "Open pipeline", href: "/pipeline" }, { label: "Rate sheet", href: "/rates" }]} /></>} />
 
       <KpiRow className="mt">
         <Stat
@@ -212,6 +231,14 @@ export default function ReportsPage() {
           {byType.length === 0 && <div className="sub s12">No loans yet to break down.</div>}
         </CG>
       </Panel>
+      <ConfirmDialog
+        open={exportReviewOpen}
+        onClose={() => setExportReviewOpen(false)}
+        onConfirm={exportPipelineCsv}
+        title="Review before running"
+        body={`Export ${loans.length} role-scoped funding files to a CSV on this device. The export does not change any records.`}
+        confirmLabel="Export CSV"
+      />
     </>
   );
 }

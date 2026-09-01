@@ -504,11 +504,9 @@ export function SmartIntakeModal({
       setDocOverrides({ skipNames: new Set(), dueOverrides: {} });
       setCustomDocs([]);
       onClose();
-      // Land the operator on Elara tab so they can confirm
-      // the playbook-derived baseline before the AI starts its 30-min
-      // first-touch tick. The `tab=workspace` query param is honored
-      // once at mount (loans/[id]/page.tsx).
-      router.push(`/loans/${result.loan_id}?tab=workspace&just-created=1`);
+      // Every new file starts at the shared ownership gate. Elara and funding
+      // actions remain available after the 100% owner schedule is complete.
+      router.push(`/loans/${result.loan_id}?tab=verification&step=1&just-created=1`);
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Failed to create deal");
     }

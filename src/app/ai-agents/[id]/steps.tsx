@@ -19,6 +19,7 @@ import {
   type Col,
 } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useAddPastedKnowledge,
   useAgentKnowledge,
@@ -940,6 +941,7 @@ export function ShowingGuidePanel({ agent }: PanelProps) {
 //   (2) Set the exit rules — when the AI should give up.
 
 export function FollowupsPanel({ agent }: PanelProps) {
+  const confirmAction = useConfirmAction();
   const rulesQuery = useAiAgentExitRules(agent.id);
   const saveRules = useSaveExitRules();
   const profilesQuery = useVoiceProfiles();
@@ -1134,12 +1136,14 @@ export function FollowupsPanel({ agent }: PanelProps) {
               <Btn
                 variant="danger"
                 onClick={async () => {
-                  if (
-                    !confirm(
-                      "Delete this voice profile? Agents using it will lose their tonality reference.",
-                    )
-                  )
-                    return;
+                  const confirmed = await confirmAction({
+                    title: `Delete ${draftName || "voice profile"}`,
+                    body: "Agents using this profile will lose their tonality reference.",
+                    confirmLabel: "Delete profile",
+                    tone: "danger",
+                    reversible: false,
+                  });
+                  if (!confirmed) return;
                   await deleteProfile.mutateAsync(editingId);
                   setEditingId(null);
                 }}

@@ -14,9 +14,14 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Btn,
+  BtnLink,
   CellChip,
+  Empty,
   Field,
   Input,
+  Kpi,
+  KpiRow,
+  Loading,
   PageHeader,
   Panel,
   Row,
@@ -31,11 +36,22 @@ import {
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { useCurrentUser, useDocuments, useLoans, useRequiredDocuments, useUploadDocument } from "@/hooks/useApi";
+import {
+  useCurrentUser,
+  useDocuments,
+  useLoans,
+  useRequiredDocuments,
+  useUploadDocument,
+  useVaultLoanDocuments,
+  useVaultLoanFiles,
+  type VaultSection,
+} from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
-import type { Document, Loan } from "@/lib/types";
+import type { Document, Loan, User, VaultLoanSummary } from "@/lib/types";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 
 type UploadKind = "experience" | "active_asset";
+type LoanOption = Pick<Loan, "id" | "deal_id" | "address">;
 
 // Three tabs:
 //   requested    — open AI-driven asks (checklist items the AI auto-
@@ -62,12 +78,350 @@ const DOC_COLS: Col[] = [
 ];
 
 export default function VaultPage() {
-  const { data: user } = useCurrentUser();
+  const { data: user, isLoading, isError } = useCurrentUser();
+  if (isLoading || !user) {
+    return (
+      <div className="grid">
+        <PageHeader title="Vault" />
+        <Panel>{isError ? <Empty title="Vault unavailable">Retry after your session reconnects.</Empty> : <Loading />}</Panel>
+      </div>
+    );
+  }
+  return user.role === Role.CLIENT ? <PersonalVaultPage /> : <OperatorVaultPage user={user} />;
+}
+
+const VAULT_LOAN_COLS: Col[] = [
+  { label: "Loan ID", width: 124 },
+  { label: "Entity / property" },
+  { label: "Stage", width: 116 },
+  { label: "Docs", width: 66, align: "r" },
+  { label: "Attention", width: 92, align: "r" },
+  { label: "Updated", width: 96 },
+];
+
+const VAULT_DOCUMENT_COLS: Col[] = [
+  { label: "Document" },
+  { label: "Received", width: 88 },
+  { label: "Status", width: 96 },
+];
+
+function OperatorVaultPage({ user }: { user: User }) {
+  const [searchInput, setSearchInput] = useState("");
+  const [search, setSearch] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [selectedLoanId, setSelectedLoanId] = useState<string | null>(null);
+  const [section, setSection] = useState<VaultSection>("all");
+  const [documentSearchInput, setDocumentSearchInput] = useState("");
+  const [documentSearch, setDocumentSearch] = useState("");
+  const [documentOffset, setDocumentOffset] = useState(0);
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const limit = 20;
+  const documentLimit = 25;
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setSearch(searchInput.trim());
+      setOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [searchInput]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDocumentSearch(documentSearchInput.trim());
+      setDocumentOffset(0);
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [documentSearchInput]);
+
+  const loanFiles = useVaultLoanFiles({ search, limit, offset });
+  const loanItems = useMemo(() => loanFiles.data?.items ?? [], [loanFiles.data?.items]);
+
+  useEffect(() => {
+    if (selectedLoanId && loanItems.some((item) => item.loan_id === selectedLoanId)) return;
+    setSelectedLoanId(loanItems[0]?.loan_id ?? null);
+  }, [loanItems, selectedLoanId]);
+
+  useEffect(() => {
+    setDocumentOffset(0);
+  }, [selectedLoanId, section]);
+
+  const selectedLoan = loanItems.find((item) => item.loan_id === selectedLoanId) ?? null;
+  const loanDocuments = useVaultLoanDocuments(selectedLoanId, {
+    section,
+    search: documentSearch,
+    limit: documentLimit,
+    offset: documentOffset,
+  });
+  const borrowerGroups = useMemo(() => {
+    const groups = new Map<string, { borrowerId: string; borrowerName: string; items: VaultLoanSummary[] }>();
+    for (const item of loanItems) {
+      const current = groups.get(item.borrower_id);
+      if (current) current.items.push(item);
+      else groups.set(item.borrower_id, { borrowerId: item.borrower_id, borrowerName: item.borrower_name, items: [item] });
+    }
+    return [...groups.values()];
+  }, [loanItems]);
+
+  const totals = loanFiles.data?.totals;
+  const totalLoanFiles = loanFiles.data?.total ?? 0;
+  const totalDocuments = loanDocuments.data?.total ?? 0;
+  const canUpload = user.role !== Role.REGIONAL_MANAGER && !!selectedLoan;
+  const uploadLoans: LoanOption[] = selectedLoan
+    ? [{ id: selectedLoan.loan_id, deal_id: selectedLoan.deal_id, address: selectedLoan.address }]
+    : [];
+
+  return (
+    <div className="grid operator-vault">
+      <PageHeader
+        title="Vault"
+        lede={<CellChip tone="acc">Funding evidence</CellChip>}
+        actions={
+          <>
+            <Btn variant="pri" onClick={() => setUploadOpen(true)} disabled={!canUpload}>
+              <Icon name="plus" size={14} /> Upload to loan
+            </Btn>
+            <PageActionMenu items={[{ label: "Prequalifications", href: "/admin/prequal-requests" }, { label: "Calendar", href: "/calendar" }]} />
+          </>
+        }
+      />
+      <div className="sub">Borrower folders · loan IDs · funding evidence</div>
+
+      <KpiRow>
+        <Kpi label="Borrowers" value={totals?.borrowers ?? "—"} sub="With Vault activity" icon="user" />
+        <Kpi label="Loan files" value={totals?.loan_files ?? "—"} sub="Grouped by loan ID" icon="vault" />
+        <Kpi label="Documents" value={totals?.documents ?? "—"} sub="Across visible files" icon="doc" />
+        <Kpi label="Need attention" value={totals?.need_attention ?? "—"} sub="Requested or flagged" icon="alert" tone="warn" />
+      </KpiRow>
+
+      <UploadDocumentModal
+        open={uploadOpen}
+        onClose={() => setUploadOpen(false)}
+        loans={uploadLoans}
+        defaultKind="experience"
+      />
+
+      <div className="vault-operator-layout">
+        <Panel
+          title="Borrower loan folders"
+          sub={totalLoanFiles ? `${offset + 1}–${Math.min(offset + limit, totalLoanFiles)} of ${totalLoanFiles}` : "No matching files"}
+          noPad
+        >
+          <div className="vault-panel-controls">
+            <div className="vault-search">
+              <Icon name="search" size={14} />
+              <Input
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search borrower, loan ID, entity, address, or document"
+                aria-label="Search borrower loan folders"
+              />
+            </div>
+          </div>
+          {loanFiles.isLoading ? (
+            <Loading>Loading borrower folders…</Loading>
+          ) : loanFiles.isError ? (
+            <Empty title="Could not load Vault folders" action={<Btn onClick={() => loanFiles.refetch()}>Retry</Btn>} />
+          ) : borrowerGroups.length === 0 ? (
+            <Empty icon="vault" title="No loan folders found">Try a different search or upload from a loan file.</Empty>
+          ) : (
+            <Table cols={VAULT_LOAN_COLS} caption="Borrower loan folders" className="vault-loan-table">
+              {borrowerGroups.map((group) => (
+                <BorrowerLoanRows
+                  key={group.borrowerId}
+                  borrowerName={group.borrowerName}
+                  items={group.items}
+                  selectedLoanId={selectedLoanId}
+                  onSelect={setSelectedLoanId}
+                />
+              ))}
+            </Table>
+          )}
+          <VaultPager
+            offset={offset}
+            limit={limit}
+            total={totalLoanFiles}
+            onChange={setOffset}
+            label="loan folders"
+          />
+        </Panel>
+
+        <Panel
+          title={selectedLoan ? `${selectedLoan.borrower_name} · ${selectedLoan.deal_id}` : "Loan documents"}
+          sub={selectedLoan?.entity_name ?? selectedLoan?.address}
+          actions={selectedLoan ? <BtnLink href={`/loans/${selectedLoan.loan_id}`} size="sm">Open loan</BtnLink> : undefined}
+          noPad
+        >
+          {!selectedLoan ? (
+            <Empty icon="doc" title="Select a loan folder">Documents load one loan at a time.</Empty>
+          ) : (
+            <>
+              <div className="vault-panel-controls vault-document-controls">
+                <Seg<VaultSection>
+                  value={section}
+                  onChange={setSection}
+                  ariaLabel="Loan document section"
+                  options={[
+                    { value: "all", label: "All" },
+                    { value: "attention", label: "Attention" },
+                    { value: "requested", label: "Requested" },
+                    { value: "experience", label: "Experience" },
+                    { value: "active_asset", label: "Active assets" },
+                  ]}
+                />
+                <div className="vault-search compact">
+                  <Icon name="search" size={14} />
+                  <Input
+                    value={documentSearchInput}
+                    onChange={(event) => setDocumentSearchInput(event.target.value)}
+                    placeholder="Search this loan"
+                    aria-label="Search documents in selected loan"
+                  />
+                </div>
+              </div>
+              {loanDocuments.isLoading ? (
+                <Loading>Loading loan documents…</Loading>
+              ) : loanDocuments.isError ? (
+                <Empty title="Could not load this loan" action={<Btn onClick={() => loanDocuments.refetch()}>Retry</Btn>} />
+              ) : (loanDocuments.data?.items.length ?? 0) === 0 ? (
+                <Empty icon="doc" title="No documents in this view">Change the filter or upload evidence to this loan.</Empty>
+              ) : (
+                <Table cols={VAULT_DOCUMENT_COLS} caption={`Documents for ${selectedLoan.deal_id}`}>
+                  {loanDocuments.data?.items.map((document) => (
+                    <OperatorDocumentRow key={document.id} document={document} />
+                  ))}
+                </Table>
+              )}
+              <VaultPager
+                offset={documentOffset}
+                limit={documentLimit}
+                total={totalDocuments}
+                onChange={setDocumentOffset}
+                label="documents"
+              />
+            </>
+          )}
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+function BorrowerLoanRows({
+  borrowerName,
+  items,
+  selectedLoanId,
+  onSelect,
+}: {
+  borrowerName: string;
+  items: VaultLoanSummary[];
+  selectedLoanId: string | null;
+  onSelect: (loanId: string) => void;
+}) {
+  return (
+    <>
+      <tr className="vault-borrower-row">
+        <Td colSpan={VAULT_LOAN_COLS.length}>
+          <span className="vault-borrower-name"><Icon name="user" size={14} /> {borrowerName}</span>
+          <span className="sub">{items.length} {items.length === 1 ? "loan" : "loans"} on this page</span>
+        </Td>
+      </tr>
+      {items.map((item) => {
+        const attention = item.requested + item.flagged;
+        const selected = item.loan_id === selectedLoanId;
+        return (
+          <tr
+            key={item.loan_id}
+            className={cx("vault-loan-row", selected && "is-selected")}
+            onClick={() => onSelect(item.loan_id)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
+                onSelect(item.loan_id);
+              }
+            }}
+            role="button"
+            tabIndex={0}
+            aria-pressed={selected}
+          >
+            <Td><span className="mono vault-deal-id">{item.deal_id}</span></Td>
+            <Td>
+              <b>{item.entity_name ?? item.address}</b>
+              <div className="sub vault-property-line">{item.entity_name ? item.address : [item.city, item.state].filter(Boolean).join(", ") || "Address pending"}</div>
+            </Td>
+            <Td><CellChip tone="mut">{humanize(item.stage)}</CellChip></Td>
+            <Td align="r"><b>{item.documents}</b></Td>
+            <Td align="r">{attention ? <CellChip tone="warn">{attention}</CellChip> : <CellChip tone="ok">Clear</CellChip>}</Td>
+            <Td><span className="sub">{formatShortDate(item.updated_at)}</span></Td>
+          </tr>
+        );
+      })}
+    </>
+  );
+}
+
+function OperatorDocumentRow({ document }: { document: Document }) {
+  const status = documentStatus(document);
+  return (
+    <tr>
+      <Td>
+        <div className="vault-document-name">
+          <span className="vault-file-icon"><Icon name="doc" size={14} /></span>
+          <div><b>{document.name}</b><div className="sub">{humanize(document.category ?? document.checklist_key ?? "Uncategorized")}</div></div>
+        </div>
+      </Td>
+      <Td><span className="sub">{document.received_on ? formatShortDate(document.received_on) : "—"}</span></Td>
+      <Td><CellChip tone={status.tone}>{status.label}</CellChip></Td>
+    </tr>
+  );
+}
+
+function VaultPager({
+  offset,
+  limit,
+  total,
+  onChange,
+  label,
+}: {
+  offset: number;
+  limit: number;
+  total: number;
+  onChange: (offset: number) => void;
+  label: string;
+}) {
+  if (total <= limit) return null;
+  return (
+    <div className="vault-pager">
+      <span className="sub">{offset + 1}–{Math.min(offset + limit, total)} of {total} {label}</span>
+      <span className="sp" />
+      <Btn size="sm" disabled={offset === 0} onClick={() => onChange(Math.max(0, offset - limit))}><Icon name="chevL" size={13} /> Previous</Btn>
+      <Btn size="sm" disabled={offset + limit >= total} onClick={() => onChange(offset + limit)}>Next <Icon name="chevR" size={13} /></Btn>
+    </div>
+  );
+}
+
+function humanize(value: string): string {
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatShortDate(value: string): string {
+  return new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" });
+}
+
+function documentStatus(document: Document): { label: string; tone: ChipTone } {
+  if (document.status === "verified") return { label: "Verified", tone: "ok" };
+  if (document.status === "flagged") return { label: "Flagged", tone: "bad" };
+  if (document.status === "requested") return { label: "Requested", tone: "warn" };
+  if (document.status === "received") return { label: "Received", tone: "acc" };
+  return { label: "Pending", tone: "warn" };
+}
+
+function PersonalVaultPage() {
   const { data: loans = [] } = useLoans();
   const { data: docs = [] } = useDocuments();
   const [tab, setTab] = useState<VaultTab>("requested");
 
-  const isClient = user?.role === Role.CLIENT;
+  const isClient = true;
 
   const tabCounts = useMemo(() => ({
     requested: docs.filter((d) => d.status === "requested").length,
@@ -136,9 +490,12 @@ export default function VaultPage() {
         title="Vault"
         lede={<CellChip tone="acc">Funding</CellChip>}
         actions={
-          <Btn variant="pri" onClick={() => setUploadOpen(true)}>
-            <Icon name="plus" size={14} /> Upload
-          </Btn>
+          <>
+            <Btn variant="pri" onClick={() => setUploadOpen(true)}>
+              <Icon name="plus" size={14} /> Upload
+            </Btn>
+            <PageActionMenu items={[{ label: "Prequalifications", href: "/admin/prequal-requests", hidden: isClient }, { label: "Calendar", href: "/calendar" }]} />
+          </>
         }
       />
       <div className="sub">
@@ -304,7 +661,7 @@ function UploadDocumentModal({
 }: {
   open: boolean;
   onClose: () => void;
-  loans: Loan[];
+  loans: LoanOption[];
   defaultKind: UploadKind;
   // Set when the modal was opened from a tap on a REQUESTED row in
   // the vault list or from a calendar deep-link (?fulfill=<doc_id>).

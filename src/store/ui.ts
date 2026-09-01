@@ -2,7 +2,12 @@
 
 import { create } from "zustand";
 
+export type UITheme = "light" | "dark";
+
 interface UIStore {
+  theme: UITheme;
+  setTheme: (v: UITheme) => void;
+  toggleTheme: () => void;
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (v: boolean) => void;
   toggleSidebar: () => void;
@@ -29,7 +34,17 @@ interface UIStore {
   closeNotes: () => void;
 }
 
+export const THEME_KEY = "qc.theme";
 export const SIDEBAR_KEY = "qc.sidebarCollapsed";
+
+function writeTheme(theme: UITheme): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    /* private mode / quota issues - ignore */
+  }
+}
 
 function writeSidebar(collapsed: boolean): void {
   if (typeof window === "undefined") return;
@@ -40,12 +55,23 @@ function writeSidebar(collapsed: boolean): void {
   }
 }
 
-// Always start expanded server-side AND on first client render — reading
+// Start collapsed server-side AND on first client render. Reading
 // localStorage at module init causes SSR/CSR mismatch (React #418/#425) when
-// the user has previously collapsed the sidebar. The persisted value is
-// rehydrated in a useEffect inside AppShell via hydrateSidebarFromStorage().
+// the user has previously changed the sidebar. The persisted value is
+// rehydrated in a useEffect inside AppShell.
 export const useUI = create<UIStore>((set) => ({
-  sidebarCollapsed: false,
+  theme: "light",
+  setTheme: (v) => {
+    writeTheme(v);
+    set({ theme: v });
+  },
+  toggleTheme: () =>
+    set((s) => {
+      const next: UITheme = s.theme === "dark" ? "light" : "dark";
+      writeTheme(next);
+      return { theme: next };
+    }),
+  sidebarCollapsed: true,
   setSidebarCollapsed: (v) => {
     writeSidebar(v);
     set({ sidebarCollapsed: v });
@@ -68,13 +94,25 @@ export const useUI = create<UIStore>((set) => ({
   closeNotes: () => set({ notesOpen: false }),
 }));
 
+// Read the persisted console theme. Call only from a client-side effect
+// (post-hydration), never during render or module init.
+export function readPersistedTheme(): UITheme {
+  if (typeof window === "undefined") return "light";
+  try {
+    return window.localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
+  } catch {
+    return "light";
+  }
+}
+
 // Read the persisted sidebar state. Call only from a client-side effect
 // (post-hydration), never during render or module init.
 export function readPersistedSidebar(): boolean {
-  if (typeof window === "undefined") return false;
+  if (typeof window === "undefined") return true;
   try {
-    return window.localStorage.getItem(SIDEBAR_KEY) === "1";
+    const stored = window.localStorage.getItem(SIDEBAR_KEY);
+    return stored == null ? true : stored === "1";
   } catch {
-    return false;
+    return true;
   }
 }

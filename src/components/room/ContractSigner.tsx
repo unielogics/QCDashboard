@@ -34,12 +34,19 @@ export type RoomContract = {
   commission_note: string | null;
 };
 
+type ContractSignResult = {
+  message: string;
+  execution_status: "executed" | "delivery_warning";
+  pdf_sha256: string | null;
+  download_url: string | null;
+};
+
 // The pen's ink. Deliberately a literal and not a token: the drawn stroke is
 // rasterised into the PNG that becomes evidence, and the typed "/s/" rendering
 // has to look like the same pen as the drawn one.
 const INK = "#14265c";
 
-function LandscapePad({
+export function LandscapePad({
   onUse,
   onCancel,
 }: {
@@ -177,6 +184,7 @@ export function ContractSigner({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [signedMsg, setSignedMsg] = useState<string | null>(null);
+  const [signedResult, setSignedResult] = useState<ContractSignResult | null>(null);
 
   const armed = typedName.trim().length > 1 && adopt && esign && !busy;
 
@@ -201,8 +209,18 @@ export function ContractSigner({
         const body = (await res.json().catch(() => null)) as { detail?: string } | null;
         throw new Error(body?.detail || "The signature could not be recorded.");
       }
-      const out = (await res.json()) as { message: string };
+      const out = (await res.json()) as ContractSignResult;
+      setSignedResult(out);
       setSignedMsg(out.message);
+      if (out.download_url) {
+        const anchor = document.createElement("a");
+        anchor.href = out.download_url;
+        anchor.download = `${contract.key}-executed.pdf`;
+        anchor.rel = "noopener";
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+      }
       onDone();
     } catch (e) {
       setError(e instanceof Error ? e.message : "The signature could not be recorded.");
@@ -228,6 +246,25 @@ export function ContractSigner({
           </div>
           <b style={{ fontSize: 16 }}>Signed</b>
           <p className="sub mt">{signedMsg}</p>
+          {signedResult?.execution_status === "delivery_warning" ? (
+            <StatusLine tone="warn" className="mt">
+              Email delivery needs attention. Your signed PDF remains available below.
+            </StatusLine>
+          ) : null}
+          {signedResult?.download_url ? (
+            <a
+              className="btn pri mt"
+              href={signedResult.download_url}
+              download={`${contract.key}-executed.pdf`}
+            >
+              Download signed PDF
+            </a>
+          ) : null}
+          {signedResult?.pdf_sha256 ? (
+            <p className="sub mt" style={{ overflowWrap: "anywhere" }}>
+              PDF SHA-256: {signedResult.pdf_sha256}
+            </p>
+          ) : null}
         </div>
       </Panel>
     );

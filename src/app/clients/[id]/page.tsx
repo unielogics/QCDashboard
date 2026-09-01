@@ -27,7 +27,8 @@ import {
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { useBrokers, useClient, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
+import { useBrokers, useClient, useClientAccessDirectory, useClientActivity, useClientPaymentAuthorizationStatus, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
@@ -48,7 +49,12 @@ export default function ClientDetailPage() {
   const profile = useActiveProfile();
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
+  const canManageAccess = profile.role === "super_admin";
   const { data: client } = useClient(id);
+  const { data: accessDirectory } = useClientAccessDirectory(
+    { q: id, page_size: 10 },
+    { enabled: canManageAccess },
+  );
   const { data: loans = [] } = useLoans();
   const { data: credit } = useCurrentCredit(id);
   const { data: creditSummary, isLoading: summaryLoading } = useCreditSummary(credit?.id);
@@ -127,6 +133,7 @@ export default function ClientDetailPage() {
 
   const clientLoans = loans.filter((l) => l.client_id === client.id);
   const exposure = clientLoans.reduce((s, l) => s + Number(l.amount), 0);
+  const accessRow = accessDirectory?.items.find((row) => row.client_id === client.id);
 
   // Any loan is chat-able — broker may want post-funding follow-up too.
   const chatLoans = clientLoans;
@@ -203,6 +210,16 @@ export default function ClientDetailPage() {
             <div className="sub">{client.email ?? "—"} · {client.phone ?? "—"} · {client.city ?? "—"}</div>
           </div>
           <Tag>{client.tier}</Tag>
+          {accessRow?.account_types.map((product) => (
+            <CellChip tone={product === "funding" ? "acc" : "ok"} key={product}>
+              {product === "funding" ? "Funding" : "Audit"}
+            </CellChip>
+          ))}
+          {canManageAccess ? (
+            <Link href={`/settings?section=client_access&client_id=${client.id}`} className="btn">
+              <Icon name="shield" size={12} /> Manage access
+            </Link>
+          ) : null}
           {canEdit && (
             <Btn
               onClick={() => void onSendIntakeLink()}
@@ -947,6 +964,7 @@ function ClientStageCard({
   canEdit: boolean;
   clientLoans: Loan[];
 }) {
+  const confirmAction = useConfirmAction();
   const updateStage = useUpdateClientStage();
   const startFunding = useStartFunding();
   const [error, setError] = useState<string | null>(null);
@@ -965,9 +983,13 @@ function ClientStageCard({
 
   const handleStartFunding = async () => {
     setError(null);
-    if (!confirm("Start funding for this client? This marks the prequal approved, creates the loan, and hands off to the Funding Team. The client moves to 'Ready for Lending' and you'll keep read-only visibility during processing.")) {
-      return;
-    }
+    const confirmed = await confirmAction({
+      title: "Start funding for this client",
+      body: "The prequalification will be approved, a loan will be created, and the file will move to the Funding Team. The originating desk keeps read-only visibility.",
+      confirmLabel: "Start funding",
+      reversible: false,
+    });
+    if (!confirmed) return;
     try {
       await startFunding.mutateAsync(client.id);
     } catch (e) {
@@ -1082,7 +1104,6 @@ function AssignedAgentCard({ client }: { client: Client }) {
   const anchorRef = useRef<HTMLDivElement | null>(null);
 
   const canAssign = user?.role === "super_admin" || user?.role === "loan_exec";
-  if (!canAssign) return null;
 
   useEffect(() => {
     if (!open) return;
@@ -1104,6 +1125,8 @@ function AssignedAgentCard({ client }: { client: Client }) {
     if (!q) return brokers;
     return brokers.filter((b: Broker) => b.display_name.toLowerCase().includes(q));
   }, [brokers, query]);
+
+  if (!canAssign) return null;
 
   const assigned = !!client.broker_id;
 

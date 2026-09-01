@@ -1,5 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
-import { NextResponse } from "next/server";
+import { NextResponse, type NextFetchEvent, type NextRequest } from "next/server";
 import { isAgreementPortalHost } from "@/lib/agreementPortal";
 
 const isAuthPage = createRouteMatcher([
@@ -30,6 +30,7 @@ const isPublicPage = createRouteMatcher([
   // the connection. Must match DEALER_OS_PLAID_ROOM_REDIRECT_URI and the
   // Plaid Dashboard's Allowed redirect URIs exactly.
   "/plaid/oauth(.*)",
+  "/application-verification(.*)",
   "/buckets/share(.*)",
   "/buckets/public-share(.*)",
   // agreement.qualifiedcommercial.com portal -- public, unauthenticated,
@@ -95,7 +96,7 @@ function getRoleFromClaims(
   return typeof role === "string" ? role : null;
 }
 
-export default clerkMiddleware(async (auth, req) => {
+const protectedMiddleware = clerkMiddleware(async (auth, req) => {
   // agreement.qualifiedcommercial.com serves the /agreement route tree at
   // its own root — a visitor there requesting "/" should see the
   // /agreement page, "/referral-protection" should see
@@ -156,6 +157,21 @@ export default clerkMiddleware(async (auth, req) => {
     }
   }
 });
+
+export default function middleware(req: NextRequest, event: NextFetchEvent) {
+  // Clerk's development-browser handshake runs before its callback. The QA
+  // bypass therefore has to wrap clerkMiddleware itself. It is limited to a
+  // loopback host plus an explicit QA flag or seeded-user cookie. Production
+  // domains can never enter this branch, including when a cookie is copied.
+  const isLoopback = req.nextUrl.hostname === "localhost" || req.nextUrl.hostname === "127.0.0.1";
+  if (
+    isLoopback &&
+    (process.env.NEXT_PUBLIC_QC_VISUAL_QA === "1" || req.cookies.has("qc_visual_qa_user"))
+  ) {
+    return NextResponse.next();
+  }
+  return protectedMiddleware(req, event);
+}
 
 export const config = {
   matcher: [

@@ -25,6 +25,7 @@ import {
   type SignRequestedDocumentPayload,
 } from "@/components/intake/SignRequestedDocument";
 import { getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
+import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import {
   cryptoId,
   errorMessage,
@@ -703,6 +704,7 @@ export default function McaRefinanceIntakePage() {
       terms_accepted: true,
       privacy_accepted: true,
       preferred_language: language ?? "en",
+      ...readPublicIntakeAttribution(),
     };
     if (startForm.phone.trim()) body.phone = startForm.phone.trim();
     if (startForm.business_name.trim()) body.business_name = startForm.business_name.trim();

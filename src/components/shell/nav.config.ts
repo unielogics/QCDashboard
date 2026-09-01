@@ -79,7 +79,7 @@ const ANALYSIS_TOOLS: ToolGroup = {
   id: "analysis",
   label: "Analysis",
   items: [
-    { label: "Deal analyzer", href: "/deal-analyzer", icon: "hammer", desc: "Model a fix & flip or rental" },
+    { label: "Deal analyzer", href: "/deal-analyzer/fix-and-flip?new=1", icon: "hammer", desc: "Model a fix & flip or rental" },
     { label: "Simulator", href: "/simulator", icon: "calc", desc: "Rate, DSCR and payment scenarios" },
     { label: "Rate sheet", href: "/rates", icon: "sliders", desc: "Current pricing by program" },
     { label: "Reports", href: "/reports", icon: "trend", desc: "Funded, pipeline and pull-through" },
@@ -131,7 +131,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
           { label: "Agreements", href: "/admin/agreements", icon: "docCheck", desc: "Contract templates and status" },
           { label: "Dealer messages", href: "/admin/dealer-messages", icon: "chat", desc: "Partner channel", },
           { label: "Rewards", href: "/rewards", icon: "trophy", desc: "Referral incentives" },
-          { label: "Booking page", href: "/booking-settings", icon: "link", desc: "Your public scheduling link" },
+          { label: "Booking page", href: "/settings?section=booking", icon: "link", desc: "Your public scheduling link" },
         ],
       },
     ],
@@ -156,6 +156,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         id: "uw",
         label: "Underwriting",
         items: [
+          { label: "AI intake", href: "/admin/ai-underwriter-leads", icon: "spark" },
           { label: "Vault", href: "/vault", icon: "vault" },
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
@@ -324,6 +325,25 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
     ],
     tools: [],
     scopeNote: "You can see the leads you referred and the programs available to you.",
+  },
+
+  [Role.FIELD_REP]: {
+    shellLabel: "Field desk",
+    roleLabel: "Field representative",
+    groups: [
+      {
+        id: "desk",
+        label: "My desk",
+        items: [
+          { label: "Dashboard", href: "/", icon: "home", match: "exact" },
+          { label: "Calendar", href: "/calendar", icon: "cal" },
+          { label: "Messages", href: "/messages", icon: "chat" },
+          { label: "Profile", href: "/profile", icon: "user" },
+        ],
+      },
+    ],
+    tools: [],
+    scopeNote: "You can manage only appointments and files assigned to you.",
   },
 };
 

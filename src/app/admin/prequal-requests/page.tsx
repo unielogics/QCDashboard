@@ -37,6 +37,7 @@ import { useAdminPrequalQueue } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
 import { AdminPrequalCreateModal } from "@/components/AdminPrequalCreateModal";
 import { PREQUAL_LOAN_TYPE_LABELS, PREQUAL_LTV_CAPS, type PrequalRequest, type PrequalStatus } from "@/lib/types";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 
 type FilterId = PrequalStatus | "all";
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -248,12 +249,14 @@ export default function AdminPrequalQueuePage() {
             : "Create and track pending prequalification requests for your clients. The funding team reviews and issues letters."
         }
         actions={
-          canCreatePrequal ? (
-            <Btn variant="pri" onClick={() => setCreateOpen(true)}>
-              <Icon name="plus" size={13} stroke={3} />
-              Create prequalification
-            </Btn>
-          ) : null
+          <>
+            {canCreatePrequal ? (
+              <Btn variant="pri" onClick={() => setCreateOpen(true)}>
+                <Icon name="plus" size={13} stroke={3} /> Create prequalification
+              </Btn>
+            ) : null}
+            <PageActionMenu items={[{ label: "Open pipeline", href: "/pipeline" }, { label: "Open vault", href: "/vault" }]} />
+          </>
         }
       />
 

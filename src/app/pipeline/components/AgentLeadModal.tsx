@@ -150,12 +150,13 @@ export function AgentLeadModal({ open, onClose }: { open: boolean; onClose: () =
           intakeLinkError = e instanceof Error ? e.message : "The intake link was not queued.";
         }
       }
+      if (intakeLinkError) {
+        setSubmitErr(`Client saved, but the intake link was not queued. ${intakeLinkError} Opening the client file...`);
+        await new Promise((resolve) => window.setTimeout(resolve, 1400));
+      }
       reset();
       onClose();
       router.push(`/clients/${created.id}`);
-      if (intakeLinkError) {
-        window.alert(`Client saved, but the intake link was not queued. ${intakeLinkError}`);
-      }
     } catch (e: unknown) {
       setSubmitErr(e instanceof Error ? e.message : "Failed to save lead");
     }

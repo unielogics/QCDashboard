@@ -5,6 +5,7 @@ import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { FileDropzone } from "@/components/design-system/FileDropzone";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { Btn, Callout, CellChip, cx, IconBtn, ItemRow, Lbl, type ChipTone } from "@/components/ds";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 import {
@@ -98,6 +99,7 @@ export function LeadCockpit({
    *  running inline. */
   onRequestRerun?: () => void;
 }) {
+  const confirmAction = useConfirmAction();
   const [current, setCurrent] = useState<IntakeResponse>(response);
   const seedChat = (msgs?: Array<{ id: string; role: string; content: string; created_at?: string }>): ChatLine[] =>
     (msgs ?? []).map((m) => ({
@@ -338,7 +340,13 @@ export function LeadCockpit({
 
   async function handleRunReview() {
     if (reviewing) return;
-    if (!window.confirm("Re-run the AI review on this lead's latest uploads?")) return;
+    const confirmed = await confirmAction({
+      title: "Re-run AI review",
+      body: "Elara will analyze the latest uploads and replace the current review result. Source files are unchanged.",
+      confirmLabel: "Run review",
+      reversible: true,
+    });
+    if (!confirmed) return;
     setReviewing(true);
     setStatus("");
     try {
@@ -358,7 +366,7 @@ export function LeadCockpit({
     // Bespoke track (rule 3) — and load-bearing: the parent Modal is size="stage"
     // and this height:100% + minHeight:0 chain is what lets both panels scroll
     // inside it instead of growing the dialog. Do not swap this for `.cg`.
-    <div style={{ display: "grid", gridTemplateColumns: "minmax(0,1.15fr) minmax(0,0.85fr)", gap: 14, minHeight: 0, height: "100%" }}>
+    <div className="lead-cockpit">
       {/* CHAT + UPLOAD */}
       <section
         className="panel"

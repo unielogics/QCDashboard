@@ -18,7 +18,7 @@
 // `.content` owns both.
 
 import { useEffect, useMemo, useState } from "react";
-import { Btn, Input, Lbl, Panel, Row, Sub, Textarea, cx } from "@/components/ds";
+import { Btn, Input, Lbl, Panel, Row, Sub, Textarea, WarnLine, cx } from "@/components/ds";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import { isAINotDeployed, useFundingMetaRules, usePatchFundingMetaRules } from "@/hooks/useApi";
@@ -107,6 +107,7 @@ export default function VerificationRulesPage() {
   const [val, setVal] = useState<VerificationRules>({});
   const [advanced, setAdvanced] = useState(false);
   const [advancedText, setAdvancedText] = useState<string>("");
+  const [advancedError, setAdvancedError] = useState<string | null>(null);
 
   useEffect(() => {
     if (data?.rules) {
@@ -150,12 +151,13 @@ export default function VerificationRulesPage() {
   }
 
   async function saveAdvanced() {
+    setAdvancedError(null);
     try {
       const parsed = JSON.parse(advancedText || "{}");
       await patch.mutateAsync(parsed);
       setVal(parsed);
     } catch {
-      alert("Invalid JSON");
+      setAdvancedError("Invalid JSON. Correct the syntax before saving.");
     }
   }
 
@@ -233,9 +235,10 @@ export default function VerificationRulesPage() {
                     className="mono"
                     aria-label="Verification rules, raw JSON"
                     value={advancedText}
-                    onChange={e => setAdvancedText(e.target.value)}
+                    onChange={e => { setAdvancedText(e.target.value); setAdvancedError(null); }}
                     rows={20}
                   />
+                  {advancedError ? <WarnLine>{advancedError}</WarnLine> : null}
                   <Row className="mt">
                     <Btn variant="pri" onClick={saveAdvanced}>Save raw JSON</Btn>
                   </Row>

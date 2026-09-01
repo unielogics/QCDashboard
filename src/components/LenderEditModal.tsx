@@ -21,6 +21,7 @@ import { useEffect, useState } from "react";
 import { LoanTypeChips } from "@/components/LoanTypeChips";
 import { Btn, Callout, Field, Input, Sub, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useCreateLender,
   useDeleteLender,
@@ -36,6 +37,7 @@ interface Props {
 }
 
 export function LenderEditModal({ open, onClose, lender }: Props) {
+  const confirmAction = useConfirmAction();
   const create = useCreateLender();
   const update = useUpdateLender();
   const del = useDeleteLender();
@@ -117,7 +119,14 @@ export function LenderEditModal({ open, onClose, lender }: Props) {
 
   const handleSoftDelete = async () => {
     if (!lender) return;
-    if (!window.confirm(`Disable "${lender.name}"? It will be hidden from new connections but historical references stay intact.`)) return;
+    const confirmed = await confirmAction({
+      title: `Disable ${lender.name}`,
+      body: "The lender will be hidden from new connections. Historical references remain intact.",
+      confirmLabel: "Disable lender",
+      tone: "danger",
+      reversible: true,
+    });
+    if (!confirmed) return;
     try {
       await del.mutateAsync({ lenderId: lender.id });
       onClose();

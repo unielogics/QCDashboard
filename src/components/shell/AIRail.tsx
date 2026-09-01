@@ -3,9 +3,10 @@
 import { useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
-import { useAIChat, useAITasks } from "@/hooks/useApi";
-import type { AIChatTurn } from "@/lib/types";
-import { Card, CellChip, IconBtn, Input, Seg } from "@/components/ds";
+import { useAIChat, useAITaskDecision, useAITasks } from "@/hooks/useApi";
+import type { AITask, AIChatTurn } from "@/lib/types";
+import { Btn, Card, CellChip, Field, IconBtn, Input, Seg, Textarea } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 
 const TABS = [
   { id: "chat", label: "Chat", icon: "messages" as const },
@@ -30,9 +31,13 @@ export default function AIRail() {
   const setOpen = useUI((s) => s.setAiOpen);
   const { data: tasks = [] } = useAITasks();
   const aiChat = useAIChat();
+  const taskDecision = useAITaskDecision();
   const [tab, setTab] = useState<TabId>("chat");
   const [chatLog, setChatLog] = useState<ChatMsg[]>([SEED_GREETING]);
   const [input, setInput] = useState("");
+  const [review, setReview] = useState<{ task: AITask; decision: "approved" | "dismissed"; edit: boolean } | null>(null);
+  const [editedPayload, setEditedPayload] = useState("");
+  const [decisionError, setDecisionError] = useState<string | null>(null);
 
   if (!open) return <div />;
 
@@ -63,6 +68,29 @@ export default function AIRail() {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
+    }
+  };
+
+  const openReview = (task: AITask, decision: "approved" | "dismissed", edit = false) => {
+    setReview({ task, decision, edit });
+    setEditedPayload(JSON.stringify(task.draft_payload ?? {}, null, 2));
+    setDecisionError(null);
+  };
+
+  const confirmDecision = async () => {
+    if (!review) return;
+    setDecisionError(null);
+    try {
+      const payload = review.edit ? JSON.parse(editedPayload) as Record<string, unknown> : review.task.draft_payload;
+      await taskDecision.mutateAsync({
+        taskId: review.task.id,
+        decision: review.decision,
+        edited_payload: payload,
+        loanId: review.task.loan_id,
+      });
+      setReview(null);
+    } catch (error) {
+      setDecisionError(error instanceof Error ? error.message : "Unable to update this task.");
     }
   };
 
@@ -155,6 +183,11 @@ export default function AIRail() {
                 <div className="sub">
                   conf {(task.confidence * 100).toFixed(0)}% · {task.agent}
                 </div>
+                <div className="row" style={{ marginTop: 10 }}>
+                  <Btn size="sm" variant="pri" onClick={() => openReview(task, "approved")}>Approve</Btn>
+                  <Btn size="sm" onClick={() => openReview(task, "approved", true)}>Edit</Btn>
+                  <Btn size="sm" onClick={() => openReview(task, "dismissed")}>Dismiss</Btn>
+                </div>
               </Card>
             ))}
           </div>
@@ -207,6 +240,33 @@ export default function AIRail() {
           </IconBtn>
         </div>
       )}
+      <Drawer
+        open={review != null}
+        onClose={() => setReview(null)}
+        title="Review before running"
+        sub={review?.task.title}
+        width="md"
+        closeOnBackdrop={!taskDecision.isPending}
+        footer={
+          <>
+            <Btn onClick={() => setReview(null)} disabled={taskDecision.isPending}>Cancel</Btn>
+            <span className="sp" />
+            <Btn variant={review?.decision === "dismissed" ? "default" : "pri"} onClick={confirmDecision} disabled={taskDecision.isPending}>
+              {taskDecision.isPending ? "Running..." : review?.decision === "dismissed" ? "Dismiss task" : review?.edit ? "Approve edited draft" : "Approve task"}
+            </Btn>
+          </>
+        }
+      >
+        <div className="grid">
+          <div className="hintbox"><b>Effects</b><div className="sub">Updates this queued Elara task and records the signed-in operator decision immediately.</div></div>
+          <div className="kv"><span>Action</span><b>{review?.decision === "dismissed" ? "Dismiss recommendation" : "Approve recommendation"}</b></div>
+          <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
+          <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+          <div className="kv"><span>Reversible</span><b>No · decision remains in audit history</b></div>
+          {review?.edit ? <Field label="Edited action payload"><Textarea value={editedPayload} onChange={(event) => setEditedPayload(event.target.value)} rows={9} className="mono" /></Field> : null}
+          {decisionError ? <div className="warnline">{decisionError}</div> : null}
+        </div>
+      </Drawer>
     </aside>
   );
 }

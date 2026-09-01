@@ -12,6 +12,7 @@
 import { useState, type ReactNode } from "react";
 import { Btn, CellChip, Input, Panel, Select, StatusLine, Sub, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useCreateParticipant,
   useDeleteParticipant,
@@ -46,6 +47,7 @@ const EMPTY_DRAFT: DraftState = {
 };
 
 export function ParticipantsCard({ loanId }: { loanId: string }) {
+  const confirmAction = useConfirmAction();
   const profile = useActiveProfile();
   const { data: participants = [], isLoading } = useLoanParticipants(loanId);
   const create = useCreateParticipant();
@@ -204,10 +206,15 @@ export function ParticipantsCard({ loanId }: { loanId: string }) {
             participant={p}
             canEdit={canEdit}
             onUpdate={(patch) => update.mutate({ loanId, participantId: p.id, ...patch })}
-            onRemove={() => {
-              if (confirm(`Remove ${p.display_name ?? p.email} from this thread?`)) {
-                remove.mutate({ loanId, participantId: p.id });
-              }
+            onRemove={async () => {
+              const confirmed = await confirmAction({
+                title: `Remove ${p.display_name ?? p.email}`,
+                body: "This participant will stop receiving messages from the funding thread.",
+                confirmLabel: "Remove participant",
+                tone: "danger",
+                reversible: true,
+              });
+              if (confirmed) remove.mutate({ loanId, participantId: p.id });
             }}
           />
         ))}

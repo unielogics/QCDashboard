@@ -12,7 +12,7 @@
 // closes unless suppressed, body scroll is locked while open, and focus moves
 // into the dialog on open and returns to whatever opened it on close.
 
-import { useCallback, useEffect, useId, useRef, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
 import { cx } from "./index";
 
 export type DrawerWidth = "md" | "lg" | "xl";
@@ -28,22 +28,27 @@ export function Drawer({
   onClose,
   title,
   sub,
+  headerActions,
   footer,
   children,
   width = "lg",
   closeOnBackdrop = true,
   bodyClass,
+  bodyStyle,
   ariaLabel,
+  fullscreen = false,
 }: {
   open: boolean;
   onClose: () => void;
   title?: ReactNode;
   sub?: ReactNode;
+  headerActions?: ReactNode;
   footer?: ReactNode;
   children: ReactNode;
   width?: DrawerWidth;
   closeOnBackdrop?: boolean;
   bodyClass?: string;
+  bodyStyle?: CSSProperties;
   /**
    * Overrides the announced name of the dialog.
    *
@@ -53,12 +58,17 @@ export function Drawer({
    * of what they opened. Pass the stable name here and let the title move.
    */
   ariaLabel?: string;
+  fullscreen?: boolean;
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
   const restoreTo = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  // Parent forms commonly pass an inline close handler. Keep the focus-lock
+  // effect stable while still invoking the latest handler.
+  onCloseRef.current = onClose;
 
-  const close = useCallback(() => onClose(), [onClose]);
+  const close = useCallback(() => onCloseRef.current(), []);
 
   useEffect(() => {
     if (!open) return;
@@ -97,8 +107,8 @@ export function Drawer({
         aria-hidden="true"
       />
       <div
-        className="drawer"
-        style={{ width: WIDTHS[width] }}
+        className={cx("drawer", fullscreen && "drawer--fullscreen")}
+        style={fullscreen ? undefined : { width: WIDTHS[width] }}
         role="dialog"
         aria-modal="true"
         // Prefer pointing at the rendered heading: it stays correct when the
@@ -114,13 +124,16 @@ export function Drawer({
             <path d="M18 6 6 18M6 6l12 12" />
           </svg>
         </button>
-        {(title || sub) && (
+        {(title || sub || headerActions) && (
           <div className="drawer-h">
-            {title && <h2 id={titleId}>{title}</h2>}
-            {sub && <p className="drawer-sub sub">{sub}</p>}
+            <div className="drawer-h-main">
+              {title && <h2 id={titleId}>{title}</h2>}
+              {sub && <p className="drawer-sub sub">{sub}</p>}
+            </div>
+            {headerActions ? <div className="pgacts drawer-h-actions">{headerActions}</div> : null}
           </div>
         )}
-        <div className={cx("drawer-b", bodyClass)}>{children}</div>
+        <div className={cx("drawer-b", bodyClass)} style={bodyStyle}>{children}</div>
         {footer && <div className="drawer-f">{footer}</div>}
       </div>
     </>

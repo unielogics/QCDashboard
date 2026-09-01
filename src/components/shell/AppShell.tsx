@@ -1,22 +1,24 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
-import { useAuth } from "@clerk/nextjs";
 import MfaBanner from "@/components/MfaBanner";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
+import { MobileBottomNav } from "./MobileBottomNav";
 import TopBar from "./TopBar";
 import AIRail from "./AIRail";
 import GlobalSearch from "./GlobalSearch";
-import { useUI, readPersistedSidebar } from "@/store/ui";
+import { useUI, readPersistedSidebar, readPersistedTheme } from "@/store/ui";
 import { isBareRoute as computeBareRoute } from "@/lib/shellRoutes";
 import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
+import { useRecordPendingSignupAttribution } from "@/hooks/useRecordPendingSignupAttribution";
 import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 import { Role, ContractType } from "@/lib/enums.generated";
 import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
+import { useConsoleAuth } from "@/lib/consoleAuth";
 
 export default function AppShell({
   children,
@@ -31,26 +33,47 @@ export default function AppShell({
   isAgreementPortal?: boolean;
 }) {
   const pathname = usePathname();
+  const isBareRoute = computeBareRoute(pathname, { isAgreementPortal });
+
+  // Public token/session routes must not initialize authenticated console
+  // queries or global keyboard handlers. Apart from avoiding needless 401s,
+  // this isolates legal signing from failures in operator-shell behavior.
+  if (isBareRoute) {
+    return <div className="bareshell">{children}</div>;
+  }
+
+  return <AuthenticatedAppShell pathname={pathname ?? ""}>{children}</AuthenticatedAppShell>;
+}
+
+function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pathname: string }) {
   const router = useRouter();
   const aiOpen = useUI((s) => s.aiOpen);
   const setAiOpen = useUI((s) => s.setAiOpen);
   const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
   const setSidebarCollapsed = useUI((s) => s.setSidebarCollapsed);
+  const theme = useUI((s) => s.theme);
+  const setTheme = useUI((s) => s.setTheme);
   const setSearchOpen = useUI((s) => s.setSearchOpen);
-  const { isLoaded: authLoaded, isSignedIn } = useAuth();
+  const { isLoaded: authLoaded, isSignedIn } = useConsoleAuth();
 
   // Rehydrate the user's persisted sidebar choice once, post-mount. Doing
   // this in an effect (rather than at store init) keeps the first client
   // render identical to the server render, avoiding hydration mismatch
-  // (React #418/#425) when localStorage says "collapsed".
+  // (React #418/#425) when localStorage says "expanded".
   useEffect(() => {
     const persisted = readPersistedSidebar();
-    if (persisted) setSidebarCollapsed(true);
-  }, [setSidebarCollapsed]);
-  const { data: user } = useCurrentUser();
+    if (window.matchMedia("(max-width: 760px)").matches) {
+      useUI.setState({ sidebarCollapsed: true });
+    } else {
+      setSidebarCollapsed(persisted);
+    }
+    setTheme(readPersistedTheme());
+  }, [setSidebarCollapsed, setTheme]);
+  const { data: user, isLoading: userLoading, isError: userError } = useCurrentUser();
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
+  useRecordPendingSignupAttribution();
   // Hard-gates Role.DEALER_PARTNER access until the Platform Access
   // Agreement is signed. Fetched for every authenticated user (cheap,
   // `required` is false for everyone else) rather than only brokers, so the
@@ -83,10 +106,6 @@ export default function AppShell({
   // Reference sidebarCollapsed to keep the dependency tracked (drives
   // the sidebar's transition, not the grid).
 
-  // Which routes skip the app chrome — see lib/shellRoutes.ts for why each
-  // prefix is on the list.
-  const isBareRoute = computeBareRoute(pathname, { isAgreementPortal });
-
   // A session that still owes a required task — setting up two-step
   // verification, for instance — reports isSignedIn === false, because
   // @clerk/backend treats a `pending` session as signed out by default. Clerk
@@ -96,10 +115,10 @@ export default function AppShell({
   const isAccountRoute = pathname.startsWith("/account");
 
   useEffect(() => {
-    if (!isBareRoute && !isAccountRoute && authLoaded && isSignedIn === false) {
+    if (!isAccountRoute && authLoaded && isSignedIn === false) {
       window.location.assign(SIGN_IN_URL);
     }
-  }, [authLoaded, isBareRoute, isAccountRoute, isSignedIn]);
+  }, [authLoaded, isAccountRoute, isSignedIn]);
 
   // Ongoing confinement, past the one-time Platform Access signature gate
   // below: a signed dealer partner has no book-of-business (see
@@ -114,18 +133,57 @@ export default function AppShell({
   const isDealerPartnerConfinedRoute =
     pathname.startsWith("/broker") || pathname.startsWith("/profile");
   const isDealerPartnerOutOfBounds =
-    !isBareRoute && user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
+    user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
+  const isAuditOnlyClient = !!user
+    && (user.role === Role.CLIENT || user.role === Role.DEALER)
+    && user.can_access_audit
+    && !user.can_access_funding;
   useEffect(() => {
     if (isDealerPartnerOutOfBounds) {
       router.replace("/broker/ai-underwriter-leads");
     }
   }, [isDealerPartnerOutOfBounds, router]);
-
-  if (isBareRoute) {
-    return <div className="bareshell">{children}</div>;
-  }
+  useEffect(() => {
+    if (isAuditOnlyClient) {
+      window.location.replace("https://audit.qualifiedcommercial.com");
+    }
+  }, [isAuditOnlyClient]);
 
   if (!authLoaded || isSignedIn === false) {
+    return <div className="bareshell" />;
+  }
+
+  // Do not render role-specific chrome until /auth/me has resolved. The
+  // least-privileged fallback is correct for legacy hooks, but showing the
+  // client sidebar here makes a real super-admin look scoped while the account
+  // lookup is still pending or failed.
+  if (userLoading || !user) {
+    return (
+      <div className="bareshell">
+        {userError ? (
+          <div style={{ maxWidth: 520, margin: "18vh auto", padding: 24, textAlign: "center" }}>
+            <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Account access could not be loaded</h1>
+            <p style={{ color: "var(--muted)", margin: 0 }}>
+              Sign in again so the console can verify your role before opening any file data.
+            </p>
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  if (user.account_status === "suspended") {
+    return (
+      <div className="bareshell">
+        <div style={{ maxWidth: 520, margin: "18vh auto", padding: 24, textAlign: "center" }}>
+          <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Account suspended</h1>
+          <p style={{ color: "var(--muted)", margin: 0 }}>Contact your administrator to restore this login.</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuditOnlyClient) {
     return <div className="bareshell" />;
   }
 
@@ -146,7 +204,7 @@ export default function AppShell({
     // `.app` ships `min-height: 100vh`; the console pins it to exactly the
     // viewport instead so <main> below can be the only scroller. That
     // correction lives in app-extras.css, not here.
-    <div className={sidebarCollapsed ? "app rail" : "app"}>
+    <div className={sidebarCollapsed ? "app app--collapsed" : "app"} data-dark={theme === "dark" ? "1" : undefined}>
       <Sidebar />
       {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
           inner <main> can actually shrink and scroll instead of pushing the
@@ -170,6 +228,7 @@ export default function AppShell({
           <AIRail />
         </div>
       </div>
+      <MobileBottomNav />
       <GlobalSearch />
     </div>
   );

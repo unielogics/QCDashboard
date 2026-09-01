@@ -38,3 +38,8 @@ yarn-error.log*
 # clerk configuration (can include secrets)
 /.clerk/
 public/pdfjs/
+
+# Local prototype-parity review output
+/artifacts/prototype-parity/
+/playwright-report/
+/test-results/

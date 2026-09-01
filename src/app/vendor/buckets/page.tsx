@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { Icon } from "@/components/design-system/Icon";
 import { useCurrentUser } from "@/hooks/useApi";
-import { api } from "@/lib/api";
+import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { Role } from "@/lib/enums.generated";
 import { openSignedUrl } from "@/lib/safeOpen";
 import {
@@ -69,7 +68,7 @@ const FILE_COLS: Col[] = [
 
 export default function VendorBucketsPage() {
   const router = useRouter();
-  const { getToken } = useAuth();
+  const authedFetch = useAuthedFetch();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const [buckets, setBuckets] = useState<VendorBucket[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -81,8 +80,7 @@ export default function VendorBucketsPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const token = await getToken();
-    return api<T>(path, { ...init, authToken: token ?? undefined });
+    return authedFetch<T>(path, init);
   }
 
   async function loadBuckets() {

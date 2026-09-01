@@ -1,13 +1,9 @@
 "use client";
 
-import { Modal } from "./Modal";
-import { cx } from "@/components/ds";
+import type { ReactNode } from "react";
+import { Btn } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 
-/**
- * Themed replacement for window.confirm. Native confirm dialogs break the
- * banking surface — they're OS-chrome, unthemeable, and jarring. This renders
- * the same yes/no decision inside the design-system Modal.
- */
 export function ConfirmDialog({
   open,
   title,
@@ -16,50 +12,45 @@ export function ConfirmDialog({
   cancelLabel = "Cancel",
   tone = "default",
   busy = false,
+  reversible = false,
   onConfirm,
   onClose,
 }: {
   open: boolean;
   title: string;
-  body?: React.ReactNode;
+  body?: ReactNode;
   confirmLabel?: string;
   cancelLabel?: string;
   tone?: "default" | "danger";
   busy?: boolean;
+  reversible?: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }) {
   return (
-    <Modal
+    <Drawer
       open={open}
       onClose={onClose}
-      size="md"
-      title={title}
-      icon={tone === "danger" ? "alert" : undefined}
+      width="md"
+      title="Review before running"
+      sub={title}
+      closeOnBackdrop={!busy}
       footer={
         <>
-          {/* `.drawer-f` (Modal's footer) already lays these out. The style
-              helpers in ./buttons.ts are superseded here by `.btn`,
-              `.btn.pri` and `.btn.danger`; they stay in place for their
-              other ~249 call sites. */}
-          <button type="button" className="btn" onClick={onClose} disabled={busy}>
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={cx("btn", tone === "danger" ? "danger" : "pri")}
-            onClick={onConfirm}
-            disabled={busy}
-          >
-            {busy ? "Working…" : confirmLabel}
-          </button>
+          <Btn onClick={onClose} disabled={busy}>{cancelLabel}</Btn>
+          <span className="sp" />
+          <Btn variant={tone === "danger" ? "default" : "pri"} className={tone === "danger" ? "danger" : undefined} onClick={onConfirm} disabled={busy}>
+            {busy ? "Working..." : confirmLabel}
+          </Btn>
         </>
       }
     >
-      {/* Modal's body is unpadded by design, so the prose brings its own.
-          Deliberately NOT `.sub`: that is 12px caption grey, and a confirm
-          prompt is the sentence the decision turns on. */}
-      {body ? <p className="dlg-prose">{body}</p> : null}
-    </Modal>
+      <div className="grid">
+        {body ? <div className={tone === "danger" ? "warnline" : "hintbox"}>{body}</div> : null}
+        <div className="kv"><span>Actor</span><b>Current signed-in user</b></div>
+        <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+        <div className="kv"><span>Reversible</span><b>{reversible ? "Yes" : "No"}</b></div>
+      </div>
+    </Drawer>
   );
 }

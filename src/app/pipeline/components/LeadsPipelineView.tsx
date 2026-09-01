@@ -760,7 +760,7 @@ function CreateFileModal({ client, onClose }: { client: EnrichedClient; onClose:
         }
       }
       onClose();
-      router.push(`/deals/${created.id}`);
+      router.push(`/deals/${created.id}?tab=verification&step=1`);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't create file");
     }

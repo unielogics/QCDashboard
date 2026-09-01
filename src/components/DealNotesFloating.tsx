@@ -21,6 +21,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn, IconBtn, StatusLine, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { useUI } from "@/store/ui";
 import { useDeal, useUpdateDealById } from "@/hooks/useApi";
 import type { DealNoteEntry } from "@/lib/types";
@@ -198,6 +199,7 @@ export function DealNotesPanel() {
 }
 
 function NoteCard({ entry, onDelete }: { entry: DealNoteEntry; onDelete: () => void }) {
+  const confirmAction = useConfirmAction();
   const when = new Date(entry.at);
   return (
     <div className="msg">
@@ -208,8 +210,15 @@ function NoteCard({ entry, onDelete }: { entry: DealNoteEntry; onDelete: () => v
         </span>
         <span className="grow" />
         <IconBtn
-          onClick={() => {
-            if (confirm("Delete this note?")) onDelete();
+          onClick={async () => {
+            const confirmed = await confirmAction({
+              title: "Delete private note",
+              body: "This note will be removed from the file history.",
+              confirmLabel: "Delete note",
+              tone: "danger",
+              reversible: false,
+            });
+            if (confirmed) onDelete();
           }}
           title="Delete"
           aria-label="Delete note"

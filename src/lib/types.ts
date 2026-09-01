@@ -5,10 +5,14 @@ import type { LoanStage, LoanType, LoanPurpose, PropertyType, Role, AITaskPriori
 
 export interface User {
   id: string;
-  clerk_id: string;
+  clerk_id: string | null;
   email: string;
   name: string;
   role: Role;
+  account_types: Array<ProductAccountType | "field_desk">;
+  account_status: "active" | "suspended";
+  can_access_funding: boolean;
+  can_access_audit: boolean;
   // Only ever set for Role.DEALER_PARTNER; drives the AppShell NDA gate.
   nda_signed_at?: string | null;
 }
@@ -271,6 +275,125 @@ export interface Document {
   ai_scan_status?: "unscanned" | "queued" | "scanning" | "verified" | "flagged" | "failed" | string;
   ai_scan_confidence?: number | null;
   due_date?: string | null;
+}
+
+export type ProductAccountType = "funding" | "audit";
+export type ClientLoginState = "no_login" | "invited" | "active" | "suspended" | "invite_failed";
+
+export interface ClientAccessDirectoryRow {
+  subject_kind: "client" | "intake" | "user";
+  subject_id: string;
+  client_id: string | null;
+  user_id: string | null;
+  client_name: string;
+  businesses: string[];
+  email: string | null;
+  phone: string | null;
+  origin: string;
+  login_state: ClientLoginState;
+  account_types: ProductAccountType[];
+  account_status: string | null;
+  file_count: number;
+  last_active_at: string | null;
+  status: string;
+}
+
+export interface ClientAccessDirectoryResponse {
+  items: ClientAccessDirectoryRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  sources: string[];
+}
+
+export interface ProductEntitlement {
+  product: ProductAccountType;
+  enabled: boolean;
+  granted_at: string | null;
+  revoked_at: string | null;
+  reason: string | null;
+}
+
+export interface AuditBusinessScope {
+  profile_id: string;
+  dealer_id: string | null;
+  business_name: string;
+  vertical: string;
+  source_kind: string;
+  source_id: string | null;
+  bucket_id: string | null;
+  enabled_for_user: boolean;
+}
+
+export interface ClientAccessHistoryItem {
+  id: string;
+  action: string;
+  reason: string | null;
+  actor_user_id: string | null;
+  before_state: Record<string, unknown> | null;
+  after_state: Record<string, unknown> | null;
+  request_metadata: Record<string, unknown> | null;
+  created_at: string;
+}
+
+export interface ClientAccessDetail {
+  subject: ClientAccessDirectoryRow;
+  entitlements: ProductEntitlement[];
+  audit_scopes: AuditBusinessScope[];
+  invitation_status: string | null;
+  invitation_error: string | null;
+  access_history: ClientAccessHistoryItem[];
+}
+
+export interface AccessMutationResult {
+  user_id: string;
+  account_types: ProductAccountType[];
+  account_status: string;
+  login_state: ClientLoginState;
+  invitation_sent: boolean;
+  clerk_synced: boolean;
+  sessions_revoked: boolean;
+  audit_scope_ids: string[];
+}
+
+export interface VaultTotals {
+  borrowers: number;
+  loan_files: number;
+  documents: number;
+  need_attention: number;
+}
+
+export interface VaultLoanSummary {
+  loan_id: string;
+  deal_id: string;
+  borrower_id: string;
+  borrower_name: string;
+  entity_name: string | null;
+  address: string;
+  city: string | null;
+  state: string | null;
+  stage: string;
+  documents: number;
+  requested: number;
+  pending_review: number;
+  verified: number;
+  flagged: number;
+  updated_at: string;
+}
+
+export interface VaultLoanPage {
+  items: VaultLoanSummary[];
+  totals: VaultTotals;
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface VaultDocumentPage {
+  items: Document[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface Message {
@@ -1013,6 +1136,14 @@ export interface AgentBookingSettings {
   end_time: string;
 }
 
+export interface BookingBlockedInterval {
+  weekday?: number | null;
+  on_date?: string | null;
+  start_time: string;
+  end_time: string;
+  label: string | null;
+}
+
 export interface UserBookingSettings {
   id: string;
   user_id: string;
@@ -1023,8 +1154,24 @@ export interface UserBookingSettings {
   primary_color: string;
   background_color: string;
   duration_min: number;
+  buffer_before_min: number;
+  buffer_after_min: number;
+  confirmation_email_enabled: boolean;
+  confirmation_sms_enabled: boolean;
+  reminder_email_enabled: boolean;
+  reminder_email_minutes_before: number;
+  reminder_email_minutes: number[];
+  reminder_sms_enabled: boolean;
+  reminder_sms_minutes_before: number;
+  reminder_sms_minutes: number[];
+  google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];
+  blocked_intervals: BookingBlockedInterval[];
+  booking_questions: Record<string, boolean>;
+  no_show_follow_up_enabled: boolean;
+  morning_digest_enabled: boolean;
+  missing_outcome_reminder_hours: number;
   start_time: string;
   end_time: string;
   logo_s3_key: string | null;
@@ -1186,6 +1333,8 @@ export interface SignatureUploadInitResponse {
 }
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
+export type OperatorAccountAccessType = "funding" | "field_desk" | "audit";
+
 export interface UserRow {
   id: string;
   email: string;
@@ -1194,7 +1343,13 @@ export interface UserRow {
   referral_partner_company_id: string | null;
   referral_partner_company_name: string | null;
   company_agreement_signed: boolean | null;
+  account_types: OperatorAccountAccessType[];
   created_at: string | null;
+}
+
+export interface SignedReferralCompany {
+  id: string;
+  name: string;
 }
 
 export interface PortfolioMetrics {
@@ -2307,54 +2462,53 @@ export interface PrequalSellerOutcome {
 
 export type AnalysisProduct = "dscr_purchase" | "dscr_refi" | "fix_flip";
 export type AnalysisSource = "deal_analyzer" | "simulator" | "loan_recalc";
+export type AddressProvider = "google" | "geoapify";
 
 export interface ProviderSettingsRead {
   rentcast_configured: boolean;
   google_server_configured: boolean;
-  google_maps_browser_key_configured: boolean;
-  google_maps_ios_key_configured: boolean;
-  google_maps_android_key_configured: boolean;
-  google_maps_mobile_key_configured: boolean;
+  geoapify_configured: boolean;
+  address_provider: "google" | "geoapify";
+  address_provider_ready: boolean;
+  address_credentials_source: "environment";
   rentcast_api_key: string | null;
-  google_server_api_key: string | null;
-  google_maps_browser_key: string | null;
-  google_maps_ios_key: string | null;
-  google_maps_android_key: string | null;
-  google_maps_mobile_key: string | null;
   property_analysis_ai_enabled: boolean;
   property_intelligence_cache_ttl_hours: number;
 }
 
 export interface ProviderSettingsUpdate {
   rentcast_api_key?: string | null;
-  google_server_api_key?: string | null;
-  google_maps_browser_key?: string | null;
-  google_maps_ios_key?: string | null;
-  google_maps_android_key?: string | null;
-  google_maps_mobile_key?: string | null;
+  address_provider?: "google" | "geoapify" | null;
   property_analysis_ai_enabled?: boolean | null;
   property_intelligence_cache_ttl_hours?: number | null;
 }
 
 export interface AddressParts {
   street?: string | null;
+  line2?: string | null;
   city?: string | null;
   state?: string | null;
   zip?: string | null;
+  country_code?: string | null;
   full?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  provider?: AddressProvider | "manual" | null;
+  provider_place?: Record<string, unknown> | null;
 }
 
 export interface AddressSuggestion {
   place_id: string;
   text: string;
   secondary_text: string | null;
+  provider: AddressProvider;
 }
 
 export interface AddressResolveResponse {
   address: AddressParts;
   google_place: Record<string, unknown> | null;
+  provider: AddressProvider;
+  provider_place: Record<string, unknown> | null;
 }
 
 export interface PropertyIntelligenceSnapshot {

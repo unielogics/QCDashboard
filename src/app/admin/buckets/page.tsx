@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import {
   Btn,
@@ -12,7 +13,6 @@ import {
   Field,
   IconBtn,
   Input,
-  PageHeader,
   Panel,
   Select,
   StatusLine,
@@ -21,14 +21,16 @@ import {
   cx,
 } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
-import { useCurrentUser } from "@/hooks/useApi";
+import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
+import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
+import type { BucketIntakeLinkRead } from "@/lib/unifiedOperator";
 import { api, ApiError } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
-import { useUI } from "@/store/ui";
 
 type Bucket = {
   id: string;
@@ -42,6 +44,7 @@ type Bucket = {
   updated_at: string;
   file_count?: number;
   uploaded_file_count?: number;
+  vendor_access_count?: number;
 };
 type RequestedDoc = {
   id: string;
@@ -161,6 +164,17 @@ type Template = {
   save_to_library?: boolean;
 };
 type PackageKey = "standard" | "urchoice";
+type BucketDetailSection = "upload" | "tasks" | "notes" | "invites" | "vendors" | "shares" | "activity";
+type BucketFileKind = "all" | "pdf" | "image" | "spreadsheet" | "document" | "other";
+type BucketFileAssignment = "all" | "requested" | "general";
+type BucketFileSort = "newest" | "oldest";
+type BucketEditForm = {
+  name: string;
+  client_name: string;
+  purpose: string;
+  bucket_type: string;
+  description: string;
+};
 type UploadInvite = { id: string; recipient_name: string; recipient_email: string; passcode: string };
 type UploadInviteLink = { id: string; name: string; email?: string; url: string; passcode: string };
 type UploadInitResponse = { file_id: string; upload_url: string; required_headers: Record<string, string> };
@@ -272,6 +286,18 @@ const ACTIVITY_ACTION_OPTIONS = [
 ];
 const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "vendor", "system"];
 const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "vendor_access", "file", "note", "annotation", "ai_action_item"];
+function closedBucketSections(): Record<BucketDetailSection, boolean> {
+  return {
+    upload: false,
+    tasks: false,
+    notes: false,
+    invites: false,
+    vendors: false,
+    shares: false,
+    activity: false,
+  };
+}
+
 const URCHOICE_DEALER_DOCS: Template[] = [
   { id: "urchoice-formation", name: "Formation", category: "UrChoice Dealer Funding", required: true },
   { id: "urchoice-ein", name: "EIN", category: "UrChoice Dealer Funding", required: true },
@@ -335,21 +361,58 @@ function emptyVendorAccessDraft(): VendorAccessDraft {
   };
 }
 
+function emptyBucketEditForm(): BucketEditForm {
+  return {
+    name: "",
+    client_name: "",
+    purpose: "",
+    bucket_type: "",
+    description: "",
+  };
+}
+
+function bucketEditFormFrom(bucket: Bucket): BucketEditForm {
+  return {
+    name: bucket.name || "",
+    client_name: bucket.client_name || "",
+    purpose: bucket.purpose || "",
+    bucket_type: bucket.bucket_type || "",
+    description: bucket.description || "",
+  };
+}
+
 export default function BucketsAdminPage() {
+  const confirmAction = useConfirmAction();
   const router = useRouter();
   const searchParams = useSearchParams();
   const bucketParam = searchParams.get("bucket");
   const { data: me, isLoading: meLoading } = useCurrentUser();
+  const { data: bucketLinks = [] } = useBucketIntakeLinks({ all: true });
+  const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const { getToken } = useAuth();
   const adminFileInputRef = useRef<HTMLInputElement | null>(null);
   const shareMenuRef = useRef<HTMLDivElement | null>(null);
+  const dismissedBucketParamRef = useRef<string | null>(null);
   const [buckets, setBuckets] = useState<Bucket[]>([]);
   const [templates, setTemplates] = useState<Template[]>([]);
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
+  const [bucketDetailMinimized, setBucketDetailMinimized] = useState(false);
+  const [editBucketOpen, setEditBucketOpen] = useState(false);
+  const [editBucketForm, setEditBucketForm] = useState<BucketEditForm>(() => emptyBucketEditForm());
+  const [editBucketSaving, setEditBucketSaving] = useState(false);
+  const [editBucketError, setEditBucketError] = useState<string | null>(null);
+  const [bucketSectionsOpen, setBucketSectionsOpen] = useState<Record<BucketDetailSection, boolean>>(() => closedBucketSections());
+  const [bucketFileQuery, setBucketFileQuery] = useState("");
+  const [bucketFileKind, setBucketFileKind] = useState<BucketFileKind>("all");
+  const [bucketFileAssignment, setBucketFileAssignment] = useState<BucketFileAssignment>("all");
+  const [bucketFileStatus, setBucketFileStatus] = useState("all");
+  const [bucketFileSort, setBucketFileSort] = useState<BucketFileSort>("newest");
   const [search, setSearch] = useState("");
+  const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteReviewBucket, setDeleteReviewBucket] = useState<Bucket | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -401,6 +464,7 @@ export default function BucketsAdminPage() {
   const [convertLeadBucket, setConvertLeadBucket] = useState<Bucket | null>(null);
   const [convertLeadBusy, setConvertLeadBusy] = useState(false);
   const [convertLeadError, setConvertLeadError] = useState<string | null>(null);
+  const [linkBucket, setLinkBucket] = useState<Bucket | null>(null);
   const [vendorAssignmentBucket, setVendorAssignmentBucket] = useState<Bucket | null>(null);
   const [vendorAssignmentDetail, setVendorAssignmentDetail] = useState<BucketDetail | null>(null);
   const [vendorAssignmentDraft, setVendorAssignmentDraft] = useState<VendorAccessDraft>(() => emptyVendorAccessDraft());
@@ -417,6 +481,7 @@ export default function BucketsAdminPage() {
   const [isAdminUploadDragging, setIsAdminUploadDragging] = useState(false);
   const [adminNote, setAdminNote] = useState("");
   const [reviewFile, setReviewFile] = useState<BucketFile | null>(null);
+  const [reviewMinimized, setReviewMinimized] = useState(false);
   const [activityRows, setActivityRows] = useState<Activity[]>([]);
   const [activityTotal, setActivityTotal] = useState(0);
   const [activityOffset, setActivityOffset] = useState(0);
@@ -477,12 +542,73 @@ export default function BucketsAdminPage() {
     setAdminUploadStatus(null);
     setAdminUploadForm(loadAdminUploadDraft(row));
     setAdminUploadDraftStatus(null);
+    setBucketSectionsOpen(closedBucketSections());
+    setBucketFileQuery("");
+    setBucketFileKind("all");
+    setBucketFileAssignment("all");
+    setBucketFileStatus("all");
+    setBucketFileSort("newest");
     await loadBucketActivity(bucketId, 0, filters);
   }
 
   async function openBucket(bucketId: string, focus: DetailFocus = null) {
     setDetailFocus(focus);
+    setBucketDetailMinimized(false);
     await loadBucket(bucketId);
+    if (focus === "vendors") {
+      setBucketSectionsOpen((current) => ({ ...current, vendors: true }));
+    }
+  }
+
+  function closeBucketDetail() {
+    dismissedBucketParamRef.current = detail?.id || bucketParam;
+    setReviewFile(null);
+    setReviewMinimized(false);
+    setBucketDetailMinimized(false);
+    setEditBucketOpen(false);
+    setEditBucketError(null);
+    setDetail(null);
+    setDetailFocus(null);
+    if (bucketParam) router.replace("/admin/buckets", { scroll: false });
+  }
+
+  function openBucketEdit(bucket: BucketDetail) {
+    setEditBucketForm(bucketEditFormFrom(bucket));
+    setEditBucketError(null);
+    setEditBucketOpen(true);
+  }
+
+  async function saveBucketEdit() {
+    if (!detail) return;
+    const name = editBucketForm.name.trim();
+    if (!name) {
+      setEditBucketError("Bucket name is required.");
+      return;
+    }
+    setEditBucketSaving(true);
+    setEditBucketError(null);
+    try {
+      const updated = await call<BucketDetail>(`/buckets/admin/${detail.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          name,
+          client_name: editBucketForm.client_name.trim() || null,
+          purpose: editBucketForm.purpose.trim() || null,
+          bucket_type: editBucketForm.bucket_type.trim() || null,
+          description: editBucketForm.description.trim() || null,
+        }),
+      });
+      setDetail(updated);
+      setBuckets((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
+      setActivityRows(updated.activity ?? []);
+      setActivityTotal(updated.activity?.length ?? 0);
+      setEditBucketOpen(false);
+      setNotice("Bucket details updated.");
+    } catch (error) {
+      setEditBucketError(readableError(error));
+    } finally {
+      setEditBucketSaving(false);
+    }
   }
 
   async function openVendorAssignment(bucketId: string) {
@@ -506,6 +632,7 @@ export default function BucketsAdminPage() {
   function showVendorSettings() {
     setDetailFocus("vendors");
     setSharePopupOpen(false);
+    setBucketSectionsOpen((current) => ({ ...current, vendors: true }));
     window.setTimeout(() => {
       document.getElementById("bucket-vendors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
@@ -532,15 +659,14 @@ export default function BucketsAdminPage() {
   }
 
   async function deleteBucket(bucket: Bucket) {
-    const confirmed = window.confirm(`Delete bucket "${bucket.name}"? It will be removed from the bucket list.`);
-    if (!confirmed) return;
     setDeletingId(bucket.id);
     setNotice(null);
     try {
       await call<void>(`/buckets/admin/${bucket.id}`, { method: "DELETE" });
-      if (detail?.id === bucket.id) setDetail(null);
+      if (detail?.id === bucket.id) closeBucketDetail();
       await loadBuckets();
       setNotice("Bucket deleted.");
+      setDeleteReviewBucket(null);
     } finally {
       setDeletingId(null);
     }
@@ -584,7 +710,11 @@ export default function BucketsAdminPage() {
   }, [me?.role]);
 
   useEffect(() => {
-    if (me?.role === Role.SUPER_ADMIN && bucketParam && detail?.id !== bucketParam) {
+    if (!bucketParam) {
+      dismissedBucketParamRef.current = null;
+      return;
+    }
+    if (me?.role === Role.SUPER_ADMIN && bucketParam !== dismissedBucketParamRef.current && detail?.id !== bucketParam) {
       openBucket(bucketParam).catch((e) => setNotice(String(e)));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -668,6 +798,37 @@ export default function BucketsAdminPage() {
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const requestedDocNameById = useMemo(() => new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name])), [detail?.requested_documents]);
+  const bucketFileStatusOptions = useMemo(() => {
+    const statuses = new Set(visibleFiles.map((file) => file.status).filter(Boolean));
+    return Array.from(statuses).sort();
+  }, [visibleFiles]);
+  const filteredBucketFiles = useMemo(() => {
+    const query = bucketFileQuery.trim().toLowerCase();
+    return visibleFiles.filter((file) => {
+      if (bucketFileKind !== "all" && bucketFileKindOf(file) !== bucketFileKind) return false;
+      if (bucketFileAssignment === "requested" && !file.requested_document_id) return false;
+      if (bucketFileAssignment === "general" && file.requested_document_id) return false;
+      if (bucketFileStatus !== "all" && file.status !== bucketFileStatus) return false;
+      if (!query) return true;
+      return [
+        file.file_name,
+        file.content_type,
+        file.status,
+        file.uploaded_by_name,
+        file.uploaded_by_email,
+        requestedDocNameById.get(file.requested_document_id || ""),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(query);
+    }).sort((a, b) => {
+      const aTime = uploadTimestamp(a);
+      const bTime = uploadTimestamp(b);
+      return bucketFileSort === "newest" ? bTime - aTime : aTime - bTime;
+    });
+  }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileSort, bucketFileStatus, requestedDocNameById, visibleFiles]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -681,15 +842,28 @@ export default function BucketsAdminPage() {
   );
   const filteredBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return buckets;
-    return buckets.filter((bucket) =>
-      [bucket.name, bucket.client_name, bucket.purpose, bucket.bucket_type, bucket.status]
+    return buckets.filter((bucket) => {
+      const status = bucket.status.toLowerCase();
+      const statusMatches = bucketView === "all"
+        || (bucketView === "collecting" && !status.includes("complete") && !status.includes("review"))
+        || (bucketView === "review" && status.includes("review"))
+        || (bucketView === "complete" && (status.includes("complete") || status.includes("closed")));
+      if (!statusMatches) return false;
+      if (!q) return true;
+      return [bucket.name, bucket.client_name, bucket.purpose, bucket.bucket_type, bucket.status]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
-        .includes(q),
-    );
-  }, [buckets, search]);
+        .includes(q);
+    });
+  }, [buckets, search, bucketView]);
+  const primaryIntakeByBucket = useMemo(() => {
+    const pairs = new Map<string, string>();
+    for (const file of unifiedFiles?.items ?? []) {
+      if (file.bucket_id && file.intake_id) pairs.set(file.bucket_id, file.intake_id);
+    }
+    return pairs;
+  }, [unifiedFiles?.items]);
 
   if (meLoading) return <PanelBox>Loading Buckets...</PanelBox>;
   if (me && me.role !== Role.SUPER_ADMIN) return null;
@@ -1020,7 +1194,16 @@ export default function BucketsAdminPage() {
   }
 
   async function setShareStatus(share: Share, statusValue: "active" | "revoked") {
-    if (statusValue === "revoked" && !window.confirm(`Revoke access for ${share.recipient_name}?`)) return;
+    if (statusValue === "revoked") {
+      const confirmed = await confirmAction({
+        title: `Revoke access for ${share.recipient_name}`,
+        body: "The recipient will immediately lose access to the shared bucket files.",
+        confirmLabel: "Revoke access",
+        tone: "danger",
+        reversible: true,
+      });
+      if (!confirmed) return;
+    }
     await patchShare(share, { status: statusValue });
     setNotice(statusValue === "revoked" ? "Share access revoked." : "Share access reactivated.");
   }
@@ -1092,7 +1275,16 @@ export default function BucketsAdminPage() {
   }
 
   async function setVendorStatus(access: VendorAccess, statusValue: "active" | "revoked") {
-    if (statusValue === "revoked" && !window.confirm(`Revoke access for ${access.vendor_name || access.vendor_email || "this vendor"}?`)) return;
+    if (statusValue === "revoked") {
+      const confirmed = await confirmAction({
+        title: `Revoke access for ${access.vendor_name || access.vendor_email || "this vendor"}`,
+        body: "The vendor will immediately lose access to this file room.",
+        confirmLabel: "Revoke vendor access",
+        tone: "danger",
+        reversible: true,
+      });
+      if (!confirmed) return;
+    }
     await patchVendorAccess(access, { status: statusValue });
     setNotice(statusValue === "revoked" ? "Vendor access revoked." : "Vendor access reactivated.");
   }
@@ -1380,6 +1572,7 @@ export default function BucketsAdminPage() {
   async function openFile(file: BucketFile, download = false) {
     if (!detail) return;
     if (!download) {
+      setReviewMinimized(false);
       setReviewFile(file);
       return;
     }
@@ -1389,10 +1582,14 @@ export default function BucketsAdminPage() {
 
   async function deleteFile(file: BucketFile) {
     if (!detail || deletingFileId) return;
-    const ok = window.confirm(
-      `Delete "${file.file_name}"?\n\nThis removes it from the bucket, revokes share access, and stops preview/download immediately.`,
-    );
-    if (!ok) return;
+    const confirmed = await confirmAction({
+      title: `Delete ${file.file_name}`,
+      body: "This removes the file from the bucket, revokes share access, and stops preview and download immediately.",
+      confirmLabel: "Delete file",
+      tone: "danger",
+      reversible: false,
+    });
+    if (!confirmed) return;
     setDeletingFileId(file.id);
     try {
       await call(`/buckets/admin/${detail.id}/files/${file.id}`, { method: "DELETE" });
@@ -1402,7 +1599,10 @@ export default function BucketsAdminPage() {
         return next;
       });
       setNotice("File deleted.");
-      setReviewFile((current) => (current?.id === file.id ? null : current));
+      if (reviewFile?.id === file.id) {
+        setReviewMinimized(false);
+        setReviewFile(null);
+      }
       await loadBucket(detail.id);
       await loadBuckets();
     } catch (error) {
@@ -1430,7 +1630,21 @@ export default function BucketsAdminPage() {
     setNotice("Copied.");
   }
 
-  const requestedDocNameById = new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name]));
+  function toggleBucketSection(section: BucketDetailSection) {
+    setBucketSectionsOpen((current) => ({ ...current, [section]: !current[section] }));
+  }
+
+  function bucketSectionActions(section: BucketDetailSection, meta?: ReactNode) {
+    const open = bucketSectionsOpen[section];
+    return (
+      <div className="row">
+        {meta}
+        <IconBtn onClick={() => toggleBucketSection(section)} aria-label={`${open ? "Collapse" : "Expand"} ${section}`} title={open ? "Collapse" : "Expand"}>
+          <Icon name={open ? "chevU" : "chevD"} size={14} />
+        </IconBtn>
+      </div>
+    );
+  }
 
   function renderShareFilePicker(args: {
     selectedIds: string[];
@@ -1565,33 +1779,35 @@ export default function BucketsAdminPage() {
     // Grid, not flex-column: `.panel` is overflow:hidden, and as a flex child
     // that zeroes its automatic minimum size and clips its own body.
     <div className="grid">
-      <PageHeader
-        title="Buckets"
-        lede="Secure document rooms for collecting and selectively sharing files."
-        actions={
-          <>
-            <Btn onClick={() => setVendorDirectoryOpen(true)}>
-              <Icon name="user" size={15} />
-              Manage vendors
-            </Btn>
-            <Btn
-              variant="pri"
-              onClick={() => {
-                setCreateResult(null);
-                setCreateStatus(null);
-                setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
-                setCreateInvites([]);
-                setCustomDocs([]);
-                setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
-                setCreateOpen(true);
-              }}
-            >
-              <Icon name="plus" size={15} />
-              Create bucket
-            </Btn>
-          </>
-        }
-      />
+      <div className="ckhead">
+        <div className="ckrow">
+          <h1>Buckets</h1>
+          <CellChip tone="mut">{buckets.filter((bucket) => !bucket.status.toLowerCase().includes("complete")).length} open</CellChip>
+          <span className="sp" />
+          <span className="sub">Secure document rooms. Every bucket can feed an AI intake.</span>
+          <Btn variant="pri" size="sm" onClick={() => {
+            setCreateResult(null);
+            setCreateStatus(null);
+            setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+            setCreateInvites([]);
+            setCustomDocs([]);
+            setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
+            setCreateOpen(true);
+          }}><Icon name="plus" size={13} /> Create bucket</Btn>
+          <PageActionMenu label="Bucket actions" items={[
+            { label: "Manage vendor directory", onSelect: () => setVendorDirectoryOpen(true) },
+            { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
+          ]} />
+        </div>
+        <div className="cktabs" role="tablist" aria-label="Bucket status">
+          {[
+            { value: "all" as const, label: "All buckets" },
+            { value: "collecting" as const, label: "Collecting" },
+            { value: "review" as const, label: "In review" },
+            { value: "complete" as const, label: "Complete" },
+          ].map((item) => <button key={item.value} type="button" role="tab" aria-selected={bucketView === item.value} className={bucketView === item.value ? "on" : undefined} onClick={() => setBucketView(item.value)}>{item.label}</button>)}
+        </div>
+      </div>
 
       {notice ? (
         // One slot, two meanings: sixteen call sites pass readableError() into
@@ -1788,7 +2004,17 @@ export default function BucketsAdminPage() {
           </div>
         }
       >
-        <BucketTable buckets={filteredBuckets} deletingId={deletingId} onSelect={(id) => openBucket(id)} onOpenVendors={openVendorAssignment} onConvertToLead={setConvertLeadBucket} onDelete={deleteBucket} />
+        <BucketTable
+          buckets={filteredBuckets}
+          links={bucketLinks}
+          primaryIntakeByBucket={primaryIntakeByBucket}
+          deletingId={deletingId}
+          onSelect={(id) => openBucket(id)}
+          onOpenVendors={openVendorAssignment}
+          onConvertToLead={setConvertLeadBucket}
+          onLinkIntake={setLinkBucket}
+          onDelete={setDeleteReviewBucket}
+        />
       </Panel>
 
       {convertLeadBucket ? (
@@ -1805,6 +2031,23 @@ export default function BucketsAdminPage() {
       ) : null}
 
       <Drawer
+        open={deleteReviewBucket !== null}
+        onClose={() => setDeleteReviewBucket(null)}
+        width="md"
+        title="Review before running"
+        sub="Delete bucket"
+        closeOnBackdrop={!deletingId}
+        footer={<><Btn onClick={() => setDeleteReviewBucket(null)} disabled={Boolean(deletingId)}>Cancel</Btn><span className="sp" /><Btn onClick={() => deleteReviewBucket && deleteBucket(deleteReviewBucket)} disabled={Boolean(deletingId)} className="danger">{deletingId ? "Deleting..." : "Delete bucket"}</Btn></>}
+      >
+        <div className="grid">
+          <div className="warnline"><b>{deleteReviewBucket?.name}</b> will be removed from the active bucket list.</div>
+          <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
+          <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+          <div className="kv"><span>Reversible</span><b>No</b></div>
+        </div>
+      </Drawer>
+
+      <Drawer
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         width="xl"
@@ -1816,6 +2059,34 @@ export default function BucketsAdminPage() {
         // the whole form — including upload access codes that have already been
         // generated and cannot be re-derived. Close it deliberately.
         closeOnBackdrop={false}
+        bodyStyle={{ minHeight: 0, alignContent: "start" }}
+        footer={
+          createResult ? (
+            <>
+              <span className="sp" />
+              <Btn onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</Btn>
+              <Btn variant="pri" onClick={() => setCreateOpen(false)}>Done</Btn>
+            </>
+          ) : (
+            <>
+              <span className="sp" />
+              <Btn onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</Btn>
+              <Btn variant="pri" style={{ minWidth: 142, justifyContent: "center" }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
+                {busy ? (
+                  <>
+                    <Icon name="refresh" size={14} />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Icon name="plus" size={14} />
+                    Create bucket
+                  </>
+                )}
+              </Btn>
+            </>
+          )
+        }
       >
         {createResult ? (
           <>
@@ -1838,10 +2109,6 @@ export default function BucketsAdminPage() {
                 ))}
               </div>
             </Panel>
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <Btn onClick={() => copyText(createResult.links.map((link) => `${link.name}: ${link.url}\nAccess code: ${link.passcode}`).join("\n\n"))}>Copy all</Btn>
-              <Btn variant="pri" onClick={() => setCreateOpen(false)}>Done</Btn>
-            </div>
           </>
         ) : (
           <>
@@ -2024,32 +2291,26 @@ export default function BucketsAdminPage() {
                 Upload links are created after the bucket is created. Leave this blank if you only want to set up the bucket for now.
               </div>
             </Panel>
-
-            <div className="row" style={{ justifyContent: "flex-end" }}>
-              <Btn onClick={() => setCreateOpen(false)} disabled={busy}>Cancel</Btn>
-              <Btn variant="pri" style={{ minWidth: 142, justifyContent: "center" }} onClick={createBucketWorkflow} disabled={busy || !bucketForm.name.trim()}>
-                {busy ? (
-                  <>
-                    <Icon name="refresh" size={14} />
-                    Creating...
-                  </>
-                ) : (
-                  <>
-                    <Icon name="plus" size={14} />
-                    Create bucket
-                  </>
-                )}
-              </Btn>
-            </div>
           </>
         )}
       </Drawer>
 
-      {detail ? (
+      {detail && !bucketDetailMinimized ? (
         <ModalFrame
-          title={detail.name}
+          title={
+            <span className="bucket-detail-title">
+              <span className="trunc">{detail.name}</span>
+              <IconBtn
+                onClick={() => openBucketEdit(detail)}
+                aria-label="Edit bucket details"
+                title="Rename bucket"
+              >
+                <Icon name="pencil" size={14} />
+              </IconBtn>
+            </span>
+          }
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
-          onClose={() => setDetail(null)}
+          onClose={closeBucketDetail}
           action={
             <div className="row">
               <IconBtn
@@ -2069,6 +2330,15 @@ export default function BucketsAdminPage() {
               >
                 <Icon name="bolt" size={16} />
                 AI Lead
+              </Btn>
+              <Btn
+                size="sm"
+                onClick={() => detail && setLinkBucket(detail)}
+                aria-label="Link bucket to AI intake"
+                title="Link this bucket to an existing AI intake"
+              >
+                <Icon name="link" size={16} />
+                Link intake
               </Btn>
               <div ref={shareMenuRef} className="popwrap">
                 <Btn
@@ -2341,6 +2611,9 @@ export default function BucketsAdminPage() {
                   </div>
                 ) : null}
               </div>
+              <IconBtn aria-label="Minimize bucket workspace" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
+                <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
+              </IconBtn>
             </div>
           }
         >
@@ -2349,12 +2622,111 @@ export default function BucketsAdminPage() {
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
             <div className="grid">
               <Panel
-                title="Upload on behalf"
+                title="Uploaded documents"
                 actions={
+                  <div className="row bucket-file-panel-actions">
+                    <span className="tag">{filteredBucketFiles.length} of {visibleFiles.length} shown</span>
+                    <Select
+                      value={bucketFileSort}
+                      onChange={(event) => setBucketFileSort(event.target.value as BucketFileSort)}
+                      aria-label="Sort uploaded documents by upload time"
+                    >
+                      <option value="newest">Newest upload first</option>
+                      <option value="oldest">Oldest upload first</option>
+                    </Select>
+                    <Btn
+                      size="sm"
+                      onClick={() => {
+                        setBucketSectionsOpen((current) => ({ ...current, upload: true }));
+                        window.setTimeout(() => adminFileInputRef.current?.click(), 0);
+                      }}
+                    >
+                      <Icon name="upload" size={13} />
+                      Add files
+                    </Btn>
+                  </div>
+                }
+              >
+                <div className="bucket-file-toolbar">
+                  <div className="fieldwrap">
+                    <Icon name="search" size={14} />
+                    <Input
+                      value={bucketFileQuery}
+                      onChange={(event) => setBucketFileQuery(event.target.value)}
+                      placeholder="Search files, uploader, task..."
+                      aria-label="Search bucket files"
+                    />
+                  </div>
+                  <Select value={bucketFileKind} onChange={(event) => setBucketFileKind(event.target.value as BucketFileKind)} aria-label="Filter file type">
+                    <option value="all">All types</option>
+                    <option value="pdf">PDF</option>
+                    <option value="image">Images</option>
+                    <option value="spreadsheet">Spreadsheets</option>
+                    <option value="document">Documents</option>
+                    <option value="other">Other</option>
+                  </Select>
+                  <Select value={bucketFileAssignment} onChange={(event) => setBucketFileAssignment(event.target.value as BucketFileAssignment)} aria-label="Filter file assignment">
+                    <option value="all">All assignments</option>
+                    <option value="requested">Requested tasks</option>
+                    <option value="general">General uploads</option>
+                  </Select>
+                  <Select value={bucketFileStatus} onChange={(event) => setBucketFileStatus(event.target.value)} aria-label="Filter file status">
+                    <option value="all">All statuses</option>
+                    {bucketFileStatusOptions.map((status) => (
+                      <option key={status} value={status}>{statusLabel(status)}</option>
+                    ))}
+                  </Select>
+                </div>
+                <div className="bucket-file-list">
+                  {visibleFiles.length === 0 ? (
+                    <EmptyInline icon="file" title="No files uploaded yet" body="Upload files or send an invite; documents will appear here first." />
+                  ) : filteredBucketFiles.length === 0 ? (
+                    <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more bucket files." />
+                  ) : filteredBucketFiles.map((file) => (
+                    <div key={file.id} className="itemrow bucket-file-row">
+                      <label className="row grow" style={{ cursor: "pointer" }}>
+                        <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
+                        <span className="grow">
+                          <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
+                          <span className="sub">
+                            {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | Uploaded {formatDateTime(file.created_at)}
+                          </span>
+                        </span>
+                      </label>
+                      <CellChip tone={file.requested_document_id ? "acc" : "mut"}>{file.requested_document_id ? "task" : "general"}</CellChip>
+                      <div className="row">
+                        <Btn size="sm" onClick={() => openFile(file, false)}>
+                          <Icon name="eye" size={13} />
+                          Preview
+                        </Btn>
+                        <Btn size="sm" onClick={() => openFile(file, true)}>
+                          <Icon name="download" size={13} />
+                          Download
+                        </Btn>
+                        <Btn
+                          size="sm"
+                          className="danger"
+                          onClick={() => deleteFile(file).catch(() => undefined)}
+                          disabled={deletingFileId === file.id}
+                        >
+                          <Icon name="x" size={13} />
+                          {deletingFileId === file.id ? "Deleting..." : "Delete"}
+                        </Btn>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </Panel>
+
+              <Panel
+                className={cx(!bucketSectionsOpen.upload && "bucket-panel-collapsed")}
+                title="Upload on behalf"
+                actions={bucketSectionActions(
+                  "upload",
                   <span className="tag">
                     {adminUploadFiles.length} queued{adminUploadDraftStatus ? ` | ${adminUploadDraftStatus === "saving" ? "saving" : "saved"}` : ""}
-                  </span>
-                }
+                  </span>,
+                )}
               >
                 <input ref={adminFileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addAdminUploadFiles(event.target.files)} />
                 <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
@@ -2449,48 +2821,11 @@ export default function BucketsAdminPage() {
                 </div>
               </Panel>
 
-              <Panel title="Files" actions={<span className="tag">{visibleFiles.length} uploaded</span>}>
-                {visibleFiles.length === 0 ? (
-                  <EmptyInline icon="file" title="No files uploaded yet" body="Files uploaded through request links will appear here." />
-                ) : (
-                  <div className="grid g8">
-                    {visibleFiles.map((file) => (
-                      <div key={file.id} className="itemrow">
-                        <label className="row grow" style={{ cursor: "pointer" }}>
-                          <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
-                          <span className="grow">
-                            <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
-                            <span className="sub">
-                              {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}
-                            </span>
-                          </span>
-                        </label>
-                        <div className="row">
-                          <Btn size="sm" onClick={() => openFile(file, false)}>
-                            <Icon name="eye" size={13} />
-                            Preview
-                          </Btn>
-                          <Btn size="sm" onClick={() => openFile(file, true)}>
-                            <Icon name="download" size={13} />
-                            Download
-                          </Btn>
-                          <Btn
-                            size="sm"
-                            className="danger"
-                            onClick={() => deleteFile(file).catch(() => undefined)}
-                            disabled={deletingFileId === file.id}
-                          >
-                            <Icon name="x" size={13} />
-                            {deletingFileId === file.id ? "Deleting..." : "Delete"}
-                          </Btn>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </Panel>
-
-              <Panel title="Tasks" actions={<span className="tag">{detail.requested_documents.length} items</span>}>
+              <Panel
+                className={cx(!bucketSectionsOpen.tasks && "bucket-panel-collapsed")}
+                title="Tasks"
+                actions={bucketSectionActions("tasks", <span className="tag">{detail.requested_documents.length} items</span>)}
+              >
                 <div className="grid g8">
                   {detail.requested_documents.length === 0 ? (
                     <EmptyInline icon="docCheck" title="No requested-file tasks" body="Tasks are created from requested documents." />
@@ -2513,7 +2848,11 @@ export default function BucketsAdminPage() {
             </div>
 
             <div className="grid">
-              <Panel title="Notes">
+              <Panel
+                className={cx(!bucketSectionsOpen.notes && "bucket-panel-collapsed")}
+                title="Notes"
+                actions={bucketSectionActions("notes", <span className="tag">{detail.notes.length} notes</span>)}
+              >
                 <div className="thr">
                   {detail.notes.length === 0 ? (
                     <div className="thr-empty">No notes yet.</div>
@@ -2539,8 +2878,9 @@ export default function BucketsAdminPage() {
               </Panel>
 
               <Panel
+                className={cx(!bucketSectionsOpen.invites && "bucket-panel-collapsed")}
                 title="Client Upload Invites"
-                actions={<span className="tag">{detail.upload_links?.length ?? 0} invites</span>}
+                actions={bucketSectionActions("invites", <span className="tag">{detail.upload_links?.length ?? 0} invites</span>)}
                 bodyClass="grid g8"
               >
                 <div className="sub">For clients or upload parties to add documents. Uses an upload link and access code.</div>
@@ -2623,8 +2963,9 @@ export default function BucketsAdminPage() {
                 }}
               >
                 <Panel
+                  className={cx(!bucketSectionsOpen.vendors && "bucket-panel-collapsed")}
                   title="Vendor Accounts"
-                  actions={<span className="tag">{detail.vendor_access?.length ?? 0} vendors</span>}
+                  actions={bucketSectionActions("vendors", <span className="tag">{detail.vendor_access?.length ?? 0} vendors</span>)}
                   bodyClass="grid g8"
                 >
                   <div className="sub">For recurring vendors who log in and see assigned buckets. This is not the bank share link workflow.</div>
@@ -2832,8 +3173,9 @@ export default function BucketsAdminPage() {
               </div>
 
               <Panel
+                className={cx(!bucketSectionsOpen.shares && "bucket-panel-collapsed")}
                 title="Share Links - No Login"
-                actions={<span className="tag">{detail.shares.length} links</span>}
+                actions={bucketSectionActions("shares", <span className="tag">{detail.shares.length} links</span>)}
                 bodyClass="grid g8"
               >
                 <div className="sub">For banks, lenders, and one-time third parties. Send the secure link plus access code.</div>
@@ -2936,7 +3278,12 @@ export default function BucketsAdminPage() {
                 })}
               </Panel>
 
-              <Panel title="Activity" actions={<span className="tag">{activityTotal} total</span>} bodyClass="grid g8">
+              <Panel
+                className={cx(!bucketSectionsOpen.activity && "bucket-panel-collapsed")}
+                title="Activity"
+                actions={bucketSectionActions("activity", <span className="tag">{activityTotal} total</span>)}
+                bodyClass="grid g8"
+              >
                 <Input
                   value={activityFilters.q}
                   onChange={(event) => updateActivityFilters({ q: event.target.value })}
@@ -3050,14 +3397,151 @@ export default function BucketsAdminPage() {
           </div>
         </ModalFrame>
       ) : null}
+      {detail ? (
+        <Drawer
+          open={editBucketOpen}
+          onClose={() => {
+            if (editBucketSaving) return;
+            setEditBucketOpen(false);
+            setEditBucketError(null);
+          }}
+          title="Edit bucket details"
+          sub="Rename the evidence room without changing the linked AI intake or source file."
+          width="md"
+          closeOnBackdrop={!editBucketSaving}
+          footer={(
+            <>
+              <Btn
+                onClick={() => {
+                  setEditBucketOpen(false);
+                  setEditBucketError(null);
+                }}
+                disabled={editBucketSaving}
+              >
+                Cancel
+              </Btn>
+              <span className="sp" />
+              <Btn variant="pri" onClick={() => saveBucketEdit().catch((error) => setEditBucketError(readableError(error)))} disabled={editBucketSaving}>
+                {editBucketSaving ? "Saving..." : "Save bucket"}
+              </Btn>
+            </>
+          )}
+        >
+          <div className="grid g12">
+            {editBucketError ? <div className="warnline">{editBucketError}</div> : null}
+            <Field label="Bucket name" req>
+              <Input
+                value={editBucketForm.name}
+                onChange={(event) => setEditBucketForm((form) => ({ ...form, name: event.target.value }))}
+                placeholder="Bucket name"
+                autoFocus
+              />
+            </Field>
+            <div className="fldgrid two">
+              <Field label="Client / borrower label">
+                <Input
+                  value={editBucketForm.client_name}
+                  onChange={(event) => setEditBucketForm((form) => ({ ...form, client_name: event.target.value }))}
+                  placeholder="Client or borrower"
+                />
+              </Field>
+              <Field label="Bucket type">
+                <Input
+                  value={editBucketForm.bucket_type}
+                  onChange={(event) => setEditBucketForm((form) => ({ ...form, bucket_type: event.target.value }))}
+                  placeholder="Loan File"
+                />
+              </Field>
+            </div>
+            <Field label="Purpose">
+              <Input
+                value={editBucketForm.purpose}
+                onChange={(event) => setEditBucketForm((form) => ({ ...form, purpose: event.target.value }))}
+                placeholder="Evidence, underwriting, bank package..."
+              />
+            </Field>
+            <Field label="Description">
+              <Textarea
+                rows={4}
+                value={editBucketForm.description}
+                onChange={(event) => setEditBucketForm((form) => ({ ...form, description: event.target.value }))}
+                placeholder="Internal context for this bucket"
+              />
+            </Field>
+          </div>
+        </Drawer>
+      ) : null}
+      {detail && bucketDetailMinimized ? (
+        <div className={cx("workspace-minimized-dock", reviewFile && reviewMinimized && "workspace-minimized-dock--raised")} role="status" aria-live="polite">
+          <button type="button" className="workspace-minimized-summary" onClick={() => setBucketDetailMinimized(false)}>
+            <span className="workspace-minimized-mark">-</span>
+            <span>
+              <b>{detail.name}</b>
+              <small>{detail.client_name ? `${detail.client_name} bucket workspace paused` : "Bucket workspace paused where you left off"}</small>
+            </span>
+          </button>
+          <Btn size="sm" variant="pri" onClick={() => setBucketDetailMinimized(false)}>Resume</Btn>
+          <IconBtn aria-label="Close minimized bucket workspace" title="Close" onClick={closeBucketDetail}>
+            <Icon name="x" size={14} />
+          </IconBtn>
+        </div>
+      ) : null}
+      <BucketIntakeLinkDrawer
+        open={linkBucket !== null}
+        onClose={() => setLinkBucket(null)}
+        initialBucketId={linkBucket?.id}
+        initialIntakeId={linkBucket ? primaryIntakeByBucket.get(linkBucket.id) : undefined}
+        title="Link bucket to AI intake"
+      />
       {reviewFile ? (
         <BucketFileReviewPanel
           title="Admin file review"
+          minimized={reviewMinimized}
+          onMinimize={() => setReviewMinimized(true)}
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
-          onDelete={() => deleteFile(reviewFile).catch(() => undefined)}
-          onClose={() => setReviewFile(null)}
+          onDelete={() => {
+            const file = reviewFile;
+            setReviewMinimized(false);
+            setReviewFile(null);
+            deleteFile(file).catch(() => undefined);
+          }}
+          onClose={() => {
+            setReviewMinimized(false);
+            setReviewFile(null);
+          }}
+          files={visibleFiles}
+          activeFileId={reviewFile.id}
+          onSelectFile={(fileId) => {
+            const next = visibleFiles.find((file) => file.id === fileId);
+            if (next) {
+              setReviewMinimized(false);
+              setReviewFile(next);
+            }
+          }}
         />
+      ) : null}
+      {reviewFile && reviewMinimized ? (
+        <div className="workspace-minimized-dock" role="status" aria-live="polite">
+          <button type="button" className="workspace-minimized-summary" onClick={() => setReviewMinimized(false)}>
+            <span className="workspace-minimized-mark">-</span>
+            <span>
+              <b>{reviewFile.file_name}</b>
+              <small>{detail?.name ? `${detail.name} bucket review paused` : "Bucket review paused"}</small>
+            </span>
+          </button>
+          <Btn size="sm" variant="pri" onClick={() => setReviewMinimized(false)}>Resume</Btn>
+          <IconBtn
+            aria-label="Close minimized bucket review"
+            title="Close"
+            onClick={() => {
+              setReviewMinimized(false);
+              setReviewFile(null);
+            }}
+          >
+            <Icon name="x" size={14} />
+          </IconBtn>
+        </div>
       ) : null}
       <EmailComposer
         open={emailShare !== null}
@@ -3389,121 +3873,61 @@ function ConvertToLeadModal({
 
 function BucketTable({
   buckets,
+  links,
+  primaryIntakeByBucket,
   deletingId,
   onSelect,
   onOpenVendors,
   onConvertToLead,
+  onLinkIntake,
   onDelete,
 }: {
   buckets: Bucket[];
+  links: BucketIntakeLinkRead[];
+  primaryIntakeByBucket: Map<string, string>;
   deletingId: string | null;
   onSelect: (id: string) => void;
   onOpenVendors: (id: string) => void;
   onConvertToLead: (bucket: Bucket) => void;
+  onLinkIntake: (bucket: Bucket) => void;
   onDelete: (bucket: Bucket) => void;
 }) {
   if (buckets.length === 0) {
     return <div className="sub" style={{ padding: 18 }}>No buckets yet. Use Create bucket to start.</div>;
   }
-  // A bespoke nine-column track, not `.cg`: these are list columns sized to
-  // their contents (a 70px file count, a 44px delete), not spans of the
-  // twelve-column page grid.
-  const columns = "minmax(220px, 1.35fr) minmax(130px, .75fr) minmax(150px, .72fr) 70px minmax(150px, .65fr) 112px 130px 84px 44px";
   return (
-    <div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: columns,
-          gap: 12,
-          padding: "10px 14px",
-          background: "var(--sunken2)",
-          borderBottom: "1px solid var(--line2)",
-        }}
-      >
-        <div className="lbl">Bucket</div>
-        <div className="lbl">Client</div>
-        <div className="lbl">Type</div>
-        <div className="lbl">Files</div>
-        <div className="lbl">Status</div>
-        <div className="lbl">Access</div>
-        <div />
-        <div className="lbl">Updated</div>
-        <div />
-      </div>
-      {buckets.map((bucket) => (
-        // Stays a role="button" div rather than a <tr>: a table row is neither
-        // focusable nor Enter-activatable, and this row IS the way into a
-        // bucket. Converting it would cost keyboard access outright.
-        <div
-          key={bucket.id}
-          role="button"
-          tabIndex={0}
-          onClick={() => onSelect(bucket.id)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") {
-              event.preventDefault();
-              onSelect(bucket.id);
-            }
-          }}
-          style={{
-            display: "grid",
-            gridTemplateColumns: columns,
-            gap: 12,
-            alignItems: "center",
-            padding: "13px 14px",
-            borderBottom: "1px solid var(--line)",
-            background: "var(--surface)",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            <div className="trunc" style={{ fontWeight: 650 }}>{bucket.name}</div>
-            <div className="sub trunc">{bucket.purpose || "No purpose"}</div>
-          </div>
-          <div className="trunc">{bucket.client_name || "No client"}</div>
-          <div className="trunc">{bucket.bucket_type || "Bucket"}</div>
-          <div className="num">{bucket.uploaded_file_count ?? 0}</div>
-          <div style={{ minWidth: 0 }}><CellChip>{statusLabel(bucket.status)}</CellChip></div>
-          <Btn
-            size="sm"
-            style={{ justifySelf: "start" }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onOpenVendors(bucket.id);
-            }}
-            title="Open vendor access settings for this bucket"
-          >
-            <Icon name="user" size={13} />
-            Vendors
-          </Btn>
-          <Btn
-            size="sm"
-            style={{ justifySelf: "start" }}
-            onClick={(event) => {
-              event.stopPropagation();
-              onConvertToLead(bucket);
-            }}
-            title="Convert this bucket into an AI Underwriter Lead"
-          >
-            <Icon name="spark" size={13} />
-            AI Lead
-          </Btn>
-          <div className="sub">{formatDate(bucket.updated_at)}</div>
-          <IconBtn
-            className="danger"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete(bucket);
-            }}
-            disabled={deletingId === bucket.id}
-            aria-label={`Delete ${bucket.name}`}
-            title="Delete bucket"
-          >
-            <Icon name="x" size={14} />
-          </IconBtn>
-        </div>
-      ))}
+    <div className="tblwrap">
+      <table className="tbl">
+        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Linked AI intake</th><th>Updated</th><th className="r">Actions</th></tr></thead>
+        <tbody>
+          {buckets.map((bucket) => {
+            const link = links.find((item) => item.bucket_id === bucket.id && item.status === "active");
+            const primaryIntakeId = primaryIntakeByBucket.get(bucket.id);
+            return (
+              <tr key={bucket.id} onClick={() => onSelect(bucket.id)}>
+                <td><button type="button" className="linky" onClick={() => onSelect(bucket.id)}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}</div></td>
+                <td>{bucket.client_name || <span className="sub">No client</span>}</td>
+                <td className="num">{bucket.file_count ?? 0} / {bucket.uploaded_file_count ?? 0}</td>
+                <td className="num">{bucket.vendor_access_count ?? 0}</td>
+                <td><CellChip tone={bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{statusLabel(bucket.status)}</CellChip></td>
+                <td>{link || primaryIntakeId ? <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>{(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button> : <Btn size="sm" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>Link</Btn>}</td>
+                <td className="sub">{formatDate(bucket.updated_at)}</td>
+                <td className="r">
+                  <span onClick={(event) => event.stopPropagation()}>
+                    <PageActionMenu label={`Actions for ${bucket.name}`} items={[
+                      { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
+                      { label: "Vendor access", onSelect: () => onOpenVendors(bucket.id) },
+                      { label: link || primaryIntakeId ? "Manage AI intake link" : "Link AI intake", onSelect: () => onLinkIntake(bucket) },
+                      { label: "Create AI intake", onSelect: () => onConvertToLead(bucket) },
+                      { label: deletingId === bucket.id ? "Deleting..." : "Delete bucket", onSelect: () => onDelete(bucket), tone: "danger" },
+                    ]} />
+                  </span>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
@@ -3524,43 +3948,16 @@ function ModalFrame({
   children,
   onClose,
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   onClose: () => void;
 }) {
-  const sidebarCollapsed = useUI((s) => s.sidebarCollapsed);
-  // Data-derived geometry: the overlay begins where the app sidebar ends, and
-  // the sidebar's width is state rather than a constant.
-  const sidebarOffset = sidebarCollapsed ? 68 : 232;
   return (
-    // zIndex 59 sits one under `.drawer-scrim` (60) ON PURPOSE. A ds Drawer
-    // opened from inside this surface — the AI-lead link in the header — is at
-    // 61, so it lands on top. At the old 200 it was buried behind this scrim
-    // and appeared not to open at all.
-    <div className="drawer-scrim" style={{ left: sidebarOffset, zIndex: 59, display: "flex" }}>
-      {/* `.panel` owns the surface, the hairline and the elevation. The four
-          zeroes squared off against the viewport edges are the one thing a
-          full-bleed frame has to take back from it. */}
-      <div
-        className="panel"
-        style={{ flex: 1, minWidth: 0, borderRadius: 0, borderTop: 0, borderRight: 0, borderBottom: 0 }}
-      >
-        <div className="panel-h">
-          <div style={{ minWidth: 0 }}>
-            <h2 className="trunc frame-t">{title}</h2>
-            {subtitle ? <div className="sub trunc">{subtitle}</div> : null}
-          </div>
-          <span className="sp" />
-          {action}
-          <IconBtn onClick={onClose} aria-label="Close">
-            <Icon name="x" size={16} />
-          </IconBtn>
-        </div>
-        <div className="panel-b" style={{ overflowY: "auto" }}>{children}</div>
-      </div>
-    </div>
+    <Drawer open onClose={onClose} width="xl" fullscreen title={title} sub={subtitle} headerActions={action} bodyClass="grid">
+      {children}
+    </Drawer>
   );
 }
 
@@ -3647,8 +4044,22 @@ function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
-    })
-    .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+    });
+}
+
+function uploadTimestamp(file: BucketFile): number {
+  const parsed = new Date(file.created_at).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function bucketFileKindOf(file: BucketFile): Exclude<BucketFileKind, "all"> {
+  const contentType = file.content_type.toLowerCase();
+  const name = file.file_name.toLowerCase();
+  if (contentType.includes("pdf") || name.endsWith(".pdf")) return "pdf";
+  if (contentType.startsWith("image/") || /\.(png|jpe?g|gif|webp|heic)$/i.test(name)) return "image";
+  if (contentType.includes("spreadsheet") || contentType.includes("excel") || contentType.includes("csv") || /\.(csv|xlsx?|xlsm)$/i.test(name)) return "spreadsheet";
+  if (contentType.includes("word") || contentType.includes("document") || /\.(docx?|rtf|txt)$/i.test(name)) return "document";
+  return "other";
 }
 
 function localFileKey(file: File): string {

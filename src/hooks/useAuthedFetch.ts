@@ -1,8 +1,8 @@
 "use client";
 
-import { useAuth } from "@clerk/nextjs";
 import { useCallback } from "react";
 import { api, type ApiOptions } from "@/lib/api";
+import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { useActiveProfile } from "@/store/role";
 
 /**
@@ -13,8 +13,8 @@ import { useActiveProfile } from "@/store/role";
  * user when CLERK_SECRET_KEY is unset.
  */
 export function useAuthedFetch() {
-  const { getToken, isSignedIn } = useAuth();
-  const devUser = useActiveProfile().email;
+  const { getToken, isSignedIn } = useConsoleAuth();
+  const devUser = visualQaUser(useActiveProfile().email);
 
   return useCallback(
     async <T>(path: string, opts: Omit<ApiOptions, "authToken" | "devUser"> = {}): Promise<T> => {

@@ -9,7 +9,7 @@
 
 import { V } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
-import { ModalCloseButton } from "@/components/design-system/ModalCloseButton";
+import { Drawer } from "@/components/ds/Drawer";
 import type { Document } from "@/lib/types";
 
 export interface BlockerWarning {
@@ -39,43 +39,14 @@ export function FileBlockersPopup({
 }: FileBlockersPopupProps) {
   const total = warnings.length + missingCriteria.length + flaggedDocs.length + (openDocs.length > 0 ? 1 : 0);
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      onClick={onClose}
-      style={{
-        position: "fixed", inset: 0, zIndex: 100,
-        background: "rgba(0,0,0,0.55)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        padding: 20,
-      }}
+    <Drawer
+      open
+      onClose={onClose}
+      width="md"
+      title="File blockers"
+      sub={total === 0 ? "Nothing to fix - this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
+      bodyClass="grid g8"
     >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          background: V.surface, color: V.ink,
-          border: `1px solid ${V.line}`, borderRadius: 14,
-          boxShadow: "0 16px 40px rgba(0,0,0,0.45)",
-          width: "min(640px, 100%)", maxHeight: "85vh", overflow: "hidden",
-          display: "flex", flexDirection: "column",
-        }}
-      >
-        <div style={{
-          padding: "14px 16px",
-          borderBottom: `1px solid ${V.line}`,
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
-          <div>
-            <div style={{ fontSize: 10.5, fontWeight: 900, color: V.ink3, letterSpacing: 1.3, textTransform: "uppercase" }}>
-              File Blockers
-            </div>
-            <div style={{ marginTop: 2, fontSize: 16, fontWeight: 900, color: V.ink }}>
-              {total === 0 ? "Nothing to fix — this file is clear" : `${total} item${total === 1 ? "" : "s"} need attention`}
-            </div>
-          </div>
-          <ModalCloseButton onClick={onClose} />
-        </div>
-        <div style={{ padding: 14, overflow: "auto", display: "flex", flexDirection: "column", gap: 8 }}>
           {warnings.map((warning) => (
             <Row key={`${warning.code}-${warning.message}`} tone="watch" icon="alert" title={warning.message} meta={warning.code.replace(/_/g, " ")} onClick={() => { onClose(); onOpenTab?.("file"); }} />
           ))}
@@ -91,9 +62,7 @@ export function FileBlockersPopup({
           {total === 0 ? (
             <Row tone="ready" icon="check" title="No calculation warnings or flagged documents" meta="Ready for internal review" />
           ) : null}
-        </div>
-      </div>
-    </div>
+    </Drawer>
   );
 }
 

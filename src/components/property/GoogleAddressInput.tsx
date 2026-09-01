@@ -30,12 +30,16 @@ function hasSplitAddress(parts: AddressParts | null | undefined) {
 function normalize(parts: AddressParts | null | undefined): AddressParts {
   return {
     street: clean(parts?.street) || null,
+    line2: clean(parts?.line2) || null,
     city: clean(parts?.city) || null,
     state: clean(parts?.state) || null,
     zip: clean(parts?.zip) || null,
+    country_code: clean(parts?.country_code) || "US",
     full: clean(parts?.full) || null,
     latitude: parts?.latitude ?? null,
     longitude: parts?.longitude ?? null,
+    provider: parts?.provider ?? null,
+    provider_place: parts?.provider_place ?? null,
   };
 }
 
@@ -48,64 +52,80 @@ function useDebouncedValue(value: string, ms = 250) {
   return debounced;
 }
 
-export function GoogleAddressInput({
+export function AddressInput({
   value,
   onChange,
   onResolved,
   label = "Property address",
-  helperText = "Start typing to search Google. If the property does not appear, enter the split address manually.",
+  helperText = "Start typing to search verified address data. If the property does not appear, enter the split address manually.",
   disabled = false,
   showZip = true,
+  publicAccess = false,
 }: {
   value: AddressParts | null;
   onChange: (next: AddressParts) => void;
-  onResolved?: (next: AddressParts, googlePlace: Record<string, unknown> | null) => void;
+  onResolved?: (next: AddressParts, providerPlace: Record<string, unknown> | null) => void;
   label?: string;
   helperText?: string;
   disabled?: boolean;
   showZip?: boolean;
+  publicAccess?: boolean;
 }) {
   const [query, setQuery] = useState(() => formatAddressParts(value));
+  const [localValue, setLocalValue] = useState<AddressParts>(() => normalize(value));
   const [manualOpen, setManualOpen] = useState(() => hasSplitAddress(value));
   const [menuOpen, setMenuOpen] = useState(false);
   const [sessionToken, setSessionToken] = useState(makeSessionToken);
   const debouncedQuery = useDebouncedValue(query);
-  const suggestions = useAddressAutocomplete(debouncedQuery, sessionToken);
-  const resolveAddress = useResolveAddress();
+  const suggestions = useAddressAutocomplete(debouncedQuery, sessionToken, publicAccess);
+  const resolveAddress = useResolveAddress(publicAccess);
 
-  const formattedValue = useMemo(() => formatAddressParts(value), [value?.street, value?.city, value?.state, value?.zip, value?.full]);
+  const formattedValue = useMemo(() => formatAddressParts(value), [value]);
+  const localFormattedValue = formatAddressParts(localValue);
 
   useEffect(() => {
-    if (!formattedValue || formattedValue === query) return;
+    if (formattedValue === localFormattedValue) return;
+    setLocalValue(normalize(value));
     setQuery(formattedValue);
-  }, [formattedValue]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [formattedValue, localFormattedValue, value]);
 
   const updatePart = (key: keyof Pick<AddressParts, "street" | "city" | "state" | "zip">, raw: string) => {
     const next = normalize({
-      ...value,
+      ...localValue,
       [key]: raw,
       full: null,
       latitude: null,
       longitude: null,
+      provider: "manual",
+      provider_place: null,
     });
+    setLocalValue(next);
     onChange(next);
     setQuery(formatAddressParts(next));
   };
 
   const openManual = () => {
-    const next = normalize(value);
+    const next = normalize(localValue);
     if (!next.street && query.trim()) next.street = query.trim();
+    setLocalValue(next);
     onChange(next);
     setManualOpen(true);
     setMenuOpen(false);
   };
 
   const selectSuggestion = async (placeId: string, fallbackText: string) => {
-    const resolved = await resolveAddress.mutateAsync({ place_id: placeId, session_token: sessionToken });
+    const resolved = await resolveAddress.mutateAsync({ place_id: placeId, address: fallbackText, session_token: sessionToken });
     const next = normalize(resolved.address);
     const formatted = formatAddressParts(next, fallbackText);
-    onChange({ ...next, full: next.full || formatted });
-    onResolved?.({ ...next, full: next.full || formatted }, resolved.google_place);
+    const resolvedNext = {
+      ...next,
+      full: next.full || formatted,
+      provider: resolved.provider,
+      provider_place: resolved.provider_place,
+    };
+    setLocalValue(resolvedNext);
+    onChange(resolvedNext);
+    onResolved?.(resolvedNext, resolved.provider_place);
     setQuery(formatted);
     setManualOpen(true);
     setMenuOpen(false);
@@ -124,7 +144,7 @@ export function GoogleAddressInput({
     !suggestions.isFetching &&
     !suggestions.data?.length;
 
-  const resolvedByGoogle = Boolean(value?.latitude && value?.longitude);
+  const resolvedByProvider = Boolean(localValue.latitude && localValue.longitude);
 
   return (
     <div className="grid g8">
@@ -180,19 +200,19 @@ export function GoogleAddressInput({
             <div className="popmenu" style={{ left: 0 }}>
               <button type="button" className="mi" onMouseDown={(e) => e.preventDefault()} onClick={openManual}>
                 <b>Enter address manually</b>
-                <small>No Google match. Use manual entry for this property.</small>
+                <small>No address match. Use manual entry for this property.</small>
               </button>
             </div>
           ) : null}
         </div>
       </label>
       <div className="row">
-        <CellChip tone={resolvedByGoogle ? "ok" : "mut"}>
-          {resolvedByGoogle
-            ? "Google address resolved"
-            : hasSplitAddress(value)
-              ? "Manual address"
-              : "Search Google or enter manually"}
+        <CellChip tone={resolvedByProvider ? "ok" : "mut"}>
+          {resolvedByProvider
+            ? "Address resolved"
+            : hasSplitAddress(localValue)
+              ? "Manual · Unverified"
+              : "Search or enter manually"}
         </CellChip>
         {!manualOpen ? <Linky onClick={openManual}>Manual entry</Linky> : null}
       </div>
@@ -203,15 +223,15 @@ export function GoogleAddressInput({
         <div className={cx("fldgrid", showZip ? "four" : "three")}>
           <label className="grid g4">
             <span className="lbl">Street</span>
-            <Input value={value?.street ?? ""} onChange={(e) => updatePart("street", e.target.value)} />
+            <Input value={localValue.street ?? ""} onChange={(e) => updatePart("street", e.target.value)} />
           </label>
           <label className="grid g4">
             <span className="lbl">City</span>
-            <Input value={value?.city ?? ""} onChange={(e) => updatePart("city", e.target.value)} />
+            <Input value={localValue.city ?? ""} onChange={(e) => updatePart("city", e.target.value)} />
           </label>
           <label className="grid g4">
             <span className="lbl">State</span>
-            <Select value={value?.state ?? ""} onChange={(e) => updatePart("state", e.target.value)}>
+            <Select value={localValue.state ?? ""} onChange={(e) => updatePart("state", e.target.value)}>
               <option value="">State</option>
               {US_STATES.map((s) => <option key={s.code} value={s.code}>{s.code}</option>)}
             </Select>
@@ -219,7 +239,7 @@ export function GoogleAddressInput({
           {showZip ? (
             <label className="grid g4">
               <span className="lbl">ZIP</span>
-              <Input value={value?.zip ?? ""} onChange={(e) => updatePart("zip", e.target.value)} inputMode="numeric" />
+              <Input value={localValue.zip ?? ""} onChange={(e) => updatePart("zip", e.target.value)} inputMode="numeric" />
             </label>
           ) : null}
         </div>
@@ -227,3 +247,6 @@ export function GoogleAddressInput({
     </div>
   );
 }
+
+// Compatibility export while route modules migrate to the provider-neutral name.
+export const GoogleAddressInput = AddressInput;

@@ -2,10 +2,19 @@
 
 import { useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useAuth } from "@clerk/nextjs";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
+import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { useActiveProfile } from "@/store/role";
-import type { NotificationList, User , LeadDscrPotentialResponse, WhatsNewResponse } from "@/lib/types";
+import type {
+  AccessMutationResult,
+  ClientAccessDetail,
+  ClientAccessDirectoryResponse,
+  NotificationList,
+  ProductAccountType,
+  User,
+  LeadDscrPotentialResponse,
+  WhatsNewResponse,
+} from "@/lib/types";
 import type {
   Activity,
   AIChatRequest,
@@ -79,6 +88,8 @@ import type {
   DashboardReport,
   Document,
   DocumentUploadInitResponse,
+  VaultDocumentPage,
+  VaultLoanPage,
   EmailDraft,
   EmailDraftDecisionRequest,
   FredRefreshResult,
@@ -147,9 +158,24 @@ import type {
 } from "@/lib/types";
 import type { CalendarEventKind, AITaskPriority, MessageFrom, LoanType, LoanPurpose, PropertyType, Role, DealChatMode, DealChatRole, FeedbackOutputType, FeedbackRating, AmortizationStyle } from "@/lib/enums.generated";
 import type { ClosingCostTier } from "@/lib/fixFlip/types";
+import type {
+  BucketIntakeLinkPayload,
+  BucketIntakeLinkOptions,
+  BucketIntakeLinkRead,
+  BucketIntakeLinkResult,
+  OperatorBucketFile,
+  PipelineMoveRequest,
+  PipelineMoveResult,
+  UnifiedActionDefinition,
+  UnifiedFileDetail,
+  UnifiedFilePage,
+  UnifiedOrigin,
+  UnifiedSourceKind,
+  UnifiedVertical,
+} from "@/lib/unifiedOperator";
 
 export function useDevUser(): string {
-  return useActiveProfile().email;
+  return visualQaUser(useActiveProfile().email);
 }
 
 /**
@@ -185,13 +211,12 @@ export function isAINotDeployed(err: unknown): boolean {
  * backend isn't deployed yet.
  */
 function aiQueryRetry(failureCount: number, err: unknown): boolean {
-  if (err instanceof ApiError && err.status === 404) return false;
-  if (err instanceof ApiError && err.status === 403) return false;
+  if (err instanceof ApiError && err.status >= 400 && err.status < 500 && ![408, 429].includes(err.status)) return false;
   return failureCount < 1;
 }
 
 export function useAuthedApi() {
-  const { getToken, isLoaded, isSignedIn } = useAuth();
+  const { getToken, isLoaded, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
 
   // Live mirror of Clerk's auth state. The api callback closes over a
@@ -248,7 +273,7 @@ export function useAuthedApi() {
 export function useCurrentUser() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useConsoleAuth();
   return useQuery({
     queryKey: ["auth-me", isSignedIn],
     queryFn: () => apiCall<User>("/auth/me"),
@@ -289,7 +314,7 @@ export type DealerChannelInbox = { items: DealerChannelInboxItem[]; total_unread
 // internal team's view across all leads (/admin). Same shape both sides.
 export function useDealerChannelInbox(enabled = true, scope: "broker" | "admin" = "broker") {
   const apiCall = useAuthedApi();
-  const { isLoaded, isSignedIn } = useAuth();
+  const { isLoaded, isSignedIn } = useConsoleAuth();
   const path = scope === "admin"
     ? "/admin/ai-underwriter-leads/messages"
     : "/broker/ai-underwriter-leads/messages";
@@ -1188,12 +1213,20 @@ export function useUsers() {
   });
 }
 
+export function useSignedReferralCompanies() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["signed-referral-companies"],
+    queryFn: () => apiCall<import("@/lib/types").SignedReferralCompany[]>("/users/referral-companies/signed"),
+  });
+}
+
 export function useInviteUser() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string }) =>
+    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string; referral_partner_company_id?: string; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
       apiCall<UserRow>("/users", {
         method: "POST",
         body: JSON.stringify(body),
@@ -1207,7 +1240,7 @@ export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; company_name?: string }) =>
+    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; company_name?: string; referral_partner_company_id?: string | null; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
       apiCall<UserRow>(`/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(patch),
@@ -2160,7 +2193,7 @@ export function useUpdateLoan() {
 // fetch (not the JSON-typed api helper) so we get the binary blob,
 // then turns it into a Blob URL the caller can open / save.
 export function useDownloadTermSheet() {
-  const { getToken, isSignedIn } = useAuth();
+  const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
   return useMutation({
     mutationFn: async ({ loanId, interestOnlyMonths }: { loanId: string; interestOnlyMonths?: number }) => {
@@ -3260,31 +3293,37 @@ export function useUpdateProviderSettings() {
   });
 }
 
-export function useAddressAutocomplete(input: string, sessionToken?: string | null) {
+export function useAddressAutocomplete(input: string, sessionToken?: string | null, publicAccess = false) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   const q = input.trim();
   return useQuery({
-    queryKey: ["property-intelligence", "address-autocomplete", q, sessionToken ?? null, devUser],
+    queryKey: ["property-intelligence", "address-autocomplete", q, sessionToken ?? null, publicAccess, devUser],
     queryFn: () =>
-      apiCall<AddressSuggestion[]>("/property-intelligence/address/autocomplete", {
+      (publicAccess ? api : apiCall)<AddressSuggestion[]>(
+        publicAccess ? "/public/address/autocomplete" : "/property-intelligence/address/autocomplete",
+        {
         method: "POST",
         body: JSON.stringify({ input: q, session_token: sessionToken ?? null }),
-      }),
+        },
+      ),
     enabled: q.length >= 2,
     staleTime: 5 * 60 * 1000,
     retry: aiQueryRetry,
   });
 }
 
-export function useResolveAddress() {
+export function useResolveAddress(publicAccess = false) {
   const apiCall = useAuthedApi();
   return useMutation({
     mutationFn: (payload: { place_id?: string | null; address?: string | null; session_token?: string | null }) =>
-      apiCall<AddressResolveResponse>("/property-intelligence/address/resolve", {
+      (publicAccess ? api : apiCall)<AddressResolveResponse>(
+        publicAccess ? "/public/address/resolve" : "/property-intelligence/address/resolve",
+        {
         method: "POST",
         body: JSON.stringify(payload),
-      }),
+        },
+      ),
   });
 }
 
@@ -3511,7 +3550,7 @@ export type ContractStatus = {
 
 export function useContractStatus(contractType: string) {
   const apiCall = useAuthedApi();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn } = useConsoleAuth();
   return useQuery({
     queryKey: ["contract-status", contractType],
     queryFn: () => apiCall<ContractStatus>(`/contracts/${contractType}/status`),
@@ -3530,6 +3569,7 @@ export type ContractAgreementRead = {
   esign_consent: boolean;
   signed_at: string | null;
   certificate_download_url: string | null;
+  email_delivery_status: string | null;
 };
 
 export function useSignPlatformAccess() {
@@ -6575,6 +6615,8 @@ export function useTokenUsageAttribution(from?: string, to?: string) {
 // ── Google connections (per-user Gmail/Calendar/Drive) ──────────────────────
 export type GoogleConnectionStatus = {
   connected: boolean;
+  oauth_configured: boolean;
+  oauth_configuration_message?: string | null;
   google_email?: string | null;
   gmail_connected: boolean;
   calendar_connected: boolean;
@@ -6654,6 +6696,64 @@ export function useBookingLink() {
   return useQuery({
     queryKey: ["booking-link", devUser],
     queryFn: () => apiCall<{ enabled: boolean; slug: string | null; url: string | null }>("/me/booking-link"),
+  });
+}
+
+export type PublicContractSession = {
+  token: string;
+  expires_at: string;
+};
+
+export function useCreateMutualNdaSession() {
+  return useMutation({
+    mutationFn: (honeypot: string) =>
+      api<PublicContractSession>("/contracts/mutual-nda-non-circumvention/public-session", {
+        method: "POST",
+        body: JSON.stringify({ honeypot }),
+      }),
+  });
+}
+
+export function useSignMutualNda() {
+  return useMutation({
+    mutationFn: (body: {
+      typed_name: string;
+      esign_consent: boolean;
+      signature_data_url: string;
+      field_values: Record<string, unknown>;
+      signer_email: string;
+      public_session_token: string;
+      no_preexisting_relationships: boolean;
+      honeypot?: string;
+    }) =>
+      api<ContractAgreementRead>("/contracts/mutual-nda-non-circumvention/sign", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export type BookingInviteSharePayload = {
+  to_emails: string[];
+  subject: string;
+  body: string;
+};
+
+export type BookingInviteShareResult = {
+  ok: boolean;
+  detail: string | null;
+  message_id: string | null;
+  booking_url: string;
+};
+
+export function useShareBookingInvite() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: BookingInviteSharePayload) =>
+      apiCall<BookingInviteShareResult>("/me/booking-link/share", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   });
 }
 
@@ -6836,6 +6936,383 @@ export function useStarMessage() {
       qc.invalidateQueries({ queryKey: ["inboxThreads", devUser] });
       qc.invalidateQueries({ queryKey: ["inboxSearch"] });
       if (vars.threadId) qc.invalidateQueries({ queryKey: ["inboxThread", vars.threadId, devUser] });
+    },
+  });
+}
+
+export type UnifiedOperatorFileFilters = {
+  vertical?: UnifiedVertical | "all";
+  origin?: UnifiedOrigin | "all";
+  q?: string;
+  limit?: number;
+};
+
+function operatorFileQueryString(filters: UnifiedOperatorFileFilters = {}): string {
+  const params = new URLSearchParams();
+  if (filters.vertical && filters.vertical !== "all") params.set("vertical", filters.vertical);
+  if (filters.origin && filters.origin !== "all") params.set("origin", filters.origin);
+  if (filters.q?.trim()) params.set("q", filters.q.trim());
+  if (filters.limit) params.set("limit", String(filters.limit));
+  const qs = params.toString();
+  return qs ? `?${qs}` : "";
+}
+
+export function useUnifiedOperatorFiles(filters: UnifiedOperatorFileFilters = {}) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qs = operatorFileQueryString(filters);
+  return useQuery({
+    queryKey: [
+      "operator-files",
+      devUser,
+      filters.vertical ?? "all",
+      filters.origin ?? "all",
+      filters.q?.trim() ?? "",
+      filters.limit ?? 200,
+    ],
+    queryFn: () => apiCall<UnifiedFilePage>(`/operator-files${qs}`),
+    staleTime: 30 * 1000,
+    refetchOnWindowFocus: true,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useUnifiedOperatorFile(
+  sourceKind: UnifiedSourceKind | null | undefined,
+  sourceId: string | null | undefined,
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["operator-file", devUser, sourceKind ?? "", sourceId ?? ""],
+    queryFn: () => apiCall<UnifiedFileDetail>(`/operator-files/${sourceKind}/${sourceId}`),
+    enabled: Boolean(sourceKind && sourceId),
+    staleTime: 15 * 1000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useRecordSignupAttribution() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: {
+      source: string;
+      page?: string;
+      program?: string;
+      vertical?: string;
+      campaign?: string;
+      cta?: string;
+    }) => apiCall<{ recorded: boolean }>("/auth/signup-attribution", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  });
+}
+
+export type ClientAccessFilters = {
+  q?: string;
+  source?: string;
+  login_state?: string;
+  account_type?: string;
+  page?: number;
+  page_size?: number;
+};
+
+export function useClientAccessDirectory(
+  filters: ClientAccessFilters = {},
+  options: { enabled?: boolean } = {},
+) {
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.source && filters.source !== "all") params.set("source", filters.source);
+  if (filters.login_state && filters.login_state !== "all") params.set("login_state", filters.login_state);
+  if (filters.account_type && filters.account_type !== "all") params.set("account_type", filters.account_type);
+  params.set("page", String(filters.page ?? 1));
+  params.set("page_size", String(filters.page_size ?? 50));
+  const query = params.toString();
+  return useQuery({
+    queryKey: ["client-access", filters],
+    queryFn: () => apiCall<ClientAccessDirectoryResponse>(`/admin/client-access?${query}`),
+    enabled: options.enabled ?? true,
+  });
+}
+
+export function useClientAccessDetail(
+  subjectKind: "client" | "intake" | "user" | null,
+  subjectId: string | null,
+) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["client-access-detail", subjectKind, subjectId],
+    queryFn: () => apiCall<ClientAccessDetail>(`/admin/client-access/subjects/${subjectKind}/${subjectId}`),
+    enabled: !!subjectKind && !!subjectId,
+  });
+}
+
+type ClientAccessInviteBody = {
+  subject_kind: "client" | "intake";
+  subject_id: string;
+  email: string;
+  name?: string;
+  account_types: ProductAccountType[];
+  audit_profile_ids: string[];
+  reason: string;
+};
+
+export function useInviteClientAccess() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: ClientAccessInviteBody) =>
+      apiCall<AccessMutationResult>("/admin/client-access/invite", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useUpdateClientAccess() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, ...body }: {
+      userId: string;
+      account_types: ProductAccountType[];
+      account_status: "active" | "suspended";
+      audit_profile_ids: string[];
+      reason: string;
+    }) => apiCall<AccessMutationResult>(`/admin/client-access/users/${userId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useResendClientInvite() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason: string }) =>
+      apiCall<AccessMutationResult>(`/admin/client-access/users/${userId}/resend-invite`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useRevokeClientSessions() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, reason }: { userId: string; reason: string }) =>
+      apiCall<AccessMutationResult>(`/admin/client-access/users/${userId}/revoke-sessions`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["client-access"] });
+      qc.invalidateQueries({ queryKey: ["client-access-detail"] });
+    },
+  });
+}
+
+export function useMoveOperatorPipelineFile() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sourceKind, sourceId, body }: { sourceKind: UnifiedSourceKind; sourceId: string; body: PipelineMoveRequest }) =>
+      apiCall<PipelineMoveResult>(`/operator-files/${sourceKind}/${sourceId}/pipeline-move`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["application-profile"] });
+      qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      if (vars.sourceKind === "intake") {
+        qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.sourceId] });
+      }
+    },
+  });
+}
+
+export function useLinkBucketIntake() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BucketIntakeLinkPayload) =>
+      apiCall<BucketIntakeLinkResult>("/operator-files/bucket-intake-links", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-links", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-link-options", devUser] });
+      qc.invalidateQueries({ queryKey: ["buckets"] });
+      qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
+      qc.invalidateQueries({ queryKey: ["lead-funnel"] });
+      if (vars.bucket_id) qc.invalidateQueries({ queryKey: ["bucket", vars.bucket_id] });
+      if (vars.intake_id) qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.intake_id] });
+    },
+  });
+}
+
+export type VaultSection = "all" | "attention" | "requested" | "experience" | "active_asset";
+
+export function useVaultLoanFiles(
+  params: { search?: string; limit?: number; offset?: number },
+  options?: { enabled?: boolean },
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const search = params.search?.trim() ?? "";
+  const limit = params.limit ?? 20;
+  const offset = params.offset ?? 0;
+  return useQuery({
+    queryKey: ["vault-loan-files", search, limit, offset, devUser],
+    queryFn: () => {
+      const qs = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      if (search) qs.set("search", search);
+      return apiCall<VaultLoanPage>(`/documents/vault?${qs.toString()}`);
+    },
+    enabled: options?.enabled ?? true,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useVaultLoanDocuments(
+  loanId: string | null,
+  params: { section?: VaultSection; search?: string; limit?: number; offset?: number },
+) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const section = params.section ?? "all";
+  const search = params.search?.trim() ?? "";
+  const limit = params.limit ?? 25;
+  const offset = params.offset ?? 0;
+  return useQuery({
+    queryKey: ["vault-loan-documents", loanId, section, search, limit, offset, devUser],
+    queryFn: () => {
+      const qs = new URLSearchParams({
+        section,
+        limit: String(limit),
+        offset: String(offset),
+      });
+      if (search) qs.set("search", search);
+      return apiCall<VaultDocumentPage>(`/documents/vault/${loanId}?${qs.toString()}`);
+    },
+    enabled: !!loanId,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useBucketIntakeLinkOptions() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["operator-link-options", devUser],
+    queryFn: () => apiCall<BucketIntakeLinkOptions>("/operator-files/link-options"),
+    staleTime: 30 * 1000,
+  });
+}
+
+export function useBucketIntakeLinks(filters: { bucketId?: string | null; intakeId?: string | null; all?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (filters.bucketId) params.set("bucket_id", filters.bucketId);
+  if (filters.intakeId) params.set("intake_id", filters.intakeId);
+  const suffix = params.toString() ? `?${params.toString()}` : "";
+  return useQuery({
+    queryKey: ["operator-links", devUser, filters.bucketId ?? "", filters.intakeId ?? ""],
+    queryFn: () => apiCall<BucketIntakeLinkRead[]>(`/operator-files/bucket-intake-links${suffix}`),
+    enabled: Boolean(filters.all || filters.bucketId || filters.intakeId),
+  });
+}
+
+export function useOperatorBucketFiles(bucketId: string | null | undefined) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["operator-bucket-files", devUser, bucketId ?? ""],
+    queryFn: async () => {
+      const detail = await apiCall<{ files: OperatorBucketFile[] }>(`/buckets/admin/${bucketId}`);
+      return detail.files.filter((file) => file.status === "uploaded" && !file.deleted_at);
+    },
+    enabled: Boolean(bucketId),
+  });
+}
+
+export function useUpdateBucketIntakeLink() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ linkId, ...body }: { linkId: string; relationship?: BucketIntakeLinkPayload["relationship"]; file_ids?: string[]; note?: string }) =>
+      apiCall<BucketIntakeLinkResult>(`/operator-files/bucket-intake-links/${linkId}`, {
+        method: "PATCH",
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-links", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-link-options", devUser] });
+    },
+  });
+}
+
+export function useUnlinkBucketIntake() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (linkId: string) =>
+      apiCall<BucketIntakeLinkResult>(`/operator-files/bucket-intake-links/${linkId}`, { method: "DELETE" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-links", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-link-options", devUser] });
+    },
+  });
+}
+
+export function useRunUnifiedAction() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ action, body }: { action: UnifiedActionDefinition; body?: Record<string, unknown> }) =>
+      apiCall<Record<string, unknown>>(action.path, {
+        method: action.method,
+        body: body ? JSON.stringify(body) : undefined,
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["clients"] });
     },
   });
 }

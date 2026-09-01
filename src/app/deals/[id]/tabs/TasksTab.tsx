@@ -12,6 +12,7 @@
 
 import { useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { Btn, Card, CellChip, Empty, Field, Input, Panel, Seg, Select, Sub, Tag, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import {
@@ -90,6 +91,7 @@ const FILTERS: { value: Filter; label: string }[] = [
 ];
 
 export function TasksTab({ deal }: { deal: Deal }) {
+  const confirmAction = useConfirmAction();
   const [filter, setFilter] = useState<Filter>("open");
   const [createOpen, setCreateOpen] = useState(false);
   const [templateOpen, setTemplateOpen] = useState(false);
@@ -153,8 +155,15 @@ export function TasksTab({ deal }: { deal: Deal }) {
               key={task.id}
               task={task}
               onComplete={() => complete.mutate(task.id)}
-              onDelete={() => {
-                if (confirm(`Delete "${task.title}"?`)) del.mutate(task.id);
+              onDelete={async () => {
+                const confirmed = await confirmAction({
+                  title: `Delete ${task.title}`,
+                  body: "This task will be removed from the file workflow.",
+                  confirmLabel: "Delete task",
+                  tone: "danger",
+                  reversible: false,
+                });
+                if (confirmed) del.mutate(task.id);
               }}
               onPromote={() => promote.mutate(task.id)}
               promoting={promote.isPending}

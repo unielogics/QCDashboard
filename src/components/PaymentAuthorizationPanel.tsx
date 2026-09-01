@@ -15,6 +15,7 @@ import {
   useStartPaymentAuthorization,
 } from "@/hooks/useApi";
 import type { BillingAddress, PaymentAuthorizationStartResponse } from "@/lib/types";
+import { AddressInput } from "@/components/property/GoogleAddressInput";
 
 const EMPTY_BILLING: BillingAddress = {
   name: "",
@@ -183,13 +184,27 @@ function PaymentAuthorizationInner() {
             <SectionLabel>Billing address</SectionLabel>
             <Field label="Billing name" value={billing.name} onChange={(v) => setBilling((p) => ({ ...p, name: v }))} />
             <Field label="Email" value={billing.email || ""} onChange={(v) => setBilling((p) => ({ ...p, email: v }))} />
-            <Field label="Address" value={billing.line1} onChange={(v) => setBilling((p) => ({ ...p, line1: v }))} />
+            <AddressInput
+              label="Billing address"
+              value={{
+                street: billing.line1,
+                line2: billing.line2,
+                city: billing.city,
+                state: billing.state,
+                zip: billing.postal_code,
+                country_code: billing.country,
+              }}
+              onChange={(next) => setBilling((p) => ({
+                ...p,
+                line1: next.street ?? "",
+                line2: next.line2 ?? p.line2,
+                city: next.city ?? "",
+                state: next.state ?? "",
+                postal_code: next.zip ?? "",
+                country: next.country_code ?? "US",
+              }))}
+            />
             <Field label="Unit optional" value={billing.line2 || ""} onChange={(v) => setBilling((p) => ({ ...p, line2: v }))} />
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 90px", gap: 10 }}>
-              <Field label="City" value={billing.city} onChange={(v) => setBilling((p) => ({ ...p, city: v }))} />
-              <Field label="State" value={billing.state} onChange={(v) => setBilling((p) => ({ ...p, state: v.toUpperCase().slice(0, 2) }))} />
-            </div>
-            <Field label="ZIP" value={billing.postal_code} onChange={(v) => setBilling((p) => ({ ...p, postal_code: v }))} />
           </Card>
 
           <Card pad={20}>

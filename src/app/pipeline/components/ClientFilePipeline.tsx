@@ -195,7 +195,7 @@ function Header() {
   );
   return (
     <div
-      className="lbl"
+      className="lbl clientfile-header"
       style={{
         display: "grid",
         gridTemplateColumns: GRID,
@@ -228,6 +228,7 @@ function Row({
   const typeLabel = file.loan_type ? loanTypeLabel(file.loan_type) : "—";
   return (
     <div
+      className="clientfile-row"
       role="button"
       tabIndex={0}
       onClick={onClick}

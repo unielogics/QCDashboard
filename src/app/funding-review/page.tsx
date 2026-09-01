@@ -8,7 +8,9 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
+import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { realEstateCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
+import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 
 type RequestedDoc = {
   id: string;
@@ -417,6 +419,7 @@ export default function DealerAIUnderwriterPage() {
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
           preferred_language: language ?? "en",
+          ...readPublicIntakeAttribution(),
         }),
       });
       applyResponse(payload, payload.token ?? "", true);
@@ -1279,7 +1282,12 @@ function ContactWidget({
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
       </div>
-      <Field label="Target property address, if known" value={contact.target_property_address} onChange={(value) => setContact({ ...contact, target_property_address: value })} placeholder="123 Main St, city, state" />
+      <AddressInput
+        publicAccess
+        label="Target property address, if known"
+        value={contact.target_property_address ? { full: contact.target_property_address } : null}
+        onChange={(next) => setContact({ ...contact, target_property_address: formatAddressParts(next) })}
+      />
       <div style={stepOneFormGrid}>
         <SelectField
           label="Transaction type"
@@ -1417,7 +1425,12 @@ function AssetWidget({ assets, setAssets, busy, onSubmit }: { assets: AssetRow[]
       <div style={{ display: "grid", gap: 8 }}>
         {assets.map((row, index) => (
           <div key={row.id || index} style={assetTableRow}>
-            <input style={tableInput} value={row.address} onChange={(event) => update(index, { address: event.target.value })} placeholder="Full address" />
+            <AddressInput
+              publicAccess
+              label="Property address"
+              value={row.address ? { full: row.address } : null}
+              onChange={(next) => update(index, { address: formatAddressParts(next) })}
+            />
             <input style={tableInput} value={row.estimated_loan_amount ? String(row.estimated_loan_amount) : ""} onChange={(event) => update(index, { estimated_loan_amount: numericOrNull(event.target.value) })} placeholder="$ owed" inputMode="numeric" />
             <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8 }}>
               <input style={tableInput} value={row.estimated_property_value ? String(row.estimated_property_value) : ""} onChange={(event) => update(index, { estimated_property_value: numericOrNull(event.target.value) })} placeholder="$ value" inputMode="numeric" />

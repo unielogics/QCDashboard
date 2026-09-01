@@ -20,6 +20,7 @@ import {
   useDeal,
   useLoan,
   useMarkDealReadyForLending,
+  useUnifiedOperatorFile,
   type MarkReadyResponse,
 } from "@/hooks/useApi";
 import { partitionFieldFill } from "./tabs/fieldFillRequirements";
@@ -37,8 +38,15 @@ import { LoanOverviewTab } from "./tabs/LoanOverviewTab";
 import { LoanChatTab } from "@/app/loans/[id]/components/LoanChatTab";
 import { DealAgentChatTab } from "./components/DealAgentChatTab";
 import { DealNotesFloatingButton, DealNotesPanel } from "@/components/DealNotesFloating";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { Drawer } from "@/components/ds/Drawer";
+import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
+import { UnifiedFileWorkspace } from "@/components/operator/UnifiedFileWorkspace";
+import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
 
 const TAB_ORDER = [
+  { id: "file", label: "File", icon: "layers" as const },
+  { id: "verification", label: "Verification", icon: "shieldChk" as const },
   { id: "property", label: "Property", icon: "home" as const },
   { id: "ai", label: "Elara", icon: "spark" as const },
   { id: "chat", label: "Chat", icon: "chat" as const },
@@ -57,6 +65,7 @@ export default function DealPage() {
   const profile = useActiveProfile();
 
   const { data: deal } = useDeal(params.id);
+  const { data: unifiedDetail } = useUnifiedOperatorFile("deal", params.id);
   const { data: client } = useClient(deal?.client_id ?? null);
   const { data: loan } = useLoan(deal?.promoted_loan_id ?? null);
   // Needed by LoanChatTab for the broker composer + bubble alignment.
@@ -77,11 +86,13 @@ export default function DealPage() {
   const propertyFieldCount = fieldFill.property.length;
   const borrowerPlusCreditCount = fieldFill.borrower.length + fieldFill.credit.length;
 
-  const initialTab = searchParams?.get("tab") || "property";
+  const initialTab = searchParams?.get("tab") || "file";
   const [tab, setTab] = useState<string>(initialTab);
   const [busy, setBusy] = useState(false);
   const [handoffResult, setHandoffResult] = useState<MarkReadyResponse | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  const [promoteReviewOpen, setPromoteReviewOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
   const markReady = useMarkDealReadyForLending(deal?.client_id ?? "");
 
   if (!deal) {
@@ -115,14 +126,17 @@ export default function DealPage() {
 
   async function onMarkReady() {
     if (!deal || !canPromote) return;
-    if (!confirm(`Promote "${deal.title}" to a funding file? The lending team will pick it up.`)) {
-      return;
-    }
+    setPromoteReviewOpen(true);
+  }
+
+  async function confirmPromotion() {
+    if (!deal || !canPromote) return;
     setBusy(true);
     setErr(null);
     try {
       const r = await markReady.mutateAsync({ dealId: deal.id });
       setHandoffResult(r);
+      setPromoteReviewOpen(false);
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't promote");
     } finally {
@@ -141,50 +155,23 @@ export default function DealPage() {
 
   return (
     <div className="grid" style={{ gap: 16 }}>
-      {/* AI agents currently working this deal — pause / remove inline. */}
-      <ActiveAgentStrip dealId={deal.id} />
-
-      {/* Slim summary header — modeled on /loans/[id] header pattern. */}
-      <div className="filehd">
-        <div className="filehd-b">
-          <div style={{ minWidth: 0 }}>
-            <div className="row" style={{ gap: 8 }}>
-              <Link href="/pipeline" className="crumb">
-                <Icon name="chevL" size={10} /> Pipeline
-              </Link>
-              <CellChip tone="acc">{dealTypeLabel(deal.deal_type)}</CellChip>
-              <Tag>{deal.status}</Tag>
-              {isPromoted && loan ? <StageBadge stage={loanStageIndex(loan.stage)} /> : null}
-              <AiStatusBadge state={aiStateOf(deal.ai_status)} size="sm" />
-            </div>
-            <h1 className="filehd-t">{deal.title}</h1>
-            <div className="row" style={{ gap: 10, fontSize: 12.5 }}>
-              {client?.name ? (
-                <span className="row" style={{ gap: 5, flexWrap: "nowrap" }}>
-                  <Icon name="user" size={11} stroke={2.2} />
-                  <strong>{client.name}</strong>
-                </span>
-              ) : null}
-              {headerSubLine ? <span className="sub">{headerSubLine}</span> : null}
-            </div>
-          </div>
-          <div className="row" style={{ gap: 8, flexWrap: "nowrap", flexShrink: 0 }}>
-            {!isPromoted && canPromote ? (
-              <Btn variant="pri" onClick={onMarkReady} disabled={busy}>
-                <Icon name="bolt" size={12} /> {busy ? "Promoting…" : "Ready for Funding"}
-              </Btn>
-            ) : null}
-            {isPromoted && loan ? (
-              <BtnLink href={`/loans/${loan.id}`}>
-                Open funding workbench <Icon name="chevR" size={11} />
-              </BtnLink>
-            ) : null}
-          </div>
+      <div className="ckhead">
+        <div className="ckrow">
+          <h1>{deal.title}</h1>
+          <CellChip tone="mut" className="num">{unifiedDetail?.file.ref || deal.id.slice(0, 8)}</CellChip>
+          <CellChip tone="acc">{unifiedDetail?.file.vertical_label || dealTypeLabel(deal.deal_type)}</CellChip>
+          {unifiedDetail?.file.rep_name ? <CellChip tone="gold">{unifiedDetail.file.rep_name}</CellChip> : null}
+          <CellChip tone={isPromoted ? "ok" : unifiedDetail?.gate.ready ? "acc" : "warn"}>{isPromoted ? "In funding" : unifiedDetail?.file.stage.label || deal.status}</CellChip>
+          <span className="sp" />
+          <span className="sub">{headerSubLine}</span>
+          {isPromoted && loan ? <BtnLink href={`/loans/${loan.id}`} size="sm">Open funding workbench</BtnLink> : canPromote ? <Btn variant="pri" size="sm" onClick={onMarkReady} disabled={busy}>{busy ? "Promoting..." : "Ready for funding"}</Btn> : null}
+          <PageActionMenu label="File actions" items={[
+            { label: "Back to pipeline", href: "/pipeline" },
+            { label: "Open client record", href: `/clients/${deal.client_id}` },
+            { label: "Manage linked evidence", onSelect: () => setLinkOpen(true), hidden: !unifiedDetail?.file.bucket_id && !unifiedDetail?.file.intake_id },
+          ]} />
         </div>
-
-        {/* Tab strip. A real tablist: these switch which view you are looking
-            at, so a screen reader should say so. */}
-        <div className="ftabs" role="tablist" aria-label="Deal sections">
+        <div className="cktabs" role="tablist" aria-label="Deal sections">
           {tabs.map((x) => {
             const isActive = activeTab === x.id;
             const badge =
@@ -199,12 +186,11 @@ export default function DealPage() {
                 type="button"
                 role="tab"
                 aria-selected={isActive}
-                className={cx("ftab", isActive && "on")}
+                className={isActive ? "on" : undefined}
                 onClick={() => onTabChange(x.id)}
               >
-                <Icon name={x.icon} size={13} />
                 {x.label}
-                {badge > 0 ? <span className="cnt sm">{badge}</span> : null}
+                {badge > 0 ? <span className="tag">{badge}</span> : null}
               </button>
             );
           })}
@@ -228,6 +214,10 @@ export default function DealPage() {
           ) : null}
         </Callout>
       ) : null}
+
+      {activeTab === "file" && unifiedDetail ? <UnifiedFileWorkspace detail={unifiedDetail} onManageEvidence={() => setLinkOpen(true)} /> : null}
+      {activeTab === "file" && !unifiedDetail ? <div className="empty">Loading logical file...</div> : null}
+      {activeTab === "verification" ? <ApplicationVerificationWorkspace sourceKind="deal" sourceId={deal.id} /> : null}
 
       {activeTab === "property" ? (
         <PropertyTab deal={deal} requiredFieldRows={fieldFill.property} />
@@ -274,6 +264,26 @@ export default function DealPage() {
         />
       ) : null}
       {activeTab === "funding" && loan ? <FundingTab loan={loan} clientId={deal.client_id} /> : null}
+
+      <Drawer
+        open={promoteReviewOpen}
+        onClose={() => setPromoteReviewOpen(false)}
+        title="Review before running"
+        sub="Ready for funding"
+        width="md"
+        closeOnBackdrop={!busy}
+        footer={<><Btn onClick={() => setPromoteReviewOpen(false)} disabled={busy}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={confirmPromotion} disabled={busy}>{busy ? "Creating funding file..." : "Send to funding"}</Btn></>}
+      >
+        <div className="grid">
+          <div className="hintbox"><b>Effects</b><div className="sub">Creates the canonical funding file and preserves this real-estate deal as its source lineage.</div></div>
+          <div className="kv"><span>File</span><b>{deal.title}</b></div>
+          <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
+          <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
+          <div className="kv"><span>Reversible</span><b>No · lineage remains in audit history</b></div>
+          {err ? <div className="warnline">{err}</div> : null}
+        </div>
+      </Drawer>
+      <BucketIntakeLinkDrawer open={linkOpen} onClose={() => setLinkOpen(false)} initialBucketId={unifiedDetail?.file.bucket_id} initialIntakeId={unifiedDetail?.file.intake_id} />
 
       {/* Floating Notes — bottom-right button + side panel */}
       <DealNotesFloatingButton dealId={deal.id} />
