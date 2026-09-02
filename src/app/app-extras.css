@@ -1866,6 +1866,28 @@ a.pick { color: inherit; text-decoration: none; }
    disappears. A modifier on the table, not a style on every cell. */
 .tbl.nowrap td { white-space: nowrap; }
 
+/* Bucket names and connected-file labels are buttons, so wrapped text needs an
+   explicit table alignment instead of inheriting the browser's centered button
+   label. Keep this local to the Bucket list; numeric tables retain `.tbl .r`. */
+.bucket-list-table th,
+.bucket-list-table td,
+.bucket-list-table .linky {
+  text-align: left;
+}
+.bucket-list-table .linky {
+  white-space: normal;
+}
+.bucket-list-connected-file {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+}
+.bucket-list-actions {
+  display: inline-flex;
+  justify-content: flex-start;
+}
+
 /* ---------- the unauthenticated shell (/sign-in, /sign-up, /forgot-password) ----------
 
    Everything below is scoped to `.qc-authshell`, which is the root of the

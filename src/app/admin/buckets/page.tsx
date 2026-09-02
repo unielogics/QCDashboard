@@ -3949,8 +3949,8 @@ function BucketTable({
   }
   return (
     <div className="tblwrap">
-      <table className="tbl">
-        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Connected file</th><th>Updated</th><th className="r">Actions</th></tr></thead>
+      <table className="tbl bucket-list-table">
+        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Connected file</th><th>Updated</th><th>Actions</th></tr></thead>
         <tbody>
           {buckets.map((bucket) => {
             const link = links.find((item) => item.bucket_id === bucket.id && item.status === "active");
@@ -3966,7 +3966,7 @@ function BucketTable({
                 <td><CellChip tone={bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{statusLabel(bucket.status)}</CellChip></td>
                 <td>
                   {connected ? (
-                    <div className="grid g2">
+                    <div className="bucket-list-connected-file">
                       <button type="button" className="linky tl" onClick={(event) => { event.stopPropagation(); onOpenLinkedFile(connected); }}>{connected.label}</button>
                       <span className="sub">{connected.kind}{connectedDetail ? ` · ${connectedDetail}` : ""}{(bucket.linked_files?.length ?? 0) > 1 ? ` · +${(bucket.linked_files?.length ?? 1) - 1}` : ""}</span>
                     </div>
@@ -3975,8 +3975,8 @@ function BucketTable({
                   ) : <span className="sub">Not connected</span>}
                 </td>
                 <td className="sub">{formatDate(bucket.updated_at)}</td>
-                <td className="r">
-                  <span onClick={(event) => event.stopPropagation()}>
+                <td>
+                  <span className="bucket-list-actions" onClick={(event) => event.stopPropagation()}>
                     <PageActionMenu label={`Actions for ${bucket.name}`} items={[
                       { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
                       ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),
