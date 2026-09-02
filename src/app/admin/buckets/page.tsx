@@ -32,6 +32,17 @@ import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
 
+type BucketLinkedFile = {
+  id: string;
+  kind: string;
+  label: string;
+  reference?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  route: string;
+  surface: "field_desk" | "funding" | string;
+};
+
 type Bucket = {
   id: string;
   name: string;
@@ -44,7 +55,9 @@ type Bucket = {
   updated_at: string;
   file_count?: number;
   uploaded_file_count?: number;
+  file_names?: string[];
   vendor_access_count?: number;
+  linked_files?: BucketLinkedFile[];
 };
 type RequestedDoc = {
   id: string;
@@ -229,6 +242,7 @@ type VendorAccessDraft = {
 };
 
 const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
+const FIELD_DESK_ORIGIN = process.env.NEXT_PUBLIC_FIELD_DESK_URL ?? "https://rep.qualifiedcommercial.com";
 const REQUEST_DOCS_PER_PAGE = 10;
 const ACTIVITY_PAGE_SIZE = 12;
 const ACTIVITY_ACTION_OPTIONS = [
@@ -560,6 +574,14 @@ export default function BucketsAdminPage() {
     }
   }
 
+  function openLinkedFile(file: BucketLinkedFile) {
+    if (file.surface === "field_desk") {
+      window.open(`${FIELD_DESK_ORIGIN}${file.route}`, "_blank", "noopener,noreferrer");
+      return;
+    }
+    router.push(file.route);
+  }
+
   function closeBucketDetail() {
     dismissedBucketParamRef.current = detail?.id || bucketParam;
     setReviewFile(null);
@@ -850,7 +872,23 @@ export default function BucketsAdminPage() {
         || (bucketView === "complete" && (status.includes("complete") || status.includes("closed")));
       if (!statusMatches) return false;
       if (!q) return true;
-      return [bucket.name, bucket.client_name, bucket.purpose, bucket.bucket_type, bucket.status]
+      return [
+        bucket.id,
+        bucket.name,
+        bucket.client_name,
+        bucket.purpose,
+        bucket.bucket_type,
+        bucket.status,
+        ...(bucket.file_names ?? []),
+        ...(bucket.linked_files ?? []).flatMap((file) => [
+          file.id,
+          file.kind,
+          file.label,
+          file.reference,
+          file.email,
+          file.phone,
+        ]),
+      ]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()
@@ -1997,7 +2035,7 @@ export default function BucketsAdminPage() {
             <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }} />
             <Input
               style={{ width: "100%", paddingLeft: 32 }}
-              placeholder="Search buckets"
+              placeholder="Search name, email, case, loan..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -2013,6 +2051,7 @@ export default function BucketsAdminPage() {
           onOpenVendors={openVendorAssignment}
           onConvertToLead={setConvertLeadBucket}
           onLinkIntake={setLinkBucket}
+          onOpenLinkedFile={openLinkedFile}
           onDelete={setDeleteReviewBucket}
         />
       </Panel>
@@ -2340,6 +2379,17 @@ export default function BucketsAdminPage() {
                 <Icon name="link" size={16} />
                 Link intake
               </Btn>
+              {detail.linked_files?.[0] ? (
+                <Btn
+                  size="sm"
+                  variant="pri"
+                  onClick={() => openLinkedFile(detail.linked_files![0])}
+                  title={`Open ${detail.linked_files[0].kind}`}
+                >
+                  <Icon name="external" size={16} />
+                  Open file
+                </Btn>
+              ) : null}
               <div ref={shareMenuRef} className="popwrap">
                 <Btn
                   size="sm"
@@ -3880,6 +3930,7 @@ function BucketTable({
   onOpenVendors,
   onConvertToLead,
   onLinkIntake,
+  onOpenLinkedFile,
   onDelete,
 }: {
   buckets: Bucket[];
@@ -3890,6 +3941,7 @@ function BucketTable({
   onOpenVendors: (id: string) => void;
   onConvertToLead: (bucket: Bucket) => void;
   onLinkIntake: (bucket: Bucket) => void;
+  onOpenLinkedFile: (file: BucketLinkedFile) => void;
   onDelete: (bucket: Bucket) => void;
 }) {
   if (buckets.length === 0) {
@@ -3898,11 +3950,13 @@ function BucketTable({
   return (
     <div className="tblwrap">
       <table className="tbl">
-        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Linked AI intake</th><th>Updated</th><th className="r">Actions</th></tr></thead>
+        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Connected file</th><th>Updated</th><th className="r">Actions</th></tr></thead>
         <tbody>
           {buckets.map((bucket) => {
             const link = links.find((item) => item.bucket_id === bucket.id && item.status === "active");
             const primaryIntakeId = primaryIntakeByBucket.get(bucket.id);
+            const connected = bucket.linked_files?.[0];
+            const connectedDetail = connected?.reference || connected?.email || connected?.phone;
             return (
               <tr key={bucket.id} onClick={() => onSelect(bucket.id)}>
                 <td><button type="button" className="linky" onClick={() => onSelect(bucket.id)}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}</div></td>
@@ -3910,12 +3964,22 @@ function BucketTable({
                 <td className="num">{bucket.file_count ?? 0} / {bucket.uploaded_file_count ?? 0}</td>
                 <td className="num">{bucket.vendor_access_count ?? 0}</td>
                 <td><CellChip tone={bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{statusLabel(bucket.status)}</CellChip></td>
-                <td>{link || primaryIntakeId ? <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>{(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button> : <Btn size="sm" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>Link</Btn>}</td>
+                <td>
+                  {connected ? (
+                    <div className="grid g2">
+                      <button type="button" className="linky tl" onClick={(event) => { event.stopPropagation(); onOpenLinkedFile(connected); }}>{connected.label}</button>
+                      <span className="sub">{connected.kind}{connectedDetail ? ` · ${connectedDetail}` : ""}{(bucket.linked_files?.length ?? 0) > 1 ? ` · +${(bucket.linked_files?.length ?? 1) - 1}` : ""}</span>
+                    </div>
+                  ) : link || primaryIntakeId ? (
+                    <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>AI intake {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button>
+                  ) : <span className="sub">Not connected</span>}
+                </td>
                 <td className="sub">{formatDate(bucket.updated_at)}</td>
                 <td className="r">
                   <span onClick={(event) => event.stopPropagation()}>
                     <PageActionMenu label={`Actions for ${bucket.name}`} items={[
                       { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
+                      ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),
                       { label: "Vendor access", onSelect: () => onOpenVendors(bucket.id) },
                       { label: link || primaryIntakeId ? "Manage AI intake link" : "Link AI intake", onSelect: () => onLinkIntake(bucket) },
                       { label: "Create AI intake", onSelect: () => onConvertToLead(bucket) },
