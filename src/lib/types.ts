@@ -1154,6 +1154,16 @@ export interface BookingDaySchedule {
   intervals: BookingTimeRange[];
 }
 
+export interface PrecallStepSettings {
+  after_hours?: number;
+  before_hours?: number;
+  fallback_before_hours?: number;
+  channel?: "email" | "sms" | "both";
+  email_subject?: string;
+  email_body?: string;
+  sms?: string;
+}
+
 export interface UserBookingSettings {
   id: string;
   user_id: string;
@@ -1176,6 +1186,18 @@ export interface UserBookingSettings {
   reminder_sms_minutes: number[];
   /** What each SMS reminder says, keyed by minutes-before. Blank = default. */
   reminder_sms_messages: Record<string, string>;
+  /** Email reminder text keyed by minutes-before: { subject, body }. */
+  reminder_email_messages: Record<string, { subject: string; body: string }>;
+  /** Confirmation wording: email_subject, email_body, sms, pin_email_subject, pin_email_body. */
+  confirmation_messages: Record<string, string>;
+  /** Pre-call prep: draft file + secure room on every booking, and the nudge sequence. */
+  precall_enabled: boolean;
+  precall_messages: {
+    precall_block?: string;
+    reminder_precall_line?: string;
+    nudge_1?: PrecallStepSettings;
+    nudge_2?: PrecallStepSettings;
+  };
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];

@@ -53,6 +53,14 @@ function money(value: number | string | null): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 }
 
+function precallLabel(precall: NonNullable<AppointmentWorkspace["appointment"]["precall"]>): string {
+  if (precall.status === "complete") return "Complete";
+  if (precall.status === "stopped") return `Stopped${precall.stop_reason ? ` (${precall.stop_reason.replaceAll("_", " ")})` : ""}`;
+  if (precall.status === "disabled") return "Off";
+  const ready = precall.readiness;
+  return ready ? `${ready.done_count} of 3 done` : "In progress";
+}
+
 function statusTone(status: string): "ok" | "warn" | "bad" | "mut" | "acc" | "pet" {
   if (["completed", "converted", "confirmed", "sent", "connected"].includes(status)) return "ok";
   if (["failed", "cancelled", "declined", "not_qualified"].includes(status)) return "bad";
@@ -204,6 +212,7 @@ function OverviewTab({ workspace, onTab }: { workspace: AppointmentWorkspace; on
             <StatusRow label="CRM" value={appointmentCrmLabel(appointment.crm_status)} tone={statusTone(appointment.crm_status)} />
             <StatusRow label="Client RSVP" value={appointmentRsvpLabel(appointment)} tone={appointmentRsvpTone(appointment)} />
             <StatusRow label="Google" value={appointment.google_sync_status || "Unavailable"} tone={statusTone(appointment.google_sync_status || "")} />
+            {appointment.precall ? <StatusRow label="Pre-call prep" value={precallLabel(appointment.precall)} tone={appointment.precall.status === "complete" ? "ok" : appointment.precall.status === "stopped" ? "warn" : "mut"} /> : null}
             <StatusRow label="Email" value={appointment.confirmation_email_status || "Not sent"} tone={statusTone(appointment.confirmation_email_status || "")} />
             <StatusRow label="SMS" value={appointment.confirmation_sms_status || "Not sent"} tone={statusTone(appointment.confirmation_sms_status || "")} />
           </div>
@@ -368,6 +377,7 @@ function OutcomeTab({
                     <option value="none">Choose an action</option>
                     {(workspace.application || workspace.funding_file) ? <option value="update_linked">Update linked file</option> : null}
                     <option value="link_existing">Link an existing file</option>
+                    {workspace.draft_file ? <option value="promote_draft">Promote draft file {workspace.draft_file.case_ref ?? ""}</option> : null}
                     <option value="create_ai_intake">Create AI Intake</option>
                     {workspace.capabilities.can_create_funding_loan ? <option value="create_funding_loan">Create Funding Loan</option> : null}
                   </Select>

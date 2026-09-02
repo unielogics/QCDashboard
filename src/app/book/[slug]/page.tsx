@@ -54,6 +54,16 @@ interface PublicBookingProfile {
   logo_url: string | null;
   profile_photo_url: string | null;
   slots: PublicBookingSlot[];
+  /** The exact consent sentence the server stores as proof; rendered verbatim. */
+  sms_disclosure_text?: string;
+  precall_enabled?: boolean;
+}
+
+interface PublicBookingCreated {
+  ok: boolean;
+  event_id: string;
+  room_url: string | null;
+  pin_delivered_via: string | null;
 }
 
 interface BookingForm {
@@ -97,6 +107,7 @@ export default function PublicBookingPage() {
     transactional_sms_consent: false,
   });
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "submitting" | "success">("loading");
+  const [booked, setBooked] = useState<PublicBookingCreated | null>(null);
   const [error, setError] = useState<string | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
 
@@ -157,10 +168,11 @@ export default function PublicBookingPage() {
     setStatus("submitting");
     setError(null);
     try {
-      await api<{ ok: boolean; event_id: string }>(`/public/booking/${slug}`, {
+      const created = await api<PublicBookingCreated>(`/public/booking/${slug}`, {
         method: "POST",
         body: JSON.stringify({ ...form, starts_at: selected.starts_at }),
       });
+      setBooked(created);
       setStatus("success");
     } catch (err) {
       const code = (err as { status?: number })?.status;
@@ -229,6 +241,18 @@ export default function PublicBookingPage() {
               meeting lands on your calendar with everything you need to join.
             </span>
           </div>
+          {booked?.room_url ? (
+            <div className="itemrow" style={{ textAlign: "left", lineHeight: 1.6, marginTop: 10, display: "grid", gap: 10 }}>
+              <span className="sub">
+                <strong>Get ready before the call — about 10 minutes.</strong> Confirm who owns the business,
+                connect the business bank and authorize a soft credit check in your secure room, so {host} can
+                talk real numbers on the call. Your room PIN was {booked.pin_delivered_via === "sms" ? "texted to you" : "emailed to you separately"}.
+              </span>
+              <a className="btn pri" href={`${booked.room_url}?tab=precall`} style={accent ? { background: accent, borderColor: accent, color: accentInk } : undefined}>
+                Open my secure room
+              </a>
+            </div>
+          ) : null}
         </Centered>
       </Frame>
     );
@@ -486,8 +510,8 @@ export default function PublicBookingPage() {
                       style={{ marginTop: 3 }}
                     />
                     <span className="sub" style={{ lineHeight: 1.55 }}>
-                      Text me this confirmation and appointment reminders. Message and data rates may apply.
-                      Reply STOP to opt out.
+                      {profile.sms_disclosure_text ||
+                        "I agree to receive account and application text messages from Qualified Commercial about this funding file, including appointment reminders, secure links, bank-connection requests, document and signature requests, and status updates. Consent is optional and is not a condition of applying for or receiving funding. Message frequency varies. Message and data rates may apply. Reply STOP to opt out. Reply HELP for help."}
                     </span>
                   </label>
                 )}

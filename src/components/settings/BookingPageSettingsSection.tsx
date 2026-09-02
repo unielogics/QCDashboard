@@ -19,7 +19,7 @@ import {
   useUpdateBookingSettings,
   useUploadBookingAsset,
 } from "@/hooks/useApi";
-import type { BookingBlockedInterval, BookingDaySchedule, UserBookingSettings } from "@/lib/types";
+import type { BookingBlockedInterval, BookingDaySchedule, PrecallStepSettings, UserBookingSettings } from "@/lib/types";
 
 const WEEKDAYS = [
   { id: 0, label: "Sun" },
@@ -66,6 +66,10 @@ function defaultBookingSettings(): UserBookingSettings {
     reminder_sms_minutes_before: 120,
     reminder_sms_minutes: [120],
     reminder_sms_messages: {},
+    reminder_email_messages: {},
+    confirmation_messages: {},
+    precall_enabled: true,
+    precall_messages: {},
     google_meet_enabled: true,
     timezone: "America/New_York",
     available_days: [1, 2, 3, 4, 5],
@@ -235,6 +239,22 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     });
   };
 
+  const setEmailReminderMessage = (minutes: number, field: "subject" | "body", value: string) => {
+    const messages = { ...(draft?.reminder_email_messages ?? {}) };
+    const current = messages[String(minutes)] ?? { subject: "", body: "" };
+    messages[String(minutes)] = { ...current, [field]: value };
+    patch({ reminder_email_messages: messages });
+  };
+  const setConfirmationMessage = (key: string, value: string) => {
+    patch({ confirmation_messages: { ...(draft?.confirmation_messages ?? {}), [key]: value } });
+  };
+  const setPrecallText = (key: "precall_block" | "reminder_precall_line", value: string) => {
+    patch({ precall_messages: { ...(draft?.precall_messages ?? {}), [key]: value } });
+  };
+  const setPrecallStep = (step: "nudge_1" | "nudge_2", next: Partial<PrecallStepSettings>) => {
+    const current = draft?.precall_messages ?? {};
+    patch({ precall_messages: { ...current, [step]: { ...(current[step] ?? {}), ...next } } });
+  };
   const setSmsReminderMessage = (minutes: number, message: string) => {
     const messages = { ...(draft?.reminder_sms_messages ?? {}) };
     if (message.trim()) messages[String(minutes)] = message;
@@ -482,6 +502,67 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                       />
                     </div>
                   </CG>
+                  <MessageTemplates
+                    title="Confirmation wording"
+                    hint="Leave a field blank to keep the standard wording. The room link and PIN are filled in from the draft file the booking opens."
+                    fields={[
+                      { key: "email_subject", label: "Confirmation email subject", rows: 1, maxLength: 160 },
+                      { key: "email_body", label: "Confirmation email body", rows: 6, maxLength: 4000, placeholder: "Replaces the whole email body. The calendar invitation still attaches." },
+                      { key: "sms", label: "Confirmation SMS", rows: 3, maxLength: 400, pin: true, placeholder: "Qualified Commercial: your call with {rep} is confirmed for {time}. Your secure room PIN is {pin}. Get ready before the call: {room_link}" },
+                      { key: "pin_email_subject", label: "PIN email subject (no SMS consent)", rows: 1, maxLength: 160, pin: true },
+                      { key: "pin_email_body", label: "PIN email body (no SMS consent)", rows: 4, maxLength: 4000, pin: true },
+                    ]}
+                    values={draft.confirmation_messages ?? {}}
+                    onChange={setConfirmationMessage}
+                  />
+                </div>
+
+                <div className="grid" style={{ gap: 14, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
+                  <div>
+                    <h3 style={{ margin: 0 }}>Pre-call prep</h3>
+                    <div className="sub" style={{ marginTop: 4 }}>
+                      Every booking opens a draft file with a secure room. The client confirms who owns the business, connects the bank and authorizes a soft credit check before the call; these messages nudge them until it is done.
+                    </div>
+                  </div>
+                  <ToggleRow
+                    label="Open a draft file and run the pre-call sequence"
+                    description="Turning this off books calls exactly as before: no draft file, no room link, no nudges."
+                    checked={draft.precall_enabled}
+                    onChange={(precall_enabled) => patch({ precall_enabled })}
+                  />
+                  <div style={{ opacity: draft.precall_enabled ? 1 : 0.55 }}>
+                    <Field label="“Before your call” block (appended to the confirmation email)">
+                      <Textarea rows={5} maxLength={2000} value={draft.precall_messages?.precall_block ?? ""} onChange={(e) => setPrecallText("precall_block", e.target.value)} placeholder="Before your call — about 10 minutes: 1. Confirm who owns {business}. 2. Connect the business bank. 3. Authorize a soft credit check. Open your secure room: {room_link}" style={{ resize: "vertical" }} />
+                    </Field>
+                    <Field label="Line added to reminders while something is still open">
+                      <Input maxLength={300} value={draft.precall_messages?.reminder_precall_line ?? ""} onChange={(e) => setPrecallText("reminder_precall_line", e.target.value)} placeholder="Still needed before your call: {missing} → {room_link}" />
+                    </Field>
+                    <CG>
+                      <PrecallStepEditor
+                        className="s6"
+                        title="Nudge 1 — after booking"
+                        timing="after_hours"
+                        timingLabel="Hours after booking"
+                        timingDefault={24}
+                        note="Only when the call is at least 36 hours away. Texts wait for 9am–8pm local."
+                        value={draft.precall_messages?.nudge_1 ?? {}}
+                        onChange={(next) => setPrecallStep("nudge_1", next)}
+                        defaults={{ email_subject: "Before your call with {rep}: {done} done", sms: "Qualified Commercial: before your call {date}, please {missing}: {room_link} (PIN sent earlier)." }}
+                      />
+                      <PrecallStepEditor
+                        className="s6"
+                        title="Nudge 2 — before the call"
+                        timing="before_hours"
+                        timingLabel="Hours before the call"
+                        timingDefault={24}
+                        note="Falls back to 4 hours before for calls booked at short notice; never inside the last hour."
+                        value={draft.precall_messages?.nudge_2 ?? {}}
+                        onChange={(next) => setPrecallStep("nudge_2", next)}
+                        defaults={{ email_subject: "Your call with {rep} is coming up — {done} done", sms: "Qualified Commercial: your call with {rep} is {time}. Finish {missing} now so we can talk real numbers: {room_link}" }}
+                      />
+                    </CG>
+                    <PlaceholderHelp />
+                  </div>
                 </div>
 
                 <div className="grid" style={{ gap: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
@@ -504,6 +585,8 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                         setReminderValues("email", next);
                       }}
                       onRemove={(index) => setReminderValues("email", reminderValues("email").filter((_, rowIndex) => rowIndex !== index))}
+                      emailMessages={draft.reminder_email_messages ?? {}}
+                      onEmailMessageChange={setEmailReminderMessage}
                     />
                     <ReminderSchedule
                       className="s6"
@@ -842,6 +925,8 @@ function ReminderSchedule({
   className,
   messages,
   onMessageChange,
+  emailMessages,
+  onEmailMessageChange,
 }: {
   channel: "Email" | "SMS";
   description: string;
@@ -852,9 +937,12 @@ function ReminderSchedule({
   onChange: (index: number, value: number) => void;
   onRemove: (index: number) => void;
   className?: string;
-  /** Per-reminder text, keyed by minutes-before. SMS only; email has none. */
+  /** Per-reminder SMS text, keyed by minutes-before. */
   messages?: Record<string, string>;
   onMessageChange?: (minutes: number, message: string) => void;
+  /** Per-reminder email subject/body, keyed by minutes-before. */
+  emailMessages?: Record<string, { subject: string; body: string }>;
+  onEmailMessageChange?: (minutes: number, field: "subject" | "body", value: string) => void;
 }) {
   return (
     <section className={className} style={{ minWidth: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 8 }}>
@@ -909,14 +997,107 @@ function ReminderSchedule({
                   <span className="sub" style={{ display: "block", marginTop: 4 }}>
                     Leave blank for the standard reminder. Use{" "}
                     <code>{"{time}"}</code>, <code>{"{name}"}</code>, <code>{"{rep}"}</code>,{" "}
-                    <code>{"{join_link}"}</code>. &ldquo;Reply STOP to opt out.&rdquo; is added
+                    <code>{"{join_link}"}</code>, <code>{"{room_link}"}</code>, <code>{"{precall}"}</code>. &ldquo;Reply STOP to opt out.&rdquo; is added
                     automatically.
+                  </span>
+                </div>
+              ) : null}
+              {onEmailMessageChange ? (
+                <div style={{ gridColumn: "1 / -1", display: "grid", gap: 8 }}>
+                  <Field label="Subject">
+                    <Input disabled={!enabled} maxLength={160} value={emailMessages?.[String(value)]?.subject ?? ""} placeholder={`Reminder: your meeting`} onChange={(event) => onEmailMessageChange(value, "subject", event.target.value)} />
+                  </Field>
+                  <Field label="Body">
+                    <Textarea disabled={!enabled} rows={4} maxLength={4000} value={emailMessages?.[String(value)]?.body ?? ""} placeholder="Leave blank for the standard reminder email." onChange={(event) => onEmailMessageChange(value, "body", event.target.value)} style={{ resize: "vertical" }} />
+                  </Field>
+                  <span className="sub" style={{ display: "block" }}>
+                    Blank keeps the standard email, which lists what is still open before the call. Placeholders: <code>{"{time}"}</code>, <code>{"{name}"}</code>, <code>{"{rep}"}</code>, <code>{"{join_link}"}</code>, <code>{"{room_link}"}</code>, <code>{"{precall}"}</code>.
                   </span>
                 </div>
               ) : null}
             </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+const PLACEHOLDERS: Array<[string, string]> = [
+  ["{name}", "client's full name"], ["{first}", "first name"], ["{rep}", "host or rep"], ["{business}", "business name"],
+  ["{date}", "call date"], ["{time}", "call date and time"], ["{join_link}", "video link"], ["{room_link}", "secure room link"],
+  ["{missing}", "what is still needed"], ["{done}", "e.g. 1 of 3"], ["{precall}", "ready-made ‘still needed’ line"],
+  ["{pin}", "room PIN — confirmation SMS and PIN email only"],
+];
+
+function PlaceholderHelp() {
+  return (
+    <div className="sub" style={{ lineHeight: 1.7 }}>
+      Placeholders: {PLACEHOLDERS.map(([token, meaning], index) => (
+        <span key={token}>{index ? ", " : ""}<code>{token}</code> {meaning}</span>
+      ))}. Every SMS ends with “Reply STOP to opt out.”; every pre-call email carries a one-tap stop link.
+    </div>
+  );
+}
+
+function MessageTemplates({ title, hint, fields, values, onChange }: {
+  title: string;
+  hint: string;
+  fields: Array<{ key: string; label: string; rows: number; maxLength: number; placeholder?: string; pin?: boolean }>;
+  values: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+}) {
+  return (
+    <div className="grid" style={{ gap: 10 }}>
+      <div>
+        <b style={{ fontSize: 13 }}>{title}</b>
+        <div className="sub" style={{ marginTop: 3 }}>{hint}</div>
+      </div>
+      {fields.map((field) => (
+        <Field key={field.key} label={field.label}>
+          {field.rows === 1
+            ? <Input maxLength={field.maxLength} value={values[field.key] ?? ""} placeholder={field.placeholder} onChange={(e) => onChange(field.key, e.target.value)} />
+            : <Textarea rows={field.rows} maxLength={field.maxLength} value={values[field.key] ?? ""} placeholder={field.placeholder} onChange={(e) => onChange(field.key, e.target.value)} style={{ resize: "vertical" }} />}
+        </Field>
+      ))}
+      <PlaceholderHelp />
+    </div>
+  );
+}
+
+function PrecallStepEditor({ className, title, timing, timingLabel, timingDefault, note, value, onChange, defaults }: {
+  className?: string;
+  title: string;
+  timing: "after_hours" | "before_hours";
+  timingLabel: string;
+  timingDefault: number;
+  note: string;
+  value: PrecallStepSettings;
+  onChange: (next: Partial<PrecallStepSettings>) => void;
+  defaults: { email_subject: string; sms: string };
+}) {
+  return (
+    <section className={className} style={{ minWidth: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 8 }}>
+      <div className="grid" style={{ gap: 10 }}>
+        <div>
+          <b style={{ fontSize: 13 }}>{title}</b>
+          <div className="sub" style={{ marginTop: 3 }}>{note}</div>
+        </div>
+        <CG>
+          <Field label={timingLabel} className="s6">
+            <Input type="number" min={1} max={240} value={value[timing] ?? timingDefault} onChange={(e) => onChange({ [timing]: Number(e.target.value) || timingDefault })} />
+          </Field>
+          <Field label="Channels" className="s6">
+            <Select value={value.channel ?? "both"} onChange={(e) => onChange({ channel: e.target.value as PrecallStepSettings["channel"] })}>
+              <option value="both">Email and SMS</option>
+              <option value="email">Email only</option>
+              <option value="sms">SMS only</option>
+            </Select>
+          </Field>
+        </CG>
+        <Field label="Email subject"><Input maxLength={160} value={value.email_subject ?? ""} placeholder={defaults.email_subject} onChange={(e) => onChange({ email_subject: e.target.value })} /></Field>
+        <Field label="Email body"><Textarea rows={4} maxLength={4000} value={value.email_body ?? ""} placeholder="Blank keeps the standard wording." onChange={(e) => onChange({ email_body: e.target.value })} style={{ resize: "vertical" }} /></Field>
+        <Field label="SMS"><Textarea rows={3} maxLength={400} value={value.sms ?? ""} placeholder={defaults.sms} onChange={(e) => onChange({ sms: e.target.value })} style={{ resize: "vertical" }} /></Field>
       </div>
     </section>
   );

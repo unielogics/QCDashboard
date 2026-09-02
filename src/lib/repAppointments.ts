@@ -44,6 +44,11 @@ export interface RepAppointment {
   archived_at: string | null;
   cancellation_reason: string | null;
   conversion_target: "field_desk" | "ai_intake" | "funding_loan" | null;
+  /** Pre-call prep on the draft file this booking opened; null before the feature or when disabled. */
+  precall: AppointmentPrecall | null;
+  room_url: string | null;
+  /** Plaintext only on the create response that minted it. */
+  room_passcode: string | null;
   converted_dealer_id: string | null;
   converted_intake_id: string | null;
   linked_loan_id: string | null;
@@ -123,6 +128,56 @@ export interface AppointmentBookingDataReview {
   target_kind: "intake" | "loan" | null;
 }
 
+export interface AppointmentPrecallReadiness {
+  ownership_complete: boolean;
+  ownership_total: number;
+  contact_complete: boolean;
+  bank_complete: boolean;
+  bank_detail: string;
+  credit_complete: boolean;
+  credit_required: number;
+  credit_done: number;
+  complete: boolean;
+  done_count: number;
+  missing: string[];
+}
+
+export interface AppointmentPrecallStep {
+  id: string;
+  step_key: string | null;
+  channel: string;
+  due_at: string;
+  status: string;
+  sent_at: string | null;
+  detail: string | null;
+  rendered_body: string | null;
+}
+
+export interface AppointmentPrecall {
+  status: "in_progress" | "complete" | "stopped" | "disabled";
+  dealer_id: string | null;
+  case_ref: string | null;
+  lifecycle: string | null;
+  room_url: string | null;
+  pin_delivered_via: string | null;
+  completed_at: string | null;
+  stopped_at: string | null;
+  stop_reason: string | null;
+  next_step_at: string | null;
+  readiness: AppointmentPrecallReadiness | null;
+  steps: AppointmentPrecallStep[];
+}
+
+export interface AppointmentDraftFile {
+  dealer_id: string;
+  case_ref: string | null;
+  name: string;
+  lifecycle: string;
+  status: string;
+  draft_source: string | null;
+  href: string;
+}
+
 export interface AppointmentWorkspace {
   appointment: RepAppointment;
   activities: AppointmentActivity[];
@@ -130,6 +185,7 @@ export interface AppointmentWorkspace {
   funding_file: AppointmentFundingSummary | null;
   application_candidates: AppointmentApplicationCandidate[];
   booking_data_review: AppointmentBookingDataReview[];
+  draft_file: AppointmentDraftFile | null;
   capabilities: {
     can_edit: boolean;
     can_add_notes: boolean;
@@ -140,6 +196,7 @@ export interface AppointmentWorkspace {
     can_manage_outcome_catalog: boolean;
     can_link_files: boolean;
     can_create_funding_loan: boolean;
+    can_manage_precall: boolean;
   };
 }
 
@@ -223,10 +280,11 @@ export type AppointmentFileAction =
   | "update_linked"
   | "link_existing"
   | "create_ai_intake"
-  | "create_funding_loan";
+  | "create_funding_loan"
+  | "promote_draft";
 
 export interface AppointmentFileOption {
-  kind: "intake" | "loan";
+  kind: "intake" | "loan" | "dealer";
   id: string;
   label: string;
   subtitle: string | null;
@@ -241,7 +299,7 @@ export interface ApplyAppointmentOutcomeRequest {
   idempotency_key: string;
   confirm: boolean;
   file_action: AppointmentFileAction;
-  existing_file_kind?: "intake" | "loan" | null;
+  existing_file_kind?: "intake" | "loan" | "dealer" | null;
   existing_file_id?: string | null;
   variant?: "dealer" | "real_estate" | "main_street" | "mca_refinance" | null;
   secure_room_pin?: string | null;

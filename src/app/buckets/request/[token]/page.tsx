@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { QCMark } from "@/components/QCMark";
 import { RoomActions } from "@/components/room/RoomActions";
+import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
 import { apiBase } from "@/lib/api";
 
 type RequestedDoc = { id: string; name: string; category?: string | null; description?: string | null; required: boolean; allow_multiple_files?: boolean; status: string };
@@ -13,10 +14,11 @@ type BucketSummary = { name: string; client_name?: string | null; purpose?: stri
 type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; content_type: string; size_bytes: number; uploaded_by_name?: string | null; uploaded_by_email?: string | null; status: string; created_at: string };
 type RequestInfo = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; requires_passcode: boolean; status: string };
 type UploadSession = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[] };
-type RoomTab = "todo" | "documents" | "banking" | "agreements";
+type RoomTab = "precall" | "todo" | "documents" | "banking" | "agreements";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
-const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" }> = [
+const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" }> = [
+  { id: "precall", label: "Before your call", icon: "cal" },
   { id: "todo", label: "To-do", icon: "check" },
   { id: "documents", label: "Documents", icon: "file" },
   { id: "banking", label: "Business banking", icon: "building" },
@@ -42,6 +44,9 @@ export default function BucketRequestPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<RoomTab>("documents");
+  // Pre-call prep state for rooms opened by a booked call; null for every other room.
+  const [precall, setPrecall] = useState<RoomPrecall | null>(null);
+  const [precallLoaded, setPrecallLoaded] = useState(false);
   const [theme, setTheme] = useState<"light" | "obsidian">("light");
 
   useEffect(() => {
@@ -52,6 +57,12 @@ export default function BucketRequestPage() {
     const requested = searchParams.get("tab");
     if (ROOM_TABS.some((tab) => tab.id === requested)) setActiveTab(requested as RoomTab);
   }, [searchParams]);
+  useEffect(() => {
+    // A PIN in the fragment (from the confirmation link) prefills the gate and
+    // is dropped from the URL so it never lands in history or a shared link.
+    const match = /(?:^#|&)p=(\d{6})(?:&|$)/.exec(window.location.hash || "");
+    if (match) { setPasscode(match[1]); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
+  }, []);
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("This application room is unavailable.")))
@@ -78,16 +89,30 @@ export default function BucketRequestPage() {
     if (!response.ok) throw new Error(await responseMessage(response, "The room PIN did not work."));
     return response.json();
   }
-  async function refreshRoom() { setSession(await fetchAccessSession()); }
+  async function fetchPrecall(code: string): Promise<RoomPrecall | null> {
+    try {
+      const response = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/features`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
+      if (!response.ok) return null;
+      const data = await response.json() as { precall?: RoomPrecall | null };
+      return data.precall?.enabled ? data.precall : null;
+    } catch { return null; }
+  }
+  async function refreshPrecall() { setPrecall(await fetchPrecall(passcode.trim())); }
+  async function refreshRoom() { setSession(await fetchAccessSession()); await refreshPrecall(); }
   async function openInvite() {
     if (!passcode.trim()) return;
     setIsAccessing(true); setStatus("");
     try {
       const data = await fetchAccessSession();
+      const prep = await fetchPrecall(passcode.trim());
       setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus("");
+      setPrecall(prep); setPrecallLoaded(true);
+      // A booked call lands on its checklist until it is done; the URL still wins.
+      if (prep && !prep.complete && !searchParams.get("tab")) setActiveTab("precall");
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => tab.id !== "precall" || Boolean(precall)), [precall]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -138,7 +163,10 @@ export default function BucketRequestPage() {
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
     </section> : <section className="application-room-shell">
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${missingDocs.length ? "attention" : ""}`}>{missingDocs.length ? `${missingDocs.length} action${missingDocs.length === 1 ? "" : "s"} needed` : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
-      <nav className="application-room-tabs" aria-label="Application room sections">{ROOM_TABS.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && missingDocs.length ? <span>{missingDocs.length}</span> : null}</button>)}</nav>
+      <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && missingDocs.length ? <span>{missingDocs.length}</span> : null}</button>)}</nav>
+
+      {activeTab === "precall" && precall ? <PrecallChecklist token={token} passcode={passcode.trim()} precall={precall} onChanged={refreshPrecall} onGoToDocuments={() => setActiveTab("documents")} /> : null}
+      {activeTab === "precall" && !precall && precallLoaded ? <section className="application-room-section"><p>This room has no call to prepare for.</p></section> : null}
 
       {activeTab === "todo" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Next actions</span><h2>What we still need</h2></div><button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />Upload documents</button></div><div className="application-room-todo-list">{session.requested_documents.map((doc) => { const complete = isRequestedDocComplete(doc, uploadedDocIds); return <article key={doc.id} className={`${complete ? "complete" : "needed"} ${highlightedRequest === doc.id ? "highlighted" : ""}`}><span className="application-room-task-icon"><Icon name={complete ? "check" : "alert"} size={15} /></span><div><b>{doc.name}</b><p>{doc.description || `${doc.required ? "Required" : "Optional"} · ${allowsMultipleFiles(doc) ? "Multiple files accepted" : "One file"}`}</p></div><span className="application-room-task-state">{complete ? "Received" : "Needed"}</span>{!complete ? <button onClick={() => setActiveTab("documents")}>Add file</button> : null}</article>; })}{!session.requested_documents.length ? <div className="application-room-empty">No action items have been requested.</div> : null}</div></section> : null}
 
