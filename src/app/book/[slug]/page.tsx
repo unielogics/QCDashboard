@@ -107,6 +107,7 @@ export default function PublicBookingPage() {
     transactional_sms_consent: false,
   });
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "submitting" | "success">("loading");
+  const sourceHint = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("source") : null;
   const [booked, setBooked] = useState<PublicBookingCreated | null>(null);
   const [error, setError] = useState<string | null>(null);
   const detailsRef = useRef<HTMLDivElement | null>(null);
@@ -170,7 +171,9 @@ export default function PublicBookingPage() {
     try {
       const created = await api<PublicBookingCreated>(`/public/booking/${slug}`, {
         method: "POST",
-        body: JSON.stringify({ ...form, starts_at: selected.starts_at }),
+        // The link's origin hint (e.g. a rep's product booklet appends ?source=…)
+        // decides whether this is a rep-related booking on the server.
+        body: JSON.stringify({ ...form, starts_at: selected.starts_at, source: sourceHint }),
       });
       setBooked(created);
       setStatus("success");
