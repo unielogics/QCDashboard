@@ -55,8 +55,8 @@ function money(value: number | string | null): string {
 
 function originLabel(origin: string | null): string {
   switch (origin) {
-    case "field_desk": return "Field desk (draft file opened)";
-    case "calendar": return "Calendar — file chosen at outcome";
+    case "field_desk": return "Field desk";
+    case "calendar": return "Calendar";
     case "public": return "Public booking page";
     case "intake": return "AI intake";
     default: return "Not recorded";
