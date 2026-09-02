@@ -53,6 +53,16 @@ function money(value: number | string | null): string {
   return new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 }).format(value);
 }
 
+function originLabel(origin: string | null): string {
+  switch (origin) {
+    case "field_desk": return "Field desk (draft file opened)";
+    case "calendar": return "Calendar — file chosen at outcome";
+    case "public": return "Public booking page";
+    case "intake": return "AI intake";
+    default: return "Not recorded";
+  }
+}
+
 function precallLabel(precall: NonNullable<AppointmentWorkspace["appointment"]["precall"]>): string {
   if (precall.status === "complete") return "Complete";
   if (precall.status === "stopped") return `Stopped${precall.stop_reason ? ` (${precall.stop_reason.replaceAll("_", " ")})` : ""}`;
@@ -209,6 +219,7 @@ function OverviewTab({ workspace, onTab }: { workspace: AppointmentWorkspace; on
       <aside className="calendar-v2-context-column">
         <Panel title="Appointment state">
           <div className="calendar-v2-status-stack">
+            <StatusRow label="Origin" value={originLabel(appointment.origin)} tone="mut" />
             <StatusRow label="CRM" value={appointmentCrmLabel(appointment.crm_status)} tone={statusTone(appointment.crm_status)} />
             <StatusRow label="Client RSVP" value={appointmentRsvpLabel(appointment)} tone={appointmentRsvpTone(appointment)} />
             <StatusRow label="Google" value={appointment.google_sync_status || "Unavailable"} tone={statusTone(appointment.google_sync_status || "")} />

@@ -44,6 +44,8 @@ export interface RepAppointment {
   archived_at: string | null;
   cancellation_reason: string | null;
   conversion_target: "field_desk" | "ai_intake" | "funding_loan" | null;
+  /** Where the booking came from: field_desk | calendar | public | intake; null before origins existed. */
+  origin: string | null;
   /** Pre-call prep on the draft file this booking opened; null before the feature or when disabled. */
   precall: AppointmentPrecall | null;
   room_url: string | null;

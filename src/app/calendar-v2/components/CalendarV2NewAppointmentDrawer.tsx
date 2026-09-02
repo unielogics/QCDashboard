@@ -105,6 +105,9 @@ export function CalendarV2NewAppointmentDrawer({
           program_key: "general_funding_discussion",
           program_name: "General funding discussion / Not decided yet",
           transactional_sms_consent: false,
+          // Booked from the operator calendar: no file opens at booking; the
+          // outcome decides (intake, funding loan, link, or promote a draft).
+          origin: "calendar",
         }),
       });
       if (selectedFile) {
