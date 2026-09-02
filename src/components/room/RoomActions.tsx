@@ -54,6 +54,12 @@ type BankConnection = {
   is_primary_operating: boolean;
   last_pulled_at: string | null;
   statement_months: string[];
+  products: string[];
+  consented_products: string[];
+  billed_products: string[];
+  unavailable_products: string[];
+  pending_products: string[];
+  authorization_state: string;
 };
 
 type Features = {
@@ -64,6 +70,10 @@ type Features = {
   /** Server-owned wording. Shown verbatim; never edited or echoed back. */
   bank_consent_disclosure: string;
   bank_connections: BankConnection[];
+  plaid_assets_enabled: boolean;
+  plaid_statements_enabled: boolean;
+  plaid_selected_products: string[];
+  plaid_available_products: string[];
   signable: Signable[];
   contracts: RoomContract[];
   envelopes: RoomEnvelope[];
@@ -84,6 +94,7 @@ function BankConnect({
   consentGranted: initialConsent,
   disclosure,
   connections,
+  selectedProducts,
   roomKind,
   onConnected,
 }: {
@@ -95,6 +106,7 @@ function BankConnect({
   /** The exact wording the server will store against the grant. */
   disclosure: string;
   connections: BankConnection[];
+  selectedProducts: string[];
   roomKind: RoomKind;
   onConnected: () => void;
 }) {
@@ -176,7 +188,8 @@ function BankConnect({
   }, [linkToken, ready, open]);
 
   useEffect(() => {
-    if (initialConsent) setConsentGranted(true);
+    setConsentGranted(initialConsent);
+    if (!initialConsent) setAgreed(false);
   }, [initialConsent]);
 
   async function setPrimary(itemId: string) {
@@ -221,6 +234,7 @@ function BankConnect({
         throw new Error(body?.detail || "That authorization could not be recorded.");
       }
       setConsentGranted(true);
+      onConnected();
     } catch (e) {
       setError(e instanceof Error ? e.message : "That authorization could not be recorded.");
     } finally {
@@ -342,11 +356,15 @@ function BankConnect({
       </div>
       <div className="panel-b">
         <p className="sub">
-          Connect every business operating account you want considered. Plaid provides read-only
-          balances and transaction history, and Qualified Commercial combines all connected banks
-          into one verified evidence view. No credentials pass through Qualified Commercial, and
-          nothing can be moved or charged.
+          Connect every business operating account you want considered. {selectedProducts.includes("assets") && selectedProducts.includes("statements")
+            ? "Plaid provides read-only balances and transaction history plus bank-produced statement PDFs."
+            : selectedProducts.includes("statements")
+              ? "Plaid retrieves bank-produced statement PDFs for the selected date range."
+              : "Plaid provides read-only balances and transaction history for underwriting."} No credentials pass through Qualified Commercial, and nothing can be moved or charged.
         </p>
+        <div className="row mt" style={{ gap: 7, flexWrap: "wrap" }}>
+          {selectedProducts.map((product) => <CellChip key={product} tone="acc">{product === "assets" ? "Assets" : "Statement PDFs"}</CellChip>)}
+        </div>
         {connections.length > 0 ? (
           <div className="mt" style={{ display: "grid", gap: 8 }}>
             {connections.map((connection) => (
@@ -354,12 +372,12 @@ function BankConnect({
                 <div className="grow">
                   <b>{connection.institution_name || "Connected institution"}</b>
                   <span className="sub" style={{ display: "block", marginTop: 3 }}>
-                    {connection.accounts_label || "Account details syncing"} · {connection.statement_months.length} statement month{connection.statement_months.length === 1 ? "" : "s"}
+                    {connection.accounts_label || "Account details syncing"} · {connection.statement_months.length ? `${connection.statement_months.length} statement month${connection.statement_months.length === 1 ? "" : "s"}` : "evidence syncing"}
                   </span>
-                  {connection.update_mode_reason ? <span className="sub" style={{ display: "block", marginTop: 3 }}>{bankUpdateMessage(connection)}</span> : null}
+                  {connection.unavailable_products.length ? <span className="sub" style={{ display: "block", marginTop: 3 }}>This institution cannot provide Statement PDFs through Plaid. Upload the requested bank PDFs instead; Assets will continue when selected.</span> : connection.pending_products.length ? <span className="sub" style={{ display: "block", marginTop: 3 }}>Authorize {connection.pending_products.map((product) => product === "assets" ? "Assets" : "Statement PDFs").join(" and ")} for this bank.</span> : connection.update_mode_reason ? <span className="sub" style={{ display: "block", marginTop: 3 }}>{bankUpdateMessage(connection)}</span> : null}
                 </div>
-                <CellChip tone={connection.status === "active" ? "ok" : "warn"}>
-                  {connection.status}
+                <CellChip tone={connection.authorization_state === "authorized" ? "ok" : "warn"}>
+                  {connection.authorization_state === "client_authorization_required" ? "Authorization needed" : connection.authorization_state === "fallback_required" ? "PDF upload needed" : connection.status}
                 </CellChip>
                 {connection.is_primary_operating ? (
                   <CellChip tone="acc">Main operating bank</CellChip>
@@ -368,14 +386,20 @@ function BankConnect({
                     Make main
                   </Btn>
                 )}
-                {connection.update_mode_reason && !connection.update_mode_account_selection ? (
+                {consentGranted && connection.pending_products.length ? (
+                  <Btn variant="pri" disabled={busy} onClick={() => startUpdate(connection, false)}>
+                    {connection.pending_products.length === 1
+                      ? `Enable ${connection.pending_products[0] === "assets" ? "Assets" : "Statement PDFs"}`
+                      : "Authorize products"}
+                  </Btn>
+                ) : consentGranted && connection.update_mode_reason && !connection.update_mode_account_selection ? (
                   <Btn variant="pri" disabled={busy} onClick={() => startUpdate(connection, false)}>
                     Repair connection
                   </Btn>
                 ) : null}
                 <Btn
                   variant={connection.update_mode_account_selection ? "pri" : undefined}
-                  disabled={busy}
+                  disabled={busy || !consentGranted}
                   onClick={() => startUpdate(connection, true)}
                 >
                   {connection.update_mode_account_selection ? "Review new accounts" : "Add accounts"}
@@ -498,6 +522,10 @@ export function RoomActions({
           consent_granted: boolean;
           disclosure_text: string;
           items: BankConnection[];
+          assets_enabled: boolean;
+          statements_enabled: boolean;
+          selected_products: string[];
+          available_products: string[];
         };
       };
       setRoomKind("application");
@@ -508,6 +536,10 @@ export function RoomActions({
         bank_consent_granted: state.banking.consent_granted,
         bank_consent_disclosure: state.banking.disclosure_text,
         bank_connections: state.banking.items,
+        plaid_assets_enabled: state.banking.assets_enabled,
+        plaid_statements_enabled: state.banking.statements_enabled,
+        plaid_selected_products: state.banking.selected_products,
+        plaid_available_products: state.banking.available_products,
         signable: state.signable ?? [],
         contracts: [],
         envelopes: [],
@@ -627,6 +659,7 @@ export function RoomActions({
           consentGranted={features.bank_consent_granted}
           disclosure={features.bank_consent_disclosure}
           connections={features.bank_connections ?? []}
+          selectedProducts={features.plaid_selected_products ?? ["assets"]}
           roomKind={roomKind}
           onConnected={() => {
             void load();

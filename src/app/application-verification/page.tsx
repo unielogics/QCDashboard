@@ -21,6 +21,12 @@ type BankConnection = {
   is_primary_operating: boolean;
   last_pulled_at: string | null;
   statement_months: string[];
+  products: string[];
+  consented_products: string[];
+  billed_products: string[];
+  unavailable_products: string[];
+  pending_products: string[];
+  authorization_state: string;
 };
 
 type Verification = {
@@ -34,6 +40,10 @@ type Verification = {
   manual_statement_pending_count: number;
   statement_upload_enabled: boolean;
   assets_enabled: boolean;
+  statements_enabled: boolean;
+  selected_products: string[];
+  available_products: string[];
+  consent_product_scope: string[];
   expires_at: string;
 };
 
@@ -328,7 +338,10 @@ export default function ApplicationVerificationPage() {
       <section className="application-verification-intro">
         <span className="lbl">Business bank evidence</span>
         <h1>{data.business_name}</h1>
-        <p>Connect every business operating account you want considered. You can add another institution or add accounts from a bank already connected. Qualified Commercial combines them into one verified evidence view.</p>
+        <p>Connect every business operating account you want considered. {data.assets_enabled && data.statements_enabled ? "This file requests read-only balances and transaction history plus bank-produced statement PDFs." : data.statements_enabled ? "This file requests bank-produced statement PDFs for the selected period." : "This file requests read-only balances and transaction history for underwriting."} You can add another institution or add accounts from a bank already connected.</p>
+        <div className="application-verification-products" aria-label="Requested Plaid products">
+          {data.selected_products.map((product) => <span key={product}>{product === "assets" ? "Assets" : "Statement PDFs"}</span>)}
+        </div>
       </section>
 
       {error ? <div className="application-verification-alert error" role="alert">{error}</div> : null}
@@ -350,8 +363,8 @@ export default function ApplicationVerificationPage() {
               <div className="application-verification-banks">
                 {data.items.map((item) => (
                   <div key={item.id} className="application-verification-bank">
-                    <div><strong>{item.institution_name || "Connected institution"}</strong><span>{item.accounts_label || "Business accounts"} | {item.statement_months.length ? `${item.statement_months.length} statement months` : "Statements syncing"}</span>{item.update_mode_reason ? <span>{bankUpdateMessage(item)}</span> : null}</div>
-                    {item.update_mode_reason && !item.update_mode_account_selection ? <button type="button" disabled={busy} onClick={() => void updateBank(item, false)}>Repair connection</button> : null}
+                    <div><strong>{item.institution_name || "Connected institution"}</strong><span>{item.accounts_label || "Business accounts"} | {item.statement_months.length ? `${item.statement_months.length} statement months` : "Evidence syncing"}</span>{item.unavailable_products.length ? <span>This institution cannot provide Statement PDFs through Plaid. Upload the requested bank PDFs instead.</span> : item.pending_products.length ? <span>Authorize {item.pending_products.map((product) => product === "assets" ? "Assets" : "Statement PDFs").join(" and ")} for this bank.</span> : item.update_mode_reason ? <span>{bankUpdateMessage(item)}</span> : null}</div>
+                    {item.pending_products.length ? <button type="button" disabled={busy} onClick={() => void updateBank(item, false)}>{item.pending_products.length === 1 ? `Enable ${item.pending_products[0] === "assets" ? "Assets" : "Statement PDFs"}` : "Authorize products"}</button> : item.update_mode_reason && !item.update_mode_account_selection ? <button type="button" disabled={busy} onClick={() => void updateBank(item, false)}>Repair connection</button> : null}
                     <button type="button" disabled={busy} onClick={() => void updateBank(item, true)}>{item.update_mode_account_selection ? "Review new accounts" : "Add accounts"}</button>
                     {item.is_primary_operating ? <b>Primary operating</b> : <button type="button" disabled={busy} onClick={() => void setPrimary(item.id)}>Make primary</button>}
                     <button type="button" disabled={busy} onClick={() => void disconnectBank(item.id)}>Disconnect</button>

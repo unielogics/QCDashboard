@@ -37,9 +37,9 @@ export function ConfirmDialog({
       closeOnBackdrop={!busy}
       footer={
         <>
-          <Btn onClick={onClose} disabled={busy}>{cancelLabel}</Btn>
+          <Btn style={{ minHeight: 44 }} onClick={onClose} disabled={busy}>{cancelLabel}</Btn>
           <span className="sp" />
-          <Btn variant={tone === "danger" ? "default" : "pri"} className={tone === "danger" ? "danger" : undefined} onClick={onConfirm} disabled={busy}>
+          <Btn style={{ minHeight: 44 }} variant={tone === "danger" ? "default" : "pri"} className={tone === "danger" ? "danger" : undefined} onClick={onConfirm} disabled={busy}>
             {busy ? "Working..." : confirmLabel}
           </Btn>
         </>

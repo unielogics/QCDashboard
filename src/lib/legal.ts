@@ -11,11 +11,11 @@
 //      accepted — the AppShell will re-prompt them (future work) when
 //      version > their latest accepted row from /legal/acceptance.
 //
-// v1.1 (Effective 2026-08-25) adds explicit, separate SMS enrollment and
-// mobile-data non-sharing terms for carrier registration.
+// v1.2 (Effective 2026-09-02) explains per-file Plaid Assets and Statements
+// selection, product-specific collection, refresh, and retained evidence.
 
 export const TERMS_VERSION = "2026-08-25";
-export const PRIVACY_VERSION = "2026-08-25";
+export const PRIVACY_VERSION = "2026-09-02";
 export const DISCLOSURE_VERSION = "2026-08-25";
 
 // Short legal entity name surfaced in UI strings (consent checkbox label, etc.)
@@ -36,14 +36,14 @@ export interface LegalDocument {
 }
 
 // ---------------------------------------------------------------------------
-// Privacy Policy and Financial Privacy Notice — v1.1 (Effective 2026-08-25)
+// Privacy Policy and Financial Privacy Notice — v1.2 (Effective 2026-09-02)
 // ---------------------------------------------------------------------------
 
 export const PRIVACY_POLICY: LegalDocument = {
   title: "Privacy Policy and Financial Privacy Notice",
-  effectiveDate: "August 25, 2026",
+  effectiveDate: "September 2, 2026",
   preamble:
-    'Qualified Commercial LLC ("Qualified Commercial", "we", "us", or "our") — a New Jersey limited liability company. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.1, approved by Jonathan Franco, Executive Partner.',
+    'Qualified Commercial LLC ("Qualified Commercial", "we", "us", or "our") — a New Jersey limited liability company. Mailing address: 14 53rd St #408N, Brooklyn, NY 11232. Contact: support@qualifiedcommercial.com. Version 1.2, approved by Jonathan Franco, Executive Partner.',
   sections: [
     {
       heading: "Plain-English Summary",
@@ -63,6 +63,8 @@ export const PRIVACY_POLICY: LegalDocument = {
       paragraphs: [
         "Account information, including name, business name, email address, phone number, role, login information, contact preferences, and account status.",
         "Funding file information, including property address, loan purpose, requested amount, estimated values, bank statements, entity documents, tax documents, financial documents, credit-related information, identity information, real estate documents, and other information supplied by a user, agent, realtor, broker, or authorized representative.",
+        "Connected business bank information, when a user chooses to link an account through Plaid, Inc., including the financial institution name, account name and last four digits, and the product-specific information selected for that funding file. Plaid Assets may provide account identity, balances, and up to 210 days of transaction history for an underwriting Asset Report. Plaid Statements may provide available bank-produced statement PDF files for a requested range of up to twenty-four months. A file may use either product or both.",
+        "Bank connection authorization records, including the disclosure text shown, its version, selected product scope, date and time, network and device information, and the identity of the person who authorized the connection.",
         "Credit authorization and underwriting information, including consent records, credit pull authorization status, internal file review results, AI-generated observations, underwriting notes, lender package status, and lender responses.",
         "Payment and credit card authorization information, including authorized amount, payment purpose, card brand, last four digits, expiration month/year, payment token or processor reference, billing information, and authorization/audit records. We do not intentionally store CVV/CVC codes and should not store full raw card numbers in the QualifiedCommercial database.",
         "Communications information, including emails, SMS/text messages, mobile push notifications, in-app messages, chat transcripts, call notes, support tickets, delivery statuses, opt-in and opt-out records, and campaign/notification logs.",
@@ -102,6 +104,7 @@ export const PRIVACY_POLICY: LegalDocument = {
         "We may disclose information as follows:",
         "To selected lending companies, funding partners, processors, underwriters, credit/reporting vendors, and service providers when a funding package is validated, authorized, or ready for underwriting review.",
         "To service providers that help operate the platform, including cloud hosting, AWS infrastructure, Twilio messaging, email delivery, payment processing, analytics, identity verification, document generation, e-signature, customer support, and security vendors.",
+        "To Plaid, Inc. (\"Plaid\") when a user chooses to connect a business bank account. Plaid acts on the user's behalf to retrieve the Assets data, Statement PDFs, or both that are selected for the funding file and authorized by the user. Plaid collects the login information entered into Plaid's own connection window, together with account identifiers, authorized account and product information, and device information. Those login credentials are not received or stored by Qualified Commercial. Plaid's use of information is governed by Plaid's End User Privacy Policy at https://plaid.com/legal/#end-user-privacy-policy.",
         "To Meta/Facebook, Google Ads, and similar advertising/analytics platforms for retargeting, conversion tracking, analytics, and campaign measurement. These activities may be considered targeted advertising or sharing under some privacy laws even though we do not sell information for money.",
         "To realtors, brokers, agents, or authorized representatives associated with a client file, when needed to manage the file, complete tasks, communicate with the client, or process a funding request.",
         "To comply with law, legal process, regulatory inquiry, lender or investor review, fraud/security investigation, dispute resolution, or rights enforcement.",
@@ -115,6 +118,9 @@ export const PRIVACY_POLICY: LegalDocument = {
         "Everyday business purposes (operating accounts, processing funding files, preparing lender packages, responding to authorized requests, maintaining records): Yes, we share. You cannot limit this sharing where it is needed to provide the service, complete the funding workflow, comply with law, or protect the platform.",
         "With selected lenders, funding partners, credit/reporting vendors, processors, underwriters, and service providers for underwriting and funding review: Yes, when authorized or needed for a file. You may stop using the service or withdraw consent before submission when possible, but withdrawal may prevent funding review.",
         "For our own marketing, retargeting, conversion measurement, and platform improvement: Yes, limited to permitted uses. You may opt out of marketing emails, SMS marketing, push notifications, cookies, and targeted advertising as described below.",
+        "Connecting a bank account is optional. A user may upload bank-produced statement PDFs instead, including when an institution does not support Plaid Statements.",
+        "For each funding file, authorized staff select Plaid Assets, Plaid Statements, or both, and the user sees and authorizes the selected scope before connecting. The connection is read-only and cannot move funds, initiate payments, or create charges. Plaid Assets may provide balances and up to 210 days of transaction history for an underwriting Asset Report. Plaid Statements may provide available bank-produced Statement PDFs for a requested range of up to twenty-four months.",
+        "Selected information may refresh approximately every thirty days while the applicable product remains enabled and the bank remains connected. Disconnection or disabling a product stops future retrieval. Evidence already retrieved remains part of the funding file under the data-retention terms. Plaid maintains end-user controls at https://my.plaid.com.",
         "With nonaffiliated companies for their independent marketing unrelated to your funding request: No.",
         "Realtor-uploaded leads or client contacts sold to unrelated third parties: No — we do not sell those leads or contacts.",
       ],

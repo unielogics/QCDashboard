@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
+import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, cx } from "@/components/ds";
-import { useAuthedApi } from "@/hooks/useApi";
+import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
   ApplicationBankState,
   ApplicationProfile,
@@ -373,6 +374,7 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
   onRefresh: () => Promise<void>;
 }) {
   const apiCall = useAuthedApi();
+  const currentUser = useCurrentUser();
   const picker = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -383,6 +385,11 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
   const [bankTab, setBankTab] = useState<"connections" | "statements" | "assets">("connections");
   const [overrideReason, setOverrideReason] = useState("");
   const [assetReview, setAssetReview] = useState(false);
+  const [policyChange, setPolicyChange] = useState<{
+    assets_enabled: boolean;
+    statements_enabled: boolean;
+  } | null>(null);
+  const [policyNote, setPolicyNote] = useState("");
   const deliveries = useQuery({
     queryKey: ["application-room-deliveries", profileId],
     queryFn: () => apiCall<RoomDeliveryReceipt[]>(`/application-profiles/${profileId}/room/deliveries`),
@@ -410,9 +417,28 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
     onError: (reason) => setError(reason instanceof Error ? reason.message : "Manual statement evidence could not be approved."),
   });
   const createAssetReport = useMutation({
-    mutationFn: () => apiCall(`/application-profiles/${profileId}/asset-reports`, { method: "POST", body: JSON.stringify({ days_requested: 60 }) }),
+    mutationFn: () => apiCall(`/application-profiles/${profileId}/asset-reports`, { method: "POST", body: JSON.stringify({ days_requested: 210 }) }),
     onSuccess: async () => { setAssetReview(false); setError(""); await onRefresh(); },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "The Asset Report could not be requested."),
+  });
+  const updatePolicy = useMutation({
+    mutationFn: (next: { assets_enabled: boolean; statements_enabled: boolean }) =>
+      apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks/settings`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          ...next,
+          acknowledged: true,
+          note: policyNote.trim() || null,
+        }),
+      }),
+    onSuccess: async () => {
+      setPolicyChange(null);
+      setPolicyNote("");
+      setError("");
+      await onRefresh();
+    },
+    onError: (reason) =>
+      setError(reason instanceof Error ? reason.message : "The Plaid products could not be updated."),
   });
 
   async function uploadFiles(files: File[]) {
@@ -449,12 +475,54 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
   const latestActivity = bankDeliveries[0];
   const latestEmail = bankDeliveries.find((receipt) => receipt.channel === "email");
   const laterUnsentActivity = latestActivity?.channel === "none" && latestEmail && new Date(latestActivity.created_at).getTime() > new Date(latestEmail.created_at).getTime();
-  return <section className="verification-section bank-evidence-workspace">
+  const isSuperAdmin = currentUser.data?.role === "super_admin";
+  const selectedProducts = banks?.selected_products ?? [];
+  const availableProducts = banks?.available_products ?? [];
+  const requestPolicyChange = (product: "assets" | "statements") => {
+    if (!banks || !isSuperAdmin || updatePolicy.isPending) return;
+    const next = {
+      assets_enabled: product === "assets" ? !banks.assets_enabled : banks.assets_enabled,
+      statements_enabled:
+        product === "statements" ? !banks.statements_enabled : banks.statements_enabled,
+    };
+    if (!next.assets_enabled && !next.statements_enabled) return;
+    setPolicyNote("");
+    setPolicyChange(next);
+  };
+  return <><section className="verification-section bank-evidence-workspace">
     <header className="verification-section-head">
       <div><span className="lbl">Step 4</span><h3>Business bank evidence</h3><Sub>The client connects LLC accounts from their secure link. Staff may upload supplied statements and approve them as the evidence source.</Sub></div>
       <CellChip tone={state?.business_banking_complete ? "ok" : hasManualEvidence ? "acc" : "warn"}>{state?.business_banking_complete ? "Complete" : hasManualEvidence ? "Ready for review" : "Awaiting applicant"}</CellChip>
     </header>
     <div className="bank-evidence-stats"><div><span>Connected institutions</span><b className="num">{connected.length}</b></div><div><span>Evidence source</span><b>{hasManualEvidence ? "Uploaded statements" : connected.length ? "Plaid" : "-"}</b></div><div><span>Statement coverage</span><b className="num">{state?.bank_statement_months || (manualPendingCount ? "Analyzing" : "-")}</b></div></div>
+    <div className="plaid-product-policy">
+      <div className="grow"><b>Plaid evidence products</b><Sub>Selected for this file. Existing evidence is retained when a product is disabled.</Sub></div>
+      <div className="plaid-product-actions">
+        {([[
+          "assets",
+          "Assets",
+          banks?.assets_enabled ?? false,
+        ], [
+          "statements",
+          "Statement PDFs",
+          banks?.statements_enabled ?? false,
+        ]] as const).map(([product, label, checked]) => {
+          const available = availableProducts.includes(product);
+          const lastSelected = checked && selectedProducts.length === 1;
+          return isSuperAdmin ? <button
+            key={product}
+            type="button"
+            role="switch"
+            aria-checked={checked}
+            className={cx("plaid-product-toggle", checked && "on")}
+            disabled={!banks || !available || lastSelected || updatePolicy.isPending}
+            title={!available ? `${label} is unavailable in this deployment` : lastSelected ? "At least one Plaid product must remain enabled" : `${checked ? "Disable" : "Enable"} ${label}`}
+            onClick={() => requestPolicyChange(product)}
+          ><span>{checked ? "On" : "Off"}</span>{label}</button> : <CellChip key={product} tone={checked ? "ok" : "mut"}>{label} {checked ? "on" : "off"}</CellChip>;
+        })}
+      </div>
+    </div>
+    {(banks?.connections_requiring_client_authorization ?? 0) > 0 ? <Callout tone="warn" icon={<Icon name="alert" size={16} />}><b>Client authorization required.</b> {banks?.connections_requiring_client_authorization} connected bank{banks?.connections_requiring_client_authorization === 1 ? "" : "s"} must approve the selected products from the secure room. No reminder is sent automatically.</Callout> : null}
     {needsClientBankRequest ? <div className="bank-request-toolbar">
       <div><b>Client bank request</b><Sub>Email the secure room to the client, or create the link for separate delivery. The PIN is shared separately.</Sub></div>
       <div className="bank-request-actions"><Btn variant="pri" disabled={invite.isPending} onClick={() => invite.mutate("email")}><Icon name="send" size={14} />{latestEmail ? "Resend bank request" : "Send bank request"}</Btn><Btn disabled={invite.isPending} onClick={() => secureLink ? void navigator.clipboard.writeText(secureLink) : invite.mutate("none")}><Icon name={secureLink ? "copy" : "link"} size={14} />{secureLink ? "Copy room link" : "Create room link"}</Btn></div>
@@ -466,9 +534,22 @@ function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, 
       {latestEmail ? <CellChip tone={latestEmail.provider_accepted ? "ok" : "bad"}>{latestEmail.provider_accepted ? "Provider accepted" : latestEmail.status}</CellChip> : null}
     </div> : null}
     <div className="bank-workspace-tabs" role="tablist" aria-label="Business banking workspace"><button type="button" className={bankTab === "connections" ? "on" : undefined} onClick={() => setBankTab("connections")}>Connections</button><button type="button" className={bankTab === "statements" ? "on" : undefined} onClick={() => setBankTab("statements")}>Uploaded statements</button><button type="button" className={bankTab === "assets" ? "on" : undefined} onClick={() => setBankTab("assets")}>Asset reports</button></div>
-    {bankTab === "connections" ? <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.status === "active" ? "ok" : item.error ? "bad" : "warn"}>{item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Statements syncing"} · refreshed {when(item.last_pulled_at)}</Sub>{item.update_mode_reason ? <Sub>Client action needed: {item.update_mode_account_selection ? "review newly available accounts" : item.error || "repair or renew the connection"}. Send the room link as a reminder.</Sub> : null}</div></div>)}{!connected.length ? <div className="empty">{hasManualEvidence ? "Uploaded statement evidence is already available. A Plaid connection is optional for this file." : "No bank connection has been authorized. The client completes this from their own device in the secure room."}</div> : null}</div> : null}
+    {bankTab === "connections" ? <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.authorization_state === "authorized" ? "ok" : item.error ? "bad" : "warn"}>{item.authorization_state === "client_authorization_required" ? "Authorization needed" : item.authorization_state === "fallback_required" ? "PDF fallback" : item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Evidence syncing"} · refreshed {when(item.last_pulled_at)}</Sub>{item.unavailable_products.length ? <Sub>Statement PDFs are unavailable from this institution. Request bank PDF upload instead; Assets continues when enabled.</Sub> : item.pending_products.length ? <Sub>Client action needed: authorize {item.pending_products.map((value) => value === "assets" ? "Assets" : "Statement PDFs").join(" and ")} from the secure room.</Sub> : item.update_mode_reason ? <Sub>Client action needed: {item.update_mode_account_selection ? "review newly available accounts" : item.error || "repair or renew the connection"}. Send the room link as a reminder.</Sub> : null}</div></div>)}{!connected.length ? <div className="empty">{hasManualEvidence ? "Uploaded statement evidence is already available. A Plaid connection is optional for this file." : "No bank connection has been authorized. The client completes this from their own device in the secure room."}</div> : null}</div> : null}
     {bankTab === "statements" ? <div className="bank-statements-workspace"><input ref={picker} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} /><button type="button" className={cx("bank-statement-dropzone", dragging && "dragging")} disabled={uploading || sourceKind !== "intake"} onClick={() => picker.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); void uploadFiles(Array.from(event.dataTransfer.files)); }}><Icon name="upload" size={22} /><b>{uploading ? uploadState : "Drop bank statements here or click to browse"}</b><span>Files are stored in the primary bucket and sent through extraction and statement coverage.</span></button>{uploadState && !uploading ? <Callout tone="acc">{uploadState}</Callout> : null}{manualMonths.length ? <div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="acc">{month}</CellChip>)}</div> : hasManualEvidence ? <div className="empty">{manualPendingCount ? `Analyzing ${manualPendingCount} statement file${manualPendingCount === 1 ? "" : "s"} for coverage periods.` : "Statement evidence is present, but its coverage period could not be identified automatically."}</div> : <div className="empty">No uploaded statement periods have been identified.</div>}{hasManualEvidence && !banks?.manual_override ? <div className="manual-bank-override"><Input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Why uploaded statements are sufficient for this file" /><Btn variant="pri" disabled={overrideReason.trim().length < 8 || override.isPending} onClick={() => override.mutate()}><Icon name="check" size={14} />Approve evidence</Btn></div> : null}{banks?.manual_override ? <Callout tone="acc" icon={<Icon name="check" size={16} />}>Plaid requirement overridden with reviewed statement evidence. {banks.manual_override_reason}</Callout> : null}</div> : null}
-    {bankTab === "assets" ? <div className="bank-assets-workspace">{banks?.assets_enabled ? <div className="manual-bank-override"><div className="grow"><b>Plaid Asset Report</b><Sub>Explicit underwriting report; creation may be billable. It is never generated automatically.</Sub></div>{assetReview ? <><Btn variant="pri" disabled={createAssetReport.isPending} onClick={() => createAssetReport.mutate()}>{createAssetReport.isPending ? "Requesting..." : "Confirm 60-day report"}</Btn><Btn onClick={() => setAssetReview(false)}>Cancel</Btn></> : <Btn disabled={!connected.length} onClick={() => setAssetReview(true)}>Generate report</Btn>}</div> : <Callout tone="mut">Plaid Assets is not enabled for this environment.</Callout>}{(banks?.asset_reports ?? []).filter((report) => report.status !== "removed").map((report) => <div key={report.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="file" size={17} /></span><div className="grow"><b>Asset Report · {report.days_requested} days</b><Sub>Requested {when(report.created_at)}{report.error ? ` · ${report.error}` : ""}</Sub></div><CellChip tone={report.status === "ready" ? "ok" : report.status === "error" ? "bad" : "acc"}>{report.status}</CellChip></div>)}</div> : null}
+    {bankTab === "assets" ? <div className="bank-assets-workspace">{banks?.assets_enabled ? <div className="manual-bank-override"><div className="grow"><b>Plaid Asset Report</b><Sub>A 210-day report is queued automatically after the selected products are authorized. Manual refresh may be billable.</Sub></div>{assetReview ? <><Btn variant="pri" disabled={createAssetReport.isPending} onClick={() => createAssetReport.mutate()}>{createAssetReport.isPending ? "Requesting..." : "Confirm 210-day report"}</Btn><Btn onClick={() => setAssetReview(false)}>Cancel</Btn></> : <Btn disabled={!connected.length} onClick={() => setAssetReview(true)}>Refresh report</Btn>}</div> : <Callout tone="mut">Plaid Assets is disabled for this file.</Callout>}{(banks?.asset_reports ?? []).filter((report) => report.status !== "removed").map((report) => <div key={report.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="file" size={17} /></span><div className="grow"><b>Asset Report · {report.days_requested} days</b><Sub>Requested {when(report.created_at)}{report.error ? ` · ${report.error}` : ""}</Sub></div><CellChip tone={report.status === "ready" ? "ok" : report.status === "error" ? "bad" : "acc"}>{report.status}</CellChip></div>)}</div> : null}
     {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
-  </section>;
+  </section><ConfirmDialog
+    open={Boolean(policyChange)}
+    onClose={() => { if (!updatePolicy.isPending) setPolicyChange(null); }}
+    title="Confirm Plaid products for this file"
+    confirmLabel="Confirm products"
+    busy={updatePolicy.isPending}
+    reversible
+    onConfirm={() => { if (policyChange) updatePolicy.mutate(policyChange); }}
+    body={policyChange ? <div className="grid">
+      <p>This file will collect <b>{policyChange.assets_enabled && policyChange.statements_enabled ? "Plaid Assets and bank-produced Statement PDFs" : policyChange.assets_enabled ? "Plaid Assets" : "bank-produced Statement PDFs"}</b>.</p>
+      <p>{connected.length ? `${connected.length} connected bank${connected.length === 1 ? "" : "s"} will be checked. Newly enabled products require renewed client consent and may require Plaid Link authorization.` : "These products will be requested when the client connects a bank."} Previously collected evidence remains attached. Enabling Assets can create a billable report.</p>
+      <Input value={policyNote} onChange={(event) => setPolicyNote(event.target.value)} placeholder="Audit note (optional)" />
+    </div> : null}
+  /></>;
 }

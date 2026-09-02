@@ -38,9 +38,14 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
     const detail = body && typeof body === "object" && "detail" in body
       ? (body as { detail?: unknown }).detail
       : null;
+    const nestedMessage = detail && typeof detail === "object" && "message" in detail
+      ? (detail as { message?: unknown }).message
+      : null;
     const message = typeof detail === "string" && detail.trim()
       ? detail
-      : `${res.status} ${res.statusText}`;
+      : typeof nestedMessage === "string" && nestedMessage.trim()
+        ? nestedMessage
+        : `${res.status} ${res.statusText}`;
     throw new ApiError(res.status, message, body);
   }
   if (res.status === 204) return undefined as T;

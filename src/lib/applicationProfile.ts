@@ -17,6 +17,10 @@ export type ApplicationProfile = {
   intake_id: string | null;
   dealer_id: string | null;
   primary_bucket_id: string | null;
+  plaid_assets_enabled: boolean;
+  plaid_statements_enabled: boolean;
+  plaid_policy_updated_at: string | null;
+  plaid_policy_updated_by_user_id: string | null;
   vertical: "real_estate" | "main_street" | "dealer" | "mca";
   funding_category: string | null;
   entity_type: string | null;
@@ -150,6 +154,13 @@ export type ApplicationBankConnection = {
   next_refresh_at: string | null;
   statement_months: string[];
   source: "application" | "dealer";
+  products: string[];
+  consented_products: string[];
+  billed_products: string[];
+  unavailable_products: string[];
+  pending_products: string[];
+  authorization_state: string;
+  products_checked_at: string | null;
 };
 
 export type PlaidAssetReport = {
@@ -175,6 +186,13 @@ export type ApplicationBankState = {
   manual_statement_file_count: number;
   manual_statement_pending_count: number;
   assets_enabled: boolean;
+  statements_enabled: boolean;
+  selected_products: string[];
+  available_products: string[];
+  consent_product_scope: string[];
+  connections_requiring_client_authorization: number;
+  plaid_policy_updated_at: string | null;
+  plaid_policy_updated_by_user_id: string | null;
   asset_reports: PlaidAssetReport[];
 };
 
