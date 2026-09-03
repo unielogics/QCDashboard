@@ -28,7 +28,7 @@ import {
   type ChipTone,
 } from "@/components/ds";
 import { Modal } from "@/components/design-system/Modal";
-import { Tabs } from "@/components/design-system/Tabs";
+import { Tabs, type TabOption } from "@/components/design-system/Tabs";
 import { IconButton } from "@/components/design-system/IconButton";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { useUI } from "@/store/ui";
@@ -39,10 +39,13 @@ import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
+import { PartnerProductionPackageTab } from "@/components/broker/PartnerProductionPackageTab";
 import type { IntakeResponse } from "@/lib/intake";
 
 type LeadRow = {
   id: string;
+  // "dealer_gatekeeper_v1" (canonical) / "dealer_financing_v1" (legacy). Partner leads are dealer-variant by construction.
+  variant?: string;
   bucket_id: string;
   bucket_name: string;
   full_name: string;
@@ -60,6 +63,14 @@ type LeadRow = {
 };
 
 type LeadPage = { items: LeadRow[]; total: number; limit: number; offset: number };
+
+// Files & Review | Messages | Production package (dealer-variant leads only).
+type DetailTab = "files" | "messages" | "production";
+
+function isDealerVariant(variant?: string | null): boolean {
+  // Partner-created leads carry no other variant; a missing value is treated as dealer.
+  return !variant || variant === "dealer_gatekeeper_v1" || variant === "dealer_financing_v1";
+}
 
 type RequestedDoc = { id: string; name: string; description?: string | null; required: boolean; status: string };
 type UploadedFile = {
@@ -169,7 +180,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [rerunOpen, setRerunOpen] = useState(false);
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
-  const [detailTab, setDetailTab] = useState<"files" | "messages">("files");
+  const [detailTab, setDetailTab] = useState<DetailTab>("files");
   const [programLabel, setProgramLabel] = useState<string | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -214,7 +225,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
     }
   }
 
-  async function openLead(id: string, initialTab: "files" | "messages" = "files") {
+  async function openLead(id: string, initialTab: DetailTab = "files") {
     setSelectedId(id);
     setDetailTab(initialTab);
     setDetailLoading(true);
@@ -240,7 +251,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
     }
   }
 
-  function openDetailTab(tab: "files" | "messages") {
+  function openDetailTab(tab: DetailTab) {
     setDetailTab(tab);
     if (tab === "messages" && selectedId) void markMessagesSeen(selectedId);
   }
@@ -430,6 +441,19 @@ export default function BrokerAIUnderwriterLeadsPage() {
 
   const selectedUnread = rows.find((r) => r.id === selectedId)?.channel_unread_count ?? 0;
 
+  // Files & Review | Messages | Production package. The third tab is the
+  // stage-one Production Package on the partner's own lead: the partner fills
+  // and sends it, the desk picks the sponsor. Dealer-variant leads only.
+  const detailTabOptions: TabOption<DetailTab>[] = [
+    { id: "files", label: "Files & Review" },
+    {
+      id: "messages",
+      label: "Messages",
+      badge: selectedUnread > 0 ? <span className="cnt sm">{selectedUnread}</span> : undefined,
+    },
+    ...(isDealerVariant(detail?.intake.variant) ? [{ id: "production" as const, label: "Production package" }] : []),
+  ];
+
   return (
     <div className="grid">
       <PageHeader
@@ -570,18 +594,11 @@ export default function BrokerAIUnderwriterLeadsPage() {
             // stage modal. Nothing in the twelve-column vocabulary describes
             // "auto 1fr, full height, allowed to shrink".
             <div style={{ display: "grid", gridTemplateRows: "auto 1fr", gap: 12, height: "100%", padding: 16, minHeight: 0 }}>
-              <Tabs
+              <Tabs<DetailTab>
                 variant="underline"
                 value={detailTab}
                 onChange={openDetailTab}
-                options={[
-                  { id: "files", label: "Files & Review" },
-                  {
-                    id: "messages",
-                    label: "Messages",
-                    badge: selectedUnread > 0 ? <span className="cnt sm">{selectedUnread}</span> : undefined,
-                  },
-                ]}
+                options={detailTabOptions}
               />
               {/* Both panels stay mounted (toggled via display) so the cockpit's
                   in-progress chat/uploads survive switching to Messages. */}
@@ -613,6 +630,11 @@ export default function BrokerAIUnderwriterLeadsPage() {
                 <div style={{ height: "100%", minHeight: 0, overflow: "hidden", display: detailTab === "messages" ? "block" : "none" }}>
                   <LeadNotesPanel notes={detail?.notes ?? []} onPost={postNote} posting={notesPosting} error={notesError} />
                 </div>
+                {detailTab === "production" && detail ? (
+                  <div style={{ height: "100%", minHeight: 0, overflow: "auto" }}>
+                    <PartnerProductionPackageTab intakeId={detail.intake.id} />
+                  </div>
+                ) : null}
               </div>
             </div>
           )

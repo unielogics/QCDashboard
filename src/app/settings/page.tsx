@@ -67,7 +67,9 @@ import type {
   SimulatorSettings,
   OperatorAccountAccessType,
 } from "@/lib/types";
-import { useInitSignatureUpload } from "@/hooks/useApi";
+import { useAuthedApi, useInitSignatureUpload } from "@/hooks/useApi";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ApiError } from "@/lib/api";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
 import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
 import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
@@ -1883,7 +1885,168 @@ function LetterheadSection({ draft, setDraft, canEdit, dirty, onSave, saving }: 
           </div>
         </div>
       </div>
+
+      <CompanySignatureBlock canEdit={canEdit} letterhead={lh} dirty={dirty} />
     </Panel>
+  );
+}
+
+// ── Company signature on file ───────────────────────────────────────────
+//
+// Qualified Commercial's signature on program agreements (the Production
+// Package places it on every agreement it sends). The image is the saved
+// letterhead signature above; adopting records the officer's name and title
+// and the image hash as the firm's one live signature on file
+// (GET /settings/company-signature, POST /settings/company-signature/adopt —
+// super admin only). Adopting again retires the previous adoption; agreements
+// already sent keep the signature placed on them.
+
+type CompanySignatureRead = {
+  id: string;
+  typed_name: string;
+  title: string | null;
+  source: string;
+  adopted_at: string;
+  consent_version: string | null;
+  preview_url: string | null;
+};
+
+type CompanySignatureState = {
+  signature: CompanySignatureRead | null;
+  authorization_text: string;
+  authorization_version: string;
+  letterhead_signature_present: boolean;
+};
+
+const COMPANY_SIGNATURE_KEY = ["settings", "company-signature"] as const;
+
+function companySignatureError(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const detail = (error.body as { detail?: unknown } | null)?.detail;
+    if (detail && typeof detail === "object" && typeof (detail as { message?: unknown }).message === "string") return (detail as { message: string }).message;
+    if (typeof detail === "string" && detail.trim()) return detail;
+    return error.message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
+function CompanySignatureBlock({ canEdit, letterhead, dirty }: { canEdit: boolean; letterhead: LetterheadSettings; dirty: boolean }) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  const state = useQuery({
+    queryKey: COMPANY_SIGNATURE_KEY,
+    queryFn: () => apiCall<CompanySignatureState>("/settings/company-signature"),
+    staleTime: 30 * 1000,
+    retry: false,
+  });
+  const current = state.data?.signature ?? null;
+  const [signerName, setSignerName] = useState("");
+  const [signerTitle, setSignerTitle] = useState("");
+  const [confirmed, setConfirmed] = useState(false);
+  const [message, setMessage] = useState<null | { kind: "ok" | "err"; msg: string }>(null);
+  const [seeded, setSeeded] = useState(false);
+
+  // Seed the inputs once: from the live adoption when there is one, else from
+  // the letterhead officer (the same person signs prequal letters).
+  useEffect(() => {
+    if (seeded || state.isLoading) return;
+    setSignerName(current?.typed_name || letterhead.officer_name || "");
+    setSignerTitle(current?.title || letterhead.officer_title || "");
+    setSeeded(true);
+  }, [seeded, state.isLoading, current?.typed_name, current?.title, letterhead.officer_name, letterhead.officer_title]);
+
+  const adopt = useMutation({
+    mutationFn: () => apiCall<CompanySignatureState>("/settings/company-signature/adopt", {
+      method: "POST",
+      body: JSON.stringify({ typed_name: signerName.trim(), title: signerTitle.trim() }),
+    }),
+    onSuccess: (next) => {
+      queryClient.setQueryData(COMPANY_SIGNATURE_KEY, next);
+      setConfirmed(false);
+      setMessage({ kind: "ok", msg: current ? "Company signature replaced. Agreements sent from now on carry this adoption." : "Company signature adopted for agreements." });
+    },
+    onError: (error) => setMessage({ kind: "err", msg: companySignatureError(error, "The company signature could not be adopted.") }),
+  });
+
+  const letterheadSaved = Boolean(state.data?.letterhead_signature_present);
+  const pendingUpload = Boolean(letterhead.signature_s3_key) && dirty;
+  const canAdopt = canEdit && letterheadSaved && signerName.trim().length > 0 && signerTitle.trim().length > 0 && confirmed && !adopt.isPending;
+
+  return (
+    <>
+      <Lbl className="mt">Company signature on file</Lbl>
+      <div className="sub" style={{ margin: "6px 0 12px" }}>
+        The saved signature image above, adopted as Qualified Commercial&apos;s signature on program
+        agreements. The Production Package places it on every agreement it sends, with the officer
+        name and title recorded here.
+      </div>
+      {state.isError ? <StatusLine kind="err">{companySignatureError(state.error, "The company signature could not be loaded.")}</StatusLine> : null}
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 280px) 1fr", gap: 16, alignItems: "flex-start" }}>
+        <div style={{
+          border: "1px dashed var(--line2)",
+          borderRadius: 12,
+          background: "var(--sunken2)",
+          padding: 16,
+          minHeight: 120,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}>
+          {current ? (
+            <div style={{ textAlign: "center", display: "grid", gap: 8, justifyItems: "center" }}>
+              {current.preview_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={current.preview_url} alt={`Signature of ${current.typed_name}`} style={{ maxWidth: 240, maxHeight: 80 }} />
+              ) : null}
+              <CellChip tone="ok"><Icon name="check" size={11} stroke={3} /> Adopted for agreements</CellChip>
+              <div className="sub">
+                <strong>{current.typed_name}</strong>{current.title ? `, ${current.title}` : ""}
+                <div>Adopted {new Date(current.adopted_at).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}{current.consent_version ? ` · authorization ${current.consent_version}` : ""}</div>
+              </div>
+            </div>
+          ) : (
+            <div className="sub" style={{ textAlign: "center" }}>
+              {state.isLoading ? "Loading…" : "Not adopted yet."}
+              {!state.isLoading ? <div>Program agreements cannot be sent until the company signature is on file.</div> : null}
+            </div>
+          )}
+        </div>
+
+        <div className="grid">
+          {!letterheadSaved && !state.isLoading ? (
+            <StatusLine kind="warn">
+              {pendingUpload ? "Save this section first so the uploaded signature image becomes the saved one, then adopt it." : "Upload and save the letterhead signature image above before adopting it for agreements."}
+            </StatusLine>
+          ) : null}
+          <div className="cg">
+            <Field className="s6" label="Signer — full name">
+              <Input type="text" value={signerName} onChange={(e) => setSignerName(e.target.value)} disabled={!canEdit} placeholder="Denny Matos" />
+            </Field>
+            <Field className="s6" label="Signer title">
+              <Input type="text" value={signerTitle} onChange={(e) => setSignerTitle(e.target.value)} disabled={!canEdit} placeholder="Chief Executive Officer" />
+            </Field>
+          </div>
+          {state.data?.authorization_text ? (
+            <label className="row" style={{ alignItems: "flex-start", gap: 8, fontSize: 12.5, cursor: canEdit ? "pointer" : "default" }}>
+              <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} disabled={!canEdit} style={{ marginTop: 3 }} />
+              <span>{state.data.authorization_text}</span>
+            </label>
+          ) : null}
+          <div className="row">
+            <Btn variant="pri" onClick={() => adopt.mutate()} disabled={!canAdopt}>
+              {adopt.isPending ? "Adopting…" : current ? "Re-adopt for agreements" : "Adopt for agreements"}
+            </Btn>
+            {!canEdit ? <span className="sub">Super-admin required</span> : null}
+          </div>
+          {message ? <StatusLine kind={message.kind}>{message.msg}</StatusLine> : null}
+          {current ? (
+            <div className="sub">
+              Re-adopting after replacing the image or the officer retires the previous adoption. Agreements already sent keep the signature placed on them.
+            </div>
+          ) : null}
+        </div>
+      </div>
+    </>
   );
 }
 

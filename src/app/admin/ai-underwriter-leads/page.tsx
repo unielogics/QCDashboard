@@ -70,7 +70,7 @@ import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPane
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
-import type { ApplicationProfile, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 
 type LeadRow = {
   id: string;
@@ -1048,6 +1048,12 @@ function LeadDetailPanel({
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit" | "production">(initialView);
   const [productionShareOpen, setProductionShareOpen] = useState(false);
+  // "Record loan terms": the term-sheet drawer lives in the Production tab; the
+  // Underwriting tab and the page-action menu ask for it through this flag.
+  const [productionTermSheetOpen, setProductionTermSheetOpen] = useState(false);
+  // The current term sheet on the profile (dealer files only) for the
+  // Underwriting strip. Recorded through the drawer, read here.
+  const [termSheet, setTermSheet] = useState<ApplicationTermSheetState | null>(null);
   const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
   const [contextRailOpen, setContextRailOpen] = useState(false);
@@ -1128,11 +1134,37 @@ function LeadDetailPanel({
       });
       setUnderwriting(state);
       setUnderwritingDraft(underwritingDraftFromState(state));
+      await loadTermSheet(profile.id, authToken);
     } catch (reason) {
       setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be loaded."));
     } finally {
       setUnderwritingLoading(false);
     }
+  }
+
+  // The term sheet is keyed on the profile and exists only on dealer files; a
+  // 404 (not a dealer file / no package visibility) simply means "none".
+  async function loadTermSheet(profileId: string | null | undefined, authToken?: string | null) {
+    if (!profileId || !isDealerFile || !canUnderwrite) {
+      setTermSheet(null);
+      return;
+    }
+    try {
+      const token = authToken ?? (await getToken());
+      setTermSheet(await api<ApplicationTermSheetState>(`/production-packages/term-sheets/${profileId}`, { authToken: token ?? undefined }));
+    } catch {
+      setTermSheet(null);
+    }
+  }
+
+  function openTermSheet() {
+    setPrototypeView("production");
+    setProductionTermSheetOpen(true);
+  }
+
+  function closeTermSheet() {
+    setProductionTermSheetOpen(false);
+    void loadTermSheet(underwriting?.profile_id);
   }
 
   async function saveUnderwritingPatch(patch: ApplicationUnderwritingPatch) {
@@ -1218,6 +1250,7 @@ function LeadDetailPanel({
     else if (detail.files.length) setSubmissionStep(3);
     else setSubmissionStep(1);
     setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : "workspace");
+    setProductionTermSheetOpen(false);
     setCommunicationChannel("underwriter");
     setContextRailOpen(false);
     setContactDraft({
@@ -1624,6 +1657,7 @@ function LeadDetailPanel({
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
+          { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail || !canGovern },
         ]} />
         <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
@@ -1755,6 +1789,28 @@ function LeadDetailPanel({
                           <span className="sub">Actor and effects are recorded in audit.</span>
                         </div>
                       </div>
+                      {isDealerFile ? (
+                        <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
+                          <div>
+                            <span className="lbl">Loan terms</span>
+                            <b>
+                              {termSheet?.current
+                                ? `Term sheet v${termSheet.current.version} · ${formatMoney(termSheet.current.approved_amount)} at ${termSheet.current.rate_pct}% for ${termSheet.current.term_months} mo · ${termSheet.current.entered_by_name || "Recorded"} ${formatDateTime(termSheet.current.entered_at)}`
+                                : "No loan terms recorded"}
+                            </b>
+                            <span className="sub">
+                              {termSheet?.current
+                                ? `${termSheet.current.facility_type} · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · ${termSheet.history.length} version${termSheet.history.length === 1 ? "" : "s"}. The final package is drafted from the current sheet.`
+                                : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
+                            </span>
+                          </div>
+                          <div style={{ justifyItems: "end" }}>
+                            <Btn variant={termSheet?.current ? undefined : "pri"} onClick={openTermSheet}>
+                              {termSheet?.current ? "Open the Production Package" : "Record loan terms"}
+                            </Btn>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="fldgrid three">
                         <Field label="Lifecycle status">
                           <Select value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>
@@ -1805,7 +1861,7 @@ function LeadDetailPanel({
               ) : null}
 
               {prototypeView === "production" && isDealerFile ? (
-                <ProductionPackageTab intakeId={detail.intake.id} shareOpen={productionShareOpen} onShareClose={() => setProductionShareOpen(false)} />
+                <ProductionPackageTab intakeId={detail.intake.id} shareOpen={productionShareOpen} onShareClose={() => setProductionShareOpen(false)} termSheetOpen={productionTermSheetOpen} onTermSheetClose={closeTermSheet} />
               ) : null}
 
               {prototypeView === "audit" ? (

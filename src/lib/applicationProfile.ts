@@ -257,3 +257,14 @@ export type ClassificationPreview = {
   effects: string[];
   requires_confirmation: boolean;
 };
+
+// ---- Production Package term sheet (recorded on the profile before any final exists) ----
+// Shapes live in the mirrored production-package tree (ProductionTermSheetRead /
+// ProductionTermSheetState on the backend); re-exported here so the admin file
+// pages can type the Underwriting strip without reaching into the tree.
+export type {
+  TermSheet as ApplicationTermSheet,
+  TermSheetBody as ApplicationTermSheetBody,
+  TermSheetState as ApplicationTermSheetState,
+  TermSheetResult as ApplicationTermSheetResult,
+} from "@/production-package/types";

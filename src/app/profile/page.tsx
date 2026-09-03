@@ -22,6 +22,7 @@ import { SIGN_IN_URL } from "@/lib/appUrl";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { Role } from "@/lib/enums.generated";
 import { InvestorProfileDialog } from "./components/InvestorProfileDialog";
+import { MySignatureCard } from "@/components/profile/MySignatureCard";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
@@ -191,6 +192,12 @@ export default function ProfilePage() {
             }}
           />
         ))}
+
+      {/* Signature on file — every signed-in person (team and dealer partners)
+          may adopt one for placement on agreements that name them. Borrower
+          accounts sign each document fresh in the room, so the card is not
+          offered to clients. */}
+      {!isClient ? <MySignatureCard defaultName={user.name} /> : null}
 
       {/* No Appearance section: this app is light-only, matching Capital OS.
           The 3-way Light / Auto / Dark control was removed with dark mode. */}
