@@ -102,7 +102,8 @@ export type IntakeResponse = {
   files: UploadedFile[];
   ai_summary?: Record<string, unknown> | null;
   latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
-  messages?: Array<{ id: string; role: "assistant" | "user" | string; content: string; created_at: string }>;
+  messages?: Array<{ id: string; role: "assistant" | "user" | string; content: string; created_at: string }>;  // Present when the client owes a signature on a Production Package; the room shows the signing screen and nothing else.
+  signing_gate?: import("@/components/intake/ProductionSigningGate").SigningGate | null;
 };
 
 export type EntityStructure = {

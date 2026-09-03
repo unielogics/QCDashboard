@@ -64,6 +64,7 @@ import { ApplicationClassificationPanel } from "@/components/application/Applica
 import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
 import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
+import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
@@ -754,7 +755,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       detail={detail}
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
-      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : "workspace"}
+      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "production" ? "production" : "workspace"}
       canGovern={canGovern}
       onClose={closeLead}
       onMinimize={() => setLeadDetailMinimized(true)}
@@ -986,7 +987,7 @@ function LeadDetailPanel({
   detail: LeadDetail | null;
   loading: boolean;
   initialNotesOpen?: boolean;
-  initialView?: "workspace" | "underwriting";
+  initialView?: "workspace" | "underwriting" | "production";
   canGovern: boolean;
   onClose: () => void;
   onMinimize: () => void;
@@ -1045,7 +1046,8 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit">(initialView);
+  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit" | "production">(initialView);
+  const [productionShareOpen, setProductionShareOpen] = useState(false);
   const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
   const [contextRailOpen, setContextRailOpen] = useState(false);
@@ -1103,6 +1105,8 @@ function LeadDetailPanel({
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
+  // "dealer_gatekeeper_v1" is the canonical dealer marker; "dealer_financing_v1" is the legacy one.
+  const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1" || detail?.intake.variant === "dealer_financing_v1";
 
   async function loadUnderwritingState() {
     if (!detail || !canUnderwrite) {
@@ -1213,7 +1217,7 @@ function LeadDetailPanel({
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
     else if (detail.files.length) setSubmissionStep(3);
     else setSubmissionStep(1);
-    setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : "workspace");
+    setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : "workspace");
     setCommunicationChannel("underwriter");
     setContextRailOpen(false);
     setContactDraft({
@@ -1619,6 +1623,7 @@ function LeadDetailPanel({
           { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
+          { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail || !canGovern },
         ]} />
         <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
@@ -1635,6 +1640,7 @@ function LeadDetailPanel({
             {[
               ["workspace", "File workspace"],
               ...(canUnderwrite ? [["underwriting", "Underwriting"] as const] : []),
+              ...(canUnderwrite && isDealerFile ? [["production", "Production Package"] as const] : []),
               ["communications", "Communications"],
               ["audit", "Audit trail"],
             ].map(([id, label]) => (
@@ -1646,6 +1652,7 @@ function LeadDetailPanel({
             "intake-file-body",
             "with-sequence",
             !contextRailOpen && "context-collapsed",
+            prototypeView === "production" && "is-focus",
           )}>
             <aside className="submission-rail">
               <Panel title="Submission sequence" sub={`Step ${submissionStep} of 6`}>
@@ -1795,6 +1802,10 @@ function LeadDetailPanel({
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
                   {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
                 </div>
+              ) : null}
+
+              {prototypeView === "production" && isDealerFile ? (
+                <ProductionPackageTab intakeId={detail.intake.id} shareOpen={productionShareOpen} onShareClose={() => setProductionShareOpen(false)} />
               ) : null}
 
               {prototypeView === "audit" ? (

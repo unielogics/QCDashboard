@@ -6,6 +6,7 @@ import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
+import { ProductionSigningGate, type SignPayload as ProductionSignPayload, type SignResult as ProductionSignResult } from "@/components/intake/ProductionSigningGate";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
@@ -90,6 +91,8 @@ type IntakeResponse = {
   ai_summary?: Record<string, unknown> | null;
   latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
   messages?: Array<{ id: string; role: "assistant" | "user" | string; content: string; created_at: string }>;
+  // Present when the client owes a signature on a Production Package.
+  signing_gate?: import("@/components/intake/ProductionSigningGate").SigningGate | null;
 };
 
 type AssetRow = {
@@ -616,6 +619,20 @@ export default function DealerAIUnderwriterPage() {
     }
   }
 
+  // The Production Package gate: sign, then reload so the room opens.
+  async function signProductionPackage(payload: ProductionSignPayload): Promise<ProductionSignResult> {
+    if (!token) throw new Error("Your session has expired. Please log in again.");
+    return call<ProductionSignResult>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/production-package/sign`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  }
+
+  async function refreshProductionGate() {
+    if (!token) return;
+    await loadIntake(token);
+  }
+
   async function signRequestedDocument(payload: SignRequestedDocumentPayload) {
     if (!token) return;
     setSignBusy(true);
@@ -900,6 +917,16 @@ export default function DealerAIUnderwriterPage() {
               <div style={lockedBadge}>{c.lockedPreviewBadge}</div>
             </section>
           </>
+        ) : response.signing_gate ? (
+          <section style={compact ? appMainMobile : appMain}>
+            <ProductionSigningGate
+              gate={response.signing_gate}
+              compact={compact}
+              onLogout={logoutRoom}
+              onRefresh={refreshProductionGate}
+              onSign={signProductionPackage}
+            />
+          </section>
         ) : (
           <>
             {!compact ? (

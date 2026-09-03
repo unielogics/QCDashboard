@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { Inter, Inter_Tight } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import "./production-package.css";
 // Console-only additions. Loads after globals so it can extend the vendored
 // Capital OS trunk without editing it — see the header of app-extras.css.
 import "./app-extras.css";
