@@ -1684,23 +1684,26 @@ function LeadDetailPanel({
 
           <div className={cx(
             "intake-file-body",
-            "with-sequence",
+            // The submission sequence belongs to the file workspace. Every other tab drops
+            // it and takes the freed 260px, so its own components get the room.
+            prototypeView === "workspace" && "with-sequence",
             !contextRailOpen && "context-collapsed",
-            prototypeView === "production" && "is-focus",
           )}>
-            <aside className="submission-rail">
-              <Panel title="Submission sequence" sub={`Step ${submissionStep} of 6`}>
-                <div className="submission-steps submission-steps-rail">
-                  {workflowSteps.map((step) => (
-                    <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
-                      <span>{step.status === "complete" ? <Icon name="check" size={12} /> : step.status === "not-started" ? <Icon name="x" size={11} /> : "-"}</span>
-                      <b>{step.label}</b>
-                      <small>{step.status === "complete" ? "Complete" : step.status === "partial" ? "In progress" : "Not started"} · {step.sub}</small>
-                    </button>
-                  ))}
-                </div>
-              </Panel>
-            </aside>
+            {prototypeView === "workspace" ? (
+              <aside className="submission-rail">
+                <Panel title="Submission sequence" sub={`Step ${submissionStep} of 6`}>
+                  <div className="submission-steps submission-steps-rail">
+                    {workflowSteps.map((step) => (
+                      <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
+                        <span>{step.status === "complete" ? <Icon name="check" size={12} /> : step.status === "not-started" ? <Icon name="x" size={11} /> : "-"}</span>
+                        <b>{step.label}</b>
+                        <small>{step.status === "complete" ? "Complete" : step.status === "partial" ? "In progress" : "Not started"} · {step.sub}</small>
+                      </button>
+                    ))}
+                  </div>
+                </Panel>
+              </aside>
+            ) : null}
 
             <main className="grid intake-file-primary">
               {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
