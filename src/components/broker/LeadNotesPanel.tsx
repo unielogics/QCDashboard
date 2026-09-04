@@ -8,6 +8,8 @@
 
 import { useState } from "react";
 import { Btn, StatusLine, Textarea } from "@/components/ds";
+import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImages";
+import type { InlineImage } from "@/lib/inlineImages";
 
 export type LeadNote = {
   id: string;
@@ -15,6 +17,7 @@ export type LeadNote = {
   author_role: string;
   content: string;
   created_at: string;
+  images?: InlineImage[];
 };
 
 export function LeadNotesPanel({
@@ -29,7 +32,7 @@ export function LeadNotesPanel({
   submitLabel = "Send",
 }: {
   notes: LeadNote[];
-  onPost: (content: string) => Promise<void> | void;
+  onPost: (content: string, imageIds: string[]) => Promise<void> | void;
   posting: boolean;
   error?: string | null;
   title?: string;
@@ -39,12 +42,15 @@ export function LeadNotesPanel({
   submitLabel?: string;
 }) {
   const [draft, setDraft] = useState("");
+  const pasted = useInlineImages("bucket_note");
 
   async function submit() {
     const content = draft.trim();
-    if (!content || posting) return;
-    await onPost(content);
+    if ((!content && !pasted.images.length) || posting) return;
+    await onPost(content, pasted.ids);
     setDraft("");
+    // The images belong to the note now, not to the composer.
+    pasted.reset();
   }
 
   return (
@@ -83,6 +89,7 @@ export function LeadNotesPanel({
                 <span className="msg-when">{formatNoteDate(note.created_at)}</span>
               </div>
               <div className="msg-b">{note.content}</div>
+              <InlineImageStrip images={note.images} />
             </div>
           ))
         )}
@@ -101,13 +108,16 @@ export function LeadNotesPanel({
                 submit();
               }
             }}
+            onPaste={pasted.onPaste}
             rows={2}
             placeholder={placeholder}
           />
+          <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} />
+          {pasted.error ? <StatusLine tone="bad">{pasted.error}</StatusLine> : null}
           {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
           <div className="composer-row">
             <span className="grow" />
-            <Btn variant="pri" onClick={submit} disabled={posting || !draft.trim()}>
+            <Btn variant="pri" onClick={submit} disabled={posting || (!draft.trim() && !pasted.images.length)}>
               {posting ? "Sending…" : submitLabel}
             </Btn>
           </div>

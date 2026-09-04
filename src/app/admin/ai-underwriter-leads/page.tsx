@@ -509,11 +509,11 @@ export default function AdminAIUnderwriterLeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId]);
 
-  async function postLeadNote(id: string, content: string) {
+  async function postLeadNote(id: string, content: string, imageIds: string[] = []) {
     await call(`/admin/ai-underwriter-leads/${id}/notes`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, image_ids: imageIds }),
     });
     await refreshSelectedLead();
   }
@@ -799,7 +799,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           });
         }
       }}
-      onPostNote={(content) => postLeadNote(activeLeadId, content)}
+      onPostNote={(content, imageIds) => postLeadNote(activeLeadId, content, imageIds)}
       onUpdateOutcomeStatus={(status) => updateOutcomeStatus(activeLeadId, status)}
       onUpdateLanguage={(language) => updateLeadLanguage(activeLeadId, language)}
       onUpdateContact={(payload) => updateLeadContact(activeLeadId, payload)}
@@ -1007,7 +1007,7 @@ function LeadDetailPanel({
   onCockpitResponse: (r: IntakeResponse) => void;
   onDownloadZip: () => Promise<void>;
   onLinkBucketIntake: () => void;
-  onPostNote: (content: string) => Promise<void>;
+  onPostNote: (content: string, imageIds: string[]) => Promise<void>;
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
   onUpdateContact: (payload: LeadContactUpdate) => Promise<void>;
@@ -1421,11 +1421,11 @@ function LeadDetailPanel({
     }
   }
 
-  async function postNote(content: string) {
+  async function postNote(content: string, imageIds: string[] = []) {
     setNotesPosting(true);
     setNotesError(null);
     try {
-      await onPostNote(content);
+      await onPostNote(content, imageIds);
     } catch (error) {
       setNotesError(error instanceof Error ? error.message : "Could not post the note.");
     } finally {

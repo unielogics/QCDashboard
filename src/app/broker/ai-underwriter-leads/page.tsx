@@ -297,7 +297,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
     }
   }
 
-  async function postNote(content: string) {
+  async function postNote(content: string, imageIds: string[] = []) {
     if (!selectedId) return;
     setNotesPosting(true);
     setNotesError(null);
@@ -305,7 +305,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
       await call(`/broker/ai-underwriter-leads/${selectedId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, image_ids: imageIds }),
       });
       await refreshSelectedLead();
     } catch (error) {

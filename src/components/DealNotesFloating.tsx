@@ -23,6 +23,7 @@ import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { useUI } from "@/store/ui";
+import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImages";
 import { useDeal, useUpdateDealById } from "@/hooks/useApi";
 import type { DealNoteEntry } from "@/lib/types";
 
@@ -81,6 +82,7 @@ export function DealNotesPanel() {
   const { data: deal } = useDeal(notesOpen ? notesDealId : null);
   const update = useUpdateDealById();
   const [draft, setDraft] = useState("");
+  const pasted = useInlineImages("deal_note");
   const [err, setErr] = useState<string | null>(null);
   const listRef = useRef<HTMLDivElement | null>(null);
 
@@ -100,12 +102,15 @@ export function DealNotesPanel() {
   }, [notesOpen, entries.length]);
 
   async function appendNote() {
-    if (!deal || !draft.trim()) return;
+    if (!deal || (!draft.trim() && !pasted.images.length)) return;
     setErr(null);
     const entry: DealNoteEntry = {
       id: newEntryId(),
       at: new Date().toISOString(),
       body: draft.trim(),
+      // The server binds these to this entry id on the write; the read hands
+      // back signed urls under `images`.
+      image_ids: pasted.ids,
     };
     const next = [...(deal.notes_entries ?? []), entry];
     try {
@@ -115,6 +120,7 @@ export function DealNotesPanel() {
         body: { notes_entries: next },
       });
       setDraft("");
+      pasted.reset();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Couldn't save note");
     }
@@ -158,17 +164,20 @@ export function DealNotesPanel() {
               appendNote();
             }
           }}
+          onPaste={pasted.onPaste}
           rows={3}
-          placeholder="Quick note… ⌘ + Enter to save"
+          placeholder="Quick note… paste a screenshot to attach it. ⌘ + Enter to save"
           aria-label="New private note"
         />
+        <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} />
+        {pasted.error ? <StatusLine tone="bad">{pasted.error}</StatusLine> : null}
         {err ? <StatusLine tone="bad">{err}</StatusLine> : null}
         <div className="row">
           <span className="sub grow">Agent-only · never shared with funding</span>
           <Btn
             variant="pri"
             onClick={appendNote}
-            disabled={!draft.trim() || update.isPending}
+            disabled={(!draft.trim() && !pasted.images.length) || update.isPending}
           >
             {update.isPending ? "Saving…" : "Save note"}
           </Btn>
@@ -227,6 +236,7 @@ function NoteCard({ entry, onDelete }: { entry: DealNoteEntry; onDelete: () => v
         </IconBtn>
       </div>
       <div className="msg-b">{entry.body}</div>
+      <InlineImageStrip images={entry.images} />
     </div>
   );
 }

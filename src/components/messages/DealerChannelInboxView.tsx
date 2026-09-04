@@ -84,7 +84,7 @@ export function DealerChannelInboxView({
     }
   }
 
-  async function postMessage(content: string) {
+  async function postMessage(content: string, imageIds: string[] = []) {
     if (!selectedId) return;
     setPosting(true);
     setPostError(null);
@@ -92,7 +92,7 @@ export function DealerChannelInboxView({
       await call(`${apiPrefix}/${selectedId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, image_ids: imageIds }),
       });
       const rows = await call<LeadNote[]>(`${apiPrefix}/${selectedId}/notes`);
       setNotes(rows);

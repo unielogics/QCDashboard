@@ -316,6 +316,22 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .unified-thread-chat-head > div { flex: 1; min-width: 0; display: grid; }
 .unified-thread-chat-head span { color: var(--muted); font-size: 11px; }
 .unified-thread-messages { display: flex; flex-direction: column; gap: 9px; min-height: 0; padding: 16px; overflow-y: auto; background: var(--sunken2); }
+/* ---------- pasted images ----------
+   A thumbnail links to the signed full-size URL rather than opening a
+   lightbox: someone pasting a bank statement screenshot wants to read it.
+   Mirrors QCRep's .inlineImage rules. */
+.inline-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.inline-image { display: block; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--sunken); line-height: 0; }
+.inline-image:hover { border-color: var(--accent-200); }
+.inline-image img { display: block; max-width: 220px; max-height: 180px; width: auto; height: auto; object-fit: cover; }
+.inline-image-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.inline-image-chip { display: inline-flex; align-items: center; gap: 7px; padding: 4px 8px 4px 4px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); font-size: 11px; color: var(--ink); max-width: 220px; }
+.inline-image-chip img { width: 22px; height: 22px; border-radius: 999px; object-fit: cover; flex: 0 0 22px; }
+.inline-image-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.inline-image-chip button { display: inline-grid; place-items: center; border: 0; background: transparent; color: var(--faint); cursor: pointer; padding: 0; }
+.inline-image-chip button:hover { color: var(--danger); }
+.inline-image-chip.is-busy { color: var(--faint); padding-left: 10px; }
+
 /* ---------- chat composer ----------
    The phone-messaging shape, shared by every conversation: one rounded bar
    that grows with the text, a round send button at the trailing edge. Enter

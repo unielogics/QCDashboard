@@ -1,3 +1,5 @@
+import type { InlineImage } from "@/lib/inlineImages";
+
 // Hand-typed mirror of backend response shapes.
 // (When you scale, switch to OpenAPI codegen — for now the surface is small.)
 
@@ -3293,6 +3295,10 @@ export interface DealNoteEntry {
   at: string;
   body: string;
   author_id?: string | null;
+  /** Sent on the write; the server binds them to this entry id. */
+  image_ids?: string[];
+  /** Returned on the read, with signed urls. */
+  images?: InlineImage[];
 }
 
 // FundingFile is rendered from existing Loan rows (Loan IS the
