@@ -1198,6 +1198,9 @@ export interface UserBookingSettings {
     nudge_1?: PrecallStepSettings;
     nudge_2?: PrecallStepSettings;
   };
+  /** The short video the client watches before the call, rendered by {video}.
+   *  Null means the firm default, which the backend supplies. */
+  precall_video_url?: string | null;
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];
@@ -1218,6 +1221,52 @@ export interface UserBookingSettings {
   profile_photo_url: string | null;
   created_at: string | null;
   updated_at: string | null;
+}
+
+/** The placeholder contract, served by the backend so the UI stops keeping copies. */
+export interface BookingPlaceholder {
+  token: string;
+  description: string;
+  pin_only: boolean;
+}
+
+export interface BookingPlaceholdersResponse {
+  placeholders: BookingPlaceholder[];
+  pin_allowed_in: string[];
+  /** kind -> { label, goal, channel } */
+  kinds: Record<string, { label: string; goal: string; channel: string }>;
+}
+
+export interface BookingTemplateDraftRequest {
+  kind: string;
+  instruction?: string | null;
+  current_subject?: string | null;
+  current_body?: string | null;
+  tone?: "direct" | "warm" | "formal";
+}
+
+export interface BookingTemplateDraft {
+  kind: string;
+  channel: string;
+  subject?: string | null;
+  body: string;
+  /** True when the model was unavailable and this is the shipped default. */
+  fallback: boolean;
+}
+
+export interface BookingTestSendRequest {
+  channel: "email" | "sms";
+  subject?: string | null;
+  body: string;
+  to?: string | null;
+}
+
+export interface BookingTestSendResult {
+  ok: boolean;
+  to: string;
+  detail: string;
+  /** What the client would receive, placeholders resolved and notice appended. */
+  rendered: string;
 }
 
 export interface BookingAssetUploadInitResponse {

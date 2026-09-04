@@ -1266,10 +1266,55 @@ button.pick { width: 100%; text-align: left; }
   .popcard { right: auto; left: 0; width: calc(100vw - 28px); }
 }
 
-.settings-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+/* /settings runs its sections off a top tab strip, so the body is simply the
+   full column and needs no rule of its own. `.cktabs` draws the selected
+   tab's underline but not the line that underline sits on: on `.ckhead`
+   pages that line is the header's own bottom border, and `.pagehead` sets
+   `border-bottom: 0`. Inset so the active tab's 2px accent paints over it. */
+.settings-tabs { margin-top: 0; box-shadow: inset 0 -1px 0 var(--line); }
 .settings-section-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 2px 0 4px; }
 .settings-section-head h2 { margin: 0; font-size: 18px; line-height: 1.25; }
-.booking-settings-workspace { display: grid; grid-template-columns: minmax(0, 1fr) 390px; gap: 16px; align-items: start; }
+.booking-settings-workspace { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+
+/* The booking page preview: a slide-over on the right rather than a permanent
+   390px column, so the settings themselves get the width. */
+.booking-preview-panel { position: fixed; inset: 0 0 0 auto; width: min(440px, 92vw); z-index: 60; display: grid; grid-template-rows: auto minmax(0, 1fr); background: var(--surface); border-left: 1px solid var(--line); box-shadow: -14px 0 34px rgba(15,23,32,.16); }
+.booking-preview-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+.booking-preview-panel > div { overflow-y: auto; padding: 14px; }
+.booking-preview-scrim { position: fixed; inset: 0; z-index: 59; background: rgba(15,23,32,.28); border: 0; }
+
+/* Client messages: the sequence on the left, one message open on the right. */
+.bkmsg { display: grid; grid-template-columns: minmax(230px, 290px) minmax(0, 1fr); gap: 14px; align-items: start; }
+.bkmsg-rail { display: grid; gap: 12px; align-content: start; }
+.bkmsg-group { display: grid; gap: 3px; }
+.bkmsg-grouphd { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 2px 2px; color: var(--muted); font-size: 10px; font-weight: 760; text-transform: uppercase; letter-spacing: .05em; }
+.bkmsg-add { display: flex; gap: 4px; }
+.bkmsg-add button { border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 10px; font-weight: 700; padding: 2px 8px; cursor: pointer; text-transform: none; letter-spacing: 0; }
+.bkmsg-add button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.bkmsg-add button:disabled { opacity: .45; cursor: not-allowed; }
+.bkmsg-item { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 9px 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font: inherit; cursor: pointer; }
+.bkmsg-item:hover { border-color: var(--line2); }
+.bkmsg-item.on { border-color: var(--accent); background: var(--accent-100); }
+.bkmsg-item-b { min-width: 0; display: grid; gap: 1px; }
+.bkmsg-item-b b { font-size: 12.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bkmsg-item-b small { color: var(--muted); font-size: 10.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bkmsg-ch { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: var(--sunken); color: var(--muted); }
+.bkmsg-ch.sms { background: var(--accent-100); color: var(--accent-700); }
+.bkmsg-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ok); }
+.bkmsg-editor { display: grid; gap: 12px; align-content: start; padding: 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); min-width: 0; }
+.bkmsg-hd { display: flex; align-items: start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.bkmsg-hd h4 { margin: 0; font-size: 15px; }
+.bkmsg-field { display: grid; gap: 5px; }
+.bkmsg-tokens { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.bkmsg-token { border: 1px solid var(--line); border-radius: 999px; background: var(--sunken2); color: var(--ink2); font: inherit; font-size: 11px; font-family: var(--fm, ui-monospace, monospace); padding: 3px 9px; cursor: pointer; }
+.bkmsg-token:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-100); }
+.bkmsg-token:disabled { opacity: .5; cursor: not-allowed; }
+.bkmsg-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; align-items: center; }
+.bkmsg-test { display: grid; grid-template-columns: minmax(0, 260px) auto minmax(0, 1fr); gap: 8px; align-items: center; padding: 10px 12px; border: 1px solid var(--line2); border-radius: var(--r-sm); background: var(--sunken2); }
+@media (max-width: 1100px) {
+  .bkmsg { grid-template-columns: 1fr; }
+  .bkmsg-actions, .bkmsg-test { grid-template-columns: 1fr; }
+}
 .booking-weekly-editor { min-width: 0; display: grid; }
 .booking-weekly-day { min-width: 0; display: grid; grid-template-columns: 132px minmax(0, 1fr); gap: 14px; align-items: start; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .booking-weekly-day:first-child { padding-top: 0; }
@@ -1309,11 +1354,6 @@ button.pick { width: 100%; text-align: left; }
   .booking-block-compose > :nth-child(4) { grid-column: 1 / 3; }
 }
 @media (max-width: 760px) {
-  .settings-layout { grid-template-columns: 1fr; }
-  .settings-layout > .card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
-  .settings-layout > .card > hr { display: none; }
-  .settings-layout .pick, .settings-layout .toollink { min-width: 0; }
-  .settings-layout > .card > .lbl { grid-column: 1 / -1; }
   .settings-section-head { align-items: flex-start; flex-direction: column; }
   .booking-weekly-day { grid-template-columns: 1fr; gap: 6px; }
   .booking-weekly-ranges { width: 100%; }

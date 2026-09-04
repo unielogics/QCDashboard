@@ -95,6 +95,20 @@ const SECTIONS = [
 ] as const;
 type SectionId = (typeof SECTIONS)[number]["id"];
 
+// Which sections write into the one shared app_settings JSON, and the key
+// each one owns. A section absent from this map (Booking, Team, Connections,
+// Deal Analyzer, ...) keeps its own state and its own Save, so it has nothing
+// in this page's draft to be dirty about.
+const SECTION_SETTINGS_KEY: Partial<Record<SectionId, keyof AppSettingsData>> = {
+  checklists: "checklists",
+  cadence: "ai_cadence",
+  referrals: "referrals",
+  pricing: "pricing",
+  simulator: "simulator",
+  security: "security",
+  letterhead: "letterhead",
+};
+
 const LOAN_TYPES = [
   { v: "dscr", l: "DSCR" },
   { v: "fix_and_flip", l: "Fix & Flip" },
@@ -213,10 +227,31 @@ export default function SettingsPage() {
     }
   }, [settingsData?.data, error, draft]);
 
-  const dirty = useMemo(() => {
-    if (!draft || !settingsData?.data) return false;
-    return JSON.stringify(draft) !== JSON.stringify(settingsData.data);
-  }, [draft, settingsData?.data]);
+  // The saved baseline, normalised the same way the draft was seeded.
+  // Comparing against the raw server row would report a section as edited the
+  // moment `withDefaults` backfilled a block the persisted JSONB never had:
+  // nobody touched it, the shape just filled in underneath it.
+  const baseline = useMemo(
+    () => (settingsData?.data ? withDefaults(settingsData.data) : null),
+    [settingsData?.data],
+  );
+
+  // Dirty is per settings key, never page-wide. `handleSaveSection` only ever
+  // PATCHes the active section's key, so one flag over the whole draft armed
+  // Save on sections with nothing to send and, once anything had been edited,
+  // stayed armed forever because the edits it was reporting were never in the
+  // payload. With top tabs that mismatch is one click away instead of rare.
+  const dirtyKeys = useMemo(() => {
+    const keys = new Set<keyof AppSettingsData>();
+    if (!draft || !baseline) return keys;
+    for (const key of Object.values(SECTION_SETTINGS_KEY)) {
+      if (!key) continue;
+      if (JSON.stringify(draft[key]) !== JSON.stringify(baseline[key])) keys.add(key);
+    }
+    return keys;
+  }, [draft, baseline]);
+
+  const isDirty = (key: keyof AppSettingsData | null | undefined) => !!key && dirtyKeys.has(key);
 
   const canEdit = profile.role === Role.SUPER_ADMIN;
 
@@ -229,7 +264,14 @@ export default function SettingsPage() {
 
   const selectSection = (next: SectionId) => {
     setSection(next);
-    router.replace(`/settings?section=${next}`, { scroll: false });
+    // Rewrite only `section` and keep every other param. Two of them are
+    // load-bearing: `client_id` deep-links Client access at a single client,
+    // and `from=lending-ai` draws the breadcrumb back to the portal. A bare
+    // `?section=` dropped both on the first tab click, which mattered far
+    // less when switching meant walking over to a rail.
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("section", next);
+    router.replace(`/settings?${params.toString()}`, { scroll: false });
   };
 
   const flash = (msg: string, isError = false) => {
@@ -241,22 +283,37 @@ export default function SettingsPage() {
   const handleSaveSection = async (sectionKey: keyof AppSettingsData) => {
     if (!draft || !canEdit) return;
     try {
-      await update.mutateAsync({ [sectionKey]: draft[sectionKey] } as Parameters<typeof update.mutateAsync>[0]);
+      const saved = await update.mutateAsync({ [sectionKey]: draft[sectionKey] } as Parameters<typeof update.mutateAsync>[0]);
+      // Take the server's echo of the block we just sent. If the backend
+      // normalises anything on the way in, the draft would otherwise sit one
+      // step off the saved row and the section would read as edited forever,
+      // now visibly so, since the strip tags sections that hold edits. Only
+      // this key moves; edits parked elsewhere are left where they are.
+      const savedBlock = withDefaults(saved.data)[sectionKey];
+      setDraft((d) => (d ? ({ ...d, [sectionKey]: savedBlock } as AppSettingsData) : d));
       flash(`${sectionKey} saved.`);
     } catch (e) {
       flash(e instanceof Error ? e.message : "Save failed.", true);
     }
   };
 
-  const currentSettingsKey: keyof AppSettingsData | null = ({
-    checklists: "checklists",
-    cadence: "ai_cadence",
-    referrals: "referrals",
-    pricing: "pricing",
-    simulator: "simulator",
-    security: "security",
-    letterhead: "letterhead",
-  } as Partial<Record<SectionId, keyof AppSettingsData>>)[section] ?? null;
+  const currentSettingsKey: keyof AppSettingsData | null = SECTION_SETTINGS_KEY[section] ?? null;
+
+  // Nav model for the strip. `client_access` stays out of it for anyone who
+  // is not a super-admin, exactly as the rail had it: still reachable by URL,
+  // where the body answers with its own warn line.
+  const visibleSections = SECTIONS.filter((s) => !s.hidden && (s.id !== "client_access" || canEdit));
+  // Doc checklists and AI cadence are deliberately not in the strip, but they
+  // still render when deep-linked. One earns a tab while it is open, so the
+  // strip never reads as "nothing is selected", and keeps it while it holds
+  // unsaved edits, so those stay one click from their Save button. It leads
+  // the strip rather than trailing it because the strip scrolls: appended
+  // after twelve tabs it would sit off-screen, which is the problem it is
+  // there to solve.
+  const legacySections = SECTIONS.filter((s) => s.hidden && (s.id === section || isDirty(SECTION_SETTINGS_KEY[s.id])));
+  const tabSections = [...legacySections, ...visibleSections];
+  // Sections holding edits that the Save button on screen will not send.
+  const strandedSections = SECTIONS.filter((s) => s.id !== section && isDirty(SECTION_SETTINGS_KEY[s.id]));
 
   if (isLoading && !draft) {
     return <div className="sub">Loading settings…</div>;
@@ -277,7 +334,7 @@ export default function SettingsPage() {
       <PageHeader
         title="Settings"
         lede={section === "booking" ? "Account scheduling and availability" : canEdit ? "Super-admin configuration" : "Read-only"}
-        actions={<>{canEdit && currentSettingsKey ? <Btn variant="pri" onClick={() => handleSaveSection(currentSettingsKey)} disabled={!dirty || update.isPending}><Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save changes"}</Btn> : null}<PageActionMenu items={[{ label: "Lending AI", href: "/admin/lending-ai" }, { label: "Elara usage and controls", href: "/admin/token-usage" }]} /></>}
+        actions={<>{canEdit && currentSettingsKey ? <Btn variant="pri" onClick={() => handleSaveSection(currentSettingsKey)} disabled={!isDirty(currentSettingsKey) || update.isPending}><Icon name="check" size={13} /> {update.isPending ? "Saving..." : "Save changes"}</Btn> : null}<PageActionMenu items={[{ label: "Lending AI", href: "/admin/lending-ai" }, { label: "Elara usage and controls", href: "/admin/token-usage" }]} /></>}
       />
       <Row>
         {canEdit ? <CellChip tone="acc">Editing as super-admin</CellChip> : <CellChip tone="warn">Read-only — super-admin required</CellChip>}
@@ -293,159 +350,159 @@ export default function SettingsPage() {
           <Link href="/admin/lending-ai" className="btn sm">
             <Icon name="chevL" size={11} /> Lending AI
           </Link>
-          <span className="sub">· Legacy section</span>
+          {/* `from` used to be dropped by the first section click, so the
+              qualifier could only ever be read on the legacy section the
+              tile linked to. It survives tab switches now, so it has to say
+              what is actually on screen. */}
+          {section === "checklists" || section === "cadence" ? <span className="sub">· Legacy section</span> : null}
         </div>
       ) : null}
 
-      {/* A 220px rail beside a fluid body — a bespoke split, not two of the
-          twelve cockpit columns, so this grid stays inline. */}
-      <div className="settings-layout">
-        <div className="card">
-          <div className="lbl" style={{ padding: "5px 8px 2px" }}>Account</div>
-          {SECTIONS.filter(s => !s.hidden && s.id === "booking").map((s) => (
+      {/* Section switch. `.cktabs` is the house tab strip and already owns
+          the horizontal scroll with hidden scrollbars, which is the whole
+          reason twelve sections fit on one row inside a page whose main is
+          `overflow-x: hidden`. The two entries the old rail kept above the
+          sections (Lending AI, Elara usage) are not sections at all, they
+          route away, so they stay where the header action menu already
+          carries them rather than posing as tabs. */}
+      <div className="cktabs settings-tabs" role="tablist" aria-label="Settings sections">
+        {tabSections.map((s) => {
+          const on = section === s.id;
+          return (
             <button
               key={s.id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              className={on ? "on" : undefined}
               onClick={() => selectSection(s.id)}
-              className={cx("pick", section === s.id && "on")}
-              style={{ width: "100%", textAlign: "left", font: "inherit" }}
             >
-              <Icon name={s.icon} size={14} />
-              <span className="sp">{s.label}</span>
+              {/* `.cktabs button` is not a flex box, so the icon and the label
+                  get their own inline row to share a centre line. */}
+              <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                <Icon name={s.icon} size={13} />
+                {s.label}
+                {/* Tagged only when it is not the tab you are on: the active
+                    section's state is already in the header's Save button, and
+                    a tag appearing on the first keystroke would shove every tab
+                    to its right sideways while the operator typed. */}
+                {!on && isDirty(SECTION_SETTINGS_KEY[s.id]) ? <span className="tag">Unsaved</span> : null}
+              </span>
             </button>
-          ))}
-          <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
-          <div className="lbl" style={{ padding: "5px 8px 2px" }}>Firm configuration</div>
-          {/* Lending AI — the canonical home for AI configuration.
-              Routes away (not an in-page section). Sits at the top of
-              the sidebar so it's the first thing admins reach for.
-              `.toollink` is the shell's own nav-row class. */}
-          <Link href="/admin/lending-ai" className="toollink">
-            <Icon name="spark" size={14} />
-            <b className="sp">Lending AI</b>
-            <span className="sub">→</span>
-          </Link>
-          <Link href="/admin/token-usage" className="toollink">
-            <Icon name="trend" size={14} />
-            <span className="sp">Elara AI Usage & Controls</span>
-            <span className="sub">→</span>
-          </Link>
-          <hr style={{ border: 0, borderTop: "1px solid var(--line)", margin: "6px 4px" }} />
+          );
+        })}
+      </div>
 
-          {SECTIONS.filter(s => !s.hidden && s.id !== "booking" && (s.id !== "client_access" || canEdit)).map((s) => (
-            <button
-              key={s.id}
-              onClick={() => selectSection(s.id)}
-              // `.pick` (+ `.on`) is the sheet's selectable row: it owns the
-              // frame, the hover and the selected tint. A <button> inherits
-              // none of width, alignment or font from it.
-              className={cx("pick", section === s.id && "on")}
-              style={{ width: "100%", textAlign: "left", font: "inherit" }}
-            >
-              <Icon name={s.icon} size={14} />
-              <span className="sp">{s.label}</span>
-            </button>
-          ))}
-        </div>
+      {/* Save sends one section, so edits left behind in another are real but
+          invisible. Said here rather than in a dialog on the way out: the tab
+          that holds them is still on screen and tagged, so the way back is a
+          click, and nothing blocks the operator who meant to move on. */}
+      {strandedSections.length ? (
+        <WarnLine>
+          Unsaved edits in {strandedSections.map((s) => s.label).join(", ")}. Save changes only sends the
+          section you are on, so those are still held in this page and are not on the server yet. Open the
+          tab again to save or undo them.
+        </WarnLine>
+      ) : null}
 
-        <div className="grid">
-          {/* Legacy banner — shown when a deprecated section is active.
-              Doc Checklists + AI Cadence still write to the legacy
-              app_settings JSON, but the AI itself reads from
-              client_ai_plan (see /admin/lending-ai). */}
-          {(section === "checklists" || section === "cadence") ? (
-            <WarnLine>
-              <div>
-                <div><b>⚠ Legacy section — kept for the non-AI loan plumbing</b></div>
-                <div style={{ marginTop: 4 }}>
-                  {section === "cadence"
-                    ? "Borrower follow-up now runs through Lending AI → Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
-                    : "Loan-product requirements now live in Lending AI → Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
-                  {" "}Edits here keep working but the AI ignores them.
-                </div>
+      <div className="grid">
+        {/* Legacy banner — shown when a deprecated section is active.
+            Doc Checklists + AI Cadence still write to the legacy
+            app_settings JSON, but the AI itself reads from
+            client_ai_plan (see /admin/lending-ai). */}
+        {(section === "checklists" || section === "cadence") ? (
+          <WarnLine>
+            <div>
+              <div><b>⚠ Legacy section — kept for the non-AI loan plumbing</b></div>
+              <div style={{ marginTop: 4 }}>
+                {section === "cadence"
+                  ? "Borrower follow-up now runs through Lending AI → Borrower Follow-Up. This preset only feeds the older non-AI doc-reminder pipeline (job_doc_reminders)."
+                  : "Loan-product requirements now live in Lending AI → Lending Playbooks (organized by stage). This list only pre-populates loans.required_docs at loan creation."}
+                {" "}Edits here keep working but the AI ignores them.
               </div>
-            </WarnLine>
-          ) : null}
+            </div>
+          </WarnLine>
+        ) : null}
 
-          {section === "booking" && <BookingPageSettingsSection embedded />}
-          {section === "client_access" && canEdit ? <ClientAccessSection initialClientId={searchParams.get("client_id")} /> : null}
-          {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
+        {section === "booking" && <BookingPageSettingsSection embedded />}
+        {section === "client_access" && canEdit ? <ClientAccessSection initialClientId={searchParams.get("client_id")} /> : null}
+        {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
 
-          {section === "checklists" && (
-            <ChecklistsSection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("checklists")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "cadence" && (
-            <CadenceSection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("ai_cadence")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "referrals" && (
-            <ReferralsSection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("referrals")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "pricing" && (
-            <PricingSection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("pricing")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "security" && (
-            <SecuritySection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("security")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "regional_managers" && <RegionalManagersSection canEdit={canEdit} />}
-          {section === "simulator" && (
-            <SimulatorSection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("simulator")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "deal_analyzer" && <DealAnalyzerSection />}
-          {section === "property_intelligence" && <PropertyIntelligenceSection canEdit={canEdit} />}
-          {section === "connections" && <ConnectionsSection />}
-          {section === "letterhead" && (
-            <LetterheadSection
-              draft={draft}
-              setDraft={setDraft}
-              canEdit={canEdit}
-              dirty={dirty}
-              onSave={() => handleSaveSection("letterhead")}
-              saving={update.isPending}
-            />
-          )}
-          {section === "team" && <TeamSection canEdit={canEdit} />}
-        </div>
+        {section === "checklists" && (
+          <ChecklistsSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("checklists")}
+            onSave={() => handleSaveSection("checklists")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "cadence" && (
+          <CadenceSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("ai_cadence")}
+            onSave={() => handleSaveSection("ai_cadence")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "referrals" && (
+          <ReferralsSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("referrals")}
+            onSave={() => handleSaveSection("referrals")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "pricing" && (
+          <PricingSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("pricing")}
+            onSave={() => handleSaveSection("pricing")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "security" && (
+          <SecuritySection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("security")}
+            onSave={() => handleSaveSection("security")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "regional_managers" && <RegionalManagersSection canEdit={canEdit} />}
+        {section === "simulator" && (
+          <SimulatorSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("simulator")}
+            onSave={() => handleSaveSection("simulator")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "deal_analyzer" && <DealAnalyzerSection />}
+        {section === "property_intelligence" && <PropertyIntelligenceSection canEdit={canEdit} />}
+        {section === "connections" && <ConnectionsSection />}
+        {section === "letterhead" && (
+          <LetterheadSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("letterhead")}
+            onSave={() => handleSaveSection("letterhead")}
+            saving={update.isPending}
+          />
+        )}
+        {section === "team" && <TeamSection canEdit={canEdit} />}
       </div>
     </div>
   );

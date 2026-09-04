@@ -125,6 +125,11 @@ import type {
   StageTransitionRequest,
   SummaryRefreshResponse,
   HeadshotUploadInitResponse,
+  BookingPlaceholdersResponse,
+  BookingTemplateDraft,
+  BookingTemplateDraftRequest,
+  BookingTestSendRequest,
+  BookingTestSendResult,
   UserBookingSettings,
   UserRow,
   WorkspaceState,
@@ -652,6 +657,41 @@ export function useUpdateBookingSettings() {
       qc.invalidateQueries({ queryKey: ["bookingSettings", devUser] });
       qc.invalidateQueries({ queryKey: ["calendar"] });
     },
+  });
+}
+
+// The placeholder contract, the drafter and the test sender. The placeholder list
+// is served rather than duplicated in the UI — three copies had already drifted.
+export function useBookingPlaceholders() {
+  const apiCall = useAuthedApi();
+  const devUser = useDevUser();
+  return useQuery({
+    queryKey: ["bookingPlaceholders", devUser],
+    queryFn: () => apiCall<BookingPlaceholdersResponse>("/me/booking-settings/placeholders"),
+    staleTime: 30 * 60 * 1000,
+    retry: false,
+  });
+}
+
+export function useDraftBookingTemplate() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: BookingTemplateDraftRequest) =>
+      apiCall<BookingTemplateDraft>("/me/booking-settings/draft-template", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+  });
+}
+
+export function useTestSendBookingMessage() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: BookingTestSendRequest) =>
+      apiCall<BookingTestSendResult>("/me/booking-settings/test-send", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
   });
 }
 

@@ -11,6 +11,7 @@ import {
   WeeklyScheduleEditor,
 } from "@/components/calendar/BookingAvailabilityControls";
 import { Btn, CG, CellChip, Input, PageHeader, Panel, Row, Select, StatusLine, Textarea, cx } from "@/components/ds";
+import { BookingMessagesWorkspace } from "@/components/settings/BookingMessagesWorkspace";
 import {
   useBookingSettings,
   useCurrentUser,
@@ -114,6 +115,9 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
   const [feedback, setFeedback] = useState<string | null>(null);
   const [localLogoUrl, setLocalLogoUrl] = useState<string | null>(null);
   const [localProfileUrl, setLocalProfileUrl] = useState<string | null>(null);
+  // The preview used to hold a permanent 390px column. It opens on demand now,
+  // so the settings themselves get the full width.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   useEffect(() => {
     if (!settingsQ.data) return;
@@ -189,65 +193,7 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     setFeedback("Public URL copied.");
   };
 
-  const reminderValues = (channel: "email" | "sms") => {
-    if (!draft) return [];
-    const values = channel === "email" ? draft.reminder_email_minutes : draft.reminder_sms_minutes;
-    const fallback = channel === "email" ? draft.reminder_email_minutes_before : draft.reminder_sms_minutes_before;
-    return values?.length ? values : [fallback];
-  };
 
-  const setReminderValues = (channel: "email" | "sms", values: number[]) => {
-    const normalized = Array.from(new Set(values)).sort((a, b) => b - a);
-    if (channel === "email") {
-      patch({ reminder_email_minutes: normalized, reminder_email_minutes_before: normalized[0] ?? 1440 });
-    } else {
-      // Messages are keyed by minutes, so a removed reminder leaves its text
-      // behind. Drop it here rather than letting it reappear if that timing is
-      // added back later; the backend prunes orphans too.
-      const kept = new Set(normalized.map(String));
-      const messages = Object.fromEntries(
-        Object.entries(draft?.reminder_sms_messages ?? {}).filter(([key]) => kept.has(key)),
-      );
-      patch({
-        reminder_sms_minutes: normalized,
-        reminder_sms_minutes_before: normalized[0] ?? 120,
-        reminder_sms_messages: messages,
-      });
-    }
-  };
-
-  /** Retime a reminder without losing what it says. */
-  const retimeSmsReminder = (index: number, value: number) => {
-    const current = reminderValues("sms");
-    const previous = current[index];
-    const next = [...current];
-    next[index] = value;
-    const messages = { ...(draft?.reminder_sms_messages ?? {}) };
-    const carried = messages[String(previous)];
-    if (carried !== undefined) {
-      delete messages[String(previous)];
-      messages[String(value)] = carried;
-    }
-    const normalized = Array.from(new Set(next)).sort((a, b) => b - a);
-    const kept = new Set(normalized.map(String));
-    patch({
-      reminder_sms_minutes: normalized,
-      reminder_sms_minutes_before: normalized[0] ?? 120,
-      reminder_sms_messages: Object.fromEntries(
-        Object.entries(messages).filter(([key]) => kept.has(key)),
-      ),
-    });
-  };
-
-  const setEmailReminderMessage = (minutes: number, field: "subject" | "body", value: string) => {
-    const messages = { ...(draft?.reminder_email_messages ?? {}) };
-    const current = messages[String(minutes)] ?? { subject: "", body: "" };
-    messages[String(minutes)] = { ...current, [field]: value };
-    patch({ reminder_email_messages: messages });
-  };
-  const setConfirmationMessage = (key: string, value: string) => {
-    patch({ confirmation_messages: { ...(draft?.confirmation_messages ?? {}), [key]: value } });
-  };
   const setPrecallText = (key: "precall_block" | "reminder_precall_line", value: string) => {
     patch({ precall_messages: { ...(draft?.precall_messages ?? {}), [key]: value } });
   };
@@ -255,20 +201,7 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     const current = draft?.precall_messages ?? {};
     patch({ precall_messages: { ...current, [step]: { ...(current[step] ?? {}), ...next } } });
   };
-  const setSmsReminderMessage = (minutes: number, message: string) => {
-    const messages = { ...(draft?.reminder_sms_messages ?? {}) };
-    if (message.trim()) messages[String(minutes)] = message;
-    else delete messages[String(minutes)];
-    patch({ reminder_sms_messages: messages });
-  };
 
-  const addReminder = (channel: "email" | "sms") => {
-    const current = reminderValues(channel);
-    const preferred = channel === "email" ? [2880, 1440, 120, 60, 30] : [1440, 120, 60, 30, 15];
-    const next = preferred.find((value) => !current.includes(value))
-      ?? REMINDER_TIMES.find((option) => !current.includes(option.value))?.value;
-    if (next) setReminderValues(channel, [...current, next]);
-  };
 
   const connectCalendar = async () => {
     setFeedback(null);
@@ -289,9 +222,12 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
 
   const actions = (
     <>
+      <Btn onClick={() => setPreviewOpen((v) => !v)}>
+        <Icon name="eye" size={13} /> {previewOpen ? "Hide preview" : "Preview"}
+      </Btn>
       {draft.slug ? (
         <Link href={bookingPath} target="_blank" className="btn">
-          <Icon name="external" size={13} /> Preview page
+          <Icon name="external" size={13} /> Open live page
         </Link>
       ) : null}
       <Btn variant="pri" onClick={onSave} disabled={!dirty || update.isPending || invalidWindow}>
@@ -481,135 +417,118 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                 </div>
                 <div className="grid" style={{ gap: 14, paddingTop: 8, borderTop: "1px solid var(--line)" }}>
                   <div>
-                    <h3 style={{ margin: 0 }}>Booking confirmations</h3>
-                    <div className="sub" style={{ marginTop: 4 }}>Sent immediately after a meeting is booked.</div>
+                    <h3 style={{ margin: 0 }}>Client messages</h3>
+                    <div className="sub" style={{ marginTop: 4 }}>
+                      Everything the client receives, in the order they receive it. Pick one to edit it, draft it with
+                      the assistant, or send yourself a test. Blank means the standard wording is used.
+                    </div>
                   </div>
+
                   <CG>
-                    <div className="s6">
+                    <div className="s3">
                       <ToggleRow
-                        label="Email confirmation"
-                        description="Send the calendar invitation and meeting details."
+                        label="Confirmation email"
+                        description="The calendar invitation and meeting details."
                         checked={draft.confirmation_email_enabled}
                         onChange={(confirmation_email_enabled) => patch({ confirmation_email_enabled })}
                       />
                     </div>
-                    <div className="s6">
+                    <div className="s3">
                       <ToggleRow
-                        label="SMS confirmation"
-                        description="Only sent with affirmative transactional SMS consent."
+                        label="Confirmation text"
+                        description="Only with affirmative texting consent."
                         checked={draft.confirmation_sms_enabled}
                         onChange={(confirmation_sms_enabled) => patch({ confirmation_sms_enabled })}
                       />
                     </div>
-                  </CG>
-                  <MessageTemplates
-                    title="Confirmation wording"
-                    hint="Leave a field blank to keep the standard wording. The room link and PIN are filled in from the draft file the booking opens."
-                    fields={[
-                      { key: "email_subject", label: "Confirmation email subject", rows: 1, maxLength: 160 },
-                      { key: "email_body", label: "Confirmation email body", rows: 6, maxLength: 4000, placeholder: "Replaces the whole email body. The calendar invitation still attaches." },
-                      { key: "sms", label: "Confirmation SMS", rows: 3, maxLength: 400, pin: true, placeholder: "Qualified Commercial: your call with {rep} is confirmed for {time}. Your secure room PIN is {pin}. Get ready before the call: {room_link}" },
-                      { key: "pin_email_subject", label: "PIN email subject (no SMS consent)", rows: 1, maxLength: 160, pin: true },
-                      { key: "pin_email_body", label: "PIN email body (no SMS consent)", rows: 4, maxLength: 4000, pin: true },
-                    ]}
-                    values={draft.confirmation_messages ?? {}}
-                    onChange={setConfirmationMessage}
-                  />
-                </div>
-
-                <div className="grid" style={{ gap: 14, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                  <div>
-                    <h3 style={{ margin: 0 }}>Pre-call prep</h3>
-                    <div className="sub" style={{ marginTop: 4 }}>
-                      Every booking opens a draft file with a secure room. The client confirms who owns the business, connects the bank and authorizes a soft credit check before the call; these messages nudge them until it is done.
+                    <div className="s3">
+                      <ToggleRow
+                        label="Reminder emails"
+                        description="To the booking email address."
+                        checked={draft.reminder_email_enabled}
+                        onChange={(reminder_email_enabled) => patch({ reminder_email_enabled })}
+                      />
                     </div>
-                  </div>
+                    <div className="s3">
+                      <ToggleRow
+                        label="Reminder texts"
+                        description="Consent-gated, to the booking number."
+                        checked={draft.reminder_sms_enabled}
+                        onChange={(reminder_sms_enabled) => patch({ reminder_sms_enabled })}
+                      />
+                    </div>
+                  </CG>
+
                   <ToggleRow
                     label="Open a draft file and run the pre-call sequence"
-                    description="Turning this off books calls exactly as before: no draft file, no room link, no nudges."
+                    description="Every booking opens a secure room so the client can confirm owners, connect the bank through Plaid and authorize the soft credit check before the call. Turning this off books calls with no room and no nudges."
                     checked={draft.precall_enabled}
                     onChange={(precall_enabled) => patch({ precall_enabled })}
                   />
-                  <div style={{ opacity: draft.precall_enabled ? 1 : 0.55 }}>
-                    <Field label="“Before your call” block (appended to the confirmation email)">
-                      <Textarea rows={5} maxLength={2000} value={draft.precall_messages?.precall_block ?? ""} onChange={(e) => setPrecallText("precall_block", e.target.value)} placeholder="Before your call — about 10 minutes: 1. Confirm who owns {business}. 2. Connect the business bank. 3. Authorize a soft credit check. Open your secure room: {room_link}" style={{ resize: "vertical" }} />
-                    </Field>
-                    <Field label="Line added to reminders while something is still open">
-                      <Input maxLength={300} value={draft.precall_messages?.reminder_precall_line ?? ""} onChange={(e) => setPrecallText("reminder_precall_line", e.target.value)} placeholder="Still needed before your call: {missing} → {room_link}" />
-                    </Field>
-                    <CG>
-                      <PrecallStepEditor
-                        className="s6"
-                        title="Nudge 1 — after booking"
-                        timing="after_hours"
-                        timingLabel="Hours after booking"
-                        timingDefault={24}
-                        note="Only when the call is at least 36 hours away. Texts wait for 9am–8pm local."
-                        value={draft.precall_messages?.nudge_1 ?? {}}
-                        onChange={(next) => setPrecallStep("nudge_1", next)}
-                        defaults={{ email_subject: "Before your call with {rep}: {done} done", sms: "Qualified Commercial: before your call {date}, please {missing}: {room_link} (PIN sent earlier)." }}
-                      />
-                      <PrecallStepEditor
-                        className="s6"
-                        title="Nudge 2 — before the call"
-                        timing="before_hours"
-                        timingLabel="Hours before the call"
-                        timingDefault={24}
-                        note="Falls back to 4 hours before for calls booked at short notice; never inside the last hour."
-                        value={draft.precall_messages?.nudge_2 ?? {}}
-                        onChange={(next) => setPrecallStep("nudge_2", next)}
-                        defaults={{ email_subject: "Your call with {rep} is coming up — {done} done", sms: "Qualified Commercial: your call with {rep} is {time}. Finish {missing} now so we can talk real numbers: {room_link}" }}
-                      />
-                    </CG>
-                    <PlaceholderHelp />
-                  </div>
-                </div>
 
-                <div className="grid" style={{ gap: 18, paddingTop: 16, borderTop: "1px solid var(--line)" }}>
-                  <div>
-                    <h3 style={{ margin: 0 }}>Reminder schedule</h3>
-                    <div className="sub" style={{ marginTop: 4 }}>Add up to five independent reminders for each delivery channel.</div>
-                  </div>
                   <CG>
-                    <ReminderSchedule
-                      className="s6"
-                      channel="Email"
-                      description="Delivered to the booking email address."
-                      enabled={draft.reminder_email_enabled}
-                      values={reminderValues("email")}
-                      onToggle={(reminder_email_enabled) => patch({ reminder_email_enabled })}
-                      onAdd={() => addReminder("email")}
-                      onChange={(index, value) => {
-                        const next = [...reminderValues("email")];
-                        next[index] = value;
-                        setReminderValues("email", next);
-                      }}
-                      onRemove={(index) => setReminderValues("email", reminderValues("email").filter((_, rowIndex) => rowIndex !== index))}
-                      emailMessages={draft.reminder_email_messages ?? {}}
-                      onEmailMessageChange={setEmailReminderMessage}
-                    />
-                    <ReminderSchedule
-                      className="s6"
-                      channel="SMS"
-                      description="Consent-gated and delivered to the booking phone number."
-                      enabled={draft.reminder_sms_enabled}
-                      values={reminderValues("sms")}
-                      onToggle={(reminder_sms_enabled) => patch({ reminder_sms_enabled })}
-                      onAdd={() => addReminder("sms")}
-                      onChange={retimeSmsReminder}
-                      onRemove={(index) => setReminderValues("sms", reminderValues("sms").filter((_, rowIndex) => rowIndex !== index))}
-                      messages={draft.reminder_sms_messages ?? {}}
-                      onMessageChange={setSmsReminderMessage}
-                    />
+                    <Field label="Video to watch before the call" className="s6">
+                      <Input
+                        value={draft.precall_video_url ?? ""}
+                        onChange={(e) => patch({ precall_video_url: e.target.value })}
+                        placeholder="https://youtu.be/8-fOGmSBzPo"
+                      />
+                      <div className="sub" style={{ marginTop: 4 }}>
+                        Rendered wherever a message uses {"{video}"}. Leave blank to use the firm&apos;s video.
+                      </div>
+                    </Field>
+                    <Field label="Line added while something is still open" className="s6">
+                      <Input
+                        maxLength={300}
+                        value={draft.precall_messages?.reminder_precall_line ?? ""}
+                        onChange={(e) => setPrecallText("reminder_precall_line", e.target.value)}
+                        placeholder="Still needed before your call: {missing} → {room_link}"
+                      />
+                      <div className="sub" style={{ marginTop: 4 }}>
+                        What {"{precall}"} expands to. It disappears once the client has finished every step.
+                      </div>
+                    </Field>
                   </CG>
+
+                  <div style={{ opacity: draft.precall_enabled ? 1 : 0.6 }}>
+                    <BookingMessagesWorkspace draft={draft} patch={patch} canEdit={user?.role === "super_admin"} />
+                  </div>
                 </div>
               </div>
             </Panel>
           ) : null}
         </div>
-
-        <BookingPreview settings={draft} hostName={user?.name || "Qualified Commercial"} logoUrl={logoUrl} profileUrl={profileUrl} />
       </div>
+
+      {previewOpen ? (
+        <>
+          <button
+            type="button"
+            className="booking-preview-scrim"
+            aria-label="Close the booking page preview"
+            onClick={() => setPreviewOpen(false)}
+          />
+          <aside className="booking-preview-panel" aria-label="Booking page preview">
+            <header>
+              <div className="grid" style={{ gap: 2 }}>
+                <b>Booking page preview</b>
+                <span className="sub">Follows your unsaved changes.</span>
+              </div>
+              <Row>
+                {draft.slug ? (
+                  <Link href={bookingPath} target="_blank" className="btn sm">
+                    <Icon name="external" size={12} /> Open the live page
+                  </Link>
+                ) : null}
+                <Btn size="sm" onClick={() => setPreviewOpen(false)}>Close</Btn>
+              </Row>
+            </header>
+            <div>
+              <BookingPreview settings={draft} hostName={user?.name || "Qualified Commercial"} logoUrl={logoUrl} profileUrl={profileUrl} />
+            </div>
+          </aside>
+        </>
+      ) : null}
     </div>
   );
 }
@@ -913,115 +832,6 @@ function Field({ label, children, className }: { label: string; children: ReactN
   );
 }
 
-function ReminderSchedule({
-  channel,
-  description,
-  enabled,
-  values,
-  onToggle,
-  onAdd,
-  onChange,
-  onRemove,
-  className,
-  messages,
-  onMessageChange,
-  emailMessages,
-  onEmailMessageChange,
-}: {
-  channel: "Email" | "SMS";
-  description: string;
-  enabled: boolean;
-  values: number[];
-  onToggle: (enabled: boolean) => void;
-  onAdd: () => void;
-  onChange: (index: number, value: number) => void;
-  onRemove: (index: number) => void;
-  className?: string;
-  /** Per-reminder SMS text, keyed by minutes-before. */
-  messages?: Record<string, string>;
-  onMessageChange?: (minutes: number, message: string) => void;
-  /** Per-reminder email subject/body, keyed by minutes-before. */
-  emailMessages?: Record<string, { subject: string; body: string }>;
-  onEmailMessageChange?: (minutes: number, field: "subject" | "body", value: string) => void;
-}) {
-  return (
-    <section className={className} style={{ minWidth: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 8 }}>
-      <div className="grid" style={{ gap: 14 }}>
-        <ToggleRow
-          label={`${channel} reminders`}
-          description={description}
-          checked={enabled}
-          onChange={onToggle}
-        />
-        <div className="row" style={{ justifyContent: "flex-end" }}>
-          <Btn type="button" size="sm" onClick={onAdd} disabled={!enabled || values.length >= 5}>
-            <Icon name="plus" size={13} /> Add reminder
-          </Btn>
-        </div>
-        <div className="grid" style={{ gap: 9, opacity: enabled ? 1 : 0.55 }}>
-          {values.map((value, index) => (
-            <div key={`${channel}-${index}`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 38px", gap: 8, alignItems: "end" }}>
-              <Field label={`${channel} reminder ${index + 1}`}>
-                <Select disabled={!enabled} value={value} onChange={(event) => onChange(index, Number(event.target.value))}>
-                  {REMINDER_TIMES.map((option) => (
-                    <option key={option.value} value={option.value} disabled={values.includes(option.value) && option.value !== value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Btn
-                type="button"
-                size="sm"
-                aria-label={`Remove ${channel.toLowerCase()} reminder ${index + 1}`}
-                title={values.length === 1 ? "Keep at least one reminder time" : "Remove reminder"}
-                disabled={!enabled || values.length === 1}
-                onClick={() => onRemove(index)}
-                style={{ width: 38, height: 38, padding: 0 }}
-              >
-                <Icon name="trash" size={14} />
-              </Btn>
-              {onMessageChange ? (
-                <div style={{ gridColumn: "1 / -1" }}>
-                  <Field label="Message">
-                    <Textarea
-                      disabled={!enabled}
-                      rows={2}
-                      maxLength={400}
-                      value={messages?.[String(value)] ?? ""}
-                      placeholder="Qualified Commercial reminder: your meeting, {time}."
-                      onChange={(event) => onMessageChange(value, event.target.value)}
-                      style={{ resize: "vertical" }}
-                    />
-                  </Field>
-                  <span className="sub" style={{ display: "block", marginTop: 4 }}>
-                    Leave blank for the standard reminder. Use{" "}
-                    <code>{"{time}"}</code>, <code>{"{name}"}</code>, <code>{"{rep}"}</code>,{" "}
-                    <code>{"{join_link}"}</code>, <code>{"{room_link}"}</code>, <code>{"{precall}"}</code>. &ldquo;Reply STOP to opt out.&rdquo; is added
-                    automatically.
-                  </span>
-                </div>
-              ) : null}
-              {onEmailMessageChange ? (
-                <div style={{ gridColumn: "1 / -1", display: "grid", gap: 8 }}>
-                  <Field label="Subject">
-                    <Input disabled={!enabled} maxLength={160} value={emailMessages?.[String(value)]?.subject ?? ""} placeholder={`Reminder: your meeting`} onChange={(event) => onEmailMessageChange(value, "subject", event.target.value)} />
-                  </Field>
-                  <Field label="Body">
-                    <Textarea disabled={!enabled} rows={4} maxLength={4000} value={emailMessages?.[String(value)]?.body ?? ""} placeholder="Leave blank for the standard reminder email." onChange={(event) => onEmailMessageChange(value, "body", event.target.value)} style={{ resize: "vertical" }} />
-                  </Field>
-                  <span className="sub" style={{ display: "block" }}>
-                    Blank keeps the standard email, which lists what is still open before the call. Placeholders: <code>{"{time}"}</code>, <code>{"{name}"}</code>, <code>{"{rep}"}</code>, <code>{"{join_link}"}</code>, <code>{"{room_link}"}</code>, <code>{"{precall}"}</code>.
-                  </span>
-                </div>
-              ) : null}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 const PLACEHOLDERS: Array<[string, string]> = [
   ["{name}", "client's full name"], ["{first}", "first name"], ["{rep}", "host or rep"], ["{business}", "business name"],
@@ -1030,78 +840,6 @@ const PLACEHOLDERS: Array<[string, string]> = [
   ["{pin}", "room PIN — confirmation SMS and PIN email only"],
 ];
 
-function PlaceholderHelp() {
-  return (
-    <div className="sub" style={{ lineHeight: 1.7 }}>
-      Placeholders: {PLACEHOLDERS.map(([token, meaning], index) => (
-        <span key={token}>{index ? ", " : ""}<code>{token}</code> {meaning}</span>
-      ))}. Every SMS ends with “Reply STOP to opt out.”; every pre-call email carries a one-tap stop link.
-    </div>
-  );
-}
-
-function MessageTemplates({ title, hint, fields, values, onChange }: {
-  title: string;
-  hint: string;
-  fields: Array<{ key: string; label: string; rows: number; maxLength: number; placeholder?: string; pin?: boolean }>;
-  values: Record<string, string>;
-  onChange: (key: string, value: string) => void;
-}) {
-  return (
-    <div className="grid" style={{ gap: 10 }}>
-      <div>
-        <b style={{ fontSize: 13 }}>{title}</b>
-        <div className="sub" style={{ marginTop: 3 }}>{hint}</div>
-      </div>
-      {fields.map((field) => (
-        <Field key={field.key} label={field.label}>
-          {field.rows === 1
-            ? <Input maxLength={field.maxLength} value={values[field.key] ?? ""} placeholder={field.placeholder} onChange={(e) => onChange(field.key, e.target.value)} />
-            : <Textarea rows={field.rows} maxLength={field.maxLength} value={values[field.key] ?? ""} placeholder={field.placeholder} onChange={(e) => onChange(field.key, e.target.value)} style={{ resize: "vertical" }} />}
-        </Field>
-      ))}
-      <PlaceholderHelp />
-    </div>
-  );
-}
-
-function PrecallStepEditor({ className, title, timing, timingLabel, timingDefault, note, value, onChange, defaults }: {
-  className?: string;
-  title: string;
-  timing: "after_hours" | "before_hours";
-  timingLabel: string;
-  timingDefault: number;
-  note: string;
-  value: PrecallStepSettings;
-  onChange: (next: Partial<PrecallStepSettings>) => void;
-  defaults: { email_subject: string; sms: string };
-}) {
-  return (
-    <section className={className} style={{ minWidth: 0, padding: 16, border: "1px solid var(--line)", borderRadius: 8 }}>
-      <div className="grid" style={{ gap: 10 }}>
-        <div>
-          <b style={{ fontSize: 13 }}>{title}</b>
-          <div className="sub" style={{ marginTop: 3 }}>{note}</div>
-        </div>
-        <CG>
-          <Field label={timingLabel} className="s6">
-            <Input type="number" min={1} max={240} value={value[timing] ?? timingDefault} onChange={(e) => onChange({ [timing]: Number(e.target.value) || timingDefault })} />
-          </Field>
-          <Field label="Channels" className="s6">
-            <Select value={value.channel ?? "both"} onChange={(e) => onChange({ channel: e.target.value as PrecallStepSettings["channel"] })}>
-              <option value="both">Email and SMS</option>
-              <option value="email">Email only</option>
-              <option value="sms">SMS only</option>
-            </Select>
-          </Field>
-        </CG>
-        <Field label="Email subject"><Input maxLength={160} value={value.email_subject ?? ""} placeholder={defaults.email_subject} onChange={(e) => onChange({ email_subject: e.target.value })} /></Field>
-        <Field label="Email body"><Textarea rows={4} maxLength={4000} value={value.email_body ?? ""} placeholder="Blank keeps the standard wording." onChange={(e) => onChange({ email_body: e.target.value })} style={{ resize: "vertical" }} /></Field>
-        <Field label="SMS"><Textarea rows={3} maxLength={400} value={value.sms ?? ""} placeholder={defaults.sms} onChange={(e) => onChange({ sms: e.target.value })} style={{ resize: "vertical" }} /></Field>
-      </div>
-    </section>
-  );
-}
 
 function ToggleRow({ label, description, checked, onChange }: { label: string; description: string; checked: boolean; onChange: (checked: boolean) => void }) {
   return (
