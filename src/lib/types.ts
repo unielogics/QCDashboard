@@ -1154,6 +1154,19 @@ export interface BookingDaySchedule {
   intervals: BookingTimeRange[];
 }
 
+/**
+ * One video in the host's library.
+ *
+ * `key` is what a message points at, which is why it is a slug and not the
+ * label: re-recording a video or renaming it must not break every template that
+ * references it. Slug-only, 24 characters, unique within the list.
+ */
+export interface BookingVideo {
+  key: string;
+  label: string;
+  url: string;
+}
+
 export interface PrecallStepSettings {
   after_hours?: number;
   before_hours?: number;
@@ -1198,9 +1211,13 @@ export interface UserBookingSettings {
     nudge_1?: PrecallStepSettings;
     nudge_2?: PrecallStepSettings;
   };
-  /** The short video the client watches before the call, rendered by {video}.
-   *  Null means the firm default, which the backend supplies. */
+  /** The pre-library single video. Still read by the backend as the {video}
+   *  fallback when the library is empty, so the UI mirrors the primary into it
+   *  rather than letting it drift. */
   precall_video_url?: string | null;
+  /** The video library, in order. {video} renders the FIRST entry; every entry
+   *  also answers to {video_<key>}. Twelve at most. */
+  precall_videos?: BookingVideo[];
   google_meet_enabled: boolean;
   timezone: string;
   available_days: number[];
@@ -1230,11 +1247,21 @@ export interface BookingPlaceholder {
   pin_only: boolean;
 }
 
+/** An insertable video token: {video} first, then one per library entry. */
+export interface BookingVideoPlaceholder {
+  token: string;
+  label: string;
+  url: string;
+}
+
 export interface BookingPlaceholdersResponse {
   placeholders: BookingPlaceholder[];
   pin_allowed_in: string[];
   /** kind -> { label, goal, channel } */
   kinds: Record<string, { label: string; goal: string; channel: string }>;
+  /** The source of truth for what is insertable, rather than the UI deriving
+   *  {video_<key>} itself and drifting from what the renderer accepts. */
+  videos: BookingVideoPlaceholder[];
 }
 
 export interface BookingTemplateDraftRequest {
@@ -1252,6 +1279,21 @@ export interface BookingTemplateDraft {
   body: string;
   /** True when the model was unavailable and this is the shipped default. */
   fallback: boolean;
+}
+
+export interface BookingSequenceDraftRequest {
+  /** Empty means every message the host has not written themselves. */
+  kinds?: string[];
+  instruction?: string | null;
+  tone?: "direct" | "warm" | "formal";
+  /** Off by default, so a bulk draft cannot quietly replace authored copy. */
+  overwrite_authored?: boolean;
+}
+
+export interface BookingSequenceDraftResponse {
+  drafts: BookingTemplateDraft[];
+  /** Kinds left alone because the host had already written them. */
+  skipped: string[];
 }
 
 export interface BookingTestSendRequest {

@@ -10,7 +10,7 @@ import {
   scheduleBounds,
   WeeklyScheduleEditor,
 } from "@/components/calendar/BookingAvailabilityControls";
-import { Btn, CG, CellChip, Input, PageHeader, Panel, Row, Select, StatusLine, Textarea, cx } from "@/components/ds";
+import { Btn, CG, CellChip, IconBtn, Input, PageHeader, Panel, Row, Select, StatusLine, Textarea, cx } from "@/components/ds";
 import { BookingMessagesWorkspace } from "@/components/settings/BookingMessagesWorkspace";
 import {
   useBookingSettings,
@@ -20,7 +20,7 @@ import {
   useUpdateBookingSettings,
   useUploadBookingAsset,
 } from "@/hooks/useApi";
-import type { BookingBlockedInterval, BookingDaySchedule, PrecallStepSettings, UserBookingSettings } from "@/lib/types";
+import type { BookingBlockedInterval, BookingDaySchedule, BookingVideo, PrecallStepSettings, UserBookingSettings } from "@/lib/types";
 
 const WEEKDAYS = [
   { id: 0, label: "Sun" },
@@ -88,6 +88,7 @@ function defaultBookingSettings(): UserBookingSettings {
     maximum_advance_days: 5,
     blocked_intervals: [],
     booking_questions: {},
+    precall_videos: [],
     no_show_follow_up_enabled: true,
     morning_digest_enabled: false,
     missing_outcome_reminder_hours: 24,
@@ -202,6 +203,14 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
     patch({ precall_messages: { ...current, [step]: { ...(current[step] ?? {}), ...next } } });
   };
 
+  const setVideos = (precall_videos: BookingVideo[]) => {
+    // precall_video_url is the field that existed before the library and is
+    // still what the renderer falls back to when the list is empty. Mirroring
+    // the primary into it keeps {video} rendering the same thing from either
+    // side, and keeps a host who set one before the library from losing it.
+    patch({ precall_videos, precall_video_url: precall_videos[0]?.url.trim() || null });
+  };
+
 
   const connectCalendar = async () => {
     setFeedback(null);
@@ -220,6 +229,11 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
   const invalidWindow = draft.advance_booking_window_enabled
     && draft.maximum_advance_days < draft.minimum_notice_days;
 
+  const videos = videoLibrary(draft);
+  // The backend refuses a bad key or link with a 422. Holding Save until the
+  // list is valid turns that into an inline sentence instead of a failed save.
+  const videoIssues = videoProblems(videos);
+
   const actions = (
     <>
       <Btn onClick={() => setPreviewOpen((v) => !v)}>
@@ -230,7 +244,7 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
           <Icon name="external" size={13} /> Open live page
         </Link>
       ) : null}
-      <Btn variant="pri" onClick={onSave} disabled={!dirty || update.isPending || invalidWindow}>
+      <Btn variant="pri" onClick={onSave} disabled={!dirty || update.isPending || invalidWindow || videoIssues.length > 0}>
         <Icon name="check" size={14} /> {update.isPending ? "Saving..." : "Save changes"}
       </Btn>
     </>
@@ -466,17 +480,15 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
                     onChange={(precall_enabled) => patch({ precall_enabled })}
                   />
 
+                  <VideoLibraryEditor
+                    videos={videos}
+                    issues={videoIssues}
+                    usage={videoTokenUsage(draft)}
+                    onChange={setVideos}
+                    onNotice={setFeedback}
+                  />
+
                   <CG>
-                    <Field label="Video to watch before the call" className="s6">
-                      <Input
-                        value={draft.precall_video_url ?? ""}
-                        onChange={(e) => patch({ precall_video_url: e.target.value })}
-                        placeholder="https://youtu.be/8-fOGmSBzPo"
-                      />
-                      <div className="sub" style={{ marginTop: 4 }}>
-                        Rendered wherever a message uses {"{video}"}. Leave blank to use the firm&apos;s video.
-                      </div>
-                    </Field>
                     <Field label="Line added while something is still open" className="s6">
                       <Input
                         maxLength={300}
@@ -723,6 +735,313 @@ function weekdayName(weekday: number): string {
 
 function compareBlockedIntervals(left: BookingBlockedInterval, right: BookingBlockedInterval): number {
   return (left.weekday ?? 7) - (right.weekday ?? 7) || left.start_time.localeCompare(right.start_time);
+}
+
+const VIDEO_LIMIT = 12;
+
+/**
+ * The host's video library.
+ *
+ * This row used to be a single URL, so the one video it held had to serve every
+ * message. A host wants a short library — the bank connection, the soft credit
+ * check, a program walkthrough — and to drop whichever one fits into a given
+ * email or text.
+ *
+ * The first entry is the primary: it is what {video} renders, which is why the
+ * order is editable and why the first row says so rather than leaving the host
+ * to work it out from a hint elsewhere.
+ */
+function VideoLibraryEditor({
+  videos,
+  issues,
+  usage,
+  onChange,
+  onNotice,
+}: {
+  videos: BookingVideo[];
+  issues: string[];
+  /** Token -> how many of the host's own messages already use it. */
+  usage: Record<string, number>;
+  onChange: (videos: BookingVideo[]) => void;
+  onNotice: (message: string | null) => void;
+}) {
+  const [newLabel, setNewLabel] = useState("");
+  const [newUrl, setNewUrl] = useState("");
+
+  const addVideo = () => {
+    const label = newLabel.trim().slice(0, 80);
+    const url = newUrl.trim();
+    if (!label) {
+      onNotice("Name the video so you can tell it apart when you insert it.");
+      return;
+    }
+    if (!isVideoUrl(url)) {
+      onNotice("A video link must start with http:// or https://.");
+      return;
+    }
+    if (videos.length >= VIDEO_LIMIT) {
+      onNotice(`The library holds ${VIDEO_LIMIT} videos.`);
+      return;
+    }
+    // The key is derived from the name so the host never has to invent one, and
+    // it stays editable below because it is what their messages point at.
+    const key = uniqueVideoKey(normalizeVideoKey(label) || "video", videos.map((video) => video.key));
+    onChange([...videos, { key, label, url }]);
+    setNewLabel("");
+    setNewUrl("");
+    onNotice(null);
+  };
+
+  const updateVideo = (index: number, next: Partial<BookingVideo>) => {
+    onChange(videos.map((video, rowIndex) => (rowIndex === index ? { ...video, ...next } : video)));
+  };
+
+  const move = (index: number, delta: number) => {
+    const target = index + delta;
+    if (target < 0 || target >= videos.length) return;
+    const next = [...videos];
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  const copyToken = async (token: string) => {
+    await navigator.clipboard.writeText(token);
+    onNotice(`${token} copied. Paste it into any message, or click it in the Insert row.`);
+  };
+
+  // A token whose key no longer exists renders as literal text in a client's
+  // email. Naming it here is the difference between a warning and a host
+  // finding {video_bank} in a sent message.
+  const dangling = Object.keys(usage)
+    .filter((token) => token !== "{video}" && !videos.some((video) => `{video_${video.key}}` === token))
+    .sort();
+
+  return (
+    <section className="bkvid" aria-labelledby="booking-videos-title">
+      <div className="booking-block-editor-head">
+        <div>
+          <h3 id="booking-videos-title">Videos to watch before the call</h3>
+          <div className="sub">
+            Add as many as you need, then drop any of them into an email or a text with its token. The first one is
+            what {"{video}"} renders, so it is the one an older message already points at.
+          </div>
+        </div>
+        <CellChip tone={videos.length ? "ok" : "mut"}>{videos.length} of {VIDEO_LIMIT}</CellChip>
+      </div>
+
+      {videos.length ? (
+        <div className="bkvid-list">
+          {videos.map((video, index) => {
+            const token = video.key ? `{video_${video.key}}` : "";
+            const used = usage[token] ?? 0;
+            return (
+              // Keyed by position, not by video.key: the key is the field being
+              // edited, so keying on it would remount the input mid-keystroke.
+              <div className="bkvid-row" key={index}>
+                <div className="bkvid-rank">
+                  <b>{index + 1}</b>
+                  {index === 0 ? <CellChip tone="acc">Primary</CellChip> : null}
+                </div>
+                <Field label="Name" className="bkvid-name">
+                  <Input
+                    value={video.label}
+                    maxLength={80}
+                    placeholder="How the bank connection works"
+                    onChange={(event) => updateVideo(index, { label: event.target.value })}
+                  />
+                </Field>
+                <Field label="Token key" className="bkvid-key">
+                  <Input
+                    value={video.key}
+                    maxLength={24}
+                    placeholder="bank"
+                    onChange={(event) => updateVideo(index, { key: typingVideoKey(event.target.value) })}
+                    onBlur={() => updateVideo(index, { key: normalizeVideoKey(video.key) })}
+                  />
+                </Field>
+                <Field label="Link" className="bkvid-url">
+                  <Input
+                    value={video.url}
+                    maxLength={500}
+                    placeholder="https://youtu.be/8-fOGmSBzPo"
+                    onChange={(event) => updateVideo(index, { url: event.target.value })}
+                  />
+                </Field>
+                <div className="bkvid-tools">
+                  <IconBtn aria-label={`Move ${video.label || "this video"} up`} title="Move up" onClick={() => move(index, -1)} disabled={index === 0}>
+                    <span aria-hidden="true">&uarr;</span>
+                  </IconBtn>
+                  <IconBtn aria-label={`Move ${video.label || "this video"} down`} title="Move down" onClick={() => move(index, 1)} disabled={index === videos.length - 1}>
+                    <span aria-hidden="true">&darr;</span>
+                  </IconBtn>
+                  <IconBtn
+                    aria-label={`Remove ${video.label || "this video"}`}
+                    title="Remove video"
+                    onClick={() => onChange(videos.filter((_, rowIndex) => rowIndex !== index))}
+                  >
+                    <Icon name="trash" size={14} />
+                  </IconBtn>
+                </div>
+                <div className="bkvid-meta">
+                  {/* `.bkmsg-token` is the same pill the message editor's Insert
+                      row uses, because this IS that token. */}
+                  <button
+                    type="button"
+                    className="bkmsg-token"
+                    title="Copy this token"
+                    onClick={() => void copyToken(token)}
+                    disabled={!token}
+                  >
+                    {token || "{video_...}"}
+                  </button>
+                  {index === 0 ? <span className="sub">Also answers to {"{video}"}.</span> : null}
+                  <span className="sub">
+                    {used === 0
+                      ? "Not used in any message yet."
+                      : `Used in ${used} ${used === 1 ? "message" : "messages"}. Changing the key here stops those messages finding it.`}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="sub">
+          No videos yet. Until you add one, {"{video}"} renders the firm&apos;s standard video.
+        </div>
+      )}
+
+      <div className="bkvid-compose">
+        <Field label="Name">
+          <Input
+            value={newLabel}
+            maxLength={80}
+            placeholder="Soft credit check, explained"
+            onChange={(event) => setNewLabel(event.target.value)}
+          />
+        </Field>
+        <Field label="Link">
+          <Input
+            value={newUrl}
+            maxLength={500}
+            placeholder="https://youtu.be/8-fOGmSBzPo"
+            onChange={(event) => setNewUrl(event.target.value)}
+          />
+        </Field>
+        <Btn type="button" onClick={addVideo} disabled={videos.length >= VIDEO_LIMIT}>
+          <Icon name="plus" size={13} /> Add video
+        </Btn>
+      </div>
+
+      {issues.length ? <StatusLine tone="bad">{issues.join(" ")}</StatusLine> : null}
+      {dangling.length ? (
+        <StatusLine tone="warn">
+          {dangling.join(", ")} {dangling.length === 1 ? "is written into a message" : "are written into messages"} but
+          no longer matches a video key. Put the key back or edit those messages, otherwise the client sees the token
+          as plain text.
+        </StatusLine>
+      ) : null}
+    </section>
+  );
+}
+
+/**
+ * What the editor shows.
+ *
+ * A host whose row predates the library still has their single URL in
+ * precall_video_url. Showing it as the first entry (the same key and name the
+ * backfill uses, so the two paths agree) means their first edit carries it into
+ * the list rather than dropping it, and it does so without marking the form
+ * dirty on load.
+ */
+function videoLibrary(settings: UserBookingSettings): BookingVideo[] {
+  const stored = settings.precall_videos ?? [];
+  if (stored.length) return stored;
+  const legacy = (settings.precall_video_url ?? "").trim();
+  return legacy ? [{ key: "intro", label: "Before your call", url: legacy }] : [];
+}
+
+/** What a key may look like mid-keystroke: everything the backend allows, plus
+ *  a trailing underscore. Stripping that on every keystroke would make
+ *  "bank_statement" impossible to type, so it comes off on blur instead. */
+function typingVideoKey(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9_]+/g, "_").replace(/^_+/, "").slice(0, 24);
+}
+
+/** The key shape the backend accepts. Underscores rather than the dashes the
+ *  public URL slug uses, because this one lives inside a {video_key} token. */
+function normalizeVideoKey(value: string): string {
+  return typingVideoKey(value).replace(/_+$/, "");
+}
+
+function uniqueVideoKey(base: string, taken: string[]): string {
+  if (!taken.includes(base)) return base;
+  for (let suffix = 2; suffix < 100; suffix += 1) {
+    const candidate = `${base.slice(0, 24 - String(suffix).length - 1)}_${suffix}`;
+    if (!taken.includes(candidate)) return candidate;
+  }
+  return base;
+}
+
+function isVideoUrl(value: string): boolean {
+  return /^https?:\/\/\S/i.test(value.trim());
+}
+
+/** The key rule as the backend states it, so the two cannot drift. */
+const VIDEO_KEY_RULE = /^[a-z0-9](?:[a-z0-9_]*[a-z0-9])?$/;
+
+/** The same rules the backend enforces, said in the host's words before they
+ *  press Save rather than as a 422 afterwards. */
+function videoProblems(videos: BookingVideo[]): string[] {
+  const problems: string[] = [];
+  const seen = new Set<string>();
+  videos.forEach((video, index) => {
+    const where = video.label.trim() || `Video ${index + 1}`;
+    if (!video.label.trim()) problems.push(`${where} needs a name.`);
+    if (!video.key) problems.push(`${where} needs a token key.`);
+    else if (!VIDEO_KEY_RULE.test(video.key)) {
+      problems.push(`${where} key takes lowercase letters, numbers and underscores, and has to start and end with a letter or a number.`);
+    } else if (seen.has(video.key)) problems.push(`Two videos share the key ${video.key}. Each one needs its own.`);
+    seen.add(video.key);
+    if (!isVideoUrl(video.url)) problems.push(`${where} needs a link starting with http:// or https://.`);
+  });
+  if (videos.length > VIDEO_LIMIT) problems.push(`The library holds ${VIDEO_LIMIT} videos.`);
+  return problems;
+}
+
+/**
+ * Every {video…} token the host's own messages already use, and how many
+ * messages use each one.
+ *
+ * Renaming a key is only safe when nothing points at it, so the editor reads
+ * this rather than trying to remember what the key used to be: a token with no
+ * matching video is dangling no matter how it got that way.
+ */
+function videoTokenUsage(settings: UserBookingSettings): Record<string, number> {
+  const steps = ["nudge_1", "nudge_2"] as const;
+  const texts: string[] = [
+    ...Object.values(settings.confirmation_messages ?? {}),
+    settings.precall_messages?.precall_block ?? "",
+    settings.precall_messages?.reminder_precall_line ?? "",
+    ...steps.flatMap((step) => {
+      const item = settings.precall_messages?.[step] ?? {};
+      return [item.email_subject ?? "", item.email_body ?? "", item.sms ?? ""];
+    }),
+    ...Object.values(settings.reminder_email_messages ?? {}).flatMap((message) => [
+      message?.subject ?? "",
+      message?.body ?? "",
+    ]),
+    ...Object.values(settings.reminder_sms_messages ?? {}),
+  ];
+  const usage: Record<string, number> = {};
+  texts.forEach((text) => {
+    // Counted once per message, not once per mention: the number is answering
+    // "how many messages break if I rename this".
+    const seen = new Set<string>();
+    for (const match of String(text ?? "").matchAll(/\{video(?:_[a-z0-9_]+)?\}/g)) seen.add(match[0]);
+    seen.forEach((token) => { usage[token] = (usage[token] ?? 0) + 1; });
+  });
+  return usage;
 }
 
 function BookingPreview({ settings, hostName, logoUrl, profileUrl }: { settings: UserBookingSettings; hostName: string; logoUrl: string | null; profileUrl: string | null }) {

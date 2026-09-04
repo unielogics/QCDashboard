@@ -126,6 +126,8 @@ import type {
   SummaryRefreshResponse,
   HeadshotUploadInitResponse,
   BookingPlaceholdersResponse,
+  BookingSequenceDraftRequest,
+  BookingSequenceDraftResponse,
   BookingTemplateDraft,
   BookingTemplateDraftRequest,
   BookingTestSendRequest,
@@ -681,6 +683,22 @@ export function useDraftBookingTemplate() {
         method: "POST",
         body: JSON.stringify(body),
       }),
+  });
+}
+
+// Drafts the whole sequence in one call. It writes nothing — the drafts come
+// back for the host to review and save — so there is no cache to invalidate,
+// and no retry: ten model calls are slow and expensive enough that a silent
+// second attempt would be worse than an error the host can act on.
+export function useDraftBookingSequence() {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: (body: BookingSequenceDraftRequest) =>
+      apiCall<BookingSequenceDraftResponse>("/me/booking-settings/draft-sequence", {
+        method: "POST",
+        body: JSON.stringify(body),
+      }),
+    retry: false,
   });
 }
 

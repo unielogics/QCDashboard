@@ -10,15 +10,23 @@
  * column edits one message at a time.
  *
  * The host never has to start from a blank box: every message can be drafted by
- * the assistant and then edited, and can be sent to the host as a test before it
- * ever reaches a client.
+ * the assistant and then edited, one at a time or the whole sequence at once,
+ * and can be sent to the host as a test before it ever reaches a client.
+ *
+ * Nothing here saves. Drafting and applying write into the same settings draft
+ * the editors write into, and the host still presses Save changes.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, CellChip, Input, Row, Select, StatusLine, cx } from "@/components/ds";
-import { useBookingPlaceholders, useDraftBookingTemplate, useTestSendBookingMessage } from "@/hooks/useApi";
-import type { PrecallStepSettings, UserBookingSettings } from "@/lib/types";
+import { Btn, CellChip, Input, Linky, Row, Select, StatusLine, cx } from "@/components/ds";
+import {
+  useBookingPlaceholders,
+  useDraftBookingSequence,
+  useDraftBookingTemplate,
+  useTestSendBookingMessage,
+} from "@/hooks/useApi";
+import type { BookingTemplateDraft, PrecallStepSettings, UserBookingSettings } from "@/lib/types";
 
 type Channel = "email" | "sms";
 
@@ -339,6 +347,7 @@ export function BookingMessagesWorkspace({
 
   const placeholders = placeholdersQ.data?.placeholders ?? [];
   const usable = placeholders.filter((p) => !p.pin_only || active?.id === "pin_email" || active?.id === "confirmation_sms");
+  const videoTokens = placeholdersQ.data?.videos ?? [];
 
   const insert = (token: string) => {
     if (!canEdit || !active) return;
@@ -366,8 +375,11 @@ export function BookingMessagesWorkspace({
         current_subject: active.subject || null,
         current_body: active.body || null,
       });
-      if (out.subject && active.setSubject) active.setSubject(out.subject);
-      active.setBody(out.body);
+      // One patch rather than setSubject() then setBody(): each per-field setter
+      // spreads the copy of the message map its render captured, so the second
+      // call would drop what the first wrote. `minutes` keeps a reminder draft
+      // on the one timing the host had open.
+      patch(draftsPatch(draft, [{ draft: out, minutes: active.minutes }]));
       setInstruction("");
       setNote(
         out.fallback
@@ -404,6 +416,15 @@ export function BookingMessagesWorkspace({
 
   return (
     <div className="bkmsg">
+      {/* Spans both columns rather than sitting in the rail: ten drafts have to
+          be readable side by side to be reviewable, and the rail is 290px. */}
+      <SequenceDrafter
+        settings={draft}
+        patch={patch}
+        canEdit={canEdit}
+        kinds={placeholdersQ.data?.kinds ?? {}}
+      />
+
       <aside className="bkmsg-rail" aria-label="Client messages">
         {groups.map(({ group, items }) => (
           <div key={group} className="bkmsg-group">
@@ -517,6 +538,21 @@ export function BookingMessagesWorkspace({
               {p.token}
             </button>
           ))}
+          {/* The video tokens come from the API rather than being built from the
+              library here: what is insertable is whatever the renderer answers
+              to, and {video} is in that list even when the library is empty. */}
+          {videoTokens.map((v) => (
+            <button
+              key={v.token}
+              type="button"
+              className="bkmsg-token vid"
+              onClick={() => insert(v.token)}
+              title={`${v.label}: ${v.url}`}
+              disabled={!canEdit}
+            >
+              {v.token}
+            </button>
+          ))}
           {placeholdersQ.isError ? <span className="sub">Placeholder list unavailable.</span> : null}
         </div>
 
@@ -554,5 +590,294 @@ export function BookingMessagesWorkspace({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Fold a set of drafts into ONE settings patch.
+ *
+ * One patch rather than a setter call per field: every per-field setter above
+ * spreads the copy of the message map its render captured, so two calls in a
+ * row keep only what the second wrote, and applying ten messages that way would
+ * keep only the last. This still goes through the same patch() the editors use,
+ * so nothing reaches the server until the host presses Save changes.
+ *
+ * `minutes` pins a reminder draft to the one timing the host had open. A
+ * sequence draft has no single timing in mind, so it fills every reminder on
+ * that channel, which is also the reading the backend used when it decided
+ * whether the kind was already authored.
+ */
+function draftsPatch(
+  settings: UserBookingSettings,
+  entries: { draft: BookingTemplateDraft; minutes?: number }[],
+): Partial<UserBookingSettings> {
+  const confirmations = { ...(settings.confirmation_messages ?? {}) };
+  const precall = { ...(settings.precall_messages ?? {}) };
+  const emails = { ...(settings.reminder_email_messages ?? {}) };
+  const texts = { ...(settings.reminder_sms_messages ?? {}) };
+
+  entries.forEach(({ draft, minutes }) => {
+    const subject = (draft.subject ?? "").trim();
+    const step = draft.kind.startsWith("nudge_1") ? "nudge_1" : "nudge_2";
+    switch (draft.kind) {
+      case "confirmation_email":
+        if (subject) confirmations.email_subject = subject;
+        confirmations.email_body = draft.body;
+        break;
+      case "confirmation_sms":
+        confirmations.sms = draft.body;
+        break;
+      case "pin_email":
+        if (subject) confirmations.pin_email_subject = subject;
+        confirmations.pin_email_body = draft.body;
+        break;
+      case "precall_block":
+        precall.precall_block = draft.body;
+        break;
+      case "nudge_1_email":
+      case "nudge_2_email":
+        precall[step] = {
+          ...(precall[step] ?? {}),
+          ...(subject ? { email_subject: subject } : {}),
+          email_body: draft.body,
+        };
+        break;
+      case "nudge_1_sms":
+      case "nudge_2_sms":
+        precall[step] = { ...(precall[step] ?? {}), sms: draft.body };
+        break;
+      case "reminder_email":
+        reminderSlots(settings.reminder_email_minutes, minutes).forEach((slot) => {
+          emails[slot] = { subject: subject || emails[slot]?.subject || "", body: draft.body };
+        });
+        break;
+      case "reminder_sms":
+        reminderSlots(settings.reminder_sms_minutes, minutes).forEach((slot) => {
+          texts[slot] = draft.body;
+        });
+        break;
+      default:
+        break;
+    }
+  });
+
+  return {
+    confirmation_messages: confirmations,
+    precall_messages: precall,
+    reminder_email_messages: emails,
+    reminder_sms_messages: texts,
+  };
+}
+
+function reminderSlots(minutes: number[] | undefined, only?: number): string[] {
+  return only === undefined ? (minutes ?? []).map(String) : [String(only)];
+}
+
+function formatElapsed(seconds: number): string {
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+/**
+ * Draft every message at once.
+ *
+ * The per-message drafter fills one box; this fills the sequence, which is what
+ * a host setting the desk up for the first time actually needs. It saves
+ * nothing: the drafts come back, the host reads them, applies the ones they
+ * want into the editors, and saves.
+ *
+ * Messages the host has written themselves are left alone and named, with the
+ * only way past that being a second, explicit run over exactly those. A bulk
+ * button that quietly replaced somebody's own copy would be the one mistake
+ * this feature cannot make.
+ */
+function SequenceDrafter({
+  settings,
+  patch,
+  canEdit,
+  kinds,
+}: {
+  settings: UserBookingSettings;
+  patch: (next: Partial<UserBookingSettings>) => void;
+  canEdit: boolean;
+  /** kind -> { label, goal, channel }, from the placeholder contract. */
+  kinds: Record<string, { label: string; goal: string; channel: string }>;
+}) {
+  const sequencer = useDraftBookingSequence();
+  const [instruction, setInstruction] = useState("");
+  const [tone, setTone] = useState<"direct" | "warm" | "formal">("direct");
+  const [result, setResult] = useState<{ drafts: BookingTemplateDraft[]; skipped: string[] } | null>(null);
+  const [appliedKinds, setAppliedKinds] = useState<string[]>([]);
+  const [note, setNote] = useState<{ tone: "ok" | "warn" | "bad"; text: string } | null>(null);
+  const [running, setRunning] = useState("");
+  const [elapsed, setElapsed] = useState(0);
+
+  // Ten messages take about a minute, and a button that has said "Drafting..."
+  // for a minute reads as hung. The clock is the only honest progress there is:
+  // the endpoint answers once, at the end, so nothing here can count messages
+  // as they land without inventing them.
+  useEffect(() => {
+    if (!sequencer.isPending) return;
+    setElapsed(0);
+    const started = Date.now();
+    const timer = window.setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
+    return () => window.clearInterval(timer);
+  }, [sequencer.isPending]);
+
+  const order = Object.keys(kinds);
+  const labelFor = (kind: string) => kinds[kind]?.label ?? kind;
+
+  async function run(only: string[], overwriteAuthored: boolean) {
+    setNote(null);
+    setRunning(only.length ? `${only.length} ${only.length === 1 ? "message" : "messages"}` : "every message still on the default wording");
+    try {
+      const out = await sequencer.mutateAsync({
+        kinds: only,
+        instruction: instruction.trim() || null,
+        tone,
+        overwrite_authored: overwriteAuthored,
+      });
+      setResult((current) => {
+        // A targeted re-run adds to what is on screen rather than discarding
+        // drafts from the first run that the host has not read yet.
+        const kept = only.length
+          ? (current?.drafts ?? []).filter((existing) => !out.drafts.some((fresh) => fresh.kind === existing.kind))
+          : [];
+        return {
+          drafts: [...kept, ...out.drafts].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind)),
+          skipped: out.skipped,
+        };
+      });
+      if (!only.length) setAppliedKinds([]);
+      if (!out.drafts.length && !out.skipped.length) {
+        setNote({ tone: "warn", text: "Nothing came back. Try again in a moment." });
+      } else if (!out.drafts.length) {
+        setNote({ tone: "warn", text: "Nothing to draft. Every message already has your own wording." });
+      }
+    } catch (err) {
+      setNote({ tone: "bad", text: err instanceof Error ? err.message : "The sequence could not be drafted." });
+    }
+  }
+
+  // A fallback is the wording already in force, not something the assistant
+  // wrote, so it is never part of an "apply everything" and never counted as a
+  // draft the host is being offered.
+  const appliable = (result?.drafts ?? []).filter((d) => !d.fallback && !appliedKinds.includes(d.kind));
+
+  const apply = (items: BookingTemplateDraft[]) => {
+    if (!items.length || !canEdit) return;
+    patch(draftsPatch(settings, items.map((draft) => ({ draft }))));
+    setAppliedKinds((current) => Array.from(new Set([...current, ...items.map((item) => item.kind)])));
+    setNote({
+      tone: "ok",
+      text: `${items.length === 1 ? labelFor(items[0].kind) : `${items.length} messages`} moved into the editors. Read them through, then press Save changes.`,
+    });
+  };
+
+  return (
+    <section className="bkmsg-seq" aria-labelledby="bkmsg-seq-title">
+      <div className="bkmsg-seq-hd">
+        <div>
+          <h4 id="bkmsg-seq-title">Draft the whole sequence</h4>
+          <div className="sub">
+            The assistant writes every message that is still on the default wording. Nothing is saved: read the
+            drafts, apply the ones you want, then press Save changes.
+          </div>
+        </div>
+        <div className="bkmsg-seq-ctl">
+          <Select
+            value={tone}
+            onChange={(e) => setTone(e.target.value as "direct" | "warm" | "formal")}
+            aria-label="Tone for the whole sequence"
+            disabled={!canEdit || sequencer.isPending}
+          >
+            <option value="direct">Direct</option>
+            <option value="warm">Warm</option>
+            <option value="formal">Formal</option>
+          </Select>
+          <Btn variant="pri" onClick={() => void run([], false)} disabled={!canEdit || sequencer.isPending}>
+            <Icon name="spark" size={13} /> {sequencer.isPending ? "Drafting..." : "Draft every message"}
+          </Btn>
+        </div>
+      </div>
+
+      <Input
+        value={instruction}
+        onChange={(e) => setInstruction(e.target.value)}
+        placeholder="How the whole sequence should sound (optional)"
+        disabled={!canEdit || sequencer.isPending}
+      />
+
+      {sequencer.isPending ? (
+        <div className="bkmsg-seq-busy" role="status" aria-live="polite">
+          <span className="spinner" aria-hidden="true" />
+          <span>
+            Writing {running}. {formatElapsed(elapsed)} so far, at roughly five seconds a message. Carry on editing
+            while it works.
+          </span>
+        </div>
+      ) : null}
+
+      {note ? (
+        <StatusLine tone={note.tone === "ok" ? "ok" : note.tone === "bad" ? "bad" : "warn"}>{note.text}</StatusLine>
+      ) : null}
+
+      {result?.drafts.length ? (
+        <>
+          <Row>
+            <CellChip tone="mut">{result.drafts.length} back</CellChip>
+            {appliedKinds.length ? <CellChip tone="ok">{appliedKinds.length} applied</CellChip> : null}
+            <Btn variant="pri" size="sm" onClick={() => apply(appliable)} disabled={!canEdit || !appliable.length}>
+              {appliable.length
+                ? `Apply ${appliable.length} ${appliable.length === 1 ? "draft" : "drafts"}`
+                : "Nothing left to apply"}
+            </Btn>
+            <Btn size="sm" onClick={() => { setResult(null); setAppliedKinds([]); setNote(null); }}>
+              Clear drafts
+            </Btn>
+          </Row>
+
+          <div className="bkmsg-seq-list">
+            {result.drafts.map((item) => {
+              const applied = appliedKinds.includes(item.kind);
+              return (
+                <article key={item.kind} className={cx("bkmsg-seq-card", item.fallback && "stale")}>
+                  <Row>
+                    <h5>{labelFor(item.kind)}</h5>
+                    <CellChip tone={item.channel === "sms" ? "acc" : "mut"}>
+                      {item.channel === "sms" ? "Text" : "Email"}
+                    </CellChip>
+                    {item.fallback ? <CellChip tone="warn">Not a draft</CellChip> : null}
+                    {applied ? <CellChip tone="ok">Applied</CellChip> : null}
+                  </Row>
+                  {item.fallback ? (
+                    <div className="sub">
+                      The assistant was unavailable for this one. What follows is the wording already in force, not
+                      something it wrote.
+                    </div>
+                  ) : null}
+                  {item.subject ? <div className="sub"><b>{item.subject}</b></div> : null}
+                  <div className="bkmsg-seq-body">{item.body}</div>
+                  <Row>
+                    <Btn size="sm" onClick={() => apply([item])} disabled={!canEdit || applied}>
+                      {applied ? "Applied" : item.fallback ? "Copy in as a starting point" : "Apply"}
+                    </Btn>
+                  </Row>
+                </article>
+              );
+            })}
+          </div>
+        </>
+      ) : null}
+
+      {result?.skipped.length ? (
+        <StatusLine tone="warn">
+          Left alone because you had already written {result.skipped.length === 1 ? "it" : "them"} yourself:{" "}
+          {result.skipped.map(labelFor).join(", ")}.{" "}
+          <Linky onClick={() => void run(result.skipped, true)} disabled={!canEdit || sequencer.isPending}>
+            Redraft {result.skipped.length === 1 ? "it" : "those"} too and replace my wording
+          </Linky>
+        </StatusLine>
+      ) : null}
+    </section>
   );
 }
