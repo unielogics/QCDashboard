@@ -15,6 +15,10 @@ export interface User {
   account_status: "active" | "suspended";
   can_access_funding: boolean;
   can_access_audit: boolean;
+  // An operator's own contact details. Both production agreements name the
+  // relationship manager and their phone.
+  phone?: string | null;
+  title?: string | null;
   // Only ever set for Role.DEALER_PARTNER; drives the AppShell NDA gate.
   nda_signed_at?: string | null;
 }

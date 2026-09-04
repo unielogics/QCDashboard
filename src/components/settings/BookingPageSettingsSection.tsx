@@ -18,6 +18,7 @@ import {
   useGoogleConnection,
   useStartGoogleOAuth,
   useUpdateBookingSettings,
+  useUpdateProfile,
   useUploadBookingAsset,
 } from "@/hooks/useApi";
 import type { BookingBlockedInterval, BookingDaySchedule, BookingVideo, PrecallStepSettings, UserBookingSettings } from "@/lib/types";
@@ -101,6 +102,61 @@ function defaultBookingSettings(): UserBookingSettings {
     created_at: null,
     updated_at: null,
   };
+}
+
+/** An operator's own contact details.
+ *
+ * Both production agreements name the relationship manager and the phone
+ * notice is served to, and `rm_phone` has been required to send stage one all
+ * along — with nowhere in the system to read one from, because an operator's
+ * phone lives only in Clerk. Filled in here once, it travels with the person
+ * onto every package they are named on.
+ */
+function YourContactDetails() {
+  const { data: user } = useCurrentUser();
+  const update = useUpdateProfile();
+  const [phone, setPhone] = useState("");
+  const [title, setTitle] = useState("");
+  const [touched, setTouched] = useState(false);
+  useEffect(() => {
+    if (touched || !user) return;
+    setPhone(user.phone ?? "");
+    setTitle(user.title ?? "");
+  }, [user, touched]);
+  const dirty = touched && (phone !== (user?.phone ?? "") || title !== (user?.title ?? ""));
+  const missingPhone = Boolean(user) && !(user?.phone ?? "").trim();
+
+  return (
+    <Panel title="Your contact details">
+      <div className="grid" style={{ gap: 10 }}>
+        <div className="sub">
+          Both production agreements name you as the relationship manager and print the phone notice is served to.
+          Filled in once here, it arrives on every package you are named on.
+        </div>
+        {missingPhone && !dirty ? (
+          <StatusLine tone="warn">A phone number is needed before a production package naming you can be sent.</StatusLine>
+        ) : null}
+        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
+          <Field label="Phone">
+            <Input value={phone} placeholder="(973) 555-0148"
+              onChange={(e) => { setTouched(true); setPhone(e.target.value); }} />
+          </Field>
+          <Field label="Title">
+            <Input value={title} placeholder="Senior Underwriter"
+              onChange={(e) => { setTouched(true); setTitle(e.target.value); }} />
+          </Field>
+        </div>
+        <Row>
+          <Btn disabled={!dirty || update.isPending}
+            onClick={() => update.mutate({ phone: phone.trim() || null, title: title.trim() || null },
+              { onSuccess: () => setTouched(false) })}>
+            {update.isPending ? "Saving…" : "Save"}
+          </Btn>
+          {update.isError ? <span className="sub">That could not be saved.</span> : null}
+        </Row>
+      </div>
+    </Panel>
+  );
 }
 
 export function BookingPageSettingsSection({ embedded = false }: { embedded?: boolean }) {
@@ -284,6 +340,8 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
 
       <div className="booking-settings-workspace">
         <div className="grid">
+          <YourContactDetails />
+
           <Panel title="Publishing">
             <div className="grid">
               <ToggleRow

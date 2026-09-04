@@ -645,6 +645,19 @@ export function useBookingSettings() {
   });
 }
 
+export function useUpdateProfile() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { phone?: string | null; title?: string | null }) =>
+      apiCall<{ name: string; email: string; phone: string | null; title: string | null }>("/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["auth-me"] }),
+  });
+}
+
 export function useUpdateBookingSettings() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
