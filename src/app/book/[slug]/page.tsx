@@ -32,6 +32,7 @@ import { api } from "@/lib/api";
 import { Card, Textarea, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { withAlpha } from "@/lib/color";
+import { validPhone } from "@/lib/formCoerce";
 
 
 interface PublicBookingSlot {
@@ -161,7 +162,7 @@ export default function PublicBookingPage() {
   };
 
   const canSubmit =
-    !!selected && form.full_name.trim().length > 0 && /\S+@\S+\.\S+/.test(form.email);
+    !!selected && form.full_name.trim().length > 0 && /\S+@\S+\.\S+/.test(form.email) && validPhone(form.phone);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,13 +180,16 @@ export default function PublicBookingPage() {
       setStatus("success");
     } catch (err) {
       const code = (err as { status?: number })?.status;
+      // A 422 is a field the server refused, and its message already names what
+      // to type. Saying "check your details" over it would hide the answer.
+      const refused = code === 422 && err instanceof Error ? err.message.trim() : "";
       setStatus("ready");
       setError(
         code === 409
           ? "That time was just taken. Pick another one."
           : code === 429
             ? "One moment, then try again."
-            : "Could not complete the booking. Check your details and try again.",
+            : refused || "Could not complete the booking. Check your details and try again.",
       );
     }
   };
@@ -492,7 +496,18 @@ export default function PublicBookingPage() {
                     required
                   />
                 </Field>
-                <Field label="Phone">
+                {/* Always asked. A host's `booking_questions.phone` setting can
+                    no longer take this question off the page: the server needs a
+                    number on every booking, and the room PIN is texted to it. */}
+                <Field
+                  label="Mobile number"
+                  required
+                  // Said while they type rather than after a rejected booking,
+                  // and only once there is something to judge.
+                  error={form.phone.trim() && !validPhone(form.phone)
+                    ? "Enter a 10-digit US mobile, or include the country code for an international number."
+                    : undefined}
+                >
                   <input
                     className="field"
                     type="tel"
@@ -500,6 +515,7 @@ export default function PublicBookingPage() {
                     value={form.phone}
                     onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                     autoComplete="tel"
+                    required
                   />
                 </Field>
                 {form.phone.trim() && (
@@ -640,10 +656,13 @@ function Chip({ children, accent }: { children: React.ReactNode; accent?: string
 function Field({
   label,
   required,
+  error,
   children,
 }: {
   label: string;
   required?: boolean;
+  /** What you typed is wrong, said in the same red the marker uses. */
+  error?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -660,6 +679,7 @@ function Field({
         {required && <span style={{ color: "var(--danger)", marginLeft: 3 }}>*</span>}
       </span>
       {children}
+      {error && <span className="sub" style={{ color: "var(--danger)" }}>{error}</span>}
     </label>
   );
 }

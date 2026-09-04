@@ -28,6 +28,7 @@ import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
 import type { BucketIntakeLinkRead } from "@/lib/unifiedOperator";
 import { api, ApiError } from "@/lib/api";
+import { validPhone } from "@/lib/formCoerce";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
@@ -3613,7 +3614,7 @@ type ConvertLeadPayload = {
   variant: ConvertLeadVariant;
   full_name: string;
   email: string;
-  phone?: string;
+  phone: string;
   business_name?: string;
   // Main Street only. The bucket's documents stay as they are on this path, so
   // these steer the AI framing and the program screen rather than a checklist.
@@ -3693,6 +3694,8 @@ function ConvertToLeadModal({
   function step2Problem(): string | null {
     if (!fullName.trim()) return "Client name is required.";
     if (!email.trim() || !email.includes("@")) return "A valid client email is required.";
+    if (!phone.trim()) return "A client mobile number is required.";
+    if (!validPhone(phone)) return "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number.";
     return null;
   }
 
@@ -3720,7 +3723,7 @@ function ConvertToLeadModal({
       variant,
       full_name: fullName.trim(),
       email: email.trim(),
-      phone: phone.trim() || undefined,
+      phone: phone.trim(),
       business_name: businessName.trim() || undefined,
       industry: variant === "main_street" ? industry : undefined,
       intent: variant === "main_street" ? intent : undefined,
@@ -3830,8 +3833,14 @@ function ConvertToLeadModal({
                 className={cx((!email.trim() || !email.includes("@")) && "bad")}
               />
             </Field>
-            <Field label="Phone" hint="Optional.">
-              <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
+            <Field label="Client mobile" req={!validPhone(phone)}>
+              <Input
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="(973) 555-0148"
+                className={cx(!validPhone(phone) && "bad")}
+              />
             </Field>
             <Field
               label={variant === "real_estate" ? "Investor / entity name" : "Business name"}

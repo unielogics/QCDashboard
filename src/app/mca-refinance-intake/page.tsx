@@ -26,6 +26,7 @@ import {
 } from "@/components/intake/SignRequestedDocument";
 import { getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { validPhone } from "@/lib/formCoerce";
 import {
   cryptoId,
   errorMessage,
@@ -136,6 +137,14 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
       const detail = body.detail;
       if (typeof detail === "string" && detail.trim()) {
         message = detail;
+      } else if (Array.isArray(detail)) {
+        // A 422 lists its reasons as {loc, msg} objects. Pydantic writes a
+        // validator's own ValueError as "Value error, <sentence>"; the
+        // applicant should read the sentence, not the machinery before it.
+        const reasons = detail
+          .map((item: { msg?: unknown }) => (typeof item?.msg === "string" ? item.msg.replace(/^Value error,\s*/, "").trim() : ""))
+          .filter(Boolean);
+        if (reasons.length) message = reasons.join(" ");
       } else if (detail && typeof detail === "object") {
         const rec = detail as { code?: unknown; message?: unknown };
         if (typeof rec.message === "string" && rec.message.trim()) message = rec.message;
@@ -246,6 +255,8 @@ type Copy = {
   reviewLocked: string;
   errNameEmail: string;
   errEmail: string;
+  errPhoneRequired: string;
+  errPhoneIncomplete: string;
   errTermsCheckbox: string;
   errCode: string;
   errThrottled: string;
@@ -271,7 +282,7 @@ const COPY: Record<Lang, Copy> = {
     fieldFullName: "Full name",
     fieldBusiness: "Business name",
     fieldEmail: "Email",
-    fieldPhone: "Phone (optional)",
+    fieldPhone: "Mobile number",
     legalPrefix: "I agree to the ",
     legalTerms: "Terms",
     legalAnd: " and the ",
@@ -350,6 +361,8 @@ const COPY: Record<Lang, Copy> = {
     reviewLocked: "Complete the three items to run your review.",
     errNameEmail: "Full name and email are required.",
     errEmail: "Enter a valid email address.",
+    errPhoneRequired: "A mobile number is required so we can reach you about your file.",
+    errPhoneIncomplete: "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number.",
     errTermsCheckbox: "Please accept the Terms and Privacy Policy.",
     errCode: "Enter the code from your email.",
     errThrottled: "Too many attempts — wait a minute and try again.",
@@ -370,7 +383,7 @@ const COPY: Record<Lang, Copy> = {
     fieldFullName: "Nombre completo",
     fieldBusiness: "Nombre del negocio",
     fieldEmail: "Correo electrónico",
-    fieldPhone: "Teléfono (opcional)",
+    fieldPhone: "Número de móvil",
     legalPrefix: "Acepto los ",
     legalTerms: "Términos",
     legalAnd: " y la ",
@@ -449,6 +462,8 @@ const COPY: Record<Lang, Copy> = {
     reviewLocked: "Completa los tres elementos para ejecutar tu revisión.",
     errNameEmail: "El nombre completo y el correo son obligatorios.",
     errEmail: "Ingresa un correo electrónico válido.",
+    errPhoneRequired: "Se requiere un número de móvil para poder comunicarnos contigo sobre tu expediente.",
+    errPhoneIncomplete: "Ese número no parece completo. Ingresa un móvil de 10 dígitos de EE. UU., o incluye el código de país para un número internacional.",
     errTermsCheckbox: "Acepta los Términos y la Política de Privacidad.",
     errCode: "Ingresa el código de tu correo.",
     errThrottled: "Demasiados intentos — espera un minuto e inténtalo de nuevo.",
@@ -720,6 +735,14 @@ export default function McaRefinanceIntakePage() {
       setStartError(c.errEmail);
       return;
     }
+    if (!startForm.phone.trim()) {
+      setStartError(c.errPhoneRequired);
+      return;
+    }
+    if (!validPhone(startForm.phone)) {
+      setStartError(c.errPhoneIncomplete);
+      return;
+    }
     if (!legalAccepted) {
       setStartError(c.errTermsCheckbox);
       return;
@@ -732,9 +755,9 @@ export default function McaRefinanceIntakePage() {
       terms_accepted: true,
       privacy_accepted: true,
       preferred_language: language ?? "en",
+      phone: startForm.phone.trim(),
       ...readPublicIntakeAttribution(),
     };
-    if (startForm.phone.trim()) body.phone = startForm.phone.trim();
     if (startForm.business_name.trim()) body.business_name = startForm.business_name.trim();
     if (seed.payback !== null) body.remaining_payback = seed.payback;
     if (seed.months !== null) body.months_remaining = seed.months;
@@ -1099,6 +1122,7 @@ export default function McaRefinanceIntakePage() {
               value={startForm.full_name}
               onChange={(value) => setStartForm((cur) => ({ ...cur, full_name: value }))}
               autoComplete="name"
+              required
             />
             <Field
               label={c.fieldBusiness}
@@ -1113,6 +1137,7 @@ export default function McaRefinanceIntakePage() {
               type="email"
               inputMode="email"
               autoComplete="email"
+              required
             />
             <Field
               label={c.fieldPhone}
@@ -1121,6 +1146,7 @@ export default function McaRefinanceIntakePage() {
               type="tel"
               inputMode="tel"
               autoComplete="tel"
+              required
             />
           </div>
           <label className="vm-check">
@@ -1564,6 +1590,7 @@ function Field({
   inputMode,
   autoComplete,
   disabled,
+  required,
 }: {
   label: string;
   value: string;
@@ -1573,10 +1600,11 @@ function Field({
   inputMode?: "text" | "email" | "tel" | "numeric" | "decimal";
   autoComplete?: string;
   disabled?: boolean;
+  required?: boolean;
 }) {
   return (
     <label className="vm-fld">
-      <span className="vm-fld-l">{label}</span>
+      <span className="vm-fld-l">{label}{required ? <span className="vm-req">*</span> : null}</span>
       <input
         className="vm-in"
         type={type}

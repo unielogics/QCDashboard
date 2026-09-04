@@ -209,7 +209,11 @@ function BookingSettingsForm({ tab }: { tab: Exclude<SettingsTab, "outcomes"> })
           <label className="calendar-v2-toggle"><span><strong>Create Google Meet</strong><small>Add the meeting link to confirmations and the appointment workspace.</small></span><input type="checkbox" checked={draft.google_meet_enabled} onChange={(event) => set("google_meet_enabled", event.target.checked)} /></label>
         </Panel>
         <Panel title="Requested booking fields">
-          <div className="calendar-v2-check-grid">{Object.entries({ business_name: "Business name", phone: "Phone", requested_amount: "Requested amount", bank_statement: "Bank statement prompt" }).map(([key,label]) => <label key={key} className="calendar-v2-check"><input type="checkbox" checked={Boolean(draft.booking_questions[key])} onChange={(event) => set("booking_questions", { ...draft.booking_questions, [key]: event.target.checked })} />{label}</label>)}</div>
+          {/* The mobile number is not one of the optional questions any more: the
+              server refuses a booking without one and the room PIN is texted to
+              it. The stored `booking_questions.phone` value is left alone and
+              still saved, it simply cannot take the field off the page. */}
+          <div className="calendar-v2-check-grid">{Object.entries({ business_name: "Business name", phone: "Mobile number", requested_amount: "Requested amount", bank_statement: "Bank statement prompt" }).map(([key,label]) => key === "phone" ? <label key={key} className="calendar-v2-check"><input type="checkbox" checked disabled />{label} (always asked)</label> : <label key={key} className="calendar-v2-check"><input type="checkbox" checked={Boolean(draft.booking_questions[key])} onChange={(event) => set("booking_questions", { ...draft.booking_questions, [key]: event.target.checked })} />{label}</label>)}</div>
         </Panel>
         {currentUser.data?.role === "super_admin" ? (
           <Panel title="Field Desk booking window">

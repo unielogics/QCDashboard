@@ -2377,6 +2377,10 @@ a.pick { color: inherit; text-decoration: none; }
 
 .vm-fld { display: grid; gap: 5px; }
 .vm-fld-l { font-size: 10.5px; font-weight: 700; color: var(--vm-mut2); text-transform: uppercase; letter-spacing: 0.6px; }
+/* Required marker beside a field label. `.reqtag` says REQUIRED and belongs to
+   the requirement engine; this is plain form validation, so it is the same red
+   asterisk the public booking page uses, in this room's own danger tone. */
+.vm-req { color: #FCA5A5; margin-left: 3px; }
 
 .vm-in {
   width: 100%; box-sizing: border-box; background: rgba(11, 15, 23, 0.65);

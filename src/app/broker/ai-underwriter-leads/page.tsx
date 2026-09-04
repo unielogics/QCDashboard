@@ -41,6 +41,7 @@ import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunRevi
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { PartnerProductionPackageTab } from "@/components/broker/PartnerProductionPackageTab";
 import type { IntakeResponse } from "@/lib/intake";
+import { validPhone } from "@/lib/formCoerce";
 
 type LeadRow = {
   id: string;
@@ -100,7 +101,7 @@ type LeadDetail = {
 type CreateLeadPayload = {
   full_name: string;
   email: string;
-  phone?: string;
+  phone: string;
   business_name?: string;
   notify_client: boolean;
   preferred_language: "en" | "es";
@@ -689,11 +690,13 @@ function CreateBrokerLeadModal({
   function submit() {
     if (!fullName.trim()) { setError("Client name is required."); return; }
     if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
+    if (!phone.trim()) { setError("A client mobile number is required."); return; }
+    if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
     setError("");
     onCreate({
       full_name: fullName.trim(),
       email: email.trim(),
-      phone: phone.trim() || undefined,
+      phone: phone.trim(),
       business_name: businessName.trim() || undefined,
       notify_client: notifyClient,
       preferred_language: preferredLanguage,
@@ -721,8 +724,8 @@ function CreateBrokerLeadModal({
           <Field label="Client email *">
             <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" />
           </Field>
-          <Field label="Phone">
-            <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Optional" />
+          <Field label="Client mobile *">
+            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(973) 555-0148" />
           </Field>
           <Field label="Business name">
             <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" />

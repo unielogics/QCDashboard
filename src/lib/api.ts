@@ -41,11 +41,15 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
     const nestedMessage = detail && typeof detail === "object" && "message" in detail
       ? (detail as { message?: unknown }).message
       : null;
+    // A 422 carries its reasons as a list of {loc, msg}, not a string. Without
+    // this branch a field the server refused reads as "422 Unprocessable
+    // Entity" and the sentence explaining what to type is thrown away.
+    const fieldMessage = Array.isArray(detail) ? validationMessage(detail) : "";
     const message = typeof detail === "string" && detail.trim()
       ? detail
       : typeof nestedMessage === "string" && nestedMessage.trim()
         ? nestedMessage
-        : `${res.status} ${res.statusText}`;
+        : fieldMessage || `${res.status} ${res.statusText}`;
     throw new ApiError(res.status, message, body);
   }
   if (res.status === 204) return undefined as T;
@@ -53,6 +57,19 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
 }
 
 export const apiBase = API_URL;
+
+// Flatten FastAPI's 422 list into one sentence. Pydantic prefixes a validator's
+// own ValueError with "Value error, " — machinery, not something to show the
+// person who typed the value, so it comes off here.
+function validationMessage(detail: unknown[]): string {
+  return detail
+    .map((item) => {
+      const msg = item && typeof item === "object" ? (item as { msg?: unknown }).msg : null;
+      return typeof msg === "string" ? msg.replace(/^Value error,\s*/, "").trim() : "";
+    })
+    .filter(Boolean)
+    .join("; ");
+}
 
 // Pull a usable email address out of a possibly-decorated string. Handles:
 //   - "user@example.com"                                  → "user@example.com"

@@ -30,3 +30,13 @@ export function parseIntStrict(value: string | number | null | undefined): numbe
 export function formatUSD(n: number): string {
   return n.toLocaleString("en-US");
 }
+
+// A phone number the API will accept. Mirrors app/schemas/phone.py so a form
+// refuses the same numbers the server does: ten digits is a US number, eleven
+// leading with 1 is the same number written out, and a leading + is an
+// international number taken on trust between 8 and 15 digits.
+export function validPhone(value: string | null | undefined): boolean {
+  const raw = (value ?? "").trim();
+  const digits = raw.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith("1")) || (raw.startsWith("+") && digits.length >= 8 && digits.length <= 15);
+}

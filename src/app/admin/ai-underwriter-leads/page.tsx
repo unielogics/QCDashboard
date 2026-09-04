@@ -69,6 +69,7 @@ import { UnifiedThreadConversation } from "@/components/communications/UnifiedTh
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
+import { validPhone } from "@/lib/formCoerce";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
 import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 
@@ -2834,7 +2835,7 @@ type CreateLeadPayload = {
   variant: LeadVariant;
   full_name: string;
   email: string;
-  phone?: string;
+  phone: string;
   business_name?: string;
   investor_name?: string;
   target_property_address?: string;
@@ -2894,12 +2895,14 @@ function CreateLeadModal({
   async function submit() {
     if (!fullName.trim()) { setError("Client name is required."); return; }
     if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
+    if (!phone.trim()) { setError("A client mobile number is required."); return; }
+    if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
     setError("");
     const result = await onCreate({
       variant,
       full_name: fullName.trim(),
       email: email.trim(),
-      phone: phone.trim() || undefined,
+      phone: phone.trim(),
       business_name: isRE ? undefined : (businessName.trim() || undefined),
       investor_name: isRE ? (investorName.trim() || undefined) : undefined,
       target_property_address: isRE ? (propertyAddress.trim() || undefined) : undefined,
@@ -2927,6 +2930,8 @@ function CreateLeadModal({
     if (step === 2) {
       if (!fullName.trim()) { setError("Client name is required."); return; }
       if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
+      if (!phone.trim()) { setError("A client mobile number is required."); return; }
+      if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
       if (!isRE && !businessName.trim()) { setError("Legal business name is required."); return; }
       setError(""); setStep(3); return;
     }
@@ -3005,14 +3010,14 @@ function CreateLeadModal({
         </div>
       ) : null}</> : null}
       {step === 1 ? <div className="fldgrid two">
-        <Field label="Six-digit room PIN"><Input value={roomPin} onChange={(event) => setRoomPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
-        <Field label="Confirm room PIN"><Input value={roomPinConfirm} onChange={(event) => setRoomPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
+        <Field label="Six-digit room PIN *"><Input value={roomPin} onChange={(event) => setRoomPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
+        <Field label="Confirm room PIN *"><Input value={roomPinConfirm} onChange={(event) => setRoomPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
         <p className="sub" style={{ gridColumn: "1 / -1" }}>The client enters this PIN in the application room. It cannot be recovered after creation; staff can rotate it later.</p>
       </div> : null}
 
       {step === 2 ? <>
         <p className="sub">The client and legal entity anchor ownership, private credit links, bank evidence, and the secure room.</p>
-        <div className="fldgrid two"><Field label="Client full name"><Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" /></Field><Field label="Personal email"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" /></Field><Field label="Personal phone"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Required for 20%+ owners" /></Field>{!isRE ? <Field label="Legal business name"><Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Business LLC" /></Field> : <Field label="Investor / entity name"><Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" /></Field>}</div>
+        <div className="fldgrid two"><Field label="Client full name *"><Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" /></Field><Field label="Personal email *"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" /></Field><Field label="Personal mobile *"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(973) 555-0148" /></Field>{!isRE ? <Field label="Legal business name *"><Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Business LLC" /></Field> : <Field label="Investor / entity name"><Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" /></Field>}</div>
       </> : null}
 
       {step === 3 && isRE ? (

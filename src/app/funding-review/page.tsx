@@ -11,6 +11,7 @@ import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
 import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { realEstateCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { validPhone } from "@/lib/formCoerce";
 
 type RequestedDoc = {
   id: string;
@@ -419,6 +420,14 @@ export default function DealerAIUnderwriterPage() {
       setStatus(c.errFullNameEmailRequired);
       return;
     }
+    if (!contact.phone.trim()) {
+      setStatus(c.errPhoneRequired);
+      return;
+    }
+    if (!validPhone(contact.phone)) {
+      setStatus(c.errPhoneIncomplete);
+      return;
+    }
     if (!legalAccepted) {
       setStatus(c.errAcceptTerms);
       return;
@@ -431,7 +440,7 @@ export default function DealerAIUnderwriterPage() {
         body: JSON.stringify({
           full_name: contact.full_name.trim(),
           email: contact.email.trim(),
-          phone: contact.phone.trim() || null,
+          phone: contact.phone.trim(),
           investor_name: contact.business_name.trim() || null,
           target_property_address: contact.target_property_address.trim() || null,
           transaction_type: contact.transaction_type.trim() || null,
@@ -1310,11 +1319,11 @@ function ContactWidget({
         <h2 style={stepOneFormTitle}>{c.startCardTitle}</h2>
         <p style={stepOneFormCopy}>{c.startCardSub}</p>
       </div>
-      <Field label={c.fieldFullName} value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} />
-      <Field label={c.fieldEmail} value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} onBlur={onEmailBlur} />
+      <Field label={c.fieldFullName} value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} required />
+      <Field label={c.fieldEmail} value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} onBlur={onEmailBlur} required />
       {emailLookupBusy ? <div style={fieldHint}>{c.emailLookupChecking}</div> : null}
       <div style={stepOneFormGrid}>
-        <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} />
+        <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
       </div>
       <AddressInput
@@ -2501,10 +2510,10 @@ function WidgetBox({ title, description, children }: { title: string; descriptio
   );
 }
 
-function Field({ label, value, onChange, placeholder, onBlur }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void }) {
+function Field({ label, value, onChange, placeholder, onBlur, required }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void; required?: boolean }) {
   return (
     <label style={fieldWrap}>
-      <span style={labelStyle}>{label}</span>
+      <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
       <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} />
     </label>
   );
@@ -2875,7 +2884,17 @@ function priorityPill(priority: string): CSSProperties {
 async function responseMessage(res: Response): Promise<string> {
   try {
     const body = await res.json();
-    return typeof body.detail === "string" ? body.detail : `${res.status} ${res.statusText}`;
+    if (typeof body.detail === "string") return body.detail;
+    // A 422 lists its reasons as {loc, msg} objects. Pydantic writes a
+    // validator's own ValueError as "Value error, <sentence>"; the applicant
+    // should read the sentence, not the machinery in front of it.
+    if (Array.isArray(body.detail)) {
+      const reasons = body.detail
+        .map((item: { msg?: unknown }) => (typeof item?.msg === "string" ? item.msg.replace(/^Value error,\s*/, "").trim() : ""))
+        .filter(Boolean);
+      if (reasons.length) return reasons.join(" ");
+    }
+    return `${res.status} ${res.statusText}`;
   } catch {
     return `${res.status} ${res.statusText}`;
   }
@@ -4260,6 +4279,7 @@ const intelligenceNextStep: CSSProperties = {
 const fieldWrap: CSSProperties = { display: "grid", gap: 6 };
 const labelStyle: CSSProperties = { color: "#B8C4D6", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
 const fieldHint: CSSProperties = { color: "#9FB0C8", fontSize: 12, marginTop: -4 };
+const requiredMark: CSSProperties = { color: "#EF4444", marginLeft: 3 };
 const input: CSSProperties = {
   // An <input> carries an intrinsic minimum width from its default `size`
   // attribute — about 20 characters, ~242px with this padding. As a grid or

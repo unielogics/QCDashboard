@@ -59,6 +59,8 @@ type CommonCopy = {
   loginPill: string;
   lockedPreviewBadge: string;
   errFullNameEmailRequired: string;
+  errPhoneRequired: string;
+  errPhoneIncomplete: string;
   errAcceptTerms: string;
   errEnterEmailForCode: string;
   errEnterEmailAndCode: string;
@@ -120,7 +122,7 @@ const commonEn: CommonCopy = {
   trustPreliminaryOnly: "Preliminary review only",
   fieldFullName: "Full name",
   fieldEmail: "Email",
-  fieldPhone: "Phone",
+  fieldPhone: "Mobile number",
   emailLookupChecking: "Checking for an existing secure file...",
   alreadyStarted: "Already started?",
   resumeEnterEmail: "Enter your email and we will send a short access code for your existing file.",
@@ -132,6 +134,8 @@ const commonEn: CommonCopy = {
   loginPill: "Continue",
   lockedPreviewBadge: "Locked - The full review runs in chat and unlocks after you start your file",
   errFullNameEmailRequired: "Full name and email are required before uploading documents.",
+  errPhoneRequired: "A mobile number is required so we can reach you about your file.",
+  errPhoneIncomplete: "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number.",
   errAcceptTerms: "Accept the Terms and Privacy Policy before opening the secure intake.",
   errEnterEmailForCode: "Enter your email and we will send a secure access code if a file exists.",
   errEnterEmailAndCode: "Enter your email and access code.",
@@ -168,7 +172,7 @@ const commonEs: CommonCopy = {
   trustPreliminaryOnly: "Solo revisión preliminar",
   fieldFullName: "Nombre completo",
   fieldEmail: "Correo electrónico",
-  fieldPhone: "Teléfono",
+  fieldPhone: "Número de móvil",
   emailLookupChecking: "Buscando un expediente seguro existente...",
   alreadyStarted: "¿Ya comenzaste?",
   resumeEnterEmail: "Ingresa tu correo electrónico y te enviaremos un código de acceso breve para tu expediente existente.",
@@ -180,6 +184,8 @@ const commonEs: CommonCopy = {
   loginPill: "Continuar",
   lockedPreviewBadge: "Bloqueado - La revisión completa se realiza en el chat y se desbloquea después de abrir tu expediente",
   errFullNameEmailRequired: "El nombre completo y el correo electrónico son obligatorios antes de subir documentos.",
+  errPhoneRequired: "Se requiere un número de móvil para poder comunicarnos contigo sobre tu expediente.",
+  errPhoneIncomplete: "Ese número no parece completo. Ingresa un móvil de 10 dígitos de EE. UU., o incluye el código de país para un número internacional.",
   errAcceptTerms: "Acepta los Términos y la Política de Privacidad antes de abrir el expediente seguro.",
   errEnterEmailForCode: "Ingresa tu correo electrónico y te enviaremos un código de acceso seguro si existe un expediente.",
   errEnterEmailAndCode: "Ingresa tu correo electrónico y el código de acceso.",
