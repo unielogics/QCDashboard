@@ -74,6 +74,17 @@ type CommonCopy = {
   startCardTitle: string;
   startCardSub: string;
   loginWithCodeLink: string;
+  // The hand-off into the room at /buckets/request/<token>, where the bank
+  // connection and the credit authorization live. Named for what the client
+  // gets, never for the plumbing -- "secure room" and "bucket" are our words
+  // for it, not theirs.
+  roomCardTitle: string;
+  roomCardSub: string;
+  roomCardCta: string;
+  roomCardCtaBusy: string;
+  // Shown when the client set their own room PIN: there is no code to hand
+  // forward, so the room will ask for the one they picked.
+  roomCardChosenPin: string;
   // Shown while the desk has taken the conversation over. `takeoverNotice`
   // mirrors the server's fixed notice so the room reads the same on a plain
   // reload as it does on the chat turn that triggered the takeover.
@@ -149,6 +160,11 @@ const commonEn: CommonCopy = {
   startCardTitle: "Start secure intake",
   startCardSub: "Takes under a minute. No credit pull to begin.",
   loginWithCodeLink: "Already started? Login with email code",
+  roomCardTitle: "Bank, credit check, documents",
+  roomCardSub: "Connect your bank, authorize the credit check, and hand over the documents your underwriter asked for.",
+  roomCardCta: "Open my checklist ->",
+  roomCardCtaBusy: "Opening...",
+  roomCardChosenPin: "Almost there. You will be asked for the PIN you chose.",
   takeoverNotice: "Your underwriter is replying to you here. They will answer you directly, so the assistant is standing by.",
   underwriterFallbackName: "Your underwriter",
 };
@@ -199,6 +215,11 @@ const commonEs: CommonCopy = {
   startCardTitle: "Comenzar registro seguro",
   startCardSub: "Toma menos de un minuto. Sin consulta de crédito para empezar.",
   loginWithCodeLink: "¿Ya comenzaste? Inicia sesión con código por correo electrónico",
+  roomCardTitle: "Banco, crédito y documentos",
+  roomCardSub: "Conecta tu banco, autoriza la consulta de crédito y entrega los documentos que te pidió tu suscriptor.",
+  roomCardCta: "Abrir mi lista ->",
+  roomCardCtaBusy: "Abriendo...",
+  roomCardChosenPin: "Ya casi. Te pediremos el PIN que elegiste.",
   takeoverNotice: "Tu suscriptor te está respondiendo aquí. Te contestará directamente, así que el asistente está en espera.",
   underwriterFallbackName: "Tu suscriptor",
 };

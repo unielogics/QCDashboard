@@ -116,6 +116,16 @@ type AssetRow = {
   notes?: string | null;
 };
 
+// The hand-off into this file's secure room. `room_code` is null when the
+// client set their own PIN, and it is a credential either way: it is read
+// once, put in the URL fragment, and never logged, stored or re-rendered.
+type SecureRoomHandoff = {
+  room_url: string;
+  room_code: string | null;
+  code_source: "recovered" | "minted" | "client_chosen";
+  tab: string;
+};
+
 type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
@@ -206,6 +216,11 @@ export default function DealerAIUnderwriterPage() {
   const [status, setStatus] = useState("");
   const [emailLookupBusy, setEmailLookupBusy] = useState(false);
   const [dragging, setDragging] = useState(false);
+  // Secure-room hand-off. `roomNotice` carries both the client-chosen-PIN
+  // heads-up and the hand-off's own errors -- the room card is one place, so
+  // it reads better as one line than as two competing slots.
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [roomNotice, setRoomNotice] = useState("");
   const [signingDocId, setSigningDocId] = useState<string | null>(null);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
@@ -572,6 +587,36 @@ export default function DealerAIUnderwriterPage() {
     } finally {
       setBusy(false);
     }
+  }
+
+  // Walk the client into their secure room, where the bank connection and the
+  // credit authorization live. The room is on this same origin, so this is a
+  // plain navigation: a new tab would strand the fragment-borne PIN behind a
+  // popup blocker and leave the client staring at two copies of their file.
+  async function openSecureRoom() {
+    if (!token || roomBusy) return;
+    setRoomBusy(true);
+    setRoomNotice("");
+    try {
+      const handoff = await call<SecureRoomHandoff>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/secure-room`, {
+        method: "POST",
+      });
+      if (handoff.code_source === "client_chosen") {
+        // No code to hand forward. Say so and hold for a beat, otherwise the
+        // navigation swallows the sentence before it can be read.
+        setRoomNotice(c.roomCardChosenPin);
+        window.setTimeout(() => window.location.assign(secureRoomHref(handoff)), 1200);
+        return;
+      }
+      window.location.assign(secureRoomHref(handoff));
+    } catch (error) {
+      // 409 (no room on this file) and 429 (a double tap on the button) both
+      // arrive as the server's own sentence via responseMessage.
+      setRoomNotice(errorMessage(error));
+      setRoomBusy(false);
+    }
+    // No finally: on the happy path this page is on its way out, and leaving
+    // the button in its busy state is the honest thing to show meanwhile.
   }
 
   function addFiles(nextFiles: FileList | File[]) {
@@ -979,7 +1024,11 @@ export default function DealerAIUnderwriterPage() {
                 missingDocs={missingDocs}
                 reviewStatus={reviewStatus}
                 activeTab={activeWorkspace}
+                c={c}
+                roomBusy={roomBusy}
+                roomNotice={roomNotice}
                 onTabChange={setActiveWorkspace}
+                onOpenSecureRoom={() => openSecureRoom().catch(() => undefined)}
                 onCopyResume={() => navigator.clipboard.writeText(response.resume_url || "")}
                 onLogout={logoutRoom}
               />
@@ -1014,6 +1063,10 @@ export default function DealerAIUnderwriterPage() {
                       </button>
                     ))}
                   </div>
+                  {/* The sidebar that carries this on a desktop is not
+                      rendered on a phone, so it rides in the header instead
+                      -- above the fold and on every tab. */}
+                  <SecureRoomCta c={c} busy={roomBusy} notice={roomNotice} onOpen={() => openSecureRoom().catch(() => undefined)} />
                 </header>
               ) : null}
               <input
@@ -1377,12 +1430,48 @@ function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy:
   );
 }
 
+// The one door out of the chat and into the room where the bank connection,
+// the credit authorization and the requested documents live. Rendered once in
+// each of the layout's two mutually exclusive shells -- the desktop sidebar's
+// Pinned column and the mobile header -- so it is on screen on either.
+function SecureRoomCta({
+  c,
+  busy,
+  notice,
+  onOpen,
+}: {
+  c: ReturnType<typeof dealerCopy>;
+  busy: boolean;
+  notice: string;
+  onOpen: () => void;
+}) {
+  return (
+    <div style={roomCard}>
+      <strong style={roomCardHeading}>{c.roomCardTitle}</strong>
+      <span style={roomCardBody}>{c.roomCardSub}</span>
+      <button
+        type="button"
+        style={busy ? disabledRoomCardButton : roomCardButton}
+        disabled={busy}
+        onClick={onOpen}
+      >
+        {busy ? c.roomCardCtaBusy : c.roomCardCta}
+      </button>
+      {notice ? <div style={statusBoxNoMargin}>{notice}</div> : null}
+    </div>
+  );
+}
+
 function DealerSidebar({
   response,
   missingDocs,
   reviewStatus,
   activeTab,
+  c,
+  roomBusy,
+  roomNotice,
   onTabChange,
+  onOpenSecureRoom,
   onCopyResume,
   onLogout,
 }: {
@@ -1390,7 +1479,11 @@ function DealerSidebar({
   missingDocs: RequestedDoc[];
   reviewStatus: string;
   activeTab: WorkspaceTab;
+  c: ReturnType<typeof dealerCopy>;
+  roomBusy: boolean;
+  roomNotice: string;
   onTabChange: (tab: WorkspaceTab) => void;
+  onOpenSecureRoom: () => void;
   onCopyResume: () => void;
   onLogout: () => void;
 }) {
@@ -1433,6 +1526,9 @@ function DealerSidebar({
 
       <div style={sidebarSection}>
         <div style={sidebarSectionTitle}>Pinned</div>
+        {/* First in the column: it is the only pinned item that is an action,
+            and the two below it are read-only reminders. */}
+        <SecureRoomCta c={c} busy={roomBusy} notice={roomNotice} onOpen={onOpenSecureRoom} />
         <div style={sidebarMiniCard}>
           <strong>{response.intake.business_name || response.intake.full_name}</strong>
           <span>{response.files.length} files | {missingDocs.length} missing</span>
@@ -2512,6 +2608,15 @@ async function responseMessage(res: Response): Promise<string> {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "Something went wrong.";
+}
+
+// Query first, fragment last -- that is the only order a URL parses. The PIN
+// rides in the fragment because a fragment is never sent to a server, never
+// written to an access log and never leaks through a referrer; the room reads
+// it, prefills its gate, and drops it from history.
+function secureRoomHref(handoff: SecureRoomHandoff): string {
+  const query = `?tab=${encodeURIComponent(handoff.tab)}`;
+  return `${handoff.room_url}${query}${handoff.room_code ? `#p=${handoff.room_code}` : ""}`;
 }
 
 function looksLikeEmail(value: string): boolean {
@@ -3993,3 +4098,23 @@ const slotButton: CSSProperties = {
   cursor: "pointer",
   textAlign: "left",
 };
+// The secure-room card. Gold like the room's other "do this next" surfaces,
+// and sized to sit inside the sidebar's Pinned column without widening it.
+const roomCard: CSSProperties = {
+  ...sidebarMiniCard,
+  gap: 8,
+  padding: "10px 12px",
+  borderRadius: 12,
+  border: "1px solid rgba(212,175,55,.28)",
+  background: "linear-gradient(135deg,rgba(212,175,55,.10),rgba(255,255,255,.02))",
+};
+const roomCardHeading: CSSProperties = { fontSize: 13, color: "#F6F8FB", fontWeight: 900 };
+const roomCardBody: CSSProperties = { fontSize: 11.5, lineHeight: 1.45, color: "#9FB0C6" };
+const roomCardButton: CSSProperties = {
+  ...miniButton,
+  borderColor: "rgba(212,175,55,.45)",
+  background: "rgba(212,175,55,.14)",
+  color: "#F6E7A6",
+  justifySelf: "start",
+};
+const disabledRoomCardButton: CSSProperties = { ...roomCardButton, opacity: 0.55, cursor: "not-allowed" };

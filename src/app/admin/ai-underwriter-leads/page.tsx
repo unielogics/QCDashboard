@@ -1113,8 +1113,10 @@ function LeadDetailPanel({
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
-  // "dealer_gatekeeper_v1" is the canonical dealer marker; "dealer_financing_v1" is the legacy one.
-  const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1" || detail?.intake.variant === "dealer_financing_v1";
+  // "dealer_gatekeeper_v1" is the dealer marker, and the only one the backend
+  // gates on. A second legacy value here would have let a package be sent to a
+  // client the signing gate then refused to show, so there is exactly one.
+  const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
 
   async function loadUnderwritingState() {
     if (!detail || !canUnderwrite) {
@@ -3175,9 +3177,7 @@ function probabilityTone(value?: string | null): ChipTone {
 
 function variantLabel(value?: string | null) {
   if (value === "real_estate_dscr_v1") return "Real estate";
-  // "dealer_gatekeeper_v1" is the canonical dealer marker; "dealer_financing_v1"
-  // is the legacy value kept as a fallback during the deploy window.
-  if (value === "dealer_gatekeeper_v1" || value === "dealer_financing_v1") return "Dealer";
+  if (value === "dealer_gatekeeper_v1") return "Dealer";
   if (value === "mca_refi_v1") return "MCA refinance";
   if (value === "main_street_v1") return "Main Street";
   return "AI review";

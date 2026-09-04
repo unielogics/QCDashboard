@@ -45,7 +45,7 @@ import { validPhone } from "@/lib/formCoerce";
 
 type LeadRow = {
   id: string;
-  // "dealer_gatekeeper_v1" (canonical) / "dealer_financing_v1" (legacy). Partner leads are dealer-variant by construction.
+  // Partner leads are dealer-variant by construction.
   variant?: string;
   bucket_id: string;
   bucket_name: string;
@@ -70,7 +70,7 @@ type DetailTab = "files" | "messages" | "production";
 
 function isDealerVariant(variant?: string | null): boolean {
   // Partner-created leads carry no other variant; a missing value is treated as dealer.
-  return !variant || variant === "dealer_gatekeeper_v1" || variant === "dealer_financing_v1";
+  return !variant || variant === "dealer_gatekeeper_v1";
 }
 
 type RequestedDoc = { id: string; name: string; description?: string | null; required: boolean; status: string };

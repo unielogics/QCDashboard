@@ -90,6 +90,16 @@ type UploadInitResponse = {
   required_headers?: Record<string, string> | null;
 };
 
+// The hand-off into this file's secure room. `room_code` is null when the
+// borrower set their own PIN, and it is a credential either way: it is read
+// once, put in the URL fragment, and never logged, stored or re-rendered.
+type SecureRoomHandoff = {
+  room_url: string;
+  room_code: string | null;
+  code_source: "recovered" | "minted" | "client_chosen";
+  tab: string;
+};
+
 type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
 
 type Phase = "boot" | "language" | "start" | "code" | "room";
@@ -253,6 +263,20 @@ type Copy = {
   bookBusy: string;
   booked: string;
   reviewLocked: string;
+  // The hand-off into the room at /buckets/request/<token>, where the bank
+  // connection lives alongside anything else the desk has asked for. Named
+  // for what the borrower gets: "secure room" and "bucket" are our words for
+  // it, not theirs.
+  roomTitle: string;
+  roomSub: string;
+  roomCta: string;
+  roomCtaBusy: string;
+  // Shown when the borrower set their own room PIN: there is no code to hand
+  // forward, so the room will ask for the one they picked.
+  roomChosenPin: string;
+  // The hand-off's own 429 is a 3-second double-tap guard, not the
+  // minute-long login limit errThrottled describes.
+  roomOpening: string;
   errNameEmail: string;
   errEmail: string;
   errPhoneRequired: string;
@@ -359,6 +383,12 @@ const COPY: Record<Lang, Copy> = {
     bookBusy: "Booking…",
     booked: "Call booked — the invite is in your email.",
     reviewLocked: "Complete the three items to run your review.",
+    roomTitle: "Connect your bank account",
+    roomSub: "Connect your bank and see everything else the desk asked you for in one list. What you have done here stays saved.",
+    roomCta: "Open my checklist ->",
+    roomCtaBusy: "Opening…",
+    roomChosenPin: "Almost there. You will be asked for the PIN you chose.",
+    roomOpening: "One moment. Your checklist is opening.",
     errNameEmail: "Full name and email are required.",
     errEmail: "Enter a valid email address.",
     errPhoneRequired: "A mobile number is required so we can reach you about your file.",
@@ -460,6 +490,12 @@ const COPY: Record<Lang, Copy> = {
     bookBusy: "Agendando…",
     booked: "Llamada agendada — la invitación está en tu correo.",
     reviewLocked: "Completa los tres elementos para ejecutar tu revisión.",
+    roomTitle: "Conecta tu cuenta bancaria",
+    roomSub: "Conecta tu banco y revisa en una sola lista todo lo demás que te pidió nuestro equipo. Lo que ya hiciste aquí queda guardado.",
+    roomCta: "Abrir mi lista ->",
+    roomCtaBusy: "Abriendo…",
+    roomChosenPin: "Ya casi. Te pediremos el PIN que elegiste.",
+    roomOpening: "Un momento. Tu lista se está abriendo.",
     errNameEmail: "El nombre completo y el correo son obligatorios.",
     errEmail: "Ingresa un correo electrónico válido.",
     errPhoneRequired: "Se requiere un número de móvil para poder comunicarnos contigo sobre tu expediente.",
@@ -479,6 +515,15 @@ function apiErrorText(error: unknown, c: Copy): string {
     return error.status === 429 ? c.errThrottled : error.message || c.errGeneric;
   }
   return errorMessage(error);
+}
+
+// Query first, fragment last -- that is the only order a URL parses. The PIN
+// rides in the fragment because a fragment is never sent to a server, never
+// written to an access log and never leaks through a referrer; the room reads
+// it, prefills its gate, and drops it from history.
+function secureRoomHref(handoff: SecureRoomHandoff): string {
+  const query = `?tab=${encodeURIComponent(handoff.tab)}`;
+  return `${handoff.room_url}${query}${handoff.room_code ? `#p=${handoff.room_code}` : ""}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -604,6 +649,13 @@ export default function McaRefinanceIntakePage() {
   const [termsError, setTermsError] = useState<string | null>(null);
   const [termsSubmitted, setTermsSubmitted] = useState(false);
   const [termsAlready, setTermsAlready] = useState(false);
+
+  // Secure room hand-off. Two message slots, because the two things this can
+  // say land in different tones: `roomNotice` is calm ("hold on", "you chose
+  // your own PIN") and `roomError` is a failure.
+  const [roomBusy, setRoomBusy] = useState(false);
+  const [roomNotice, setRoomNotice] = useState<string | null>(null);
+  const [roomError, setRoomError] = useState<string | null>(null);
 
   // Review + booking
   const [reviewBusy, setReviewBusy] = useState(false);
@@ -1060,6 +1112,41 @@ export default function McaRefinanceIntakePage() {
     } finally {
       setBookBusyAt(null);
     }
+  }
+
+  // --- secure room hand-off -------------------------------------------------
+  // Walk the borrower into their secure room, where the bank connection and
+  // the agreements live. The room is on this same origin, so this is a plain
+  // navigation: a new tab would strand the fragment-borne PIN behind a popup
+  // blocker and leave the borrower staring at two copies of their file.
+  async function openSecureRoom() {
+    const tok = tokenRef.current;
+    if (!tok || roomBusy) return;
+    setRoomBusy(true);
+    setRoomNotice(null);
+    setRoomError(null);
+    try {
+      const handoff = await call<SecureRoomHandoff>(`/${encodeURIComponent(tok)}/secure-room`, { method: "POST" });
+      if (handoff.code_source === "client_chosen") {
+        // No code to hand forward. Say so and hold for a beat, otherwise the
+        // navigation swallows the sentence before it can be read.
+        setRoomNotice(c.roomChosenPin);
+        window.setTimeout(() => window.location.assign(secureRoomHref(handoff)), 1200);
+        return;
+      }
+      window.location.assign(secureRoomHref(handoff));
+    } catch (error) {
+      if (error instanceof McaApiError && error.status === 429) {
+        // A double tap on the button, not a rate limit worth alarming over.
+        setRoomNotice(c.roomOpening);
+      } else {
+        // 409 (this file has no room) arrives as the server's own sentence.
+        setRoomError(apiErrorText(error, c));
+      }
+      setRoomBusy(false);
+    }
+    // No finally: on the happy path this page is on its way out, and leaving
+    // the button in its busy state is the honest thing to show meanwhile.
   }
 
   // --- derived room model ---------------------------------------------------
@@ -1529,6 +1616,27 @@ export default function McaRefinanceIntakePage() {
             )}
           </RailCard>
         ) : null}
+
+        {/* Last in the rail, and deliberately not a RailCard: it carries no
+            open/done chip because it is not a fourth thing to collect. It is
+            where the bank connection and anything else the desk asked for
+            live, and it sits after the three items rather than above them so
+            the room's "three items" promise still reads first. */}
+        <section className="vm-card" aria-label={c.roomTitle}>
+          <div>
+            <div className="vm-card-t">{c.roomTitle}</div>
+            <div className="vm-card-s">{c.roomSub}</div>
+          </div>
+          <button type="button" onClick={openSecureRoom} disabled={roomBusy} className="vm-gold sm">
+            {roomBusy ? c.roomCtaBusy : c.roomCta}
+          </button>
+          {roomNotice ? <div className="vm-calm">{roomNotice}</div> : null}
+          {roomError ? (
+            <div role="alert" className="vm-err">
+              {roomError}
+            </div>
+          ) : null}
+        </section>
       </aside>
     );
 
