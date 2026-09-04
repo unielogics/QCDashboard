@@ -1,3 +1,5 @@
+import type { InlineImage } from "@/lib/inlineImages";
+
 export type UnifiedCommunicationThread = {
   id: string;
   title: string;
@@ -32,6 +34,8 @@ export type UnifiedCommunicationMessage = {
   created_at: string;
   seen: boolean;
   delivery_status: string | null;
+  /** Pictures on this message. Today that means an MMS the client sent us. */
+  images?: InlineImage[];
 };
 
 export type UnifiedCommunicationThreadDetail = {

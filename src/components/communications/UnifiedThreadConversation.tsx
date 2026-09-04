@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Callout, CellChip, cx } from "@/components/ds";
 import { ChatComposer } from "@/components/ds/ChatComposer";
+import { InlineImageStrip } from "@/components/InlineImages";
 import { useAuthedApi } from "@/hooks/useApi";
 import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
 
@@ -81,7 +82,10 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
                   {message.direction !== "outbound" && message.sender_name ? (
                     <span className="bubble-who">{message.sender_name}</span>
                   ) : null}
-                  <p>{message.body}</p>
+                  {/* A picture with no caption is a real message: the body
+                      is empty and the image is the whole content. */}
+                  {message.body ? <p>{message.body}</p> : null}
+                  <InlineImageStrip images={message.images} />
                 </div>
                 <span className="bubble-meta">
                   <time dateTime={message.created_at}>{clock(message.created_at)}</time>
