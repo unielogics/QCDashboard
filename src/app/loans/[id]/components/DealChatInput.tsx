@@ -11,8 +11,9 @@
 // Send DOES, it does not switch which view you are looking at, and a tablist
 // would tell a screen-reader user the page is about to change.
 
-import { useRef, useState } from "react";
-import { Btn, CellChip, Textarea, WarnLine } from "@/components/ds";
+import { useState } from "react";
+import { Btn, CellChip, WarnLine } from "@/components/ds";
+import { ChatComposer } from "@/components/ds/ChatComposer";
 import { Icon } from "@/components/design-system/Icon";
 import { useSendDealChat, useUploadDocument } from "@/hooks/useApi";
 import { DealChatMode, DealChatRole, Role } from "@/lib/enums.generated";
@@ -62,7 +63,6 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
   const [flash, setFlash] = useState<string | null>(null);
   const uploadDoc = useUploadDocument();
   const [staged, setStaged] = useState<{ document_id: string; name: string } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const onPickFile = async (file: File) => {
     try {
@@ -144,62 +144,42 @@ export function DealChatInput({ loanId, user, pausedUntil }: Props) {
         </div>
       )}
 
-      <Textarea
+      <ChatComposer
         value={body}
-        onChange={(e) => setBody(e.target.value)}
-        rows={3}
+        onChange={setBody}
+        onSend={() => void submit()}
+        sending={send.isPending}
+        // An attachment on its own is a complete message here — the body is
+        // filled in from the filename when the text is empty.
+        allowEmpty={Boolean(staged)}
         placeholder={activeMode.hint || "Type a message…"}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
-            e.preventDefault();
-            submit();
-          }
-        }}
+        sendLabel={activeMode.label}
+        onFiles={(files) => { const f = files[0]; if (f) void onPickFile(f); }}
+        accept="application/pdf,image/*"
+        attachments={
+          staged || flash ? (
+            <>
+              {staged ? (
+                <CellChip>
+                  {staged.name.length > 22 ? staged.name.slice(0, 21) + "…" : staged.name}
+                  {/* Was a bare <span onClick> — neither focusable nor
+                      Enter-activatable. A real button gets it back. */}
+                  <button
+                    type="button"
+                    className="linky"
+                    aria-label={`Remove ${staged.name}`}
+                    onClick={() => setStaged(null)}
+                  >
+                    ×
+                  </button>
+                </CellChip>
+              ) : null}
+              {flash ? <CellChip tone="ok">{flash}</CellChip> : null}
+            </>
+          ) : null
+        }
+        hint="Enter sends, Shift + Enter adds a line."
       />
-      <div className="composer-row">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/pdf,image/*"
-          // Functional, not decorative: opened programmatically, never laid out.
-          style={{ display: "none" }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            e.target.value = "";
-            if (f) void onPickFile(f);
-          }}
-        />
-        <Btn
-          size="sm"
-          onClick={() => fileInputRef.current?.click()}
-          disabled={uploadDoc.isPending}
-          aria-label="Attach a file"
-          title="Attach a file"
-        >
-          <Icon name="paperclip" size={14} />
-        </Btn>
-        {staged ? (
-          <CellChip>
-            {staged.name.length > 22 ? staged.name.slice(0, 21) + "…" : staged.name}
-            {/* Was a bare <span onClick> — neither focusable nor
-                Enter-activatable. A real button gets it back. */}
-            <button
-              type="button"
-              className="linky"
-              aria-label={`Remove ${staged.name}`}
-              onClick={() => setStaged(null)}
-            >
-              ×
-            </button>
-          </CellChip>
-        ) : null}
-        <div className="grow" />
-        {flash ? <CellChip tone="ok">{flash}</CellChip> : null}
-        <Btn variant="pri" onClick={submit} disabled={!body.trim() && !staged}>
-          <Icon name={activeMode.icon} size={13} />
-          {send.isPending ? "Sending…" : activeMode.label}
-        </Btn>
-      </div>
     </div>
   );
 }
