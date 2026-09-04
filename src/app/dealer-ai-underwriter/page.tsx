@@ -80,6 +80,9 @@ type Widget = {
 
 type IntakeResponse = {
   intake: Intake;
+  // Non-null while the desk has taken the conversation over: a person is
+  // answering and the assistant is standing down until this time.
+  ai_paused_until?: string | null;
   token?: string | null;
   session_token?: string | null;
   resume_url?: string | null;
@@ -90,7 +93,16 @@ type IntakeResponse = {
   files: UploadedFile[];
   ai_summary?: Record<string, unknown> | null;
   latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
-  messages?: Array<{ id: string; role: "assistant" | "user" | string; content: string; created_at: string }>;
+  messages?: Array<{
+    id: string;
+    role: "assistant" | "user" | string;
+    content: string;
+    created_at: string;
+    // "operator" when a person at the desk typed it. Null on borrower rows and
+    // on rows written before the takeover work.
+    sender_kind?: string | null;
+    author_name?: string | null;
+  }>;
   // Present when the client owes a signature on a Production Package.
   signing_gate?: import("@/components/intake/ProductionSigningGate").SigningGate | null;
 };
@@ -104,7 +116,7 @@ type AssetRow = {
 };
 
 type WidgetType = Widget["type"];
-type ChatLine = { id: string; role: "assistant" | "user"; content: string };
+type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
 type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
 type WorkspaceTab = "chat" | "files" | "intelligence";
@@ -138,6 +150,26 @@ const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }>
   { key: "screening", label: "Screening fundability" },
   { key: "preparing", label: "Preparing next question" },
 ];
+
+// The desk's on-behalf reply comes back as a "user" row carrying sender_kind
+// "operator". It is an incoming message from a person, not the borrower's own,
+// so it gets its own chat-line role. sender_kind is the only reliable test --
+// author_name has two spellings and a signed-in borrower also carries a user_id.
+function chatLineFrom(message: NonNullable<IntakeResponse["messages"]>[number]): ChatLine {
+  if (message.role === "assistant") return { id: message.id, role: "assistant", content: message.content };
+  if (message.sender_kind === "operator") {
+    return { id: message.id, role: "operator", content: message.content, authorName: message.author_name };
+  }
+  return { id: message.id, role: "user", content: message.content };
+}
+
+// "Underwriter - Jonathan Franco" -> "JF". The desk attribution puts the
+// person's name last, so the trailing words carry the initials; the separator
+// spelling varies, so anything that does not start with a letter is dropped.
+function deskInitials(name: string | null | undefined): string {
+  const words = (name ?? "").split(/\s+/).filter((word) => /^\p{L}/u.test(word));
+  return words.slice(-2).map((word) => word[0].toUpperCase()).join("") || "UW";
+}
 
 function useCompactViewport() {
   const [compact, setCompact] = useState(false);
@@ -249,6 +281,7 @@ export default function DealerAIUnderwriterPage() {
     return (response?.requested_documents ?? []).filter((doc) => doc.required && isStageOneRequestedDoc(doc) && !uploadedIds.has(doc.id));
   }, [response]);
   const pendingFiles = queuedFiles.filter((item) => item.status !== "uploaded");
+  const aiPaused = Boolean(response?.ai_paused_until);
   const hasQueuedUpload = queuedFiles.some((item) => item.status === "ready" || item.status === "error");
   const hasUploading = queuedFiles.some((item) => item.status === "uploading");
   const reviewStatus =
@@ -361,7 +394,7 @@ export default function DealerAIUnderwriterPage() {
         }),
       });
       applyResponse(payload, payload.token ?? "", true);
-      pushAssistant(payload.assistant_message);
+      pushAssistantFromPayload(payload);
       if (typeof window !== "undefined") {
         window.history.replaceState(null, "", "/dealer-ai-underwriter");
       }
@@ -440,7 +473,7 @@ export default function DealerAIUnderwriterPage() {
       persistDealerSession(payload);
       applyResponse(payload, payload.token ?? "", true);
       syncMessagesFromResponse(payload, true);
-      pushAssistant(payload.assistant_message);
+      pushAssistantFromPayload(payload);
       setLoginCode("");
       setStatus("");
       if (typeof window !== "undefined") {
@@ -458,7 +491,7 @@ export default function DealerAIUnderwriterPage() {
     applyResponse(payload, activeToken, true);
     syncMessagesFromResponse(payload, true);
     persistDealerSession({ ...payload, token: activeToken });
-    if (fromResume && !payload.messages?.length) pushAssistant(payload.assistant_message);
+    if (fromResume && !payload.messages?.length) pushAssistantFromPayload(payload);
     if (typeof window !== "undefined" && fromResume) {
       window.history.replaceState(null, "", "/dealer-ai-underwriter");
     }
@@ -471,7 +504,7 @@ export default function DealerAIUnderwriterPage() {
     persistDealerSession(payload);
     applyResponse(payload, payload.token ?? "", true);
     syncMessagesFromResponse(payload, true);
-    if (!payload.messages?.length) pushAssistant(payload.assistant_message);
+    if (!payload.messages?.length) pushAssistantFromPayload(payload);
   }
 
   async function sendChat(message?: string, updates?: Record<string, unknown>) {
@@ -487,7 +520,7 @@ export default function DealerAIUnderwriterPage() {
         body: JSON.stringify({ message: text || null, updates: updates ?? null }),
       });
       applyResponse(payload, token);
-      pushAssistant(payload.assistant_message);
+      pushAssistantFromPayload(payload);
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -523,7 +556,7 @@ export default function DealerAIUnderwriterPage() {
         body: JSON.stringify({ starts_at: startsAt }),
       });
       applyResponse(payload, token);
-      pushAssistant(payload.assistant_message);
+      pushAssistantFromPayload(payload);
       setStatus("");
     } catch (error) {
       setStatus(errorMessage(error));
@@ -602,7 +635,7 @@ export default function DealerAIUnderwriterPage() {
         const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
         applyResponse(payload, token);
         completeReviewProgress();
-        pushAssistant(payload.assistant_message);
+        pushAssistantFromPayload(payload);
         setStatus("");
       } else {
         failReviewProgress();
@@ -720,13 +753,7 @@ export default function DealerAIUnderwriterPage() {
       return;
     }
     if (!force && chat.length) return;
-    setChat(
-      serverMessages.map((message) => ({
-        id: message.id,
-        role: message.role === "assistant" ? "assistant" : "user",
-        content: message.content,
-      })),
-    );
+    setChat(serverMessages.map(chatLineFrom));
   }
 
   function applyResponse(payload: IntakeResponse, activeToken: string, persist = false) {
@@ -809,6 +836,14 @@ export default function DealerAIUnderwriterPage() {
   function pushAssistant(content: string) {
     if (!content) return;
     setChat((current) => [...current, { id: cryptoId(), role: "assistant", content }]);
+  }
+
+  // While the desk has the conversation, assistant_message is the standing-by
+  // notice rather than a model answer, so it belongs on the system line and not
+  // in the thread as an AI turn.
+  function pushAssistantFromPayload(payload: IntakeResponse) {
+    if (payload.ai_paused_until) return;
+    pushAssistant(payload.assistant_message);
   }
 
   function pushUser(content: string) {
@@ -1008,19 +1043,35 @@ export default function DealerAIUnderwriterPage() {
                   {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
                   <div style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
-                    {chat.map((line) =>
-                      line.role === "assistant" ? (
-                        <div key={line.id} style={assistantRow}>
-                          <div style={assistantAvatar} aria-hidden>QC</div>
-                          <div style={assistantBubble}>{line.content}</div>
-                        </div>
-                      ) : (
+                    {chat.map((line) => {
+                      if (line.role === "assistant") {
+                        return (
+                          <div key={line.id} style={assistantRow}>
+                            <div style={assistantAvatar} aria-hidden>QC</div>
+                            <div style={assistantBubble}>{line.content}</div>
+                          </div>
+                        );
+                      }
+                      if (line.role === "operator") {
+                        const who = line.authorName?.trim() || c.underwriterFallbackName;
+                        return (
+                          <div key={line.id} style={operatorRow}>
+                            <div style={operatorAvatar} aria-hidden>{deskInitials(line.authorName)}</div>
+                            <div style={operatorBubble}>
+                              <span style={operatorName}>{who}</span>
+                              {line.content}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
                         <div key={line.id} style={userBubble}>
                           {line.content}
                         </div>
-                      ),
-                    )}
-                    {busy ? (
+                      );
+                    })}
+                    {aiPaused ? <div style={systemNotice}>{c.takeoverNotice}</div> : null}
+                    {busy && !aiPaused ? (
                       <div style={assistantRow}>
                         <div style={assistantAvatar} aria-hidden>QC</div>
                         <div style={assistantBubble}><ChatTypingDots /></div>
@@ -3149,6 +3200,57 @@ const userBubble: CSSProperties = {
   color: "#F8FAFC",
   fontWeight: 700,
   lineHeight: 1.45,
+};
+// A person from the desk. Incoming like the assistant, so it sits on the same
+// left rail, but carded and cool-toned against the assistant's gold-marked
+// plain text so the borrower can tell a human apart from the AI.
+const operatorRow: CSSProperties = { ...assistantRow };
+const operatorAvatar: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: 11,
+  display: "grid",
+  placeItems: "center",
+  background: "#D9E5F5",
+  color: "#0B1326",
+  fontWeight: 900,
+  fontSize: 12,
+  letterSpacing: 0.5,
+  marginTop: 2,
+  boxShadow: "0 6px 18px rgba(217,229,245,.14)",
+  userSelect: "none",
+};
+const operatorBubble: CSSProperties = {
+  minWidth: 0,
+  maxWidth: 780,
+  padding: "11px 15px",
+  borderRadius: 16,
+  background: "rgba(217,229,245,.06)",
+  border: "1px solid rgba(217,229,245,.18)",
+  color: "#F3F4F6",
+  lineHeight: 1.55,
+  whiteSpace: "pre-wrap",
+};
+const operatorName: CSSProperties = {
+  display: "block",
+  marginBottom: 5,
+  color: "#D9E5F5",
+  fontSize: 11.5,
+  fontWeight: 800,
+  letterSpacing: 0.6,
+  textTransform: "uppercase",
+};
+const systemNotice: CSSProperties = {
+  alignSelf: "center",
+  maxWidth: 620,
+  textAlign: "center",
+  padding: "9px 15px",
+  borderRadius: 12,
+  border: "1px solid rgba(255,255,255,.09)",
+  background: "rgba(255,255,255,.03)",
+  color: "#B8C4D6",
+  fontSize: 12.5,
+  lineHeight: 1.5,
 };
 const assistantWidgetBubble: CSSProperties = {
   alignSelf: "flex-start",

@@ -42,8 +42,9 @@ import {
  * against the /admin/ai-underwriter-leads/{intake_id} endpoints, so this
  * component never touches auth or URLs directly.
  */
-export type ClientThreadMessage = { id: string; role: string; author_name?: string | null; content: string; created_at: string };
-export type ClientThreadResponse = { messages: ClientThreadMessage[] };
+export type ClientThreadMessage = { id: string; role: string; sender_kind?: string | null; author_name?: string | null; content: string; created_at: string };
+/** `ai_paused_until` is set while the desk has taken the conversation over. */
+export type ClientThreadResponse = { messages: ClientThreadMessage[]; ai_paused_until?: string | null };
 
 export type LeadCockpitAdapter = {
   sendChat: (message: string) => Promise<IntakeResponse>;
@@ -60,6 +61,8 @@ export type LeadCockpitAdapter = {
   loadClientThread: () => Promise<ClientThreadResponse>;
   /** Post a message on behalf into the client thread (attributed as underwriter). */
   replyClientThread: (message: string) => Promise<ClientThreadResponse>;
+  /** Hand the conversation back to the AI before the takeover window lapses. */
+  resumeClientThreadAI?: () => Promise<ClientThreadResponse>;
   /** Push a PFS/debt-schedule requested-document onto the lead (idempotent —
    *  a safe no-op if it already exists). Dealer leads only; omitted by the
    *  parent for real-estate leads, where PFS/debt-schedule are not offered. */

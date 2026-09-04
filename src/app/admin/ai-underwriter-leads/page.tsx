@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -50,7 +50,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
 }
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
-import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage } from "@/components/admin/LeadCockpit";
+import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
@@ -631,8 +631,9 @@ export default function AdminAIUnderwriterLeadsPage() {
       },
       runReview: () => post<IntakeResponse>("/run-review"),
       reload: () => call<IntakeResponse>(base),
-      loadClientThread: () => call<{ messages: Array<{ id: string; role: string; author_name?: string | null; content: string; created_at: string }> }>(`${base}/client-thread`),
-      replyClientThread: (message: string) => post<{ messages: Array<{ id: string; role: string; author_name?: string | null; content: string; created_at: string }> }>("/client-thread/reply", { message }),
+      loadClientThread: () => call<ClientThreadResponse>(`${base}/client-thread`),
+      replyClientThread: (message: string) => post<ClientThreadResponse>("/client-thread/reply", { message }),
+      resumeClientThreadAI: () => post<ClientThreadResponse>("/client-thread/resume", {}),
       // PFS/debt-schedule request + fill-in are dealer-only — real-estate
       // leads never see these fields, so the adapter omits them entirely.
       requestPfs: isDealer ? async (ownerName?: string) => { await post("/request-pfs", { owner_name: ownerName || null }); } : undefined,
@@ -2699,17 +2700,24 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [pausedUntil, setPausedUntil] = useState<string | null>(null);
+  const [resuming, setResuming] = useState(false);
+
+  const adopt = useCallback((r: ClientThreadResponse) => {
+    setMessages(r.messages || []);
+    setPausedUntil(r.ai_paused_until ?? null);
+  }, []);
 
   useEffect(() => {
     let alive = true;
     setLoading(true);
     adapter
       .loadClientThread()
-      .then((r) => { if (alive) setMessages(r.messages || []); })
+      .then((r) => { if (alive) adopt(r); })
       .catch((e) => { if (alive) setError(e instanceof Error ? e.message : "Could not load the client conversation."); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
-  }, [adapter]);
+  }, [adapter, adopt]);
 
   async function send() {
     const text = draft.trim();
@@ -2717,8 +2725,7 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
     setSending(true);
     setError("");
     try {
-      const r = await adapter.replyClientThread(text);
-      setMessages(r.messages || []);
+      adopt(await adapter.replyClientThread(text));
       setDraft("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Reply failed.");
@@ -2727,11 +2734,44 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
     }
   }
 
+  async function resumeAI() {
+    if (!adapter.resumeClientThreadAI || resuming) return;
+    setResuming(true);
+    setError("");
+    try {
+      adopt(await adapter.resumeClientThreadAI());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not hand the conversation back.");
+    } finally {
+      setResuming(false);
+    }
+  }
+
+  // Minutes left in the takeover window, for the banner.
+  const pauseMinutes = pausedUntil
+    ? Math.max(0, Math.ceil((new Date(pausedUntil).getTime() - Date.now()) / 60000))
+    : 0;
+
   return (
     <div className="grid g10" style={{ alignContent: "start" }}>
       <WarnLine>
         This is the <strong>client-facing</strong> conversation{clientName ? ` with ${clientName}` : ""}. Anything you send here is visible to the client and is attributed to you as their underwriter. Private operator and partner messages stay in the Rep channel tab.
       </WarnLine>
+
+      {pausedUntil ? (
+        <StatusLine tone="warn">
+          You have the conversation. The AI is not replying to {clientName || "the client"} here, and picks
+          it back up in about {pauseMinutes} {pauseMinutes === 1 ? "minute" : "minutes"} unless you send again.
+          {adapter.resumeClientThreadAI ? (
+            <>
+              {" "}
+              <Btn size="sm" onClick={resumeAI} disabled={resuming}>
+                {resuming ? "Handing back…" : "Hand back to the AI now"}
+              </Btn>
+            </>
+          ) : null}
+        </StatusLine>
+      ) : null}
 
       <div className="card">
         <div className="thr">
@@ -2741,8 +2781,12 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
             <span className="thr-empty">No messages in the client conversation yet.</span>
           ) : (
             messages.map((m) => {
-              const isClient = m.role === "user" && !(m.author_name || "").toLowerCase().startsWith("underwriter");
               const isAI = m.role === "assistant";
+              // sender_kind is the marker; the name check only covers rows written
+              // before it existed, and a borrower named "Underwriter" would fool it.
+              const isClient = !isAI && (m.sender_kind
+                ? m.sender_kind === "client"
+                : !(m.author_name || "").toLowerCase().startsWith("underwriter"));
               const label = isAI ? "AI" : m.author_name || (isClient ? clientName || "Client" : "You");
               return (
                 <div key={m.id} className={cx("msg", isAI ? "ai" : isClient ? "client-ch" : "mine")}>
@@ -2752,14 +2796,7 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
               );
             })
           )}
-          {sending ? (
-            <div className="msg ai">
-              <div className="msg-h"><span className="msg-who">AI</span></div>
-              <div className="msg-b">
-                <TypingDots label="Client AI is responding" />
-              </div>
-            </div>
-          ) : null}
+
         </div>
 
         {error ? <StatusLine tone="bad" className="mt">{error}</StatusLine> : null}
@@ -2776,14 +2813,14 @@ function ClientConversation({ adapter, clientName }: { adapter: LeadCockpitAdapt
                 send();
               }
             }}
-            placeholder="Answer the client here — Enter to send, Shift+Enter for a new line. They will see this and the AI will respond."
+            placeholder="Answer the client here. Enter to send, Shift+Enter for a new line."
             aria-label="Reply on behalf (as underwriter)"
           />
           <div className="composer-row">
             <Btn variant="pri" onClick={send} disabled={sending || !draft.trim()}>
               {sending ? <><Spinner /> Sending…</> : "Send to client"}
             </Btn>
-            <span className="hint">Visible to the client · attributed to you</span>
+            <span className="hint">Visible to the client · attributed to you · the AI does not reply to this</span>
           </div>
         </div>
       </div>

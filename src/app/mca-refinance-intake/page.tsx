@@ -64,8 +64,20 @@ type McaIntakeResponse = Omit<
   "requested_documents" | "assistant_message" | "messages" | "intake"
 > & {
   intake: Intake & { preferred_language?: string | null };
+  // Non-null while the desk has taken the conversation over: a person is
+  // answering and the assistant is standing down until this time.
+  ai_paused_until?: string | null;
   assistant_message?: string | null;
-  messages?: Array<{ id: string; role: string; content: string; created_at?: string }>;
+  messages?: Array<{
+    id: string;
+    role: string;
+    content: string;
+    created_at?: string;
+    // "operator" when a person at the desk typed it. Null on borrower rows and
+    // on rows written before the takeover work.
+    sender_kind?: string | null;
+    author_name?: string | null;
+  }>;
   requested_documents: McaRequestedDoc[];
   booking?: { slots?: BookingSlotLite[] | null } | null;
 };
@@ -77,7 +89,7 @@ type UploadInitResponse = {
   required_headers?: Record<string, string> | null;
 };
 
-type ChatLine = { id: string; role: "assistant" | "user"; content: string };
+type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
 
 type Phase = "boot" | "language" | "start" | "code" | "room";
 
@@ -179,6 +191,11 @@ type Copy = {
   chatTitle: string;
   chatPlaceholder: string;
   chatSend: string;
+  // Shown while the desk has taken the conversation over. `takeoverNotice`
+  // mirrors the server's fixed notice so the room reads the same on a plain
+  // reload as it does on the chat turn that triggered the takeover.
+  takeoverNotice: string;
+  underwriterFallbackName: string;
   bankTitle: string;
   bankSub: string;
   dropHint: string;
@@ -280,6 +297,8 @@ const COPY: Record<Lang, Copy> = {
     chatTitle: "Refinance desk",
     chatPlaceholder: "Ask anything about the process…",
     chatSend: "Send",
+    takeoverNotice: "Your underwriter is replying to you here. They will answer you directly, so the assistant is standing by.",
+    underwriterFallbackName: "Your underwriter",
     bankTitle: "Bank statements",
     bankSub: "Last 6 months of business bank statements.",
     dropHint: "Drag & drop files here, or",
@@ -377,6 +396,8 @@ const COPY: Record<Lang, Copy> = {
     chatTitle: "Mesa de refinanciamiento",
     chatPlaceholder: "Pregunta lo que quieras sobre el proceso…",
     chatSend: "Enviar",
+    takeoverNotice: "Tu suscriptor te está respondiendo aquí. Te contestará directamente, así que el asistente está en espera.",
+    underwriterFallbackName: "Tu suscriptor",
     bankTitle: "Estados de cuenta bancarios",
     bankSub: "Los últimos 6 meses de estados de cuenta del negocio.",
     dropHint: "Arrastra y suelta archivos aquí, o",
@@ -577,6 +598,7 @@ export default function McaRefinanceIntakePage() {
   const [booked, setBooked] = useState(false);
 
   const c = useMemo(() => COPY[language ?? "en"], [language]);
+  const aiPaused = Boolean(response?.ai_paused_until);
 
   // --- boot: strip URL params, restore token or show language picker --------
   useEffect(() => {
@@ -635,11 +657,17 @@ export default function McaRefinanceIntakePage() {
       setChat(
         messages.map((message) => ({
           id: message.id || cryptoId(),
-          role: message.role as "assistant" | "user",
+          // The desk's on-behalf reply arrives as a "user" row carrying
+          // sender_kind "operator" -- an incoming message from a person, not
+          // the borrower's own. sender_kind is the only reliable test:
+          // author_name has two spellings and a signed-in borrower also
+          // carries a user_id.
+          role: message.sender_kind === "operator" ? "operator" : (message.role as "assistant" | "user"),
           content: message.content,
+          authorName: message.author_name,
         })),
       );
-    } else if (payload.assistant_message) {
+    } else if (payload.assistant_message && !payload.ai_paused_until) {
       const text = payload.assistant_message;
       setChat((current) =>
         current.length && current[current.length - 1].content === text
@@ -1184,12 +1212,20 @@ export default function McaRefinanceIntakePage() {
       <section className="vm-card chat" aria-label={c.chatTitle}>
         <div className="vm-chat-h">{c.chatTitle}</div>
         <div ref={messagesRef} className="vm-chat-s" aria-live="polite">
-          {chat.map((line) => (
-            <div key={line.id} className={line.role === "user" ? "vm-bub me" : "vm-bub"}>
-              {line.content}
-            </div>
-          ))}
-          {chatBusy ? <div className="vm-bub pending">…</div> : null}
+          {chat.map((line) =>
+            line.role === "operator" ? (
+              <div key={line.id} className="vm-bub desk">
+                <span className="vm-bub-who">{line.authorName?.trim() || c.underwriterFallbackName}</span>
+                {line.content}
+              </div>
+            ) : (
+              <div key={line.id} className={line.role === "user" ? "vm-bub me" : "vm-bub"}>
+                {line.content}
+              </div>
+            ),
+          )}
+          {aiPaused ? <div className="vm-sys">{c.takeoverNotice}</div> : null}
+          {chatBusy && !aiPaused ? <div className="vm-bub pending">…</div> : null}
         </div>
         <form
           className="vm-chat-f"

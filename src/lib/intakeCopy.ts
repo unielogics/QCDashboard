@@ -72,6 +72,11 @@ type CommonCopy = {
   startCardTitle: string;
   startCardSub: string;
   loginWithCodeLink: string;
+  // Shown while the desk has taken the conversation over. `takeoverNotice`
+  // mirrors the server's fixed notice so the room reads the same on a plain
+  // reload as it does on the chat turn that triggered the takeover.
+  takeoverNotice: string;
+  underwriterFallbackName: string;
 };
 
 type DealerCopy = {
@@ -140,6 +145,8 @@ const commonEn: CommonCopy = {
   startCardTitle: "Start secure intake",
   startCardSub: "Takes under a minute. No credit pull to begin.",
   loginWithCodeLink: "Already started? Login with email code",
+  takeoverNotice: "Your underwriter is replying to you here. They will answer you directly, so the assistant is standing by.",
+  underwriterFallbackName: "Your underwriter",
 };
 
 const commonEs: CommonCopy = {
@@ -186,6 +193,8 @@ const commonEs: CommonCopy = {
   startCardTitle: "Comenzar registro seguro",
   startCardSub: "Toma menos de un minuto. Sin consulta de crédito para empezar.",
   loginWithCodeLink: "¿Ya comenzaste? Inicia sesión con código por correo electrónico",
+  takeoverNotice: "Tu suscriptor te está respondiendo aquí. Te contestará directamente, así que el asistente está en espera.",
+  underwriterFallbackName: "Tu suscriptor",
 };
 
 const dealerEn: DealerCopy = {
