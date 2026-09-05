@@ -316,6 +316,21 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .unified-thread-chat-head > div { flex: 1; min-width: 0; display: grid; }
 .unified-thread-chat-head span { color: var(--muted); font-size: 11px; }
 .unified-thread-messages { display: flex; flex-direction: column; gap: 9px; min-height: 0; padding: 16px; overflow-y: auto; background: var(--sunken2); }
+/* ---------- personal financial statement (Form 413) ----------
+   Two columns on a wide screen because that is how the sheet reads — assets
+   against liabilities, net worth beneath — and one column when there is not
+   room, because a money field squeezed to 90px is worse than a longer page. */
+.pfs-form { max-width: 100%; }
+.pfs-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; align-items: start; }
+.pfs-section > h4 { margin: 0 0 8px; font-size: 12.5px; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.pfs-table td, .pfs-table th { padding: 5px 8px; vertical-align: middle; }
+.pfs-table td:first-child { width: 58%; }
+.pfs-table input { width: 100%; text-align: right; font-variant-numeric: tabular-nums; }
+.pfs-total td { font-weight: 750; border-top: 1px solid var(--line2); }
+.pfs-networth { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--line2); border-radius: 10px; background: var(--sunken); font-size: 14px; }
+.pfs-networth .num { font-size: 17px; font-variant-numeric: tabular-nums; }
+.pfs-editor { display: grid; gap: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
+
 /* ---------- pasted images ----------
    A thumbnail links to the signed full-size URL rather than opening a
    lightbox: someone pasting a bank statement screenshot wants to read it.

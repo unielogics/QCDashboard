@@ -32,6 +32,7 @@ import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
+import { FinancialStatementsPanel } from "@/components/application/FinancialStatementsPanel";
 import { api, ApiError } from "@/lib/api";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
@@ -1853,6 +1854,10 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
+              ) : null}
+
+              {prototypeView === "underwriting" && canUnderwrite ? (
+                <FinancialStatementsPanel profileId={underwriting?.profile_id} />
               ) : null}
 
               {prototypeView === "communications" ? (
