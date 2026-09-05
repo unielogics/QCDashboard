@@ -39,6 +39,10 @@ export function Tabs<T extends string>({
           display: "flex",
           gap: 4,
           overflowX: "auto",
+          // Setting overflow-x to anything but visible makes overflow-y compute
+          // to auto as well, and the active tab's 2px underline was enough to
+          // trip it — a stray vertical scrollbar sat at the end of the strip.
+          overflowY: "hidden",
           borderBottom: "1px solid var(--line)",
           width: fill ? "100%" : "fit-content",
         }}
