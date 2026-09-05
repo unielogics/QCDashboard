@@ -316,6 +316,18 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .unified-thread-chat-head > div { flex: 1; min-width: 0; display: grid; }
 .unified-thread-chat-head span { color: var(--muted); font-size: 11px; }
 .unified-thread-messages { display: flex; flex-direction: column; gap: 9px; min-height: 0; padding: 16px; overflow-y: auto; background: var(--sunken2); }
+/* ---------- the borrower's own form page ----------
+   A bare page: no sidebar, no app chrome, one job. Generous measure because a
+   413 is long and most people will meet it on a phone. */
+.form-page { max-width: 1000px; margin: 0 auto; padding: 32px 20px 64px; display: grid; gap: 20px; }
+.form-page h1 { font-size: 22px; margin: 0 0 6px; }
+.form-page > header p { margin: 0; max-width: 62ch; }
+.form-page-actions { position: sticky; bottom: 0; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; padding: 14px 0; background: linear-gradient(to top, var(--bg, #f7f8fa) 70%, transparent); }
+.form-page-error { color: var(--danger); }
+.form-page-done { min-height: 60vh; align-content: center; text-align: center; }
+.form-page-done h1 { font-size: 26px; }
+.form-page-done p { margin: 0 auto; max-width: 46ch; }
+
 /* ---------- personal financial statement (Form 413) ----------
    Two columns on a wide screen because that is how the sheet reads — assets
    against liabilities, net worth beneath — and one column when there is not
@@ -329,6 +341,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .pfs-total td { font-weight: 750; border-top: 1px solid var(--line2); }
 .pfs-networth { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--line2); border-radius: 10px; background: var(--sunken); font-size: 14px; }
 .pfs-networth .num { font-size: 17px; font-variant-numeric: tabular-nums; }
+.pfs-applies { display: grid; gap: 6px; padding: 10px 12px; border: 1px solid var(--line2); border-radius: 10px; background: var(--sunken); }
 .pfs-editor { display: grid; gap: 14px; padding-top: 12px; border-top: 1px solid var(--line); }
 
 /* ---------- pasted images ----------

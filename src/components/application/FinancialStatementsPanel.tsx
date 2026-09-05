@@ -22,6 +22,7 @@ import { useAuthedApi } from "@/hooks/useApi";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 
 type OwnerLink = { owner_id: string; storage: string; name: string | null };
+type FileOwner = { id: string; first_name: string; last_name: string; is_primary: boolean };
 
 type Statement = {
   id: string;
@@ -47,6 +48,8 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
   const api = useAuthedApi();
   const [schema, setSchema] = useState<PfsSchema | null>(null);
   const [rows, setRows] = useState<Statement[]>([]);
+  const [owners, setOwners] = useState<FileOwner[]>([]);
+  const [applies, setApplies] = useState<string[]>([]);
   const [editing, setEditing] = useState<Statement | null>(null);
   const [draft, setDraft] = useState<PfsBody>({});
   const [busy, setBusy] = useState("");
@@ -56,12 +59,14 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
     if (!profileId) return;
     setError(null);
     try {
-      const [fields, statements] = await Promise.all([
+      const [fields, statements, people] = await Promise.all([
         api<PfsSchema>("/application-profiles/financial-statements/schema"),
         api<Statement[]>(`/application-profiles/${profileId}/financial-statements`),
+        api<FileOwner[]>(`/application-profiles/${profileId}/owners`),
       ]);
       setSchema(fields);
       setRows(statements);
+      setOwners(people);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Financial statements could not be loaded.");
     }
@@ -94,6 +99,7 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
       });
       setEditing(created);
       setDraft(created.body ?? {});
+      setApplies([]);
     });
 
   const save = (statement: Statement) =>
@@ -105,10 +111,9 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
           body: JSON.stringify({
             body: draft,
             statement_date: statement.statement_date,
-            owners: statement.owners.map((owner) => ({
-              owner_id: owner.owner_id,
-              storage: owner.storage,
-            })),
+            // The server decides which owner table these live in; sending
+            // ids alone avoids the browser guessing at something it cannot know.
+            owners: applies.map((owner_id) => ({ owner_id })),
           }),
         },
       );
@@ -174,6 +179,7 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
               onClick={() => {
                 setEditing(statement);
                 setDraft(statement.body ?? {});
+                setApplies(statement.owners.map((owner) => owner.owner_id));
               }}
             >
               {statement.status === "submitted" ? "Open" : "Continue"}
@@ -184,6 +190,40 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
 
       {editing && schema ? (
         <div className="pfs-editor">
+          {owners.length > 0 ? (
+            <div className="pfs-applies">
+              <span className="lbl">Applies to</span>
+              {/* A married couple filing one sheet is the case this exists for.
+                  Tick both and the statement counts for both applicants; almost
+                  every file has one owner, so leaving it alone is the norm. */}
+              <div className="row">
+                {owners.map((owner) => {
+                  const on = applies.includes(owner.id);
+                  return (
+                    <Btn
+                      key={owner.id}
+                      size="sm"
+                      variant={on ? "pri" : "default"}
+                      aria-pressed={on}
+                      onClick={() =>
+                        setApplies((current) =>
+                          on ? current.filter((id) => id !== owner.id) : [...current, owner.id],
+                        )
+                      }
+                    >
+                      {on ? <Icon name="check" size={12} /> : null}
+                      {`${owner.first_name} ${owner.last_name}`.trim()}
+                    </Btn>
+                  );
+                })}
+              </div>
+              {applies.length > 1 ? (
+                <span className="sub">
+                  One joint statement, counted for {applies.length} applicants.
+                </span>
+              ) : null}
+            </div>
+          ) : null}
           <Pfs413Form schema={schema} value={draft} onChange={setDraft} disabled={busy !== ""} />
           <Row>
             <Btn variant="pri" disabled={busy !== ""} onClick={() => void save(editing)}>
