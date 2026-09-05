@@ -104,13 +104,15 @@ export function DealNotesPanel() {
   async function appendNote() {
     if (!deal || (!draft.trim() && !pasted.images.length)) return;
     setErr(null);
+    // Images upload here, at save — pasting only held them in the browser.
+    const imageIds = await pasted.flush();
     const entry: DealNoteEntry = {
       id: newEntryId(),
       at: new Date().toISOString(),
       body: draft.trim(),
       // The server binds these to this entry id on the write; the read hands
       // back signed urls under `images`.
-      image_ids: pasted.ids,
+      image_ids: imageIds,
     };
     const next = [...(deal.notes_entries ?? []), entry];
     try {
@@ -169,7 +171,7 @@ export function DealNotesPanel() {
           placeholder="Quick note… paste a screenshot to attach it. ⌘ + Enter to save"
           aria-label="New private note"
         />
-        <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} />
+        <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.pending} />
         {pasted.error ? <StatusLine tone="bad">{pasted.error}</StatusLine> : null}
         {err ? <StatusLine tone="bad">{err}</StatusLine> : null}
         <div className="row">
@@ -177,9 +179,9 @@ export function DealNotesPanel() {
           <Btn
             variant="pri"
             onClick={appendNote}
-            disabled={(!draft.trim() && !pasted.images.length) || update.isPending}
+            disabled={(!draft.trim() && !pasted.images.length) || update.isPending || pasted.pending > 0}
           >
-            {update.isPending ? "Saving…" : "Save note"}
+            {pasted.pending > 0 ? `Saving ${pasted.pending} image${pasted.pending === 1 ? "" : "s"}…` : update.isPending ? "Saving…" : "Save note"}
           </Btn>
         </div>
       </div>

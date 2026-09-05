@@ -47,7 +47,10 @@ export function LeadNotesPanel({
   async function submit() {
     const content = draft.trim();
     if ((!content && !pasted.images.length) || posting) return;
-    await onPost(content, pasted.ids);
+    // Images upload here, at save — pasting only held them in the browser. If
+    // this throws, nothing is posted and the draft is still on screen.
+    const imageIds = await pasted.flush();
+    await onPost(content, imageIds);
     setDraft("");
     // The images belong to the note now, not to the composer.
     pasted.reset();
@@ -112,12 +115,12 @@ export function LeadNotesPanel({
             rows={2}
             placeholder={placeholder}
           />
-          <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.busy} />
+          <InlineImageChips images={pasted.images} onRemove={pasted.remove} busy={pasted.pending} />
           {pasted.error ? <StatusLine tone="bad">{pasted.error}</StatusLine> : null}
           {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
           <div className="composer-row">
             <span className="grow" />
-            <Btn variant="pri" onClick={submit} disabled={posting || (!draft.trim() && !pasted.images.length)}>
+            <Btn variant="pri" onClick={submit} disabled={posting || pasted.pending > 0 || (!draft.trim() && !pasted.images.length)}>
               {posting ? "Sending…" : submitLabel}
             </Btn>
           </div>

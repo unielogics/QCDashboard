@@ -14,10 +14,19 @@ import { useCallback, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import {
+  describeRejection,
   uploadInlineImage,
   type InlineImage,
   type InlineImageSubject,
 } from "@/lib/inlineImages";
+
+/** An image chosen but not yet saved. Held in the browser until then. */
+export type PendingImage = {
+  id: string;
+  filename: string;
+  file: File;
+  url: string;
+};
 
 /** Attached images on a saved note. */
 export function InlineImageStrip({ images }: { images?: InlineImage[] }) {
@@ -49,8 +58,9 @@ export function InlineImageChips({
   onRemove,
   busy = 0,
 }: {
-  images: InlineImage[];
+  images: PendingImage[];
   onRemove: (id: string) => void;
+  /** How many images are still uploading, during a save. */
   busy?: number;
 }) {
   if (!images.length && !busy) return null;
@@ -72,7 +82,7 @@ export function InlineImageChips({
       ))}
       {busy > 0 ? (
         <span className="inline-image-chip is-busy">
-          Uploading {busy} image{busy === 1 ? "" : "s"}…
+          Saving {busy} image{busy === 1 ? "" : "s"}…
         </span>
       ) : null}
     </div>
@@ -80,49 +90,87 @@ export function InlineImageChips({
 }
 
 /**
- * Staged uploads for one composer.
+ * Images attached to one composer, uploaded when the note is saved.
  *
- * Uploads start the moment a file arrives and run in parallel; the ids go to
- * the save as `image_ids`. Call `reset` after a successful save — the images
- * belong to the note then, not to the composer.
+ * Pasting keeps the file in the browser and previews it from an object URL — no
+ * network, no row, nothing in object storage. The bytes leave only when the
+ * person saves, which is the point at which they have decided the image belongs
+ * to the note.
+ *
+ * The earlier version uploaded on paste so saving stayed instant. That traded a
+ * real cost for a small one: every abandoned paste left a finished file in
+ * object storage attached to nothing, growing with use and never shrinking.
+ *
+ * `flush` returns the ids to hand to the save. Call it first; if it throws, the
+ * note has not been saved and nothing is lost.
+ *
+ * Mirrors QCRep's useInlineImages — the two apps share no package, so keep them
+ * in step by hand.
  */
 export function useInlineImages(subjectKind: InlineImageSubject) {
   const apiCall = useAuthedApi();
-  const [images, setImages] = useState<InlineImage[]>([]);
-  const [busy, setBusy] = useState(0);
+  const [images, setImages] = useState<PendingImage[]>([]);
+  const [pending, setPending] = useState(0);
   const [error, setError] = useState("");
 
-  const add = useCallback(
-    async (files: File[]) => {
-      if (!files.length) return;
-      setError("");
-      setBusy((count) => count + files.length);
-      await Promise.all(
-        files.map(async (file) => {
-          try {
-            const image = await uploadInlineImage(apiCall, file, subjectKind);
-            setImages((current) => [...current, image]);
-          } catch (reason) {
-            setError(reason instanceof Error ? reason.message : "That image could not be attached.");
-          } finally {
-            setBusy((count) => Math.max(0, count - 1));
-          }
-        }),
-      );
-    },
-    [apiCall, subjectKind],
-  );
+  const add = useCallback((files: File[]) => {
+    const usable: PendingImage[] = [];
+    for (const file of files) {
+      const rejection = describeRejection(file);
+      if (rejection) {
+        // Said now, not at save: a file that can never be attached should not
+        // be discovered at the moment someone presses the button.
+        setError(rejection);
+        continue;
+      }
+      usable.push({
+        id: `local-${Math.random().toString(36).slice(2)}`,
+        filename: file.name || "pasted image",
+        file,
+        url: URL.createObjectURL(file),
+      });
+    }
+    if (usable.length) setError("");
+    setImages((current) => [...current, ...usable]);
+  }, []);
 
   const remove = useCallback((id: string) => {
-    // Dropped from the composer only. The staged row was never bound to
-    // anything, so it stays an orphan in S3 rather than needing a delete call.
-    setImages((current) => current.filter((image) => image.id !== id));
+    setImages((current) => {
+      const going = current.find((image) => image.id === id);
+      // Purely local — nothing was uploaded. The object URL still has to be
+      // released or the bytes stay held for the life of the tab.
+      if (going?.url) URL.revokeObjectURL(going.url);
+      return current.filter((image) => image.id !== id);
+    });
   }, []);
 
   const reset = useCallback(() => {
-    setImages([]);
+    setImages((current) => {
+      for (const image of current) if (image.url) URL.revokeObjectURL(image.url);
+      return [];
+    });
     setError("");
   }, []);
+
+  const flush = useCallback(async (): Promise<string[]> => {
+    if (!images.length) return [];
+    setError("");
+    setPending(images.length);
+    try {
+      const ids: string[] = [];
+      for (const image of images) {
+        const uploaded = await uploadInlineImage(apiCall, image.file, subjectKind);
+        ids.push(uploaded.id);
+        setPending((count) => Math.max(0, count - 1));
+      }
+      return ids;
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "That image could not be attached.");
+      throw reason;
+    } finally {
+      setPending(0);
+    }
+  }, [apiCall, images, subjectKind]);
 
   /** Drop-in for a textarea's onPaste. */
   const onPaste = useCallback(
@@ -130,19 +178,10 @@ export function useInlineImages(subjectKind: InlineImageSubject) {
       const files = Array.from(event.clipboardData?.files ?? []);
       if (!files.length) return;
       event.preventDefault();
-      void add(files);
+      add(files);
     },
     [add],
   );
 
-  return {
-    images,
-    ids: images.map((image) => image.id),
-    busy,
-    error,
-    add,
-    remove,
-    reset,
-    onPaste,
-  };
+  return { images, pending, error, add, remove, reset, flush, onPaste };
 }
