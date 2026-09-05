@@ -695,8 +695,16 @@
    scroller — `main.content` is `overflow-y: auto` (AppShell) — so 51px parks
    the sticky identity bar 51px down from the top of its own scroll box and
    page content scrolls visibly through the gap above it. Anchored to the top
-   of the scroller, which is where it was always meant to sit. */
-.ckhead { top: 0; }
+   of the scroller, which is where it was always meant to sit.
+
+   Not `top: 0` but minus the content padding, because a sticky element pins to
+   its scrollport's CONTENT edge — after the padding — and its negative margin
+   cannot reach past that. With `top: 0` the band sat exactly --pad-y below the
+   global top bar, which is why the padding used to be zeroed for every page in
+   the console to keep this one flush. Compensating here instead lets the
+   padding come back everywhere else. Verified flush at rest and still stuck
+   when scrolled. */
+.ckhead { top: calc(var(--pad-y) * -1); }
 .ckhead h1 { font-size: 17.5px; line-height: 1.15; letter-spacing: 0; }
 .pagehead {
   position: static;
