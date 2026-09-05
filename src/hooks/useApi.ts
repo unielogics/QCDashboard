@@ -645,6 +645,86 @@ export function useBookingSettings() {
   });
 }
 
+// ---------------------------------------------------------------------------
+// Communications audit — every message we sent, and the activity that caused
+// it. Backend: app/routers/communications_audit.py. Operator-only, and scoped
+// inside that: `scope` comes back "all" for a super admin and "own" otherwise.
+// ---------------------------------------------------------------------------
+
+export type CommsMessageRow = {
+  id: string; source: string; channel: string; direction: string; context: string;
+  to: string | null; subject: string | null; status: string; detail: string;
+  provider: string; provider_message_id: string | null;
+  occurred_at: string; delivered_at: string | null; opened_at: string | null;
+  actor_name: string | null; actor_label: string; job: string | null;
+  request_id: string | null; has_body: boolean; secrets_masked: boolean;
+};
+
+export type CommsActivityRow = {
+  id: string; occurred_at: string; action: string; summary: string;
+  actor_name: string | null; actor_role: string | null; source: string; request_id: string | null;
+};
+
+export type CommsMessageDetail = CommsMessageRow & {
+  body_text: string | null; body_html: string | null;
+  cc: string[]; attachments: string[]; caused_by: CommsActivityRow[];
+};
+
+export type CommsMessageFilters = {
+  q?: string; channel?: string; status_filter?: string; context?: string;
+  limit?: number; offset?: number;
+};
+
+export function useCommsMessages(filters: CommsMessageFilters = {}, options: { enabled?: boolean } = {}) {
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.channel && filters.channel !== "all") params.set("channel", filters.channel);
+  if (filters.status_filter && filters.status_filter !== "all") params.set("status_filter", filters.status_filter);
+  if (filters.context && filters.context !== "all") params.set("context", filters.context);
+  params.set("limit", String(filters.limit ?? 50));
+  params.set("offset", String(filters.offset ?? 0));
+  return useQuery({
+    queryKey: ["comms-messages", filters],
+    queryFn: () =>
+      apiCall<{ rows: CommsMessageRow[]; total: number; scope: string; contexts: string[] }>(
+        `/admin/communications/messages?${params.toString()}`,
+      ),
+    enabled: options.enabled ?? true,
+    placeholderData: (previous) => previous,
+  });
+}
+
+export function useCommsMessage(messageId: string | null) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["comms-message", messageId],
+    queryFn: () => apiCall<CommsMessageDetail>(`/admin/communications/messages/${messageId}`),
+    enabled: Boolean(messageId),
+  });
+}
+
+export function useCommsActivity(
+  filters: { q?: string; source?: string; request_id?: string; limit?: number; offset?: number } = {},
+  options: { enabled?: boolean } = {},
+) {
+  const apiCall = useAuthedApi();
+  const params = new URLSearchParams();
+  if (filters.q) params.set("q", filters.q);
+  if (filters.source && filters.source !== "all") params.set("source", filters.source);
+  if (filters.request_id) params.set("request_id", filters.request_id);
+  params.set("limit", String(filters.limit ?? 50));
+  params.set("offset", String(filters.offset ?? 0));
+  return useQuery({
+    queryKey: ["comms-activity", filters],
+    queryFn: () => apiCall<{ rows: CommsActivityRow[]; total: number }>(
+      `/admin/communications/activity?${params.toString()}`,
+    ),
+    enabled: options.enabled ?? true,
+    placeholderData: (previous) => previous,
+  });
+}
+
 export function useUpdateProfile() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();

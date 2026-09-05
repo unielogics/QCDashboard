@@ -129,6 +129,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         items: [
           { label: "Settings", href: "/settings", icon: "gear", desc: "Firm-wide configuration" },
           { label: "Agreements", href: "/admin/agreements", icon: "docCheck", desc: "Contract templates and status" },
+          { label: "Communications", href: "/admin/communications", icon: "mail", desc: "Every message sent, and what caused it" },
           { label: "Dealer messages", href: "/admin/dealer-messages", icon: "chat", desc: "Partner channel", },
           { label: "Rewards", href: "/rewards", icon: "trophy", desc: "Referral incentives" },
           { label: "Booking page", href: "/settings?section=booking", icon: "link", desc: "Your public scheduling link" },
@@ -168,7 +169,10 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
       {
         id: "admin",
         label: "Administration",
-        items: [{ label: "Booking page", href: "/booking-settings", icon: "link" }],
+        items: [
+          { label: "Communications", href: "/admin/communications", icon: "mail", desc: "Every message sent, and what caused it" },
+          { label: "Booking page", href: "/booking-settings", icon: "link" },
+        ],
       },
     ],
   },
