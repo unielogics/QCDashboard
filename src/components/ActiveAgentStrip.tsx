@@ -44,8 +44,11 @@ export function ActiveAgentStrip(props: Props) {
 
   if (rows.length === 0) return null;
 
+  // No `mb` on the panel: every caller renders this inside a gapped stack, so
+  // its own bottom margin was added to that gap and put the top of the page out
+  // of rhythm with every panel below it.
   return (
-    <Panel title="Active AI agents" className="mb">
+    <Panel title="Active AI agents">
       {/* Plain flow, not `.grid`: `.itemrow + .itemrow` already carries the
           6px rhythm, and a grid gap would stack on top of it. */}
       <div>

@@ -1155,7 +1155,7 @@ function PropertyIntelligenceSection({ canEdit }: { canEdit: boolean }) {
             <StatusPill label={`${data?.address_provider === "geoapify" ? "Geoapify" : "Google"} active`} ok={!!data?.address_provider_ready} />
           </div>
 
-          <div className="sub mt">
+          <div className="sub mt mb">
             Address search uses exactly the selected provider. Address credentials are configured only in the backend environment and are never sent to this browser.
           </div>
 

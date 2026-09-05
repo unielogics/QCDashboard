@@ -141,7 +141,7 @@ export function UnifiedOperatorFilters({
           }))}
         />
       </div>
-      <div className="pagebar" style={{ paddingTop: 2 }}>
+      <div className="pagebar">
         <span className="sub">Working ladders change by vertical. Every file uses the same funding ladder after the gate.</span>
         <span className="spacer" />
         <div className="field box" style={{ width: 290 }}>

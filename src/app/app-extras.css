@@ -574,6 +574,9 @@
 .mapbox.empty { border-style: dashed; background: var(--sunken2); color: var(--muted); font-size: 12px; display: grid; place-items: center; text-align: center; padding: 12px; }
 
 .mb { margin-bottom: 14px; }
+/* Referenced in Settings and never defined, so the line it was meant to lift
+   off the heading above it sat flush against it instead. */
+.mt6 { margin-top: 6px; }
 
 /* An item row the AI has flagged. */
 /* `.flagged` predates `.tone-warn` and means the same thing. Aliased rather
@@ -2984,7 +2987,9 @@ a.pick { color: inherit; text-decoration: none; }
 .application-verification-months b { padding: 4px 8px; border-radius: 99px; background: var(--petrol-100); color: var(--petrol); font-size: 10.5px; }
 .application-verification-alert { max-width: 1112px; margin: 0 auto 14px; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--ok) 22%, transparent); background: var(--ok-tint); color: var(--ok); border-radius: 7px; font-size: 12px; }
 .application-verification-alert.error { border-color: color-mix(in srgb, var(--danger) 22%, transparent); background: var(--danger-tint); color: var(--danger); }
-.application-verification-muted { color: var(--muted); font-size: 12.5px; }
+/* Stands in for a whole step's controls when upload is disabled, so it needs
+   the air a control would have had — it was sitting on the step's hairline. */
+.application-verification-muted { color: var(--muted); font-size: 12.5px; margin: 12px 0 0; }
 .application-verification-footer { max-width: 1112px; margin: 22px auto 0; padding: 18px 0; display: flex; justify-content: space-between; gap: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10.5px; }
 .application-verification-state { min-height: 72vh; display: grid; place-items: center; place-content: center; gap: 10px; padding: 24px; text-align: center; }
 .application-verification-state h1 { font-size: 22px; letter-spacing: 0; }
