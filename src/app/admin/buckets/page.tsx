@@ -1216,6 +1216,27 @@ export default function BucketsAdminPage() {
 
   async function createBucketUploadLink() {
     if (!detail || !uploadLinkDraft.recipient_name.trim()) return;
+    // A second invite on the same bucket is legitimate — two upload parties on
+    // one file — but it is not free. The room the system links to is resolved
+    // as the NEWEST active invite, so creating one silently re-points every
+    // room link sent from here on, while the earlier invite keeps working. Say
+    // that before it happens rather than after someone gets two codes.
+    const liveInvites = (detail.upload_links ?? []).filter((link) => link.status === "active");
+    if (liveInvites.length > 0) {
+      const existing = liveInvites[0];
+      const confirmed = await confirmAction({
+        title: "This file already has a client room",
+        body:
+          `${existing.recipient_name} already has an active invite. A new one gets its own link and its own code, ` +
+          "and because the room is resolved as the most recent invite, it becomes the one the system sends from now on — " +
+          `in booking reminders, the pre-call kit and anywhere a room link appears. ${existing.recipient_name}'s invite keeps working, ` +
+          "so the client could end up holding a code for a different door. To replace the code instead, use Regenerate on the existing invite.",
+        confirmLabel: "Create a second invite",
+        tone: "danger",
+        reversible: true,
+      });
+      if (!confirmed) return;
+    }
     const passcode = uploadLinkDraft.passcode.trim() || generateAccessCode();
     const created = await call<UploadLink>(`/buckets/admin/${detail.id}/upload-links`, {
       method: "POST",
@@ -2989,7 +3010,11 @@ export default function BucketsAdminPage() {
                           </div>
                           {link.upload_url ? <code className="sub" style={{ overflowWrap: "anywhere" }}>{link.upload_url}</code> : null}
                           {!passcodeAvailable ? (
-                            <div className="hintbox">Access code is secured. Regenerate to copy a new invite.</div>
+                            <div className="hintbox">
+                              This invite predates the recoverable access code, so the original cannot be
+                              read back. Regenerate issues a new code — which stops the one the client
+                              already has from working.
+                            </div>
                           ) : null}
                           <div className="row">
                             <Btn size="sm" onClick={() => copyUploadLink(link)}>Copy link</Btn>
