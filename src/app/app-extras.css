@@ -1510,9 +1510,15 @@ button.pick { width: 100%; text-align: left; }
 .app { height: 100vh; }
 
 /* Route identity and control bands sit directly against the global top bar.
-   The former 14-32px content top padding painted a strip of app ground above
-   every floating page header, making the header look detached from its row. */
-.content.content--wide { --pad-y: 0; }
+   They get there by cancelling the padding themselves — `.ckhead` and the two
+   full-bleed panels all use `calc(var(--pad-y) * -1)`, so they stay flush at
+   any padding value.
+
+   Zeroing --pad-y here instead did it for them, and in doing so took the top
+   padding away from every OTHER page: a page title, or a bordered panel, sat
+   jammed against the global top bar with nothing above it. Restored, so the
+   bands stay flush and everything else breathes. */
+.content.content--wide { --pad-y: clamp(14px, 2vw, 28px); }
 
 /* Console typography uses the prototype's neutral tracking at every scale. */
 .app :where(*) { letter-spacing: 0; }
@@ -1803,7 +1809,8 @@ button.pick { width: 100%; text-align: left; }
 }
 
 @media (max-width: 700px) {
-  .content.content--wide { --pad-y: 0; }
+  /* The clamp already floors at 14px on a phone, which is tight without being
+     jammed, so this no longer zeroes it. */
   .evidence-browser { grid-template-columns: 1fr; height: auto; max-height: none; }
   .evidence-browser-nav { max-height: 220px; border-right: 0; border-bottom: 1px solid var(--line); }
   .evidence-browser-preview-head { align-items: flex-start; flex-wrap: wrap; }
