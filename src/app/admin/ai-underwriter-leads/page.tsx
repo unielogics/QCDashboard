@@ -824,7 +824,10 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   return (
     <>
-    <div className={cx("ai-intake-list-shell", selectedLeadPanel && !leadDetailMinimized && "workspace-hidden")} style={{ height: "calc(100dvh - 105px)", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
+    <div className={cx("ai-intake-list-shell", selectedLeadPanel && !leadDetailMinimized && "workspace-hidden")} // 105px was measured when the content padding was 0. It reads the variable
+      // now, so the shell stops overflowing the only scroller on a screen built
+      // not to scroll.
+      style={{ height: "calc(100dvh - 95px - var(--pad-y))", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow">
           <h1>AI intake</h1>

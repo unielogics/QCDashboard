@@ -68,7 +68,12 @@ export default function DealControlRoomPage() {
     // Full-bleed: the control room owns the viewport, so it cancels .content's
     // padding rather than guessing at a fixed 24px the shell no longer uses.
     <div style={{
-      display: "flex", flexDirection: "column", height: "100%", overflow: "hidden",
+      display: "flex", flexDirection: "column", overflow: "hidden",
+      // `height: 100%` resolves against .content's CONTENT box, which the
+      // padding shrinks — so the room stopped short and left a band of app
+      // ground under it. The negative margins move the box without resizing
+      // it, so the height has to add back what they cancel.
+      height: "calc(100% + var(--pad-y) + 44px)",
       margin: "calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) -44px",
     }}>
       {/* Header */}
