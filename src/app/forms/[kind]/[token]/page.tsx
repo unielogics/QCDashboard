@@ -18,11 +18,12 @@ import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
+import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
 
 type FormState = {
-  kind: string;
+  kind: "pfs" | "debt_schedule";
   schema: PfsSchema;
-  body: PfsBody;
+  body: PfsBody & DebtBody;
   completed: boolean;
   business_name: string | null;
 };
@@ -32,7 +33,7 @@ export default function FinancialFormPage() {
   const token = params?.token ?? "";
 
   const [state, setState] = useState<FormState | null>(null);
-  const [body, setBody] = useState<PfsBody>({});
+  const [body, setBody] = useState<PfsBody & DebtBody>({});
   const [status, setStatus] = useState<"loading" | "ready" | "saving" | "done" | "gone">("loading");
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -124,8 +125,10 @@ export default function FinancialFormPage() {
       <main className="form-page form-page-done">
         <h1>Thank you — you can close this window.</h1>
         <p>
-          Your financial statement has been received and added to your file. Nothing else is
-          needed from you here.
+          {state?.kind === "debt_schedule"
+            ? "Your debt schedule has been received and added to your file."
+            : "Your financial statement has been received and added to your file."}{" "}
+          Nothing else is needed from you here.
         </p>
         <p className="sub">
           If you spot a mistake, this link still works — reopen it and correct the figure.
@@ -137,15 +140,18 @@ export default function FinancialFormPage() {
   return (
     <main className="form-page">
       <header>
-        <h1>Personal Financial Statement</h1>
+        <h1>{state?.kind === "debt_schedule" ? "Business Debt Schedule" : "Personal Financial Statement"}</h1>
         <p className="sub">
           {state?.business_name ? `For ${state.business_name}. ` : ""}
-          This follows the standard SBA Form 413 that lenders ask for. Leave anything that does
-          not apply blank.
+          {state?.kind === "debt_schedule"
+            ? "List every loan, line of credit, card or advance the business is currently paying. Anything already known is filled in — check it and correct what has changed."
+            : "This follows the standard SBA Form 413 that lenders ask for. Leave anything that does not apply blank."}
         </p>
       </header>
 
-      {state ? (
+      {state?.kind === "debt_schedule" ? (
+        <DebtScheduleForm value={body} onChange={setBody} disabled={status === "saving"} />
+      ) : state ? (
         <Pfs413Form
           schema={state.schema}
           value={body}
