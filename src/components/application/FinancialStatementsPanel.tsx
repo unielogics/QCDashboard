@@ -53,6 +53,7 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
   const [editing, setEditing] = useState<Statement | null>(null);
   const [draft, setDraft] = useState<PfsBody>({});
   const [busy, setBusy] = useState("");
+  const [copied, setCopied] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -91,15 +92,31 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
     }
   };
 
+  const createStatement = () =>
+    api<Statement>(`/application-profiles/${profileId}/financial-statements`, {
+      method: "POST",
+      body: JSON.stringify({ body: {}, owners: [] }),
+    });
+
   const startNew = () =>
     run("new", async () => {
-      const created = await api<Statement>(`/application-profiles/${profileId}/financial-statements`, {
-        method: "POST",
-        body: JSON.stringify({ body: {}, owners: [] }),
-      });
+      const created = await createStatement();
       setEditing(created);
       setDraft(created.body ?? {});
       setApplies([]);
+    });
+
+  /** The common case: send the client a link before anything exists yet.
+   *
+   * Creates the empty statement the link will fill, so a borrower can be asked
+   * for one in a single action rather than being made to start a draft first
+   * and then share it. */
+  const inviteClient = () =>
+    run("invite", async () => {
+      const created = await createStatement();
+      await mintAndCopy(created.id);
+      setCopied(created.id);
+      window.setTimeout(() => setCopied(null), 4000);
     });
 
   const save = (statement: Statement) =>
@@ -120,6 +137,27 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
       setEditing(updated);
     });
 
+  /** Mint a fresh link and put it on the clipboard.
+   *
+   * A new one each time on purpose: only the hash of a token is stored, so an
+   * old link cannot be read back — reminting is the only way to hand one over,
+   * and it means a link sent to the wrong address can simply be left to expire.
+   */
+  const mintAndCopy = async (statementId: string) => {
+    const minted = await api<{ url: string; expires_at: string | null }>(
+      `/application-profiles/${profileId}/financial-statements/${statementId}/link`,
+      { method: "POST" },
+    );
+    await navigator.clipboard.writeText(minted.url);
+  };
+
+  const copyLink = (statement: Statement) =>
+    run("link", async () => {
+      await mintAndCopy(statement.id);
+      setCopied(statement.id);
+      window.setTimeout(() => setCopied(null), 4000);
+    });
+
   const file = (statement: Statement) =>
     run("file", async () => {
       await api(
@@ -132,11 +170,16 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
   return (
     <Panel
       title="Personal financial statements"
-      sub="Open what a borrower filed, correct it, or complete one on their behalf."
+      sub="Open what a borrower filed, correct it, complete one on their behalf, or send them a link straight to the form."
       actions={
-        <Btn onClick={startNew} disabled={busy !== ""}>
-          {busy === "new" ? "Starting…" : "Start a statement"}
-        </Btn>
+        <Row>
+          <Btn variant="pri" onClick={inviteClient} disabled={busy !== ""}>
+            {busy === "invite" ? "Making a link…" : copied ? "Link copied" : "Copy a link for the client"}
+          </Btn>
+          <Btn onClick={startNew} disabled={busy !== ""}>
+            {busy === "new" ? "Starting…" : "Fill one in myself"}
+          </Btn>
+        </Row>
       }
       bodyClass="grid g10"
     >
@@ -144,9 +187,11 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
 
       {rows.length === 0 ? (
         <div className="empty">
-          No statement has been filed on this file yet. If the borrower uploaded a document
-          instead, it satisfies the request but cannot be edited here — there are no figures
-          behind it, only the file they sent.
+          No statement has been filed on this file yet. Copy a link and send it to the borrower,
+          or fill one in yourself from figures they have given you.
+          <br />
+          If they uploaded a document instead, it satisfies the request but cannot be edited here —
+          there are no figures behind it, only the file they sent.
         </div>
       ) : (
         rows.map((statement) => (
@@ -174,6 +219,9 @@ export function FinancialStatementsPanel({ profileId }: { profileId: string | nu
                 {currency(statement.total_assets)} · liquid {currency(statement.liquid_assets)}
               </span>
             </div>
+            <Btn size="sm" disabled={busy !== ""} onClick={() => void copyLink(statement)}>
+              {copied === statement.id ? "Copied" : busy === "link" ? "Making a link…" : "Copy link"}
+            </Btn>
             <Btn
               size="sm"
               onClick={() => {
