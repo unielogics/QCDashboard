@@ -91,6 +91,7 @@ export function LeadCockpit({
   initialMessages,
   onResponse,
   onRequestRerun,
+  hideFinancialForms = false,
 }: {
   response: IntakeResponse;
   adapter: LeadCockpitAdapter;
@@ -101,6 +102,10 @@ export function LeadCockpit({
    *  parent's RunReviewDialog (themed confirm + live progress) instead of
    *  running inline. */
   onRequestRerun?: () => void;
+  /** The admin screen has its own financial-forms panel; this older one
+   *  would otherwise appear twice on the same file. The broker screen has no
+   *  replacement yet, so it keeps this. */
+  hideFinancialForms?: boolean;
 }) {
   const confirmAction = useConfirmAction();
   const [current, setCurrent] = useState<IntakeResponse>(response);
@@ -633,7 +638,7 @@ export function LeadCockpit({
           {/* Always visible, independent of whether an AI review has run yet —
               a brand-new lead with no documents should still let admin/broker
               request or fill out a PFS/debt-schedule immediately. */}
-          {variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
+          {!hideFinancialForms && variant !== "real_estate_dscr_v1" && (adapter.requestPfs || adapter.requestDebtSchedule) ? (
             <div style={chartCard()}>
               <div style={chartHeader}>
                 <strong>Financial forms</strong>

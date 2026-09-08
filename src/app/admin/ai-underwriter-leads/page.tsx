@@ -1868,7 +1868,7 @@ function LeadDetailPanel({
                   <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
                     {([['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
                   </div>
-                  {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={onCockpitResponse} onRequestRerun={onRerun} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
+                  {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={onCockpitResponse} onRequestRerun={onRerun} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
                   {communicationChannel === "client" && cockpitAdapter ? <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} /> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
                   {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
@@ -2098,6 +2098,7 @@ function LeadDetailPanel({
             cockpitResponse && cockpitAdapter ? (
               <div style={{ flex: 1, minHeight: 460, position: "relative", overflow: "hidden" }}>
                 <LeadCockpit
+                  hideFinancialForms
                   response={cockpitResponse}
                   adapter={cockpitAdapter}
                   variant={detail.intake.variant}

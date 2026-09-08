@@ -122,6 +122,15 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
       window.setTimeout(() => setCopied(null), 4000);
     });
 
+  /** Put it on the checklist. Idempotent server-side, so a double click is
+   *  harmless rather than producing two rows for the same thing. */
+  const request = (kind: FormKind) =>
+    run(`request:${kind}`, async () => {
+      await api(`/application-profiles/${profileId}/financial-forms/${kind}/request`, {
+        method: "POST",
+      });
+    });
+
   const open = (form: FormStatus) =>
     run(`open:${form.kind}`, async () => {
       if (form.kind === "debt_schedule") {
@@ -188,6 +197,11 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
             </div>
             {summaryLine(form) ? <span className="sub">{summaryLine(form)}</span> : null}
           </div>
+          {!form.requested ? (
+            <Btn size="sm" disabled={busy !== ""} onClick={() => void request(form.kind)}>
+              {busy === `request:${form.kind}` ? "Requesting…" : "Request it"}
+            </Btn>
+          ) : null}
           <Btn size="sm" disabled={busy !== ""} onClick={() => void copyLink(form.kind)}>
             {copied === form.kind
               ? "Copied"
