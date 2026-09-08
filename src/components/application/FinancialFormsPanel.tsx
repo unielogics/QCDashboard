@@ -63,8 +63,21 @@ function summaryLine(form: FormStatus): string | null {
   return null;
 }
 
-export function FinancialFormsPanel({ profileId }: { profileId: string | null | undefined }) {
+export function FinancialFormsPanel({
+  profileId,
+  intakeId,
+  nested = false,
+}: {
+  profileId?: string | null;
+  /** Resolve the profile ourselves when the caller has not loaded it. The
+   *  evidence tab renders before the underwriting state does, and a panel that
+   *  silently shows nothing is worse than one that fetches what it needs. */
+  intakeId?: string | null;
+  /** Rendered inside another panel, so it drops its own frame. */
+  nested?: boolean;
+}) {
   const api = useAuthedApi();
+  const [resolvedId, setResolvedId] = useState<string | null>(profileId ?? null);
   const [forms, setForms] = useState<FormStatus[]>([]);
   const [schema, setSchema] = useState<PfsSchema | null>(null);
   const [editing, setEditing] = useState<FormKind | null>(null);
@@ -73,14 +86,24 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
   const [statementId, setStatementId] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
   const [copied, setCopied] = useState<FormKind | null>(null);
+  const [shown, setShown] = useState<{ kind: FormKind; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
-    if (!profileId) return;
+    let id = profileId ?? resolvedId;
+    if (!id && intakeId) {
+      const profile = await api<{ id: string }>("/application-profiles/resolve", {
+        method: "POST",
+        body: JSON.stringify({ source_kind: "intake", source_id: intakeId }),
+      });
+      id = profile.id;
+      setResolvedId(profile.id);
+    }
+    if (!id) return;
     setError(null);
     try {
       const [status, fields] = await Promise.all([
-        api<{ forms: FormStatus[] }>(`/application-profiles/${profileId}/financial-forms`),
+        api<{ forms: FormStatus[] }>(`/application-profiles/${id}/financial-forms`),
         api<PfsSchema>("/application-profiles/financial-statements/schema"),
       ]);
       setForms(status.forms);
@@ -88,13 +111,14 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Financial forms could not be loaded.");
     }
-  }, [api, profileId]);
+  }, [api, intakeId, profileId, resolvedId]);
 
   useEffect(() => {
     void load();
   }, [load]);
 
-  if (!profileId) return null;
+  const fileId = profileId ?? resolvedId;
+  if (!fileId) return null;
 
   const run = async (label: string, work: () => Promise<unknown>) => {
     setBusy(label);
@@ -114,19 +138,29 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
   const copyLink = (kind: FormKind) =>
     run(`link:${kind}`, async () => {
       const minted = await api<{ url: string }>(
-        `/application-profiles/${profileId}/financial-forms/${kind}/link`,
+        `/application-profiles/${fileId}/financial-forms/${kind}/link`,
         { method: "POST" },
       );
-      await navigator.clipboard.writeText(minted.url);
-      setCopied(kind);
-      window.setTimeout(() => setCopied(null), 4000);
+      // Shown as well as copied. navigator.clipboard refuses in ways nobody can
+      // diagnose from the outside — an unfocused document is enough — and a
+      // link that was minted but never reached the clipboard leaves someone
+      // certain the feature is broken. The text is the source of truth; the
+      // copy is a convenience on top of it.
+      setShown({ kind, url: minted.url });
+      try {
+        await navigator.clipboard.writeText(minted.url);
+        setCopied(kind);
+        window.setTimeout(() => setCopied(null), 4000);
+      } catch {
+        // Left on screen to select by hand.
+      }
     });
 
   /** Put it on the checklist. Idempotent server-side, so a double click is
    *  harmless rather than producing two rows for the same thing. */
   const request = (kind: FormKind) =>
     run(`request:${kind}`, async () => {
-      await api(`/application-profiles/${profileId}/financial-forms/${kind}/request`, {
+      await api(`/application-profiles/${fileId}/financial-forms/${kind}/request`, {
         method: "POST",
       });
     });
@@ -135,14 +169,14 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
     run(`open:${form.kind}`, async () => {
       if (form.kind === "debt_schedule") {
         const rows = await api<{ debts: DebtBody["debts"] }>(
-          `/application-profiles/${profileId}/financial-forms/debt-schedule/body`,
+          `/application-profiles/${fileId}/financial-forms/debt-schedule/body`,
         ).catch(() => ({ debts: [] }));
         setDebtBody({ debts: rows.debts ?? [] });
         setEditing("debt_schedule");
         return;
       }
       const statements = await api<Array<{ id: string; body: PfsBody }>>(
-        `/application-profiles/${profileId}/financial-statements`,
+        `/application-profiles/${fileId}/financial-statements`,
       );
       const current = statements[0];
       if (current) {
@@ -150,7 +184,7 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
         setPfsBody(current.body ?? {});
       } else {
         const created = await api<{ id: string; body: PfsBody }>(
-          `/application-profiles/${profileId}/financial-statements`,
+          `/application-profiles/${fileId}/financial-statements`,
           { method: "POST", body: JSON.stringify({ body: {}, owners: [] }) },
         );
         setStatementId(created.id);
@@ -162,7 +196,7 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
   const savePfs = () =>
     run("save", async () => {
       if (!statementId) return;
-      await api(`/application-profiles/${profileId}/financial-statements/${statementId}`, {
+      await api(`/application-profiles/${fileId}/financial-statements/${statementId}`, {
         method: "PATCH",
         body: JSON.stringify({ body: pfsBody, owners: [] }),
       });
@@ -172,19 +206,25 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
     run("file", async () => {
       if (!statementId) return;
       await api(
-        `/application-profiles/${profileId}/financial-statements/${statementId}/submit`,
+        `/application-profiles/${fileId}/financial-statements/${statementId}/submit`,
         { method: "POST" },
       );
       setEditing(null);
     });
 
-  return (
-    <Panel
-      title="Financial forms"
-      sub="A personal financial statement and a business debt schedule. Send the borrower a link, or fill either one in on their behalf."
-      bodyClass="grid g10"
-    >
+  const body = (
+    <>
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+
+      {shown ? (
+        <div className="form-link-out">
+          <span className="lbl">
+            {copied === shown.kind ? "Copied — also here if you need it" : "Send this to the borrower"}
+          </span>
+          <input readOnly value={shown.url} onFocus={(event) => event.currentTarget.select()} />
+          <span className="sub">Opens the form directly. Expires in 30 days.</span>
+        </div>
+      ) : null}
 
       {forms.map((form) => (
         <div key={form.kind} className="filerow">
@@ -244,7 +284,7 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
               onClick={() =>
                 void run("save", async () => {
                   await api(
-                    `/application-profiles/${profileId}/financial-forms/debt-schedule`,
+                    `/application-profiles/${fileId}/financial-forms/debt-schedule`,
                     { method: "PUT", body: JSON.stringify({ body: debtBody, submit: true }) },
                   );
                   setEditing(null);
@@ -260,6 +300,31 @@ export function FinancialFormsPanel({ profileId }: { profileId: string | null | 
           </Row>
         </div>
       ) : null}
+    </>
+  );
+
+  if (nested) {
+    return (
+      <div className="grid g10 mt">
+        <div>
+          <strong>Financial forms</strong>
+          <div className="sub">
+            A personal financial statement and a business debt schedule. Send the borrower a
+            link, or fill either one in on their behalf.
+          </div>
+        </div>
+        {body}
+      </div>
+    );
+  }
+
+  return (
+    <Panel
+      title="Financial forms"
+      sub="A personal financial statement and a business debt schedule. Send the borrower a link, or fill either one in on their behalf."
+      bodyClass="grid g10"
+    >
+      {body}
     </Panel>
   );
 }

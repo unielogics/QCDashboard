@@ -1759,6 +1759,11 @@ function LeadDetailPanel({
                   <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                   <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet. The checklist status above still applies."} /></InfoBlock>
+                  {/* Evidence is where the desk chases what a file is missing, and
+                      these two forms are exactly that — a request the borrower has
+                      not answered yet. Keeping them on a separate tab meant
+                      checking two places to know what was outstanding. */}
+                  <FinancialFormsPanel profileId={underwriting?.profile_id} intakeId={detail.intake.id} nested />
                 </Panel>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
@@ -1857,10 +1862,6 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
-              ) : null}
-
-              {prototypeView === "underwriting" && canUnderwrite ? (
-                <FinancialFormsPanel profileId={underwriting?.profile_id} />
               ) : null}
 
               {prototypeView === "communications" ? (
