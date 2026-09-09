@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { money, num, pct, signedMoney } from "../format";
 import { BUILDOUT_MODES } from "../options";
 import { Callout, Derived, Field, PBtn, PChip, PPanel, Picks, type StepCtx } from "../ui";

@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { Fragment, useEffect, useMemo, useState } from "react";
 import type { PackageClient } from "../client";
 import { dateLabel, openSignedUrl } from "../format";

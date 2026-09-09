@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // The field registry mirrors FIELD_RULES in app/services/production_arrangement.py.
 // The server is authoritative for the attention list; this copy drives labels,
 // controls, required styling and the deep-links.
@@ -6,7 +5,7 @@ import {
   ADJUSTMENTS, BUILDOUT_MODES, CADENCES, ENTITY_TYPES, EVIDENCE_OPTIONS, FACILITY_TYPES, FUNDING_PARTIES,
   PROGRAM_SUPPORT_OPTIONS, RM_COMP_OPTIONS, SBA_OPTIONS, SIZING_MODES, YES_NO,
 } from "./options";
-import type { StepKey } from "./types";
+import type { PageKey, StepKey } from "./types";
 
 export type FieldKind = "text" | "number" | "date" | "email" | "phone" | "select" | "multiselect" | "textarea" | "rows" | "money_group";
 export type RequiredFor = "presentation" | "stage_one" | "stage_two" | "never";
@@ -15,7 +14,11 @@ export type FieldOptions = readonly string[] | ReadonlyArray<readonly [string, s
 
 export type FieldDef = {
   key: string;
+  // The backend's step. It must never move: production_arrangement derives
+  // DESK_ONLY_KEYS from `step == "advance"`, and so does this file below.
   step: StepKey;
+  // The page it renders on. Moving a field's page never moves its permission.
+  page: PageKey;
   label: string;
   kind: FieldKind;
   requiredFor: RequiredFor;
@@ -26,8 +29,20 @@ export type FieldDef = {
   unit?: "$" | "%" | "days" | "months";
 };
 
+// Exhaustive over the closed union: the backend cannot add a step without
+// someone adding it to StepKey, and the moment they do this fails to compile
+// until the new step has a page. That is the whole guarantee.
+export const PAGE_BY_STEP: Record<StepKey, PageKey> = {
+  lot: "today", products: "today",
+  advance: "loan",
+  buildout: "build",
+  projection: "changes", shortfall: "changes",
+  parties: "agreement", thresholds: "agreement", preview: "agreement", send: "agreement",
+  funding: "agreement", disclosures: "agreement",
+};
+
 const f = (key: string, step: StepKey, label: string, kind: FieldKind, requiredFor: RequiredFor = "never", extra: Partial<FieldDef> = {}): FieldDef =>
-  ({ key, step, label, kind, requiredFor, ...extra });
+  ({ key, step, page: PAGE_BY_STEP[step], label, kind, requiredFor, ...extra });
 
 export const FIELDS: FieldDef[] = [
   f("dealer_name", "parties", "Full legal name", "text", "presentation", { hint: "Every schedule prints the dealer's full legal name." }),
@@ -150,6 +165,17 @@ export const FIELDS: FieldDef[] = [
 ];
 
 export const FIELD_BY_KEY: Record<string, FieldDef> = Object.fromEntries(FIELDS.map((d) => [d.key, d]));
+export const PAGE_BY_KEY: Record<string, PageKey> = Object.fromEntries(FIELDS.map((d) => [d.key, d.page]));
+
+/** The page an attention row or a field belongs to — key first, then the step, never nowhere. */
+export function pageFor(item: { step?: StepKey | string; key?: string }): PageKey {
+  if (item.key && PAGE_BY_KEY[item.key]) return PAGE_BY_KEY[item.key];
+  if (item.step && (PAGE_BY_STEP as Record<string, PageKey>)[item.step]) return (PAGE_BY_STEP as Record<string, PageKey>)[item.step];
+  return "agreement";
+}
+export function isPageKey(v: string): v is PageKey {
+  return v === "today" || v === "loan" || v === "build" || v === "changes" || v === "agreement";
+}
 export const SPONSOR_KEYS = new Set(["sponsor_name", "sponsor_state", "sponsor_entity", "sponsor_address", "sponsor_platform", "sponsor_email"]);
 
 // The programme economics. Kept in step with production_arrangement.DESK_ONLY_KEYS,
@@ -162,6 +188,19 @@ export const TERM_SHEET_KEYS = new Set([
   "requested", "sizing", "funded_amount", "dealer_cof", "term", "debt_service", "min_activation", "facility_type",
   "funding_party", "funding_party_name", "funding_date", "activation_date", "commencement", "maturity", "use_of_funds",
 ]);
+
+export type PageDef = { key: PageKey; label: string; title: string; sub: string; next: string };
+
+// The design's five steps, in its words. Both stages walk the same five; the
+// stage-two schedules live behind disclosures on the Agreement page.
+export const PAGES: PageDef[] = [
+  { key: "today", label: "Dealer today", title: "What does the dealer buy today?", sub: "The lot, the monthly sales, and what the dealer pays another provider for the products already attaching to them.", next: "The loan" },
+  { key: "loan", label: "The loan", title: "What will the dealer owe?", sub: "The payment, and the cushion the agreement puts on top of it when the loan is carried by the policies.", next: "Build the repayment" },
+  { key: "build", label: "Build the repayment", title: "Split the cushion: the loan, your margin, the dealer", sub: "Our base cost is lower than what the dealer pays today. Decide how the difference is used, product by product, and watch the meter above.", next: "What changes" },
+  { key: "changes", label: "What changes", title: "What changes for the dealer, and for you", sub: "The dealer paying the loan versus the loan built into the policies, side by side — and the proposal the dealer sees.", next: "Agreement" },
+  { key: "agreement", label: "Agreement", title: "Agreement and signatures", sub: "Parties, the thresholds the agreement enforces, a preview of what prints, and both signature stages.", next: "" },
+];
+export const PAGE_BY_PAGE_KEY: Record<PageKey, PageDef> = Object.fromEntries(PAGES.map((p) => [p.key, p])) as Record<PageKey, PageDef>;
 
 export type StepDef = { key: StepKey; label: string; title: string; sub: string; stages: readonly number[] };
 

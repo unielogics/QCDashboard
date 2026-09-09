@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 export function money(n: number | null | undefined, digits = 0): string {
   if (n === null || n === undefined || Number.isNaN(Number(n))) return "—";
   return "$" + Number(n).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });

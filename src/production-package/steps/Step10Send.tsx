@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { useEffect, useState } from "react";
 import type { ManualSignatureBody, PackageClient } from "../client";
 import { dateLabel, errorDetail, errorMessage, money, openSignedUrl, pct, toNumber, whenLabel } from "../format";

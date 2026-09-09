@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { money, num, pct } from "../format";
 import { Derived, Field, PPanel, type StepCtx } from "../ui";
 

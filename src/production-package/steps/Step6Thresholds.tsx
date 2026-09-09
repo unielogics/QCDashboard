@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { money, num, pct } from "../format";
 import { Callout, Field, PBtn, PPanel, type StepCtx } from "../ui";
 import type { ThresholdKey } from "../types";

@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // Stage two only: Schedule 2 (relationship manager compensation), Schedule 3
 // (compensation and conflict disclosure) and Schedule 4 (protected and
 // preexisting funding relationships).

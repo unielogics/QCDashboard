@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { useState } from "react";
 import type { PackageClient, SponsorCompanyFields } from "../client";
 import { dateLabel, errorDetail, errorMessage, openSignedUrl, toNumber } from "../format";

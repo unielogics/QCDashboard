@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // A client mirror of the server arithmetic, used only for provisional feedback
 // while a save is in flight. The contract preview, the clears/does-not-clear
 // verdict and the PDF always read the server's `computed`.

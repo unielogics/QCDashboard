@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // Stage two only: Schedule 1 (funding facility) and the Schedule 5 certificate inputs.
 import { money, pct, whenLabel } from "../format";
 import { Callout, Field, KV, PBtn, PChip, PPanel, type StepCtx } from "../ui";

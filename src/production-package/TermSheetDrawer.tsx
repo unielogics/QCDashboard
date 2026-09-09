@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // The term sheet: loan terms a super admin or underwriter records on the file
 // before the final can be drafted. Versioned; the current row is what "Draft
 // final package" consumes. Lives on the profile, not the package.

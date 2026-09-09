@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { dateLabel, money, pct, num, whenLabel } from "./format";
 import { IconCheck, IconFlag } from "./icons";
 import { KV, PChip } from "./ui";

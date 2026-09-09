@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { ADJUSTMENTS, CADENCES } from "../options";
 import { Callout, Field, PChip, PPanel, Picks, type StepCtx } from "../ui";
 

@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // Self-contained primitives on the shared design tokens (no app imports).
 import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { DESK_ONLY_KEYS, FIELD_BY_KEY, REQUIRED_HINT, SPONSOR_KEYS, TERM_SHEET_KEYS, fieldRequiredNow, isBlank, optionPairs, type FieldDef, type FieldOptions } from "./schema";
@@ -28,7 +27,8 @@ export type StepCtx = {
   setProduct: (key: ProductKey, field: string, value: unknown) => void;
   setThreshold: (key: ThresholdKey, value: unknown) => void;
   confirm: (key: string) => void;
-  go: (step: import("./types").StepKey) => void;
+  // Accepts the backend's step (from an attention row or a 422) or a page; either lands on a page.
+  go: (target: import("./types").StepKey | import("./types").PageKey, focusKey?: string) => void;
   notify: (message: string, tone?: Tone) => void;
   teamOptions: Array<{ id: string; name: string; email: string; phone?: string | null; title?: string | null }>;
   teamError?: boolean;

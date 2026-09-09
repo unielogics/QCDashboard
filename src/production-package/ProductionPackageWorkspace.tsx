@@ -1,10 +1,9 @@
 "use client";
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { PackageClient } from "./client";
 import { provisional as computeProvisional } from "./compute";
 import { debounce, errorDetail, errorMessage, errorStatus, openSignedUrl } from "./format";
-import { DESK_ONLY_KEYS, SPONSOR_KEYS, TERM_SHEET_KEYS, stepsFor } from "./schema";
+import { DESK_ONLY_KEYS, PAGES, PAGE_BY_PAGE_KEY, SPONSOR_KEYS, TERM_SHEET_KEYS, isPageKey, pageFor } from "./schema";
 import { AllClearSummary } from "./AllClearSummary";
 import { PackageTopBar } from "./PackageTopBar";
 import { ShareDrawer } from "./ShareDrawer";
@@ -23,7 +22,7 @@ import { Step9Preview } from "./steps/Step9Preview";
 import { Step10Send } from "./steps/Step10Send";
 import type { StepCtx, Tone } from "./ui";
 import { PBtn } from "./ui";
-import type { Arrangement, ProductKey, ProductionPackage, SponsorOption, StepKey, ThresholdKey } from "./types";
+import type { Arrangement, PageKey, ProductKey, ProductionPackage, SponsorOption, StepKey, ThresholdKey } from "./types";
 
 export type WorkspaceProps = {
   client: PackageClient;
@@ -55,9 +54,9 @@ function shallowDiff(before: Arrangement, after: Arrangement): Record<string, un
   return out;
 }
 
-function initialStep(p: ProductionPackage): StepKey {
-  if (p.status !== "draft") return "send";
-  return p.stage === 2 ? "funding" : "parties";
+function initialPage(p: ProductionPackage): PageKey {
+  // A sent or executed package opens on its signatures; a draft starts where the design starts.
+  return p.status !== "draft" ? "agreement" : "today";
 }
 
 // Keys the final does not edit on the form: loan terms live on the term sheet, the sponsor is carried from stage one.
@@ -68,7 +67,7 @@ function lockedOnFinal(key: string): boolean {
 export function ProductionPackageWorkspace({ client, initial, onPackage, headerRight, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal }: WorkspaceProps) {
   const [pkg, setPkg] = useState<ProductionPackage>(initial);
   const [draft, setDraft] = useState<Arrangement>(initial.arrangement);
-  const [step, setStep] = useState<StepKey>(initialStep(initial));
+  const [page, setPage] = useState<PageKey>(initialPage(initial));
   const [saving, setSaving] = useState(false);
   const [conflict, setConflict] = useState<string | null>(null);
   const [notice, setNotice] = useState<Notice>(null);
@@ -86,7 +85,6 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const versionRef = useRef<number>(initial.version);
   const draftRef = useRef<Arrangement>(initial.arrangement);
   draftRef.current = draft;
-  const steps = useMemo(() => stepsFor(pkg.stage), [pkg.stage]);
 
   const adopt = useCallback((next: ProductionPackage, keepDraft = false) => {
     setPkg(next);
@@ -190,7 +188,13 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
     scheduleSave();
   }, [pkg.status, scheduleSave]);
 
-  const go = useCallback((next: StepKey) => { setStep(next); flushSave.flush(); }, [flushSave]);
+  // Either taxonomy lands on a page: the eight hardcoded go("parties") /
+  // go("send") / go("funding") call sites keep working through the map.
+  const go = useCallback((target: StepKey | PageKey, focus?: string) => {
+    setPage(isPageKey(target) ? target : pageFor({ step: target, key: focus }));
+    if (focus) setFocusKey(focus);
+    flushSave.flush();
+  }, [flushSave]);
 
   const reload = useCallback(async () => {
     setBusy("reload");
@@ -233,7 +237,7 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
       if (detail?.code === "attention" && Array.isArray(detail.items) && detail.items.length) {
         const first = detail.items[0] as { step?: StepKey; key?: string };
         notify("Fill the presentation fields first — the first open item is highlighted.", "warn");
-        if (first.step) setStep(first.step);
+        setPage(pageFor(first));
         if (first.key) setFocusKey(first.key);
       } else {
         notify(errorMessage(err, "The presentation could not be generated."), "bad");
@@ -244,13 +248,13 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   }, [client, adopt, notify, flushSave]);
 
   const attention = pkg.status === "draft" ? pkg.computed.attention : [];
-  const stepIndex = Math.max(0, steps.findIndex((s) => s.key === step));
-  const active = steps[stepIndex] ?? steps[0];
+  const stepIndex = Math.max(0, PAGES.findIndex((p) => p.key === page));
+  const active = PAGE_BY_PAGE_KEY[page] ?? PAGES[0];
   const current = active.key;
 
-  // Jumping to an item behaves like clicking its step chip, and closes the list behind it.
+  // Jumping to an item behaves like clicking its step in the rail, and closes the list behind it.
   const jumpTo = (item: { step: StepKey; key: string }) => {
-    setStep(item.step);
+    setPage(pageFor(item));
     setFocusKey(item.key);
     flushSave.flush();
     setAttentionOpen(false);
@@ -277,7 +281,7 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
         attentionOpen={showAttention} onToggleAttention={() => setAttentionOpen((v) => !v)}
         onCloseAttention={() => setAttentionOpen(false)} onJump={jumpTo}
         attentionPanelId={ATTENTION_PANEL_ID} barRef={barRef}
-        onStep={go} onPresentation={generatePresentation} onPreview={() => go("preview")} onSend={() => go("send")}
+        onStep={go} onPresentation={generatePresentation} onPreview={() => go("agreement", "preview")} onSend={() => go("agreement", "send")}
         right={headerRight}
       />
       {conflict ? (
@@ -298,25 +302,27 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
         </aside>
         <main className="pp-main">
           <header className="pp-step-h">
-            <div className="pp-eyebrow">Step {stepIndex + 1} of {steps.length}{two ? " · final" : ""}</div>
+            <div className="pp-eyebrow">Step {stepIndex + 1} of {PAGES.length}{two ? " · final" : ""}</div>
             <h2 className="pp-title">{active.title}</h2>
             <p className="pp-sub">{active.sub}</p>
           </header>
-          {current === "parties" ? <Step1Parties ctx={ctx} sponsors={sponsors} client={client} onPackage={(next) => adopt(next, true)} /> : null}
-          {current === "lot" ? <Step2Lot ctx={ctx} /> : null}
-          {current === "products" ? <Step3Products ctx={ctx} /> : null}
-          {current === "advance" ? <Step4Advance ctx={ctx} /> : null}
-          {current === "buildout" ? <Step5Buildout ctx={ctx} /> : null}
-          {current === "thresholds" ? <Step6Thresholds ctx={ctx} /> : null}
-          {current === "shortfall" ? <Step7Shortfall ctx={ctx} /> : null}
-          {current === "funding" ? <StepFunding ctx={ctx} /> : null}
-          {current === "disclosures" ? <StepDisclosures ctx={ctx} /> : null}
-          {current === "projection" ? <Step8Projection ctx={ctx} /> : null}
-          {current === "preview" ? <Step9Preview ctx={ctx} client={client} /> : null}
-          {current === "send" ? <Step10Send ctx={ctx} client={client} onPackage={(next) => adopt(next)} onPresentation={generatePresentation} /> : null}
+          {/* The design's five pages, each carrying the step components that belong to it. */}
+          {current === "today" ? <><Step2Lot ctx={ctx} /><Step3Products ctx={ctx} /></> : null}
+          {current === "loan" ? <Step4Advance ctx={ctx} /> : null}
+          {current === "build" ? <Step5Buildout ctx={ctx} /> : null}
+          {current === "changes" ? <><Step8Projection ctx={ctx} /><Step7Shortfall ctx={ctx} /></> : null}
+          {current === "agreement" ? (
+            <>
+              <Step1Parties ctx={ctx} sponsors={sponsors} client={client} onPackage={(next) => adopt(next, true)} />
+              <Step6Thresholds ctx={ctx} />
+              {two ? <><StepFunding ctx={ctx} /><StepDisclosures ctx={ctx} /></> : null}
+              <Step9Preview ctx={ctx} client={client} />
+              <Step10Send ctx={ctx} client={client} onPackage={(next) => adopt(next)} onPresentation={generatePresentation} />
+            </>
+          ) : null}
           <footer className="pp-step-f">
-            {stepIndex > 0 ? <PBtn onClick={() => go(steps[stepIndex - 1].key)}>Back</PBtn> : <span />}
-            {stepIndex < steps.length - 1 ? <PBtn variant="pri" onClick={() => go(steps[stepIndex + 1].key)}>Next: {steps[stepIndex + 1].label}</PBtn> : null}
+            {stepIndex > 0 ? <PBtn onClick={() => go(PAGES[stepIndex - 1].key)}>← {PAGES[stepIndex - 1].label}</PBtn> : <span />}
+            {stepIndex < PAGES.length - 1 ? <PBtn variant="pri" onClick={() => go(PAGES[stepIndex + 1].key)}>Next: {PAGES[stepIndex + 1].label} →</PBtn> : null}
           </footer>
         </main>
       </div>

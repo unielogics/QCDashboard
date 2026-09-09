@@ -1,10 +1,9 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { useRef, type ReactNode, type Ref } from "react";
-import { stepsFor } from "./schema";
+import { PAGES, pageFor } from "./schema";
 import { AttentionList } from "./AttentionList";
 import { IconCheck, IconFlag, IconLock } from "./icons";
 import { PBtn, PChip } from "./ui";
-import type { AttentionItem, ProductionPackage, StepKey } from "./types";
+import type { AttentionItem, PageKey, ProductionPackage } from "./types";
 
 /** "Stage one — commitment" / "Final — out for signature" … */
 export function stageEyebrow(pkg: ProductionPackage): string {
@@ -24,13 +23,13 @@ export function builderTitle(pkg: ProductionPackage): string {
  * sequence rail, so it carries the title, the open-item flag and the step list itself.
  */
 export function PackageTopBar({ pkg, step, attention, saving, dirty, busy, attentionOpen, onToggleAttention, onCloseAttention, onJump, attentionPanelId, barRef, onStep, onPresentation, onPreview, onSend, right }: {
-  pkg: ProductionPackage; step: StepKey; attention: AttentionItem[]; saving: boolean; dirty: boolean; busy: string | null;
+  pkg: ProductionPackage; step: PageKey; attention: AttentionItem[]; saving: boolean; dirty: boolean; busy: string | null;
   attentionOpen: boolean; onToggleAttention: () => void; onCloseAttention: () => void; onJump: (item: AttentionItem) => void;
   attentionPanelId: string; barRef?: Ref<HTMLDivElement>;
-  onStep: (s: StepKey) => void; onPresentation: () => void; onPreview: () => void; onSend: () => void; right?: ReactNode;
+  onStep: (s: PageKey) => void; onPresentation: () => void; onPreview: () => void; onSend: () => void; right?: ReactNode;
 }) {
-  const steps = stepsFor(pkg.stage);
-  const counts = attention.reduce<Record<string, number>>((acc, a) => { acc[a.step] = (acc[a.step] ?? 0) + 1; return acc; }, {});
+  const steps = PAGES;
+  const counts = attention.reduce<Record<string, number>>((acc, a) => { const p = pageFor(a); acc[p] = (acc[p] ?? 0) + 1; return acc; }, {});
   const status = pkg.status;
   const two = pkg.stage === 2;
   const open = attention.length;

@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import type { CSSProperties } from "react";
 
 const base: CSSProperties = { width: 14, height: 14, flex: "0 0 auto", verticalAlign: "-2px" };

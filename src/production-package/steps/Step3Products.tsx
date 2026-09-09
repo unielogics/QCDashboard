@@ -1,4 +1,3 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 import { useState } from "react";
 import { money, num, pct, signedMoney, signedNum } from "../format";
 import { PRODUCTS } from "../options";

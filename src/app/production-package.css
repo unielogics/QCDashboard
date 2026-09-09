@@ -1,4 +1,3 @@
-/* MIRROR: keep identical to QCRep/src/app/production-package.css
    Production Package workspace — self-contained on the shared design tokens. */
 .pp-root { --pp-gap: 14px; --pp-stick: 142px; display: flex; flex-direction: column; gap: var(--pp-gap); color: var(--ink); font-family: var(--fb); font-size: 13.5px; }
 .pp-root .muted, .pp-root .pp-sub { color: var(--muted); }

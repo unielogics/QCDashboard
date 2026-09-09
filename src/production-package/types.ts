@@ -1,12 +1,15 @@
-// MIRROR: keep identical to QCRep/src/production-package/* (scripts/check-production-package-mirror.sh)
 // Shapes mirror app/schemas/production_package.py on the backend.
 
 export type PackageStatus = "draft" | "out_for_signature" | "executed" | "void";
 export type PackageMode = "operator" | "rep" | "partner";
 export type AccessVia = "operator" | "share_link" | "ownership";
+// The backend's step taxonomy. It is the wire contract — every attention row
+// and every 422 names one of these — so it keeps all twelve members. The UI
+// routes on PageKey, the design's five steps; schema.ts maps between them.
 export type StepKey =
   | "parties" | "lot" | "products" | "advance" | "buildout"
   | "thresholds" | "shortfall" | "funding" | "disclosures" | "projection" | "preview" | "send";
+export type PageKey = "today" | "loan" | "build" | "changes" | "agreement";
 
 export type ProductKey = "vsc" | "gap" | "theft" | "appearance" | "key" | "tire" | "maint" | "power";
 export type ThresholdKey =
