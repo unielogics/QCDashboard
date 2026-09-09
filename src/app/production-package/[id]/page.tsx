@@ -9,14 +9,15 @@
 // from the route; a forwarded link with no account lives at
 // /production-package/link/[token] instead.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { IconBtn, PageHeader } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useProductionCall } from "@/lib/productionTrainingCall";
 import { createOperatorClient, loadPackage } from "@/production-package/client";
-import { ProductionPackageWorkspace } from "@/production-package/ProductionPackageWorkspace";
+import { PackageActions } from "@/production-package/PackageActions";
+import { ProductionPackageWorkspace, type WorkspaceHandle } from "@/production-package/ProductionPackageWorkspace";
 import { errorMessage, errorStatus } from "@/production-package/format";
 import { PBtn, PChip } from "@/production-package/ui";
 import type { ProductionPackage } from "@/production-package/types";
@@ -48,6 +49,9 @@ export default function ProductionPackagePage() {
   const [error, setError] = useState<{ message: string; status: number | null } | null>(null);
   // The file page opens the drawer with ?share=1; the workspace's own Share button opens it too.
   const [shareOpen, setShareOpen] = useState(search?.get("share") === "1");
+  // The actions sit in the page header beside the ✕; the workspace does the work.
+  const ws = useRef<WorkspaceHandle | null>(null);
+  const [presBusy, setPresBusy] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
@@ -82,7 +86,15 @@ export default function ProductionPackagePage() {
       <PageHeader
         eyebrow={stageLabel(pkg)}
         title={dealer}
-        actions={<IconBtn aria-label="Close" title="Close" onClick={leave}><Icon name="x" size={16} /></IconBtn>}
+        actions={(
+          <div className="pp-row" style={{ gap: 8 }}>
+            <PackageActions pkg={pkg} size="sm" busy={presBusy}
+              onPresentation={() => { void ws.current?.generatePresentation(); }}
+              onShare={pkg.capabilities.can_share && client.createShareLink ? () => setShareOpen(true) : undefined}
+              onSend={() => ws.current?.goTo("agreement", "send")} />
+            <IconBtn aria-label="Close" title="Close" onClick={leave}><Icon name="x" size={16} /></IconBtn>
+          </div>
+        )}
         meta={(
           <div className="pp-row" style={{ gap: 6 }}>
             <PChip tone={statusTone(pkg.status)}>{pkg.status.replace(/_/g, " ")}</PChip>
@@ -93,6 +105,7 @@ export default function ProductionPackagePage() {
       />
       <ProductionPackageWorkspace
         key={pkg.id}
+        ref={ws}
         client={client}
         initial={pkg}
         profileId={pkg.profile_id}
@@ -101,8 +114,7 @@ export default function ProductionPackagePage() {
         onShareClose={closeShare}
         onOpenFinal={open}
         onOpenOriginal={open}
-        onShare={pkg.capabilities.can_share ? () => setShareOpen(true) : undefined}
-        onClose={leave}
+        onBusy={setPresBusy}
       />
     </div>
   );

@@ -51,12 +51,15 @@
 .pp-att { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--danger); border-radius: var(--r); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; }
 .pp-att.clear { border-left-color: var(--ok); }
 /* the list the container's flag reveals: capped so a long list cannot swallow the step body */
-.pp-att-panel { grid-area: att; max-height: min(42vh, 340px); overflow-y: auto; }
-.pp-att-x { margin-left: auto; padding: 2px 8px; border: 1px solid var(--line2); border-radius: 999px; background: var(--surface); color: var(--muted); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; }
-.pp-att-x:hover { border-color: var(--danger); color: var(--danger); }
-.pp-att-x:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 1px; }
 .pp-att-h { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; color: var(--ink); }
 .pp-att-h .pp-sub { flex-basis: 100%; }
+/* minimized by default: the header is the toggle, the body is capped so the rest of the rail stays reachable */
+.pp-att-toggle { width: 100%; padding: 0; border: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; flex-wrap: nowrap; }
+.pp-att-toggle:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 3px; border-radius: 4px; }
+.pp-att-toggle b { min-width: 0; }
+.pp-att-toggle svg { flex: 0 0 auto; transition: transform .15s ease; }
+.pp-att-wait { font-size: 11px; font-weight: 700; color: var(--muted); padding: 1px 7px; border: 1px solid var(--line2); border-radius: 999px; white-space: nowrap; }
+.pp-att-body { display: flex; flex-direction: column; gap: 10px; max-height: min(42vh, 340px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; }
 .pp-att-g { display: flex; flex-direction: column; gap: 4px; }
 .pp-att-step { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
 .pp-att-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; text-align: left; padding: 8px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken2); font: inherit; color: var(--ink); cursor: pointer; }
@@ -261,6 +264,7 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-body { grid-template-columns: 236px minmax(0, 1fr) 284px; }
 .pp-rail-l, .pp-rail-r { position: sticky; top: var(--pp-stick); align-self: start; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .pp-rail-l { max-height: calc(100dvh - var(--pp-stick) - 12px); }
+.pp-rail-r { max-height: calc(100dvh - var(--pp-stick) - 12px); overflow-y: auto; overscroll-behavior: contain; }
 .pp-rail-head { display: flex; flex-direction: column; gap: 3px; padding: 2px 4px 0; }
 .pp-rail-name { font-family: var(--fh); font-size: 16px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); text-wrap: balance; }
 .pp-rail-ref { font-size: 11.5px; color: var(--muted); }
@@ -277,7 +281,7 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-rail-foot { margin-top: auto; display: flex; flex-direction: column; gap: 6px; padding: 10px 4px 0; border-top: 1px solid var(--line); }
 .pp-rail-foot .pp-picks { display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid var(--line2); border-radius: var(--r-sm); overflow: hidden; }
 .pp-rail-foot .pp-picks .pp-chipbtn { border: 0; border-radius: 0; justify-content: center; }
-.pp-acts { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-top: 10px; }
+.pp-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pp-meters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: var(--pp-gap); }
 .pp-meter { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); min-width: 0; }
 .pp-meter-v { font-family: var(--fh); font-size: 24px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
@@ -295,8 +299,8 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-aside-sect .pp-sumstate { border-top: 0; padding-top: 4px; }
 .pp-step-status { flex: 1; text-align: center; font-size: 12.5px; color: var(--muted); }
 .pp-step-status.ok { color: var(--ok); } .pp-step-status.bad { color: var(--danger); }
-@media (max-width: 1180px) { .pp-body { grid-template-columns: 200px minmax(0, 1fr); } .pp-rail-r { grid-column: 1 / -1; position: static; } .pp-meters { grid-template-columns: 1fr 1fr; } }
-@media (max-width: 980px) { .pp-body { grid-template-columns: 1fr; } .pp-rail-l, .pp-rail-r { position: static; max-height: none; } .pp-stps { flex-direction: row; flex-wrap: wrap; } .pp-rail-foot { margin-top: 0; } }
+@media (max-width: 1180px) { .pp-body { grid-template-columns: 200px minmax(0, 1fr); } .pp-rail-r { grid-column: 1 / -1; position: static; max-height: none; overflow-y: visible; } .pp-meters { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 980px) { .pp-body { grid-template-columns: 1fr; } .pp-rail-l, .pp-rail-r { position: static; max-height: none; overflow-y: visible; } .pp-stps { flex-direction: row; flex-wrap: wrap; } .pp-rail-foot { margin-top: 0; } }
 @media (max-width: 640px) { .pp-meters { grid-template-columns: 1fr; } }
 
 /* ---- the page bodies: tiles, the band, the stack, disclosures, steppers ---- */
@@ -339,11 +343,10 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-doc .pp-tbl { margin-top: 10px; }
 
 /* ---- leaving, and sharing ---- */
-.pp-rail-head { position: relative; padding-right: 30px; }
-.pp-rail-x { position: absolute; top: 0; right: 0; width: 26px; height: 26px; display: inline-grid; place-items: center; border: 1px solid var(--line2); border-radius: 999px; background: var(--surface); color: var(--muted); cursor: pointer; }
-.pp-rail-x:hover { border-color: var(--danger); color: var(--danger); }
-.pp-rail-x:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 1px; }
-.pp-acts .pp-close { margin-left: auto; }
+/* the forwarded link's bar: who this is for, and the same actions the desk has beside its ✕ */
+.pp-linkbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 14px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+.pp-linkbar-t { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.pp-linkbar-name { font-family: var(--fh); font-size: 16px; font-weight: 700; letter-spacing: -.01em; color: var(--ink); }
 .pp-backlink { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); text-decoration: none; margin-bottom: 4px; }
 .pp-backlink:hover { color: var(--accent); }
 .pp-end { max-width: 560px; margin: 48px auto; padding: 0 16px; }

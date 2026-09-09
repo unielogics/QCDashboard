@@ -1,7 +1,7 @@
 // The left rail: what this is, where it stands, the five steps and their
 // states, and — for the desk — which lens the page is being viewed through.
 import { FIELDS, PAGES, fieldRequiredNow, isBlank, pageFor } from "./schema";
-import { IconCheck, IconLock, IconX } from "./icons";
+import { IconCheck, IconLock } from "./icons";
 import { PChip, Picks } from "./ui";
 import type { Arrangement, AttentionItem, PageKey, ProductionPackage } from "./types";
 
@@ -28,11 +28,9 @@ export function pageDone(page: PageKey, pkg: ProductionPackage, draft: Arrangeme
   return fieldsDone(page);
 }
 
-export function PackageRail({ pkg, draft, page, attention, saving, dirty, onPage, viewAs, onViewAs, onClose }: {
+export function PackageRail({ pkg, draft, page, attention, saving, dirty, onPage, viewAs, onViewAs }: {
   pkg: ProductionPackage; draft: Arrangement; page: PageKey; attention: AttentionItem[]; saving: boolean; dirty: boolean;
   onPage: (p: PageKey) => void;
-  /** Leave the workspace. The host says where "out" is: the file for the desk, the end of the visit for a forwarded link. */
-  onClose?: () => void;
   /** The desk's lens. Absent for everyone else — a rep never sees a control implying they could become underwriting. */
   viewAs?: ViewAs; onViewAs?: (v: ViewAs) => void;
 }) {
@@ -44,7 +42,6 @@ export function PackageRail({ pkg, draft, page, attention, saving, dirty, onPage
   return (
     <aside className="pp-rail-l">
       <div className="pp-rail-head">
-        {onClose ? <button type="button" className="pp-rail-x" onClick={onClose} aria-label="Close" title="Close"><IconX /></button> : null}
         <div className="pp-eyebrow">Production arrangement</div>
         <div className="pp-rail-name">{pkg.business_name || String(draft.dealer_name || "") || "New arrangement"}</div>
         <div className="pp-rail-ref">{ref} · {done} of {PAGES.length} steps complete</div>

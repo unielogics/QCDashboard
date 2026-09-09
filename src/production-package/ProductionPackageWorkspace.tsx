@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from "react";
 import type { PackageClient } from "./client";
 import { provisional as computeProvisional } from "./compute";
 import { debounce, errorDetail, errorMessage, errorStatus, openSignedUrl } from "./format";
@@ -7,7 +7,6 @@ import { DESK_ONLY_KEYS, PAGES, PAGE_BY_PAGE_KEY, SPONSOR_KEYS, TERM_SHEET_KEYS,
 import { Meters } from "./Meters";
 import { PackageAside } from "./PackageAside";
 import { PackageRail, pageDone, type ViewAs } from "./PackageRail";
-import { IconLink, IconX } from "./icons";
 import { ShareDrawer } from "./ShareDrawer";
 import { TermSheetDrawer } from "./TermSheetDrawer";
 import { PageAgreement } from "./pages/PageAgreement";
@@ -33,10 +32,16 @@ export type WorkspaceProps = {
   onOpenFinal?: (finalPackageId: string) => void;
   /** Open the executed commitment (parent) by id. */
   onOpenOriginal?: (parentPackageId: string) => void;
-  /** The host owns the share drawer's open state; the workspace shows the button when the package may be shared. */
-  onShare?: () => void;
-  /** Leave the workspace. */
-  onClose?: () => void;
+  /** The proposal is being generated — the host's action buttons show it. */
+  onBusy?: (busy: boolean) => void;
+};
+
+/** What the host's action buttons call. The buttons live with the chrome
+ *  (beside the ✕ on the signed-in page, in the forwarded link's bar); the
+ *  workspace keeps the behaviour. */
+export type WorkspaceHandle = {
+  generatePresentation: () => Promise<void>;
+  goTo: (target: StepKey | PageKey, focus?: string) => void;
 };
 
 type Notice = { message: string; tone: Tone } | null;
@@ -60,7 +65,7 @@ function lockedOnFinal(key: string): boolean {
   return TERM_SHEET_KEYS.has(key) || SPONSOR_KEYS.has(key) || key === "sponsor_company_id";
 }
 
-export function ProductionPackageWorkspace({ client, initial, onPackage, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal, onShare, onClose }: WorkspaceProps) {
+export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceProps>(function ProductionPackageWorkspace({ client, initial, onPackage, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal, onBusy }, ref) {
   const [pkg, setPkg] = useState<ProductionPackage>(initial);
   const [draft, setDraft] = useState<Arrangement>(initial.arrangement);
   const [page, setPage] = useState<PageKey>(initialPage(initial));
@@ -248,6 +253,11 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
     }
   }, [client, adopt, notify, flushSave]);
 
+  useImperativeHandle(ref, () => ({ generatePresentation, goTo: go }), [generatePresentation, go]);
+  // The remount on key={pkg.id} runs the cleanup, so a host never keeps a stale "busy".
+  useEffect(() => { onBusy?.(busy === "presentation"); }, [busy, onBusy]);
+  useEffect(() => () => onBusy?.(false), [onBusy]);
+
   const attention = pkg.status === "draft" ? pkg.computed.attention : [];
   const stepIndex = Math.max(0, PAGES.findIndex((p) => p.key === page));
   const active = PAGE_BY_PAGE_KEY[page] ?? PAGES[0];
@@ -262,7 +272,6 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
   const term = pkg.computed.advance.term || 1;
   const openHere = attention.filter((a) => pageFor(a) === current).length;
   const thisDone = pageDone(current, pkg, draft, attention);
-  const sendLabel = pkg.status === "draft" ? (two ? "Send the final" : "Send stage one") : pkg.status === "out_for_signature" ? "Signatures" : pkg.status === "executed" ? "Executed" : "Voided";
 
   return (
     <div className={`pp-root${readOnly ? " locked" : ""}`} ref={rootRef}>
@@ -280,24 +289,12 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
       ) : null}
       <div className="pp-body">
         <PackageRail pkg={pkg} draft={draft} page={current} attention={attention} saving={saving} dirty={dirty} onPage={(p) => go(p)}
-          viewAs={canPreviewAsRep ? viewAs : undefined} onViewAs={canPreviewAsRep ? setViewAs : undefined} onClose={onClose} />
+          viewAs={canPreviewAsRep ? viewAs : undefined} onViewAs={canPreviewAsRep ? setViewAs : undefined} />
         <main className="pp-main">
           <header className="pp-step-h">
             <div className="pp-eyebrow">Step {stepIndex + 1} of {PAGES.length}{two ? " · final" : ""}</div>
             <h2 className="pp-title">{active.title}</h2>
             <p className="pp-sub">{active.sub}</p>
-            <div className="pp-acts">
-              {!two ? (
-                <PBtn onClick={generatePresentation} busy={busy === "presentation"} disabled={!pkg.capabilities.can_generate} title={pkg.presentation.stale ? "The last proposal is out of date" : undefined}>
-                  Dealer proposal{pkg.presentation.stale ? " ·" : ""}
-                </PBtn>
-              ) : null}
-              {onShare && pkg.capabilities.can_share && client.createShareLink ? <PBtn onClick={onShare}><IconLink />Share</PBtn> : null}
-              <PBtn variant="pri" onClick={() => go("agreement", "send")} disabled={pkg.status === "void"} title={pkg.status === "draft" && attention.length ? `${attention.length} open item${attention.length === 1 ? "" : "s"}` : undefined}>
-                {sendLabel}
-              </PBtn>
-              {onClose ? <PBtn onClick={onClose} className="pp-close" title="Close"><IconX />Close</PBtn> : null}
-            </div>
           </header>
           <Meters pkg={pkg} prov={prov} term={term} />
           {current === "today" ? <PageToday ctx={ctx} /> : null}
@@ -324,4 +321,4 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
       ) : null}
     </div>
   );
-}
+});

@@ -22,7 +22,8 @@ import { useProductionCall } from "@/lib/productionTrainingCall";
 import {
   createPublicShareClient, createShareClient, publicLinkCall, resolveShareForUser, unlockPublicLink, type PackageClient,
 } from "@/production-package/client";
-import { ProductionPackageWorkspace } from "@/production-package/ProductionPackageWorkspace";
+import { PackageActions } from "@/production-package/PackageActions";
+import { ProductionPackageWorkspace, type WorkspaceHandle } from "@/production-package/ProductionPackageWorkspace";
 import { errorDetail, errorMessage, errorStatus } from "@/production-package/format";
 import { PBtn } from "@/production-package/ui";
 import type { ProductionPackage } from "@/production-package/types";
@@ -49,6 +50,8 @@ export default function ForwardedProductionPackagePage() {
   const [phase, setPhase] = useState<Phase>({ kind: "checking" });
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
+  const ws = useRef<WorkspaceHandle | null>(null);
+  const [presBusy, setPresBusy] = useState(false);
 
   // The anonymous branch: a live session opens the package; no session asks for the PIN.
   const openAnonymously = useCallback(async () => {
@@ -163,10 +166,21 @@ export default function ForwardedProductionPackagePage() {
       </div>
     );
   }
+  const name = phase.pkg.business_name || String(phase.pkg.arrangement?.dealer_name || "").trim() || "Production arrangement";
   return (
     <div className={shell}>
-      <ProductionPackageWorkspace key={phase.pkg.id} client={phase.client} initial={phase.pkg} onPackage={(next) => setPhase({ kind: "open", client: phase.client, pkg: next })}
-        onClose={() => { clearSession(token); setPhase({ kind: "closed" }); }} />
+      <header className="pp-linkbar">
+        <div className="pp-linkbar-t">
+          <div className="pp-eyebrow">Production arrangement</div>
+          <div className="pp-linkbar-name">{name}</div>
+        </div>
+        <PackageActions pkg={phase.pkg} size="sm" busy={presBusy}
+          onPresentation={() => { void ws.current?.generatePresentation(); }}
+          onSend={() => ws.current?.goTo("agreement", "send")}
+          onClose={() => { clearSession(token); setPhase({ kind: "closed" }); }} />
+      </header>
+      <ProductionPackageWorkspace key={phase.pkg.id} ref={ws} client={phase.client} initial={phase.pkg} onBusy={setPresBusy}
+        onPackage={(next) => setPhase({ kind: "open", client: phase.client, pkg: next })} />
     </div>
   );
 }

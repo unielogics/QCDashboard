@@ -28,7 +28,7 @@ export function PackageAside({ pkg, prov, attention, onJump, term }: {
   return (
     <aside className="pp-rail-r">
       {pkg.status === "draft" && attention.length ? (
-        <AttentionList items={attention} onJump={onJump} stage={pkg.stage} mode={pkg.mode} />
+        <AttentionList items={attention} onJump={onJump} mode={pkg.mode} packageId={pkg.id} />
       ) : pkg.status === "draft" ? (
         <section className="pp-att clear" aria-label="All clear"><header className="pp-att-h"><IconCheck /><b>All clear</b><span className="pp-sub">Every field carries a value. This is what the parties will sign.</span></header></section>
       ) : null}
