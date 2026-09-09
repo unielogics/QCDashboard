@@ -5,7 +5,7 @@ import { useState } from "react";
 import { money, num, pct, signedMoney } from "../format";
 import { Step7Shortfall } from "../steps/Step7Shortfall";
 import { Step8Projection } from "../steps/Step8Projection";
-import { Callout, Disclosure, PBtn, PChip, PPanel, type StepCtx } from "../ui";
+import { Callout, Disclosure, Field, PBtn, PChip, PPanel, type StepCtx } from "../ui";
 
 const SHORTFALL_KEYS = new Set(["cadence", "cure_days", "corrective", "adj", "adj_value", "exclusions", "exclusion_1", "exclusion_2", "exclusion_3"]);
 
@@ -52,6 +52,10 @@ export function PageChanges({ ctx, onPresentation, busy }: { ctx: StepCtx; onPre
   }));
   const mgmt = prov.mgmt_m;
   const avgMarkup = prov.contracts ? prov.markup_m / prov.contracts : 0;
+  // Where the loan goes prints once an amount is entered — a list of labels with no figures says nothing to the dealer.
+  const proceeds = (Array.isArray(draft.proceeds) ? draft.proceeds : []).filter((l) => l && String(l.amount ?? "").trim() !== "");
+  const requested = Number(draft.requested) || 0;
+  const proceedsGap = requested - prov.proceeds_total;
 
   return (
     <>
@@ -93,6 +97,9 @@ export function PageChanges({ ctx, onPresentation, busy }: { ctx: StepCtx; onPre
       ) : null}
       <PPanel title="Dealer proposal" sub="What the dealer sees — today, with us, and the difference."
         right={<><PBtn size="sm" onClick={() => setShowProposal((v) => !v)}>{showProposal ? "Hide" : "Show"}</PBtn>{pkg.stage === 1 ? <PBtn size="sm" variant="pri" onClick={onPresentation} busy={busy} disabled={!pkg.capabilities.can_generate}>Generate the PDF</PBtn> : null}</>}>
+        <div className="pp-grid" style={{ marginBottom: 12 }}>
+          <Field ctx={ctx} k="proceeds" span={3} />
+        </div>
         {showProposal ? (
           <div className="pp-doc">
             <div className="pp-eyebrow">Qualified Commercial · Dealer proposal · {pkg.business_name}</div>
@@ -108,6 +115,16 @@ export function PageChanges({ ctx, onPresentation, busy }: { ctx: StepCtx; onPre
               <tbody>{proposalRows.map((r) => <tr key={r.label}><td>{r.label}</td><td className="n">{money(r.today)}</td><td className="n">{money(r.prog)}</td><td className={`n ${r.sav > 0 ? "c-ok" : r.sav < 0 ? "c-bad" : ""}`}>{r.sav > 0 ? `−${money(r.sav)}` : r.sav < 0 ? `+${money(-r.sav)}` : "—"}</td><td className={`n ${r.savM > 0 ? "c-ok" : r.savM < 0 ? "c-bad" : ""}`}>{r.savM > 0 ? `−${money(r.savM)}` : r.savM < 0 ? `+${money(-r.savM)}` : "—"}</td></tr>)}</tbody>
               <tfoot><tr><th>On today&apos;s {num(prov.cur_contracts)} contracts</th><th className="n">{money(prov.cur_gross)}</th><th className="n">{money(prov.cost_same)}</th><th /><th className={`n ${prov.savings_m >= 0 ? "c-ok" : "c-bad"}`}>{prov.savings_m > 0 ? `−${money(prov.savings_m)}` : prov.savings_m < 0 ? `+${money(-prov.savings_m)}` : "—"}</th></tr></tfoot>
             </table>
+            {proceeds.length ? (
+              <>
+                <h4 className="pp-sect" style={{ marginTop: 12 }}>Where the loan goes</h4>
+                <table className="pp-tbl">
+                  <thead><tr><th>Purpose</th><th className="n">Amount</th><th>Note</th></tr></thead>
+                  <tbody>{proceeds.map((l, i) => <tr key={i}><td>{l.label || "—"}</td><td className="n">{money(Number(l.amount) || 0)}</td><td className="muted">{l.note}</td></tr>)}</tbody>
+                  <tfoot><tr><th>Total</th><th className="n">{money(prov.proceeds_total)}</th><th className="muted">{requested ? `of a ${money(requested)} request` : ""}{Math.abs(proceedsGap) > 1 ? (proceedsGap > 0 ? ` · ${money(proceedsGap)} of the request unallocated` : ` · ${money(-proceedsGap)} over the request`) : ""}</th></tr></tfoot>
+                </table>
+              </>
+            ) : null}
             <Disclosure title="Repayment and earnout timeline" sub="How repayment, commissions and reserves build over the life of the deal.">
               <Step8Projection ctx={ctx} />
             </Disclosure>

@@ -40,6 +40,9 @@ export type ProductRow = {
 // §9.2 ownership schedule row (OWNER_FIELDS on the backend).
 export type OwnerRow = { name: string; pct: Numberish; title: string; email: string; phone: string; auth: string };
 
+// Where the loan goes: a line of the requested amount's breakdown (PROCEEDS_COLUMNS on the backend).
+export type ProceedsLine = { label: string; amount: Numberish; note: string };
+
 // Schedule 1 use of funds (USE_OF_FUNDS_KEYS + other_label on the backend).
 export type UseOfFundsKey = "inventory" | "debt_payoff" | "working_capital" | "equipment" | "real_estate" | "program_implementation" | "other";
 export type UseOfFunds = Record<UseOfFundsKey, Numberish> & { other_label: string };
@@ -51,6 +54,7 @@ export type Arrangement = {
   evidence: string[];
   use_of_funds: UseOfFunds;
   owners: OwnerRow[];
+  proceeds: ProceedsLine[];
 };
 
 export type Provenance = Record<string, { source: string; label: string; confirmed: boolean }>;
@@ -109,6 +113,9 @@ export type Computed = {
     bank_cost: number; orig_cost: number; prof_fees: number; mgmt_total: number; loss_cost: number; total_cost: number;
     total_repay: number;
     cost_lines: Array<{ key: string; label: string; amount: number; when: string; share_pct: number | null }>;
+    // Where the loan goes: the breakdown of the request, its total, and what is left of the request.
+    proceeds: Array<{ label: string; amount: number; note: string; entered: boolean }>;
+    proceeds_total: number; proceeds_gap: number;
   };
   thresholds: {
     rows: ThresholdRow[]; guideline: Record<string, unknown>; remittance_req: number; coverage_pct: number;

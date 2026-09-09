@@ -7,7 +7,7 @@ import {
 } from "./options";
 import type { PageKey, StepKey } from "./types";
 
-export type FieldKind = "text" | "number" | "date" | "email" | "phone" | "select" | "multiselect" | "textarea" | "rows" | "money_group";
+export type FieldKind = "text" | "number" | "date" | "email" | "phone" | "select" | "multiselect" | "textarea" | "rows" | "money_group" | "lines";
 export type RequiredFor = "presentation" | "stage_one" | "stage_two" | "never";
 // Plain strings print as they are stored; pairs are [stored value, label as printed].
 export type FieldOptions = readonly string[] | ReadonlyArray<readonly [string, string]>;
@@ -27,6 +27,9 @@ export type FieldDef = {
   always?: string;
   options?: FieldOptions;
   unit?: "$" | "%" | "days" | "months";
+  // Tabular kinds: the most rows kept, and the labels a blank arrangement starts with.
+  maxRows?: number;
+  seed?: readonly string[];
 };
 
 // Exhaustive over the closed union: the backend cannot add a step without
@@ -84,6 +87,8 @@ export const FIELDS: FieldDef[] = [
   f("requested", "advance", "Requested amount", "number", "presentation", { nonZero: true, always: "What the dealer is asking for", unit: "$" }),
   f("min_activation", "advance", "Minimum activation amount", "number", "presentation", { nonZero: true, always: "No partial advance below this activates", unit: "$" }),
   f("facility_type", "advance", "Requested facility type", "select", "presentation", { options: FACILITY_TYPES }),
+  // Permission from the step (the desk's), placement from the page (beside the proposal it prints on).
+  f("proceeds", "advance", "Where the loan goes", "lines", "never", { page: "changes", hint: "What the requested amount is for. It prints on the dealer proposal, not on the agreement.", maxRows: 8, seed: ["New working capital", "Previous contract repayment"] }),
   f("term", "advance", "Term", "number", "presentation", { nonZero: true, unit: "months" }),
   f("dealer_cof", "advance", "Dealer cost of funds", "number", "presentation", { nonZero: true, always: "Negotiated with the dealer on their credit profile", unit: "%" }),
   // Never blank: the tier for the request supplies it, and the desk may only shorten it.
@@ -243,6 +248,10 @@ export function isBlank(def: FieldDef, value: unknown): boolean {
   if (def.kind === "rows") {
     if (!Array.isArray(value)) return true;
     return !value.some((row) => row && typeof row === "object" && Object.values(row as Record<string, unknown>).some((v) => v !== null && v !== undefined && String(v).trim() !== ""));
+  }
+  if (def.kind === "lines") {
+    if (!Array.isArray(value)) return true;
+    return !value.some((row) => row && typeof row === "object" && Number((row as { amount?: unknown }).amount) !== 0 && !Number.isNaN(Number((row as { amount?: unknown }).amount)) && String((row as { amount?: unknown }).amount ?? "").trim() !== "");
   }
   if (def.kind === "money_group") {
     if (!value || typeof value !== "object") return true;

@@ -25,6 +25,8 @@ export type Provisional = {
   lot_value: number; months_of_inventory: number | null; sell_through_pct: number | null;
   supported: number; advance: number; implied_rate: number; cost_rate: number; spread: number; clears: boolean; total_cost: number;
   funded_pct: number; out_of_pocket: number; loan_free: boolean; remittance_req: number; coverage_pct: number;
+  // Where the loan goes, so the footer moves per keystroke ahead of the save.
+  proceeds_total: number; proceeds_gap: number;
 };
 
 function pv(payment: number, annualPct: number, n: number): number {
@@ -97,7 +99,9 @@ export function provisional(a: Partial<Arrangement>): Provisional {
   const remittanceOverride = thr.remittance !== undefined && thr.remittance !== "" ? toNumber(thr.remittance) : round(ds * 1.25);
   const remittanceReq = Math.max(remittanceOverride, ds * 1.25);
   const lotUnits = toNumber(a.lot_units);
+  const proceedsTotal = (Array.isArray(a.proceeds) ? a.proceeds : []).reduce((acc, line) => acc + toNumber(line?.amount), 0);
   return {
+    proceeds_total: proceedsTotal, proceeds_gap: requested - proceedsTotal,
     units, rows, contracts: sum("contracts"), cur_contracts: sum("cur_contracts"), gross: sum("gross"), cur_gross: sum("cur_gross"),
     d_gross: sum("d_gross"), d_gross_term: sum("d_gross") * term, repay_m: repayM, comm_m: sum("comm_m"), admin_m: sum("admin_m"), reserve_m: sum("reserve_m"),
     cost_same: sum("cost_same"), savings_m: sum("savings_m"), stack_m: sum("stack_m"), cushion_m: sum("cushion_m"), room_m: sum("room_m"),

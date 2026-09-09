@@ -4,7 +4,7 @@ import { DESK_ONLY_KEYS, FIELD_BY_KEY, REQUIRED_HINT, SPONSOR_KEYS, TERM_SHEET_K
 import { USE_OF_FUNDS_KEYS, US_STATES } from "./options";
 import { dateLabel, money, toNumber } from "./format";
 import type {
-  Arrangement, Computed, OwnerRow, PackageMode, ProductKey, ProductionPackage, Provenance, SignatureOnFile, ThresholdKey, UseOfFunds,
+  Arrangement, Computed, OwnerRow, PackageMode, ProceedsLine, ProductKey, ProductionPackage, Provenance, SignatureOnFile, ThresholdKey, UseOfFunds,
 } from "./types";
 import type { Provisional } from "./compute";
 import { IconCheck, IconLock } from "./icons";
@@ -251,6 +251,13 @@ const OWNER_COLUMNS: RowsColumn<OwnerRow>[] = [
   { key: "auth", label: "Credit authorization", kind: "select", options: ["Yes", "No"], width: 110 },
 ];
 
+const EMPTY_LINE: ProceedsLine = { label: "", amount: "", note: "" };
+const PROCEEDS_COLUMNS: RowsColumn<ProceedsLine>[] = [
+  { key: "label", label: "Purpose", kind: "text", width: 200, placeholder: "e.g. New working capital" },
+  { key: "amount", label: "Amount ($)", kind: "number", width: 120 },
+  { key: "note", label: "Note", kind: "text", width: 200, placeholder: "Optional" },
+];
+
 export function emptyUseOfFunds(): UseOfFunds {
   return { inventory: "", debt_payoff: "", working_capital: "", equipment: "", real_estate: "", program_implementation: "", other: "", other_label: "" };
 }
@@ -286,6 +293,13 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
   let control: ReactNode;
   if (fieldKind === "rows") {
     control = <RowsEditor<OwnerRow> id={k} rows={Array.isArray(value) ? (value as OwnerRow[]) : []} columns={OWNER_COLUMNS} empty={() => ({ ...EMPTY_OWNER })} max={5} onChange={(rows) => ctx.set(k, rows)} disabled={readOnly} addLabel="Add an owner" />;
+  } else if (fieldKind === "lines") {
+    const lines = Array.isArray(value) ? (value as ProceedsLine[]) : [];
+    const requested = toNumber(ctx.draft.requested) || null;
+    control = (
+      <RowsEditor<ProceedsLine> id={k} rows={lines} columns={PROCEEDS_COLUMNS} empty={() => ({ ...EMPTY_LINE })} max={def.maxRows ?? 8} onChange={(rows) => ctx.set(k, rows)} disabled={readOnly} addLabel="Add a line"
+        footer={<AllocatedTotal total={ctx.prov.proceeds_total} against={requested} againstLabel="requested" />} />
+    );
   } else if (fieldKind === "money_group") {
     control = <MoneySplit id={k} value={(value && typeof value === "object" ? value : emptyUseOfFunds()) as UseOfFunds} onChange={(next) => ctx.set(k, next)} against={toNumber(ctx.draft.funded_amount) || null} againstLabel="funded amount" disabled={readOnly} />;
   } else if (fieldKind === "multiselect") {
@@ -423,6 +437,23 @@ export function RowsEditor<T extends Record<string, unknown>>({ id, rows, column
   );
 }
 
+// ---- running totals ----
+
+/** The running total against the figure it must add up to. Shared by the use-of-funds split and the where-the-loan-goes lines. */
+export function AllocatedTotal({ total, against, againstLabel = "approved amount", className = "pp-split-total" }: {
+  total: number; against: number | null; againstLabel?: string; className?: string;
+}) {
+  const diff = against === null ? null : total - against;
+  const tone: Tone = against === null || total === 0 ? "mut" : Math.abs(diff ?? 0) <= 1 ? "ok" : "bad";
+  return (
+    <div className={`${className} t-${tone}`}>
+      <span className="pp-lbl">Allocated</span>
+      <b>{money(total)}</b>
+      {against !== null ? <span className="pp-sub">against {money(against)} {againstLabel}{diff !== null && Math.abs(diff) > 1 ? ` · ${diff > 0 ? "over" : "short"} by ${money(Math.abs(diff))}` : diff !== null && total > 0 ? " · adds up" : ""}</span> : null}
+    </div>
+  );
+}
+
 // ---- use of funds (Schedule 1) ----
 
 /** Seven amounts plus an "other" label, with the running total against the figure they must add up to. */
@@ -430,8 +461,6 @@ export function MoneySplit({ id, value, onChange, against, againstLabel = "appro
   id: string; value: UseOfFunds; onChange: (next: UseOfFunds) => void; against: number | null; againstLabel?: string; disabled?: boolean;
 }) {
   const total = USE_OF_FUNDS_KEYS.reduce((acc, [k]) => acc + toNumber(value[k]), 0);
-  const diff = against === null ? null : total - against;
-  const tone: Tone = against === null || total === 0 ? "mut" : Math.abs(diff ?? 0) <= 1 ? "ok" : "bad";
   const setAmount = (k: keyof UseOfFunds, raw: string) => {
     const clean = raw.replace(/[^0-9.]/g, "");
     onChange({ ...value, [k]: clean === "" ? "" : Number(clean) });
@@ -447,11 +476,7 @@ export function MoneySplit({ id, value, onChange, against, againstLabel = "appro
           </span>
         </label>
       ))}
-      <div className={`pp-split-total t-${tone}`}>
-        <span className="pp-lbl">Allocated</span>
-        <b>{money(total)}</b>
-        {against !== null ? <span className="pp-sub">against {money(against)} {againstLabel}{diff !== null && Math.abs(diff) > 1 ? ` · ${diff > 0 ? "over" : "short"} by ${money(Math.abs(diff))}` : diff !== null && total > 0 ? " · adds up" : ""}</span> : null}
-      </div>
+      <AllocatedTotal total={total} against={against} againstLabel={againstLabel} />
     </div>
   );
 }
