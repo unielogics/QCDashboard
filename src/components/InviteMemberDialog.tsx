@@ -6,7 +6,7 @@ import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { RightPanel } from "@/components/design-system/RightPanel";
-import { useInviteUser, useSignedReferralCompanies } from "@/hooks/useApi";
+import { useInviteUser, useReferralCompanies } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { OperatorAccountAccessType } from "@/lib/types";
 
@@ -27,7 +27,8 @@ const ROLE_OPTIONS: { value: Role; label: string; sub: string }[] = [
 
 export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const invite = useInviteUser();
-  const { data: signedCompanies = [] } = useSignedReferralCompanies();
+  const { data: companies = [] } = useReferralCompanies();
+  const house = companies.find((c) => c.kind === "house") ?? null;
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [role, setRole] = useState<Role>(Role.BROKER);
@@ -46,7 +47,16 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
     }
   }, [open]);
 
+  // Everyone is linked to a business relationship profile: the house for
+  // staff, their own company for a dealer partner. The house is preselected
+  // for staff roles; a partner picks (or the desk types) their company.
   const isDealerPartner = role === Role.DEALER_PARTNER;
+  const isStaff = role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC || role === Role.FIELD_REP;
+  const chooseRole = (next: Role) => {
+    setRole(next);
+    const staff = next === Role.SUPER_ADMIN || next === Role.LOAN_EXEC || next === Role.FIELD_REP;
+    setCompanyId(staff && house ? house.id : next === Role.DEALER_PARTNER && companyId === house?.id ? "" : companyId);
+  };
   const valid =
     /\S+@\S+\.\S+/.test(email) &&
     name.trim().length > 0 &&
@@ -129,7 +139,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
             return (
               <button
                 key={opt.value}
-                onClick={() => setRole(opt.value)}
+                onClick={() => chooseRole(opt.value)}
                 style={{
                   all: "unset",
                   cursor: "pointer",
@@ -186,17 +196,17 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
         <div style={{ fontSize: 11, color: V.ink3, marginTop: 6 }}>The primary role controls permissions; access types add approved entry points.</div>
       </div>
 
-      {isDealerPartner ? (
-        <Field label="Company with signed agreement">
-          <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} style={inputStyle()}>
-            <option value="">Select a signed company...</option>
-            {signedCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-          </select>
-          <div style={{ fontSize: 11, color: V.ink3, marginTop: 6, lineHeight: 1.4 }}>
-            Only companies with an executed Referral Protection Agreement are available.
-          </div>
-        </Field>
-      ) : null}
+      <Field label="Business relationship profile">
+        <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} style={inputStyle()}>
+          <option value="">{isDealerPartner ? "Select their company…" : isStaff ? "The house" : "None"}</option>
+          {companies
+            .filter((company) => !(isDealerPartner && company.kind === "house"))
+            .map((company) => <option key={company.id} value={company.id}>{company.name} · {company.kind === "house" ? "House" : company.signed ? "Signed" : "Unsigned"}</option>)}
+        </select>
+        <div style={{ fontSize: 11, color: V.ink3, marginTop: 6, lineHeight: 1.4 }}>
+          Everyone is linked to a profile: the house for staff, their company for a partner. The Production Package&apos;s sponsor defaults from it. A partner company must sign the Referral Protection Agreement before its people can use the platform or be a sponsor.
+        </div>
+      </Field>
 
       {err && <Pill bg={V.dangerBg} color={V.danger}>{err}</Pill>}
 

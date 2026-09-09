@@ -61,6 +61,8 @@ export type Provenance = Record<string, { source: string; label: string; confirm
 
 export type AttentionItem = {
   step: StepKey; key: string; title: string; detail: string;
+  /** Something the row can do besides jump — today only "copy the sponsor signing link". Decorated on the read. */
+  action?: { kind: "copy_signing_link"; label: string };
   /** Who can clear it. Several desk-only fields have no default and no prefill
    *  and still block the send, so an agent has to see they are waiting rather
    *  than failing. Absent on packages saved before the tag existed. */
@@ -157,11 +159,22 @@ export type SponsorAgreement = {
 };
 
 export type SponsorOption = {
-  company_id: string; name: string; entity_type: string | null; state_of_formation: string | null;
+  company_id: string; name: string;
+  /** "referral_partner" or "house". The house is never a sponsor. */
+  kind?: string;
+  /** Kept in a rep's narrowed copy, so "agreement on file" shows without the agreement's details. */
+  has_agreement?: boolean;
+  entity_type: string | null; state_of_formation: string | null;
   principal_address: string | null; notice_email: string | null; notice_attention: string | null;
   notice_address: string | null; platform_name: string | null; signatory_name: string | null;
   signatory_title: string | null; phone: string | null;
   agreement: SponsorAgreement | null; editable: boolean;
+};
+
+/** What the sponsor would default to from the agent on the file, and whether it did. Operators only. */
+export type SponsorDefault = {
+  company_id: string; name: string; signed: boolean; person_id: string; person_name: string;
+  via: "rm" | "agent" | "creator"; applied: boolean;
 };
 
 export type ShareLink = {
@@ -312,7 +325,7 @@ export type ProductionPackage = {
   status: PackageStatus; version: number; business_name: string; client_email: string | null; client_phone: string | null;
   arrangement: Arrangement; prefill_provenance: Provenance; computed: Computed;
   attention: AttentionItem[]; attention_presentation: AttentionItem[];
-  sponsor: SponsorOption | null; presentation: Presentation; active_revision: Revision | null; revisions: Revision[];
+  sponsor: SponsorOption | null; sponsor_default?: SponsorDefault | null; presentation: Presentation; active_revision: Revision | null; revisions: Revision[];
   share_links: ShareLink[]; delivery_history: DeliveryEntry[]; capabilities: Capabilities; sms_consent: SmsConsent;
   sent_at: string | null; executed_at: string | null; voided_at: string | null; void_reason: string | null;
   executed_url: string | null; updated_at: string; updated_by_name: string | null; sponsor_signing_url: string; mode: PackageMode;
@@ -331,7 +344,11 @@ export type HistoryEvent = {
   source: string; metadata: Record<string, unknown>;
 };
 
-export type TeamMember = { id: string; name: string; email: string; phone: string | null; title: string | null; role: string };
+export type TeamMember = {
+  id: string; name: string; email: string; phone: string | null; title: string | null; role: string;
+  // The linked business relationship profile: the employer line and the sponsor default follow it.
+  company_id?: string | null; company_name?: string | null; company_kind?: string | null; company_signed?: boolean;
+};
 
 export type ApiInit = { method?: string; body?: unknown; headers?: Record<string, string> };
 export type ApiCall = <T>(path: string, init?: ApiInit) => Promise<T>;

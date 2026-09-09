@@ -19,8 +19,10 @@ function writeOpen(packageId: string, open: boolean) {
   try { window.sessionStorage.setItem(memoryKey(packageId), open ? "open" : "closed"); } catch { /* private window */ }
 }
 
-export function AttentionList({ items, onJump, mode, packageId, defaultOpen = false }: {
+export function AttentionList({ items, onJump, onAction, mode, packageId, defaultOpen = false }: {
   items: AttentionItem[]; onJump: (item: AttentionItem) => void;
+  /** A row's own action, when it has one (copy the sponsor signing link). */
+  onAction?: (item: AttentionItem) => void;
   /** An agent cannot clear a desk-owned item; splitting them out is what stops
    *  the list reading as a wall of things they are failing to do. */
   mode?: string;
@@ -54,9 +56,12 @@ export function AttentionList({ items, onJump, mode, packageId, defaultOpen = fa
             <div key={g.key} className="pp-att-g">
               <div className="pp-att-step">{g.label}</div>
               {g.items.map((item) => (
-                <button key={`${item.step}:${item.key}:${item.title}`} type="button" className="pp-att-row" onClick={() => onJump(item)}>
-                  <span><b>{item.title}</b><small>{item.detail}</small></span><IconChevron />
-                </button>
+                <div key={`${item.step}:${item.key}:${item.title}`} className="pp-att-item">
+                  <button type="button" className="pp-att-row" onClick={() => onJump(item)}>
+                    <span><b>{item.title}</b><small>{item.detail}</small></span><IconChevron />
+                  </button>
+                  {item.action && onAction ? <button type="button" className="pp-btn v-link s-sm pp-att-act" onClick={() => onAction(item)}>{item.action.label}</button> : null}
+                </div>
               ))}
             </div>
           ))}

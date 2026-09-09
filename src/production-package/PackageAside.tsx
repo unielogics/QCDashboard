@@ -11,8 +11,8 @@ function Row({ label, value, tone }: { label: string; value: string; tone?: "ok"
   return <div className="pp-kv row"><span className="pp-lbl">{label}</span><span className={`pp-val${tone ? ` c-${tone}` : ""}`}>{value}</span></div>;
 }
 
-export function PackageAside({ pkg, prov, attention, onJump, term }: {
-  pkg: ProductionPackage; prov: Provisional; attention: AttentionItem[]; onJump: (item: AttentionItem) => void; term: number;
+export function PackageAside({ pkg, prov, attention, onJump, onAction, term }: {
+  pkg: ProductionPackage; prov: Provisional; attention: AttentionItem[]; onJump: (item: AttentionItem) => void; onAction?: (item: AttentionItem) => void; term: number;
 }) {
   const b = pkg.computed.buildout;
   const build = b.build !== false;
@@ -28,7 +28,7 @@ export function PackageAside({ pkg, prov, attention, onJump, term }: {
   return (
     <aside className="pp-rail-r">
       {pkg.status === "draft" && attention.length ? (
-        <AttentionList items={attention} onJump={onJump} mode={pkg.mode} packageId={pkg.id} />
+        <AttentionList items={attention} onJump={onJump} onAction={onAction} mode={pkg.mode} packageId={pkg.id} />
       ) : pkg.status === "draft" ? (
         <section className="pp-att clear" aria-label="All clear"><header className="pp-att-h"><IconCheck /><b>All clear</b><span className="pp-sub">Every field carries a value. This is what the parties will sign.</span></header></section>
       ) : null}

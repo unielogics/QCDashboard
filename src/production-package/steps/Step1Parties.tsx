@@ -2,8 +2,8 @@ import { useState } from "react";
 import type { PackageClient, SponsorCompanyFields } from "../client";
 import { dateLabel, errorDetail, errorMessage, openSignedUrl, toNumber } from "../format";
 import { IconLink } from "../icons";
-import { FIELD_BY_KEY } from "../schema";
-import { Callout, Field, PBtn, PChip, PPanel, SigOnFileChip, type StepCtx } from "../ui";
+import { FIELD_BY_KEY, isBlank } from "../schema";
+import { Callout, Field, PBtn, PChip, PPanel, ProvChip, SigOnFileChip, type StepCtx } from "../ui";
 import type { OwnerRow, ProductionPackage, SponsorOption } from "../types";
 
 export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCtx; sponsors: SponsorOption[]; client?: PackageClient; onPackage?: (p: ProductionPackage) => void }) {
@@ -16,6 +16,26 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
   const agreement = sponsor?.agreement ?? null;
   const [query, setQuery] = useState("");
   const filtered = sponsors.filter((s) => !query.trim() || s.name.toLowerCase().includes(query.trim().toLowerCase()));
+  const sponsorDefault = pkg.sponsor_default ?? null;
+  const copySigningLink = () => { navigator.clipboard?.writeText(pkg.sponsor_signing_url); ctx.notify("Signing link copied — the package can be sent once the sponsor has signed.", "ok"); };
+  // The company's platform was never backfilled for companies that signed
+  // before it existed, so a pick can land with a blank required field. Ask
+  // once, save it on the company, and every package that names it carries it.
+  const [platformDraft, setPlatformDraft] = useState("");
+  const [platformBusy, setPlatformBusy] = useState(false);
+  const platformMissing = Boolean(operator && sponsor && !two && !readOnly && !sponsor.platform_name && isBlank(FIELD_BY_KEY.sponsor_platform, draft.sponsor_platform) && client?.updateSponsor && ctx.pickSponsor);
+  const savePlatform = async () => {
+    if (!client?.updateSponsor || !sponsor || !ctx.pickSponsor || platformDraft.trim().length < 2) return;
+    setPlatformBusy(true);
+    try {
+      await client.updateSponsor(sponsor.company_id, { platform_name: platformDraft.trim() });
+      await ctx.pickSponsor(sponsor.company_id);
+      setPlatformDraft("");
+      ctx.notify(`${sponsor.name}'s platform is saved on the company.`, "ok");
+    } catch (err) {
+      ctx.notify(errorMessage(err, "The platform could not be saved."), "bad");
+    } finally { setPlatformBusy(false); }
+  };
   const sof = pkg.signatures_on_file ?? {};
   const [authAsk, setAuthAsk] = useState(false);
   const [authNote, setAuthNote] = useState("");
@@ -59,8 +79,8 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
       await client.updateSponsor(sponsor.company_id, company);
       // Re-choosing the same sponsor is what copies the corrected values onto
       // this package; the company is the record, the package holds a copy.
-      await client.patch(pkg.version, { sponsor_company_id: sponsor.company_id });
-      if (onPackage) onPackage(await client.load());
+      if (ctx.pickSponsor) await ctx.pickSponsor(sponsor.company_id);
+      else if (onPackage) onPackage(await client.load());
       setCompany(null);
       ctx.notify(`${sponsor.name} updated. Every new package will use these details.`, "ok");
     } catch (err) {
@@ -159,17 +179,23 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
             {agreement.certificate_url ? <PBtn size="sm" onClick={() => openSignedUrl(agreement.certificate_url)}>Certificate</PBtn> : null}
             {agreement.admin_url ? <a className="pp-btn v-link s-sm" href={agreement.admin_url} target="_blank" rel="noreferrer"><IconLink />Agreement record</a> : null}
           </span>
-        ) : sponsor ? <PChip tone="bad">No signed agreement</PChip> : null}
+        ) : sponsor && operator ? <PChip tone="bad">No signed agreement</PChip>
+          : sponsor && sponsor.has_agreement ? <PChip tone="ok">Agreement on file</PChip> : null}
       >
         {!operator ? (
-          <Callout tone="mut">The sponsor is chosen by the desk{sponsor ? `: ${sponsor.name}` : ""}.{!sponsor ? " Ask the desk to choose it before the package is sent." : ""}</Callout>
+          // A rep reads the sponsor; the blank-sponsor row sits under "Waiting on the desk" in the attention list.
+          <div className="pp-kv"><span className="pp-lbl">Sponsor</span><span className="pp-val">{sponsor ? sponsor.name : <span className="pp-sub">— chosen by the desk</span>}</span></div>
         ) : (
           <div className="pp-field" id="pp-field-sponsor_name">
             <label className="pp-lbl" htmlFor="pp-in-sponsor_name">Sponsor company<span className="pp-req">*</span></label>
-            {canPick ? (
+            {canPick && ctx.sponsorsError ? (
+              <Callout tone="bad">The list of signed companies could not be loaded. <PBtn size="sm" onClick={ctx.reloadSponsors}>Try again</PBtn></Callout>
+            ) : canPick && !sponsors.length && !sponsor ? (
+              <Callout tone="mut">No company has signed the Strategic Referral agreement yet. <button type="button" className="pp-btn v-link s-sm" onClick={copySigningLink}>Copy signing link</button></Callout>
+            ) : canPick ? (
               <div className="pp-sponsor-pick">
                 <input id="pp-in-sponsor_name" className="pp-input" placeholder="Search signed companies…" value={query} onChange={(e) => setQuery(e.target.value)} autoComplete="off" />
-                <select className="pp-input" value={sponsor?.company_id ?? ""} onChange={(e) => ctx.set("sponsor_company_id", e.target.value || null)}>
+                <select className="pp-input" value={sponsor?.company_id ?? ""} onChange={(e) => { void ctx.pickSponsor?.(e.target.value || null); }}>
                   <option value="">Choose a sponsor…</option>
                   {filtered.map((s) => <option key={s.company_id} value={s.company_id}>{s.name}{s.agreement ? ` · ${s.agreement.contract_number}` : ""}</option>)}
                 </select>
@@ -177,14 +203,28 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
             ) : (
               <div className="pp-static">{sponsor?.name || String(draft.sponsor_name || "") || "—"}</div>
             )}
+            {sponsor ? <div className="pp-row" style={{ marginTop: 4 }}><ProvChip provenance={pkg.prefill_provenance.sponsor_name} onConfirm={() => ctx.confirm("sponsor_name")} readOnly={!canPick} /></div> : null}
+            {sponsorDefault && !sponsorDefault.applied && sponsorDefault.signed && sponsor ? (
+              <div className="pp-hint">{sponsorDefault.person_name} is linked to {sponsorDefault.name}.</div>
+            ) : null}
             {!sponsor && !readOnly && !two ? (
               <div className="pp-hint">
-                Not on the list? Send the sponsor the agreement:&nbsp;
-                <button type="button" className="pp-btn v-link s-sm" onClick={() => { navigator.clipboard?.writeText(pkg.sponsor_signing_url); ctx.notify("Signing link copied — the package can be sent once the sponsor has signed.", "ok"); }}>Copy signing link</button>
+                {sponsorDefault && !sponsorDefault.signed
+                  ? <>{sponsorDefault.person_name} is linked to <b>{sponsorDefault.name}</b>, which has not signed the agreement yet. Send it to them:&nbsp;</>
+                  : <>Not on the list? Send the sponsor the agreement:&nbsp;</>}
+                <button type="button" className="pp-btn v-link s-sm" onClick={copySigningLink}>Copy signing link</button>
               </div>
             ) : null}
           </div>
         )}
+        {platformMissing && sponsor ? (
+          <div className="pp-inline">
+            <b>{sponsor.name} has no administration platform recorded.</b>
+            <p className="pp-sub">Enter it once — it is saved on the company, and every package that names {sponsor.name} carries it. For this package only, use &ldquo;Edit this package&apos;s copy&rdquo; below.</p>
+            <input className="pp-input" placeholder="The administration platform on Schedule A" value={platformDraft} onChange={(e) => setPlatformDraft(e.target.value)} />
+            <div className="pp-row"><PBtn variant="pri" size="sm" onClick={savePlatform} busy={platformBusy} disabled={platformDraft.trim().length < 2}>Save to the company</PBtn></div>
+          </div>
+        ) : null}
         {operator && sponsor && sof.sponsor && !sof.sponsor.present ? (
           <div className="pp-inline">
             <b>No sponsor signature on file.</b>

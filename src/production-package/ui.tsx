@@ -30,8 +30,12 @@ export type StepCtx = {
   // Accepts the backend's step (from an attention row or a 422) or a page; either lands on a page.
   go: (target: import("./types").StepKey | import("./types").PageKey, focusKey?: string) => void;
   notify: (message: string, tone?: Tone) => void;
-  teamOptions: Array<{ id: string; name: string; email: string; phone?: string | null; title?: string | null }>;
+  teamOptions: Array<{ id: string; name: string; email: string; phone?: string | null; title?: string | null; company_name?: string | null }>;
   teamError?: boolean;
+  // The sponsor is a command, not draft state: one PATCH, the copy comes back, the draft keeps what was typed elsewhere.
+  pickSponsor?: (companyId: string | null) => Promise<void>;
+  sponsorsError?: boolean;
+  reloadSponsors?: () => void;
   // Stage-two hand-offs to the host app; the workspace provides defaults where it can.
   onOpenTermSheet?: () => void;
   onOpenFinal?: (finalPackageId: string) => void;
@@ -140,9 +144,11 @@ export function ComboSelect({ value, onChange, options, placeholder, disabled, i
 export function ProvChip({ provenance, onConfirm, readOnly }: { provenance?: Provenance[string]; onConfirm?: () => void; readOnly?: boolean }) {
   if (!provenance) return null;
   if (provenance.confirmed) return <PChip tone="ok" title={`Confirmed · ${provenance.label}`}><IconCheck />{provenance.source === "user" ? "Edited" : provenance.label}</PChip>;
+  // A default from the agent's linked profile names the person; keep their name's case.
+  const defaulted = provenance.source === "sponsor_default";
   return (
     <span className="pp-prov">
-      <PChip tone="acc" title={`Prefilled from ${provenance.label}`}>From {provenance.label.toLowerCase()}</PChip>
+      <PChip tone="acc" title={defaulted ? provenance.label : `Prefilled from ${provenance.label}`}>{defaulted ? `Defaulted · ${provenance.label}` : `From ${provenance.label.toLowerCase()}`}</PChip>
       {!readOnly && onConfirm ? <button type="button" className="pp-btn v-link s-sm" onClick={onConfirm}>Confirm</button> : null}
     </span>
   );
@@ -153,12 +159,13 @@ export function LockedChip({ children = "From the term sheet", title = "Maintain
   return <span className="pp-locked-chip" title={title}><IconLock />{children}</span>;
 }
 
-export type LockReason = "term_sheet" | "stage_one" | "desk";
+export type LockReason = "term_sheet" | "stage_one" | "desk" | "sponsor";
 
 export const LOCK_COPY: Record<LockReason, { label: string; title: string }> = {
   term_sheet: { label: "From the term sheet", title: "Maintained by the term sheet — record a new term sheet to change it" },
   stage_one: { label: "Carried from stage one", title: "Carried from the executed commitment — the sponsor is not changed on the final" },
   desk: { label: "Set by the desk", title: "The advance and the programme cost are maintained by an admin or underwriter" },
+  sponsor: { label: "Chosen by the desk", title: "The sponsor and its details are chosen by an admin or underwriter and copied from the signed agreement" },
 };
 
 /** A collapsed section that stays mounted, so an attention deep-link can still
@@ -215,7 +222,9 @@ export function FieldShell({ id, label, required, blank, hint, always, provenanc
   id: string; label: ReactNode; required?: boolean; blank?: boolean; hint?: string; always?: string; provenance?: Provenance[string];
   onConfirm?: () => void; readOnly?: boolean; children: ReactNode; span?: 1 | 2 | 3; locked?: boolean; lockedCopy?: { label: string; title: string };
 }) {
-  const bad = Boolean(required && blank);
+  // A locked blank is someone else's to fill: the lock chip says whose, and
+  // the attention list files it under "Waiting on the desk" — not red.
+  const bad = Boolean(required && blank && !locked);
   const needsConfirm = Boolean(required && provenance && !provenance.confirmed && !locked);
   return (
     <div className={`pp-field${bad ? " bad" : ""}${needsConfirm ? " unconfirmed" : ""}${provenance && !provenance.confirmed ? " prefill" : ""}${locked ? " locked" : ""}${span ? ` span-${span}` : ""}`} id={`pp-field-${id}`}>
@@ -283,6 +292,7 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
   const lockedBy: LockReason | null =
     stageTwo && TERM_SHEET_KEYS.has(k) ? "term_sheet"
     : stageTwo && SPONSOR_KEYS.has(k) ? "stage_one"
+    : ctx.mode !== "operator" && SPONSOR_KEYS.has(k) ? "sponsor"
     : ctx.mode !== "operator" && DESK_ONLY_KEYS.has(k) ? "desk"
     : null;
   const locked = lockedBy !== null;
@@ -326,6 +336,8 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
         if (member) {
           ctx.set("rm_email", member.email ?? "");
           if (member.phone) ctx.set("rm_phone", member.phone);
+          // The employer is the manager's linked business relationship profile.
+          if (member.company_name) ctx.set("rm_employer", member.company_name);
         }
       }}>
         <option value="">{ctx.teamOptions.length ? "Choose…" : ctx.teamError ? "The team list could not be loaded" : "No team members yet"}</option>

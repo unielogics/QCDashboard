@@ -46,7 +46,7 @@ import {
   useUpdateSettings,
   useUpdateUserRole,
   useUsers,
-  useSignedReferralCompanies,
+  useReferralCompanies,
 } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -1497,7 +1497,7 @@ function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").Portfolio
 
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { data: users, isLoading, error } = useUsers();
-  const { data: signedCompanies = [] } = useSignedReferralCompanies();
+  const { data: companies = [] } = useReferralCompanies();
   const { data: me } = useCurrentUser();
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
@@ -1519,9 +1519,9 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
     // can never pass that check. Collect a company name here, same as the
     // invite flow, so this path can't create a permanently-locked-out user.
     const target = users?.find((u) => u.id === userId);
-    if (role === Role.DEALER_PARTNER && !target?.referral_partner_company_name) {
+    if (role === Role.DEALER_PARTNER && (!target?.referral_partner_company_name || target.company_kind === "house")) {
       const companyName = window.prompt(
-        "Their company must have a signed Referral Protection Agreement on file.\n\nEnter the company name (existing companies are matched by name):"
+        "A dealer partner belongs to their own company, which must sign the Referral Protection Agreement before they can use the platform.\n\nEnter the company name (existing companies are matched by name; a new name creates the profile):"
       );
       if (!companyName?.trim()) return;
       updateRole.mutate({ userId, role, company_name: companyName.trim() });
@@ -1570,7 +1570,7 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
               { label: "Email" },
               { label: "Role", width: 160 },
               { label: "Account access", width: 190 },
-              { label: "Company / Agreement" },
+              { label: "Profile / Agreement" },
               { label: "Joined", width: 110 },
               { label: "" },
             ]}
@@ -1620,16 +1620,20 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                   <Td>
                     <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
                       <Select
-                        aria-label={`Signed company for ${u.name}`}
+                        aria-label={`Business relationship profile for ${u.name}`}
                         value={u.referral_partner_company_id ?? ""}
                         disabled={updateRole.isPending}
                         onChange={(event) => updateRole.mutate({ userId: u.id, referral_partner_company_id: event.target.value || null })}
                         style={{ minWidth: 170, maxWidth: 260 }}
                       >
-                        <option value="">No linked company</option>
-                        {signedCompanies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
+                        {!u.referral_partner_company_id ? <option value="">No linked profile</option> : null}
+                        {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
                       </Select>
-                      {u.referral_partner_company_id && <CellChip tone="ok">Signed</CellChip>}
+                      {u.referral_partner_company_id
+                        ? u.company_kind === "house" ? <CellChip>House</CellChip>
+                          : u.company_agreement_signed ? <CellChip tone="ok">Signed</CellChip>
+                          : <CellChip tone="warn">Unsigned</CellChip>
+                        : null}
                     </div>
                   </Td>
                   <Td>

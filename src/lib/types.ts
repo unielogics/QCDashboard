@@ -1477,9 +1477,19 @@ export interface UserRow {
   role: Role;
   referral_partner_company_id: string | null;
   referral_partner_company_name: string | null;
+  /** "referral_partner" or "house"; null when there is no link. */
+  company_kind?: string | null;
   company_agreement_signed: boolean | null;
   account_types: OperatorAccountAccessType[];
   created_at: string | null;
+}
+
+/** Every business relationship profile: the house first, each saying whether it signed. */
+export interface ReferralCompany {
+  id: string;
+  name: string;
+  kind: "referral_partner" | "house" | string;
+  signed: boolean;
 }
 
 export interface SignedReferralCompany {

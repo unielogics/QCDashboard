@@ -1372,6 +1372,14 @@ export function useSignedReferralCompanies() {
   });
 }
 
+export function useReferralCompanies() {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["referral-companies"],
+    queryFn: () => apiCall<import("@/lib/types").ReferralCompany[]>("/users/referral-companies"),
+  });
+}
+
 export function useInviteUser() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
@@ -1382,7 +1390,7 @@ export function useInviteUser() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["users"] }); qc.invalidateQueries({ queryKey: ["referral-companies"] }); },
   });
 }
 

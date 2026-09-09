@@ -60,6 +60,12 @@ function initialPage(p: ProductionPackage): PageKey {
   return p.status !== "draft" ? "agreement" : "today";
 }
 
+// Not draft state: a command the backend answers by rewriting the sponsor block.
+// Putting it in the draft was the bug — the server never echoes it back, so the
+// post-save diff was never empty, the stale draft was kept, and the next save
+// sent the old sponsor copy after the fresh one.
+const COMMAND_KEYS = new Set(["sponsor_company_id"]);
+
 // Keys the final does not edit on the form: loan terms live on the term sheet, the sponsor is carried from stage one.
 function lockedOnFinal(key: string): boolean {
   return TERM_SHEET_KEYS.has(key) || SPONSOR_KEYS.has(key) || key === "sponsor_company_id";
@@ -75,7 +81,8 @@ export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceP
   const [focusKey, setFocusKey] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [sponsors, setSponsors] = useState<SponsorOption[]>([]);
-  const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; phone: string | null; title: string | null; role: string }>>([]);
+  const [sponsorsError, setSponsorsError] = useState(false);
+  const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; phone: string | null; title: string | null; role: string; company_name?: string | null }>>([]);
   const [teamError, setTeamError] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
   // The desk's lens. Held here, never on the arrangement — a view is not a term,
@@ -97,15 +104,19 @@ export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceP
 
   // Operator-only lookups: the transport must be the operator's and the role must be a team role
   // (a dealer partner rides the operator transport on their own lead but cannot pick the sponsor).
+  const loadSponsors = useCallback(() => {
+    // A swallowed failure here read as "no company has signed" — say so instead.
+    client.sponsors?.().then((rows) => { setSponsorsError(false); setSponsors(rows); }).catch(() => setSponsorsError(true));
+  }, [client]);
   useEffect(() => {
     if (client.mode !== "operator" || initial.mode !== "operator") return;
-    client.sponsors?.().then(setSponsors).catch(() => undefined);
+    loadSponsors();
     // Swallowing this is what hid the bug: the picker used a super-admin-only
     // route, so every underwriter and rep got an empty list and no explanation.
     client.team?.()
       .then((rows) => { setTeamError(false); setTeam(rows.filter((r) => ["super_admin", "loan_exec", "field_rep"].includes(r.role))); })
       .catch(() => setTeamError(true));
-  }, [client, initial.mode]);
+  }, [client, initial.mode, loadSponsors]);
 
   // Poll while a signature is outstanding so the signatory rows move on their own (and the auto-execute lands).
   useEffect(() => {
@@ -160,15 +171,41 @@ export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceP
   const readOnly = pkg.status !== "draft" || !pkg.capabilities.can_edit || Boolean(conflict);
   const two = pkg.stage === 2;
 
+  // Choosing the sponsor: cancel the pending save, fold whatever is unsaved
+  // into the same PATCH as the command (one request, nothing to race), then
+  // overlay the returned sponsor block onto the draft so edits typed elsewhere
+  // survive and the panel shows the copy at once.
+  const pickSponsor = useCallback(async (companyId: string | null) => {
+    if (readOnly) return;
+    flushSave.cancel();
+    const changes = shallowDiff(savedRef.current, draftRef.current);
+    setSaving(true);
+    try {
+      const next = await client.patch(versionRef.current, { ...changes, sponsor_company_id: companyId }, pendingConfirms.current.splice(0));
+      setDraft((d) => { const out: Arrangement = { ...d }; SPONSOR_KEYS.forEach((k) => { (out as Record<string, unknown>)[k] = next.arrangement[k]; }); return out; });
+      adopt(next, true);
+      setConflict(null);
+    } catch (err) {
+      const status = errorStatus(err);
+      const detail = errorDetail(err);
+      if (status === 409 && detail?.code === "stale_version") setConflict("Someone else saved this package. Reload to pick up their changes.");
+      else setNotice({ message: typeof detail?.message === "string" ? detail.message : errorMessage(err, "The sponsor could not be chosen."), tone: "bad" });
+    } finally {
+      setSaving(false);
+    }
+  }, [readOnly, flushSave, client, adopt]);
+
   const set = useCallback((key: string, value: unknown) => {
     if (readOnly) return;
+    if (COMMAND_KEYS.has(key)) { void pickSponsor(value ? String(value) : null); return; }
     if (two && lockedOnFinal(key)) { notify(TERM_SHEET_KEYS.has(key) ? "Loan terms are changed on the term sheet." : "The sponsor is carried from the executed commitment.", "warn"); return; }
     // Belt to the backend's braces: the inputs are already read-only, so this
     // only fires on a programmatic set.
+    if (pkg.mode !== "operator" && SPONSOR_KEYS.has(key)) { notify("The sponsor is chosen by the desk.", "warn"); return; }
     if (pkg.mode !== "operator" && DESK_ONLY_KEYS.has(key)) { notify("The advance and the programme cost are set by the desk.", "warn"); return; }
     setDraft((d) => ({ ...d, [key]: value }));
     scheduleSave();
-  }, [readOnly, two, notify, scheduleSave, pkg.mode]);
+  }, [readOnly, two, notify, scheduleSave, pkg.mode, pickSponsor]);
 
   const setProduct = useCallback((key: ProductKey, field: string, value: unknown) => {
     if (readOnly) return;
@@ -227,7 +264,16 @@ export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceP
   const ctx: StepCtx = {
     pkg, draft, computed: pkg.computed, prov, provenance: pkg.prefill_provenance, saving: saving || dirty, readOnly,
     mode: canPreviewAsRep && viewAs === "rep" ? "rep" : pkg.mode, profileId: profileId ?? pkg.profile_id, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team, teamError,
+    pickSponsor: pkg.mode === "operator" ? pickSponsor : undefined, sponsorsError, reloadSponsors: loadSponsors,
     onOpenTermSheet: openTerms, onOpenFinal, onOpenOriginal,
+  };
+
+  // The one thing an attention row can do besides jump.
+  const onAttentionAction = (item: { action?: { kind: string } }) => {
+    if (item.action?.kind === "copy_signing_link") {
+      navigator.clipboard?.writeText(pkg.sponsor_signing_url);
+      notify("Signing link copied — the package can be sent once the sponsor has signed.", "ok");
+    }
   };
 
   const generatePresentation = useCallback(async () => {
@@ -310,7 +356,7 @@ export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceP
             {stepIndex < PAGES.length - 1 ? <PBtn variant="pri" onClick={() => go(PAGES[stepIndex + 1].key)}>Next: {PAGES[stepIndex + 1].label} →</PBtn> : <span />}
           </footer>
         </main>
-        <PackageAside pkg={pkg} prov={prov} attention={attention} onJump={jumpTo} term={term} />
+        <PackageAside pkg={pkg} prov={prov} attention={attention} onJump={jumpTo} onAction={onAttentionAction} term={term} />
       </div>
       {client.mode === "operator" && !two && shareOpen ? (
         <ShareDrawer client={client} pkg={pkg} team={team} open={Boolean(shareOpen)} onClose={() => onShareClose?.()} onPackage={(next) => adopt(next, true)} />
