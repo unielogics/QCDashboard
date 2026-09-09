@@ -9,18 +9,11 @@ import { PackageAside } from "./PackageAside";
 import { PackageRail, pageDone, type ViewAs } from "./PackageRail";
 import { ShareDrawer } from "./ShareDrawer";
 import { TermSheetDrawer } from "./TermSheetDrawer";
-import { Step1Parties } from "./steps/Step1Parties";
-import { Step2Lot } from "./steps/Step2Lot";
-import { Step3Products } from "./steps/Step3Products";
-import { Step4Advance } from "./steps/Step4Advance";
-import { Step5Buildout } from "./steps/Step5Buildout";
-import { Step6Thresholds } from "./steps/Step6Thresholds";
-import { Step7Shortfall } from "./steps/Step7Shortfall";
-import { StepFunding } from "./steps/StepFunding";
-import { StepDisclosures } from "./steps/StepDisclosures";
-import { Step8Projection } from "./steps/Step8Projection";
-import { Step9Preview } from "./steps/Step9Preview";
-import { Step10Send } from "./steps/Step10Send";
+import { PageAgreement } from "./pages/PageAgreement";
+import { PageBuild } from "./pages/PageBuild";
+import { PageChanges } from "./pages/PageChanges";
+import { PageLoan } from "./pages/PageLoan";
+import { PageToday } from "./pages/PageToday";
 import type { StepCtx, Tone } from "./ui";
 import { PBtn } from "./ui";
 import type { Arrangement, PageKey, ProductKey, ProductionPackage, SponsorOption, StepKey, ThresholdKey } from "./types";
@@ -300,20 +293,11 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
             </div>
           </header>
           <Meters pkg={pkg} prov={prov} term={term} />
-          {/* The design's five pages, each carrying the step components that belong to it. */}
-          {current === "today" ? <><Step2Lot ctx={ctx} /><Step3Products ctx={ctx} /></> : null}
-          {current === "loan" ? <Step4Advance ctx={ctx} /> : null}
-          {current === "build" ? <Step5Buildout ctx={ctx} /> : null}
-          {current === "changes" ? <><Step8Projection ctx={ctx} /><Step7Shortfall ctx={ctx} /></> : null}
-          {current === "agreement" ? (
-            <>
-              <Step1Parties ctx={ctx} sponsors={sponsors} client={client} onPackage={(next) => adopt(next, true)} />
-              <Step6Thresholds ctx={ctx} />
-              {two ? <><StepFunding ctx={ctx} /><StepDisclosures ctx={ctx} /></> : null}
-              <Step9Preview ctx={ctx} client={client} />
-              <Step10Send ctx={ctx} client={client} onPackage={(next) => adopt(next)} onPresentation={generatePresentation} />
-            </>
-          ) : null}
+          {current === "today" ? <PageToday ctx={ctx} /> : null}
+          {current === "loan" ? <PageLoan ctx={ctx} /> : null}
+          {current === "build" ? <PageBuild ctx={ctx} /> : null}
+          {current === "changes" ? <PageChanges ctx={ctx} onPresentation={generatePresentation} busy={busy === "presentation"} /> : null}
+          {current === "agreement" ? <PageAgreement ctx={ctx} client={client} sponsors={sponsors} onPackage={adopt} onPresentation={generatePresentation} /> : null}
           <footer className="pp-step-f">
             {stepIndex > 0 ? <PBtn onClick={() => go(PAGES[stepIndex - 1].key)}>← {PAGES[stepIndex - 1].label}</PBtn> : <span />}
             <span className={`pp-step-status${openHere ? " bad" : thisDone ? " ok" : ""}`}>

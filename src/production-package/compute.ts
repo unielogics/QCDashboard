@@ -12,6 +12,7 @@ export type ProvisionalRow = {
   key: ProductKey; label: string; on: boolean; contracts: number; cur_contracts: number; gross: number; cur_gross: number;
   premium: number; cur_premium: number; repay: number; comm: number; admin: number; reserve: number;
   repay_m: number; comm_m: number; admin_m: number; reserve_m: number; uplift: number; d_contracts: number; d_gross: number; term: number;
+  rate: number; cur_rate: number;
   base: number; other: number; markup: number; stack: number; cushion: number; room: number; savings: number; stack_known: boolean;
   cost_same: number; stack_m: number; cushion_m: number; room_m: number; markup_m: number; savings_m: number;
 };
@@ -70,7 +71,7 @@ export function provisional(a: Partial<Arrangement>): Provisional {
       cur_gross: curContracts * curPremium, premium, cur_premium: curPremium, repay, comm, admin, reserve,
       repay_m: contracts * repay, comm_m: contracts * comm, admin_m: contracts * admin, reserve_m: contracts * reserve,
       uplift: premium - curPremium, d_contracts: contracts - curContracts, d_gross: contracts * premium - curContracts * curPremium,
-      term: toNumber(v.term) || 12,
+      term: toNumber(v.term) || 12, rate: toNumber(v.rate), cur_rate: toNumber(v.cur_rate),
       base, other, markup, stack, cushion, room, savings: curPremium - premium, stack_known: stackKnown,
       cost_same: curContracts * premium, stack_m: contracts * stack, cushion_m: contracts * cushion, room_m: contracts * room,
       markup_m: contracts * markup, savings_m: curContracts * (curPremium - premium),

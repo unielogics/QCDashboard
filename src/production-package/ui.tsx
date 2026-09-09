@@ -162,6 +162,48 @@ export const LOCK_COPY: Record<LockReason, { label: string; title: string }> = {
   desk: { label: "Set by the desk", title: "The advance and the programme cost are maintained by an admin or underwriter" },
 };
 
+/** A collapsed section that stays mounted, so an attention deep-link can still
+ *  find its field — and opens itself when the focus lands inside it, because
+ *  scrollIntoView and focus() are no-ops behind a closed <details>. */
+export function Disclosure({ title, sub, owns, focusKey, defaultOpen, count, tone, children }: {
+  title: ReactNode; sub?: ReactNode; owns?: (key: string) => boolean; focusKey?: string | null; defaultOpen?: boolean;
+  count?: number; tone?: "bad" | "warn"; children: ReactNode;
+}) {
+  const [open, setOpen] = useState(Boolean(defaultOpen));
+  const wants = Boolean(focusKey && owns && owns(focusKey));
+  useEffect(() => { if (wants) setOpen(true); }, [wants, focusKey]);
+  return (
+    <details className={`pp-disc${tone ? ` t-${tone}` : ""}`} open={open || wants} onToggle={(e) => setOpen((e.currentTarget as HTMLDetailsElement).open)}>
+      <summary className="pp-disc-h">
+        <span className="pp-disc-t">{title}{count ? <span className="pp-chip c-bad">{count}</span> : null}</span>
+        {sub ? <span className="pp-sub">{sub}</span> : null}
+        <span className="pp-disc-x" aria-hidden="true" />
+      </summary>
+      <div className="pp-disc-b">{children}</div>
+    </details>
+  );
+}
+
+/** − value + : the design's stepper. */
+export function Stepper({ value, onChange, step = 1, min = 0, max, unit, disabled, id, width }: {
+  value: number | ""; onChange: (v: number | "") => void; step?: number; min?: number; max?: number; unit?: "$" | "%"; disabled?: boolean; id?: string; width?: number;
+}) {
+  const n = value === "" ? 0 : Number(value);
+  const clamp = (v: number) => Math.min(max ?? Infinity, Math.max(min, v));
+  return (
+    <span className={`pp-stepper${disabled ? " off" : ""}`}>
+      <button type="button" className="pp-stepper-b" onClick={() => onChange(clamp(n - step))} disabled={disabled} aria-label="Less">−</button>
+      <span className="pp-cell">
+        {unit === "$" ? <i>$</i> : null}
+        <input id={id} className="pp-input cell" style={width ? { width } : undefined} inputMode="decimal" value={value === "" ? "" : String(value)} disabled={disabled}
+          onChange={(e) => { const raw = e.target.value.replace(/[^0-9.]/g, ""); onChange(raw === "" ? "" : clamp(Number(raw))); }} />
+        {unit === "%" ? <i>%</i> : null}
+      </span>
+      <button type="button" className="pp-stepper-b" onClick={() => onChange(clamp(n + step))} disabled={disabled} aria-label="More">+</button>
+    </span>
+  );
+}
+
 /** Signature-on-file state for a counterparty (qc / sponsor / rm). */
 export function SigOnFileChip({ sof, adoptedAt }: { sof?: SignatureOnFile | null; adoptedAt?: string | null }) {
   if (adoptedAt) return <PChip tone="ok" title="Placed from the signature on file"><IconCheck />Placed from file · adopted {dateLabel(adoptedAt)}</PChip>;

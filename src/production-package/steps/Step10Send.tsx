@@ -171,7 +171,7 @@ export function Step10Send({ ctx, client, onPackage, onPresentation }: { ctx: St
           : "Schedules A–E. The dealer signs electronically at login; Qualified Commercial, the sponsor and the relationship manager are placed from their signatures on file when it is sent, and it executes on the dealer's signature."}
         right={statusChip}>
         <table className="pp-tbl sigs">
-          <thead><tr><th>Party</th><th>Who</th><th>State</th><th /></tr></thead>
+          <thead><tr><th>Party</th><th>Sent</th><th>Viewed</th><th>Signed</th><th /></tr></thead>
           <tbody>
             {parties.map(([party, who]) => {
               const s = byParty(party);
@@ -188,7 +188,8 @@ export function Step10Send({ ctx, client, onPackage, onPresentation }: { ctx: St
                     {party === "dealer" && s?.typed_name ? <div className="pp-sub">Typed {s.typed_name}</div> : null}
                     {st.fix ? <div className="pp-hint bad">{st.fix}</div> : null}
                   </td>
-                  <td className="muted">{who}</td>
+                  <td className="muted">{sent ? (party === "dealer" ? whenLabel(s?.sent_at ?? pkg.sent_at) : "Placed from file") : "—"}<div className="pp-hint">{who}</div></td>
+                  <td className="muted">{party === "dealer" ? (s?.viewed_at ? whenLabel(s.viewed_at) : sent ? "Not yet" : "—") : "—"}</td>
                   <td><PChip tone={st.tone}>{st.label}</PChip></td>
                   <td className="n">
                     {party === "sponsor" && st.tone === "bad" && caps.can_adopt_sponsor_signature ? <PBtn size="sm" onClick={() => ctx.go("parties")}>Authorize on the sponsor row</PBtn> : null}
