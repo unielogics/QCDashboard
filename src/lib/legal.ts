@@ -3,13 +3,15 @@
 //
 // When the documents are revised:
 //   1. Bump TERMS_VERSION / PRIVACY_VERSION / DISCLOSURE_VERSION to the
-//      new effective date.
+//      new effective date — AND the same three constants in the backend,
+//      qcbackend app/services/user_acknowledgment.py: the backend copy is
+//      what decides whether a login is current.
 //   2. Replace the body copy below.
 //   3. Update the sibling QCWeb file `src/lib/legal-content.ts` in
 //      lockstep — the marketing site duplicates this prose by design.
 //   4. Existing user acceptances stay attached to the version they
-//      accepted — the AppShell will re-prompt them (future work) when
-//      version > their latest accepted row from /legal/acceptance.
+//      accepted — every team login is re-prompted by AcknowledgmentGate on
+//      their next visit, because /auth/me.needs_acknowledgment flips.
 //
 // v1.2 (Effective 2026-09-02) explains per-file Plaid Assets and Statements
 // selection, product-specific collection, refresh, and retained evidence.

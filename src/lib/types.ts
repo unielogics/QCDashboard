@@ -21,8 +21,30 @@ export interface User {
   title?: string | null;
   // The one-time gate: a rep, underwriter or super admin with no mobile on file.
   needs_phone?: boolean;
-  // Only ever set for Role.DEALER_PARTNER; drives the AppShell NDA gate.
+  // The platform-document acknowledgment every console shows a team login once,
+  // and once more after a version bump. Computed by the backend.
+  needs_acknowledgment?: boolean;
+  // The consoles this login may sign in to (Funding, Field Desk, Audit) with
+  // their URLs. Absent on an older backend — then no switcher and no notice.
+  consoles?: ConsoleLink[];
+  // Dead: dropped by migration 0102 and never returned by /auth/me. Kept only
+  // so older call sites type-check; do not read it.
   nda_signed_at?: string | null;
+}
+
+export interface ConsoleLink {
+  key: OperatorAccountAccessType;
+  label: string;
+  url: string;
+}
+
+/** What the acknowledgment screen shows: GET /legal/acknowledgment. */
+export interface AcknowledgmentRead {
+  status: "current" | "out_of_date" | "missing" | "not_asked" | string;
+  current: { terms_version: string; privacy_version: string; disclosure_version: string };
+  documents: Array<{ key: string; title: string; version: string; url: string }>;
+  latest: { created_at: string; terms_version: string; privacy_version: string; disclosure_version: string | null } | null;
+  company_agreement: { company_name: string; title: string; contract_number: string; signed_at: string | null } | null;
 }
 
 export interface Loan {
@@ -1484,7 +1506,15 @@ export interface UserRow {
   company_agreement_signed: boolean | null;
   /** The mobile on file; printed as the relationship manager's phone on production agreements. */
   phone?: string | null;
+  /** The consoles this person may open, and the ones the role brings by itself (optional: older backends omit it). */
   account_types: OperatorAccountAccessType[];
+  inherited_account_types?: OperatorAccountAccessType[];
+  /** The person's own click-through acknowledgment of the platform documents — never the company's agreement. */
+  acknowledgment_status?: "current" | "out_of_date" | "missing" | "not_asked" | null;
+  acknowledged_at?: string | null;
+  /** Dealer partners only: their own e-signed Platform Access Agreement. */
+  platform_access_signed_at?: string | null;
+  platform_access_contract_number?: string | null;
   created_at: string | null;
 }
 

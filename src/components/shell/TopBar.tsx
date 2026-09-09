@@ -14,6 +14,7 @@ import {
 import { Role } from "@/lib/enums.generated";
 import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
 import { cx } from "@/components/ds";
+import { ConsoleSwitcher } from "./ConsoleSwitcher";
 
 // Restyled onto `.top` / `.btn` / `.chip` / `.popcard` from the design-system
 // sheet. Every control, role gate, badge and title below is the one that was
@@ -43,8 +44,6 @@ export default function TopBar() {
   // (but they're not borrowers, so the "borrower-view" badge below stays
   // client-only).
   const isDealerPartner = user?.role === Role.DEALER_PARTNER;
-  const isOperatorSwitcher = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
-  const isDualClient = user?.account_types?.includes("funding") && user.account_types.includes("audit");
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
   const notifications = notificationData?.items ?? [];
   const unreadCount = notificationData?.unread_count ?? 0;
@@ -104,16 +103,9 @@ export default function TopBar() {
         <span className="themebtn-l">{theme === "dark" ? "Light" : "Obsidian"}</span>
       </button>
 
-      {/* Console switcher — operators keep the same authenticated account
-          while moving between Funding, Field Desk, and Audit. */}
-      {(isOperatorSwitcher || isDualClient) && (
-        <div className="chip" aria-label="Console switcher">
-          <b>Funding</b>
-          {isOperatorSwitcher ? <><span style={{ color: "var(--faint)" }}>·</span><a href="https://rep.qualifiedcommercial.com" title="Open Field Desk under the same account" style={{ color: "var(--accent)", textDecoration: "none" }}>Field Desk</a></> : null}
-          <span style={{ color: "var(--faint)" }}>·</span>
-          <a href="https://audit.qualifiedcommercial.com" title="Open Audit under the same account" style={{ color: "var(--accent)", textDecoration: "none" }}>Audit</a>
-        </div>
-      )}
+      {/* Console switcher — the same authenticated account across Funding,
+          Field Desk and Audit; the server says which of them this login may enter. */}
+      <ConsoleSwitcher consoles={user?.consoles} current="funding" />
 
       {/* Notifications */}
       <div className="popwrap">

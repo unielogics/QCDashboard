@@ -33,6 +33,9 @@ export const BARE_ROUTE_PREFIXES = [
   "/sign-up",
   "/terms",
   "/privacy",
+  // Public in middleware but was never bare: a signed-in reader saw it inside
+  // the chrome and the acknowledgment gate links straight at it.
+  "/disclosures",
   "/book",
   "/programs",
   "/dealer-ai-underwriter",

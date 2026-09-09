@@ -19,6 +19,9 @@ import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 import { Role, ContractType } from "@/lib/enums.generated";
 import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
 import { PhoneRequiredGate, phoneGateSkipped } from "@/components/shell/PhoneRequiredGate";
+import { AcknowledgmentGate } from "@/components/shell/AcknowledgmentGate";
+import { ConsoleAccessNotice } from "@/components/shell/ConsoleAccessNotice";
+import { OPERATOR_CONSOLE_ROLES } from "@/lib/consoles";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 
 export default function AppShell({
@@ -183,6 +186,21 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
         </div>
       </div>
     );
+  }
+
+  // A team login whose console list (from the server) does not include
+  // Funding: today only a field rep without the Funding chip. Absent list
+  // (older backend) → no notice. /account stays reachable.
+  const lacksFundingConsole = OPERATOR_CONSOLE_ROLES.has(user.role) && Array.isArray(user.consoles) && !user.consoles.some((c) => c.key === "funding");
+  if (lacksFundingConsole && !isAccountRoute) {
+    return <ConsoleAccessNotice consoles={user.consoles ?? []} />;
+  }
+
+  // The platform-document acknowledgment, before the phone: the Privacy
+  // Policy is one of the documents and it governs the number the next screen
+  // collects. /account stays reachable for Clerk's own task pages.
+  if (user.needs_acknowledgment && !isAccountRoute) {
+    return <AcknowledgmentGate />;
   }
 
   // The one-time mobile number, before any chrome. /account stays reachable so

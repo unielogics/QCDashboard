@@ -128,6 +128,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         label: "Administration",
         items: [
           { label: "Settings", href: "/settings", icon: "gear", desc: "Firm-wide configuration" },
+          { label: "Team", href: "/settings?section=team", icon: "clients", desc: "Roles, console access, phones and agreements" },
           { label: "Agreements", href: "/admin/agreements", icon: "docCheck", desc: "Contract templates and status" },
           { label: "Communications", href: "/admin/communications", icon: "mail", desc: "Every message sent, and what caused it" },
           { label: "Dealer messages", href: "/admin/dealer-messages", icon: "chat", desc: "Partner channel", },

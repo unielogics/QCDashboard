@@ -66,8 +66,10 @@ import type {
   SecuritySettings,
   SimulatorSettings,
   OperatorAccountAccessType,
+  UserRow,
 } from "@/lib/types";
 import { useAuthedApi, useInitSignatureUpload } from "@/hooks/useApi";
+import { GRANTABLE_CONSOLES, INHERITED_CONSOLES, OPERATOR_CONSOLE_ROLES } from "@/lib/consoles";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
@@ -1321,12 +1323,21 @@ const ACCOUNT_TYPE_OPTIONS: Array<{ value: OperatorAccountAccessType; label: str
   { value: "audit", label: "Audit" },
 ];
 
-function roleAccountTypes(role: Role): Set<OperatorAccountAccessType> {
-  if (role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC) return new Set(["funding", "field_desk", "audit"]);
-  if (role === Role.BROKER || role === Role.REGIONAL_MANAGER) return new Set(["funding"]);
-  if (role === Role.FIELD_REP) return new Set(["field_desk"]);
-  return new Set();
+// A console is a sign-in; the role decides what the person may do inside it.
+// The server says which ones the role brings by itself (`inherited_account_types`
+// on every row; the client map is only the pre-row fallback) and which a
+// super admin may add (GRANTABLE_CONSOLES). Anything else is derived.
+function consoleChipState(u: UserRow, value: OperatorAccountAccessType): { active: boolean; disabled: boolean; title: string } {
+  const label = ACCOUNT_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
+  const inherited = (u.inherited_account_types ?? INHERITED_CONSOLES[u.role] ?? []).includes(value);
+  const active = u.account_types.includes(value);
+  if (!OPERATOR_CONSOLE_ROLES.has(u.role)) return { active: false, disabled: true, title: "Console access is not available for this role" };
+  if (inherited) return { active: true, disabled: true, title: `${label} is included by the role` };
+  if ((GRANTABLE_CONSOLES[u.role] ?? []).includes(value)) return { active, disabled: false, title: `${active ? "Remove" : "Allow"} sign-in to ${label}` };
+  return { active, disabled: true, title: value === "audit" ? "Audit comes with Field Desk for this role" : `${label} is not available for this role` };
 }
+
+const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
 function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
   const { data: managers = [], isLoading, error } = useRegionalManagers();
@@ -1504,8 +1515,15 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { data: me } = useCurrentUser();
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
+  const apiCall = useAuthedApi();
   const [inviteOpen, setInviteOpen] = useState(false);
   const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
+  // A dealer partner's own signed Platform Access Agreement, through the
+  // super-admin certificate route that already exists.
+  const openCertificate = async (userId: string) => {
+    const r = await apiCall<{ download_url: string | null }>(`/contracts/platform_access/certificate?subject_id=${userId}`);
+    if (r.download_url) window.open(r.download_url, "_blank", "noopener");
+  };
 
   if (!canEdit) {
     return (
@@ -1573,8 +1591,9 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
               { label: "Email" },
               { label: "Phone", width: 140 },
               { label: "Role", width: 160 },
-              { label: "Account access", width: 190 },
+              { label: "Consoles", width: 190 },
               { label: "Profile / Agreement" },
+              { label: "Acknowledgment", width: 230 },
               { label: "Joined", width: 110 },
               { label: "" },
             ]}
@@ -1612,18 +1631,18 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                   <Td>
                     <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                       {ACCOUNT_TYPE_OPTIONS.map((option) => {
-                        const inherited = roleAccountTypes(u.role).has(option.value);
-                        const active = u.account_types.includes(option.value);
+                        // Which sign-ins this person may use; the role decides what they can do inside each.
+                        const chip = consoleChipState(u, option.value);
                         return (
                           <button
                             key={option.value}
                             type="button"
-                            className={cx("cellchip", active ? "c-acc" : "c-mut")}
-                            aria-pressed={active}
-                            title={inherited ? `${option.label} is included by the primary role` : `${active ? "Remove" : "Add"} ${option.label} access`}
-                            disabled={inherited || updateRole.isPending}
+                            className={cx("cellchip", chip.active ? "c-acc" : "c-mut")}
+                            aria-pressed={chip.active}
+                            title={chip.title}
+                            disabled={chip.disabled || updateRole.isPending}
                             onClick={() => toggleAccountType(u.id, u.account_types, option.value)}
-                            style={{ border: 0, cursor: inherited ? "default" : "pointer" }}
+                            style={{ border: 0, cursor: chip.disabled ? "default" : "pointer" }}
                           >
                             {option.label}
                           </button>
@@ -1647,6 +1666,25 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                         ? u.company_kind === "house" ? <CellChip>House</CellChip>
                           : u.company_agreement_signed ? <CellChip tone="ok">Signed</CellChip>
                           : <CellChip tone="warn">Unsigned</CellChip>
+                        : null}
+                    </div>
+                  </Td>
+                  <Td>
+                    {/* The person's own record: a dealer partner's e-signed Platform
+                        Access Agreement, and everyone's click-through acknowledgment
+                        of the platform documents. The chip to the left is the
+                        company's agreement. Acknowledgments are deliberately not on
+                        /admin/agreements (a different evidentiary class). */}
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {u.role === Role.DEALER_PARTNER ? (
+                        u.platform_access_signed_at
+                          ? <button type="button" className="cellchip c-ok" style={{ border: 0, cursor: "pointer" }} title={`Platform Access Agreement ${u.platform_access_contract_number ?? ""} — open the signed certificate`} onClick={() => void openCertificate(u.id)}>PAA signed {fmtDate(u.platform_access_signed_at)}</button>
+                          : <CellChip tone="warn" title="Signed at first sign-in through the Platform Access gate">PAA missing</CellChip>
+                      ) : null}
+                      {u.acknowledgment_status === "current" ? <CellChip tone="ok" title="Terms, Privacy and Disclosure acknowledged at the current versions">Accepted {fmtDate(u.acknowledged_at)} · current</CellChip>
+                        : u.acknowledgment_status === "out_of_date" ? <CellChip tone="warn" title="Acknowledged an earlier version; asked again at next sign-in">Accepted {fmtDate(u.acknowledged_at)} · out of date</CellChip>
+                        : u.acknowledgment_status === "missing" ? <CellChip tone="warn" title="Asked at next sign-in">Missing</CellChip>
+                        : u.acknowledgment_status === "not_asked" ? <CellChip title="This role signs a contract instead of clicking through the platform documents">Not asked</CellChip>
                         : null}
                     </div>
                   </Td>

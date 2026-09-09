@@ -3657,7 +3657,25 @@ export function useAcceptLegal() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["legalAcceptance"] }),
+    // auth-me is what lifts the AcknowledgmentGate — after the click, and
+    // after useRecordPendingConsent's sign-up flush, without a second click.
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["legalAcceptance"] });
+      qc.invalidateQueries({ queryKey: ["acknowledgment"] });
+      qc.invalidateQueries({ queryKey: ["auth-me"] });
+    },
+  });
+}
+
+/** What the acknowledgment screen shows this login: versions in force, documents, latest row, the company's agreement. */
+export function useAcknowledgment() {
+  const apiCall = useAuthedApi();
+  const { isSignedIn } = useConsoleAuth();
+  return useQuery({
+    queryKey: ["acknowledgment"],
+    queryFn: () => apiCall<import("@/lib/types").AcknowledgmentRead>("/legal/acknowledgment"),
+    enabled: isSignedIn === true,
+    staleTime: 30_000,
   });
 }
 

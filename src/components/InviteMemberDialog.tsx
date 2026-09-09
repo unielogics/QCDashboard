@@ -8,6 +8,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { RightPanel } from "@/components/design-system/RightPanel";
 import { useInviteUser, useReferralCompanies } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { CONSOLE_LABELS, GRANTABLE_CONSOLES, INHERITED_CONSOLES } from "@/lib/consoles";
 import type { OperatorAccountAccessType } from "@/lib/types";
 
 interface Props {
@@ -188,28 +189,36 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
         </div>
       </div>
 
-      <div>
-        <div style={{ fontSize: 10.5, fontWeight: 700, color: V.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
-          Additional account access
+      {!isDealerPartner ? (
+        <div>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: V.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
+            Console access
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {(["funding", "field_desk", "audit"] as OperatorAccountAccessType[]).map((product) => {
+              const inherited = (INHERITED_CONSOLES[role] ?? []).includes(product);
+              const grantable = (GRANTABLE_CONSOLES[role] ?? []).includes(product);
+              const active = inherited || accountTypes.includes(product);
+              return (
+                <button
+                  key={product}
+                  type="button"
+                  aria-pressed={active}
+                  disabled={inherited || !grantable}
+                  title={inherited ? "Included by the role" : grantable ? `${active ? "Remove" : "Allow"} sign-in to ${CONSOLE_LABELS[product]}` : product === "audit" ? "Audit comes with Field Desk for this role" : "Not available for this role"}
+                  onClick={() => setAccountTypes((current) => active ? current.filter((item) => item !== product) : [...current, product])}
+                  style={{ ...inputStyle(), width: "auto", cursor: inherited || !grantable ? "default" : "pointer", opacity: !inherited && !grantable ? 0.55 : 1, background: active ? V.petrolSoft : V.surface2, borderColor: active ? V.petrol : V.line }}
+                >
+                  {CONSOLE_LABELS[product]}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{ fontSize: 11, color: V.ink3, marginTop: 6, lineHeight: 1.4 }}>
+            The role sets what they can do. Consoles set which sign-ins they may use: Funding (app.), Field Desk (rep.), Audit (audit.). Consoles included by the role are always on.
+          </div>
         </div>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {(["funding", "field_desk", "audit"] as OperatorAccountAccessType[]).map((product) => {
-            const active = accountTypes.includes(product);
-            return (
-              <button
-                key={product}
-                type="button"
-                aria-pressed={active}
-                onClick={() => setAccountTypes((current) => active ? current.filter((item) => item !== product) : [...current, product])}
-                style={{ ...inputStyle(), width: "auto", cursor: "pointer", background: active ? V.petrolSoft : V.surface2, borderColor: active ? V.petrol : V.line }}
-              >
-                {product === "funding" ? "Funding" : product === "field_desk" ? "Field Desk" : "Audit"}
-              </button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: 11, color: V.ink3, marginTop: 6 }}>The primary role controls permissions; access types add approved entry points.</div>
-      </div>
+      ) : null}
 
       <Field label="Business relationship profile">
         <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} style={inputStyle()}>
