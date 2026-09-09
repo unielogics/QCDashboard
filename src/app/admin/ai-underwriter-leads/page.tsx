@@ -338,6 +338,9 @@ export default function AdminAIUnderwriterLeadsPage() {
   const leadParam = searchParams.get("lead");
   const isIntakeOperator = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
   const canGovern = me?.role === Role.SUPER_ADMIN;
+  // Delete is the desk's — super admin and underwriting — and nobody else's.
+  const canDelete = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
+  const [deleteRow, setDeleteRow] = useState<LeadRow | null>(null);
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -555,16 +558,28 @@ export default function AdminAIUnderwriterLeadsPage() {
     await loadLeads();
   }
 
-  async function confirmLeadDeletion(id: string, confirmName: string) {
+  async function deleteLead(id: string, confirmName: string) {
     await call(`/admin/ai-underwriter-leads/${id}/confirm-deletion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm_name: confirmName }),
     });
-    // The lead no longer exists — close the modal and splice it out of the
-    // local list immediately rather than waiting on a full reload.
+    // The lead no longer exists — splice it out of the local list immediately
+    // rather than waiting on a full reload.
     setRows((current) => current.filter((row) => row.id !== id));
+    setTotal((current) => Math.max(0, current - 1));
+  }
+
+  async function confirmLeadDeletion(id: string, confirmName: string) {
+    await deleteLead(id, confirmName);
     closeLead();
+  }
+
+  // From the table row: the same irreversible delete, the same confirm dialog.
+  async function deleteFromRow(row: LeadRow, confirmName: string) {
+    await deleteLead(row.id, confirmName);
+    if (selectedId === row.id) closeLead();
+    setDeleteRow(null);
   }
 
   function closeLead() {
@@ -760,6 +775,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       initialNotesOpen={searchParams.get("notes") === "1"}
       initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "production" ? "production" : "workspace"}
       canGovern={canGovern}
+      canDelete={canDelete}
       onClose={closeLead}
       onMinimize={() => setLeadDetailMinimized(true)}
       onExport={() => exportPdf(activeLeadId)}
@@ -811,6 +827,14 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   const leadOverlays = (
     <>
+      {deleteRow && canDelete ? (
+        <ConfirmDeleteLeadModal
+          open={deleteRow !== null}
+          onClose={() => setDeleteRow(null)}
+          expectedName={deleteRow.business_name || deleteRow.full_name}
+          onConfirm={(confirmName) => deleteFromRow(deleteRow, confirmName)}
+        />
+      ) : null}
       <BucketIntakeLinkDrawer
         open={linkLead !== null}
         onClose={() => setLinkLead(null)}
@@ -898,7 +922,12 @@ export default function AdminAIUnderwriterLeadsPage() {
                       <td><CellChip tone={row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.status}</CellChip></td>
                       <td><button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button></td>
                       <td className="num">{row.missing_required_count}</td>
-                      <td className="r"><Btn size="sm" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>Open</Btn></td>
+                      <td className="r">
+                        <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                          <Btn size="sm" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>Open</Btn>
+                          {canDelete ? <Btn size="sm" className="danger" title="Delete this intake — irreversible" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Delete</Btn> : null}
+                        </div>
+                      </td>
                     </tr>
                   );
                 })}
@@ -967,6 +996,7 @@ function LeadDetailPanel({
   initialNotesOpen = false,
   initialView = "workspace",
   canGovern,
+  canDelete,
   onClose,
   onMinimize,
   onExport,
@@ -995,6 +1025,8 @@ function LeadDetailPanel({
   initialNotesOpen?: boolean;
   initialView?: "workspace" | "underwriting" | "production";
   canGovern: boolean;
+  // Delete is the desk's — super admin and underwriting — and nobody else's.
+  canDelete: boolean;
   onClose: () => void;
   onMinimize: () => void;
   onExport: () => void;
@@ -1929,7 +1961,7 @@ function LeadDetailPanel({
 
       <Toast msg={toast.msg} />
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
-      {detail && canGovern ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
+      {detail && canDelete ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
       <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send lender package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
       <Drawer
         open={contactEditOpen}
@@ -2043,8 +2075,8 @@ function LeadDetailPanel({
             Partner requested delete
           </CellChip>
         ) : null}
-        {canGovern ? <Btn className="danger" disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</Btn> : null}
-        {canGovern && detail?.intake.delete_requested_at ? (
+        {canDelete ? <Btn className="danger" disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</Btn> : null}
+        {canDelete && detail?.intake.delete_requested_at ? (
           <Btn disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Keep</Btn>
         ) : null}
         <IconBtn aria-label="Close" title="Close" onClick={onClose}>
@@ -2522,7 +2554,7 @@ function LeadDetailPanel({
           intakeId={detail.intake.id}
         />
       ) : null}
-      {detail && canGovern ? (
+      {detail && canDelete ? (
         <ConfirmDeleteLeadModal
           open={confirmDeleteOpen}
           onClose={() => setConfirmDeleteOpen(false)}
