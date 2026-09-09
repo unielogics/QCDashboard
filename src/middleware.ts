@@ -31,6 +31,10 @@ const isPublicPage = createRouteMatcher([
   "/hud/share(.*)",
   "/buckets/request(.*)",
   "/forms(.*)",
+  // A production package forwarded to someone with no account. The token
+  // and a PIN are what the backend validates; the edge only has to let
+  // them through. Signed-in people are sent to /production-package/[id].
+  "/production-package/link(.*)",
   // Plaid OAuth return for the client room. The room user has no account —
   // bouncing them to sign-in the moment they come back from their bank loses
   // the connection. Must match DEALER_OS_PLAID_ROOM_REDIRECT_URI and the

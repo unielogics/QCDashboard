@@ -40,6 +40,7 @@ export const BARE_ROUTE_PREFIXES = [
   "/mca-refinance-intake",
   "/buckets/request",
   "/forms",
+  "/production-package/link",
   "/buckets/share",
   "/buckets/public-share",
   "/agreement",

@@ -126,7 +126,7 @@ export type SponsorOption = {
 };
 
 export type ShareLink = {
-  id: string; rep_user_id: string; rep_name: string | null; label: string | null; outside_book: boolean;
+  id: string; kind: "rep" | "public"; rep_user_id: string | null; recipient_name?: string | null; recipient_email?: string | null; rep_name: string | null; label: string | null; outside_book: boolean;
   created_at: string; expires_at: string; revoked_at: string | null; last_used_at: string | null; use_count: number; active: boolean;
 };
 

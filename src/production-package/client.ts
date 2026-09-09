@@ -1,7 +1,7 @@
-// MIRROR: keep identical to QCRep/src/production-package/*
 // Transport is injected: the dashboard passes its authed fetcher and a package id,
 // the rep app passes its authed fetcher and the share token. The workspace never
 // knows which app it is in; the package's capabilities decide what renders.
+import { ApiError, apiBase } from "@/lib/api";
 import type {
   ApiCall, ApiInit, Arrangement, Comparison, Computed, AttentionItem, HistoryEvent, ProductionPackage, SendRequest, SendResult,
   ShareLink, Signature, SmsConsent, SponsorOption, StoredSignatureRead, TeamMember, TermSheetBody, TermSheetResult, TermSheetState,
@@ -76,14 +76,71 @@ export interface PackageClient {
   termSheet?(profileId: string): Promise<TermSheetState>;
   saveTermSheet?(profileId: string, body: TermSheetBody): Promise<TermSheetResult>;
   withdrawTermSheet?(profileId: string, reason: string): Promise<TermSheetState>;
-  createShareLink?(body: { rep_user_id: string; label?: string; expires_in_days: number; outside_book?: boolean }): Promise<{ link: ShareLink; url: string; expires_at: string }>;
+  createShareLink?(body: ShareLinkCreateBody): Promise<ShareLinkCreated>;
   revokeShareLink?(linkId: string): Promise<void>;
   history?(): Promise<{ events: HistoryEvent[] }>;
   captureSmsConsent?(body: { phone: string; consenter_name: string; method: string }): Promise<SmsConsent>;
   revisionDocument?(revisionId: string, phase: "unsigned" | "current" | "executed"): Promise<{ url: string | null; sha256: string | null; phase: string }>;
 }
 
+export type ShareLinkCreateBody = {
+  // `rep`: one signed-in field rep. `public`: anyone with the link, opened with a PIN.
+  kind?: "rep" | "public"; rep_user_id?: string; recipient_name?: string; recipient_email?: string;
+  label?: string; expires_in_days: number; outside_book?: boolean;
+};
+export type ShareLinkCreated = { link: ShareLink; url: string; expires_at: string; pin?: string | null };
+export type ShareResolved = { package_id: string; direct: boolean; mode: string };
+
 const json = (body: unknown, method = "POST"): ApiInit => ({ method, body: JSON.stringify(body) });
+
+// ---- the forwarded link ----------------------------------------------------
+// A visitor with no account. Everything here hand-writes fetch against apiBase:
+// `api()` injects Clerk's token and a dev-user header, and using it would not
+// fail loudly — it would quietly attach the wrong identity. Same rule as
+// forms/[kind]/[token] and buckets/request/[token].
+
+export const LINK_SESSION_HEADER = "X-Link-Session";
+
+export async function publicLinkCall<T>(token: string, path: string, init: ApiInit & { session?: string | null } = {}): Promise<T> {
+  const { session, ...rest } = init;
+  const body = typeof rest.body === "string" ? rest.body : rest.body === undefined ? undefined : JSON.stringify(rest.body);
+  const res = await fetch(`${apiBase}/api/v1/production-packages/link/${encodeURIComponent(token)}${path}`, {
+    method: rest.method ?? "GET", body,
+    headers: { "Content-Type": "application/json", ...(session ? { [LINK_SESSION_HEADER]: session } : {}), ...(rest.headers ?? {}) },
+  });
+  if (!res.ok) {
+    let payload: unknown = null;
+    try { payload = await res.json(); } catch { /* no body */ }
+    const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : null;
+    const nested = detail && typeof detail === "object" && "message" in detail ? (detail as { message?: unknown }).message : null;
+    const message = typeof detail === "string" && detail.trim() ? detail : typeof nested === "string" && nested.trim() ? nested : `${res.status} ${res.statusText}`;
+    throw new ApiError(res.status, message, payload);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
+}
+
+export function unlockPublicLink(token: string, pin: string): Promise<{ session: string; expires_at: string; package: ProductionPackage }> {
+  return publicLinkCall(token, "/unlock", { method: "POST", body: { pin } });
+}
+
+/** A signed-in person opened a forwarded link: where do they belong? */
+export function resolveShareForUser(call: ApiCall, token: string): Promise<ShareResolved> {
+  return call<ShareResolved>(`/production-packages/shares/${encodeURIComponent(token)}/resolve`);
+}
+
+export function createPublicShareClient(token: string, session: string): PackageClient {
+  const s = { session };
+  return {
+    mode: "rep",
+    load: () => publicLinkCall<ProductionPackage>(token, "", s),
+    patch: (version, changes, confirm = []) => publicLinkCall<ProductionPackage>(token, "", { ...s, method: "PATCH", body: { version, changes, confirm } }),
+    // The file's own prefill is the desk's; a forwarded link never reaches it.
+    prefill: async () => { throw new ApiError(403, "Not available on a forwarded link"); },
+    compute: (arrangement) => publicLinkCall<ComputeResult>(token, "/compute", { ...s, method: "POST", body: { arrangement } }),
+    presentation: () => publicLinkCall<ProductionPackage>(token, "/presentation", { ...s, method: "POST", body: {} }),
+  };
+}
 
 /** Resolve (or create) the stage-one package on a profile. */
 export async function resolvePackage(call: ApiCall, profileId: string): Promise<ProductionPackage> {
