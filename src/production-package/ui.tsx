@@ -54,12 +54,11 @@ export function PChip({ tone = "mut", children, title }: { tone?: Tone; children
   return <span className={`pp-chip c-${tone}`} title={title}>{children}</span>;
 }
 
-export function PBtn({ variant = "ghost", size = "md", onClick, disabled, children, type = "button", title, busy }: {
+export function PBtn({ variant = "ghost", size = "md", onClick, disabled, children, type = "button", title, busy, className }: {
   variant?: "pri" | "ghost" | "danger" | "link"; size?: "sm" | "md"; onClick?: () => void; disabled?: boolean;
-  children: ReactNode; type?: "button" | "submit"; title?: string; busy?: boolean;
-}) {
+  children: ReactNode; type?: "button" | "submit"; title?: string; busy?: boolean; className?: string;}) {
   return (
-    <button type={type} className={`pp-btn v-${variant} s-${size}${busy ? " busy" : ""}`} onClick={onClick} disabled={disabled || busy} title={title}>
+    <button type={type} className={`pp-btn v-${variant} s-${size}${busy ? " busy" : ""}${className ? ` ${className}` : ""}`} onClick={onClick} disabled={disabled || busy} title={title}>
       {children}
     </button>
   );

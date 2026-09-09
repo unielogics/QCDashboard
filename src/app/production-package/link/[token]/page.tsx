@@ -15,7 +15,7 @@
 // authed api() wrapper for the anonymous branch — it would quietly attach the
 // wrong identity. The public client hand-writes fetch.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { useProductionCall } from "@/lib/productionTrainingCall";
@@ -31,11 +31,13 @@ type Phase =
   | { kind: "checking" }
   | { kind: "pin"; label: string | null; problem: string | null }
   | { kind: "open"; client: PackageClient; pkg: ProductionPackage }
+  | { kind: "closed" }
   | { kind: "gone"; message: string };
 
 function sessionKey(token: string) { return `pp-link:${token}`; }
 function readSession(token: string): string | null { try { return window.sessionStorage.getItem(sessionKey(token)); } catch { return null; } }
 function writeSession(token: string, session: string) { try { window.sessionStorage.setItem(sessionKey(token), session); } catch { /* private window */ } }
+function clearSession(token: string) { try { window.sessionStorage.removeItem(sessionKey(token)); } catch { /* private window */ } }
 
 export default function ForwardedProductionPackagePage() {
   const params = useParams<{ token: string }>();
@@ -70,11 +72,24 @@ export default function ForwardedProductionPackagePage() {
     }
   }, [token]);
 
+  // The door check runs once per token. It must not re-run when a callback
+  // identity changes — with the API unreachable that re-fired both fetches on
+  // every render — and it must not wait forever for Clerk: a visitor whose
+  // Clerk script never loads still gets the PIN.
+  const checked = useRef<string | null>(null);
+  const [clerkTimedOut, setClerkTimedOut] = useState(false);
   useEffect(() => {
-    if (!token || !isLoaded) return;
+    if (isLoaded) return;
+    const t = window.setTimeout(() => setClerkTimedOut(true), 4000);
+    return () => window.clearTimeout(t);
+  }, [isLoaded]);
+
+  useEffect(() => {
+    if (!token || (!isLoaded && !clerkTimedOut) || checked.current === token) return;
+    checked.current = token;
     let cancelled = false;
     (async () => {
-      if (isSignedIn) {
+      if (isLoaded && isSignedIn) {
         try {
           const where = await resolveShareForUser(authedCall, token);
           if (cancelled) return;
@@ -89,7 +104,8 @@ export default function ForwardedProductionPackagePage() {
       if (!cancelled) await openAnonymously();
     })();
     return () => { cancelled = true; };
-  }, [token, isLoaded, isSignedIn, authedCall, router, openAnonymously]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per token, by design
+  }, [token, isLoaded, clerkTimedOut]);
 
   const unlock = async () => {
     if (pin.length !== 6 || busy) return;
@@ -111,6 +127,18 @@ export default function ForwardedProductionPackagePage() {
   const shell = useMemo(() => "pp-root", []);
 
   if (phase.kind === "checking") return <div className={shell}><div className="pp-notice t-mut">Opening the production arrangement…</div></div>;
+  if (phase.kind === "closed") {
+    return (
+      <div className={`${shell} pp-end`}>
+        <div className="pp-panel"><div className="pp-panel-b">
+          <div className="pp-eyebrow">Production arrangement</div>
+          <h1 className="pp-title">You&apos;re done here</h1>
+          <p className="pp-sub">Everything you entered is saved. You can close this window. The link keeps working until it expires, so you can come back with the PIN.</p>
+          <div className="pp-row" style={{ marginTop: 12 }}><PBtn onClick={() => { checked.current = null; setPhase({ kind: "checking" }); void openAnonymously(); }}>Open it again</PBtn></div>
+        </div></div>
+      </div>
+    );
+  }
   if (phase.kind === "gone") return <div className={shell}><div className="pp-notice t-warn"><span>{phase.message}</span></div></div>;
   if (phase.kind === "pin") {
     return (
@@ -137,7 +165,8 @@ export default function ForwardedProductionPackagePage() {
   }
   return (
     <div className={shell}>
-      <ProductionPackageWorkspace key={phase.pkg.id} client={phase.client} initial={phase.pkg} onPackage={(next) => setPhase({ kind: "open", client: phase.client, pkg: next })} />
+      <ProductionPackageWorkspace key={phase.pkg.id} client={phase.client} initial={phase.pkg} onPackage={(next) => setPhase({ kind: "open", client: phase.client, pkg: next })}
+        onClose={() => { clearSession(token); setPhase({ kind: "closed" }); }} />
     </div>
   );
 }

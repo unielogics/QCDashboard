@@ -7,6 +7,7 @@ import { DESK_ONLY_KEYS, PAGES, PAGE_BY_PAGE_KEY, SPONSOR_KEYS, TERM_SHEET_KEYS,
 import { Meters } from "./Meters";
 import { PackageAside } from "./PackageAside";
 import { PackageRail, pageDone, type ViewAs } from "./PackageRail";
+import { IconLink, IconX } from "./icons";
 import { ShareDrawer } from "./ShareDrawer";
 import { TermSheetDrawer } from "./TermSheetDrawer";
 import { PageAgreement } from "./pages/PageAgreement";
@@ -32,6 +33,10 @@ export type WorkspaceProps = {
   onOpenFinal?: (finalPackageId: string) => void;
   /** Open the executed commitment (parent) by id. */
   onOpenOriginal?: (parentPackageId: string) => void;
+  /** The host owns the share drawer's open state; the workspace shows the button when the package may be shared. */
+  onShare?: () => void;
+  /** Leave the workspace. */
+  onClose?: () => void;
 };
 
 type Notice = { message: string; tone: Tone } | null;
@@ -55,7 +60,7 @@ function lockedOnFinal(key: string): boolean {
   return TERM_SHEET_KEYS.has(key) || SPONSOR_KEYS.has(key) || key === "sponsor_company_id";
 }
 
-export function ProductionPackageWorkspace({ client, initial, onPackage, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal }: WorkspaceProps) {
+export function ProductionPackageWorkspace({ client, initial, onPackage, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal, onShare, onClose }: WorkspaceProps) {
   const [pkg, setPkg] = useState<ProductionPackage>(initial);
   const [draft, setDraft] = useState<Arrangement>(initial.arrangement);
   const [page, setPage] = useState<PageKey>(initialPage(initial));
@@ -275,7 +280,7 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
       ) : null}
       <div className="pp-body">
         <PackageRail pkg={pkg} draft={draft} page={current} attention={attention} saving={saving} dirty={dirty} onPage={(p) => go(p)}
-          viewAs={canPreviewAsRep ? viewAs : undefined} onViewAs={canPreviewAsRep ? setViewAs : undefined} />
+          viewAs={canPreviewAsRep ? viewAs : undefined} onViewAs={canPreviewAsRep ? setViewAs : undefined} onClose={onClose} />
         <main className="pp-main">
           <header className="pp-step-h">
             <div className="pp-eyebrow">Step {stepIndex + 1} of {PAGES.length}{two ? " · final" : ""}</div>
@@ -287,9 +292,11 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, shareOp
                   Dealer proposal{pkg.presentation.stale ? " ·" : ""}
                 </PBtn>
               ) : null}
+              {onShare && pkg.capabilities.can_share && client.createShareLink ? <PBtn onClick={onShare}><IconLink />Share</PBtn> : null}
               <PBtn variant="pri" onClick={() => go("agreement", "send")} disabled={pkg.status === "void"} title={pkg.status === "draft" && attention.length ? `${attention.length} open item${attention.length === 1 ? "" : "s"}` : undefined}>
                 {sendLabel}
               </PBtn>
+              {onClose ? <PBtn onClick={onClose} className="pp-close" title="Close"><IconX />Close</PBtn> : null}
             </div>
           </header>
           <Meters pkg={pkg} prov={prov} term={term} />

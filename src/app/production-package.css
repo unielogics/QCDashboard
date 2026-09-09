@@ -337,3 +337,13 @@ textarea.pp-input { resize: vertical; min-height: 64px; }
 .pp-chk-row small { display: block; color: var(--muted); }
 .pp-doc { border: 1px solid var(--line2); border-radius: var(--r); background: var(--surface); padding: 18px 22px; font-size: 13px; line-height: 1.5; }
 .pp-doc .pp-tbl { margin-top: 10px; }
+
+/* ---- leaving, and sharing ---- */
+.pp-rail-head { position: relative; padding-right: 30px; }
+.pp-rail-x { position: absolute; top: 0; right: 0; width: 26px; height: 26px; display: inline-grid; place-items: center; border: 1px solid var(--line2); border-radius: 999px; background: var(--surface); color: var(--muted); cursor: pointer; }
+.pp-rail-x:hover { border-color: var(--danger); color: var(--danger); }
+.pp-rail-x:focus-visible { outline: 2px solid var(--accent-400); outline-offset: 1px; }
+.pp-acts .pp-close { margin-left: auto; }
+.pp-backlink { display: inline-flex; align-items: center; gap: 4px; font-size: 12.5px; font-weight: 600; color: var(--muted); text-decoration: none; margin-bottom: 4px; }
+.pp-backlink:hover { color: var(--accent); }
+.pp-end { max-width: 560px; margin: 48px auto; padding: 0 16px; }

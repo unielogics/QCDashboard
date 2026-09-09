@@ -10,8 +10,10 @@
 // /production-package/link/[token] instead.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useParams, usePathname, useRouter, useSearchParams } from "next/navigation";
-import { PageHeader } from "@/components/ds";
+import Link from "next/link";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { IconBtn, PageHeader } from "@/components/ds";
+import { Icon } from "@/components/design-system/Icon";
 import { useProductionCall } from "@/lib/productionTrainingCall";
 import { createOperatorClient, loadPackage } from "@/production-package/client";
 import { ProductionPackageWorkspace } from "@/production-package/ProductionPackageWorkspace";
@@ -23,6 +25,14 @@ function stageLabel(pkg: ProductionPackage): string {
   return pkg.stage === 2 ? "Production agreement · final" : "Engagement agreement · commitment";
 }
 
+/** Where "out" is. The desk came from the dealer file's Production Package tab; a partner from their lead. */
+function fileHref(pkg: ProductionPackage): string | null {
+  if (!pkg.intake_id) return null;
+  if (pkg.mode === "partner") return `/broker/ai-underwriter-leads?lead=${pkg.intake_id}`;
+  if (pkg.mode === "operator") return `/admin/ai-underwriter-leads?lead=${pkg.intake_id}&view=production`;
+  return null;
+}
+
 function statusTone(status: string): "ok" | "warn" | "mut" | "acc" {
   return status === "executed" ? "ok" : status === "out_for_signature" ? "warn" : status === "void" ? "mut" : "acc";
 }
@@ -31,12 +41,13 @@ export default function ProductionPackagePage() {
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const router = useRouter();
-  const pathname = usePathname();
   const search = useSearchParams();
   const call = useProductionCall();
 
   const [pkg, setPkg] = useState<ProductionPackage | null>(null);
   const [error, setError] = useState<{ message: string; status: number | null } | null>(null);
+  // The file page opens the drawer with ?share=1; the workspace's own Share button opens it too.
+  const [shareOpen, setShareOpen] = useState(search?.get("share") === "1");
 
   const load = useCallback(async () => {
     setError(null);
@@ -49,9 +60,10 @@ export default function ProductionPackagePage() {
   useEffect(() => { if (id) load().catch(() => undefined); }, [id, load]);
 
   const client = useMemo(() => (pkg ? createOperatorClient(call, pkg.id) : null), [call, pkg?.id]); // eslint-disable-line react-hooks/exhaustive-deps
-  const shareOpen = search?.get("share") === "1";
-  const closeShare = () => router.replace(pathname ?? `/production-package/${id}`);
+  const closeShare = () => setShareOpen(false);
   const open = (packageId: string) => router.push(`/production-package/${packageId}`);
+  const back = pkg ? fileHref(pkg) : null;
+  const leave = () => { if (back) router.push(back); else if (window.history.length > 1) router.back(); else router.push("/"); };
 
   if (error) {
     return (
@@ -66,9 +78,11 @@ export default function ProductionPackagePage() {
   const dealer = String(pkg.arrangement?.dealer_name || "").trim() || "Production package";
   return (
     <div className="pp-root">
+      {back ? <Link href={back} className="pp-backlink"><Icon name="chevL" size={13} /> Back to the file</Link> : null}
       <PageHeader
         eyebrow={stageLabel(pkg)}
         title={dealer}
+        actions={<IconBtn aria-label="Close" title="Close" onClick={leave}><Icon name="x" size={16} /></IconBtn>}
         meta={(
           <div className="pp-row" style={{ gap: 6 }}>
             <PChip tone={statusTone(pkg.status)}>{pkg.status.replace(/_/g, " ")}</PChip>
@@ -87,6 +101,8 @@ export default function ProductionPackagePage() {
         onShareClose={closeShare}
         onOpenFinal={open}
         onOpenOriginal={open}
+        onShare={pkg.capabilities.can_share ? () => setShareOpen(true) : undefined}
+        onClose={leave}
       />
     </div>
   );

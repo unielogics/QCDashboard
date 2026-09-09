@@ -1,23 +1,38 @@
 // The left rail: what this is, where it stands, the five steps and their
 // states, and — for the desk — which lens the page is being viewed through.
 import { FIELDS, PAGES, fieldRequiredNow, isBlank, pageFor } from "./schema";
-import { IconCheck, IconLock } from "./icons";
+import { IconCheck, IconLock, IconX } from "./icons";
 import { PChip, Picks } from "./ui";
 import type { Arrangement, AttentionItem, PageKey, ProductionPackage } from "./types";
 
 export type ViewAs = "rep" | "underwriting";
 const VIEWS: Array<[ViewAs, string]> = [["rep", "Rep"], ["underwriting", "Underwriting"]];
 
-/** A page is done when nothing on it needs attention and every field it requires now carries a value. */
+/** A page is done when nothing on it needs attention and every field it
+ *  requires now carries a value. Two pages have no required fields of their
+ *  own — "Build the repayment" and "What changes" — and read as done on a
+ *  blank package, which is a lie; they are done when the loan is actually
+ *  carried (or the dealer has chosen to pay it) on a page that has something
+ *  to carry it from. */
 export function pageDone(page: PageKey, pkg: ProductionPackage, draft: Arrangement, attention: AttentionItem[]): boolean {
   if (attention.some((a) => pageFor(a) === page)) return false;
   const scope = pkg.stage === 2 ? "stage_two" : "stage_one";
-  return FIELDS.every((d) => d.page !== page || !fieldRequiredNow(d, scope) || !isBlank(d, draft[d.key]));
+  const fieldsDone = (p: PageKey) => FIELDS.every((d) => d.page !== p || !fieldRequiredNow(d, scope) || !isBlank(d, draft[d.key]));
+  if (page === "build" || page === "changes") {
+    const b = pkg.computed.buildout;
+    const covered = Object.values(draft.products ?? {}).some((v) => v && v.on);
+    const carried = b.build === false ? true : b.policy_funded > 0;
+    const upstream = fieldsDone("today") && fieldsDone("loan") && !attention.some((a) => pageFor(a) === "today" || pageFor(a) === "loan");
+    return covered && carried && upstream && (page === "build" || !attention.some((a) => pageFor(a) === "build"));
+  }
+  return fieldsDone(page);
 }
 
-export function PackageRail({ pkg, draft, page, attention, saving, dirty, onPage, viewAs, onViewAs }: {
+export function PackageRail({ pkg, draft, page, attention, saving, dirty, onPage, viewAs, onViewAs, onClose }: {
   pkg: ProductionPackage; draft: Arrangement; page: PageKey; attention: AttentionItem[]; saving: boolean; dirty: boolean;
   onPage: (p: PageKey) => void;
+  /** Leave the workspace. The host says where "out" is: the file for the desk, the end of the visit for a forwarded link. */
+  onClose?: () => void;
   /** The desk's lens. Absent for everyone else — a rep never sees a control implying they could become underwriting. */
   viewAs?: ViewAs; onViewAs?: (v: ViewAs) => void;
 }) {
@@ -29,6 +44,7 @@ export function PackageRail({ pkg, draft, page, attention, saving, dirty, onPage
   return (
     <aside className="pp-rail-l">
       <div className="pp-rail-head">
+        {onClose ? <button type="button" className="pp-rail-x" onClick={onClose} aria-label="Close" title="Close"><IconX /></button> : null}
         <div className="pp-eyebrow">Production arrangement</div>
         <div className="pp-rail-name">{pkg.business_name || String(draft.dealer_name || "") || "New arrangement"}</div>
         <div className="pp-rail-ref">{ref} · {done} of {PAGES.length} steps complete</div>
