@@ -4,7 +4,8 @@
 // tested, and the dealer's paper says the terms are set at closing.
 import { money, num, pct } from "../format";
 import { SIZING_MODES } from "../options";
-import { Callout, Derived, Disclosure, Field, KV, LockedChip, PChip, PPanel, Picks, type StepCtx } from "../ui";
+import { useState } from "react";
+import { Callout, Derived, Disclosure, Field, KV, LockedChip, PBtn, PChip, PPanel, Picks, type StepCtx } from "../ui";
 
 const LOAN_KEYS = ["requested", "term", "dealer_cof", "exclusivity", "min_activation"] as const;
 const COST_KEYS = new Set(["bank_cof", "orig_cost", "prof_fees", "mgmt_fee", "loss_prov", "debt_service", "sizing", "facility_type", "written_approval_date", "outside_funding_date"]);
@@ -20,6 +21,10 @@ export function PageLoan({ ctx }: { ctx: StepCtx }) {
   const clears = prov.clears;
   const sizing = draft.sizing === "fixed" ? "fixed" : "backsolve";
   const costOpen = computed.attention.filter((a) => COST_KEYS.has(a.key)).length;
+  // The window follows the size of the request; the desk may shorten it, never lengthen it.
+  const tier = adv.exclusivity_tier ?? (Number(draft.requested) > 350_000 ? 60 : 30);
+  const governs = adv.exclusivity_days ?? tier;
+  const [adjustWindow, setAdjustWindow] = useState(Boolean(draft.exclusivity) && Number(draft.exclusivity) !== tier);
   return (
     <>
       <PPanel title="The loan" sub={two ? "The approved amount, rate and term from the term sheet." : "What the dealer is asking for. The rate, the term and the supporting program are underwriting's working assumptions until the term sheet — the commitment prints the requested amount, to be determined at closing."}
@@ -29,7 +34,15 @@ export function PageLoan({ ctx }: { ctx: StepCtx }) {
             <Field ctx={ctx} k="requested" label={two ? "Approved amount" : "Amount"} />
             <Field ctx={ctx} k="term" label="Term (months)" />
             <Field ctx={ctx} k="dealer_cof" label={two ? "Rate" : "Dealer rate (%)"} />
-            <Field ctx={ctx} k="exclusivity" label="Exclusivity window (days)" />
+            <div className="pp-field" id="pp-field-exclusivity">
+              <span className="pp-lbl">Exclusivity window (days){Number(draft.exclusivity) > tier ? <PChip tone="bad">above the tier</PChip> : null}</span>
+              {adjustWindow ? (
+                <Field ctx={ctx} k="exclusivity" label="" />
+              ) : (
+                <div className="pp-static">{governs} days<span className="pp-sub"> · {tier === 60 ? "over $350,000: sixty days" : "at or under $350,000: thirty days"}</span></div>
+              )}
+              <div className="pp-row"><PBtn size="sm" variant="link" onClick={() => { if (adjustWindow) set("exclusivity", ""); setAdjustWindow((v) => !v); }} disabled={readOnly}>{adjustWindow ? "Use the tier" : "Shorten it"}</PBtn><span className="pp-hint">Never longer than the tier for the request; the agreement prints {governs}.</span></div>
+            </div>
             <Field ctx={ctx} k="min_activation" label="Minimum activation amount" />
             <Field ctx={ctx} k="debt_service" label="Monthly payment" />
           </div>
@@ -38,7 +51,7 @@ export function PageLoan({ ctx }: { ctx: StepCtx }) {
             <KV label="Amount" value={money(Number(draft.requested) || 0)} />
             <KV label="Term" value={term ? `${num(term)} months` : "To be determined"} />
             <KV label="Dealer rate" value={draft.dealer_cof ? pct(Number(draft.dealer_cof)) : "To be determined"} />
-            <KV label="Exclusivity window" value={draft.exclusivity ? `${num(Number(draft.exclusivity))} days` : "—"} />
+            <KV label="Exclusivity window" value={`${num(governs)} days`} />
             <KV label="Minimum activation amount" value={money(Number(draft.min_activation) || 0)} />
             <KV label="Monthly payment" value={money(pay)} />
           </div>

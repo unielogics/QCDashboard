@@ -102,6 +102,8 @@ export type Computed = {
   };
   lot: { lot_value: number; months_of_inventory: number | null; sell_through_pct: number | null };
   advance: {
+    // The window that governs, and the tier the request sets: over $350,000 sixty days, otherwise thirty or less.
+    exclusivity_days: number; exclusivity_tier: number;
     term: number; requested: number; supported: number; advance: number; sizing: "backsolve" | "fixed";
     implied_rate: number; cost_rate: number; spread: number; clears: boolean; floor_points: number;
     bank_cost: number; orig_cost: number; prof_fees: number; mgmt_total: number; loss_cost: number; total_cost: number;

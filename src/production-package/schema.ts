@@ -86,7 +86,8 @@ export const FIELDS: FieldDef[] = [
   f("facility_type", "advance", "Requested facility type", "select", "presentation", { options: FACILITY_TYPES }),
   f("term", "advance", "Term", "number", "presentation", { nonZero: true, unit: "months" }),
   f("dealer_cof", "advance", "Dealer cost of funds", "number", "presentation", { nonZero: true, always: "Negotiated with the dealer on their credit profile", unit: "%" }),
-  f("exclusivity", "advance", "Exclusivity window", "number", "stage_one", { nonZero: true, unit: "days" }),
+  // Never blank: the tier for the request supplies it, and the desk may only shorten it.
+  f("exclusivity", "advance", "Exclusivity window", "number", "never", { nonZero: true, unit: "days" }),
   f("bank_cof", "advance", "Bank cost of funds", "number", "never", { always: "Near zero — we lend against a bank line", unit: "%" }),
   f("orig_cost", "advance", "Origination and underwriting", "number", "presentation", { nonZero: true, always: "One-time, carried against the whole term", unit: "$" }),
   f("prof_fees", "advance", "Consulting and professional fees", "number", "presentation", { nonZero: true, always: "Legal, advisory, onsite review", unit: "$" }),
