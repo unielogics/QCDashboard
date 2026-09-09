@@ -299,6 +299,7 @@ export function Step1Parties({ ctx, sponsors, client, onPackage }: { ctx: StepCt
           <Field ctx={ctx} k="rm_phone" placeholder="(973) 555-0148" />
         </div>
         {operator && sof.rm && !sof.rm.present ? <Callout tone="warn">{sof.rm.how_to_fix}</Callout> : null}
+        {operator && sof.rm && sof.rm.phone_present === false && sof.rm.phone_how_to_fix && draft.rm_user_id ? <Callout tone="warn">{sof.rm.phone_how_to_fix}</Callout> : null}
       </PPanel>
     </>
   );

@@ -299,7 +299,11 @@ export type PreviousFinal = { id: string; status: string; created_at: string; vo
 
 // ---- signatures on file (qc / sponsor / rm) ----
 
-export type SignatureOnFile = { present: boolean; typed_name: string | null; adopted_at: string | null; how_to_fix: string | null; user_id?: string | null };
+export type SignatureOnFile = {
+  present: boolean; typed_name: string | null; adopted_at: string | null; how_to_fix: string | null; user_id?: string | null;
+  // The manager's phone travels with the person; the desk is told when the named manager has none on file.
+  phone_present?: boolean; phone_how_to_fix?: string | null;
+};
 export type SignaturesOnFile = { qc?: SignatureOnFile; sponsor?: SignatureOnFile; rm?: SignatureOnFile; ready?: boolean };
 
 export type StoredSignatureRead = {

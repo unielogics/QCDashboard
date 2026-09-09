@@ -335,7 +335,10 @@ export function Field({ ctx, k, label, kind, options, placeholder, span, scope, 
         // details behind.
         if (member) {
           ctx.set("rm_email", member.email ?? "");
-          if (member.phone) ctx.set("rm_phone", member.phone);
+          // Unconditionally: a manager with no phone on file blanks the field
+          // and the callout names them, instead of silently keeping the
+          // previous manager's number under this one's name.
+          ctx.set("rm_phone", member.phone ?? "");
           // The employer is the manager's linked business relationship profile.
           if (member.company_name) ctx.set("rm_employer", member.company_name);
         }

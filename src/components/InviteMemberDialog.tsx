@@ -31,6 +31,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const house = companies.find((c) => c.kind === "house") ?? null;
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [phone, setPhone] = useState("");
   const [role, setRole] = useState<Role>(Role.BROKER);
   const [companyId, setCompanyId] = useState("");
   const [accountTypes, setAccountTypes] = useState<OperatorAccountAccessType[]>([]);
@@ -40,6 +41,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
     if (open) {
       setEmail("");
       setName("");
+      setPhone("");
       setRole(Role.BROKER);
       setCompanyId("");
       setAccountTypes([]);
@@ -70,6 +72,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
         name: name.trim(),
         role,
         referral_partner_company_id: companyId || undefined,
+        phone: phone.trim() || undefined,
         account_types: accountTypes,
       });
       onInvited?.();
@@ -118,6 +121,18 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
           placeholder="Avery Park"
           style={inputStyle()}
         />
+      </Field>
+      <Field label="Mobile phone (optional)">
+        <input
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
+          placeholder="(973) 555-0148"
+          inputMode="tel"
+          style={inputStyle()}
+        />
+        <div style={{ fontSize: 11, color: V.ink3, marginTop: 6, lineHeight: 1.4 }}>
+          Taken once. Staff are asked for it at first sign-in if it is left blank; it prints as the relationship manager&apos;s phone on production agreements.
+        </div>
       </Field>
 
       <div>

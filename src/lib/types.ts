@@ -19,6 +19,8 @@ export interface User {
   // relationship manager and their phone.
   phone?: string | null;
   title?: string | null;
+  // The one-time gate: a rep, underwriter or super admin with no mobile on file.
+  needs_phone?: boolean;
   // Only ever set for Role.DEALER_PARTNER; drives the AppShell NDA gate.
   nda_signed_at?: string | null;
 }
@@ -1480,6 +1482,8 @@ export interface UserRow {
   /** "referral_partner" or "house"; null when there is no link. */
   company_kind?: string | null;
   company_agreement_signed: boolean | null;
+  /** The mobile on file; printed as the relationship manager's phone on production agreements. */
+  phone?: string | null;
   account_types: OperatorAccountAccessType[];
   created_at: string | null;
 }

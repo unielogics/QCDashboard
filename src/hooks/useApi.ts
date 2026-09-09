@@ -1385,7 +1385,7 @@ export function useInviteUser() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string; referral_partner_company_id?: string; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
+    mutationFn: (body: { email: string; name: string; role: Role; company_name?: string; referral_partner_company_id?: string; phone?: string; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
       apiCall<UserRow>("/users", {
         method: "POST",
         body: JSON.stringify(body),
@@ -1399,7 +1399,7 @@ export function useUpdateUserRole() {
   const qc = useQueryClient();
   return useMutation({
     // invalidates: ["users"]
-    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; company_name?: string; referral_partner_company_id?: string | null; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
+    mutationFn: ({ userId, ...patch }: { userId: string; role?: Role; name?: string; phone?: string | null; company_name?: string; referral_partner_company_id?: string | null; account_types?: import("@/lib/types").OperatorAccountAccessType[] }) =>
       apiCall<UserRow>(`/users/${userId}`, {
         method: "PATCH",
         body: JSON.stringify(patch),

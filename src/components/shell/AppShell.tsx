@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import MfaBanner from "@/components/MfaBanner";
 import { usePathname, useRouter } from "next/navigation";
 import { Sidebar } from "./Sidebar";
@@ -18,6 +18,7 @@ import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 import { Role, ContractType } from "@/lib/enums.generated";
 import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
+import { PhoneRequiredGate, phoneGateSkipped } from "@/components/shell/PhoneRequiredGate";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 
 export default function AppShell({
@@ -113,6 +114,7 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // /account is excluded because it is where someone lands to satisfy the
   // task, and sending them back to sign-in from it would be a loop.
   const isAccountRoute = pathname.startsWith("/account");
+  const [phoneSkipped, setPhoneSkipped] = useState<boolean>(() => (typeof window !== "undefined" ? phoneGateSkipped() : false));
 
   useEffect(() => {
     if (!isAccountRoute && authLoaded && isSignedIn === false) {
@@ -181,6 +183,12 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
         </div>
       </div>
     );
+  }
+
+  // The one-time mobile number, before any chrome. /account stays reachable so
+  // Clerk's own task pages are never behind a second gate.
+  if (user.needs_phone && !isAccountRoute && !phoneSkipped) {
+    return <PhoneRequiredGate onSkip={() => setPhoneSkipped(true)} />;
   }
 
   if (isAuditOnlyClient) {

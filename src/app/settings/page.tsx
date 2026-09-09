@@ -1495,6 +1495,9 @@ function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").Portfolio
   );
 }
 
+// The roles named on production agreements: the first-login gate asks these for a mobile.
+const PHONE_REQUIRED_ROLES = new Set<Role>([Role.SUPER_ADMIN, Role.LOAN_EXEC, Role.FIELD_REP]);
+
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { data: users, isLoading, error } = useUsers();
   const { data: companies = [] } = useReferralCompanies();
@@ -1568,6 +1571,7 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
             cols={[
               { label: "Name" },
               { label: "Email" },
+              { label: "Phone", width: 140 },
               { label: "Role", width: 160 },
               { label: "Account access", width: 190 },
               { label: "Profile / Agreement" },
@@ -1583,6 +1587,16 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                     <b>{u.name}</b> {isSelf && <CellChip>You</CellChip>}
                   </Td>
                   <Td>{u.email}</Td>
+                  <Td>
+                    {/* Set once on the person and reused on every package; a
+                        super admin can fix it here without asking them. */}
+                    <button type="button" className="cellchip c-mut" style={{ border: 0, cursor: "pointer" }}
+                      title={u.phone ? "Change their mobile number" : "Add their mobile number"}
+                      disabled={updateRole.isPending}
+                      onClick={() => { const next = window.prompt(`Mobile number for ${u.name}:`, u.phone ?? ""); if (next !== null) updateRole.mutate({ userId: u.id, phone: next.trim() || null }); }}>
+                      {u.phone ? u.phone : PHONE_REQUIRED_ROLES.has(u.role) ? "Missing" : "—"}
+                    </button>
+                  </Td>
                   <Td>
                     <Select
                       value={u.role}

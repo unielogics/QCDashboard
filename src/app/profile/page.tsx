@@ -23,6 +23,7 @@ import { CreditPullModal } from "@/components/CreditPullModal";
 import { Role } from "@/lib/enums.generated";
 import { InvestorProfileDialog } from "./components/InvestorProfileDialog";
 import { MySignatureCard } from "@/components/profile/MySignatureCard";
+import { YourContactDetails } from "@/components/settings/BookingPageSettingsSection";
 
 const ROLE_LABEL: Record<string, string> = {
   super_admin: "Super Admin",
@@ -120,7 +121,7 @@ export default function ProfilePage() {
   }> = [
     {
       label: "Personal Info",
-      sub: "Avatar, name, phone, address",
+      sub: "Avatar, name, address — your phone lives in Your contact details below",
       icon: "user",
       onClick: () => router.push("/account"),
     },
@@ -198,6 +199,11 @@ export default function ProfilePage() {
           accounts sign each document fresh in the room, so the card is not
           offered to clients. */}
       {!isClient ? <MySignatureCard defaultName={user.name} /> : null}
+
+      {/* The phone and title the agreements print: set once here, reused on
+          every package the person is named on. Lives here rather than under
+          Settings → Booking page, where nobody looked for it. */}
+      {!isClient ? <YourContactDetails /> : null}
 
       {/* No Appearance section: this app is light-only, matching Capital OS.
           The 3-way Light / Auto / Dark control was removed with dark mode. */}

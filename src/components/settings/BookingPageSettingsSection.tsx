@@ -112,7 +112,7 @@ function defaultBookingSettings(): UserBookingSettings {
  * phone lives only in Clerk. Filled in here once, it travels with the person
  * onto every package they are named on.
  */
-function YourContactDetails() {
+export function YourContactDetails() {
   const { data: user } = useCurrentUser();
   const update = useUpdateProfile();
   const [phone, setPhone] = useState("");
@@ -340,8 +340,6 @@ export function BookingPageSettingsSection({ embedded = false }: { embedded?: bo
 
       <div className="booking-settings-workspace">
         <div className="grid">
-          <YourContactDetails />
-
           <Panel title="Publishing">
             <div className="grid">
               <ToggleRow
