@@ -12,11 +12,15 @@ export type ProvisionalRow = {
   key: ProductKey; label: string; on: boolean; contracts: number; cur_contracts: number; gross: number; cur_gross: number;
   premium: number; cur_premium: number; repay: number; comm: number; admin: number; reserve: number;
   repay_m: number; comm_m: number; admin_m: number; reserve_m: number; uplift: number; d_contracts: number; d_gross: number; term: number;
+  base: number; other: number; markup: number; stack: number; cushion: number; room: number; savings: number; stack_known: boolean;
+  cost_same: number; stack_m: number; cushion_m: number; room_m: number; markup_m: number; savings_m: number;
 };
 
 export type Provisional = {
   units: number; rows: ProvisionalRow[]; contracts: number; cur_contracts: number; gross: number; cur_gross: number;
-  d_gross: number; repay_m: number; comm_m: number; admin_m: number; reserve_m: number;
+  d_gross: number; d_gross_term: number; repay_m: number; comm_m: number; admin_m: number; reserve_m: number;
+  // The story: today's volume at our price, the saving, the room, our margin, the management fee.
+  cost_same: number; savings_m: number; stack_m: number; cushion_m: number; room_m: number; markup_m: number; mgmt_m: number;
   lot_value: number; months_of_inventory: number | null; sell_through_pct: number | null;
   supported: number; advance: number; implied_rate: number; cost_rate: number; spread: number; clears: boolean; total_cost: number;
   funded_pct: number; out_of_pocket: number; loan_free: boolean; remittance_req: number; coverage_pct: number;
@@ -54,12 +58,22 @@ export function provisional(a: Partial<Arrangement>): Provisional {
     const comm = premium * (toNumber(v.comm) / 100);
     const admin = toNumber(v.admin);
     const reserve = Math.max(0, premium - repay - comm - admin) * (toNumber(v.retention) / 100);
+    const base = toNumber(v.base);
+    const other = toNumber(v.other);
+    const markup = toNumber(v.markup);
+    const stackKnown = String(v.base ?? "").trim() !== "";
+    const stack = base + admin + other;
+    const cushion = curPremium - stack;
+    const room = Math.max(0, cushion - markup);
     return {
       key: p.key, label: p.label, on, contracts, cur_contracts: curContracts, gross: contracts * premium,
       cur_gross: curContracts * curPremium, premium, cur_premium: curPremium, repay, comm, admin, reserve,
       repay_m: contracts * repay, comm_m: contracts * comm, admin_m: contracts * admin, reserve_m: contracts * reserve,
       uplift: premium - curPremium, d_contracts: contracts - curContracts, d_gross: contracts * premium - curContracts * curPremium,
       term: toNumber(v.term) || 12,
+      base, other, markup, stack, cushion, room, savings: curPremium - premium, stack_known: stackKnown,
+      cost_same: curContracts * premium, stack_m: contracts * stack, cushion_m: contracts * cushion, room_m: contracts * room,
+      markup_m: contracts * markup, savings_m: curContracts * (curPremium - premium),
     };
   });
   const on = rows.filter((r) => r.on);
@@ -84,7 +98,9 @@ export function provisional(a: Partial<Arrangement>): Provisional {
   const lotUnits = toNumber(a.lot_units);
   return {
     units, rows, contracts: sum("contracts"), cur_contracts: sum("cur_contracts"), gross: sum("gross"), cur_gross: sum("cur_gross"),
-    d_gross: sum("d_gross"), repay_m: repayM, comm_m: sum("comm_m"), admin_m: sum("admin_m"), reserve_m: sum("reserve_m"),
+    d_gross: sum("d_gross"), d_gross_term: sum("d_gross") * term, repay_m: repayM, comm_m: sum("comm_m"), admin_m: sum("admin_m"), reserve_m: sum("reserve_m"),
+    cost_same: sum("cost_same"), savings_m: sum("savings_m"), stack_m: sum("stack_m"), cushion_m: sum("cushion_m"), room_m: sum("room_m"),
+    markup_m: sum("markup_m"), mgmt_m: toNumber(a.mgmt_fee),
     lot_value: lotUnits * toNumber(a.avg_cost),
     months_of_inventory: lotUnits && units ? lotUnits / units : null,
     sell_through_pct: lotUnits ? (units / lotUnits) * 100 : null,

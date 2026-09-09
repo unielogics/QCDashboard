@@ -3,6 +3,7 @@
 export type PackageStatus = "draft" | "out_for_signature" | "executed" | "void";
 export type PackageMode = "operator" | "rep" | "partner";
 export type AccessVia = "operator" | "share_link" | "ownership";
+export type ViewAs = "rep" | "underwriting";
 // The backend's step taxonomy. It is the wire contract — every attention row
 // and every 422 names one of these — so it keeps all twelve members. The UI
 // routes on PageKey, the design's five steps; schema.ts maps between them.
@@ -28,6 +29,12 @@ export type ProductRow = {
   admin: Numberish;
   retention: Numberish;
   term: Numberish;
+  // The fee stack behind `premium`: our base cost, other fees that leave, our
+  // markup per contract. `premium` stays the field of record; the workspace
+  // writes it as base + admin + other + markup + repay.
+  base: Numberish;
+  other: Numberish;
+  markup: Numberish;
 };
 
 // §9.2 ownership schedule row (OWNER_FIELDS on the backend).
@@ -63,6 +70,14 @@ export type ProductEcon = {
   contracts: number; cur_contracts: number; gross: number; cur_gross: number;
   repay_m: number; comm_m: number; admin_m: number; reserve_m: number;
   uplift: number; d_contracts: number; d_gross: number;
+  // The stack and what it leaves — all $ per contract.
+  base: number; other: number; markup: number;
+  stack: number; cushion: number; room: number; savings: number;
+  // False until a base cost has been entered: a legacy row's cushion is fabricated.
+  stack_known: boolean;
+  cost_same: number;
+  stack_m: number; cushion_m: number; room_m: number; markup_m: number;
+  d_gross_from_attach: number; d_gross_from_price: number;
 };
 
 export type ThresholdRow = {
@@ -79,7 +94,11 @@ export type Computed = {
     d_contracts: number; d_gross: number; d_gross_term: number;
     repay_m: number; comm_m: number; admin_m: number; reserve_m: number; max_term: number;
     blended_attach: number | null; cur_per_vehicle: number | null;
-    waterfall: Array<{ label: string; value: number }>;
+    // Today's contracts at our price, and the saving with volume held constant.
+    cost_same: number; savings_m: number;
+    stack_m: number; cushion_m: number; room_m: number; markup_m: number;
+    d_gross_from_attach: number; d_gross_from_price: number;
+    waterfall: Array<{ label: string; value: number; group?: "today" | "stack" | "margin" | "loan" | "total" | "savings" }>;
   };
   lot: { lot_value: number; months_of_inventory: number | null; sell_through_pct: number | null };
   advance: {
@@ -94,9 +113,17 @@ export type Computed = {
     rolling: Array<{ label: string; value: number; format: "count" | "pct" | "money" }>;
   };
   buildout: {
+    // `reverse`: build the payment into the policies. `forward`: the dealer pays it from operations.
+    mode: "reverse" | "forward"; build: boolean;
     debt_service: number; fund_target_pct: number; policy_funded: number; funded_pct: number; out_of_pocket: number;
     loan_free: boolean; need_monthly: number;
-    solve_rows: Array<{ key: ProductKey; label: string; contracts: number; cur_premium: number; solve_repay: number; needed: number; uplift: number; steep: boolean }>;
+    solve_rows: Array<{
+      key: ProductKey; label: string; contracts: number; cur_premium: number; room: number; room_m: number;
+      solve_repay: number; needed: number; savings_after: number; over_room: boolean;
+      // transitional names the old buildout step still reads
+      uplift: number; steep: boolean;
+    }>;
+    room_m: number; shortfall: number; over_room: boolean; required_vs_room_pct: number | null;
     required_per_contract: number; required_uplift_pct: number;
     scenarios: Record<"with" | "without", {
       key: string; title: string; sub: string; tag: string; free: boolean; payment: number; funded: number;
@@ -270,6 +297,8 @@ export type SendRequest = {
 };
 
 export type ProductionPackage = {
+  // QC-PA-…-R{n} at stage one, QC-AA-… at stage two; derived on the backend, absent on packages read before it existed.
+  agreement_no?: string | null;
   id: string; profile_id: string; intake_id: string | null; dealer_id: string | null; stage: number;
   status: PackageStatus; version: number; business_name: string; client_email: string | null; client_phone: string | null;
   arrangement: Arrangement; prefill_provenance: Provenance; computed: Computed;

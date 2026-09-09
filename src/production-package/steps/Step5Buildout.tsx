@@ -7,8 +7,10 @@ export function Step5Buildout({ ctx }: { ctx: StepCtx }) {
   const b = computed.buildout;
   const mode = draft.buildout_mode === "forward" ? "forward" : "reverse";
   const applySolve = () => {
+    // The repayment, and the premium that follows from the stack with it, so
+    // the two never disagree; the reconciliation rule catches any drift.
     b.solve_rows.forEach((r) => { setProduct(r.key, "repay", r.solve_repay); setProduct(r.key, "premium", r.needed); });
-    notify(`Repayment reverse-solved to fund ${pct(b.fund_target_pct, 0)} of the monthly payment from policy production.`, "acc");
+    notify(`The payment is carried out of the room on every covered product, ${pct(b.fund_target_pct, 0)} of it.`, "acc");
   };
   const funded = prov.funded_pct;
   const tone = prov.loan_free ? "ok" : funded >= 50 ? "warn" : "bad";

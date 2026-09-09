@@ -1,11 +1,12 @@
 "use client";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { PackageClient } from "./client";
 import { provisional as computeProvisional } from "./compute";
 import { debounce, errorDetail, errorMessage, errorStatus, openSignedUrl } from "./format";
 import { DESK_ONLY_KEYS, PAGES, PAGE_BY_PAGE_KEY, SPONSOR_KEYS, TERM_SHEET_KEYS, isPageKey, pageFor } from "./schema";
-import { AllClearSummary } from "./AllClearSummary";
-import { PackageTopBar } from "./PackageTopBar";
+import { Meters } from "./Meters";
+import { PackageAside } from "./PackageAside";
+import { PackageRail, pageDone, type ViewAs } from "./PackageRail";
 import { ShareDrawer } from "./ShareDrawer";
 import { TermSheetDrawer } from "./TermSheetDrawer";
 import { Step1Parties } from "./steps/Step1Parties";
@@ -28,7 +29,6 @@ export type WorkspaceProps = {
   client: PackageClient;
   initial: ProductionPackage;
   onPackage?: (pkg: ProductionPackage) => void;
-  headerRight?: ReactNode;
   shareOpen?: boolean;
   onShareClose?: () => void;
   /** The profile the term sheet lives on; defaults to the package's. */
@@ -42,8 +42,6 @@ export type WorkspaceProps = {
 };
 
 type Notice = { message: string; tone: Tone } | null;
-
-const ATTENTION_PANEL_ID = "pp-attention-panel";
 
 function shallowDiff(before: Arrangement, after: Arrangement): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -64,7 +62,7 @@ function lockedOnFinal(key: string): boolean {
   return TERM_SHEET_KEYS.has(key) || SPONSOR_KEYS.has(key) || key === "sponsor_company_id";
 }
 
-export function ProductionPackageWorkspace({ client, initial, onPackage, headerRight, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal }: WorkspaceProps) {
+export function ProductionPackageWorkspace({ client, initial, onPackage, shareOpen, onShareClose, profileId, onOpenTermSheet, onOpenFinal, onOpenOriginal }: WorkspaceProps) {
   const [pkg, setPkg] = useState<ProductionPackage>(initial);
   const [draft, setDraft] = useState<Arrangement>(initial.arrangement);
   const [page, setPage] = useState<PageKey>(initialPage(initial));
@@ -77,10 +75,10 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const [team, setTeam] = useState<Array<{ id: string; name: string; email: string; phone: string | null; title: string | null; role: string }>>([]);
   const [teamError, setTeamError] = useState(false);
   const [termsOpen, setTermsOpen] = useState(false);
-  // The open-item list is hidden until the flag in the container is clicked.
-  const [attentionOpen, setAttentionOpen] = useState(false);
+  // The desk's lens. Held here, never on the arrangement — a view is not a term,
+  // and it would enter snapshot_hash and read as a change in the comparison.
+  const [viewAs, setViewAs] = useState<ViewAs>("underwriting");
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const barRef = useRef<HTMLDivElement | null>(null);
   const savedRef = useRef<Arrangement>(initial.arrangement);
   const versionRef = useRef<number>(initial.version);
   const draftRef = useRef<Arrangement>(initial.arrangement);
@@ -218,9 +216,14 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const prov = useMemo(() => computeProvisional(draft), [draft]);
   const dirty = useMemo(() => Object.keys(shallowDiff(savedRef.current, draft)).length > 0, [draft, pkg.version]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // The lens follows the person. Underwriting is the desk's; a super admin has
+  // it on either door, an underwriter on the signed-in one. The preview only
+  // ever narrows what an operator sees — set() still guards on pkg.mode, so it
+  // never becomes a write path.
+  const canPreviewAsRep = pkg.mode === "operator";
   const ctx: StepCtx = {
     pkg, draft, computed: pkg.computed, prov, provenance: pkg.prefill_provenance, saving: saving || dirty, readOnly,
-    mode: pkg.mode, profileId: profileId ?? pkg.profile_id, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team, teamError,
+    mode: canPreviewAsRep && viewAs === "rep" ? "rep" : pkg.mode, profileId: profileId ?? pkg.profile_id, focusKey, set, setProduct, setThreshold, confirm, go, notify, teamOptions: team, teamError,
     onOpenTermSheet: openTerms, onOpenFinal, onOpenOriginal,
   };
 
@@ -252,38 +255,19 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
   const active = PAGE_BY_PAGE_KEY[page] ?? PAGES[0];
   const current = active.key;
 
-  // Jumping to an item behaves like clicking its step in the rail, and closes the list behind it.
+  // Jumping to an item behaves like clicking its step in the rail.
   const jumpTo = (item: { step: StepKey; key: string }) => {
     setPage(pageFor(item));
     setFocusKey(item.key);
     flushSave.flush();
-    setAttentionOpen(false);
   };
-  const showAttention = attentionOpen && attention.length > 0;
-
-  useEffect(() => { if (!attention.length) setAttentionOpen(false); }, [attention.length]);
-
-  useEffect(() => {
-    const root = rootRef.current;
-    const bar = barRef.current;
-    if (!root || !bar || typeof ResizeObserver === "undefined") return;
-    const apply = () => root.style.setProperty("--pp-stick", `${Math.round(bar.getBoundingClientRect().height) + 14}px`);
-    apply();
-    const ro = new ResizeObserver(apply);
-    ro.observe(bar);
-    return () => ro.disconnect();
-  }, []);
+  const term = pkg.computed.advance.term || 1;
+  const openHere = attention.filter((a) => pageFor(a) === current).length;
+  const thisDone = pageDone(current, pkg, draft, attention);
+  const sendLabel = pkg.status === "draft" ? (two ? "Send the final" : "Send stage one") : pkg.status === "out_for_signature" ? "Signatures" : pkg.status === "executed" ? "Executed" : "Voided";
 
   return (
     <div className={`pp-root${readOnly ? " locked" : ""}`} ref={rootRef}>
-      <PackageTopBar
-        pkg={pkg} step={current} attention={attention} saving={saving} dirty={dirty} busy={busy}
-        attentionOpen={showAttention} onToggleAttention={() => setAttentionOpen((v) => !v)}
-        onCloseAttention={() => setAttentionOpen(false)} onJump={jumpTo}
-        attentionPanelId={ATTENTION_PANEL_ID} barRef={barRef}
-        onStep={go} onPresentation={generatePresentation} onPreview={() => go("agreement", "preview")} onSend={() => go("agreement", "send")}
-        right={headerRight}
-      />
       {conflict ? (
         <div className="pp-conflict" role="alert">
           <span>{conflict}</span>
@@ -297,15 +281,25 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
         </div>
       ) : null}
       <div className="pp-body">
-        <aside className="pp-rail">
-          <AllClearSummary pkg={pkg} openItems={attention.length} />
-        </aside>
+        <PackageRail pkg={pkg} draft={draft} page={current} attention={attention} saving={saving} dirty={dirty} onPage={(p) => go(p)}
+          viewAs={canPreviewAsRep ? viewAs : undefined} onViewAs={canPreviewAsRep ? setViewAs : undefined} />
         <main className="pp-main">
           <header className="pp-step-h">
             <div className="pp-eyebrow">Step {stepIndex + 1} of {PAGES.length}{two ? " · final" : ""}</div>
             <h2 className="pp-title">{active.title}</h2>
             <p className="pp-sub">{active.sub}</p>
+            <div className="pp-acts">
+              {!two ? (
+                <PBtn onClick={generatePresentation} busy={busy === "presentation"} disabled={!pkg.capabilities.can_generate} title={pkg.presentation.stale ? "The last proposal is out of date" : undefined}>
+                  Dealer proposal{pkg.presentation.stale ? " ·" : ""}
+                </PBtn>
+              ) : null}
+              <PBtn variant="pri" onClick={() => go("agreement", "send")} disabled={pkg.status === "void"} title={pkg.status === "draft" && attention.length ? `${attention.length} open item${attention.length === 1 ? "" : "s"}` : undefined}>
+                {sendLabel}
+              </PBtn>
+            </div>
           </header>
+          <Meters pkg={pkg} prov={prov} term={term} />
           {/* The design's five pages, each carrying the step components that belong to it. */}
           {current === "today" ? <><Step2Lot ctx={ctx} /><Step3Products ctx={ctx} /></> : null}
           {current === "loan" ? <Step4Advance ctx={ctx} /> : null}
@@ -322,9 +316,13 @@ export function ProductionPackageWorkspace({ client, initial, onPackage, headerR
           ) : null}
           <footer className="pp-step-f">
             {stepIndex > 0 ? <PBtn onClick={() => go(PAGES[stepIndex - 1].key)}>← {PAGES[stepIndex - 1].label}</PBtn> : <span />}
-            {stepIndex < PAGES.length - 1 ? <PBtn variant="pri" onClick={() => go(PAGES[stepIndex + 1].key)}>Next: {PAGES[stepIndex + 1].label} →</PBtn> : null}
+            <span className={`pp-step-status${openHere ? " bad" : thisDone ? " ok" : ""}`}>
+              {pkg.status !== "draft" ? "" : openHere ? `${openHere} item${openHere === 1 ? " is" : "s are"} still open on this step.` : thisDone ? "This step is complete." : ""}
+            </span>
+            {stepIndex < PAGES.length - 1 ? <PBtn variant="pri" onClick={() => go(PAGES[stepIndex + 1].key)}>Next: {PAGES[stepIndex + 1].label} →</PBtn> : <span />}
           </footer>
         </main>
+        <PackageAside pkg={pkg} prov={prov} attention={attention} onJump={jumpTo} term={term} />
       </div>
       {client.mode === "operator" && !two && shareOpen ? (
         <ShareDrawer client={client} pkg={pkg} team={team} open={Boolean(shareOpen)} onClose={() => onShareClose?.()} onPackage={(next) => adopt(next, true)} />
