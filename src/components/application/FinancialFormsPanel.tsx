@@ -49,8 +49,17 @@ function statusChip(form: FormStatus) {
 }
 
 function summaryLine(form: FormStatus): string | null {
-  if (form.kind === "pfs" && form.net_worth !== null) {
-    return `Net worth ${currency(form.net_worth)}`;
+  if (form.kind === "pfs") {
+    // Net worth is only a figure once the statement has been filed. A draft
+    // nobody has typed into totals to zero, and "Net worth $0" sitting beside
+    // "Outstanding" reads as a finding about the borrower rather than an empty
+    // form — so say what is actually there instead.
+    if (form.source === "filled" && form.net_worth !== null) {
+      return `Net worth ${currency(form.net_worth)}`;
+    }
+    if (form.source === "none" && form.statement_id) {
+      return "A draft has been started. Open it to carry on where it was left.";
+    }
   }
   if (form.kind === "debt_schedule" && form.row_count > 0) {
     return `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${currency(

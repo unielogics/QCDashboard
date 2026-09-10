@@ -38,7 +38,10 @@ export default function FinancialFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
 
-  const base = `${apiBase}/application-profiles/public/financial-forms/${encodeURIComponent(token)}`;
+  // `apiBase` is the bare origin — `api<T>()` appends /api/v1 itself, and every
+  // hand-written fetch in this app has to add it too. This one did not, so every
+  // link minted for a borrower 404'd on load while the token behind it was fine.
+  const base = `${apiBase}/api/v1/application-profiles/public/financial-forms/${encodeURIComponent(token)}`;
 
   useEffect(() => {
     if (!token) return;
