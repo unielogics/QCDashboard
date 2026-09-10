@@ -8,6 +8,7 @@ import { QCMark } from "@/components/QCMark";
 import { RoomActions } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
+import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
 import { apiBase } from "@/lib/api";
 
 type RequestedDoc = { id: string; name: string; category?: string | null; description?: string | null; required: boolean; allow_multiple_files?: boolean; status: string };
@@ -15,13 +16,15 @@ type BucketSummary = { name: string; client_name?: string | null; purpose?: stri
 type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; content_type: string; size_bytes: number; uploaded_by_name?: string | null; uploaded_by_email?: string | null; status: string; created_at: string };
 type RequestInfo = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; requires_passcode: boolean; status: string };
 type UploadSession = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[] };
-type RoomTab = "precall" | "offer" | "todo" | "documents" | "banking" | "agreements";
+type RoomTab = "precall" | "offer" | "updates" | "todo" | "documents" | "banking" | "agreements";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
-const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" }> = [
+const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" }> = [
   { id: "precall", label: "Before your call", icon: "cal" },
   // Shown only while a processing offer is waiting on (or answered from) this room.
   { id: "offer", label: "Your offer", icon: "dollar" },
+  // Shown only once the room is backed by a file record (the timeline call answers, even with no rows yet).
+  { id: "updates", label: "Updates", icon: "note" },
   { id: "todo", label: "To-do", icon: "check" },
   { id: "documents", label: "Documents", icon: "file" },
   { id: "banking", label: "Business banking", icon: "building" },
@@ -52,6 +55,8 @@ export default function BucketRequestPage() {
   const [precallLoaded, setPrecallLoaded] = useState(false);
   // The merchant-processing offer, if the desk has sent one; null otherwise.
   const [offer, setOffer] = useState<RoomMerchantOffer | null>(null);
+  // The client tier of the file's timeline; null while the room has no file record (the call 404s).
+  const [updates, setUpdates] = useState<RoomTimelineEvent[] | null>(null);
   const [theme, setTheme] = useState<"light" | "obsidian">("light");
 
   useEffect(() => {
@@ -109,8 +114,16 @@ export default function BucketRequestPage() {
       return await response.json() as RoomMerchantOffer;
     } catch { return null; }
   }
+  async function fetchUpdates(code: string): Promise<RoomTimelineEvent[] | null> {
+    try {
+      const response = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/timeline`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
+      if (!response.ok) return null;
+      const data = await response.json() as { events?: RoomTimelineEvent[] };
+      return Array.isArray(data.events) ? data.events : [];
+    } catch { return null; }
+  }
   async function refreshPrecall() { setPrecall(await fetchPrecall(passcode.trim())); }
-  async function refreshRoom() { setSession(await fetchAccessSession()); await refreshPrecall(); setOffer(await fetchOffer(passcode.trim())); }
+  async function refreshRoom() { setSession(await fetchAccessSession()); await refreshPrecall(); setOffer(await fetchOffer(passcode.trim())); setUpdates(await fetchUpdates(passcode.trim())); }
   async function openInvite() {
     if (!passcode.trim()) return;
     setIsAccessing(true); setStatus("");
@@ -118,14 +131,15 @@ export default function BucketRequestPage() {
       const data = await fetchAccessSession();
       const prep = await fetchPrecall(passcode.trim());
       const waitingOffer = await fetchOffer(passcode.trim());
+      const fileUpdates = await fetchUpdates(passcode.trim());
       setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus("");
-      setPrecall(prep); setPrecallLoaded(true); setOffer(waitingOffer);
+      setPrecall(prep); setPrecallLoaded(true); setOffer(waitingOffer); setUpdates(fileUpdates);
       // A booked call lands on its checklist until it is done; the URL still wins.
       if (prep && !prep.complete && !searchParams.get("tab")) setActiveTab("precall");
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer))), [precall, offer]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [precall, offer, updates]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -183,6 +197,9 @@ export default function BucketRequestPage() {
 
       {activeTab === "offer" && offer ? <MerchantOfferCard token={token} passcode={passcode.trim()} offer={offer} responderName={name} onChanged={setOffer} /> : null}
       {activeTab === "offer" && !offer ? <section className="application-room-section"><p>There is no offer waiting on this room.</p></section> : null}
+
+      {activeTab === "updates" && updates !== null ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Your file</span><h2>Updates</h2><p>What has happened on your file, newest first.</p></div><button className="application-room-secondary" onClick={() => { void refreshRoom().catch(() => undefined); }}><Icon name="refresh" size={14} />Refresh</button></div><RoomTimeline events={updates} /></section> : null}
+      {activeTab === "updates" && updates === null ? <section className="application-room-section"><p>There are no updates on this room yet.</p></section> : null}
 
       {activeTab === "todo" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Next actions</span><h2>What we still need</h2></div><button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />Upload documents</button></div><div className="application-room-todo-list">{session.requested_documents.map((doc) => { const complete = isRequestedDocComplete(doc, uploadedDocIds); return <article key={doc.id} className={`${complete ? "complete" : "needed"} ${highlightedRequest === doc.id ? "highlighted" : ""}`}><span className="application-room-task-icon"><Icon name={complete ? "check" : "alert"} size={15} /></span><div><b>{doc.name}</b><p>{doc.description || `${doc.required ? "Required" : "Optional"} · ${allowsMultipleFiles(doc) ? "Multiple files accepted" : "One file"}`}</p></div><span className="application-room-task-state">{complete ? "Received" : "Needed"}</span>{!complete ? <button onClick={() => setActiveTab("documents")}>Add file</button> : null}</article>; })}{!session.requested_documents.length ? <div className="application-room-empty">No action items have been requested.</div> : null}</div></section> : null}
 

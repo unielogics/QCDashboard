@@ -1470,6 +1470,14 @@ export interface AppSettingsData {
   simulator: SimulatorSettings;
   letterhead: LetterheadSettings;
   dscr_pricing?: DscrPricingSettings;
+  // Email switches for a file's timeline (services/file_events.py). Optional:
+  // rows persisted before the block existed have no key, and the settings
+  // page backfills the defaults.
+  file_updates?: {
+    client_email_enabled: boolean;
+    team_email_enabled: boolean;
+    company_email_enabled: boolean;
+  };
 }
 export interface AppSettingsRead {
   data: AppSettingsData;

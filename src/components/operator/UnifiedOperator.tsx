@@ -171,11 +171,13 @@ export function UnifiedFilesTable({
     <Table
       caption="Unified operator files"
       cols={[
-        { label: "File", width: "25%" },
+        { label: "File", width: "22%" },
         { label: "Vertical", width: 120 },
         { label: "Source", width: 120 },
-        { label: "Stage", width: "17%" },
+        { label: "Stage", width: "15%" },
         { label: "Program" },
+        { label: "Agent", width: 140 },
+        { label: "Underwriter", width: 150 },
         { label: "Coverage", width: 150 },
         { label: "Health", width: 110 },
         { label: "", width: 44 },
@@ -188,12 +190,15 @@ export function UnifiedFilesTable({
           <Td><CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip></Td>
           <Td><UnifiedStageMeter row={row} /></Td>
           <Td><span className="sub">{row.program_tags.slice(0, 2).join(" · ") || "Unassigned"}</span></Td>
+          {/* The file's team (services/file_team): who owns it, who is underwriting it. */}
+          <Td><span className={row.agent_name ? undefined : "sub"}>{row.agent_name ?? "—"}</span></Td>
+          <Td><span className={row.underwriter_names?.length ? undefined : "sub"}>{row.underwriter_names?.length ? row.underwriter_names.join(", ") : "—"}</span></Td>
           <Td><UnifiedDocumentPack row={row} /></Td>
           <Td><CellChip tone={row.health_tone}>{row.health}</CellChip></Td>
           <Td align="r"><UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} /></Td>
         </Tr>
       )) : (
-        <Tr><Td colSpan={8}><div className="empty">{empty}</div></Td></Tr>
+        <Tr><Td colSpan={10}><div className="empty">{empty}</div></Td></Tr>
       )}
     </Table>
   );

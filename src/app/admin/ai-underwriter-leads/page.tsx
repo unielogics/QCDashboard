@@ -33,6 +33,8 @@ import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
+import { FileTeamStrip } from "@/components/file/FileTeamStrip";
+import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
 import { api, ApiError } from "@/lib/api";
 
@@ -1093,7 +1095,7 @@ function LeadDetailPanel({
   // The current term sheet on the profile (dealer files only) for the
   // Underwriting strip. Recorded through the drawer, read here.
   const [termSheet, setTermSheet] = useState<ApplicationTermSheetState | null>(null);
-  const [communicationChannel, setCommunicationChannel] = useState<"underwriter" | "client" | "partner" | "internal">("underwriter");
+  const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(1);
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
@@ -1105,6 +1107,11 @@ function LeadDetailPanel({
   const [uploadStatus, setUploadStatus] = useState("");
   const [profileVerification, setProfileVerification] = useState<FileOwnerRequirementState | null>(null);
   const [underwriting, setUnderwriting] = useState<ApplicationUnderwritingState | null>(null);
+  // The file behind this lead. The team strip and the Updates channel hang
+  // off it, so it is hoisted from the first successful resolve rather than
+  // read from `underwriting`, which only fills once the Underwriting tab has
+  // been visited and its state has loaded.
+  const [profileId, setProfileId] = useState<string | null>(null);
   const [underwritingDraft, setUnderwritingDraft] = useState<UnderwritingDraft>(() => emptyUnderwritingDraft());
   const [underwritingLoading, setUnderwritingLoading] = useState(false);
   const [underwritingSaving, setUnderwritingSaving] = useState(false);
@@ -1157,6 +1164,7 @@ function LeadDetailPanel({
   const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
 
   async function loadUnderwritingState() {
+    setProfileId(null);
     if (!detail || !canUnderwrite) {
       setUnderwriting(null);
       setUnderwritingDraft(emptyUnderwritingDraft());
@@ -1171,6 +1179,11 @@ function LeadDetailPanel({
         authToken: authToken ?? undefined,
         body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
       });
+      // This runs on file open for every operator (the resolve endpoint is
+      // theirs), so the strip shows on the workspace view without a trip
+      // through Underwriting — and it is set before the underwriting read, so
+      // a failure there does not hide the team.
+      setProfileId(profile.id);
       const state = await api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting`, {
         authToken: authToken ?? undefined,
       });
@@ -1753,6 +1766,7 @@ function LeadDetailPanel({
             ) : null}
 
             <main className="grid intake-file-primary">
+              {prototypeView === "workspace" ? <FileTeamStrip profileId={profileId} canEdit={canUnderwrite} /> : null}
               {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 <Panel title="Evidence and data sources" sub="Navigate every accessible file without leaving the intake." actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}>
@@ -1911,8 +1925,9 @@ function LeadDetailPanel({
               {prototypeView === "communications" ? (
                 <div className="intake-communications">
                   <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
-                    {([['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
+                    {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
                   </div>
+                  {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
                   {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={onCockpitResponse} onRequestRerun={onRerun} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
                   {communicationChannel === "client" && cockpitAdapter ? <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} /> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}

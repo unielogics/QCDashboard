@@ -3407,3 +3407,20 @@ a.pick { color: inherit; text-decoration: none; }
 .application-room-note { display: block; font-size: 12.5px; opacity: .7; line-height: 1.5; }
 .application-room-credit .application-room-primary { white-space: nowrap; }
 @media (max-width: 640px) { .application-room-steps > li > header { grid-template-columns: 32px minmax(0, 1fr); } .application-room-step-meta { grid-column: 2; } }
+
+/* File updates in the room */
+/* The client's timeline: `.application-room-todo-list article` rows grouped
+   under a day heading. The to-do list paints every row as "needed" (warn
+   stripe + warn icon); an update is neutral by default and only a request
+   for something reads warn, only a receipt/decision reads good. */
+.application-room-updates { display: grid; gap: 22px; }
+.application-room-updates-day { display: grid; gap: 10px; }
+.application-room-updates-day h3 { margin: 0; color: var(--room-muted); font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.application-room-updates .application-room-todo-list article { grid-template-columns: 36px minmax(0, 1fr) auto; border-left-color: var(--room-accent); }
+.application-room-updates .application-room-todo-list article .application-room-task-icon { color: var(--room-accent); background: var(--room-accent-soft); }
+.application-room-updates .application-room-todo-list article.is-warn { border-left-color: var(--room-warn); }
+.application-room-updates .application-room-todo-list article.is-warn .application-room-task-icon { color: var(--room-warn); background: var(--room-warn-soft); }
+.application-room-updates .application-room-todo-list article.is-good { border-left-color: var(--room-good); }
+.application-room-updates .application-room-todo-list article.is-good .application-room-task-icon { color: var(--room-good); background: var(--room-good-soft); }
+.application-room-updates .application-room-todo-list article b { overflow-wrap: anywhere; }
+.application-room-updates time { white-space: nowrap; font-variant-numeric: tabular-nums; }

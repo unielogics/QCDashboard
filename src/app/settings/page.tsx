@@ -84,6 +84,7 @@ const SECTIONS = [
   { id: "cadence", label: "AI cadence", icon: "ai" as const, hidden: true },
   { id: "booking", label: "Booking page", icon: "cal" as const, hidden: false },
   { id: "client_access", label: "Client access", icon: "shield" as const, hidden: false },
+  { id: "file_updates", label: "File updates", icon: "bell" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
@@ -109,6 +110,7 @@ const SECTION_SETTINGS_KEY: Partial<Record<SectionId, keyof AppSettingsData>> = 
   simulator: "simulator",
   security: "security",
   letterhead: "letterhead",
+  file_updates: "file_updates",
 };
 
 const LOAN_TYPES = [
@@ -225,6 +227,7 @@ export default function SettingsPage() {
           show_ltv_toggle: true,
         },
         letterhead: defaultLetterhead(),
+        file_updates: defaultFileUpdates(),
       });
     }
   }, [settingsData?.data, error, draft]);
@@ -481,6 +484,16 @@ export default function SettingsPage() {
           />
         )}
         {section === "regional_managers" && <RegionalManagersSection canEdit={canEdit} />}
+        {section === "file_updates" && (
+          <FileUpdatesSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("file_updates")}
+            onSave={() => handleSaveSection("file_updates")}
+            saving={update.isPending}
+          />
+        )}
         {section === "simulator" && (
           <SimulatorSection
             draft={draft}
@@ -847,6 +860,28 @@ function ReferralsSection({ draft, setDraft, canEdit, dirty, onSave, saving }: S
       <Field className="mt" label="Dispute SLA (business days)">
         <NumInput value={r.dispute_sla_business_days} onChange={(n) => set({ dispute_sla_business_days: n })} disabled={!canEdit} />
       </Field>
+    </Panel>
+  );
+}
+
+// ── Section: File updates ───────────────────────────────────────────────
+//
+// The email switches for a file's timeline (qcbackend services/file_events.py).
+// In-app and push notices always go; these govern the batched emails the
+// one-minute drain sends. The company address is a legal-notice address from
+// the signed referral agreement, not a working inbox, so it ships off.
+
+type FileUpdatesSettings = NonNullable<AppSettingsData["file_updates"]>;
+
+function FileUpdatesSection({ draft, setDraft, canEdit }: SectionProps) {
+  const f = draft.file_updates ?? defaultFileUpdates();
+  const set = (patch: Partial<FileUpdatesSettings>) => setDraft((d) => d && ({ ...d, file_updates: { ...f, ...patch } }));
+
+  return (
+    <Panel title="File updates" sub="Email notices from a file's timeline. In-app and push always go.">
+      <Toggle label="Email the client about updates on their file" value={f.client_email_enabled} onChange={(v) => set({ client_email_enabled: v })} disabled={!canEdit} />
+      <Toggle label="Email the agent and underwriters" value={f.team_email_enabled} onChange={(v) => set({ team_email_enabled: v })} disabled={!canEdit} />
+      <Toggle label="Email the partner company's notice address (titles only)" value={f.company_email_enabled} onChange={(v) => set({ company_email_enabled: v })} disabled={!canEdit} />
     </Panel>
   );
 }
@@ -2314,6 +2349,15 @@ function withDefaults(data: AppSettingsData): AppSettingsData {
       show_ltv_toggle: true,
     },
     letterhead: data.letterhead ?? defaultLetterhead(),
+    file_updates: data.file_updates ?? defaultFileUpdates(),
+  };
+}
+
+function defaultFileUpdates(): FileUpdatesSettings {
+  return {
+    client_email_enabled: true,
+    team_email_enabled: true,
+    company_email_enabled: false,
   };
 }
 

@@ -5,7 +5,10 @@
 // internal notes with the underwriting team. Curated subset of the admin
 // "AI Underwriter Leads" cockpit — no credit-pull, program-fit, vendor-email,
 // exports, or client-thread reply here; those stay admin-only. Every fetch in
-// this file targets /broker/ai-underwriter-leads* only, by construction.
+// this file targets /broker/ai-underwriter-leads* only, by construction — the
+// one exception is the read-only file lookup behind the Updates tab
+// (/application-profiles/find), which the backend scopes to files the partner
+// may already see and never creates.
 //
 // Styling only: migrated off the inline `t.*` token objects onto the plain-CSS
 // design system. The outcome board is `.kcol` / `.kcard` — the kanban column
@@ -40,6 +43,7 @@ import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCoc
 import { RunReviewDialog, type ReviewProgress } from "@/components/admin/RunReviewDialog";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { PartnerProductionPackageTab } from "@/components/broker/PartnerProductionPackageTab";
+import { FileTimeline } from "@/components/file/FileTimeline";
 import type { IntakeResponse } from "@/lib/intake";
 import { validPhone } from "@/lib/formCoerce";
 
@@ -65,8 +69,12 @@ type LeadRow = {
 
 type LeadPage = { items: LeadRow[]; total: number; limit: number; offset: number };
 
-// Files & Review | Messages | Production package (dealer-variant leads only).
-type DetailTab = "files" | "messages" | "production";
+// Files & Review | Messages | Production package (dealer-variant leads only) | Updates.
+type DetailTab = "files" | "messages" | "production" | "updates";
+
+// The file record behind the open lead, resolved lazily when its Updates tab
+// is opened: `id` is null when nobody has opened this intake as a file yet.
+type LeadFileProfile = { intakeId: string; id: string | null };
 
 function isDealerVariant(variant?: string | null): boolean {
   // Partner-created leads carry no other variant; a missing value is treated as dealer.
@@ -185,6 +193,22 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [programLabel, setProgramLabel] = useState<string | null>(null);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [fileProfile, setFileProfile] = useState<LeadFileProfile | null>(null);
+
+  // Resolve the lead's file record the first time its Updates tab is opened.
+  // Read-only: `/find` never creates a file, and a 404 just means there is
+  // nothing on this file yet.
+  const openIntakeId = detail?.intake.id ?? null;
+  useEffect(() => {
+    if (detailTab !== "updates" || !openIntakeId) return;
+    if (fileProfile?.intakeId === openIntakeId) return;
+    let cancelled = false;
+    call<{ id: string }>(`/application-profiles/find?source_kind=intake&source_id=${encodeURIComponent(openIntakeId)}`)
+      .then((found) => { if (!cancelled) setFileProfile({ intakeId: openIntakeId, id: found.id }); })
+      .catch(() => { if (!cancelled) setFileProfile({ intakeId: openIntakeId, id: null }); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detailTab, openIntakeId]);
 
   // Coming from a "Start" button on /broker/programs -- auto-open the
   // create-lead modal with a contextual note naming the program. No
@@ -453,6 +477,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
       badge: selectedUnread > 0 ? <span className="cnt sm">{selectedUnread}</span> : undefined,
     },
     ...(isDealerVariant(detail?.intake.variant) ? [{ id: "production" as const, label: "Production package" }] : []),
+    { id: "updates", label: "Updates" },
   ];
 
   return (
@@ -634,6 +659,17 @@ export default function BrokerAIUnderwriterLeadsPage() {
                 {detailTab === "production" && detail ? (
                   <div style={{ height: "100%", minHeight: 0, overflow: "auto" }}>
                     <PartnerProductionPackageTab intakeId={detail.intake.id} />
+                  </div>
+                ) : null}
+                {detailTab === "updates" && detail ? (
+                  <div style={{ height: "100%", minHeight: 0, overflow: "auto" }}>
+                    {fileProfile?.intakeId !== detail.intake.id ? (
+                      <span className="sub">Loading updates…</span>
+                    ) : fileProfile.id ? (
+                      <FileTimeline profileId={fileProfile.id} tier="team" />
+                    ) : (
+                      <span className="sub">Nothing on this file yet.</span>
+                    )}
                   </div>
                 ) : null}
               </div>
