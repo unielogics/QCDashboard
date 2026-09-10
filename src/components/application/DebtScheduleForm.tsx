@@ -23,6 +23,16 @@ import { useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 
 export type DebtRow = {
+  /** The stored row this line came from. Sent back so a save updates the
+   *  row in place instead of re-creating it — the re-creation was what
+   *  doubled the schedule. Absent on a line added on this page. */
+  id?: string;
+  /** False when another source owns the row (the desk, an AI draft) and this
+   *  form's save will leave it alone. Shown for context, not for editing. */
+  editable?: boolean;
+  /** Which source owns the row (admin, client_form, ai_draft, field_desk), so a
+   *  locked row can say who to ask — from whichever side is reading it. */
+  owner?: string;
   lender?: string;
   debt_type?: string;
   original_amount?: string;
@@ -38,6 +48,15 @@ export type DebtRow = {
 };
 
 export type DebtBody = { business_name?: string; debts?: DebtRow[] };
+
+/** Who a locked row belongs to, in words either reader understands. */
+const OWNER_LABELS: Record<string, string> = {
+  admin: "the desk",
+  client_form: "the borrower",
+  ai_draft: "a document we read",
+  field_desk: "the field desk",
+};
+const ownerLabel = (owner?: string) => (owner && OWNER_LABELS[owner]) || "another source";
 
 const money = (value: string | undefined) => {
   const parsed = Number.parseFloat(String(value ?? "").replace(/[,$\s]/g, ""));
@@ -120,20 +139,30 @@ export function DebtScheduleForm({
       {rows.map((row, index) => {
         const notesOpen = openNotes.includes(index);
         const hasNote = Boolean((row.notes ?? "").trim());
+        // A row another source owns — the desk's, an AI draft's — is shown so
+        // the schedule reads whole, but this form's save will leave it alone.
+        // Every control on the card is disabled, but the note stays readable:
+        // a locked row's note is still information the reader is owed.
+        const locked = disabled || row.editable === false;
         return (
-          // Index-keyed: these rows carry no id, and the only mutations are
-          // append and remove-at-index.
-          <section key={index} className="fp-row" aria-label={rowTitle(row, index)}>
+          // Keyed by the stored row's id when it has one; a line added on this
+          // page has none yet and falls back to its position.
+          <section key={row.id ?? index} className={locked ? "fp-row is-locked" : "fp-row"} aria-label={rowTitle(row, index)}>
             <header className="fp-row-head">
               <span className="fp-row-num">{index + 1}</span>
               <div className="fp-row-title">
                 <strong>{rowTitle(row, index)}</strong>
                 {rowAside(row) ? <span>{rowAside(row)}</span> : null}
+                {row.editable === false ? (
+                  <span className="fp-row-locked">
+                    Entered by {ownerLabel(row.owner)}. It can only be changed from there.
+                  </span>
+                ) : null}
               </div>
               <button
                 type="button"
                 className="fp-icon-btn"
-                disabled={disabled}
+                disabled={locked}
                 aria-label={`Remove ${rowTitle(row, index)}`}
                 onClick={() => remove(index)}
               >
@@ -146,7 +175,7 @@ export function DebtScheduleForm({
                 <label htmlFor={`lender-${index}`}>Lender name</label>
                 <input
                   id={`lender-${index}`}
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.lender ?? ""}
                   onChange={(event) => patch(index, { lender: event.target.value })}
                 />
@@ -155,7 +184,7 @@ export function DebtScheduleForm({
                 <label htmlFor={`type-${index}`}>Type of debt</label>
                 <input
                   id={`type-${index}`}
-                  disabled={disabled}
+                  disabled={locked}
                   placeholder="Term loan, LOC, equipment…"
                   value={row.debt_type ?? ""}
                   onChange={(event) => patch(index, { debt_type: event.target.value })}
@@ -166,7 +195,7 @@ export function DebtScheduleForm({
                 <input
                   id={`original-${index}`}
                   inputMode="decimal"
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.original_amount ?? ""}
                   onChange={(event) => patch(index, { original_amount: event.target.value })}
                 />
@@ -176,7 +205,7 @@ export function DebtScheduleForm({
                 <input
                   id={`balance-${index}`}
                   inputMode="decimal"
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.balance ?? ""}
                   onChange={(event) => patch(index, { balance: event.target.value })}
                 />
@@ -186,7 +215,7 @@ export function DebtScheduleForm({
                 <input
                   id={`rate-${index}`}
                   inputMode="decimal"
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.rate ?? ""}
                   onChange={(event) => patch(index, { rate: event.target.value })}
                 />
@@ -196,7 +225,7 @@ export function DebtScheduleForm({
                 <input
                   id={`monthly-${index}`}
                   inputMode="decimal"
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.monthly_payment ?? ""}
                   onChange={(event) => patch(index, { monthly_payment: event.target.value })}
                 />
@@ -206,7 +235,7 @@ export function DebtScheduleForm({
                 <input
                   id={`origin-${index}`}
                   type="date"
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.originated_on ?? ""}
                   onChange={(event) => patch(index, { originated_on: event.target.value })}
                 />
@@ -216,7 +245,7 @@ export function DebtScheduleForm({
                 <input
                   id={`maturity-${index}`}
                   type="date"
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.maturity_on ?? ""}
                   onChange={(event) => patch(index, { maturity_on: event.target.value })}
                 />
@@ -225,7 +254,7 @@ export function DebtScheduleForm({
                 <label htmlFor={`secured-${index}`}>Secured or unsecured</label>
                 <select
                   id={`secured-${index}`}
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.secured ?? ""}
                   onChange={(event) => patch(index, { secured: event.target.value })}
                 >
@@ -238,7 +267,7 @@ export function DebtScheduleForm({
                 <label htmlFor={`status-${index}`}>Current or delinquent</label>
                 <select
                   id={`status-${index}`}
-                  disabled={disabled}
+                  disabled={locked}
                   value={row.payment_status ?? ""}
                   onChange={(event) => patch(index, { payment_status: event.target.value })}
                 >
@@ -251,7 +280,7 @@ export function DebtScheduleForm({
                 <label htmlFor={`collateral-${index}`}>Type of collateral</label>
                 <input
                   id={`collateral-${index}`}
-                  disabled={disabled}
+                  disabled={locked}
                   placeholder="Inventory, equipment, property…"
                   value={row.collateral ?? ""}
                   onChange={(event) => patch(index, { collateral: event.target.value })}
@@ -281,6 +310,7 @@ export function DebtScheduleForm({
                 <textarea
                   rows={3}
                   disabled={disabled}
+                  readOnly={locked && !disabled}
                   placeholder="Anything the lender should know — a balloon payment, a personal guarantee, a payoff already scheduled."
                   value={row.notes ?? ""}
                   onChange={(event) => patch(index, { notes: event.target.value })}

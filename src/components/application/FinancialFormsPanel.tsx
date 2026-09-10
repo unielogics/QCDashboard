@@ -386,9 +386,17 @@ export function FinancialFormsPanel({
   const open = (form: FormStatus) =>
     run(`open:${form.kind}`, async () => {
       if (form.kind === "debt_schedule") {
+        // Opening an empty editor on a failed load used to be harmless, because
+        // a save only replaced the desk's own rows. It still only touches the
+        // desk's rows — but an explicit empty list now means "clear them", so
+        // a load that failed must not open a form whose Save would do that.
         const rows = await api<{ debts: DebtBody["debts"] }>(
           `/application-profiles/${fileId}/financial-forms/debt-schedule/body`,
-        ).catch(() => ({ debts: [] }));
+        ).catch(() => null);
+        if (!rows) {
+          setError("The debt schedule could not be loaded, so it was not opened. Try again in a moment.");
+          return;
+        }
         setDebtBody({ debts: rows.debts ?? [] });
         setEditing("debt_schedule");
         return;
