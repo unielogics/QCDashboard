@@ -2,6 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
@@ -53,7 +54,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 import { Role } from "@/lib/enums.generated";
-import { useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
+import { useAuthedApi, useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
@@ -67,7 +68,6 @@ import { ApplicationVerificationWorkspace } from "@/components/application/Appli
 import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
 import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
 import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
-import { EvidenceReviewBlock } from "@/components/application/EvidenceReviewBlock";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
@@ -76,7 +76,7 @@ import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
 import { validPhone } from "@/lib/formCoerce";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
-import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, ExtractedFact, FileOwnerRequirementState } from "@/lib/applicationProfile";
 
 type LeadRow = {
   id: string;
@@ -1154,6 +1154,32 @@ function LeadDetailPanel({
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
+
+  // ---- Evidence tab fold summaries ----
+  // Both folds under the financial forms are shut by default, which unmounts
+  // their contents. A shut fold still has to say what is inside it and open
+  // itself when something is waiting on a person, so the counts are derived
+  // here rather than inside the children.
+  //
+  // The fact list is read on the SAME react-query key ExtractedFactsReview
+  // uses, so this is one shared fetch either way, and the accept/reject
+  // inside that component invalidates this summary along with its own view.
+  const extractedFactsApi = useAuthedApi();
+  const extractedFacts = useQuery({
+    queryKey: ["application-extracted-facts", profileId],
+    enabled: Boolean(profileId),
+    queryFn: () => extractedFactsApi<ExtractedFact[]>(`/application-profiles/${profileId}/extracted-facts`),
+  });
+  const extractedFactRows = extractedFacts.data ?? [];
+  const suggestedFactCount = extractedFactRows.filter((fact) => fact.status === "suggested").length;
+  // "uploaded" is the satisfied status on a requested document; anything else
+  // (requested, rejected, pending) is still owed by the borrower.
+  const missingRequiredDocs = (detail?.requested_documents ?? []).filter((doc) => doc.required && doc.status !== "uploaded");
+  const evidenceFileCount = detail?.files.length ?? 0;
+  const evidenceResourcesSummary = missingRequiredDocs.length
+    ? `${evidenceFileCount} file${evidenceFileCount === 1 ? "" : "s"} · ${missingRequiredDocs.length} required document${missingRequiredDocs.length === 1 ? "" : "s"} outstanding`
+    : `${evidenceFileCount} file${evidenceFileCount === 1 ? "" : "s"} · every required document in`;
+  const extractedDataSummary = `${extractedFactRows.length} fact${extractedFactRows.length === 1 ? "" : "s"} extracted · ${suggestedFactCount} awaiting review · ${missing.length} blocker${missing.length === 1 ? "" : "s"}`;
   const artifacts = detail?.artifacts || [];
   const summary = artifacts.find((artifact) => artifact.artifact_type === "executive_summary");
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
@@ -1663,7 +1689,7 @@ function LeadDetailPanel({
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
     { id: 1, label: "Profile & ownership", sub: "Identity, owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
-    { id: 2, label: "Evidence", sub: "Rooms, files and extraction", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
+    { id: 2, label: "Evidence", sub: "Financial forms, files and extraction", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
     { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
     { id: 4, label: "Business banking", sub: "Client Plaid or statement evidence", status: profileVerification?.business_banking_complete ? "complete" : profileVerification?.bank_connection_count || profileVerification?.bank_statement_months ? "partial" : "not-started" },
     { id: 5, label: "AI review", sub: "Probability, coverage and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
@@ -1770,8 +1796,21 @@ function LeadDetailPanel({
               {prototypeView === "workspace" ? <FileTeamStrip profileId={profileId} canEdit={canUnderwrite} /> : null}
               {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
-                <Panel title="Evidence and data sources" sub="Navigate every accessible file without leaving the intake." actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}>
-                  <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
+                <Panel
+                  title="Financial forms and evidence"
+                  sub="The four financial forms are the working surface. Evidence, data resources and extracted data fold underneath."
+                  actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}
+                >
+                  {/* Forms first and at full size. This tab is where the desk fills
+                      the four financial forms; the evidence browser and the
+                      extraction review are the material they are filled FROM, and
+                      they used to push the forms a screen and a half down. So they
+                      fold below, each with its counts on the header — shut is
+                      summarised, never hidden. */}
+                  <FinancialFormsPanel profileId={underwriting?.profile_id} intakeId={detail.intake.id} nested />
+
+                  {/* Mounted outside the fold: the picker is opened by the dropzone
+                      inside it, and an unmounted input would take the ref with it. */}
                   <input
                     ref={evidenceUploadRef}
                     type="file"
@@ -1781,52 +1820,67 @@ function LeadDetailPanel({
                     accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic"
                     onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))}
                   />
-                  <button
-                    type="button"
-                    className={cx("intake-evidence-dropzone", evidenceDragging && "dragging")}
-                    disabled={headerUploading || !cockpitAdapter}
-                    onClick={() => evidenceUploadRef.current?.click()}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      if (!headerUploading) setEvidenceDragging(true);
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "copy";
-                    }}
-                    onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setEvidenceDragging(false);
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      setEvidenceDragging(false);
-                      if (!headerUploading) void uploadFromHeader(Array.from(event.dataTransfer.files));
-                    }}
-                  >
-                    <span className="intake-evidence-dropzone-icon"><Icon name="upload" size={21} /></span>
-                    <span className="intake-evidence-dropzone-copy">
-                      <b>{headerUploading ? uploadStatus || "Uploading evidence..." : "Drop evidence files or ZIP archives here"}</b>
-                      <small>{headerUploading ? "Keep this file open while the upload finishes." : "Files are added to the primary bucket. ZIP archives are unpacked and indexed in the background."}</small>
-                    </span>
-                    <span className="intake-evidence-browse-label">{headerUploading ? "Uploading" : "Browse computer"}</span>
-                  </button>
-                  <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
-                  {/* Folded by default once there is nothing to act on. These two blocks
-                      are reference material most of the time, and they sat between the
-                      evidence browser and the financial forms — the part of this tab the
-                      desk actually works in. */}
-                  <EvidenceReviewBlock
-                    attention={missing.length > 0}
-                    summary={`${detail.requested_documents.length} requirement${detail.requested_documents.length === 1 ? "" : "s"} · ${missing.length} blocker${missing.length === 1 ? "" : "s"}`}
-                  >
-                  <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
-                  <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet. The checklist status above still applies."} /></InfoBlock>
-                  </EvidenceReviewBlock>
-                  {/* Evidence is where the desk chases what a file is missing, and
-                      these two forms are exactly that — a request the borrower has
-                      not answered yet. Keeping them on a separate tab meant
-                      checking two places to know what was outstanding. */}
-                  <FinancialFormsPanel profileId={underwriting?.profile_id} intakeId={detail.intake.id} nested />
+
+                  {/* `.grid` gives the folded group its own 14px rhythm under the
+                      forms; `.panel-b` itself has no gap. */}
+                  <div className="grid mt">
+                    {/* Opens itself while a required document is still owed — the fix
+                        for that is upstairs in this fold: drop the file in. */}
+                    <EvidenceFold
+                      storageKey={`intake-evidence-fold:${detail.intake.id}:resources`}
+                      title="Evidence and data resources"
+                      summary={evidenceResourcesSummary}
+                      attention={missingRequiredDocs.length > 0}
+                      attentionLabel="Documents missing"
+                      clearLabel="Complete"
+                    >
+                      <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
+                      <button
+                        type="button"
+                        className={cx("intake-evidence-dropzone", evidenceDragging && "dragging")}
+                        disabled={headerUploading || !cockpitAdapter}
+                        onClick={() => evidenceUploadRef.current?.click()}
+                        onDragEnter={(event) => {
+                          event.preventDefault();
+                          if (!headerUploading) setEvidenceDragging(true);
+                        }}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                          event.dataTransfer.dropEffect = "copy";
+                        }}
+                        onDragLeave={(event) => {
+                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setEvidenceDragging(false);
+                        }}
+                        onDrop={(event) => {
+                          event.preventDefault();
+                          setEvidenceDragging(false);
+                          if (!headerUploading) void uploadFromHeader(Array.from(event.dataTransfer.files));
+                        }}
+                      >
+                        <span className="intake-evidence-dropzone-icon"><Icon name="upload" size={21} /></span>
+                        <span className="intake-evidence-dropzone-copy">
+                          <b>{headerUploading ? uploadStatus || "Uploading evidence..." : "Drop evidence files or ZIP archives here"}</b>
+                          <small>{headerUploading ? "Keep this file open while the upload finishes." : "Files are added to the primary bucket. ZIP archives are unpacked and indexed in the background."}</small>
+                        </span>
+                        <span className="intake-evidence-browse-label">{headerUploading ? "Uploading" : "Browse computer"}</span>
+                      </button>
+                      <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
+                    </EvidenceFold>
+
+                    {/* Opens itself while a fact is awaiting accept/reject or the last
+                        AI review left blockers behind. */}
+                    <EvidenceFold
+                      storageKey={`intake-evidence-fold:${detail.intake.id}:extracted`}
+                      title="Extracted data"
+                      summary={extractedDataSummary}
+                      attention={suggestedFactCount > 0 || missing.length > 0}
+                      attentionLabel="Needs review"
+                      clearLabel="Clear"
+                    >
+                      <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
+                      <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet. The checklist status above still applies."} /></InfoBlock>
+                    </EvidenceFold>
+                  </div>
                 </Panel>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
@@ -3191,6 +3245,96 @@ function Spinner() {
     >
       <style>{"@keyframes qc-spin{to{transform:rotate(360deg)}}"}</style>
     </span>
+  );
+}
+
+// One fold, used twice under the financial forms on the Evidence tab.
+//
+// The desk works in the forms; the evidence browser and the extraction review
+// are the reference material behind them. Both therefore sit below the forms
+// and default to shut — but shut never means hidden: the header carries the
+// counts either way ("14 files · 3 required documents outstanding"), and a
+// fold that needs a person opens itself.
+//
+// A reader's own click outranks the attention default and is remembered per
+// fold per file, so a desk officer who expands the browser still finds it
+// expanded after a reload, and one who minimizes a fold that is shouting keeps
+// it minimized.
+//
+// Styled on the same `.evrev` fold as EvidenceReviewBlock so this tab has one
+// collapse language rather than two.
+function EvidenceFold({
+  storageKey,
+  title,
+  summary,
+  attention,
+  attentionLabel,
+  clearLabel,
+  children,
+}: {
+  /** Per-file, per-fold localStorage key for the reader's own choice. */
+  storageKey: string;
+  title: string;
+  /** Counts for the header, shown open or shut. */
+  summary: React.ReactNode;
+  /** Something in here needs a person. Decides the default state. */
+  attention: boolean;
+  attentionLabel: string;
+  clearLabel: string;
+  children: React.ReactNode;
+}) {
+  const [open, setOpen] = useState(attention);
+  // A ref, not state: the stored-choice effect below has to be visible to the
+  // attention effect that runs immediately after it in the same commit, and a
+  // state update would not be.
+  const chosen = useRef(false);
+
+  useEffect(() => {
+    chosen.current = false;
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem(storageKey);
+    } catch {
+      // Storage blocked (private window, embedded frame). Fall through to the
+      // attention default rather than failing the render.
+    }
+    if (saved === "open" || saved === "closed") {
+      chosen.current = true;
+      setOpen(saved === "open");
+    }
+  }, [storageKey]);
+
+  // Attention arrives late: the AI review and the extraction both finish in
+  // the background. Follow it until the reader has said otherwise.
+  useEffect(() => {
+    if (!chosen.current) setOpen(attention);
+  }, [attention]);
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    chosen.current = true;
+    try {
+      window.localStorage.setItem(storageKey, next ? "open" : "closed");
+    } catch {
+      // Best effort. The fold still works for this session.
+    }
+  }
+
+  return (
+    <section className={open ? "evrev is-open" : "evrev"}>
+      <button type="button" className="evrev-head" aria-expanded={open} onClick={toggle}>
+        <span className="evrev-caret" aria-hidden="true" />
+        <strong>{title}</strong>
+        <span className="evrev-summary">{summary}</span>
+        {attention ? <CellChip tone="warn">{attentionLabel}</CellChip> : <CellChip tone="ok">{clearLabel}</CellChip>}
+        <span className="evrev-toggle">{open ? "Minimize" : "Expand"}</span>
+      </button>
+      {/* Unmounted rather than hidden: the evidence browser and the extraction
+          review both run their own queries, and a minimized fold should not be
+          polling. */}
+      {open ? <div className="evrev-body">{children}</div> : null}
+    </section>
   );
 }
 
