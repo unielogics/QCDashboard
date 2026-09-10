@@ -22,6 +22,14 @@ import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtSc
 
 type FormKind = "pfs" | "debt_schedule";
 
+type UploadedStatement = {
+  statement_date: string | null;
+  total_assets: number | null;
+  total_liabilities: number | null;
+  net_worth: number | null;
+  liquid_assets: number | null;
+};
+
 type FormStatus = {
   kind: FormKind;
   label: string;
@@ -35,6 +43,12 @@ type FormStatus = {
   net_worth: number | null;
   updated_at: string | null;
   filled_by_staff: boolean;
+  /** Where the figures came from — a typed form or an analyzed upload. */
+  figures_from: "form" | "document" | null;
+  /** One per analyzed PFS. Two documents are two people, never one balance sheet. */
+  statements: UploadedStatement[];
+  /** A document is on file but has not been read yet. The figures are coming. */
+  analysis_pending: boolean;
 };
 
 const currency = (value: number) =>
@@ -48,28 +62,65 @@ function statusChip(form: FormStatus) {
   return <CellChip tone="mut">Not requested</CellChip>;
 }
 
-function summaryLine(form: FormStatus): string | null {
+/** One statement, spelled out. Assets and liabilities travel with net worth
+ *  rather than standing behind it: a document whose net-worth line reads zero
+ *  against several million in assets is a misread, and the desk can only see
+ *  that if all three are on screen. */
+function statementLine(one: UploadedStatement): string {
+  const parts: string[] = [];
+  if (one.net_worth !== null) parts.push(`Net worth ${currency(one.net_worth)}`);
+  if (one.total_assets !== null) parts.push(`assets ${currency(one.total_assets)}`);
+  if (one.total_liabilities !== null) parts.push(`liabilities ${currency(one.total_liabilities)}`);
+  if (one.liquid_assets !== null) parts.push(`liquid ${currency(one.liquid_assets)}`);
+  const dated = one.statement_date ? ` (as of ${one.statement_date})` : "";
+  return `${parts.join(" · ")}${dated}`;
+}
+
+/** Everything worth saying about where this form stands, one line each.
+ *
+ *  An upload is the other way either form gets satisfied, and the figures on it
+ *  are already read — so they belong here beside the typed ones rather than
+ *  behind a line saying there is nothing to see. */
+function summaryLines(form: FormStatus): string[] {
+  // A document is on file but the analyzer has not finished. "Coming" and
+  // "absent" are different answers and the desk should not have to guess which.
+  if (form.analysis_pending) {
+    return ["Reading the uploaded document — the figures will appear here shortly."];
+  }
+
   if (form.kind === "pfs") {
     // Net worth is only a figure once the statement has been filed. A draft
     // nobody has typed into totals to zero, and "Net worth $0" sitting beside
     // "Outstanding" reads as a finding about the borrower rather than an empty
     // form — so say what is actually there instead.
     if (form.source === "filled" && form.net_worth !== null) {
-      return `Net worth ${currency(form.net_worth)}`;
+      return [`Net worth ${currency(form.net_worth)}`];
+    }
+    if (form.statements.length > 0) {
+      // A PFS belongs to one person. Two documents are two people, so they get
+      // a line each — the combined figure would be a household balance sheet
+      // neither of them signed.
+      return form.statements.map(statementLine).filter(Boolean);
     }
     if (form.source === "none" && form.statement_id) {
-      return "A draft has been started. Open it to carry on where it was left.";
+      return ["A draft has been started. Open it to carry on where it was left."];
     }
   }
+
   if (form.kind === "debt_schedule" && form.row_count > 0) {
-    return `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${currency(
-      form.total_monthly,
-    )} a month · ${currency(form.total_balance)} outstanding`;
+    return [
+      `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${currency(
+        form.total_monthly,
+      )} a month · ${currency(form.total_balance)} outstanding`,
+    ];
   }
+
   if (form.source === "uploaded") {
-    return "Satisfied by a document the borrower sent. There are no figures behind it to edit.";
+    return [
+      "Satisfied by a document, but no figures could be read off it. Open the file to check it, or fill the form in to hold the numbers.",
+    ];
   }
-  return null;
+  return [];
 }
 
 export function FinancialFormsPanel({
@@ -125,6 +176,25 @@ export function FinancialFormsPanel({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A document is read after it lands, not as it lands, so the figures show up
+  // a little behind the upload. Poll while anything is still being read and
+  // stop the moment it is — an idle panel should not be talking to the server.
+  const analysisPending = forms.some((form) => form.analysis_pending);
+  useEffect(() => {
+    if (!analysisPending) return;
+    // And give up after a few minutes. An analysis that gets stuck should not
+    // leave a forgotten tab polling the API for the rest of the day.
+    const until = Date.now() + 4 * 60 * 1000;
+    const timer = window.setInterval(() => {
+      if (Date.now() > until) {
+        window.clearInterval(timer);
+        return;
+      }
+      void load();
+    }, 6000);
+    return () => window.clearInterval(timer);
+  }, [analysisPending, load]);
 
   const fileId = profileId ?? resolvedId;
   if (!fileId) return null;
@@ -243,8 +313,15 @@ export function FinancialFormsPanel({
               <b>{form.label}</b>
               {statusChip(form)}
               {form.filled_by_staff ? <CellChip tone="mut">Completed by staff</CellChip> : null}
+              {/* Provenance, because a figure typed by the borrower and one read
+                  off a scan carry different weight in a conversation with a lender. */}
+              {form.figures_from === "document" ? <CellChip tone="mut">Read from the document</CellChip> : null}
             </div>
-            {summaryLine(form) ? <span className="sub">{summaryLine(form)}</span> : null}
+            {summaryLines(form).map((line) => (
+              <span key={line} className="sub">
+                {line}
+              </span>
+            ))}
           </div>
           {!form.requested ? (
             <Btn size="sm" disabled={busy !== ""} onClick={() => void request(form.kind)}>

@@ -253,7 +253,11 @@ function ScheduleTable({
                 // mutations are append and remove-at-index.
                 <tr key={index}>
                   {spec.columns.map((column) => (
-                    <td key={column}>
+                    // data-col carries the heading down to the cell so a narrow
+                    // viewport can stack the row and still say what each field
+                    // is. Without it the only way to keep the headings attached
+                    // is a horizontal scrollbar.
+                    <td key={column} data-col={column}>
                       <Input
                         aria-label={`${spec.label} — ${column}`}
                         disabled={disabled}
@@ -266,7 +270,7 @@ function ScheduleTable({
                       />
                     </td>
                   ))}
-                  <td>
+                  <td data-col="">
                     <Btn
                       size="sm"
                       disabled={disabled}
