@@ -16,7 +16,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Btn, CellChip, Panel, Row, StatusLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { useAuthedApi } from "@/hooks/useApi";
+import { useAuthedApi, useFinancialFormPdf } from "@/hooks/useApi";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
 
@@ -137,6 +137,7 @@ export function FinancialFormsPanel({
   nested?: boolean;
 }) {
   const api = useAuthedApi();
+  const pdf = useFinancialFormPdf();
   const [resolvedId, setResolvedId] = useState<string | null>(profileId ?? null);
   const [forms, setForms] = useState<FormStatus[]>([]);
   const [schema, setSchema] = useState<PfsSchema | null>(null);
@@ -233,6 +234,26 @@ export function FinancialFormsPanel({
       } catch {
         // Left on screen to select by hand.
       }
+    });
+
+  /** The filled form as a PDF, rendered from what the file holds right now.
+   *
+   *  Opened in a tab rather than downloaded: the desk's usual next move is to
+   *  read it before forwarding, and a file that lands in a downloads folder has
+   *  to be found again first. The object URL is released on the next tick —
+   *  long enough for the tab to have taken it, short of leaking the blob for
+   *  the life of the session. */
+  const openPdf = (kind: FormKind) =>
+    run(`pdf:${kind}`, async () => {
+      const blob = await pdf.mutateAsync({ profileId: fileId, kind });
+      const url = URL.createObjectURL(blob);
+      const opened = window.open(url, "_blank", "noopener");
+      if (!opened) {
+        // Popup blocked. Nothing was downloaded and nothing said so, which is
+        // the same silent failure the copy-link button used to have.
+        setError("Your browser blocked the new tab. Allow pop-ups for this site and try again.");
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     });
 
   /** Put it on the checklist. Idempotent server-side, so a double click is
@@ -338,6 +359,14 @@ export function FinancialFormsPanel({
           <Btn size="sm" disabled={busy !== ""} onClick={() => void open(form)}>
             {form.source === "filled" ? "Open" : "Fill in"}
           </Btn>
+          {/* Only where figures exist to render. An empty 413 is not a document
+              anyone wants to open, and a button that always 404s teaches the
+              desk to stop pressing it. */}
+          {form.figures_from === "form" || form.statement_id || form.row_count > 0 ? (
+            <Btn size="sm" disabled={busy !== ""} onClick={() => void openPdf(form.kind)}>
+              {busy === `pdf:${form.kind}` ? "Making it…" : "PDF"}
+            </Btn>
+          ) : null}
         </div>
       ))}
 

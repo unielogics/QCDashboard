@@ -7527,3 +7527,46 @@ export function useRunUnifiedAction() {
     },
   });
 }
+
+// The filled financial form as a PDF, rendered from what the file holds now.
+//
+// Raw fetch rather than the JSON-typed helper, so we get the binary back — the
+// same shape useDownloadTermSheet uses. The blob is the caller's to open or
+// save; this hook does not decide which.
+export function useFinancialFormPdf() {
+  const { getToken, isSignedIn } = useConsoleAuth();
+  const devUser = useDevUser();
+  return useMutation({
+    mutationFn: async ({ profileId, kind }: { profileId: string; kind: "pfs" | "debt_schedule" }) => {
+      let token: string | null = null;
+      if (isSignedIn) {
+        try { token = await getToken(); } catch { token = null; }
+      }
+      const res = await fetch(
+        `${apiBase}/api/v1/application-profiles/${profileId}/financial-forms/${kind}/pdf`,
+        {
+          method: "GET",
+          headers: {
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(devUser ? { "X-Dev-User": devUser } : {}),
+          },
+        },
+      );
+      if (!res.ok) {
+        // The 404 here is a sentence worth showing — "nothing has been filled
+        // in yet" is the answer, not a failure to report as one.
+        let body: unknown = null;
+        try { body = await res.json(); } catch { /* not JSON */ }
+        const detail = body && typeof body === "object" && "detail" in body
+          ? (body as { detail?: unknown }).detail
+          : null;
+        throw new ApiError(
+          res.status,
+          typeof detail === "string" && detail.trim() ? detail : `${res.status} ${res.statusText}`,
+          body,
+        );
+      }
+      return await res.blob();
+    },
+  });
+}
