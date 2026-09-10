@@ -26,6 +26,7 @@ import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { FormReview } from "@/components/application/FormReview";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -84,7 +85,11 @@ export default function FinancialFormPage() {
 
   const [state, setState] = useState<FormState | null>(null);
   const [body, setBody] = useState<FormBody>({});
-  const [status, setStatus] = useState<"loading" | "ready" | "saving" | "done" | "gone">("loading");
+  // "review" sits between typing and sending: the borrower reads back what
+  // they entered before it becomes the answer we hand a lender.
+  const [status, setStatus] = useState<
+    "loading" | "ready" | "review" | "saving" | "done" | "gone"
+  >("loading");
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -144,7 +149,24 @@ export default function FinancialFormPage() {
     return () => window.clearTimeout(timer);
   }, [body, saveDraft, status]);
 
+  /** Stop typing, start reading. Saves the draft on the way through so the
+   *  review is of something already safely stored, not of state held in a tab. */
+  const review = () => {
+    setError(null);
+    void saveDraft();
+    setStatus("review");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  /** Back to the form with everything intact — `body` was never cleared. */
+  const edit = () => {
+    setError(null);
+    setStatus("ready");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const submit = async () => {
+    const previous = status === "done" ? "done" : "review";
     setStatus("saving");
     setError(null);
     try {
@@ -155,9 +177,11 @@ export default function FinancialFormPage() {
       });
       if (!response.ok) throw new Error("That did not save.");
       setStatus("done");
+      window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
       setError("We could not save that. Please try again in a moment.");
-      setStatus("ready");
+      // Back where they were, not to the top of a long form they had finished.
+      setStatus(previous);
     }
   };
 
@@ -225,6 +249,73 @@ export default function FinancialFormPage() {
     );
   }
 
+  if (status === "review" || (status === "saving" && state)) {
+    return (
+      <div className="fp">
+        <header className="fp-header">
+          <div className="fp-header-inner">
+            <span className="fp-mark">Qualified Commercial</span>
+            <h1>Check this over</h1>
+            <p className="fp-for">
+              {title}
+              {state?.business_name ? ` · ${state.business_name}` : ""}
+            </p>
+          </div>
+        </header>
+
+        <main className="fp-main">
+          <div className="fp-intro">
+            <p>
+              This is everything you entered. Read it back once — a figure typed into the row
+              above it is the kind of thing nobody notices while filling a form in and everybody
+              notices while reading one. Nothing is sent until you press Send.
+            </p>
+          </div>
+
+          <div className="fp-card fpr">
+            {state ? (
+              <FormReview kind={state.kind} schema={state.schema} body={body} />
+            ) : null}
+          </div>
+
+          {error ? (
+            <p className="fp-error" role="alert">
+              {error}
+            </p>
+          ) : null}
+        </main>
+
+        <div className="fp-actions">
+          <div className="fp-actions-inner">
+            <button
+              type="button"
+              className="fp-submit"
+              disabled={status === "saving"}
+              onClick={submit}
+            >
+              {status === "saving" ? (
+                <>
+                  <span className="fp-spinner" aria-hidden="true" /> Sending…
+                </>
+              ) : (
+                "Send it"
+              )}
+            </button>
+            <button
+              type="button"
+              className="fp-secondary"
+              disabled={status === "saving"}
+              onClick={edit}
+            >
+              Go back and edit
+            </button>
+            <span className="fp-autosave">Your answers are saved either way.</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (status === "done") {
     return (
       <div className="fp">
@@ -246,8 +337,14 @@ export default function FinancialFormPage() {
               {state ? RECEIVED[state.kind] : RECEIVED.pfs} Nothing else is needed from you here.
             </p>
             <p className="fp-quiet">
-              If you spot a mistake, this link still works — reopen it and correct the figure.
+              If you spot a mistake, this link still works. Correcting a figure now is far
+              easier than correcting it after a lender has read it.
             </p>
+            {/* The sentence above used to be the whole offer, and "reopen it"
+                meant finding the email again. The way back belongs here. */}
+            <button type="button" className="fp-secondary" onClick={edit}>
+              Edit my answers
+            </button>
           </div>
         </main>
       </div>
@@ -318,19 +415,8 @@ export default function FinancialFormPage() {
 
       <div className="fp-actions">
         <div className="fp-actions-inner">
-          <button
-            type="button"
-            className="fp-submit"
-            disabled={status === "saving"}
-            onClick={submit}
-          >
-            {status === "saving" ? (
-              <>
-                <span className="fp-spinner" aria-hidden="true" /> Saving…
-              </>
-            ) : (
-              "Save and send"
-            )}
+          <button type="button" className="fp-submit" onClick={review}>
+            Save and review
           </button>
           <span className="fp-autosave" aria-live="polite">
             {saving ? (

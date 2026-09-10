@@ -4137,3 +4137,73 @@ a.pick { color: inherit; text-decoration: none; }
   .evrev-summary { flex-basis: 100%; order: 3; }
   .evrev-head { flex-wrap: wrap; }
 }
+
+/* ---------------------------------------------------------------------------
+   The review screen: what you are about to send, before you send it.
+   Read-only on purpose — a screen you can edit is a screen you skim.
+   --------------------------------------------------------------------------- */
+
+.fpr { gap: 0; padding-top: 6px; }
+
+.fpr-section { padding: 14px 0; border-bottom: 1px solid var(--fp-line); }
+.fpr-section:last-child { border-bottom: 0; padding-bottom: 4px; }
+.fpr-section h3 {
+  margin: 0 0 8px;
+  font-size: 9.5px; font-weight: 650; letter-spacing: .12em; text-transform: uppercase;
+  color: var(--fp-muted);
+}
+
+.fpr-line {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 5px 0;
+}
+.fpr-line > span { color: var(--fp-ink); font-size: 14px; }
+.fpr-line > strong { font-size: 14.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* The line a section ends on is its total; give it a rule rather than a colour. */
+.fpr-line:last-of-type { border-top: 1px solid var(--fp-line); margin-top: 4px; padding-top: 9px; }
+.fpr-section .fpr-line:only-of-type { border-top: 0; margin-top: 0; padding-top: 5px; }
+
+/* Everything that is not a figure: the fields that qualify an obligation, the
+   columns of a schedule row. Wraps rather than scrolls, like the form does. */
+.fpr-sub { display: flex; flex-wrap: wrap; gap: 6px 18px; margin-top: 6px; }
+.fpr-sub span { font-size: 13px; color: var(--fp-ink); }
+.fpr-sub em { font-style: normal; color: var(--fp-muted); font-size: 12px; margin-right: 4px; }
+
+.fpr-note {
+  margin: 8px 0 0; padding: 9px 12px;
+  background: #f6f8fb; border-left: 2px solid var(--fp-field-line); border-radius: 0 6px 6px 0;
+  font-size: 13px; color: var(--fp-muted); line-height: 1.5;
+}
+.fpr-blank { margin: 8px 0 0; font-size: 12.5px; color: var(--fp-muted); }
+
+.fpr-headline {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  margin: 16px 0 4px; padding: 14px 16px;
+  background: var(--fp-accent-soft); border: 1px solid #cddefb; border-radius: var(--fp-r-sm);
+  color: #24406f;
+}
+.fpr-headline > span { font-size: 12px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.fpr-headline > strong { font-size: 19px; font-variant-numeric: tabular-nums; letter-spacing: -.015em; }
+
+/* The way back. Quiet next to Send, but a real target — someone who spots a
+   wrong figure here should not have to hunt for it. */
+.fp-secondary {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 11px 20px;
+  border: 1.5px solid var(--fp-field-line);
+  border-radius: var(--fp-r-sm);
+  background: #fff;
+  color: var(--fp-ink);
+  font: inherit; font-size: 14.5px; font-weight: 600;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+.fp-secondary:hover:not(:disabled) { border-color: var(--fp-accent); background: var(--fp-accent-soft); }
+.fp-secondary:disabled { opacity: 0.5; cursor: not-allowed; }
+.fp-terminal .fp-secondary { margin-top: 6px; }
+
+@media (max-width: 560px) {
+  .fpr-line { flex-direction: column; gap: 1px; }
+  .fpr-line > strong { align-self: flex-start; }
+  .fp-actions-inner .fp-submit, .fp-actions-inner .fp-secondary { flex: 1 1 auto; justify-content: center; }
+}
