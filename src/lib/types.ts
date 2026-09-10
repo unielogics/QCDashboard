@@ -2027,7 +2027,7 @@ export interface Lender {
   contact_email: string | null;
   contact_phone: string | null;
   contact_title: string | null;
-  products: LoanType[];
+  products: string[];
   email_domain: string | null;
   notes: string | null;
   is_active: boolean;
@@ -2037,7 +2037,7 @@ export interface Lender {
 
 export interface LenderCreate {
   name: string;
-  products: LoanType[];
+  products: string[];
   submission_email?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;
@@ -2050,7 +2050,7 @@ export interface LenderCreate {
 
 export interface LenderUpdate {
   name?: string;
-  products?: LoanType[];
+  products?: string[];
   submission_email?: string | null;
   contact_name?: string | null;
   contact_email?: string | null;

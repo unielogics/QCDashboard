@@ -25,7 +25,7 @@ import { useMemo, useState } from "react";
 import { Btn, CellChip, cx, Input, Linky, Loading, PageHeader, Panel, Row, Sub, Table, Td, Tr } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
-import { Role, LoanTypeOptions } from "@/lib/enums.generated";
+import { Role } from "@/lib/enums.generated";
 import { useLenders } from "@/hooks/useApi";
 import { LenderEditModal } from "@/components/LenderEditModal";
 import type { Lender } from "@/lib/types";
@@ -34,9 +34,7 @@ import { LenderLoansDrawer } from "./LenderLoansDrawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { Drawer } from "@/components/ds/Drawer";
 
-const PRODUCT_LABEL = new Map<string, string>(
-  LoanTypeOptions.map((o) => [o.value, o.label]),
-);
+import { LENDER_PRODUCT_LABEL as PRODUCT_LABEL } from "@/lib/lenderProducts";
 
 type SortKey = "name" | "products" | "contact" | "active";
 

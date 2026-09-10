@@ -28,7 +28,6 @@ import {
   useUpdateLender,
 } from "@/hooks/useApi";
 import type { Lender, LenderCreate, LenderUpdate } from "@/lib/types";
-import type { LoanType } from "@/lib/enums.generated";
 
 interface Props {
   open: boolean;
@@ -49,7 +48,7 @@ export function LenderEditModal({ open, onClose, lender }: Props) {
   const [contactPhone, setContactPhone] = useState("");
   const [contactTitle, setContactTitle] = useState("");
   const [emailDomain, setEmailDomain] = useState("");
-  const [products, setProducts] = useState<LoanType[]>([]);
+  const [products, setProducts] = useState<string[]>([]);
   const [notes, setNotes] = useState("");
   const [isActive, setIsActive] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -180,8 +179,9 @@ export function LenderEditModal({ open, onClose, lender }: Props) {
         <div className="fldsec">
           <span className="lbl">Products serviced</span>
           <div className="sub mb">
-            Tap to select / tap again to remove. Lenders only appear in the Connect-Lender
-            dropdown when their products match the loan&apos;s type.
+            Tap to select / tap again to remove. Real-estate products put a lender in the loan
+            page&apos;s Connect-Lender dropdown; service partners (merchant processing and the
+            rest) are picked from a file&apos;s Underwriting panel instead.
           </div>
           <LoanTypeChips selected={products} onChange={setProducts} />
         </div>

@@ -33,6 +33,7 @@ import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
+import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
 import { api, ApiError } from "@/lib/api";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
@@ -1108,6 +1109,7 @@ function LeadDetailPanel({
   const [underwritingLoading, setUnderwritingLoading] = useState(false);
   const [underwritingSaving, setUnderwritingSaving] = useState(false);
   const [underwritingError, setUnderwritingError] = useState<string | null>(null);
+  const [merchantOfferStatus, setMerchantOfferStatus] = useState<string | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
@@ -1689,6 +1691,11 @@ function LeadDetailPanel({
         ) : detail ? (
           <Select value={detail.intake.outcome_status} disabled={outcomeBusy} onChange={(event) => changeOutcomeStatus(event.target.value)} aria-label="Outcome status"><option value="submitted">Submitted</option><option value="closed">Closed</option><option value="denied">Denied</option></Select>
         ) : null}
+        {detail && canUnderwrite && merchantOfferStatus && ["sent", "accepted", "declined"].includes(merchantOfferStatus) ? (
+          <CellChip tone={merchantOfferStatus === "accepted" ? "ok" : merchantOfferStatus === "declined" ? "bad" : "warn"}>
+            Processing offer: {merchantOfferStatus}
+          </CellChip>
+        ) : null}
         {detail ? <Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select> : null}
         <PageActionMenu items={[
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
@@ -1859,6 +1866,11 @@ function LeadDetailPanel({
                           </div>
                         </div>
                       ) : null}
+                      <MerchantOfferStrip
+                        profileId={underwriting?.profile_id}
+                        onStatus={setMerchantOfferStatus}
+                        onTargetDscr={(value) => setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }))}
+                      />
                       <div className="fldgrid three">
                         <Field label="Lifecycle status">
                           <Select value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>

@@ -150,6 +150,25 @@
 .application-room-dropzone.dragging { border-color: var(--room-accent); background: var(--room-accent-soft); }
 .application-room-dropzone span { color: var(--room-muted); font-size: 12px; }
 .application-room-queue, .application-room-history-list, .application-room-todo-list { display: grid; gap: 8px; }
+
+/* Merchant processing offer — the client's Accept / Decline card. */
+.application-room-offer { display: grid; gap: 18px; }
+.application-room-offer-headline { display: grid; gap: 4px; padding: 20px 22px; border: 1px solid var(--room-line); border-radius: 8px; background: var(--room-surface-2); }
+.application-room-offer-headline strong { font-size: 40px; line-height: 1.05; letter-spacing: -0.02em; color: var(--room-text); font-variant-numeric: tabular-nums; }
+.application-room-offer-headline em { font-style: normal; font-weight: 750; color: var(--room-accent); }
+.application-room-offer-headline small { color: var(--room-muted); }
+.application-room-offer-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.application-room-offer-table th, .application-room-offer-table td { padding: 10px 12px; border-bottom: 1px solid var(--room-line); text-align: right; }
+.application-room-offer-table th[scope="row"], .application-room-offer-table thead th:first-child { text-align: left; }
+.application-room-offer-table thead th { color: var(--room-muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+.application-room-offer-options { display: grid; gap: 8px; }
+.application-room-offer-options > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; padding: 10px 12px; border: 1px solid var(--room-line); border-radius: 6px; background: var(--room-surface); }
+.application-room-offer-options span { color: var(--room-muted); }
+.application-room-offer-lines { display: grid; gap: 4px; color: var(--room-muted); font-size: 13px; }
+.application-room-offer-disclaimer { margin: 0; color: var(--room-muted); font-size: 12.5px; line-height: 1.55; }
+.application-room-offer-actions { display: grid; gap: 12px; max-width: 520px; }
+.application-room-offer-buttons { display: flex; flex-wrap: wrap; gap: 10px; }
+.application-room-offer-decline { display: grid; gap: 10px; }
 .application-room-queue { margin-bottom: 14px; }
 .application-room-queue > div, .application-room-history-list article { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(140px, 220px) auto; gap: 10px; align-items: center; min-width: 0; padding: 10px; border: 1px solid var(--room-line); border-radius: 6px; }
 .application-room-file-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 6px; background: var(--room-accent-soft); color: var(--room-accent); }
