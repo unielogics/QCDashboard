@@ -7566,7 +7566,11 @@ export function useFinancialFormPdf() {
           body,
         );
       }
-      return await res.blob();
+      // The server names the file — business, applicant and date — and that
+      // name is what makes it findable in a downloads folder six weeks later.
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const match = /filename="?([^"';]+)"?/i.exec(disposition);
+      return { blob: await res.blob(), filename: match?.[1] ?? "financial-form.pdf" };
     },
   });
 }

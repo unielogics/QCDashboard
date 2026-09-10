@@ -67,6 +67,7 @@ import { ApplicationVerificationWorkspace } from "@/components/application/Appli
 import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
 import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
 import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
+import { EvidenceReviewBlock } from "@/components/application/EvidenceReviewBlock";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
@@ -1810,8 +1811,17 @@ function LeadDetailPanel({
                     <span className="intake-evidence-browse-label">{headerUploading ? "Uploading" : "Browse computer"}</span>
                   </button>
                   <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
+                  {/* Folded by default once there is nothing to act on. These two blocks
+                      are reference material most of the time, and they sat between the
+                      evidence browser and the financial forms — the part of this tab the
+                      desk actually works in. */}
+                  <EvidenceReviewBlock
+                    attention={missing.length > 0}
+                    summary={`${detail.requested_documents.length} requirement${detail.requested_documents.length === 1 ? "" : "s"} · ${missing.length} blocker${missing.length === 1 ? "" : "s"}`}
+                  >
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                   <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet. The checklist status above still applies."} /></InfoBlock>
+                  </EvidenceReviewBlock>
                   {/* Evidence is where the desk chases what a file is missing, and
                       these two forms are exactly that — a request the borrower has
                       not answered yet. Keeping them on a separate tab meant

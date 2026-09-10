@@ -347,14 +347,30 @@ export function FinancialFormsPanel({
    *  the life of the session. */
   const openPdf = (kind: FormKind) =>
     run(`pdf:${kind}`, async () => {
-      const blob = await pdf.mutateAsync({ profileId: fileId, kind });
+      const { blob } = await pdf.mutateAsync({ profileId: fileId, kind });
       const url = URL.createObjectURL(blob);
       const opened = window.open(url, "_blank", "noopener");
       if (!opened) {
-        // Popup blocked. Nothing was downloaded and nothing said so, which is
-        // the same silent failure the copy-link button used to have.
-        setError("Your browser blocked the new tab. Allow pop-ups for this site and try again.");
+        // Popup blocked. Nothing opened and nothing said so, which is the same
+        // silent failure the copy-link button used to have. Download still works.
+        setError("Your browser blocked the new tab. Use Download instead, or allow pop-ups for this site.");
       }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    });
+
+  /** The same document, saved rather than opened — for forwarding to a partner
+   *  rather than reading. Uses the filename the server chose, which carries the
+   *  business, the applicant and the date. */
+  const downloadPdf = (kind: FormKind) =>
+    run(`dl:${kind}`, async () => {
+      const { blob, filename } = await pdf.mutateAsync({ profileId: fileId, kind });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
     });
 
@@ -500,13 +516,23 @@ export function FinancialFormsPanel({
           <Btn size="sm" disabled={busy !== ""} onClick={() => void open(form)}>
             {form.source === "filled" ? "Open" : "Fill in"}
           </Btn>
-          {/* Only where figures exist to render. An empty 413 is not a document
-              anyone wants to open, and a button that always 404s teaches the
-              desk to stop pressing it. */}
-          {form.figures_from === "form" || form.statement_id || (form.row_count ?? 0) > 0 ? (
-            <Btn size="sm" disabled={busy !== ""} onClick={() => void openPdf(form.kind)}>
-              {busy === `pdf:${form.kind}` ? "Making it…" : "PDF"}
-            </Btn>
+          {/* Wherever there is something to hand back: figures we hold, a draft
+              to render, or the document the borrower uploaded instead — the
+              route serves all three. Hidden only when the slot is genuinely
+              empty, because a button that always 404s teaches the desk to stop
+              pressing it. */}
+          {form.figures_from === "form" ||
+          form.statement_id ||
+          (form.row_count ?? 0) > 0 ||
+          form.source === "uploaded" ? (
+            <>
+              <Btn size="sm" disabled={busy !== ""} onClick={() => void openPdf(form.kind)}>
+                {busy === `pdf:${form.kind}` ? "Making it…" : "View PDF"}
+              </Btn>
+              <Btn size="sm" disabled={busy !== ""} onClick={() => void downloadPdf(form.kind)}>
+                {busy === `dl:${form.kind}` ? "Saving…" : "Download"}
+              </Btn>
+            </>
           ) : null}
         </div>
       ))}
