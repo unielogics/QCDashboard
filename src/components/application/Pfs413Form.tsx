@@ -17,6 +17,7 @@
 import { useCallback } from "react";
 import { Btn, Field, Input, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
+import { sumRows } from "@/lib/pfsTotals";
 
 export type PfsSummaryRow = {
   key: string;
@@ -25,7 +26,31 @@ export type PfsSummaryRow = {
   schedule: string | null;
 };
 
-export type PfsScheduleSpec = { key: string; label: string; columns: string[] };
+/** One schedule column: the key a stored row is addressed by, and the label
+ *  the 413 prints. */
+export type PfsScheduleField = { key: string; label: string };
+
+export type PfsScheduleSpec = {
+  key: string;
+  label: string;
+  /** The labels, verbatim, in print order. */
+  columns: string[];
+  /** The same columns paired with their stable keys. Optional only so a
+   *  schema cached before the keys existed still renders. */
+  fields?: PfsScheduleField[];
+};
+
+/** The columns of a schedule as (key, label) pairs, whichever the server sent. */
+export function scheduleFields(spec: PfsScheduleSpec): PfsScheduleField[] {
+  if (spec.fields && spec.fields.length === spec.columns.length) return spec.fields;
+  return spec.columns.map((label) => ({ key: label, label }));
+}
+
+/** A schedule cell, whether the row was stored keyed by column key (the
+ *  worksheet) or by column label (rows written before the keys existed). */
+export function scheduleCell(row: Record<string, string>, field: PfsScheduleField): string {
+  return row[field.key] ?? row[field.label] ?? "";
+}
 
 export type PfsSchema = {
   schema_version: string;
@@ -40,6 +65,8 @@ export type PfsSchema = {
 export type PfsBody = {
   schema_version?: string;
   applicant?: Record<string, string>;
+  /** The "as of" date the 413 prints. The statement's date falls back to it. */
+  as_of?: string;
   assets?: Record<string, unknown>;
   liabilities?: Record<string, unknown>;
   income?: Record<string, unknown>;
@@ -55,13 +82,10 @@ function money(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
-function total(rows: PfsSummaryRow[], values: Record<string, unknown> | undefined): number {
-  return rows.reduce((sum, row) => {
-    const raw = String(values?.[row.key] ?? "").replace(/[,$\s]/g, "");
-    const parsed = Number.parseFloat(raw);
-    return sum + (Number.isFinite(parsed) ? parsed : 0);
-  }, 0);
-}
+/** The sum of a summary column from the raw strings — `parseMoney`'s
+ *  tolerance, shared with the other forms so "(500)" means the same thing on
+ *  every one of them. */
+const total = sumRows;
 
 const currency = (value: number) =>
   value.toLocaleString(undefined, { style: "currency", currency: "USD" });
@@ -168,6 +192,17 @@ export function Pfs413Form({
             onChange={(event) => setSection("applicant", "business_phone", event.target.value)}
           />
         </Field>
+        {/* The 413 prints "as of" a date. Nothing used to send one, so every
+            filed sheet read "not stated"; the statement date now falls back
+            to this. */}
+        <Field label="As of">
+          <Input
+            type="date"
+            disabled={disabled}
+            value={value.as_of ?? ""}
+            onChange={(event) => onChange({ ...value, as_of: event.target.value })}
+          />
+        </Field>
       </div>
 
       <div className="pfs-columns">
@@ -231,6 +266,14 @@ function ScheduleTable({
   onChange: (rows: Record<string, string>[]) => void;
   disabled: boolean;
 }) {
+  const fields = scheduleFields(spec);
+  // A row is written back in whichever form it already uses for that column:
+  // a row the worksheet stored by key stays keyed, and a row written before
+  // the keys existed stays labelled, so an edit never leaves a stale twin
+  // under the other name. A new row is labelled — the form every reader of
+  // the stored body understands today.
+  const cellName = (row: Record<string, string>, field: PfsScheduleField) =>
+    field.key in row ? field.key : field.label;
   return (
     <div className="pfs-section">
       <h4>{spec.label}</h4>
@@ -241,8 +284,8 @@ function ScheduleTable({
           <table className="tbl pfs-table">
             <thead>
               <tr>
-                {spec.columns.map((column) => (
-                  <th key={column}>{column}</th>
+                {fields.map((field) => (
+                  <th key={field.key}>{field.label}</th>
                 ))}
                 <th aria-label="Remove" />
               </tr>
@@ -252,19 +295,19 @@ function ScheduleTable({
                 // Index-keyed deliberately: these rows have no id, and the only
                 // mutations are append and remove-at-index.
                 <tr key={index}>
-                  {spec.columns.map((column) => (
+                  {fields.map((field) => (
                     // data-col carries the heading down to the cell so a narrow
                     // viewport can stack the row and still say what each field
                     // is. Without it the only way to keep the headings attached
                     // is a horizontal scrollbar.
-                    <td key={column} data-col={column}>
+                    <td key={field.key} data-col={field.label}>
                       <Input
-                        aria-label={`${spec.label} — ${column}`}
+                        aria-label={`${spec.label} — ${field.label}`}
                         disabled={disabled}
-                        value={row[column] ?? ""}
+                        value={scheduleCell(row, field)}
                         onChange={(event) => {
                           const next = [...rows];
-                          next[index] = { ...row, [column]: event.target.value };
+                          next[index] = { ...row, [cellName(row, field)]: event.target.value };
                           onChange(next);
                         }}
                       />
@@ -290,7 +333,7 @@ function ScheduleTable({
         size="sm"
         disabled={disabled}
         onClick={() =>
-          onChange([...rows, Object.fromEntries(spec.columns.map((column) => [column, ""]))])
+          onChange([...rows, Object.fromEntries(fields.map((field) => [field.label, ""]))])
         }
       >
         <Icon name="plus" size={12} /> Add row

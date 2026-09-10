@@ -13,6 +13,7 @@ import { isBareRoute as computeBareRoute } from "@/lib/shellRoutes";
 import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { useRecordPendingSignupAttribution } from "@/hooks/useRecordPendingSignupAttribution";
+import { useLiveInvalidation } from "@/lib/liveInvalidation";
 import { SIGN_IN_URL } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
@@ -78,6 +79,10 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
   useRecordPendingSignupAttribution();
+  // One event stream per signed-in tab: server-sent invalidation signals
+  // refetch the queries that otherwise wait for their poll interval. Polling
+  // stays as the fallback (see lib/liveInvalidation.ts).
+  useLiveInvalidation();
   // Hard-gates Role.DEALER_PARTNER access until the Platform Access
   // Agreement is signed. Fetched for every authenticated user (cheap,
   // `required` is false for everyone else) rather than only brokers, so the

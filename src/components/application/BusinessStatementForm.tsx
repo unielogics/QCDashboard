@@ -23,8 +23,15 @@
 
 import { useMemo } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { parseMoney } from "@/lib/pfsTotals";
 
 export type StatementKind = "p_and_l" | "balance_sheet";
+
+/** What a section is on the statement — how the balance sheet rolls up. */
+export type StatementSectionRole = "asset" | "liability" | "equity" | "income" | "expense" | "other";
+
+/** How a computed line is shown: dollars, a ratio to two places, or a count. */
+export type StatementComputedFormat = "money" | "ratio" | "count";
 
 export type StatementHeaderField = {
   key: string;
@@ -39,17 +46,25 @@ export type StatementRow = {
   addback: boolean;
   contra: boolean;
   owner_comp: boolean;
+  /** Words, not money — never summed, rendered as a text input. */
+  text?: boolean;
   hint: string | null;
 };
 
 export type StatementSection = {
   key: string;
   label: string;
+  role?: StatementSectionRole;
   rows: StatementRow[];
   subtotal: { key: string; label: string };
 };
 
-export type StatementComputed = { key: string; label: string; emphasis: boolean };
+export type StatementComputed = {
+  key: string;
+  label: string;
+  emphasis: boolean;
+  format?: StatementComputedFormat;
+};
 
 export type StatementSchema = {
   schema_version: string;
@@ -72,20 +87,32 @@ function money(value: unknown): string {
   return value === null || value === undefined ? "" : String(value);
 }
 
-/** The number behind a typed string, or zero — the same tolerance as
- *  Pfs413Form's total(): commas, dollar signs and spaces are noise. */
-function parse(value: unknown): number {
-  const raw = String(value ?? "").replace(/[,$\s]/g, "");
-  const parsed = Number.parseFloat(raw);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
+/** The number behind a typed string, or zero — the tolerance every form
+ *  shares: commas, dollar signs and spaces are noise, "(500)" is -500. */
+const parse = parseMoney;
 
-/** A row that carries words, not money — "other_description" on the P&L. It
+/** A row that carries words, not money — the schema says so with `text`. It
  *  never enters a sum and gets a text input rather than a decimal one. */
-const isTextRow = (row: StatementRow) => row.key.endsWith("_description");
+const isTextRow = (row: StatementRow) => row.text === true;
 
 const currency = (value: number) =>
   value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/** A computed line by its kind. A ratio through the currency formatter reads
+ *  "$1.50", and a count "$6" — which is how these lines went unrendered. Null
+ *  is "—": a sheet with no current liabilities has no current ratio, and
+ *  "$0" there would be a wrong number, not a blank. */
+export function formatComputed(format: StatementComputedFormat | undefined, value: number | null): string {
+  if (value === null || value === undefined || !Number.isFinite(value)) return "—";
+  switch (format) {
+    case "ratio":
+      return value.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    case "count":
+      return value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    default:
+      return currency(value);
+  }
+}
 
 /** The signed sum of a section's money rows: contra rows subtract. */
 function sectionSum(section: StatementSection, values: Record<string, string | null> | undefined): number {
@@ -101,9 +128,50 @@ function anyTyped(section: StatementSection | undefined, values: Record<string, 
   return section.rows.some((row) => !isTextRow(row) && String(values?.[row.key] ?? "").trim() !== "");
 }
 
+/** What a section is, from the schema — with the old key sniffing kept only
+ *  for a schema cached before `role` was served. */
+function sectionRole(section: StatementSection): StatementSectionRole {
+  if (section.role) return section.role;
+  if (section.key === "equity" || section.key.endsWith("_equity")) return "equity";
+  if (section.key.includes("liabilit")) return "liability";
+  return "asset";
+}
+
+const isoDate = /^(\d{4})-(\d{2})-(\d{2})/;
+
+/** Inclusive calendar months between two ISO dates; null when either is
+ *  blank, unparseable, or the period runs backwards — `months_between` on the
+ *  server, to the month. */
+export function monthsBetween(start: unknown, end: unknown): number | null {
+  const parts = (value: unknown): [number, number, number] | null => {
+    const match = isoDate.exec(String(value ?? "").trim());
+    if (!match) return null;
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const date = new Date(Date.UTC(year, month - 1, day));
+    if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+    return [year, month, day];
+  };
+  const first = parts(start);
+  const last = parts(end);
+  if (!first || !last) return null;
+  const [fy, fm, fd] = first;
+  const [ly, lm, ld] = last;
+  if (ly < fy || (ly === fy && (lm < fm || (lm === fm && ld < fd)))) return null;
+  return (ly - fy) * 12 + (lm - fm) + 1;
+}
+
+/** `numerator / denominator` to two places, or null when there is no
+ *  denominator — the server's `_ratio`. */
+function ratio(numerator: number, denominator: number): number | null {
+  if (denominator === 0) return null;
+  return Math.round((numerator / denominator) * 100) / 100;
+}
+
 export type StatementTotals = {
-  /** Every figure the form can show, by the key the schema names it. */
-  values: Record<string, number>;
+  /** Every figure the form can show, by the key the schema names it. Null is
+   *  a figure that does not exist for this sheet (a ratio with no
+   *  denominator, months with no dates), never zero. */
+  values: Record<string, number | null>;
   /** Balance sheet only: the typed equity section is blank, so equity is implied. */
   equityImplied: boolean;
 };
@@ -117,12 +185,15 @@ export type StatementTotals = {
  *  totals roll their sections up by what the section is (assets, liabilities,
  *  equity). EBITDA comes from the add-back flags, never from the labels. */
 export function computeStatementTotals(schema: StatementSchema, body: StatementBody): StatementTotals {
-  const values: Record<string, number> = {};
+  const values: Record<string, number | null> = {};
   const sections = body.sections ?? {};
+  const header = body.header ?? {};
   const byKey = new Map(schema.sections.map((section) => [section.key, section]));
+  const subtotals: Record<string, number> = {};
 
   for (const section of schema.sections) {
-    values[section.subtotal.key] = sectionSum(section, sections[section.key]);
+    subtotals[section.subtotal.key] = sectionSum(section, sections[section.key]);
+    values[section.subtotal.key] = subtotals[section.subtotal.key];
   }
 
   // Flagged rows across every section.
@@ -143,17 +214,24 @@ export function computeStatementTotals(schema: StatementSchema, body: StatementB
     const revenue = sections.revenue ?? {};
     const grossRevenue = parse(revenue.gross_revenue);
     const cogs = parse(revenue.cost_of_goods_sold);
+    const grossProfit = grossRevenue - cogs;
+    const opex = byKey.get("operating_expenses");
+    const totalOpex = opex ? sectionSum(opex, sections.operating_expenses) : 0;
+    const operatingIncome = grossProfit - totalOpex;
+    const below = sections.below_the_line ?? {};
+    const otherIncome = parse(below.other_income);
+    const incomeTaxes = parse(below.income_taxes);
+    const netIncome = operatingIncome + otherIncome - incomeTaxes;
     values.gross_revenue = grossRevenue;
     values.cost_of_goods_sold = cogs;
-    values.gross_profit = grossRevenue - cogs;
-    const opex = byKey.get("operating_expenses");
-    values.total_operating_expenses = opex ? sectionSum(opex, sections.operating_expenses) : 0;
-    values.operating_income = values.gross_profit - values.total_operating_expenses;
-    const below = sections.below_the_line ?? {};
-    values.other_income = parse(below.other_income);
-    values.income_taxes = parse(below.income_taxes);
-    values.net_income = values.operating_income + values.other_income - values.income_taxes;
-    values.ebitda = values.net_income + addbacks;
+    values.gross_profit = grossProfit;
+    values.total_operating_expenses = totalOpex;
+    values.operating_income = operatingIncome;
+    values.other_income = otherIncome;
+    values.income_taxes = incomeTaxes;
+    values.net_income = netIncome;
+    values.ebitda = netIncome + addbacks;
+    values.months_covered = monthsBetween(header.period_start, header.period_end);
     return { values, equityImplied: false };
   }
 
@@ -161,27 +239,42 @@ export function computeStatementTotals(schema: StatementSchema, body: StatementB
   let totalAssets = 0;
   let totalLiabilities = 0;
   let typedEquity = 0;
+  let currentAssets = 0;
+  let currentLiabilities = 0;
   let equitySection: StatementSection | undefined;
   for (const section of schema.sections) {
-    const sum = values[section.subtotal.key];
-    if (section.key === "equity" || section.key.endsWith("_equity")) {
-      typedEquity += sum;
-      equitySection = section;
-    } else if (section.key.includes("liabilit")) {
-      totalLiabilities += sum;
-    } else {
-      totalAssets += sum;
+    const sum = subtotals[section.subtotal.key];
+    switch (sectionRole(section)) {
+      case "equity":
+        typedEquity += sum;
+        equitySection = section;
+        break;
+      case "liability":
+        totalLiabilities += sum;
+        break;
+      case "asset":
+        totalAssets += sum;
+        break;
+      default:
+        break;
     }
+    if (section.key === "current_assets") currentAssets = sum;
+    if (section.key === "current_liabilities") currentLiabilities = sum;
   }
   const equityImplied = !anyTyped(equitySection, sections[equitySection?.key ?? "equity"]);
   const implied = totalAssets - totalLiabilities;
+  const totalEquity = equityImplied ? implied : typedEquity;
   values.total_assets = totalAssets;
   values.total_liabilities = totalLiabilities;
   values.implied_equity = implied;
-  values.total_equity = equityImplied ? implied : typedEquity;
-  values.total_liabilities_and_equity = totalLiabilities + values.total_equity;
+  values.total_equity = totalEquity;
+  values.total_liabilities_and_equity = totalLiabilities + totalEquity;
   values.imbalance = equityImplied ? 0 : totalAssets - totalLiabilities - typedEquity;
-  values.working_capital = (values.total_current_assets ?? 0) - (values.total_current_liabilities ?? 0);
+  values.working_capital = currentAssets - currentLiabilities;
+  // Ratios are null, not zero, when there is nothing to divide by — the
+  // server's rule, and "$0" for a missing ratio is a wrong number.
+  values.current_ratio = ratio(currentAssets, currentLiabilities);
+  values.debt_to_equity = totalEquity > 0 ? ratio(totalLiabilities, totalEquity) : null;
   return { values, equityImplied };
 }
 
@@ -211,7 +304,7 @@ export function BusinessStatementForm({
   /** Blank the whole equity section: the server implies equity from assets
    *  less liabilities when nothing is typed there. One click, no arithmetic. */
   const useImpliedEquity = () => {
-    const equity = schema.sections.find((section) => section.key === "equity" || section.key.endsWith("_equity"));
+    const equity = schema.sections.find((section) => sectionRole(section) === "equity");
     if (!equity) return;
     const blanked = Object.fromEntries(equity.rows.map((row) => [row.key, ""]));
     onChange({ ...value, sections: { ...(value.sections ?? {}), [equity.key]: blanked } });
@@ -346,11 +439,14 @@ export function BusinessStatementForm({
         <div className="fp-computed" aria-label="Totals">
           {schema.computed.map((line) => {
             const amount = totals.values[line.key];
+            // A key the totals never produce is a schema line this form does
+            // not know how to compute; a null is a figure that does not exist
+            // for this sheet, shown as a dash.
             if (amount === undefined) return null;
             return (
               <div key={line.key} className={line.emphasis ? "pfs-total is-emphasis" : "pfs-total"}>
                 <span>{line.label}</span>
-                <b className="num">{currency(amount)}</b>
+                <b className="num">{formatComputed(line.format, amount)}</b>
               </div>
             );
           })}
