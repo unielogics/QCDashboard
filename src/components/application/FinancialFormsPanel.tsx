@@ -30,6 +30,7 @@ import {
   type StatementKind,
   type StatementSchema,
 } from "@/components/application/BusinessStatementForm";
+import { ShareWorksheetDialog, WorksheetModal } from "@/components/application/WorksheetModal";
 
 type FormKind = "pfs" | "debt_schedule" | StatementKind;
 
@@ -236,6 +237,11 @@ export function FinancialFormsPanel({
   const [copied, setCopied] = useState<LinkKind | null>(null);
   const [shown, setShown] = useState<{ kind: LinkKind; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // The same four forms as one workbook — the grid over the file, and the link
+  // that opens part of it to somebody with no login. Both live in
+  // WorksheetModal.tsx; this panel only says when they are on screen.
+  const [worksheetOpen, setWorksheetOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
 
   const load = useCallback(async () => {
     let id = profileId ?? resolvedId;
@@ -544,6 +550,38 @@ export function FinancialFormsPanel({
           ) : null}
         </div>
       ))}
+
+      {/* The four forms as one workbook, rather than four forms one at a time.
+          Open it to work the file like a spreadsheet; share it to hand part of
+          it — chosen sheet by sheet — to somebody with no login. The share
+          link's scope is stored on the link rather than derived from its
+          token, which is what makes "this opens the P&L only" true. */}
+      <div className="filerow">
+        <Icon name="calc" size={15} />
+        <div className="grow grid g4">
+          <div className="row">
+            <b>Worksheet</b>
+            <CellChip tone="acc">Live</CellChip>
+          </div>
+          <span className="sub">
+            All four forms as one grid, edited a cell at a time. Share any part of it — the
+            personal financial statement is left out unless you tick it.
+          </span>
+        </div>
+        <Btn size="sm" disabled={busy !== ""} onClick={() => setWorksheetOpen(true)}>
+          Open worksheet
+        </Btn>
+        <Btn size="sm" disabled={busy !== ""} onClick={() => setShareOpen(true)}>
+          Share worksheet
+        </Btn>
+      </div>
+
+      {worksheetOpen ? (
+        <WorksheetModal open onClose={() => setWorksheetOpen(false)} profileId={fileId} />
+      ) : null}
+      {shareOpen ? (
+        <ShareWorksheetDialog open onClose={() => setShareOpen(false)} profileId={fileId} />
+      ) : null}
 
       {/* One link for all four. The packet is what gets forwarded to an
           accountant, so it is minted from here and can be closed from here. */}

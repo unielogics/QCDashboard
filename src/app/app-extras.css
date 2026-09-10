@@ -4210,3 +4210,174 @@ a.pick { color: inherit; text-decoration: none; }
   .fpr-line > strong { align-self: flex-start; }
   .fp-actions-inner .fp-submit, .fp-actions-inner .fp-secondary { flex: 1 1 auto; justify-content: center; }
 }
+
+/* ===========================================================================
+   The worksheet grid (.sg-*)  —  src/components/sheet/*
+   ===========================================================================
+   A Google-Sheets-shaped view of the four financial forms, on a computer. It
+   is CSS Grid rather than a table: a sticky first column and a sticky heading
+   row are one declaration each on grid items, and a section band spanning the
+   sheet is `grid-column: span n` rather than a colspan the layout has to fake.
+
+   Every class here is prefixed `.sg-`, because `globals.css` already owns
+   `.grid`, `.row`, `.field` and `.cellchip` — naming a row `.row` would
+   flex-wrap the grid into rubble. The strip of tabs is `.sg-tabs` and NOT
+   `.sg-tabbar`: the public worksheet page defines `.sg-tabbar` in an inline
+   `<style>` for its phone fork, on the same document.
+
+   Column widths come from the layout (the workbook's own character units,
+   converted in `SheetGrid.tsx`) and are set per grid via the `--sg-cols`
+   custom property, so every row lines up with the heading above it and with
+   the .xlsx somebody downloads.
+   =========================================================================== */
+
+.sg { display: grid; gap: 10px; min-width: 0; }
+
+/* ── the strip above the grid ─────────────────────────────────────────── */
+
+.sg-toolbar { display: grid; gap: 6px; }
+.sg-toolbar-main { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.sg-name { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.sg-name strong { font-family: var(--fh); font-size: 15px; letter-spacing: -0.01em; }
+.sg-name .sg-sub { color: var(--muted); font-size: 12px; }
+.sg-state { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+.sg-state-bad { color: var(--danger); font-weight: 600; }
+/* The live half fills this. It is empty and 0-wide until it does. */
+.sg-presence { display: flex; align-items: center; gap: 6px; min-height: 24px; }
+.sg-toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.sg-notice {
+  display: flex; align-items: center; gap: 10px; margin: 0;
+  padding: 7px 11px; border: 1px solid var(--accent-200); border-radius: var(--r-sm);
+  background: var(--accent-100); color: var(--ink2); font-size: 12.5px;
+}
+
+/* ── the scroll box ───────────────────────────────────────────────────── */
+
+.sg-wrap {
+  position: relative;
+  overflow: auto;
+  max-height: min(70vh, 760px);
+  border: 1px solid var(--line2);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  /* The debt schedule is twelve columns and will scroll sideways on a narrow
+     laptop. That is the one place in this product where sideways scrolling is
+     allowed, and it is why the phone gets the stacked forms instead. */
+  overscroll-behavior-x: contain;
+}
+.sg-grid { display: flex; flex-direction: column; width: max-content; min-width: 100%; }
+.sg-row { display: grid; grid-template-columns: var(--sg-cols); }
+
+/* The column heads stay put; the rows above them scroll away. Full freeze
+   panes would mean stacking five sticky rows at computed offsets, which buys
+   nothing here — what a twelve-column schedule needs is its headings. */
+.sg-r-colhead { position: sticky; top: 0; z-index: 3; }
+.sg-r-colhead .sg-cell {
+  background: var(--sunken2); color: var(--muted);
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line2);
+  white-space: normal; line-height: 1.25;
+}
+
+/* ── cells ────────────────────────────────────────────────────────────── */
+
+.sg-cell {
+  display: flex; align-items: center; gap: 4px;
+  min-width: 0; min-height: 28px; padding: 3px 9px;
+  border-right: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12.8px; line-height: 1.35;
+  white-space: nowrap; overflow: hidden;
+  outline: none; cursor: cell;
+}
+.sg-cell:last-child { border-right: 0; }
+.sg-text { overflow: hidden; text-overflow: ellipsis; }
+.sg-right { justify-content: flex-end; text-align: right; }
+.sg-void { background: var(--surface); cursor: default; }
+.sg-label { color: var(--ink2); cursor: default; }
+.sg-locked { background: var(--sunken2); color: var(--muted); cursor: default; }
+
+/* A subtotal is the sheet's, not yours: readable, copyable, never editable. */
+.sg-formula { background: var(--sunken2); font-weight: 650; color: var(--ink); cursor: default; }
+.sg-em { font-weight: 700; }
+.sg-r-formula .sg-cell { border-top: 1px solid var(--line2); }
+
+/* Banner rows: one long label that spills across the empty cells beside it,
+   the way a spreadsheet lets A1 overflow into B1. The hairlines are dropped
+   under it so the text is not crossed by grid lines. */
+.sg-r-title .sg-cell, .sg-r-subtitle .sg-cell, .sg-r-note .sg-cell, .sg-r-blank .sg-cell {
+  overflow: visible; border-right-color: transparent;
+}
+.sg-r-title .sg-cell { font-family: var(--fh); font-size: 15px; font-weight: 650; border-bottom: 0; padding-top: 10px; }
+.sg-r-subtitle .sg-cell { color: var(--muted); font-size: 12px; border-bottom: 0; }
+.sg-r-note .sg-cell { color: var(--muted); font-size: 12px; white-space: normal; }
+.sg-r-blank .sg-cell { min-height: 12px; border-bottom: 0; }
+.sg-r-heading .sg-cell {
+  background: var(--sunken); color: var(--ink);
+  font-size: 11px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line2);
+}
+
+/* The label column stays visible while the schedule scrolls sideways. */
+.sg-row > .sg-cell:first-child { position: sticky; left: 0; z-index: 1; }
+.sg-r-colhead > .sg-cell:first-child { z-index: 4; }
+
+/* ── selection ────────────────────────────────────────────────────────── */
+
+.sg-inrange { background: var(--accent-100); }
+.sg-active {
+  outline: 2px solid var(--accent); outline-offset: -2px;
+  position: relative; z-index: 2;
+}
+.sg-row > .sg-cell.sg-active:first-child { z-index: 5; }
+.sg-input:hover { background: var(--sunken2); }
+
+/* An unreadable figure is shown exactly as it was typed, with a corner, and
+   never as $0.00 — "$0.00" for "1,2 50" is how a wrong number gets filed. */
+.sg-warned { color: var(--warn); }
+.sg-flag {
+  flex: 0 0 auto; width: 0; height: 0; margin-left: auto;
+  border-left: 6px solid transparent; border-top: 6px solid var(--warn);
+}
+/* Somebody else changed this cell while you were typing; you won. */
+.sg-mark { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--gold); margin-left: 4px; }
+
+/* ── the editor ───────────────────────────────────────────────────────── */
+
+.sg-cell.sg-editing { padding: 0; overflow: visible; }
+.sg-editor {
+  width: 100%; height: 100%; min-height: 28px;
+  border: 0; border-radius: 0; padding: 3px 8px;
+  font: inherit; font-size: 12.8px;
+  background: var(--surface); color: var(--ink);
+  outline: 2px solid var(--accent); outline-offset: -2px;
+}
+.sg-right .sg-editor { text-align: right; }
+
+/* The clipboard catcher. 1×1 and invisible, but focusable and inside the
+   scroll box, so focusing it never scrolls the page: it is what makes copy
+   fire at all in Safari, where a copy event on a non-editable element with no
+   selection simply never happens. */
+.sg-catcher {
+  position: absolute; top: 0; left: 0;
+  width: 1px; height: 1px; padding: 0; margin: 0; border: 0;
+  opacity: 0; resize: none; overflow: hidden;
+}
+
+/* ── tabs and footnote ────────────────────────────────────────────────── */
+
+.sg-tabs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.sg-tabs .seg { flex-wrap: wrap; }
+.sg-tabchip { margin-left: 6px; }
+.sg-viewonly {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px;
+  background: var(--sunken); color: var(--muted);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase;
+}
+.sg-foot { margin: 0; color: var(--muted); font-size: 11.5px; max-width: 76ch; }
+
+@media (max-width: 900px) {
+  .sg-toolbar-actions { margin-left: 0; }
+  .sg-wrap { max-height: 62vh; }
+}

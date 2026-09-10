@@ -19,10 +19,39 @@
 // here treats a non-ok answer as "this link is gone" rather than reporting
 // saved — the single-form page can afford to be quiet about a failed
 // autosave; a forwarded credential cannot.
+//
+// ── The worksheet fork ──────────────────────────────────────────────────
+// On a screen 760px or wider this page becomes the worksheet grid, and below
+// that it stays exactly what it has always been. One URL, two renderers: every
+// packet link already in the wild becomes a spreadsheet on a laptop and a
+// phone form on a phone, with no link migration and no "which link did I send"
+// support tickets.
+//
+// The stacked branch below is the ENTIRE previous implementation, untouched.
+// That is deliberate, and it is what the codebase records twice as a standing
+// decision — BusinessStatementForm.tsx:12, "never a table … Nothing scrolls
+// sideways", and DebtScheduleForm.tsx:5-13, "Squeezing eleven fields into a
+// table meant horizontal scrolling, which on a phone means a borrower filling
+// in a column they cannot see the heading of."
+//
+// The fork is not a media query. Below 760 the grid is never mounted, because
+// it installs clipboard listeners, a roving tabindex and an offscreen focus
+// catcher that fight iOS Safari — and it is imported with `next/dynamic`, so a
+// phone downloads none of its code.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
+import { useMediaQuery, WORKSHEET_MIN_WIDTH } from "@/lib/useMediaQuery";
+import {
+  readPublicWorksheet,
+  writePublicCells,
+  writePublicRow,
+  type WorksheetCellEdit,
+  type WorksheetPayload,
+  type WorksheetRowOp,
+} from "@/lib/worksheetApi";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
 import {
@@ -85,6 +114,61 @@ type Child = {
 
 const NO_STORE: RequestInit = { cache: "no-store" };
 
+const Worksheet = dynamic(() => import("@/components/sheet/Worksheet").then((m) => m.Worksheet), {
+  ssr: false,
+  loading: () => (
+    <div className="fp-card" aria-busy="true">
+      <span className="fp-skel fp-skel-line w60" />
+      <div className="fp-grid fp-grid-skel">
+        {Array.from({ length: 8 }).map((_, index) => (
+          <span key={index} className="fp-skel fp-skel-field" />
+        ))}
+      </div>
+    </div>
+  ),
+});
+
+/** Once per tab: whether this token has already told us it is not a worksheet
+ *  link. The worksheet read is throttled per token+address on the server, and
+ *  a page somebody reloads six times should not spend six of those attempts
+ *  learning the same thing. */
+const notAWorksheet = new Set<string>();
+
+/** The desktop branch: the same figures as one grid, if this token opens one.
+ *
+ *  A packet's four child links are `{base}.{kind}`; a worksheet link is one
+ *  opaque token joined to a worksheet row. They are different rows in the same
+ *  table, so this asks once and falls back silently — a token that is not a
+ *  worksheet link answers the uniform 404 and the stacked forms below carry on
+ *  exactly as they did before this branch existed. Nothing is shown to the
+ *  visitor about the attempt, because from where they stand nothing happened.
+ */
+function useWorksheetFork(token: string, wanted: boolean) {
+  const [payload, setPayload] = useState<WorksheetPayload | null>(null);
+  const asked = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!wanted || !token || asked.current === token || notAWorksheet.has(token)) return;
+    asked.current = token;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const answer = await readPublicWorksheet(token, null);
+        if (!cancelled) setPayload(answer);
+      } catch {
+        // Not a worksheet link, or one that needs a PIN. Either way this page
+        // is the stacked forms, which is what it has always been.
+        notAWorksheet.add(token);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, wanted]);
+
+  return payload;
+}
+
 export default function FinancialPacketPage() {
   const params = useParams<{ token: string }>();
   const token = params?.token ?? "";
@@ -96,6 +180,88 @@ export default function FinancialPacketPage() {
   const [reviewing, setReviewing] = useState(false);
   const activeRef = useRef(active);
   activeRef.current = active;
+
+  // `null` until the browser has told us — never guessed, because the two
+  // branches are different components rather than a different class name and a
+  // guess would hydrate a tree Next did not render.
+  const wide = useMediaQuery(WORKSHEET_MIN_WIDTH);
+  const worksheet = useWorksheetFork(token, wide === true);
+  const [gridSaving, setGridSaving] = useState(false);
+  const [gridSavedAt, setGridSavedAt] = useState<string | null>(null);
+  const [grid, setGrid] = useState<WorksheetPayload | null>(null);
+  useEffect(() => {
+    if (worksheet) setGrid(worksheet);
+  }, [worksheet]);
+
+  /** The grid's save. Per cell, batched — a whole-body PUT would mean the
+   *  accountant typing in the debt schedule clobbering a balance-sheet figure
+   *  somebody entered two seconds ago. A non-ok answer ends the page for the
+   *  same reason every other save on it does. */
+  const saveCells = useCallback(
+    async (edits: WorksheetCellEdit[]) => {
+      if (edits.length === 0) return;
+      setGridSaving(true);
+      try {
+        const baseRev: Record<string, number> = {};
+        for (const sheet of grid?.sheets ?? []) {
+          if (typeof sheet.rev === "number") baseRev[sheet.kind] = sheet.rev;
+        }
+        const result = await writePublicCells(token, null, edits, baseRev);
+        setGrid((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            sheets: current.sheets.map((sheet) => {
+              const mine = edits.filter((edit) => edit.sheet === sheet.kind);
+              const values = { ...sheet.values };
+              for (const edit of mine) values[edit.key] = edit.value;
+              return {
+                ...sheet,
+                values,
+                rev: result.rev?.[sheet.kind] ?? sheet.rev,
+                computed: result.computed?.[sheet.kind] ?? sheet.computed,
+              };
+            }),
+          };
+        });
+        setGridSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+      } catch {
+        setStatus("gone");
+      } finally {
+        setGridSaving(false);
+      }
+    },
+    [grid, token],
+  );
+
+  const rowOp = useCallback(
+    async (op: WorksheetRowOp) => {
+      try {
+        const result = await writePublicRow(token, null, op);
+        setGrid((current) => {
+          if (!current) return current;
+          return {
+            ...current,
+            sheets: current.sheets.map((sheet) =>
+              sheet.kind === op.sheet
+                ? {
+                    ...sheet,
+                    rows: result.rows,
+                    row_meta: result.row_meta,
+                    rev: result.rev?.[sheet.kind] ?? sheet.rev,
+                  }
+                : sheet,
+            ),
+          };
+        });
+        return result;
+      } catch {
+        setStatus("gone");
+        return undefined;
+      }
+    },
+    [token],
+  );
 
   // `apiBase` is the bare origin — every hand-written fetch adds /api/v1
   // itself. The child token is `{base}.{kind}`; `secrets.token_urlsafe` never
@@ -261,6 +427,11 @@ export default function FinancialPacketPage() {
     KINDS.map((kind) => children[kind]?.state.business_name).find((name) => Boolean(name)) ?? null;
   const doneCount = KINDS.filter((kind) => children[kind]?.state.completed).length;
   const allDone = status === "ready" && doneCount === KINDS.length;
+  /** The grid renders only when the screen is wide *and* this token actually
+   *  opens a worksheet. Both halves matter: the first is the standing
+   *  phone-first decision, the second is that a packet's child links and a
+   *  worksheet link are different rows and only one of them has a layout. */
+  const gridActive = wide === true && grid !== null;
 
   if (status === "loading") {
     return (
@@ -416,7 +587,17 @@ export default function FinancialPacketPage() {
           ) : null}
         </div>
 
-        {child ? (
+        {/* 760 and up, and only when this token opens a worksheet: the four
+            forms as one grid. Below that — and on every link that is a packet
+            rather than a worksheet — the stacked forms below, unchanged. */}
+        {gridActive && grid ? (
+          <Worksheet
+            sheets={grid.sheets}
+            scope={grid.scope}
+            onSave={saveCells}
+            onRowOp={rowOp}
+          />
+        ) : child ? (
           <div className="fp-card">
             <div className="fp-packet-form-head">
               <h2>{TITLES[active]}</h2>
@@ -459,7 +640,26 @@ export default function FinancialPacketPage() {
         ) : null}
       </main>
 
-      {child ? (
+      {/* The grid saves a cell at a time, so there is nothing to press — the
+          bar says where the figures stand instead of offering a Send button
+          that would mean something different from the one above it. */}
+      {gridActive ? (
+        <div className="fp-actions">
+          <div className="fp-actions-inner">
+            <span className="fp-autosave" aria-live="polite">
+              {gridSaving ? (
+                <>
+                  <span className="fp-pulse" aria-hidden="true" /> Saving…
+                </>
+              ) : gridSavedAt ? (
+                `Saved at ${gridSavedAt}.`
+              ) : (
+                "Your figures save as you type."
+              )}
+            </span>
+          </div>
+        </div>
+      ) : child ? (
         <div className="fp-actions">
           <div className="fp-actions-inner">
             <button
