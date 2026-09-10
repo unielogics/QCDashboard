@@ -3931,3 +3931,180 @@ a.pick { color: inherit; text-decoration: none; }
     color: var(--fp-muted);
   }
 }
+
+/* ---------------------------------------------------------------------------
+   BusinessStatementForm — the profit and loss statement and the balance sheet.
+
+   Shares the .fp- token block with DebtScheduleForm (the form root is
+   .fp-stack, so it renders the same inside the console and on the public
+   page). Sections are <details> with the running subtotal in the summary; the
+   computed lines reuse .pfs-total so the public page's overrides apply.
+   --------------------------------------------------------------------------- */
+
+.fp-section { display: grid; gap: 12px; }
+.fp-section > summary { list-style: none; cursor: pointer; }
+.fp-section > summary::-webkit-details-marker { display: none; }
+.fp-section-head {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin: 0;
+}
+.fp-section-head h4 {
+  margin: 0;
+  font-family: var(--fh);
+  font-size: 14px;
+  font-weight: 640;
+  color: var(--fp-ink);
+  text-transform: none;
+  letter-spacing: 0;
+  flex: 1 1 auto;
+}
+.fp-section-head .fp-caret { color: var(--fp-muted); transform: none; }
+.fp-section[open] > .fp-section-head .fp-caret { transform: rotate(90deg); }
+.fp-section-head:focus-visible { outline: 2px solid var(--fp-accent); outline-offset: 2px; border-radius: 6px; }
+.fp-section-sum { display: inline-flex; align-items: baseline; gap: 8px; margin-left: auto; }
+.fp-section-sum span { font-size: 12px; color: var(--fp-muted); }
+.fp-section-sum b { font-size: 15px; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.fp-section-rows { padding-top: 2px; }
+
+/* Money fields read right-aligned, like a ledger. The text row ("other —
+   description") keeps its words on the left. */
+.fp-section-rows input[inputmode="decimal"] { text-align: right; font-variant-numeric: tabular-nums; }
+.fp-field textarea {
+  width: 100%;
+  font: inherit;
+  font-size: 15px;
+  color: var(--fp-ink);
+  background: var(--fp-field);
+  border: 1.5px solid var(--fp-field-line);
+  border-radius: var(--fp-r-sm);
+  padding: 10px 12px;
+  resize: vertical;
+  line-height: 1.5;
+}
+.fp-field textarea:focus { outline: none; border-color: var(--fp-accent); box-shadow: 0 0 0 3px rgba(27, 75, 158, 0.16); }
+.fp-field textarea::placeholder { color: #93a1b3; }
+.fp-hint { font-size: 12px; color: var(--fp-muted); line-height: 1.4; }
+
+/* The add-back chip beside a label, the way Pfs413Form marks a liquid asset. */
+.fp-field > label .fp-addback { margin-left: 6px; font-size: 10px; vertical-align: middle; }
+
+/* The totals block: one line per computed figure; the emphasised ones (net
+   income, total assets) read heavier and larger. */
+.fp-computed {
+  display: grid;
+  gap: 0;
+  padding: 6px 16px;
+  border-radius: var(--fp-r-sm);
+  background: #f2f5fa;
+  border: 1px solid var(--fp-line);
+}
+.fp-computed .pfs-total {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 16px;
+  padding: 9px 0;
+  border-top: 1px solid var(--fp-line);
+  font-size: 14px;
+  font-weight: 550;
+}
+.fp-computed .pfs-total:first-child { border-top: 0; }
+.fp-computed .pfs-total b { font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+.fp-computed .pfs-total.is-emphasis { font-weight: 700; }
+.fp-computed .pfs-total.is-emphasis b { font-size: 18px; }
+
+/* The balance sheet that does not balance. Red because it is a discrepancy,
+   with the one-click plug right beside it because it is not a blocker. */
+.fp-balance-strip {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 12px 14px;
+  border-radius: var(--fp-r-sm);
+  background: #fdf1f0;
+  border: 1px solid #f1c3bf;
+  color: var(--fp-danger);
+}
+.fp-balance-strip > div { display: grid; gap: 2px; flex: 1 1 240px; min-width: 0; }
+.fp-balance-strip strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+.fp-balance-strip span { font-size: 13px; color: #7a2e27; line-height: 1.45; }
+.fp-balance-plug {
+  font: inherit; font-size: 13px; font-weight: 600;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1.5px solid var(--fp-danger);
+  background: #ffffff;
+  color: var(--fp-danger);
+  cursor: pointer;
+}
+.fp-balance-plug:hover:not(:disabled) { background: #fbe4e2; }
+.fp-balance-plug:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* ---------------------------------------------------------------------------
+   The packet page: four forms behind one link, one on screen at a time.
+
+   The rail is a row of steps on a wide screen and a two-by-two grid on a
+   phone; each step carries a chip saying where that form stands.
+   --------------------------------------------------------------------------- */
+
+.fp-packet-rail {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin: 0; padding: 0; list-style: none;
+}
+.fp-packet-step {
+  display: grid; gap: 6px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 12px 14px;
+  border-radius: var(--fp-r-sm);
+  border: 1.5px solid var(--fp-line);
+  background: var(--fp-card);
+  color: var(--fp-ink);
+  cursor: pointer;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.fp-packet-step:hover { border-color: #b6c3d5; }
+.fp-packet-step:focus-visible { outline: 2px solid var(--fp-accent); outline-offset: 2px; }
+.fp-packet-step[aria-current="step"] {
+  border-color: var(--fp-accent);
+  box-shadow: 0 0 0 3px rgba(27, 75, 158, 0.14);
+}
+.fp-packet-step > span:first-child { font-size: 11.5px; color: var(--fp-muted); letter-spacing: 0.02em; }
+.fp-packet-step > strong { font-size: 14px; font-weight: 640; line-height: 1.25; }
+.fp-packet-chip {
+  justify-self: start;
+  font-size: 11px; font-weight: 700;
+  padding: 2px 8px; border-radius: 99px;
+  background: #eef1f6; color: var(--fp-muted);
+}
+.fp-packet-chip.is-done { background: #e3f4ec; color: var(--fp-ok); }
+.fp-packet-chip.is-draft { background: var(--fp-accent-soft); color: var(--fp-accent); }
+.fp-packet-progress {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  font-size: 13.5px; color: var(--fp-muted);
+}
+.fp-packet-progress strong { color: var(--fp-ink); }
+.fp-packet-form-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+}
+.fp-packet-form-head h2 { margin: 0; font-family: var(--fh); font-size: 18px; font-weight: 640; }
+.fp-packet-form-head p { margin: 0; font-size: 13.5px; color: var(--fp-muted); max-width: 68ch; line-height: 1.5; }
+.fp-packet-done {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 11px 14px;
+  border-radius: var(--fp-r-sm);
+  background: #e3f4ec;
+  border: 1px solid #bfe3d1;
+  color: var(--fp-ok);
+  font-size: 13.5px;
+}
+.fp-packet-done b { font-weight: 640; }
+.fp-link-btn {
+  font: inherit; font-size: 13.5px; font-weight: 600;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1.5px solid var(--fp-accent);
+  background: #ffffff;
+  color: var(--fp-accent);
+  cursor: pointer;
+}
+.fp-link-btn:hover:not(:disabled) { background: var(--fp-accent-soft); }
+.fp-link-btn:disabled { opacity: 0.5; cursor: not-allowed; }

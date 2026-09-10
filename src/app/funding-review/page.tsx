@@ -12,6 +12,7 @@ import { AddressInput, formatAddressParts } from "@/components/property/GoogleAd
 import { realEstateCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
+import { metricProvenance } from "@/lib/intake";
 
 type RequestedDoc = {
   id: string;
@@ -2831,6 +2832,8 @@ function buildIntelligenceModel(
   const annualizedRevenue = numberFromUnknown(keyMetrics?.ytd_annualized_revenue ?? keyMetrics?.annualized_adjusted_deposits);
   const debtBurden = numberFromUnknown(keyMetrics?.estimated_debt_burden);
   const dscr = numberFromUnknown(keyMetrics?.estimated_dscr);
+  const ebitdaFrom = metricProvenance(keyMetrics?.ebitda_source, keyMetrics?.pl_period);
+  const dscrFrom = metricProvenance(keyMetrics?.dscr_basis, keyMetrics?.pl_period);
   const collateral = collateralPosition(response);
   const ltv = collateral.value && (collateral.debt || requestedAmount)
     ? ((collateral.debt || 0) + (requestedAmount || 0)) / collateral.value * 100
@@ -2858,7 +2861,7 @@ function buildIntelligenceModel(
     requestedAmount: metricValue("Requested capital", requestedAmount, "estimated", response.intake.requested_loan_amount ? "Entered during intake" : "Awaiting requested amount", "money"),
     annualizedRevenue: metricValue("Annualized rent / NOI", annualizedRevenue, "extracted", "From rent support, leases, or operating statements when available", "money"),
     debtBurden: metricValue("Debt burden", debtBurden, "extracted", "Current monthly or annualized debt service", "money"),
-    dscr: metricValue("DSCR estimate", dscr, "extracted", "Coverage based on available cash-flow evidence", "ratio"),
+    dscr: metricValue("DSCR estimate", dscr, "extracted", `Coverage based on available cash-flow evidence${dscrFrom}`, "ratio"),
     ltv: metricValue("Proposed LTV", ltv, collateral.value ? "estimated" : "unavailable", "Value less debt plus requested capital where available", "percent"),
     equity: metricValue("Collateral equity", equity, collateral.value ? "estimated" : "unavailable", "Estimated property value less stated debt", "money"),
     confidence: {
@@ -2874,7 +2877,7 @@ function buildIntelligenceModel(
     missing: missingRows.length ? missingRows : missingDocs.map((doc) => ({ title: doc.name, detail: doc.description || "Required for Stage 1 bankability.", priority: "high" })),
     cashFlowBars: [
       { label: "Annualized revenue", value: annualizedRevenue, source: annualizedRevenue === null ? "unavailable" : "extracted" },
-      { label: "Estimated cash flow", value: numberFromUnknown(keyMetrics?.estimated_ebitda_or_cash_flow), source: keyMetrics?.estimated_ebitda_or_cash_flow ? "extracted" : "unavailable" },
+      { label: `Estimated cash flow${ebitdaFrom}`, value: numberFromUnknown(keyMetrics?.estimated_ebitda_or_cash_flow), source: keyMetrics?.estimated_ebitda_or_cash_flow ? "extracted" : "unavailable" },
       { label: "Debt burden", value: debtBurden, source: debtBurden === null ? "unavailable" : "extracted" },
       { label: "Net after debt", value: annualizedRevenue !== null && debtBurden !== null ? annualizedRevenue - debtBurden : null, source: annualizedRevenue !== null && debtBurden !== null ? "estimated" : "unavailable" },
     ],

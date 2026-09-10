@@ -14,7 +14,8 @@ export type FileEventKind =
   | "note.added"
   | "review.completed"
   | "offer.sent"
-  | "offer.answered";
+  | "offer.answered"
+  | "forms.packet_sent";
 
 export type FileEventVisibility = "client" | "team" | "desk";
 
@@ -82,6 +83,7 @@ const EVENT_ICONS: Record<FileEventKind, string> = {
   "review.completed": "spark",
   "offer.sent": "dollar",
   "offer.answered": "check",
+  "forms.packet_sent": "link",
 };
 
 const EVENT_LABELS: Record<FileEventKind, string> = {
@@ -94,6 +96,7 @@ const EVENT_LABELS: Record<FileEventKind, string> = {
   "review.completed": "Review completed",
   "offer.sent": "Offer sent",
   "offer.answered": "Offer answered",
+  "forms.packet_sent": "Forms packet sent",
 };
 
 export function fileEventIcon(kind: string): string {

@@ -26,6 +26,11 @@ import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import {
+  BusinessStatementForm,
+  type StatementBody,
+  type StatementSchema,
+} from "@/components/application/BusinessStatementForm";
 
 type Prefill = {
   business_name: string | null;
@@ -35,18 +40,42 @@ type Prefill = {
   owner_count: number;
 };
 
+type FormBody = PfsBody & DebtBody & StatementBody;
+
+// The schema is whichever the kind calls for; the two business statements
+// share one shape and one component, the way the 413 has its own.
 type FormState = {
-  kind: "pfs" | "debt_schedule";
-  schema: PfsSchema;
-  body: PfsBody & DebtBody;
   completed: boolean;
   business_name: string | null;
   prefill?: Prefill;
-};
+  body: FormBody;
+} & (
+  | { kind: "pfs" | "debt_schedule"; schema: PfsSchema }
+  | { kind: "p_and_l" | "balance_sheet"; schema: StatementSchema }
+);
 
 const TITLES = {
   debt_schedule: "Business Debt Schedule",
   pfs: "Personal Financial Statement",
+  p_and_l: "Profit and Loss Statement",
+  balance_sheet: "Balance Sheet",
+} as const;
+
+const INTROS = {
+  debt_schedule:
+    "List every loan, line of credit, card, lease or advance the business is currently paying. Anything we already know is filled in — check it and correct what has changed.",
+  pfs: "This follows the standard SBA Form 413 that lenders ask for. Leave anything that does not apply blank.",
+  p_and_l:
+    "Enter the figures for the period at the top — year to date, the last fiscal year, or the months you have. Totals are worked out as you type. Leave any line that does not apply blank.",
+  balance_sheet:
+    "Enter what the business owns and owes as of one date. If you do not have equity broken out, leave that section blank and it is taken as assets less liabilities.",
+} as const;
+
+const RECEIVED = {
+  debt_schedule: "Your debt schedule has been received and added to your file.",
+  pfs: "Your financial statement has been received and added to your file.",
+  p_and_l: "Your profit and loss statement has been received and added to your file.",
+  balance_sheet: "Your balance sheet has been received and added to your file.",
 } as const;
 
 export default function FinancialFormPage() {
@@ -54,7 +83,7 @@ export default function FinancialFormPage() {
   const token = params?.token ?? "";
 
   const [state, setState] = useState<FormState | null>(null);
-  const [body, setBody] = useState<PfsBody & DebtBody>({});
+  const [body, setBody] = useState<FormBody>({});
   const [status, setStatus] = useState<"loading" | "ready" | "saving" | "done" | "gone">("loading");
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -214,10 +243,7 @@ export default function FinancialFormPage() {
             </span>
             <h1>Thank you — you can close this window.</h1>
             <p>
-              {state?.kind === "debt_schedule"
-                ? "Your debt schedule has been received and added to your file."
-                : "Your financial statement has been received and added to your file."}{" "}
-              Nothing else is needed from you here.
+              {state ? RECEIVED[state.kind] : RECEIVED.pfs} Nothing else is needed from you here.
             </p>
             <p className="fp-quiet">
               If you spot a mistake, this link still works — reopen it and correct the figure.
@@ -241,9 +267,7 @@ export default function FinancialFormPage() {
       <main className="fp-main">
         <div className="fp-intro">
           <p>
-            {state?.kind === "debt_schedule"
-              ? "List every loan, line of credit, card, lease or advance the business is currently paying. Anything we already know is filled in — check it and correct what has changed."
-              : "This follows the standard SBA Form 413 that lenders ask for. Leave anything that does not apply blank."}
+            {state ? INTROS[state.kind] : ""}
           </p>
           {seeded.length > 0 ? (
             <p className="fp-note">
@@ -268,7 +292,14 @@ export default function FinancialFormPage() {
         <div className="fp-card">
           {state?.kind === "debt_schedule" ? (
             <DebtScheduleForm value={body} onChange={setBody} disabled={status === "saving"} />
-          ) : state ? (
+          ) : state?.kind === "p_and_l" || state?.kind === "balance_sheet" ? (
+            <BusinessStatementForm
+              schema={state.schema}
+              value={body}
+              onChange={setBody}
+              disabled={status === "saving"}
+            />
+          ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}
               value={body}

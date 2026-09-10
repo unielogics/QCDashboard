@@ -43,6 +43,7 @@ const KIND_PRESENTATION: Record<string, { icon: string; tone: Tone }> = {
   "review.completed": { icon: "shieldChk", tone: "good" },
   "offer.sent": { icon: "dollar", tone: "neutral" },
   "offer.answered": { icon: "check", tone: "good" },
+  "forms.packet_sent": { icon: "link", tone: "neutral" },
 };
 
 function presentation(kind: string) {

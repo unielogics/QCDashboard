@@ -334,6 +334,8 @@ export function buildIntelligenceModel(
   const annualizedDeposits = numberFromUnknown(keyMetrics?.annualized_adjusted_deposits);
   const debtBurden = numberFromUnknown(keyMetrics?.estimated_debt_burden);
   const dscr = numberFromUnknown(keyMetrics?.estimated_dscr);
+  const ebitdaFrom = metricProvenance(keyMetrics?.ebitda_source, keyMetrics?.pl_period);
+  const dscrFrom = metricProvenance(keyMetrics?.dscr_basis, keyMetrics?.pl_period);
   const collateral = collateralPosition(response);
   const ltv = collateral.value && (collateral.debt || requestedAmount)
     ? ((collateral.debt || 0) + (requestedAmount || 0)) / collateral.value * 100
@@ -374,7 +376,7 @@ export function buildIntelligenceModel(
       ? metricValue("Annualized revenue", annualizedRevenue, "extracted", "Most recent tax-return gross receipts", "money")
       : metricValue("Annualized gross deposits", annualizedDeposits, "extracted", "Bank inflow (not tax-verified revenue)", "money", "Needs tax returns for verified revenue"),
     debtBurden: metricValue("Debt burden", debtBurden, "extracted", "Current monthly or annualized debt service", "money", "Needs a debt schedule or stated monthly debt"),
-    dscr: metricValue("DSCR estimate", dscr, "extracted", "Coverage based on available cash-flow evidence", "ratio", "Needs a debt schedule to compute coverage"),
+    dscr: metricValue("DSCR estimate", dscr, "extracted", `Coverage based on available cash-flow evidence${dscrFrom}`, "ratio", "Needs a debt schedule to compute coverage"),
     ltv: metricValue("Proposed LTV", ltv, collateral.value ? "estimated" : "unavailable", "Value less debt plus requested capital where available", "percent", "Needs collateral value & mortgage balance"),
     equity: metricValue("Collateral equity", equity, collateral.value ? "estimated" : "unavailable", "Estimated property value less stated debt", "money", "Needs collateral value & mortgage balance"),
     confidence: {
@@ -390,7 +392,7 @@ export function buildIntelligenceModel(
     missing: missingRows.length ? missingRows : missingDocs.map((doc) => ({ title: doc.name, detail: doc.description || "Required for Stage 1 bankability.", priority: "high" })),
     cashFlowBars: [
       { label: "Annualized revenue", value: annualizedRevenue, source: annualizedRevenue === null ? "unavailable" : "extracted" },
-      { label: "Estimated cash flow", value: numberFromUnknown(keyMetrics?.estimated_ebitda_or_cash_flow), source: keyMetrics?.estimated_ebitda_or_cash_flow ? "extracted" : "unavailable" },
+      { label: `Estimated cash flow${ebitdaFrom}`, value: numberFromUnknown(keyMetrics?.estimated_ebitda_or_cash_flow), source: keyMetrics?.estimated_ebitda_or_cash_flow ? "extracted" : "unavailable" },
       { label: "Debt burden", value: debtBurden, source: debtBurden === null ? "unavailable" : "extracted" },
       { label: "Net after debt", value: annualizedRevenue !== null && debtBurden !== null ? annualizedRevenue - debtBurden : null, source: annualizedRevenue !== null && debtBurden !== null ? "estimated" : "unavailable" },
     ],
@@ -399,6 +401,23 @@ export function buildIntelligenceModel(
     oneNextStep: String(result?.one_next_step || asRecord(result?.next_best_action)?.detail || bankability?.reason || "Run the preliminary screen after uploading evidence."),
     lendingReady,
   };
+}
+
+/** Where a headline earnings figure came from, as a short suffix — or nothing.
+ *
+ *  `ebitda_source` / `dscr_basis` are written by the backend only when it
+ *  filled the figure deterministically ("tax_return", "profit_and_loss",
+ *  "profit_and_loss_ebitda"); the AI's own values carry no stamp, and a figure
+ *  with no stamp is shown exactly as before. `pl_period` is the P&L's period
+ *  label ("Jan–Jun 2026") and is only quoted on the P&L branch. */
+export function metricProvenance(source: unknown, plPeriod: unknown): string {
+  const stamp = typeof source === "string" ? source : "";
+  if (stamp.startsWith("profit_and_loss")) {
+    const period = typeof plPeriod === "string" && plPeriod.trim() ? `, ${plPeriod.trim()}` : "";
+    return ` (from P&L${period})`;
+  }
+  if (stamp.startsWith("tax_return")) return " (from tax return)";
+  return "";
 }
 
 export function metricValue(
