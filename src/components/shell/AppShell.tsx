@@ -73,7 +73,7 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
     }
     setTheme(readPersistedTheme());
   }, [setSidebarCollapsed, setTheme]);
-  const { data: user, isLoading: userLoading, isError: userError } = useCurrentUser();
+  const { data: user, isLoading: userLoading, isError: userError, isFetching: userFetching, refetch: refetchUser } = useCurrentUser();
   // Flush any pending sign-up consent (from localStorage) into the
   // /legal/accept audit table once the user resolves.
   useRecordPendingConsent();
@@ -168,9 +168,28 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
         {userError ? (
           <div style={{ maxWidth: 520, margin: "18vh auto", padding: 24, textAlign: "center" }}>
             <h1 style={{ fontSize: 22, margin: "0 0 8px" }}>Account access could not be loaded</h1>
-            <p style={{ color: "var(--muted)", margin: 0 }}>
-              Sign in again so the console can verify your role before opening any file data.
+            {/* This screen used to be a dead end: no button, and the only way out
+                was to retype the URL. Its most common cause is not an expired
+                session at all — it is the API being briefly unreachable (a deploy
+                restart), which the browser reports as a CORS failure because the
+                proxy's 502 carries no allow-origin header. Retrying fixes that
+                without making anyone sign in again, so retry leads and sign-in
+                stays as the answer when the session really is the problem. */}
+            <p style={{ color: "var(--muted)", margin: "0 0 18px" }}>
+              The console could not read your role. This is usually a brief connection
+              problem — try again first, and sign in again only if it keeps failing.
             </p>
+            <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="btn pri"
+                onClick={() => { void refetchUser(); }}
+                disabled={userFetching}
+              >
+                {userFetching ? "Trying again..." : "Try again"}
+              </button>
+              <a className="btn" href={SIGN_IN_URL}>Sign in again</a>
+            </div>
           </div>
         ) : null}
       </div>
