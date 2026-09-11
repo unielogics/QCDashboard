@@ -217,31 +217,59 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
         selection_mode: "auto",
         selections: [{
           id: "21000000-0000-0000-0000-000000000001",
-          program_key: "business_baseline",
-          program_name: "Business Lending Baseline",
+          program_key: "dealer_working_capital",
+          program_name: "Dealer Working Capital",
           playbook_id: "21000000-0000-0000-0000-000000000002",
           playbook_version: 1,
           source: "ai_auto",
           fit_score: 85,
           fit_confidence: 0.85,
-          fit_reasons: ["Operating business baseline"],
+          fit_reasons: ["Dealer operating history and revenue fit the published criteria"],
+          selected_at: "2026-08-24T17:30:00Z",
+          needs_scope_review: false,
+        }],
+        evidence_policies: [{
+          id: "21000000-0000-0000-0000-000000000003",
+          policy_key: "business_baseline",
+          policy_name: "Business intake evidence",
+          playbook_id: "21000000-0000-0000-0000-000000000004",
+          playbook_version: 1,
           selected_at: "2026-08-24T17:30:00Z",
         }],
-        candidates: [{
-          program_key: "business_baseline",
-          program_name: "Business Lending Baseline",
-          playbook_id: "21000000-0000-0000-0000-000000000002",
-          playbook_version: 1,
-          eligible: true,
-          fit_score: 85,
-          confidence: 0.85,
-          priority: 10,
-          reasons: ["Operating business baseline"],
-        }],
+        candidates: [
+          {
+            program_key: "dealer_working_capital",
+            program_name: "Dealer Working Capital",
+            catalog_id: "21000000-0000-0000-0000-000000000005",
+            public_slug: "dealer-working-capital",
+            playbook_id: "21000000-0000-0000-0000-000000000002",
+            playbook_version: 1,
+            eligible: true,
+            recommendation_status: "recommended",
+            fit_score: 85,
+            confidence: 0.85,
+            priority: 10,
+            reasons: ["Dealer operating history and revenue fit the published criteria"],
+          },
+          {
+            program_key: "revenue_based_financing",
+            program_name: "Revenue-Based Financing",
+            catalog_id: "21000000-0000-0000-0000-000000000006",
+            public_slug: "revenue-based-financing",
+            playbook_id: "21000000-0000-0000-0000-000000000007",
+            playbook_version: 1,
+            eligible: false,
+            recommendation_status: "needs_information",
+            fit_score: 48,
+            confidence: 0.48,
+            priority: 20,
+            reasons: ["More deposit history is needed"],
+          },
+        ],
         programs: [{
           selection_id: "21000000-0000-0000-0000-000000000001",
-          program_key: "business_baseline",
-          program_name: "Business Lending Baseline",
+          program_key: "dealer_working_capital",
+          program_name: "Dealer Working Capital",
           complete: false,
           completion_percent: 50,
           required_count: 2,
@@ -259,16 +287,40 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
             requested_document_id: null,
             evidence_file_id: "22000000-0000-0000-0000-000000000001",
             evidence_file_name: "Operating statements.pdf",
-            verification_required: true,
-            source_program_keys: ["business_baseline"],
+            evidence_files: [{
+              file_id: "22000000-0000-0000-0000-000000000001",
+              file_name: "Operating statements.pdf",
+              bucket_id: bucketId,
+              created_at: "2026-08-24T17:00:00Z",
+              source: "automatic",
+              verified: true,
+              verified_at: "2026-08-24T17:15:00Z",
+              ai_decision: "accepted",
+              ai_reason_code: "coverage_complete",
+              ai_explanation: "Readable statements match the applicant and cover six distinct months.",
+              ai_confidence: "high",
+              decision_actor: "ai",
+              analysis_id: "22000000-0000-0000-0000-000000000002",
+              coverage_contribution: { months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"] },
+            }],
+            evidence_count: 1,
+            verified_evidence_count: 1,
+            coverage: { current: 6, required: 6, unit: "months" },
+            verified_coverage: { current: 6, required: 6, unit: "months" },
+            coverage_complete: true,
+            verified_coverage_complete: true,
+            allow_multiple_files: true,
+            verification_required: false,
+            source_program_keys: ["dealer_working_capital"],
+            source_policy_keys: ["business_baseline"],
             program_overrides: {},
             client_visible: true,
             can_waive: true,
-            state_reason: "Reviewed by underwriting",
+            state_reason: "Accepted automatically from AI evidence analysis",
             last_requested_at: null,
             received_at: "2026-08-24T17:00:00Z",
             verified_at: "2026-08-24T17:15:00Z",
-            provenance: { source: "operator" },
+            provenance: { source: "ai_evidence_review" },
           },
           {
             requirement_key: "business_debt_schedule",
@@ -279,8 +331,17 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
             requested_document_id: null,
             evidence_file_id: null,
             evidence_file_name: null,
-            verification_required: true,
-            source_program_keys: ["business_baseline"],
+            evidence_files: [],
+            evidence_count: 0,
+            verified_evidence_count: 0,
+            coverage: { current: 0, required: 1, unit: "documents" },
+            verified_coverage: { current: 0, required: 1, unit: "documents" },
+            coverage_complete: false,
+            verified_coverage_complete: false,
+            allow_multiple_files: true,
+            verification_required: false,
+            source_program_keys: ["dealer_working_capital"],
+            source_policy_keys: ["business_baseline"],
             program_overrides: {},
             client_visible: true,
             can_waive: true,
@@ -291,7 +352,20 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
             provenance: {},
           },
         ],
+        available_evidence_files: [],
+        evidence_summary: {
+          bank_statement_months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"],
+          bank_statement_required_months: 6,
+          bank_statement_file_count: 1,
+          bank_statement_accepted_count: 1,
+          bank_statement_processing_count: 0,
+          bank_statement_needs_more_count: 0,
+          bank_statement_rejected_count: 0,
+          bank_statement_failed_count: 0,
+          bank_statement_coverage_complete: true,
+        },
         can_advance: false,
+        automatic_stage_status: "not_ready",
         automation: {
           enabled: true,
           eligible: true,
@@ -437,7 +511,7 @@ test("AI intake Evidence accepts bulk files and ZIP archives", async ({ page }, 
     { name: "initial-evidence.zip", mimeType: "application/zip", buffer: Buffer.from("fixture zip") },
     { name: "business-tax-return.pdf", mimeType: "application/pdf", buffer: Buffer.from("fixture pdf") },
   ]);
-  await expect(page.getByText("2 files uploaded", { exact: true })).toBeVisible();
+  await expect(page.getByText("2 files uploaded and queued for AI review", { exact: true })).toBeVisible();
   expect(uploadedFiles).toEqual(["dragged-evidence.zip", "initial-evidence.zip", "business-tax-return.pdf"]);
   await expect(page.getByRole("tab", { name: "File workspace" })).toHaveAttribute("aria-selected", "true");
   await expect(dropzone).toBeVisible();
@@ -450,10 +524,13 @@ test("AI intake program readiness stays usable across supported widths", async (
   const { intakeId } = await mockAiIntakeBankingWorkspace(page);
   await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: /^Evidence\s/ }).click();
-  await expect(page.getByRole("heading", { name: "Selected criteria" })).toBeVisible();
-  await expect(page.getByText("Business Lending Baseline", { exact: true }).first()).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Requirements and decisions" })).toBeVisible();
-  await expect(page.getByRole("heading", { name: "Missing-item email follow-up" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Scoped program fit" })).toBeVisible();
+  await expect(page.getByText("Dealer Working Capital", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Initial evidence checklist" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Requirements and AI decisions" })).toBeVisible();
+  await page.getByRole("button", { name: /Last 6 months business bank statements/ }).click();
+  await expect(page.getByText("Accepted by AI", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Combined missing-item follow-up" })).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "ai-intake-program-readiness", testInfo);
 });

@@ -33,6 +33,7 @@ import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
 import { semanticStatusClass } from "@/lib/semanticStatus";
+import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
 
 type BucketLinkedFile = {
   id: string;
@@ -48,6 +49,8 @@ type BucketLinkedFile = {
 type Bucket = {
   id: string;
   name: string;
+  name_sync_mode?: "linked" | "custom";
+  linked_name?: string | null;
   bucket_type?: string | null;
   client_name?: string | null;
   purpose?: string | null;
@@ -182,7 +185,6 @@ type PackageKey = "standard" | "urchoice";
 type BucketDetailSection = "upload" | "tasks" | "notes" | "invites" | "vendors" | "shares" | "activity";
 type BucketFileKind = "all" | "pdf" | "image" | "spreadsheet" | "document" | "other";
 type BucketFileAssignment = "all" | "requested" | "general";
-type BucketFileSort = "newest" | "oldest";
 type BucketEditForm = {
   name: string;
   client_name: string;
@@ -635,6 +637,32 @@ export default function BucketsAdminPage() {
     }
   }
 
+  async function resetBucketNameToLinkedFile() {
+    if (!detail?.linked_name) return;
+    const confirmed = await confirmAction({
+      title: "Reset bucket name to linked file?",
+      body: `The bucket will use “${detail.linked_name}” and follow later business-name changes on the linked file.`,
+      confirmLabel: "Reset to linked name",
+    });
+    if (!confirmed) return;
+    setEditBucketSaving(true);
+    setEditBucketError(null);
+    try {
+      const updated = await call<BucketDetail>(`/buckets/admin/${detail.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ name_sync_mode: "linked" }),
+      });
+      setDetail(updated);
+      setEditBucketForm(bucketEditFormFrom(updated));
+      setBuckets((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
+      setNotice("Bucket name now follows the linked file.");
+    } catch (error) {
+      setEditBucketError(readableError(error));
+    } finally {
+      setEditBucketSaving(false);
+    }
+  }
+
   async function openVendorAssignment(bucketId: string) {
     const bucket = buckets.find((row) => row.id === bucketId) ?? null;
     setVendorAssignmentBucket(bucket);
@@ -744,15 +772,29 @@ export default function BucketsAdminPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.role, bucketParam, detail?.id]);
 
+  const activeBucketId = detail?.id;
+  const adminUploadDraftName = adminUploadForm.uploader_name;
+  const adminUploadDraftEmail = adminUploadForm.uploader_email;
+  const adminUploadDraftNote = adminUploadForm.note;
+
   useEffect(() => {
-    if (!detail) return;
+    if (!activeBucketId) return;
     setAdminUploadDraftStatus("saving");
     const handle = window.setTimeout(() => {
-      saveAdminUploadDraft(detail.id, adminUploadForm);
+      saveAdminUploadDraft(activeBucketId, {
+        uploader_name: adminUploadDraftName,
+        uploader_email: adminUploadDraftEmail,
+        note: adminUploadDraftNote,
+      });
       setAdminUploadDraftStatus("saved");
     }, 350);
     return () => window.clearTimeout(handle);
-  }, [detail?.id, adminUploadForm.uploader_name, adminUploadForm.uploader_email, adminUploadForm.note]);
+  }, [
+    activeBucketId,
+    adminUploadDraftEmail,
+    adminUploadDraftName,
+    adminUploadDraftNote,
+  ]);
 
   useEffect(() => {
     setCreateDocPage(0);
@@ -795,12 +837,12 @@ export default function BucketsAdminPage() {
   }, [publicSharePopupOpen]);
 
   useEffect(() => {
-    if (!detail || detailFocus !== "vendors") return;
+    if (!activeBucketId || detailFocus !== "vendors") return;
     const timer = window.setTimeout(() => {
       document.getElementById("bucket-vendors-panel")?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 80);
     return () => window.clearTimeout(timer);
-  }, [detail?.id, detailFocus]);
+  }, [activeBucketId, detailFocus]);
 
   const reusableOtherDocs = templates.filter((doc) => (doc.category || "").toLowerCase() === "other");
   const standardDocs = templates.filter((doc) => (doc.category || "").toLowerCase() !== "other");
@@ -829,7 +871,7 @@ export default function BucketsAdminPage() {
   }, [visibleFiles]);
   const filteredBucketFiles = useMemo(() => {
     const query = bucketFileQuery.trim().toLowerCase();
-    return visibleFiles.filter((file) => {
+    const filtered = visibleFiles.filter((file) => {
       if (bucketFileKind !== "all" && bucketFileKindOf(file) !== bucketFileKind) return false;
       if (bucketFileAssignment === "requested" && !file.requested_document_id) return false;
       if (bucketFileAssignment === "general" && file.requested_document_id) return false;
@@ -847,11 +889,8 @@ export default function BucketsAdminPage() {
         .join(" ")
         .toLowerCase()
         .includes(query);
-    }).sort((a, b) => {
-      const aTime = uploadTimestamp(a);
-      const bTime = uploadTimestamp(b);
-      return bucketFileSort === "newest" ? bTime - aTime : aTime - bTime;
     });
+    return sortBucketFiles(filtered, bucketFileSort);
   }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileSort, bucketFileStatus, requestedDocNameById, visibleFiles]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
@@ -3483,7 +3522,7 @@ export default function BucketsAdminPage() {
             setEditBucketError(null);
           }}
           title="Edit bucket details"
-          sub="Rename the evidence room without changing the linked AI intake or source file."
+          sub="A custom name changes only this workspace. Linked mode follows the source file business name."
           width="md"
           closeOnBackdrop={!editBucketSaving}
           footer={(
@@ -3506,6 +3545,10 @@ export default function BucketsAdminPage() {
         >
           <div className="grid g12">
             {editBucketError ? <div className="warnline">{editBucketError}</div> : null}
+            <div className="row">
+              <CellChip tone={detail.name_sync_mode === "linked" ? "ok" : "mut"}>{detail.name_sync_mode === "linked" ? "Following linked file" : "Custom bucket name"}</CellChip>
+              {detail.linked_name ? <Sub>Linked file name: {detail.linked_name}</Sub> : <Sub>No canonical linked file name is available.</Sub>}
+            </div>
             <Field label="Bucket name" req>
               <Input
                 value={editBucketForm.name}
@@ -3514,6 +3557,7 @@ export default function BucketsAdminPage() {
                 autoFocus
               />
             </Field>
+            {detail.linked_name && detail.name_sync_mode !== "linked" ? <Btn onClick={() => void resetBucketNameToLinkedFile()} disabled={editBucketSaving}><Icon name="refresh" size={14} />Reset to linked file name</Btn> : null}
             <div className="fldgrid two">
               <Field label="Client / borrower label">
                 <Input
@@ -4130,25 +4174,10 @@ function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_nam
 }
 
 function uniqueBucketFiles(files: BucketFile[]): BucketFile[] {
-  const seen = new Set<string>();
-  return [...files]
-    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
-    .filter((file) => {
-      const key = [
-        file.file_name.trim().toLowerCase(),
-        file.size_bytes,
-        file.requested_document_id || "general",
-        (file.uploaded_by_email || file.uploaded_by_name || "").trim().toLowerCase(),
-      ].join("|");
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    });
-}
-
-function uploadTimestamp(file: BucketFile): number {
-  const parsed = new Date(file.created_at).getTime();
-  return Number.isFinite(parsed) ? parsed : 0;
+  // The API already removes true content-hash duplicates while retaining the
+  // newest active copy. Filename and size are not identity: two statements can
+  // legitimately share both, so the client must not hide either one.
+  return sortBucketFiles(files, "newest");
 }
 
 function bucketFileKindOf(file: BucketFile): Exclude<BucketFileKind, "all"> {

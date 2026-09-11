@@ -72,12 +72,28 @@ export type RequirementStateStatus =
   | "stale"
   | "failed";
 
+export type ProgramRecommendationStatus =
+  | "recommended"
+  | "needs_information"
+  | "not_eligible"
+  | "criteria_unavailable";
+
+export type EvidenceDecisionStatus =
+  | "processing"
+  | "accepted"
+  | "needs_more"
+  | "rejected"
+  | "failed";
+
 export type ProgramFitCandidate = {
   program_key: string;
   program_name: string;
-  playbook_id: string;
-  playbook_version: number;
+  catalog_id: string;
+  public_slug: string;
+  playbook_id: string | null;
+  playbook_version: number | null;
   eligible: boolean;
+  recommendation_status: ProgramRecommendationStatus;
   fit_score: number;
   confidence: number;
   priority: number;
@@ -95,6 +111,16 @@ export type ApplicationProgramSelection = {
   fit_confidence: number | null;
   fit_reasons: string[];
   selected_at: string;
+  needs_scope_review: boolean;
+};
+
+export type EvidencePolicySelection = {
+  id: string;
+  policy_key: string;
+  policy_name: string;
+  playbook_id: string;
+  playbook_version: number;
+  selected_at: string;
 };
 
 export type ApplicationRequirementEvidence = {
@@ -105,6 +131,13 @@ export type ApplicationRequirementEvidence = {
   source: "automatic" | "filename_suggestion" | "operator";
   verified: boolean;
   verified_at: string | null;
+  ai_decision: EvidenceDecisionStatus;
+  ai_reason_code: string | null;
+  ai_explanation: string | null;
+  ai_confidence: string | null;
+  decision_actor: "ai" | "staff" | "system" | null;
+  analysis_id: string | null;
+  coverage_contribution: Record<string, unknown>;
 };
 
 export type ApplicationEvidenceOption = {
@@ -133,6 +166,7 @@ export type ApplicationRequirement = {
   allow_multiple_files: boolean;
   verification_required: boolean;
   source_program_keys: string[];
+  source_policy_keys: string[];
   program_overrides: Record<string, string>;
   client_visible: boolean;
   can_waive: boolean;
@@ -166,16 +200,31 @@ export type MissingItemAutomation = {
   stop_reason: string | null;
 };
 
+export type ApplicationEvidenceSummary = {
+  bank_statement_months: string[];
+  bank_statement_required_months: number;
+  bank_statement_file_count: number;
+  bank_statement_accepted_count: number;
+  bank_statement_processing_count: number;
+  bank_statement_needs_more_count: number;
+  bank_statement_rejected_count: number;
+  bank_statement_failed_count: number;
+  bank_statement_coverage_complete: boolean;
+};
+
 export type ApplicationProgramReadiness = {
   profile_id: string;
   lending_applicable: boolean;
   selection_mode: "auto" | "manual";
   selections: ApplicationProgramSelection[];
+  evidence_policies: EvidencePolicySelection[];
   candidates: ProgramFitCandidate[];
   programs: ProgramReadinessItem[];
   requirements: ApplicationRequirement[];
   available_evidence_files: ApplicationEvidenceOption[];
+  evidence_summary?: ApplicationEvidenceSummary;
   can_advance: boolean;
+  automatic_stage_status: "not_ready" | "ready" | "advanced" | "already_in_underwriting" | "not_applicable";
   automation: MissingItemAutomation;
 };
 
@@ -318,7 +367,11 @@ export type ApplicationBankState = {
   manual_override_reason: string | null;
   manual_statement_months: string[];
   manual_statement_file_count: number;
+  manual_statement_accepted_count: number;
   manual_statement_pending_count: number;
+  manual_statement_rejected_count: number;
+  manual_statement_failed_count?: number;
+  evidence_summary?: ApplicationEvidenceSummary;
   assets_enabled: boolean;
   statements_enabled: boolean;
   selected_products: string[];

@@ -75,6 +75,7 @@ import { ApiError } from "@/lib/api";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
 import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
 import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
+import { FundingProgramsSection } from "@/components/settings/FundingProgramsSection";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
 // Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
@@ -84,6 +85,7 @@ const SECTIONS = [
   { id: "cadence", label: "AI cadence", icon: "ai" as const, hidden: true },
   { id: "booking", label: "Booking page", icon: "cal" as const, hidden: false },
   { id: "client_access", label: "Client access", icon: "shield" as const, hidden: false },
+  { id: "funding_programs", label: "Funding programs", icon: "vault" as const, hidden: false },
   { id: "file_updates", label: "File updates", icon: "bell" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
@@ -432,6 +434,8 @@ export default function SettingsPage() {
         {section === "booking" && <BookingPageSettingsSection embedded />}
         {section === "client_access" && canEdit ? <ClientAccessSection initialClientId={searchParams.get("client_id")} /> : null}
         {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
+        {section === "funding_programs" && canEdit ? <FundingProgramsSection /> : null}
+        {section === "funding_programs" && !canEdit ? <WarnLine>Super-admin access is required to publish funding criteria.</WarnLine> : null}
 
         {section === "checklists" && (
           <ChecklistsSection

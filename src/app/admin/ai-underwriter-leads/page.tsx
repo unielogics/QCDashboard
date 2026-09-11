@@ -1548,24 +1548,34 @@ function LeadDetailPanel({
     }
   }
 
-  async function uploadFromHeader(files: File[]) {
+  async function uploadFromHeader(files: File[], requestedDocumentId?: string) {
     if (!cockpitAdapter || !files.length) return;
     setHeaderUploading(true);
     setUploadStatus(`Preparing ${files.length} file${files.length === 1 ? "" : "s"}...`);
+    const failed: string[] = [];
+    let uploaded = 0;
     try {
       for (const [index, file] of files.entries()) {
         setUploadStatus(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
-        const init = await cockpitAdapter.uploadInit({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size });
-        const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
-        if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
-        await cockpitAdapter.uploadComplete(init.file_id);
+        try {
+          const init = await cockpitAdapter.uploadInit({ requested_document_id: requestedDocumentId ?? null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size });
+          const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
+          if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
+          await cockpitAdapter.uploadComplete(init.file_id);
+          uploaded += 1;
+        } catch {
+          failed.push(file.name);
+        }
       }
+      if (!uploaded) throw new Error(`None of the ${files.length} selected files could be uploaded.`);
       setUploadStatus("Refreshing evidence...");
       const response = await cockpitAdapter.reload();
       onCockpitResponse(response);
       setSubmissionStep(2);
       setPrototypeView("workspace");
-      toast.show(`${files.length} file${files.length === 1 ? "" : "s"} uploaded`);
+      toast.show(failed.length
+        ? `${uploaded} uploaded; ${failed.length} failed: ${failed.join(", ")}`
+        : `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded and queued for AI review`);
     } catch (error) {
       toast.show(error instanceof Error ? error.message : "Upload failed");
     } finally {
@@ -1883,7 +1893,7 @@ function LeadDetailPanel({
                     >
                       <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                     </EvidenceFold>
-                    {underwriting?.profile_id ? <ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} /> : <div className="empty">{underwritingLoading ? "Loading program readiness..." : "Program readiness is available to underwriting staff after the file profile resolves."}</div>}
+                    {underwriting?.profile_id ? <ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} onUploadFiles={uploadFromHeader} uploadBusy={headerUploading} /> : <div className="empty">{underwritingLoading ? "Loading program readiness..." : "Program readiness is available to underwriting staff after the file profile resolves."}</div>}
                   </div>
                 </Panel>
               ) : null}
@@ -1989,7 +1999,7 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
-                {underwriting?.profile_id ? <Panel title="Programs and readiness" sub="Apply published lending criteria and reconcile shared evidence."><ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} /></Panel> : null}
+                {underwriting?.profile_id ? <Panel title="Programs and readiness" sub="Apply published lending criteria and reconcile shared evidence."><ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} onUploadFiles={uploadFromHeader} uploadBusy={headerUploading} /></Panel> : null}
                 </div>
               ) : null}
 
