@@ -8,6 +8,7 @@ import { api, ApiError } from "@/lib/api";
 import type {
   ApplicationProgramReadiness as Readiness,
   ApplicationRequirement,
+  ApplicationRequirementAIReviewResult,
   RoomDeliveryReceipt,
 } from "@/lib/applicationProfile";
 import { semanticChipTone, semanticStatusClass } from "@/lib/semanticStatus";
@@ -53,16 +54,21 @@ export function ApplicationProgramReadiness({
   profileId,
   files,
   onNotice,
+  onRunAiReview,
+  aiReviewRunning = false,
 }: {
   profileId: string;
   files: EvidenceFile[];
   onNotice?: (message: string) => void;
+  onRunAiReview?: () => void;
+  aiReviewRunning?: boolean;
 }) {
   const { getToken } = useAuth();
   const confirmAction = useConfirmAction();
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
   const [evidenceSelections, setEvidenceSelections] = useState<Record<string, string>>({});
+  const [selectedRequestKeys, setSelectedRequestKeys] = useState<string[]>([]);
   const [overrideDraft, setOverrideDraft] = useState<OverrideDraft | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -90,10 +96,29 @@ export function ApplicationProgramReadiness({
     void load();
   }, [load]);
 
+  useEffect(() => {
+    const refreshAfterAnalysis = () => void load();
+    window.addEventListener("qc-ai-review-completed", refreshAfterAnalysis);
+    return () => window.removeEventListener("qc-ai-review-completed", refreshAfterAnalysis);
+  }, [load]);
+
   const selectedSet = useMemo(() => new Set(selectedPrograms), [selectedPrograms]);
   const requirementByKey = useMemo(
     () => new Map((readiness?.requirements ?? []).map((requirement) => [requirement.requirement_key, requirement])),
     [readiness],
+  );
+  const blockingKeys = useMemo(
+    () => new Set((readiness?.programs ?? []).flatMap((program) => program.blocking_requirement_keys)),
+    [readiness],
+  );
+  const requestableRequirements = useMemo(
+    () => (readiness?.requirements ?? []).filter(
+      (requirement) => requirement.client_visible
+        && !requirementIsComplete(requirement)
+        && (requirement.status === "stale" || requirement.status === "failed" || !requirement.coverage_complete)
+        && blockingKeys.has(requirement.requirement_key),
+    ),
+    [blockingKeys, readiness],
   );
 
   async function savePrograms(returnToAi = false) {
@@ -210,20 +235,60 @@ export function ApplicationProgramReadiness({
     );
   }
 
-  async function sendRequest(requirement: ApplicationRequirement, retryFailed = false) {
-    setBusy(`request:${requirement.requirement_key}`);
+  async function reviewAiEvidence() {
+    const confirmed = await confirmAction({
+      title: "Verify high-confidence AI matches?",
+      body: "Only current file analyses with a high-confidence content match will be accepted. Ambiguous, stale, and filename-only matches remain for staff review.",
+      confirmLabel: "Verify AI matches",
+    });
+    if (!confirmed) return;
+    setBusy("ai-verify");
+    setError(null);
+    try {
+      const result = await authenticated<ApplicationRequirementAIReviewResult>(
+        `/application-profiles/${profileId}/requirements/ai-review`,
+        { method: "POST", body: JSON.stringify({ requirement_keys: [], confirmed: true }) },
+      );
+      setReadiness(result.readiness);
+      const retained = result.retained_for_staff_count + result.analysis_required_count;
+      onNotice?.(result.verified_file_count
+        ? `${result.verified_file_count} AI-reviewed file${result.verified_file_count === 1 ? "" : "s"} verified${retained ? `; ${retained} still require staff review or analysis` : ""}.`
+        : `No new files were verified${retained ? `; ${retained} require staff review or a completed AI analysis` : ""}.`);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function sendSelectedRequests() {
+    const selected = requestableRequirements.filter((item) => selectedRequestKeys.includes(item.requirement_key));
+    if (!selected.length) return;
+    const confirmed = await confirmAction({
+      title: `Email ${selected.length} requested item${selected.length === 1 ? "" : "s"}?`,
+      body: `The AI will draft one combined email with one secure-room link and the selected items. ${selected.map((item) => item.label).join(", ")}.`,
+      confirmLabel: "Send one email",
+    });
+    if (!confirmed) return;
+    setBusy("batch-request");
     setError(null);
     try {
       const receipt = await authenticated<RoomDeliveryReceipt>(
-        `/application-profiles/${profileId}/requirements/${encodeURIComponent(requirement.requirement_key)}/reminders`,
-        { method: "POST", body: JSON.stringify({ channel: "email", retry_failed: retryFailed }) },
+        `/application-profiles/${profileId}/requirements/batch-reminders`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            requirement_keys: selected.map((item) => item.requirement_key),
+            channel: "email",
+            retry_failed: selected.some((item) => item.status === "failed"),
+          }),
+        },
       );
+      setSelectedRequestKeys([]);
       await load();
-      onNotice?.(
-        receipt.provider_accepted
-          ? `Email accepted for ${receipt.recipient_masked || "the client"}.`
-          : `Email failed: ${receipt.detail || "provider rejected the request"}`,
-      );
+      onNotice?.(receipt.provider_accepted
+        ? `One email for ${receipt.requirement_keys?.length || selected.length} item${selected.length === 1 ? "" : "s"} was accepted for ${receipt.recipient_masked || "the client"}.`
+        : `Combined email failed: ${receipt.detail || "provider rejected the request"}`);
     } catch (reason) {
       setError(errorMessage(reason));
       setBusy("");
@@ -236,7 +301,7 @@ export function ApplicationProgramReadiness({
     const confirmed = await confirmAction({
       title: `${nextEnabled ? "Enable" : "Disable"} missing-item emails?`,
       body: nextEnabled
-        ? "Only the highest-priority eligible missing item is emailed, no more than once every 24 hours and up to three attempts."
+        ? "All eligible missing items are consolidated into one email, no more than once every 24 hours and up to three attempts."
         : "Scheduled missing-item messages stop immediately. Existing delivery history is preserved.",
       confirmLabel: nextEnabled ? "Enable automation" : "Disable automation",
     });
@@ -261,6 +326,9 @@ export function ApplicationProgramReadiness({
 
   const originalPrograms = readiness.selections.map((item) => item.program_key).join("|");
   const programsChanged = selectedPrograms.join("|") !== originalPrograms;
+  const selectedRequestSet = new Set(selectedRequestKeys);
+  const allRequestableSelected = requestableRequirements.length > 0
+    && requestableRequirements.every((item) => selectedRequestSet.has(item.requirement_key));
 
   return (
     <div className="program-readiness-workspace">
@@ -324,6 +392,12 @@ export function ApplicationProgramReadiness({
             <h3 id="shared-evidence-heading">Requirements and decisions</h3>
             <p>One verified document can satisfy the same requirement across multiple programs.</p>
           </div>
+          <div className="program-readiness-actions requirement-bulk-actions">
+            {onRunAiReview ? <Btn onClick={onRunAiReview} disabled={Boolean(busy) || aiReviewRunning}>{aiReviewRunning ? "Analyzing..." : "Run AI analysis"}</Btn> : null}
+            <Btn onClick={() => void reviewAiEvidence()} disabled={Boolean(busy) || aiReviewRunning}>{busy === "ai-verify" ? "Verifying..." : "Verify AI matches"}</Btn>
+            {requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}
+            <Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestKeys.length || Boolean(busy)}>{busy === "batch-request" ? "Drafting and sending..." : `Email selected (${selectedRequestKeys.length})`}</Btn>
+          </div>
         </div>
         <div className="requirement-table">
           {readiness.requirements.map((requirement) => {
@@ -338,10 +412,17 @@ export function ApplicationProgramReadiness({
               : files
             ).filter((file) => !linkedIds.has(file.id));
             const selectedEvidenceId = evidenceSelections[requirement.requirement_key] || "";
+            const requestable = requirement.client_visible
+              && !complete
+              && (requirement.status === "stale" || requirement.status === "failed" || !requirement.coverage_complete)
+              && blockingKeys.has(requirement.requirement_key);
             return (
               <div key={requirement.requirement_key} className={`${semanticStatusClass(complete ? "verified" : requirement.status)} requirement-row`}>
                 <div className="requirement-summary">
-                  <CellChip tone={semanticChipTone(complete ? "verified" : requirement.status)}>{complete && requirement.status !== "verified" ? "overridden" : requirement.status.replaceAll("_", " ")}</CellChip>
+                  <div className="requirement-state-stack">
+                    {requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}
+                    <CellChip tone={semanticChipTone(complete ? "verified" : requirement.status)}>{complete && requirement.status !== "verified" ? "overridden" : requirement.status.replaceAll("_", " ")}</CellChip>
+                  </div>
                   <div>
                     <strong>{requirement.label}</strong>
                     <span>{requirement.required_level} · {requirement.source_program_keys.join(", ") || "baseline"}</span>
@@ -362,7 +443,6 @@ export function ApplicationProgramReadiness({
                   {requirement.can_waive ? <Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] })}>Waive</Btn> : null}
                   <Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] })}>N/A</Btn>
                   {hasOverrides ? <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "restore")}>Restore</Btn> : null}
-                  {requirement.client_visible && !complete ? <Btn variant="pri" disabled={isBusy} onClick={() => void sendRequest(requirement, requirement.status === "failed")}>{busy === `request:${requirement.requirement_key}` ? "Sending..." : requirement.last_requested_at ? "Send reminder" : "Request by email"}</Btn> : null}
                 </div>
                 {linkedEvidence.length ? (
                   <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>

@@ -1883,7 +1883,7 @@ function LeadDetailPanel({
                     >
                       <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                     </EvidenceFold>
-                    {underwriting?.profile_id ? <ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} /> : <div className="empty">{underwritingLoading ? "Loading program readiness..." : "Program readiness is available to underwriting staff after the file profile resolves."}</div>}
+                    {underwriting?.profile_id ? <ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} /> : <div className="empty">{underwritingLoading ? "Loading program readiness..." : "Program readiness is available to underwriting staff after the file profile resolves."}</div>}
                   </div>
                 </Panel>
               ) : null}
@@ -1989,7 +1989,7 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
-                {underwriting?.profile_id ? <Panel title="Programs and readiness" sub="Apply published lending criteria and reconcile shared evidence."><ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} /></Panel> : null}
+                {underwriting?.profile_id ? <Panel title="Programs and readiness" sub="Apply published lending criteria and reconcile shared evidence."><ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} /></Panel> : null}
                 </div>
               ) : null}
 

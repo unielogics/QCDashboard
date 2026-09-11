@@ -179,6 +179,15 @@ export type ApplicationProgramReadiness = {
   automation: MissingItemAutomation;
 };
 
+export type ApplicationRequirementAIReviewResult = {
+  readiness: ApplicationProgramReadiness;
+  reviewed_file_count: number;
+  verified_file_count: number;
+  already_verified_count: number;
+  retained_for_staff_count: number;
+  analysis_required_count: number;
+};
+
 export type ApplicationUnderwritingState = {
   profile_id: string;
   source_kind: ApplicationSourceKind | null;
@@ -334,6 +343,7 @@ export type RoomDeliveryReceipt = {
   attempt_number: number;
   scheduled_for: string | null;
   created_at: string;
+  requirement_keys?: string[];
 };
 
 export type RoomRequestResult = {
