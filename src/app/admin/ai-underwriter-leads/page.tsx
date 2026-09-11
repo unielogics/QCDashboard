@@ -305,7 +305,7 @@ function presentContact(value?: string | null): string {
 
 function emptyUnderwritingDraft(): UnderwritingDraft {
   return {
-    underwriting_status: "submitted",
+    underwriting_status: "collecting_docs",
     approved_amount: "",
     term_sheet_amount: "",
     current_dscr: "",
@@ -1275,7 +1275,7 @@ function LeadDetailPanel({
           authToken: authToken ?? undefined,
           body: JSON.stringify({
             target_status: patch.underwriting_status,
-            expected_status: underwriting?.underwriting_status ?? "submitted",
+            expected_status: underwriting?.underwriting_status ?? "collecting_docs",
             note: patch.reviewer_notes || undefined,
           }),
         });
@@ -1797,7 +1797,6 @@ function LeadDetailPanel({
             ) : null}
 
             <main className="grid intake-file-primary">
-              {prototypeView === "workspace" ? <FileTeamStrip profileId={profileId} canEdit={canUnderwrite} /> : null}
               {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 <Panel
@@ -2044,6 +2043,7 @@ function LeadDetailPanel({
                   <Line label="Source" value={detail.intake.referral_source || "Direct"} />
                   <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
                 </Panel>
+                <FileTeamStrip profileId={profileId} canEdit={canUnderwrite} />
                 <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
                 <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet."} /></Panel>
               </aside>

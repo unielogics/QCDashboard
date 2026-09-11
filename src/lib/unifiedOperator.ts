@@ -70,6 +70,7 @@ export type UnifiedFileRow = {
   dealer_name: string | null;
   // The file's team, projected by the backend (optional until every row carries it).
   agent_name?: string | null;
+  agent_names?: string[];
   underwriter_names?: string[];
   company_name?: string | null;
   case_ref?: string | null;

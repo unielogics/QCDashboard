@@ -58,7 +58,7 @@ function OperatorPipeline() {
       if (filters.vertical !== "all" && row.vertical !== filters.vertical) return false;
       if (filters.origin !== "all" && row.origin !== filters.origin) return false;
       if (!query) return true;
-      return [row.title, row.label, row.ref, row.client_name, row.business_name, row.principal, row.phone, row.rep_name, row.dealer_name, row.agent_name, row.underwriter_names?.join(", "), row.pipeline_status, row.underwriting_status]
+      return [row.title, row.label, row.ref, row.client_name, row.business_name, row.principal, row.phone, row.rep_name, row.dealer_name, row.agent_names?.join(", "), row.agent_name, row.underwriter_names?.join(", "), row.pipeline_status, row.underwriting_status]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
@@ -171,7 +171,7 @@ function OperatorPipeline() {
                     sourceId: pendingMove.row.source_id,
                     body: {
                       target_status: pendingMove.targetStatus,
-                      expected_status: pendingMove.row.pipeline_status ?? pendingMove.row.underwriting_status ?? "submitted",
+                      expected_status: pendingMove.row.pipeline_status ?? pendingMove.row.underwriting_status ?? "collecting_docs",
                       note: moveNote.trim() || undefined,
                     },
                   });

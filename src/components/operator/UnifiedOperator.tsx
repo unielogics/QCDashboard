@@ -54,7 +54,7 @@ export type UnifiedFilterState = {
 };
 
 function lifecycleStatus(row: UnifiedFileRow): UnderwritingLifecycleStatus {
-  return row.pipeline_status ?? row.underwriting_status ?? "submitted";
+  return row.pipeline_status ?? row.underwriting_status ?? "collecting_docs";
 }
 
 function lifecycleProgress(row: UnifiedFileRow): number {
@@ -192,7 +192,7 @@ export function UnifiedFilesTable({
           <Td><UnifiedStageMeter row={row} /></Td>
           <Td><span className="sub">{row.program_tags.slice(0, 2).join(" · ") || "Unassigned"}</span></Td>
           {/* The file's team (services/file_team): who owns it, who is underwriting it. */}
-          <Td><span className={row.agent_name ? undefined : "sub"}>{row.agent_name ?? "—"}</span></Td>
+          <Td><span className={row.agent_names?.length || row.agent_name ? undefined : "sub"}>{row.agent_names?.length ? row.agent_names.join(", ") : row.agent_name ?? "—"}</span></Td>
           <Td><span className={row.underwriter_names?.length ? undefined : "sub"}>{row.underwriter_names?.length ? row.underwriter_names.join(", ") : "—"}</span></Td>
           <Td><UnifiedDocumentPack row={row} /></Td>
           <Td><CellChip tone={row.health_tone}>{row.health}</CellChip></Td>

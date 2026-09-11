@@ -1616,6 +1616,16 @@ button.pick { width: 100%; text-align: left; }
 .intake-file-context { min-width: 0; }
 .context-rail-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 32px; }
 .context-rail-toolbar > span { color: var(--muted); font-size: 10px; font-weight: 760; text-transform: uppercase; }
+.file-team-panel .panel-b { min-width: 0; }
+.file-team-panel select.field { width: 100%; margin-top: 2px; }
+.file-team-members { display: grid; min-width: 0; }
+.file-team-member { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; min-width: 0; padding: 7px 0; border-bottom: 1px solid var(--line); }
+.file-team-member:first-child { padding-top: 0; }
+.file-team-member:last-child { padding-bottom: 0; border-bottom: 0; }
+.file-team-person { min-width: 0; }
+.file-team-person > b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.file-team-meta { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin-top: 3px; color: var(--muted); font-size: 10.5px; }
+.file-team-remove { width: 28px; min-width: 28px; height: 28px; padding: 0; }
 .intake-file-context-collapsed { position: sticky; top: 14px; align-self: start; display: grid; justify-items: center; padding-top: 14px; }
 .context-rail-expand {
   width: 42px; min-height: 156px; display: grid; grid-template-rows: auto 1fr; place-items: center; gap: 8px;

@@ -62,12 +62,14 @@ export type FileTeamCompany = {
 
 export type FileTeam = {
   agent: FileTeamAgent | null;
+  agents?: FileTeamAgent[];
   underwriters: FileTeamMember[];
   company: FileTeamCompany | null;
   can_edit?: boolean;
 };
 
 export type FileTeamCandidates = {
+  agents: FileTeamMember[];
   underwriters: FileTeamMember[];
   companies: Array<{ id: string; name: string; kind: string }>;
 };
