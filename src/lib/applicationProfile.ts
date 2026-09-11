@@ -97,6 +97,23 @@ export type ApplicationProgramSelection = {
   selected_at: string;
 };
 
+export type ApplicationRequirementEvidence = {
+  file_id: string;
+  file_name: string;
+  bucket_id: string;
+  created_at: string;
+  source: "automatic" | "filename_suggestion" | "operator";
+  verified: boolean;
+  verified_at: string | null;
+};
+
+export type ApplicationEvidenceOption = {
+  file_id: string;
+  file_name: string;
+  bucket_id: string;
+  created_at: string;
+};
+
 export type ApplicationRequirement = {
   requirement_key: string;
   label: string;
@@ -106,6 +123,14 @@ export type ApplicationRequirement = {
   requested_document_id: string | null;
   evidence_file_id: string | null;
   evidence_file_name: string | null;
+  evidence_files: ApplicationRequirementEvidence[];
+  evidence_count: number;
+  verified_evidence_count: number;
+  coverage: Record<string, unknown>;
+  verified_coverage: Record<string, unknown>;
+  coverage_complete: boolean;
+  verified_coverage_complete: boolean;
+  allow_multiple_files: boolean;
   verification_required: boolean;
   source_program_keys: string[];
   program_overrides: Record<string, string>;
@@ -149,6 +174,7 @@ export type ApplicationProgramReadiness = {
   candidates: ProgramFitCandidate[];
   programs: ProgramReadinessItem[];
   requirements: ApplicationRequirement[];
+  available_evidence_files: ApplicationEvidenceOption[];
   can_advance: boolean;
   automation: MissingItemAutomation;
 };

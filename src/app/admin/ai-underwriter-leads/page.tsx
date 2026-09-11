@@ -1830,12 +1830,14 @@ function LeadDetailPanel({
                     {/* Opens itself while a required document is still owed — the fix
                         for that is upstairs in this fold: drop the file in. */}
                     <EvidenceFold
-                      storageKey={`intake-evidence-fold:${detail.intake.id}:resources`}
+                      storageKey={`intake-evidence-fold:${detail.intake.id}:resources-v2`}
                       title="Evidence and data resources"
                       summary={evidenceResourcesSummary}
                       attention={missingRequiredDocs.length > 0}
                       attentionLabel="Documents missing"
                       clearLabel="Complete"
+                      defaultOpen={false}
+                      openOnAttention={false}
                     >
                       <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
                       <button
@@ -3277,6 +3279,8 @@ function EvidenceFold({
   attention,
   attentionLabel,
   clearLabel,
+  defaultOpen,
+  openOnAttention = true,
   children,
 }: {
   /** Per-file, per-fold localStorage key for the reader's own choice. */
@@ -3288,9 +3292,11 @@ function EvidenceFold({
   attention: boolean;
   attentionLabel: string;
   clearLabel: string;
+  defaultOpen?: boolean;
+  openOnAttention?: boolean;
   children: React.ReactNode;
 }) {
-  const [open, setOpen] = useState(attention);
+  const [open, setOpen] = useState(defaultOpen ?? attention);
   // A ref, not state: the stored-choice effect below has to be visible to the
   // attention effect that runs immediately after it in the same commit, and a
   // state update would not be.
@@ -3308,14 +3314,16 @@ function EvidenceFold({
     if (saved === "open" || saved === "closed") {
       chosen.current = true;
       setOpen(saved === "open");
+    } else {
+      setOpen(defaultOpen ?? (openOnAttention ? attention : false));
     }
-  }, [storageKey]);
+  }, [attention, defaultOpen, openOnAttention, storageKey]);
 
   // Attention arrives late: the AI review and the extraction both finish in
   // the background. Follow it until the reader has said otherwise.
   useEffect(() => {
-    if (!chosen.current) setOpen(attention);
-  }, [attention]);
+    if (!chosen.current && openOnAttention) setOpen(attention);
+  }, [attention, openOnAttention]);
 
   function toggle() {
     const next = !open;

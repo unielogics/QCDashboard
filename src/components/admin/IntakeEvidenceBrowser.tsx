@@ -40,6 +40,7 @@ export function IntakeEvidenceBrowser({
   const [linkedFiles, setLinkedFiles] = useState<EvidenceFile[]>([]);
   const [linkedLoading, setLinkedLoading] = useState(false);
   const [selectedKey, setSelectedKey] = useState("");
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
   const [review, setReview] = useState<BucketFileReview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -84,10 +85,10 @@ export function IntakeEvidenceBrowser({
     if (!query) return allFiles;
     return allFiles.filter((file) => evidenceSearchText(file).includes(query));
   }, [allFiles, fileQuery]);
-  const selected = filteredFiles.find((file) => evidenceKey(file) === selectedKey) ?? filteredFiles[0] ?? null;
+  const selected = filteredFiles.find((file) => evidenceKey(file) === selectedKey) ?? null;
 
   useEffect(() => {
-    if (!selected) {
+    if (!selected || !previewOpen) {
       setReview(null);
       return;
     }
@@ -102,7 +103,7 @@ export function IntakeEvidenceBrowser({
       .catch((error) => { if (!cancelled) setPreviewError(error instanceof Error ? error.message : "Preview unavailable."); })
       .finally(() => { if (!cancelled) setPreviewLoading(false); });
     return () => { cancelled = true; };
-  }, [apiCall, selected, selectedKey]);
+  }, [apiCall, previewOpen, selected, selectedKey]);
 
   useEffect(() => {
     if (!selected) return;
@@ -122,7 +123,7 @@ export function IntakeEvidenceBrowser({
   }
 
   return (
-    <div className="evidence-browser">
+    <div className={cx("evidence-browser", !previewOpen && "preview-collapsed")}>
       <aside className="evidence-browser-nav">
         <div className="evidence-browser-nav-head">
           <div><b>Bucket evidence</b><Sub>{allFiles.length} files across {new Set(allFiles.map((file) => file.bucketId)).size} source rooms</Sub></div>
@@ -142,7 +143,10 @@ export function IntakeEvidenceBrowser({
               key={evidenceKey(file)}
               ref={(node) => { fileRowRefs.current[evidenceKey(file)] = node; }}
               className={cx("evidence-file-row", selected && evidenceKey(file) === evidenceKey(selected) && "on")}
-              onClick={() => setSelectedKey(evidenceKey(file))}
+              onClick={() => {
+                setSelectedKey(evidenceKey(file));
+                setPreviewOpen(true);
+              }}
             >
               <span className="evidence-file-icon"><Icon name="file" size={15} /></span>
               <span className="grow trunc"><b className="trunc">{file.file_name}</b><small className="trunc">{file.bucketName} · {formatSize(file.size_bytes)}</small></span>
@@ -152,7 +156,7 @@ export function IntakeEvidenceBrowser({
           {!filteredFiles.length ? <div className="empty">No files match this search.</div> : null}
         </div>
       </aside>
-      <section className="evidence-browser-preview">
+      {previewOpen ? <section className="evidence-browser-preview">
         <header className="evidence-browser-preview-head">
           <div className="grow trunc">
             <b className="trunc">{selected?.file_name || "Evidence preview"}</b>
@@ -163,6 +167,7 @@ export function IntakeEvidenceBrowser({
             <span className="sub num">{selectedIndex >= 0 ? selectedIndex + 1 : 0}/{filteredFiles.length}</span>
             <IconBtn onClick={() => move(1)} disabled={selectedIndex < 0 || selectedIndex >= filteredFiles.length - 1} aria-label="Next file" title="Next file"><Icon name="chevR" size={14} /></IconBtn>
             {review?.preview_url ? <a className="btn sm" href={review.preview_url} target="_blank" rel="noreferrer"><Icon name="external" size={13} />Open original</a> : null}
+            <IconBtn onClick={() => setPreviewOpen(false)} aria-label="Minimize preview" title="Minimize preview"><Icon name="minimize" size={14} /></IconBtn>
           </div>
         </header>
         <div className="evidence-preview-stage">
@@ -170,7 +175,7 @@ export function IntakeEvidenceBrowser({
           {!previewLoading && previewError ? <div className="empty">{previewError}</div> : null}
           {!previewLoading && !previewError && review ? <EvidencePreview review={review} /> : null}
         </div>
-      </section>
+      </section> : null}
     </div>
   );
 }

@@ -1776,6 +1776,8 @@ button.pick { width: 100%; text-align: left; }
 /* Intake evidence browser: source navigation and document preview remain in
    the workflow surface, so opening a file never creates another modal. */
 .evidence-browser { display: grid; grid-template-columns: minmax(240px, 290px) minmax(0, 1fr); height: clamp(520px, 68vh, 720px); max-height: 68vh; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.evidence-browser.preview-collapsed { grid-template-columns: minmax(0, 1fr); height: min(320px, 48vh); max-height: 48vh; }
+.evidence-browser.preview-collapsed .evidence-browser-nav { border-right: 0; }
 .evidence-browser-nav { display: flex; min-height: 0; overflow: hidden; flex-direction: column; border-right: 1px solid var(--line); background: var(--sunken2); }
 .evidence-browser-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); }
 .evidence-browser-search { display: grid; gap: 5px; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
@@ -4569,6 +4571,12 @@ a.pick { color: inherit; text-decoration: none; }
 .requirement-summary span, .requirement-summary small { color: var(--muted); font-size: 9.5px; overflow-wrap: anywhere; }
 .requirement-controls { min-width: 0; display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 6px; }
 .requirement-controls select { width: min(260px, 100%); }
+.requirement-evidence-files { grid-column: 1 / -1; display: grid; gap: 6px; padding-top: 10px; border-top: 1px solid var(--line); }
+.requirement-evidence-file { min-width: 0; display: grid; grid-template-columns: minmax(180px, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.requirement-evidence-file > span { min-width: 0; display: grid; gap: 2px; }
+.requirement-evidence-file strong { font-size: 10.5px; }
+.requirement-evidence-file small { color: var(--muted); font-size: 9px; overflow-wrap: anywhere; }
+.requirement-evidence-empty { grid-column: 1 / -1; padding-top: 8px; border-top: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 .requirement-override-editor { grid-column: 1 / -1; display: grid; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
 .override-programs { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .checkline { display: inline-flex; align-items: center; gap: 7px; color: var(--ink2); font-size: 10.5px; }
@@ -4578,6 +4586,7 @@ a.pick { color: inherit; text-decoration: none; }
   .requirement-row { grid-template-columns: 1fr; }
   .requirement-controls { justify-content: flex-start; }
   .requirement-override-editor { grid-column: auto; }
+  .requirement-evidence-files, .requirement-evidence-empty { grid-column: auto; }
 }
 @media (max-width: 640px) {
   .program-readiness-heading, .automation-band { grid-template-columns: 1fr; display: grid; }
@@ -4588,6 +4597,9 @@ a.pick { color: inherit; text-decoration: none; }
   .requirement-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .requirement-controls select { grid-column: 1 / -1; width: 100%; }
   .requirement-controls .btn { justify-content: center; }
+  .requirement-evidence-file { grid-template-columns: minmax(0, 1fr) auto; }
+  .requirement-evidence-file > .cellchip { justify-self: end; }
+  .requirement-evidence-file > .btn { justify-content: center; }
 }
 
 .intake-chat-actions { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 10px; padding-top: 10px; border-top: 1px solid color-mix(in srgb, currentColor 18%, transparent); }

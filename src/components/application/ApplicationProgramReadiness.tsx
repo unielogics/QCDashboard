@@ -38,6 +38,17 @@ function requirementIsComplete(requirement: ApplicationRequirement): boolean {
     && requirement.source_program_keys.every((key) => ["waived", "not_applicable"].includes(requirement.program_overrides[key] || ""));
 }
 
+function coverageText(requirement: ApplicationRequirement, verified = false): string {
+  const coverage = (verified ? requirement.verified_coverage : requirement.coverage) ?? {};
+  const fallbackCount = verified
+    ? requirement.verified_evidence_count ?? 0
+    : requirement.evidence_count ?? Number(Boolean(requirement.evidence_file_id));
+  const current = Number(coverage.current ?? fallbackCount);
+  const required = Number(coverage.required ?? 1);
+  const unit = String(coverage.unit ?? "documents");
+  return `${current} of ${required} ${unit}`;
+}
+
 export function ApplicationProgramReadiness({
   profileId,
   files,
@@ -143,7 +154,8 @@ export function ApplicationProgramReadiness({
 
   async function reviewRequirementAction(
     requirement: ApplicationRequirement,
-    action: "verify" | "unverify" | "restore" | "failed" | "link_evidence",
+    action: "verify" | "unverify" | "restore" | "failed" | "link_evidence" | "unlink_evidence",
+    evidenceFileIds: string[] = [],
   ) {
     const labels = {
       verify: "Verify evidence",
@@ -151,6 +163,7 @@ export function ApplicationProgramReadiness({
       restore: "Restore requirement",
       failed: "Mark evidence failed",
       link_evidence: "Link evidence",
+      unlink_evidence: "Remove evidence link",
     };
     const confirmed = await confirmAction({
       title: `${labels[action]}?`,
@@ -159,12 +172,18 @@ export function ApplicationProgramReadiness({
       tone: action === "failed" ? "danger" : "default",
     });
     if (!confirmed) return;
-    const evidenceFileId = evidenceSelections[requirement.requirement_key] || requirement.evidence_file_id;
+    const selectedEvidenceId = evidenceSelections[requirement.requirement_key];
+    const selectedIds = action === "link_evidence"
+      ? selectedEvidenceId ? [selectedEvidenceId] : []
+      : evidenceFileIds;
     await mutateRequirement(
       requirement.requirement_key,
-      { action, evidence_file_id: action === "link_evidence" ? evidenceFileId : undefined },
+      { action, evidence_file_ids: selectedIds },
       `${requirement.label} updated.`,
     );
+    if (action === "link_evidence") {
+      setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: "" }));
+    }
   }
 
   async function applyOverride() {
@@ -311,6 +330,14 @@ export function ApplicationProgramReadiness({
             const complete = requirementIsComplete(requirement);
             const isBusy = busy.endsWith(requirement.requirement_key);
             const hasOverrides = Object.keys(requirement.program_overrides).length > 0;
+            const linkedEvidence = requirement.evidence_files ?? [];
+            const availableEvidence = readiness.available_evidence_files ?? [];
+            const linkedIds = new Set(linkedEvidence.map((file) => file.file_id));
+            const evidenceOptions = (availableEvidence.length
+              ? availableEvidence.map((file) => ({ id: file.file_id, file_name: file.file_name }))
+              : files
+            ).filter((file) => !linkedIds.has(file.id));
+            const selectedEvidenceId = evidenceSelections[requirement.requirement_key] || "";
             return (
               <div key={requirement.requirement_key} className={`${semanticStatusClass(complete ? "verified" : requirement.status)} requirement-row`}>
                 <div className="requirement-summary">
@@ -318,25 +345,42 @@ export function ApplicationProgramReadiness({
                   <div>
                     <strong>{requirement.label}</strong>
                     <span>{requirement.required_level} · {requirement.source_program_keys.join(", ") || "baseline"}</span>
-                    <small>{requirement.evidence_file_name || requirement.state_reason || "No linked evidence"}</small>
+                    <small>{requirement.state_reason || "No linked evidence"}</small>
+                    <small>{coverageText(requirement)} linked · {coverageText(requirement, true)} verified</small>
                   </div>
                 </div>
                 <div className="requirement-controls">
                   <Select
-                    aria-label={`Evidence for ${requirement.label}`}
-                    value={evidenceSelections[requirement.requirement_key] || requirement.evidence_file_id || ""}
+                    aria-label={`Add evidence for ${requirement.label}`}
+                    value={selectedEvidenceId}
                     onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}
                   >
-                    <option value="">Select evidence...</option>
-                    {files.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}
+                    <option value="">Add another document...</option>
+                    {evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}
                   </Select>
-                  <Btn disabled={isBusy || !(evidenceSelections[requirement.requirement_key] || requirement.evidence_file_id)} onClick={() => void reviewRequirementAction(requirement, "link_evidence")}>Link</Btn>
-                  {requirement.status === "verified" ? <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "unverify")}>Unverify</Btn> : <Btn disabled={isBusy || !requirement.evidence_file_id} onClick={() => void reviewRequirementAction(requirement, "verify")}>Verify</Btn>}
+                  <Btn disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")}>Add file</Btn>
                   {requirement.can_waive ? <Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] })}>Waive</Btn> : null}
                   <Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] })}>N/A</Btn>
                   {hasOverrides ? <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "restore")}>Restore</Btn> : null}
                   {requirement.client_visible && !complete ? <Btn variant="pri" disabled={isBusy} onClick={() => void sendRequest(requirement, requirement.status === "failed")}>{busy === `request:${requirement.requirement_key}` ? "Sending..." : requirement.last_requested_at ? "Send reminder" : "Request by email"}</Btn> : null}
                 </div>
+                {linkedEvidence.length ? (
+                  <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>
+                    {linkedEvidence.map((file) => (
+                      <div key={file.file_id} className="requirement-evidence-file">
+                        <span className="grow trunc">
+                          <strong className="trunc">{file.file_name}</strong>
+                          <small>{file.source === "operator" ? "Linked by staff" : file.source === "filename_suggestion" ? "Matched from upload name; review required" : "Matched from request or document analysis"}</small>
+                        </span>
+                        <CellChip tone={file.verified ? "ok" : "warn"}>{file.verified ? "Verified" : "Needs review"}</CellChip>
+                        <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, file.verified ? "unverify" : "verify", [file.file_id])}>{file.verified ? "Unverify" : "Verify"}</Btn>
+                        <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "unlink_evidence", [file.file_id])}>Remove</Btn>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="requirement-evidence-empty">No documents linked. Uploaded matches will appear here automatically.</div>
+                )}
                 {overrideDraft?.requirementKey === requirement.requirement_key ? (
                   <div className="requirement-override-editor">
                     <Field label={overrideDraft.action === "waive" ? "Waiver reason" : "Not-applicable reason"}>
