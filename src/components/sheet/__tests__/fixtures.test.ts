@@ -11,6 +11,14 @@
 // The P&L and balance-sheet cases are the bodies `app/tests/test_business_statements.py`
 // asserts on, plus a messy-money case. A `.test.ts` name keeps this inside the
 // tests' file set; the one test below pins what the data claims to be.
+//
+// **The hazard.** `sheet_layout.layout(...)` is the server's own object, not
+// the JSON the server sends: the wire is built by `sheets._cell_payload`, and
+// a field this fixture carries that the payload drops makes a feature pass in
+// CI and do nothing in the browser. That happened once, to `formula` — every
+// blank subtotal read as a real $0.00 on screen while the tests were green.
+// `test_a_formula_cell_carries_its_formula_onto_the_wire` now guards it from
+// the other side. When adding a field here, check the payload builder emits it.
 
 import { describe, expect, it } from "vitest";
 import type { StatementBody, StatementSchema } from "@/components/application/BusinessStatementForm";
