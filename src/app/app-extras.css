@@ -4228,10 +4228,17 @@ a.pick { color: inherit; text-decoration: none; }
    Column widths come from the layout (the workbook's own character units,
    converted in `SheetGrid.tsx`) and are set per grid via the `--sg-cols`
    custom property, so every row lines up with the heading above it and with
-   the .xlsx somebody downloads.
+   the .xlsx somebody downloads. Those widths are the floor, not the ceiling:
+   `--sg-cols` makes the label column `minmax(natural, 1fr)` and `--sg-natural`
+   carries the sheet's total, so a sheet narrower than the box grows into it up
+   to a page width and a sheet wider than the box scrolls sideways as before.
    =========================================================================== */
 
-.sg { display: grid; gap: 10px; min-width: 0; }
+/* How wide a sheet is allowed to read as a page. A statement whose columns add
+   up to less than this grows into it and stops; one that is already wider is
+   not squeezed. Around a line length a reader can track from the label on the
+   left to the figure on the right. */
+.sg { display: grid; gap: 10px; min-width: 0; --sg-page: 1140px; }
 
 /* ── the strip above the grid ─────────────────────────────────────────── */
 
@@ -4265,8 +4272,35 @@ a.pick { color: inherit; text-decoration: none; }
      allowed, and it is why the phone gets the stacked forms instead. */
   overscroll-behavior-x: contain;
 }
-.sg-grid { display: flex; flex-direction: column; width: max-content; min-width: 100%; }
+/* The grid fills the box it is given, never shrinks below the sheet's own width
+   — under that floor `.sg-wrap` scrolls sideways instead — and never grows past
+   a page, so a two-column statement on a 1500px monitor reads as a document in
+   the middle of the screen rather than a stretched ribbon. The room between the
+   sheet's natural width and the page goes to the first column, which is what
+   `minmax(…, 1fr)` in `--sg-cols` asks for; the figures stay at their own width
+   against a predictable right edge. `--sg-natural` is the sum of the sheet's
+   column widths, set on `.sg-wrap` by `SheetGrid.tsx`. */
+.sg-grid {
+  display: flex; flex-direction: column;
+  width: 100%;
+  min-width: var(--sg-natural, max-content);
+  max-width: max(var(--sg-natural, 0px), var(--sg-page, 1140px));
+  margin-inline: auto;
+}
 .sg-row { display: grid; grid-template-columns: var(--sg-cols); }
+
+/* Inside the fullscreen worksheet drawer the box takes the height it is given
+   instead of its own 70vh cap. The drawer body is a scroller already, so a
+   capped sheet inside it is two scrollbars for one sheet — the sheet stops
+   short and the body scrolls behind it. Scoped with `:has()` so the only
+   drawer body that becomes a flex column is one that actually holds a
+   worksheet; every other drawer is untouched, and a browser without `:has()`
+   drops the block and keeps the cap. */
+.drawer--fullscreen .drawer-b:has(> .sg) { display: flex; flex-direction: column; }
+.drawer--fullscreen .drawer-b:has(> .sg) > * { flex: 0 0 auto; }
+.drawer--fullscreen .drawer-b:has(> .sg) > .sg { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.drawer--fullscreen .drawer-b:has(> .sg) > .sg > * { flex: 0 0 auto; }
+.drawer--fullscreen .drawer-b:has(> .sg) > .sg > .sg-wrap { flex: 1 1 auto; min-height: 260px; max-height: none; }
 
 /* The column heads stay put; the rows above them scroll away. Full freeze
    panes would mean stacking five sticky rows at computed offsets, which buys

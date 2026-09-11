@@ -24,8 +24,16 @@
 //
 // **No virtualization.** The largest sheet is the personal statement at ~120
 // rows. Windowing would fight Ctrl+End and paste-appends for no gain.
+//
+// **The sheet is a document, not a ribbon.** The workbook's column widths are
+// character units and they are the floor, never the ceiling: the label column
+// is `minmax(natural, 1fr)` and the figure columns keep their own width, so a
+// two-column statement grows into the room on a wide screen with the money
+// still landing on one edge, and the CSS stops the whole thing at a page width
+// and centres it. A sheet wider than the box — the twelve-column debt schedule
+// — has no free space to hand out, so it renders and scrolls exactly as it did.
 
-import { useCallback, useEffect, useMemo, useRef, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type ClipboardEvent, type KeyboardEvent, type MouseEvent, type ReactNode } from "react";
 import { cx } from "@/components/ds";
 import { cellAt, isEditable, normalizeRange, rangeCells, rowAt } from "./coords";
 import { cellText, parseTsv, planPaste, toTsv } from "./clipboard";
@@ -75,6 +83,28 @@ function columnPx(width: number | undefined): number {
   return Math.max(MIN_COL, Math.min(MAX_COL, px));
 }
 
+/** The width the sheet asks for: every column at the workbook's own size. It
+ *  is handed to the CSS as `--sg-natural` and does two jobs there — it is the
+ *  floor under the grid (below it the box scrolls sideways, which is what the
+ *  twelve-column debt schedule needs) and it is what the scroll box's
+ *  document cap is measured against. */
+function naturalPx(layout: SheetLayout): number {
+  return layout.columns.reduce((total, column) => total + columnPx(column.width), 0);
+}
+
+/** The column template. The label column is `minmax(natural, 1fr)` and every
+ *  figure column keeps its natural width, so a two-column statement on a wide
+ *  screen grows down the left — the labels get the room — and the money stays
+ *  right-aligned at one predictable edge instead of drifting across a 1500px
+ *  monitor. When the sheet is wider than the box there is no free space to
+ *  hand out and `1fr` resolves to exactly the natural width, so the scrolling
+ *  sheets render as they always did. */
+function columnTemplate(layout: SheetLayout): string {
+  return layout.columns
+    .map((column, index) => (index === 0 ? `minmax(${columnPx(column.width)}px, 1fr)` : `${columnPx(column.width)}px`))
+    .join(" ");
+}
+
 /** How many *rendered* columns a cell covers. `colspan` counts workbook
  *  columns and the personal statement's column list has a hole in it (there is
  *  no column 3), so the two numbers are not the same and the grid places cells
@@ -84,6 +114,113 @@ function spanOf(layout: SheetLayout, cell: SheetCell): number {
   if (width === 1) return 1;
   const covered = layout.columns.filter((column) => column.c >= cell.c && column.c < cell.c + width).length;
   return Math.max(1, covered);
+}
+
+// ── a subtotal of nothing ───────────────────────────────────────────────────
+//
+// "Gross profit $0.00" on a sheet nobody has filled in is a claim about the
+// business, and it is not one the sheet is entitled to make. The memo lines
+// already know this — a blank add-back shows an em dash — and these three
+// functions extend the same rule to every subtotal, by asking whether any of
+// the figures a formula reads has actually been typed.
+//
+// The layout carries the arithmetic: `formula` is written against keys in
+// braces (`={gross_revenue}-{cost_of_goods_sold}`, `=SUM({supplies}:{other})`)
+// and it is never evaluated here — only read for its names. A name is either
+// an input key, another formula's `xlsx_name` (which is followed), or
+// something this sheet does not define, and an undefined name counts as
+// present, because hiding a figure that exists is the worse mistake.
+
+type FormulaIndex = {
+  /** Input key → the column it sits in and its position in row order. */
+  inputs: Map<string, { c: number; order: number }>;
+  /** Input keys per column, in row order, for expanding `{a}:{b}`. */
+  byColumn: Map<number, string[]>;
+  /** Formula name → the formula text. */
+  formulas: Map<string, string>;
+};
+
+const REF = /\{([^}]+)\}/g;
+const RANGE = /\{([^}]+)\}\s*:\s*\{([^}]+)\}/g;
+
+export function indexFormulas(layout: SheetLayout): FormulaIndex {
+  const inputs = new Map<string, { c: number; order: number }>();
+  const byColumn = new Map<number, string[]>();
+  const formulas = new Map<string, string>();
+  let order = 0;
+  for (const row of layout.rows) {
+    for (const cell of row.cells ?? []) {
+      if (cell.type === "formula") {
+        if (cell.xlsx_name && cell.formula) formulas.set(cell.xlsx_name, cell.formula);
+        continue;
+      }
+      if (!cell.key) continue;
+      const column = byColumn.get(cell.c) ?? [];
+      column.push(cell.key);
+      byColumn.set(cell.c, column);
+      inputs.set(cell.key, { c: cell.c, order: order++ });
+    }
+  }
+  return { inputs, byColumn, formulas };
+}
+
+/** The names one formula reads, with `{a}:{b}` expanded over the inputs
+ *  between the two endpoints in the endpoints' own column — a range down the
+ *  balance column of the debt schedule must not pick up the payment column. */
+function refsOf(formula: string, index: FormulaIndex): string[] {
+  const out: string[] = [];
+  const rest = formula.replace(RANGE, (whole, from: string, to: string) => {
+    const start = index.inputs.get(from);
+    const end = index.inputs.get(to);
+    // An endpoint this sheet has no input for is left in place, so the pass
+    // below reads it as an ordinary name rather than dropping it.
+    if (!start || !end || start.c !== end.c) return whole;
+    const low = Math.min(start.order, end.order);
+    const high = Math.max(start.order, end.order);
+    for (const key of index.byColumn.get(start.c) ?? []) {
+      const at = index.inputs.get(key);
+      if (at && at.order >= low && at.order <= high) out.push(key);
+    }
+    return "";
+  });
+  for (const match of rest.matchAll(REF)) out.push(match[1]);
+  return out;
+}
+
+/** Has anything this name stands for been typed? `seen` is the cycle guard:
+ *  a name already on the walk contributes nothing, and a name already settled
+ *  as absent cannot become present on a second path. */
+function hasFigure(name: string, index: FormulaIndex, values: SheetValues, seen: Set<string>): boolean {
+  const input = index.inputs.get(name);
+  if (input) return String(values[name] ?? "").trim() !== "";
+  const formula = index.formulas.get(name);
+  if (formula === undefined) return true;
+  if (seen.has(name)) return false;
+  seen.add(name);
+  return refsOf(formula, index).some((ref) => hasFigure(ref, index, values, seen));
+}
+
+/** Every formula name on the sheet that reads nothing but blanks. */
+export function blankFormulaNames(index: FormulaIndex, values: SheetValues): Set<string> {
+  const out = new Set<string>();
+  for (const [name] of index.formulas) {
+    if (!hasFigure(name, index, values, new Set())) out.add(name);
+  }
+  return out;
+}
+
+/** What a formula cell shows. Only a zero is ever withheld: if the figure is
+ *  anything else it is a real number and it is rendered, whatever this file
+ *  believes about the inputs it was made from. */
+export function shownFigure(
+  cell: SheetCell,
+  computed: ComputedValues,
+  blanks: ReadonlySet<string>,
+): number | null {
+  const figure = cell.compute ? computed[cell.compute] ?? null : null;
+  if (figure !== 0) return figure;
+  const name = cell.xlsx_name ?? cell.compute ?? null;
+  return name && blanks.has(name) ? null : 0;
 }
 
 export function SheetGrid({
@@ -384,15 +521,22 @@ export function SheetGrid({
 
   // ── render ──────────────────────────────────────────────────────────────
 
-  const template = useMemo(
-    () => layout.columns.map((column) => `${columnPx(column.width)}px`).join(" "),
-    [layout.columns],
+  const template = useMemo(() => columnTemplate(layout), [layout]);
+  // The sheet's own width, for the CSS: the floor the grid never goes under
+  // (below it the box scrolls sideways) and the width a short sheet is
+  // measured against before the page cap centres it.
+  const wrapStyle = useMemo(
+    () => ({ ["--sg-natural" as string]: `${naturalPx(layout)}px` }) as CSSProperties,
+    [layout],
   );
+  const index = useMemo(() => indexFormulas(layout), [layout]);
+  const blanks = useMemo(() => blankFormulaNames(index, values), [index, values]);
   const bounds = useMemo(() => normalizeRange(state.anchor, state.active), [state.anchor, state.active]);
 
   return (
     <div
       className="sg-wrap"
+      style={wrapStyle}
       ref={wrapRef}
       onKeyDown={onKeyDown}
       onCopy={onCopy}
@@ -468,7 +612,7 @@ export function SheetGrid({
           ariaCol={index + 1}
           span={span}
           value={value}
-          computed={cell?.compute ? computed[cell.compute] ?? null : null}
+          computed={cell ? shownFigure(cell, computed, blanks) : null}
           align={align}
           editable={editable}
           active={active}
