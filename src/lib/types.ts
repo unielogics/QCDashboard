@@ -1235,6 +1235,11 @@ export interface UserBookingSettings {
   confirmation_messages: Record<string, string>;
   /** Pre-call prep: draft file + secure room on every booking, and the nudge sequence. */
   precall_enabled: boolean;
+  precall_default_variant: "dealer" | "real_estate" | "main_street" | "mca_refinance";
+  precall_allowed_variants: Array<"dealer" | "real_estate" | "main_street" | "mca_refinance">;
+  precall_allow_vertical_choice: boolean;
+  inherit_firm_policy: boolean;
+  firm_policy_overrides: string[];
   precall_messages: {
     precall_block?: string;
     reminder_precall_line?: string;
@@ -1339,6 +1344,16 @@ export interface BookingTestSendResult {
   detail: string;
   /** What the client would receive, placeholders resolved and notice appended. */
   rendered: string;
+}
+
+export interface TeamBookingSettings {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  is_firm_default: boolean;
+  settings: UserBookingSettings;
+  effective_settings: UserBookingSettings;
 }
 
 export interface BookingAssetUploadInitResponse {

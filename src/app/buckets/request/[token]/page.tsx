@@ -52,6 +52,7 @@ export default function BucketRequestPage() {
   const [activeTab, setActiveTab] = useState<RoomTab>("documents");
   // Pre-call prep state for rooms opened by a booked call; null for every other room.
   const [precall, setPrecall] = useState<RoomPrecall | null>(null);
+  const [precallRoomKind, setPrecallRoomKind] = useState<"dealer" | "application">("dealer");
   const [precallLoaded, setPrecallLoaded] = useState(false);
   // The merchant-processing offer, if the desk has sent one; null otherwise.
   const [offer, setOffer] = useState<RoomMerchantOffer | null>(null);
@@ -99,12 +100,64 @@ export default function BucketRequestPage() {
     if (!response.ok) throw new Error(await responseMessage(response, "The room PIN did not work."));
     return response.json();
   }
-  async function fetchPrecall(code: string): Promise<RoomPrecall | null> {
+  async function fetchPrecall(code: string): Promise<{ precall: RoomPrecall; roomKind: "dealer" | "application" } | null> {
     try {
       const response = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/features`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
-      if (!response.ok) return null;
-      const data = await response.json() as { precall?: RoomPrecall | null };
-      return data.precall?.enabled ? data.precall : null;
+      if (response.ok) {
+        const data = await response.json() as { precall?: RoomPrecall | null };
+        return data.precall?.enabled ? { precall: data.precall, roomKind: "dealer" } : null;
+      }
+      const application = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
+      if (!application.ok) return null;
+      const state = await application.json() as {
+        business_name: string;
+        owners: Array<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null; ownership_pct: number | null; is_primary: boolean; has_invite: boolean; invite_opened_at: string | null; credit_required: boolean; credit_complete: boolean }>;
+        verification: { ownership_complete: boolean; ownership_total: number; owner_contact_complete: boolean; business_banking_complete: boolean; bank_connection_count: number; bank_statement_months: number; owner_credit_complete: boolean; required_credit_owner_count: number; completed_credit_owner_count: number };
+        precall: { status: "in_progress" | "complete" | "stopped" | "disabled"; complete: boolean; done_count: number; missing: string[] } | null;
+      };
+      if (!state.precall || state.precall.status === "disabled") return null;
+      const verification = state.verification;
+      return {
+        roomKind: "application",
+        precall: {
+          enabled: true,
+          starts_at: null,
+          host_name: null,
+          business_name: state.business_name,
+          passcode_needs_setup: false,
+          ownership_complete: verification.ownership_complete,
+          ownership_total: verification.ownership_total,
+          contact_complete: verification.owner_contact_complete,
+          owners: state.owners.map((owner) => ({
+            id: owner.id,
+            first_name: owner.first_name,
+            last_name: owner.last_name,
+            email: owner.email,
+            phone: owner.phone,
+            ownership_pct: owner.ownership_pct,
+            is_primary: owner.is_primary,
+            required: owner.credit_required,
+            has_email: Boolean(owner.email),
+            has_phone: Boolean(owner.phone),
+            credit_status: owner.credit_complete ? "done" : owner.has_invite || owner.invite_opened_at ? "sent" : "not_started",
+            editable: !owner.has_invite && !owner.credit_complete,
+          })),
+          max_owners: 5,
+          credit_threshold_pct: 20,
+          bank_complete: verification.business_banking_complete,
+          bank_detail: verification.bank_connection_count
+            ? `${verification.bank_connection_count} institution${verification.bank_connection_count === 1 ? "" : "s"} connected`
+            : verification.bank_statement_months
+              ? `${verification.bank_statement_months} statement month${verification.bank_statement_months === 1 ? "" : "s"} received`
+              : "",
+          credit_complete: verification.owner_credit_complete,
+          credit_required: verification.required_credit_owner_count,
+          credit_done: verification.completed_credit_owner_count,
+          complete: state.precall.complete,
+          done_count: state.precall.done_count,
+          completed_at: null,
+        },
+      };
     } catch { return null; }
   }
   async function fetchOffer(code: string): Promise<RoomMerchantOffer | null> {
@@ -122,8 +175,17 @@ export default function BucketRequestPage() {
       return Array.isArray(data.events) ? data.events : [];
     } catch { return null; }
   }
-  async function refreshPrecall() { setPrecall(await fetchPrecall(passcode.trim())); }
-  async function refreshRoom() { setSession(await fetchAccessSession()); await refreshPrecall(); setOffer(await fetchOffer(passcode.trim())); setUpdates(await fetchUpdates(passcode.trim())); }
+  async function refreshPrecall() {
+    const loaded = await fetchPrecall(passcode.trim());
+    setPrecall(loaded?.precall ?? null);
+    if (loaded) setPrecallRoomKind(loaded.roomKind);
+  }
+  async function refreshRoom() {
+    setSession(await fetchAccessSession());
+    await refreshPrecall();
+    setOffer(await fetchOffer(passcode.trim()));
+    setUpdates(await fetchUpdates(passcode.trim()));
+  }
   async function openInvite() {
     if (!passcode.trim()) return;
     setIsAccessing(true); setStatus("");
@@ -133,9 +195,10 @@ export default function BucketRequestPage() {
       const waitingOffer = await fetchOffer(passcode.trim());
       const fileUpdates = await fetchUpdates(passcode.trim());
       setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus("");
-      setPrecall(prep); setPrecallLoaded(true); setOffer(waitingOffer); setUpdates(fileUpdates);
+      setPrecall(prep?.precall ?? null); setPrecallRoomKind(prep?.roomKind ?? "dealer"); setPrecallLoaded(true);
+      setOffer(waitingOffer); setUpdates(fileUpdates);
       // A booked call lands on its checklist until it is done; the URL still wins.
-      if (prep && !prep.complete && !searchParams.get("tab")) setActiveTab("precall");
+      if (prep && !prep.precall.complete && !searchParams.get("tab")) setActiveTab("precall");
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
@@ -192,7 +255,7 @@ export default function BucketRequestPage() {
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${missingDocs.length ? "attention" : ""}`}>{missingDocs.length ? `${missingDocs.length} action${missingDocs.length === 1 ? "" : "s"} needed` : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && missingDocs.length ? <span>{missingDocs.length}</span> : null}</button>)}</nav>
 
-      {activeTab === "precall" && precall ? <PrecallChecklist token={token} passcode={passcode.trim()} precall={precall} onChanged={refreshPrecall} onGoToDocuments={() => setActiveTab("documents")} /> : null}
+      {activeTab === "precall" && precall ? <PrecallChecklist token={token} passcode={passcode.trim()} precall={precall} roomKind={precallRoomKind} onChanged={refreshPrecall} onGoToDocuments={() => setActiveTab("documents")} /> : null}
       {activeTab === "precall" && !precall && precallLoaded ? <section className="application-room-section"><p>This room has no call to prepare for.</p></section> : null}
 
       {activeTab === "offer" && offer ? <MerchantOfferCard token={token} passcode={passcode.trim()} offer={offer} responderName={name} onChanged={setOffer} /> : null}

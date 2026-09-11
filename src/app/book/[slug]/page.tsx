@@ -41,6 +41,8 @@ interface PublicBookingSlot {
   date_label: string;
 }
 
+type BookingVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
+
 interface PublicBookingProfile {
   slug: string;
   agent_name: string;
@@ -58,6 +60,10 @@ interface PublicBookingProfile {
   /** The exact consent sentence the server stores as proof; rendered verbatim. */
   sms_disclosure_text?: string;
   precall_enabled?: boolean;
+  booking_questions?: Record<string, boolean>;
+  precall_default_variant?: BookingVariant;
+  precall_allowed_variants?: BookingVariant[];
+  precall_allow_vertical_choice?: boolean;
 }
 
 interface PublicBookingCreated {
@@ -71,6 +77,10 @@ interface BookingForm {
   full_name: string;
   email: string;
   phone: string;
+  business_name: string;
+  requested_amount: string;
+  vertical: BookingVariant;
+  preferred_bank_method: "" | "plaid" | "statements" | "decide_later";
   notes: string;
   transactional_sms_consent: boolean;
 }
@@ -94,6 +104,15 @@ function onAccent(hex: string): string {
   return L > 0.45 ? V.ink : "#FFFFFF";
 }
 
+function bookingVariantLabel(value: BookingVariant): string {
+  return {
+    dealer: "Dealer financing",
+    real_estate: "Real estate financing",
+    main_street: "Main Street business financing",
+    mca_refinance: "MCA refinance",
+  }[value];
+}
+
 export default function PublicBookingPage() {
   const params = useParams<{ slug: string }>();
   const slug = params?.slug ?? "";
@@ -104,6 +123,10 @@ export default function PublicBookingPage() {
     full_name: "",
     email: "",
     phone: "",
+    business_name: "",
+    requested_amount: "",
+    vertical: "main_street",
+    preferred_bank_method: "",
     notes: "",
     transactional_sms_consent: false,
   });
@@ -121,6 +144,10 @@ export default function PublicBookingPage() {
         const data = await api<PublicBookingProfile>(`/public/booking/${slug}`);
         if (cancelled) return;
         setProfile(data);
+        setForm((current) => ({
+          ...current,
+          vertical: data.precall_default_variant || data.precall_allowed_variants?.[0] || "main_street",
+        }));
         setStatus("ready");
       } catch (err) {
         if (cancelled) return;
@@ -161,8 +188,19 @@ export default function PublicBookingPage() {
     }, 60);
   };
 
-  const canSubmit =
-    !!selected && form.full_name.trim().length > 0 && /\S+@\S+\.\S+/.test(form.email) && validPhone(form.phone);
+  const questions = profile?.booking_questions ?? {};
+  const amountValue = Number(form.requested_amount.replace(/[$,\s]/g, ""));
+  const amountIsValid = !form.requested_amount.trim() || (Number.isFinite(amountValue) && amountValue > 0);
+  const canSubmit = Boolean(
+    selected
+    && form.full_name.trim().length > 0
+    && /\S+@\S+\.\S+/.test(form.email)
+    && (!questions.business_name || form.business_name.trim())
+    && validPhone(form.phone)
+    && amountIsValid
+    && (!questions.requested_amount || form.requested_amount.trim())
+    && (!questions.bank_statement || form.preferred_bank_method),
+  );
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -172,9 +210,18 @@ export default function PublicBookingPage() {
     try {
       const created = await api<PublicBookingCreated>(`/public/booking/${slug}`, {
         method: "POST",
-        // The link's origin hint (e.g. a rep's product booklet appends ?source=…)
-        // decides whether this is a rep-related booking on the server.
-        body: JSON.stringify({ ...form, starts_at: selected.starts_at, source: sourceHint }),
+        // The source hint is campaign attribution only. The authenticated host
+        // behind this slug determines whether the server opens Field Desk or
+        // AI Intake preparation.
+        body: JSON.stringify({
+          ...form,
+          business_name: form.business_name.trim() || null,
+          requested_amount: form.requested_amount.trim() ? amountValue : null,
+          vertical: profile?.precall_enabled ? form.vertical : null,
+          preferred_bank_method: form.preferred_bank_method || null,
+          starts_at: selected.starts_at,
+          source: sourceHint,
+        }),
       });
       setBooked(created);
       setStatus("success");
@@ -496,6 +543,17 @@ export default function PublicBookingPage() {
                     required
                   />
                 </Field>
+                {questions.business_name ? (
+                  <Field label="Business name" required>
+                    <input
+                      className="field"
+                      value={form.business_name}
+                      onChange={(e) => setForm((f) => ({ ...f, business_name: e.target.value }))}
+                      autoComplete="organization"
+                      required
+                    />
+                  </Field>
+                ) : null}
                 {/* Always asked. A host's `booking_questions.phone` setting can
                     no longer take this question off the page: the server needs a
                     number on every booking, and the room PIN is texted to it. */}
@@ -518,6 +576,45 @@ export default function PublicBookingPage() {
                     required
                   />
                 </Field>
+                {questions.requested_amount ? (
+                  <Field label="Requested funding amount" required>
+                    <input
+                      className="field"
+                      inputMode="decimal"
+                      value={form.requested_amount}
+                      onChange={(e) => setForm((f) => ({ ...f, requested_amount: e.target.value }))}
+                      placeholder="$250,000"
+                      required
+                    />
+                  </Field>
+                ) : null}
+                {profile.precall_enabled && profile.precall_allow_vertical_choice ? (
+                  <Field label="Financing need" required>
+                    <select
+                      className="field"
+                      value={form.vertical}
+                      onChange={(e) => setForm((f) => ({ ...f, vertical: e.target.value as BookingVariant }))}
+                    >
+                      {(profile.precall_allowed_variants ?? [profile.precall_default_variant ?? "main_street"]).map((value) => (
+                        <option key={value} value={value}>{bookingVariantLabel(value)}</option>
+                      ))}
+                    </select>
+                  </Field>
+                ) : null}
+                {questions.bank_statement ? (
+                  <Field label="Preferred banking evidence" required>
+                    <select
+                      className="field"
+                      value={form.preferred_bank_method}
+                      onChange={(e) => setForm((f) => ({ ...f, preferred_bank_method: e.target.value as BookingForm["preferred_bank_method"] }))}
+                    >
+                      <option value="">Choose one</option>
+                      <option value="plaid">Connect business bank securely</option>
+                      <option value="statements">Upload business bank statements</option>
+                      <option value="decide_later">Decide with my advisor</option>
+                    </select>
+                  </Field>
+                ) : null}
                 {form.phone.trim() && (
                   <label className="itemrow" style={{ alignItems: "flex-start", cursor: "pointer" }}>
                     <input

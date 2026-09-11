@@ -15,6 +15,7 @@ import { apiBase } from "@/lib/api";
 export type RoomOwner = {
   id: string; first_name: string; last_name: string; ownership_pct: number | null; is_primary: boolean;
   required: boolean; has_email: boolean; has_phone: boolean; credit_status: string; editable: boolean;
+  email?: string | null; phone?: string | null;
 };
 export type RoomPrecall = {
   enabled: boolean; starts_at: string | null; host_name: string | null; business_name: string | null;
@@ -26,8 +27,8 @@ export type RoomPrecall = {
 type OwnerDraft = { first_name: string; last_name: string; ownership_pct: string; email: string; phone: string };
 const EMPTY_OWNER: OwnerDraft = { first_name: "", last_name: "", ownership_pct: "", email: "", phone: "" };
 
-export function PrecallChecklist({ token, passcode, precall, onChanged, onGoToDocuments }: {
-  token: string; passcode: string; precall: RoomPrecall; onChanged: () => Promise<void> | void; onGoToDocuments: () => void;
+export function PrecallChecklist({ token, passcode, precall, roomKind = "dealer", onChanged, onGoToDocuments }: {
+  token: string; passcode: string; precall: RoomPrecall; roomKind?: "dealer" | "application"; onChanged: () => Promise<void> | void; onGoToDocuments: () => void;
 }) {
   const [status, setStatus] = useState<{ tone: "ok" | "bad" | ""; text: string }>({ tone: "", text: "" });
   const [busy, setBusy] = useState(false);
@@ -39,10 +40,15 @@ export function PrecallChecklist({ token, passcode, precall, onChanged, onGoToDo
   const [pinDismissed, setPinDismissed] = useState(false);
 
   const call = useCallback(async (path: string, method: string, body: Record<string, unknown>) => {
-    const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode, ...body }) });
+    const base = roomKind === "application" ? "application-profiles" : "dealer-os";
+    let payload: Record<string, unknown> = { passcode, ...body };
+    if (roomKind === "application" && (path === "/owners" || (path.startsWith("/owners/") && method === "PATCH"))) {
+      payload = { passcode, owner: body };
+    }
+    const res = await fetch(`${apiBase}/api/v1/${base}/public/room/${token}${path}`, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
     if (!res.ok) { const payload = await res.json().catch(() => null) as { detail?: string } | null; throw new Error(payload?.detail || "That did not work. Please try again."); }
     return res.status === 204 ? null : res.json();
-  }, [token, passcode]);
+  }, [token, passcode, roomKind]);
 
   // While an authorization tab is open on audit.*, poll so the step turns green
   // without the client having to refresh.
@@ -61,7 +67,7 @@ export function PrecallChecklist({ token, passcode, precall, onChanged, onGoToDo
 
   function startEdit(owner: RoomOwner) {
     setAdding(false); setEditing(owner.id);
-    setDraft({ first_name: owner.first_name, last_name: owner.last_name, ownership_pct: owner.ownership_pct == null ? "" : String(owner.ownership_pct), email: "", phone: "" });
+    setDraft({ first_name: owner.first_name, last_name: owner.last_name, ownership_pct: owner.ownership_pct == null ? "" : String(owner.ownership_pct), email: owner.email ?? "", phone: owner.phone ?? "" });
   }
   function ownerBody(): Record<string, unknown> {
     const pct = draft.ownership_pct.trim() === "" ? null : Number(draft.ownership_pct);
@@ -86,7 +92,7 @@ export function PrecallChecklist({ token, passcode, precall, onChanged, onGoToDo
       </div>
     </div>
 
-    {precall.passcode_needs_setup && !pinDismissed ? <div className="application-room-card application-room-pin-setup">
+    {roomKind === "dealer" && precall.passcode_needs_setup && !pinDismissed ? <div className="application-room-card application-room-pin-setup">
       <div><b>Choose a PIN you'll remember</b><p>We sent you a generated PIN. Replace it with six digits of your own — you'll use it every time you open this room.</p></div>
       <div className="application-room-pin-row">
         <input inputMode="numeric" maxLength={6} placeholder="New 6-digit PIN" value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 6))} />
@@ -115,7 +121,17 @@ export function PrecallChecklist({ token, passcode, precall, onChanged, onGoToDo
           </div>)}
           {adding ? <OwnerForm draft={draft} setDraft={setDraft} requiresContact={requiresContact} busy={busy} submitLabel="Add owner"
             onCancel={() => setAdding(false)}
-            onSubmit={() => void run("Owner added.", async () => { await call("/owners", "POST", ownerBody()); setAdding(false); setDraft(EMPTY_OWNER); })} /> : null}
+            onSubmit={() => void run("Owner added.", async () => {
+              await call(
+                "/owners",
+                "POST",
+                roomKind === "application" && precall.owners.length === 0
+                  ? { ...ownerBody(), is_primary: true }
+                  : ownerBody(),
+              );
+              setAdding(false);
+              setDraft(EMPTY_OWNER);
+            })} /> : null}
           {!adding && precall.owners.length < precall.max_owners ? <button className="application-room-secondary" disabled={busy} onClick={() => { setEditing(null); setDraft(EMPTY_OWNER); setAdding(true); }}><Icon name="plus" size={14} />Add another owner</button> : null}
           {!precall.ownership_complete && precall.owners.some((owner) => owner.ownership_pct != null) ? <span className="application-room-note">The percentages need to add up to exactly 100%.</span> : null}
         </div>
@@ -134,14 +150,18 @@ export function PrecallChecklist({ token, passcode, precall, onChanged, onGoToDo
         {!creditLocked && !precall.credit_complete ? <div className="application-room-step-body application-room-credit">
           {requiredOwners.map((owner) => <div key={owner.id} className="application-room-owner">
             <div><b>{owner.first_name} {owner.last_name}</b><small>{creditLabel(owner.credit_status)}</small></div>
-            {owner.credit_status === "done" || owner.credit_status === "declined" ? null : <button className="application-room-primary" disabled={busy} onClick={() => void run(owner.is_primary ? "Authorization form opened in a new tab." : `Link sent to ${owner.first_name}.`, async () => {
-              const result = await call(`/owners/${owner.id}/credit-link`, "POST", {}) as { mode: "self" | "sent"; path?: string; detail?: string };
-              if (result.mode === "self" && result.path) {
+            {owner.credit_status === "done" || owner.credit_status === "declined" ? null : <button className="application-room-primary" disabled={busy} onClick={() => void run(roomKind === "application" || !owner.is_primary ? `Private link sent to ${owner.first_name}.` : "Authorization form opened in a new tab.", async () => {
+              const result = await call(
+                roomKind === "application" ? `/owners/${owner.id}/credit-invite` : `/owners/${owner.id}/credit-link`,
+                "POST",
+                roomKind === "application" ? { channel: "email" } : {},
+              ) as { mode?: "self" | "sent"; path?: string; detail?: string };
+              if (roomKind === "dealer" && result.mode === "self" && result.path) {
                 const returnTo = encodeURIComponent(`${window.location.origin}/buckets/request/${token}?tab=precall`);
                 window.open(`${auditOrigin()}${result.path}&return=${returnTo}`, "_blank", "noopener");
                 setConsentTabOpen(true);
               }
-            })}>{owner.is_primary ? (owner.credit_status === "sent" ? "Open my authorization again" : "I'm " + owner.first_name + " — authorize now") : (owner.credit_status === "sent" ? `Resend ${owner.first_name}'s link` : `Send ${owner.first_name} their link`)}</button>}
+            })}>{roomKind === "application" ? (owner.credit_status === "sent" ? `Resend ${owner.first_name}'s private link` : `Email ${owner.first_name} a private link`) : owner.is_primary ? (owner.credit_status === "sent" ? "Open my authorization again" : "I'm " + owner.first_name + " — authorize now") : (owner.credit_status === "sent" ? `Resend ${owner.first_name}'s link` : `Send ${owner.first_name} their link`)}</button>}
           </div>)}
           {consentTabOpen ? <span className="application-room-note">Waiting for the authorization to complete — this updates on its own.</span> : null}
         </div> : null}

@@ -163,6 +163,11 @@ export interface AppointmentPrecallStep {
 export interface AppointmentPrecall {
   status: "in_progress" | "complete" | "stopped" | "disabled";
   dealer_id: string | null;
+  target_kind: "field_desk" | "ai_intake";
+  target_id: string | null;
+  intake_id: string | null;
+  profile_id: string | null;
+  href: string | null;
   case_ref: string | null;
   lifecycle: string | null;
   room_url: string | null;
@@ -173,6 +178,15 @@ export interface AppointmentPrecall {
   next_step_at: string | null;
   readiness: AppointmentPrecallReadiness | null;
   steps: AppointmentPrecallStep[];
+}
+
+export interface AppointmentPrecallActionResult {
+  ok: boolean;
+  detail: string;
+  /** Plaintext is returned only when a staff member rotates the PIN. */
+  room_passcode: string | null;
+  room_url: string | null;
+  precall: AppointmentPrecall | null;
 }
 
 export interface AppointmentDraftFile {

@@ -18,17 +18,19 @@ import {
   type AppointmentFileAction,
   type AppointmentFileOption,
   type AppointmentOutcomeDefinition,
+  type AppointmentPrecallActionResult,
   type AppointmentWorkspace,
   type RepAppointment,
 } from "@/lib/repAppointments";
 
-type WorkspaceTab = "overview" | "notes" | "outcome" | "file" | "edit";
+type WorkspaceTab = "overview" | "notes" | "outcome" | "file" | "preparation" | "edit";
 
 const TAB_LABELS: Record<WorkspaceTab, string> = {
   overview: "Overview",
   notes: "Notes",
   outcome: "Outcome",
   file: "File",
+  preparation: "Preparation",
   edit: "Edit",
 };
 
@@ -72,7 +74,7 @@ function precallLabel(precall: NonNullable<AppointmentWorkspace["appointment"]["
 }
 
 function statusTone(status: string): "ok" | "warn" | "bad" | "mut" | "acc" | "pet" {
-  if (["completed", "converted", "confirmed", "sent", "connected"].includes(status)) return "ok";
+  if (["completed", "converted", "confirmed", "sent", "delivered", "accepted", "connected"].includes(status)) return "ok";
   if (["failed", "cancelled", "declined", "not_qualified"].includes(status)) return "bad";
   if (["pending", "needs_action", "follow_up", "no_show"].includes(status)) return "warn";
   return "mut";
@@ -119,9 +121,10 @@ export function CalendarV2AppointmentDrawer({
       capabilities.can_add_notes ? "notes" : null,
       capabilities.can_manage_outcomes ? "outcome" : null,
       capabilities.can_link_files || capabilities.can_start_application ? "file" : null,
+      capabilities.can_manage_precall && workspace.data?.appointment.precall ? "preparation" : null,
       capabilities.can_edit ? "edit" : null,
     ].filter((value): value is WorkspaceTab => value !== null);
-  }, [workspace.data?.capabilities]);
+  }, [workspace.data?.appointment.precall, workspace.data?.capabilities]);
 
   useEffect(() => {
     if (!visibleTabs.includes(tab)) setTab("overview");
@@ -182,6 +185,9 @@ export function CalendarV2AppointmentDrawer({
             {tab === "file" && (workspace.data.capabilities.can_link_files || workspace.data.capabilities.can_start_application) ? (
               <FileTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} onOutcome={() => setTab("outcome")} />
             ) : null}
+            {tab === "preparation" && workspace.data.capabilities.can_manage_precall && workspace.data.appointment.precall ? (
+              <PreparationTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} />
+            ) : null}
             {tab === "edit" && workspace.data.capabilities.can_edit ? <EditTab workspace={workspace.data} apiCall={apiCall} refresh={refresh} onClose={onClose} /> : null}
           </main>
         </div>
@@ -217,7 +223,7 @@ function OverviewTab({ workspace, onTab }: { workspace: AppointmentWorkspace; on
         </Panel>
       </section>
       <aside className="calendar-v2-context-column">
-        <Panel title="Appointment state">
+        <Panel title="Appointment state" actions={appointment.precall && workspace.capabilities.can_manage_precall ? <Btn size="sm" onClick={() => onTab("preparation")}>Open preparation</Btn> : null}>
           <div className="calendar-v2-status-stack">
             <StatusRow label="Origin" value={originLabel(appointment.origin)} tone="mut" />
             <StatusRow label="CRM" value={appointmentCrmLabel(appointment.crm_status)} tone={statusTone(appointment.crm_status)} />
@@ -515,6 +521,132 @@ function bookingReviewLabel(status: string): string {
     empty: "Empty",
     unlinked: "No file linked",
   } as Record<string, string>)[status] ?? status.replaceAll("_", " ");
+}
+
+function PreparationTab({ workspace, apiCall, refresh }: {
+  workspace: AppointmentWorkspace;
+  apiCall: ReturnType<typeof useAuthedApi>;
+  refresh: () => Promise<void>;
+}) {
+  const appointment = workspace.appointment;
+  const precall = appointment.precall;
+  const [channel, setChannel] = useState<"email" | "sms" | "both">("email");
+  const [rotateConfirmed, setRotateConfirmed] = useState(false);
+  const [result, setResult] = useState<AppointmentPrecallActionResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const action = useMutation({
+    mutationFn: ({ name, selectedChannel }: { name: "resend" | "rotate_pin" | "stop" | "resume"; selectedChannel?: "email" | "sms" | "both" }) => (
+      apiCall<AppointmentPrecallActionResult>(`/dealer-os/appointments/${appointment.id}/precall`, {
+        method: "POST",
+        body: JSON.stringify({ action: name, channel: selectedChannel ?? "both" }),
+      })
+    ),
+    onSuccess: async (data) => {
+      setResult(data);
+      setRotateConfirmed(false);
+      setError(null);
+      await refresh();
+    },
+    onError: (nextError) => setError(apiErrorMessage(nextError, "The preparation action could not be completed.")),
+  });
+
+  if (!precall) return <StatusLine tone="warn">Pre-call preparation was not started for this appointment.</StatusLine>;
+  const readiness = precall.readiness;
+  const fileHref = precall.href || (precall.intake_id ? `/admin/ai-underwriter-leads?lead=${precall.intake_id}` : null);
+  const steps = [...(precall.steps ?? [])].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
+  const copyValue = async (value: string) => {
+    await navigator.clipboard.writeText(value);
+    setResult((current) => current ? { ...current, detail: "Copied to clipboard." } : {
+      ok: true,
+      detail: "Copied to clipboard.",
+      room_passcode: null,
+      room_url: precall.room_url,
+      precall,
+    });
+  };
+
+  return (
+    <div className="calendar-v2-preparation-layout">
+      <section className="calendar-v2-primary-column">
+        <Panel
+          title="Client preparation"
+          sub="Ownership, LLC banking, and each qualifying owner's private credit authorization stay attached to the exact draft opened for this appointment."
+          actions={<CellChip tone={precall.status === "complete" ? "ok" : precall.status === "stopped" ? "warn" : "acc"}>{precallLabel(precall)}</CellChip>}
+        >
+          <div className="calendar-v2-preparation-progress">
+            <PreparationCheck label="Business ownership" complete={Boolean(readiness?.ownership_complete && readiness.contact_complete)} detail={readiness ? `${readiness.ownership_total.toFixed(2)}% allocated` : "Waiting for room activity"} />
+            <PreparationCheck label="Business banking" complete={Boolean(readiness?.bank_complete)} detail={readiness?.bank_detail || "Plaid connection or uploaded statements"} />
+            <PreparationCheck label="Owner credit" complete={Boolean(readiness?.credit_complete)} detail={readiness ? `${readiness.credit_done} of ${readiness.credit_required} complete` : "Waiting for ownership"} />
+          </div>
+          {readiness?.missing.length ? <div className="calendar-v2-preparation-missing"><span className="lbl">Still needed</span>{readiness.missing.map((item) => <span key={item}>{item}</span>)}</div> : null}
+          <div className="calendar-v2-preparation-links">
+            {precall.room_url ? <a className="btn pri" href={precall.room_url} target="_blank" rel="noreferrer"><Icon name="external" size={14} />Open client room</a> : null}
+            {precall.room_url ? <Btn onClick={() => void copyValue(precall.room_url!)}><Icon name="copy" size={14} />Copy room link</Btn> : null}
+            {fileHref ? <Link className="btn" href={fileHref}><Icon name="file" size={14} />Open draft file</Link> : null}
+          </div>
+        </Panel>
+
+        <Panel title="Delivery timeline" sub="Provider acceptance and failures are shown per scheduled message.">
+          <div className="calendar-v2-preparation-timeline">
+            {steps.map((step) => (
+              <div key={step.id}>
+                <span className={`calendar-v2-delivery-dot ${statusTone(step.status)}`} />
+                <div>
+                  <strong>{(step.step_key || "preparation message").replaceAll("_", " ")}</strong>
+                  <small>{step.channel.toUpperCase()} · Due {formatWhen(step.due_at)}</small>
+                  <p>{step.detail || (step.status === "pending" ? "Waiting to send" : "Provider result not recorded")}</p>
+                  {step.sent_at ? <small>Sent {formatWhen(step.sent_at)}</small> : null}
+                </div>
+                <CellChip tone={statusTone(step.status)}>{step.status}</CellChip>
+              </div>
+            ))}
+            {!steps.length ? <div className="calendar-v2-empty-compact">No preparation messages are scheduled for this appointment.</div> : null}
+          </div>
+        </Panel>
+      </section>
+
+      <aside className="calendar-v2-context-column">
+        <Panel title="Send room access">
+          <Field label="Delivery channel">
+            <Select value={channel} onChange={(event) => setChannel(event.target.value as typeof channel)}>
+              <option value="email">Email room link</option>
+              <option value="sms">SMS, consent required</option>
+              <option value="both">Email and SMS</option>
+            </Select>
+          </Field>
+          <Btn variant="pri" onClick={() => action.mutate({ name: "resend", selectedChannel: channel })} disabled={action.isPending}>
+            <Icon name="send" size={14} />{action.isPending ? "Sending..." : "Send preparation access"}
+          </Btn>
+          <p className="sub">Email sends the room link. A PIN is only included through the separately controlled PIN delivery path.</p>
+        </Panel>
+
+        <Panel title="Preparation controls">
+          {precall.status === "stopped" ? (
+            <Btn onClick={() => action.mutate({ name: "resume" })} disabled={action.isPending}><Icon name="refresh" size={14} />Resume future nudges</Btn>
+          ) : (
+            <Btn onClick={() => action.mutate({ name: "stop" })} disabled={action.isPending || precall.status === "complete"}><Icon name="x" size={14} />Stop future nudges</Btn>
+          )}
+          <label className="calendar-v2-confirm mt">
+            <input type="checkbox" checked={rotateConfirmed} onChange={(event) => setRotateConfirmed(event.target.checked)} />
+            <span><strong>Review PIN rotation</strong><small>The previous room PIN stops working immediately.</small></span>
+          </label>
+          <Btn onClick={() => action.mutate({ name: "rotate_pin", selectedChannel: channel })} disabled={!rotateConfirmed || action.isPending}><Icon name="lock" size={14} />Rotate room PIN</Btn>
+        </Panel>
+
+        {result ? <StatusLine tone={result.ok ? "ok" : "bad"}>{result.detail}</StatusLine> : null}
+        {result?.room_passcode ? (
+          <Panel title="New room PIN" sub="This is the only time the plaintext PIN is displayed. Share it separately from the room-link email.">
+            <div className="calendar-v2-room-pin"><strong>{result.room_passcode}</strong><Btn size="sm" onClick={() => void copyValue(result.room_passcode!)}><Icon name="copy" size={13} />Copy PIN</Btn></div>
+          </Panel>
+        ) : null}
+        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+      </aside>
+    </div>
+  );
+}
+
+function PreparationCheck({ label, complete, detail }: { label: string; complete: boolean; detail: string }) {
+  return <div className={complete ? "complete" : "pending"}><span><Icon name={complete ? "check" : "clock"} size={16} /></span><div><strong>{label}</strong><small>{detail}</small></div></div>;
 }
 
 function EditTab({ workspace, apiCall, refresh, onClose }: { workspace: AppointmentWorkspace; apiCall: ReturnType<typeof useAuthedApi>; refresh: () => Promise<void>; onClose: () => void }) {

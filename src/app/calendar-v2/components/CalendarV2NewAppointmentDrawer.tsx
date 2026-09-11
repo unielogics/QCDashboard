@@ -17,6 +17,13 @@ const APPOINTMENT_TYPES = [
   ["lender_call", "Lender call"],
 ] as const;
 
+const PRECALL_VARIANTS = [
+  ["dealer", "Dealer financing"],
+  ["real_estate", "Real estate"],
+  ["main_street", "Main Street business"],
+  ["mca_refinance", "MCA refinance"],
+] as const;
+
 function toLocalInput(value: Date): string {
   const offset = value.getTimezoneOffset() * 60_000;
   return new Date(value.getTime() - offset).toISOString().slice(0, 16);
@@ -49,6 +56,8 @@ export function CalendarV2NewAppointmentDrawer({
   const [joinUrl, setJoinUrl] = useState("");
   const [reason, setReason] = useState("");
   const [selectedFile, setSelectedFile] = useState<AppointmentFileOption | null>(null);
+  const [startPrecall, setStartPrecall] = useState(false);
+  const [precallVariant, setPrecallVariant] = useState("main_street");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -71,14 +80,26 @@ export function CalendarV2NewAppointmentDrawer({
     setJoinUrl("");
     setReason("");
     setSelectedFile(null);
+    setStartPrecall(false);
+    setPrecallVariant("main_street");
     setSaving(false);
     setError(null);
   }, [initialDate, open]);
 
+  const preparationAllowed = kind !== "signing" && kind !== "lender_call" && !selectedFile;
   const canSave = useMemo(
-    () => Boolean(name.trim() && startsAt && (email.trim() || phone.trim())),
-    [email, name, phone, startsAt],
+    () => Boolean(
+      name.trim()
+      && startsAt
+      && (email.trim() || phone.trim())
+      && (!startPrecall || (preparationAllowed && /\S+@\S+\.\S+/.test(email))),
+    ),
+    [email, name, phone, preparationAllowed, startPrecall, startsAt],
   );
+
+  useEffect(() => {
+    if (!preparationAllowed) setStartPrecall(false);
+  }, [preparationAllowed]);
 
   const create = async () => {
     if (!canSave || saving) return;
@@ -105,9 +126,9 @@ export function CalendarV2NewAppointmentDrawer({
           program_key: "general_funding_discussion",
           program_name: "General funding discussion / Not decided yet",
           transactional_sms_consent: false,
-          // Booked from the operator calendar: no file opens at booking; the
-          // outcome decides (intake, funding loan, link, or promote a draft).
           origin: "calendar",
+          start_precall_preparation: startPrecall,
+          precall_variant: precallVariant,
         }),
       });
       if (selectedFile) {
@@ -204,6 +225,40 @@ export function CalendarV2NewAppointmentDrawer({
               placeholder="Choose or search by person, company, contact, QC reference, or file ID"
             />
           </Field>
+        </Panel>
+
+        <Panel title="Pre-call preparation" sub="Optionally open a new AI Intake draft and secure client room when this appointment is created.">
+          <label className="calendar-v2-toggle">
+            <span>
+              <strong>Start pre-call preparation</strong>
+              <small>The client can add ownership, connect LLC bank accounts or upload statements, and receive private owner credit-consent links.</small>
+            </span>
+            <input
+              type="checkbox"
+              checked={startPrecall}
+              disabled={!preparationAllowed}
+              onChange={(event) => setStartPrecall(event.target.checked)}
+            />
+          </label>
+          {!preparationAllowed ? (
+            <StatusLine tone="warn">
+              {selectedFile
+                ? "This appointment already targets an exact file. Manage preparation from that file or create the appointment without the attachment."
+                : "Signing and lender calls do not create application drafts automatically."}
+            </StatusLine>
+          ) : null}
+          {startPrecall ? (
+            <div className="calendar-v2-form-grid mt">
+              <Field label="Application type" req>
+                <Select value={precallVariant} onChange={(event) => setPrecallVariant(event.target.value)}>
+                  {PRECALL_VARIANTS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+                </Select>
+              </Field>
+              <div className="calendar-v2-inline-note">
+                A valid email is required. Email carries the room link; the six-digit PIN is shared separately.
+              </div>
+            </div>
+          ) : null}
         </Panel>
         {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       </div>
