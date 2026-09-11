@@ -7,7 +7,8 @@
 // quietly fall out of the rule.
 
 import { describe, expect, it } from "vitest";
-import { blankFormulaNames, indexFormulas, shownFigure } from "../SheetGrid";
+import { blankFormulaNames, indexFormulas, shownFigure, shownFigures } from "../SheetGrid";
+import { cellText, toTsv } from "../clipboard";
 import { recompute } from "../compute";
 import { BS_LAYOUT, DS_LAYOUT, PFS_LAYOUT, PFS_SCHEMA, PL_LAYOUT, PL_SCHEMA, BS_SCHEMA } from "./fixtures.test";
 import type { SheetCell, SheetLayout, SheetValues } from "../types";
@@ -112,5 +113,51 @@ describe("a computed cell whose inputs are all blank", () => {
     expect(some.has("net_worth")).toBe(false);
     expect(some.has("total_liabilities")).toBe(true);
     expect(recompute("pfs", PFS_SCHEMA, values).total_assets).toBe(500);
+  });
+});
+
+// ── and what the clipboard takes ───────────────────────────────────────────
+//
+// The screen withholds a subtotal of nothing; a copy that put `0` there
+// instead would be the withheld claim made again, in a file somebody sends on.
+
+describe("copying a sheet that says nothing", () => {
+  it("copies a blank total as a blank field, not as a zero", () => {
+    const values: SheetValues = {};
+    const computed = recompute("debt_schedule", null, values);
+    // The arithmetic does answer zero — that is not the bug.
+    expect(computed.total_balance).toBe(0);
+
+    const shown = shownFigures(DS_LAYOUT, computed, blanks(DS_LAYOUT, values));
+    expect(shown.total_balance).toBe(null);
+    expect(cellText(formulaCell(DS_LAYOUT, "total_balance"), values, computed)).toBe("0");
+    expect(cellText(formulaCell(DS_LAYOUT, "total_balance"), values, shown)).toBe("");
+  });
+
+  it("still copies a total that has a figure behind it", () => {
+    const values: SheetValues = { "d1.balance": "12000" };
+    const computed = recompute("debt_schedule", null, values);
+    const shown = shownFigures(DS_LAYOUT, computed, blanks(DS_LAYOUT, values));
+    expect(shown.total_balance).toBe(12000);
+    expect(cellText(formulaCell(DS_LAYOUT, "total_balance"), values, shown)).toBe("12000");
+    // The payment column has nothing in it and stays blank.
+    expect(shown.total_monthly_payment).toBe(null);
+  });
+
+  it("leaves no zeros in a copy of an untouched personal statement", () => {
+    const values: SheetValues = {};
+    const computed = recompute("pfs", PFS_SCHEMA, values);
+    const shown = shownFigures(PFS_LAYOUT, computed, blanks(PFS_LAYOUT, values));
+    const first = PFS_LAYOUT.rows[0];
+    const last = PFS_LAYOUT.rows[PFS_LAYOUT.rows.length - 1];
+    const columns = PFS_LAYOUT.columns;
+    const block = toTsv(
+      PFS_LAYOUT,
+      values,
+      shown,
+      { r: first.r, c: columns[0].c },
+      { r: last.r, c: columns[columns.length - 1].c },
+    );
+    expect(block).not.toMatch(/(^|\t)0(\t|$)/m);
   });
 });

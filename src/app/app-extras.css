@@ -4228,17 +4228,27 @@ a.pick { color: inherit; text-decoration: none; }
    Column widths come from the layout (the workbook's own character units,
    converted in `SheetGrid.tsx`) and are set per grid via the `--sg-cols`
    custom property, so every row lines up with the heading above it and with
-   the .xlsx somebody downloads. Those widths are the floor, not the ceiling:
+   the .xlsx somebody downloads. A list sheet is given one track more than it
+   has columns — the gutter each line's remove control sits in — and every row
+   emits a closing cell for it, the column heads included, so nothing goes out
+   of step. Those widths are the floor, not the ceiling:
    `--sg-cols` makes the label column `minmax(natural, 1fr)` and `--sg-natural`
    carries the sheet's total, so a sheet narrower than the box grows into it up
    to a page width and a sheet wider than the box scrolls sideways as before.
    =========================================================================== */
 
-/* How wide a sheet is allowed to read as a page. A statement whose columns add
-   up to less than this grows into it and stops; one that is already wider is
-   not squeezed. Around a line length a reader can track from the label on the
-   left to the figure on the right. */
-.sg { display: grid; gap: 10px; min-width: 0; --sg-page: 1140px; }
+/* The worksheet is a column: toolbar, sheet, footnote, tabs — in that order,
+   with the sheet taking whatever height is going spare so the tab strip ends
+   up on the bottom edge rather than halfway up a tall drawer.
+
+   `--sg-page` is how wide a sheet is allowed to read as a page. A statement
+   whose columns add up to less than this grows into it and stops; one that is
+   already wider is not squeezed. Around a line length a reader can track from
+   the label on the left to the figure on the right. */
+.sg {
+  display: flex; flex-direction: column; gap: 10px; min-width: 0;
+  --sg-page: 1140px;
+}
 
 /* ── the strip above the grid ─────────────────────────────────────────── */
 
@@ -4252,6 +4262,13 @@ a.pick { color: inherit; text-decoration: none; }
 /* The live half fills this. It is empty and 0-wide until it does. */
 .sg-presence { display: flex; align-items: center; gap: 6px; min-height: 24px; }
 .sg-toolbar-actions { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+/* "Add a line" is the one action on this toolbar that makes something rather
+   than sending or downloading it, and it is the design system's success
+   colour — `--ok`, not a hex of its own. */
+.sg-addrow { border-color: color-mix(in srgb, var(--ok) 38%, var(--line)); background: var(--ok-tint); color: var(--ok); }
+.sg-addrow:hover { background: color-mix(in srgb, var(--ok) 14%, var(--ok-tint)); border-color: var(--ok); }
+.sg-addrow:disabled { opacity: 0.55; }
+
 .sg-notice {
   display: flex; align-items: center; gap: 10px; margin: 0;
   padding: 7px 11px; border: 1px solid var(--accent-200); border-radius: var(--r-sm);
@@ -4262,6 +4279,12 @@ a.pick { color: inherit; text-decoration: none; }
 
 .sg-wrap {
   position: relative;
+  /* Takes whatever height the worksheet's box has left over, which is what
+     puts the tab strip on the bottom edge instead of halfway up a tall drawer.
+     In a box with no height of its own the sheet is still its own height, up
+     to the cap below. */
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
   max-height: min(70vh, 760px);
   border: 1px solid var(--line2);
@@ -4356,6 +4379,30 @@ a.pick { color: inherit; text-decoration: none; }
 .sg-row > .sg-cell:first-child { position: sticky; left: 0; z-index: 1; }
 .sg-r-colhead > .sg-cell:first-child { z-index: 4; }
 
+/* ── the remove control on a list row ─────────────────────────────────── */
+
+/* The last track of a list sheet. Every row has one, so the columns and the
+   ARIA column count stay in step; only a row somebody may remove has anything
+   in it. The sheet's own last column loses its hairline here rather than at
+   `:last-child`, which is now the gutter. */
+.sg-rowend { justify-content: center; padding: 0; border-right: 0; cursor: default; }
+.sg-cell:has(+ .sg-rowend) { border-right: 0; }
+.sg-rowdel {
+  display: grid; place-items: center;
+  width: 24px; height: 24px; padding: 0;
+  border: 1px solid transparent; border-radius: 7px;
+  background: transparent; color: var(--muted);
+  cursor: pointer; opacity: 0;
+  transition: opacity 90ms linear;
+}
+/* Dimmed, never absent: `display: none` until hover is a control a keyboard
+   cannot reach and a screen reader never hears about. */
+.sg-row:hover .sg-rowdel, .sg-rowdel:focus, .sg-rowdel:focus-visible, .sg-rowdel:hover { opacity: 1; }
+.sg-rowdel:hover { border-color: var(--line2); background: var(--surface); color: var(--danger); }
+.sg-rowdel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Where there is no pointer there is no hover to reveal it. */
+@media (hover: none) { .sg-rowdel { opacity: 1; } }
+
 /* ── selection ────────────────────────────────────────────────────────── */
 
 .sg-inrange { background: var(--accent-100); }
@@ -4400,7 +4447,17 @@ a.pick { color: inherit; text-decoration: none; }
 
 /* ── tabs and footnote ────────────────────────────────────────────────── */
 
-.sg-tabs { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+/* The bottom bar. `margin-top: auto` is what pins it: in a worksheet with
+   height to spare — the fullscreen drawer — the strip sits on the bottom edge
+   above the drawer's own footer, and the grid takes everything above it. It is
+   deliberately outside `.sg-wrap`, so the sheet scrolls under it and it is
+   always on screen. */
+.sg-tabs {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
 .sg-tabs .seg { flex-wrap: wrap; }
 .sg-tabchip { margin-left: 6px; }
 .sg-viewonly {

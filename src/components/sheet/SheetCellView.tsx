@@ -22,6 +22,7 @@
 
 import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { cx } from "@/components/ds";
+import { Icon } from "@/components/design-system/Icon";
 import { formatCount, formatMoney, formatRatio, parseMoney, parseRate } from "./money";
 import type { CellMark } from "./useSheetValues";
 import type { Editing } from "./useSelection";
@@ -179,6 +180,54 @@ function SheetCellViewInner({
 }
 
 export const SheetCellView = memo(SheetCellViewInner);
+
+/** The cell at the end of a list row — the one place a line can be taken away.
+ *
+ *  A toolbar button that removes "the current line" acts on wherever the caret
+ *  happens to be, and the caret is not always where the eye is: that is how
+ *  somebody deletes the wrong debt. This control sits *on* the row it removes
+ *  and says which row that is in its own accessible name — the lender once one
+ *  has been typed, the line's position in the list until then. Never a bare
+ *  "Remove", which is the same ambiguity written smaller.
+ *
+ *  Every row is given this cell, the column heads included, so the grid's
+ *  tracks, the `aria-colindex` sequence and the number of cells in a row all
+ *  stay in step; only a row a person may actually remove gets the button
+ *  inside it. It is dimmed until the row is hovered or the button is focused,
+ *  and it is a real button throughout — reachable by Tab, never `display:none`.
+ *
+ *  Keystrokes stop here. The grid's one delegated `keydown` reads Enter as
+ *  "open this cell" and calls `preventDefault`, and `preventDefault` on Enter
+ *  is precisely what stops a focused button from firing.
+ */
+export function SheetRowEnd({
+  ariaRow,
+  ariaCol,
+  label,
+  onRemove,
+}: {
+  ariaRow: number;
+  ariaCol: number;
+  /** The control's accessible name. Absent when there is nothing to remove. */
+  label?: string | null;
+  onRemove?: (() => void) | null;
+}) {
+  return (
+    <div
+      role="gridcell"
+      aria-rowindex={ariaRow}
+      aria-colindex={ariaCol}
+      className="sg-cell sg-rowend"
+      onKeyDown={(event) => event.stopPropagation()}
+    >
+      {onRemove && label ? (
+        <button type="button" className="sg-rowdel" aria-label={label} title={label} onClick={() => onRemove()}>
+          <Icon name="trash" size={13} aria-hidden="true" />
+        </button>
+      ) : null}
+    </div>
+  );
+}
 
 /** The editor, mounted only while the cell is open so its draft starts fresh
  *  every time. A seed is the character that opened it — the old value is gone,

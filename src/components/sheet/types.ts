@@ -69,6 +69,28 @@ export type SheetRow = {
   ordinal?: number | null;
 };
 
+/** Whether this row is one line of a list — the debt schedule's debts, a
+ *  personal statement's supporting schedules — as opposed to a column head, a
+ *  section heading or the total line under one. Those carry the block too.
+ *
+ *  It answers two questions that have to agree: which rows a person may take
+ *  off the sheet, and how many lines the sheet is showing when it asks the
+ *  server to add or remove one. A row-shaped predicate, so it lives with the
+ *  row rather than in either of the two callers.
+ */
+export function isListRow(row: SheetRow): boolean {
+  return row.kind === "data" && !!row.block && !!row.row_key;
+}
+
+/** How many lines the grid is showing for one list, blank lines included.
+ *  The server pads a short list up to this count before adding or removing,
+ *  so the count moves by one from the picture on screen rather than from the
+ *  shorter list the file happens to hold. */
+export function visibleLines(rows: SheetRow[] | undefined, block: string | null | undefined): number {
+  if (!block) return 0;
+  return (rows ?? []).filter((row) => isListRow(row) && row.block === block).length;
+}
+
 export type SheetLayout = {
   kind: SheetKind;
   title: string;

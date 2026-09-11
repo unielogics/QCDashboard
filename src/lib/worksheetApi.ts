@@ -105,6 +105,11 @@ export type WorksheetRowOp = {
   /** Which supporting schedule on the 413. The debt schedule is one list and
    *  ignores it. */
   block?: string | null;
+  /** Lines the grid is showing for that list, blank ones included. The server
+   *  brings a short stored list up to this before adding or removing, so the
+   *  count moves from what is on screen. Both row endpoints read it; both
+   *  transports below send the whole op, so it needs no other plumbing. */
+  visible?: number | null;
 };
 
 export type WorksheetRowResult = {

@@ -1,6 +1,11 @@
 "use client";
 
-// The worksheet: a toolbar, one grid, and the four tabs under it.
+// The worksheet: a toolbar, one grid, and the four tabs along the bottom edge.
+//
+// The tab strip is the last thing in the box on purpose. It is where a
+// workbook keeps its tabs, it is where the owner asked for them, and being
+// outside the grid's scroll box means the sheet scrolls under it rather than
+// carrying it out of view.
 //
 // This is the stateful piece the two containers mount — the desk's fullscreen
 // drawer and the no-login link page — and it is deliberately the *only* place
@@ -25,6 +30,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Btn } from "@/components/ds";
+import { Icon } from "@/components/design-system/Icon";
 import { SheetGrid, type GridCursor } from "./SheetGrid";
 import { SheetTabs, type SheetTab } from "./SheetTabs";
 import { SheetToolbar } from "./SheetToolbar";
@@ -260,19 +266,41 @@ export function Worksheet({
   // ── row buttons ─────────────────────────────────────────────────────────
 
   const listSheet = !!shown && LIST_SHEETS.includes(shown);
-  const block = cursor?.block ?? null;
-  const canAddRow = canEdit && listSheet && !!onRowOp && !!block;
-  const canRemoveRow = canAddRow && !!cursor?.rowKey && !lockedRows.has(cursor.rowKey);
+  const rowOps = canEdit && listSheet && !!onRowOp;
+
+  /** Every list on this sheet, in the order the rows are drawn. The debt
+   *  schedule has one; the personal statement has one per supporting
+   *  schedule. */
+  const blocks = useMemo(() => {
+    const seen: string[] = [];
+    for (const row of state?.layout.rows ?? []) {
+      if (row.block && !seen.includes(row.block)) seen.push(row.block);
+    }
+    return seen;
+  }, [state?.layout.rows]);
+
+  // Which list a new line joins: the one the caret is in, and — only when the
+  // sheet has a single list and there is no doubt about the answer — that one.
+  // "Add a line" that disappears whenever the caret is on the business-name
+  // field is a button somebody has to go hunting for.
+  const block = cursor?.block ?? (blocks.length === 1 ? blocks[0] : null);
+  const canAddRow = rowOps && !!block;
 
   const addRow = useCallback(() => {
     if (!shown || !block) return;
     void store.rowOp({ sheet: shown, op: "insert", block, after: cursor?.rowKey ?? null });
   }, [block, cursor?.rowKey, shown, store]);
 
-  const removeRow = useCallback(() => {
-    if (!shown || !block || !cursor?.rowKey) return;
-    void store.rowOp({ sheet: shown, op: "delete", block, row_id: cursor.rowKey });
-  }, [block, cursor?.rowKey, shown, store]);
+  // The row says which row it is; nothing here reads the caret. A control that
+  // removes "the current line" removes whichever line the caret last touched,
+  // which is how the wrong debt comes off the schedule.
+  const removeRow = useCallback(
+    (row: { rowKey: string; block: string }) => {
+      if (!shown) return;
+      void store.rowOp({ sheet: shown, op: "delete", block: row.block, row_id: row.rowKey });
+    },
+    [shown, store],
+  );
 
   const tabs: SheetTab[] = useMemo(
     () =>
@@ -306,16 +334,10 @@ export function Worksheet({
         submitting={submitting}
         actions={
           canAddRow ? (
-            <>
-              <Btn size="sm" onClick={addRow}>
-                Add a line
-              </Btn>
-              {canRemoveRow ? (
-                <Btn size="sm" onClick={removeRow}>
-                  Remove this line
-                </Btn>
-              ) : null}
-            </>
+            <Btn size="sm" className="sg-addrow" onClick={addRow}>
+              <Icon name="plus" size={13} aria-hidden="true" />
+              Add a line
+            </Btn>
           ) : null
         }
       />
@@ -337,15 +359,20 @@ export function Worksheet({
         onPaste={onPaste}
         onCursor={handleCursor}
         onNotice={setNotice}
+        onRemoveRow={rowOps ? removeRow : undefined}
       />
-
-      <SheetTabs tabs={tabs} active={shown} onChange={onTab} canEdit={canEdit} />
 
       <p className="sg-foot">
         Figures save as you type, so there is no undo — other people may be editing the same sheet.
         Copy and paste work across columns: paste a column out of your own spreadsheet and it fills
         down from the cell you are on.
       </p>
+
+      {/* Last, and last for a reason: the tab strip is the bottom edge of the
+          worksheet, the way a workbook's tabs are the bottom edge of a
+          workbook. It is outside `.sg-wrap`, so the grid scrolls under it and
+          it never scrolls away. */}
+      <SheetTabs tabs={tabs} active={shown} onChange={onTab} canEdit={canEdit} />
     </div>
   );
 }

@@ -25,6 +25,12 @@
 // **No virtualization.** The largest sheet is the personal statement at ~120
 // rows. Windowing would fight Ctrl+End and paste-appends for no gain.
 //
+// **A list row carries its own remove control**, in one extra track at the end
+// of the sheet. It is a track on the whole grid rather than on the rows that
+// use it — `--sg-cols` is the template every row shares — so each row emits a
+// closing cell whether or not there is anything in it, and the ARIA column
+// count, the column heads and the row's own cell count stay in step.
+//
 // **The sheet is a document, not a ribbon.** The workbook's column widths are
 // character units and they are the floor, never the ceiling: the label column
 // is `minmax(natural, 1fr)` and the figure columns keep their own width, so a
@@ -37,9 +43,10 @@ import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type Clipb
 import { cx } from "@/components/ds";
 import { cellAt, isEditable, normalizeRange, rangeCells, rowAt } from "./coords";
 import { cellText, parseTsv, planPaste, toTsv } from "./clipboard";
-import { SheetCellView, type CommitHow } from "./SheetCellView";
+import { SheetCellView, SheetRowEnd, type CommitHow } from "./SheetCellView";
 import { useSelection, type SelectionState } from "./useSelection";
 import type { CellMark } from "./useSheetValues";
+import { isListRow } from "./types";
 import type { CellAddr, ComputedValues, Edit, SheetCell, SheetLayout, SheetRow, SheetValues } from "./types";
 
 /** Where the caret is, for the toolbar's row buttons and for the presence
@@ -70,10 +77,18 @@ export type SheetGridProps = {
   onCursor?: (cursor: GridCursor) => void;
   /** Sentences for the toolbar: what a paste did, why Ctrl+Z is not here. */
   onNotice?: (message: string | null) => void;
+  /** Take one line off one of the two list-shaped sheets. Absent where there
+   *  is nothing to remove — a fixed statement, a view-only link, or a
+   *  container with no row transport — and the gutter is not drawn at all. */
+  onRemoveRow?: (row: { rowKey: string; block: string; label: string }) => void;
 };
 
 const MIN_COL = 72;
 const MAX_COL = 380;
+/** The track at the end of a list row that holds its remove control. Wide
+ *  enough for a 13px glyph and its hit area, narrow enough that it reads as a
+ *  margin rather than a thirteenth column. */
+const ROW_END_PX = 34;
 /** The workbook's column widths are in character units; this is the ratio the
  *  xlsx renderer's own defaults were chosen against. */
 const CHAR_PX = 7.4;
@@ -88,8 +103,9 @@ function columnPx(width: number | undefined): number {
  *  floor under the grid (below it the box scrolls sideways, which is what the
  *  twelve-column debt schedule needs) and it is what the scroll box's
  *  document cap is measured against. */
-function naturalPx(layout: SheetLayout): number {
-  return layout.columns.reduce((total, column) => total + columnPx(column.width), 0);
+function naturalPx(layout: SheetLayout, rowEnd: boolean): number {
+  const columns = layout.columns.reduce((total, column) => total + columnPx(column.width), 0);
+  return columns + (rowEnd ? ROW_END_PX : 0);
 }
 
 /** The column template. The label column is `minmax(natural, 1fr)` and every
@@ -99,10 +115,15 @@ function naturalPx(layout: SheetLayout): number {
  *  monitor. When the sheet is wider than the box there is no free space to
  *  hand out and `1fr` resolves to exactly the natural width, so the scrolling
  *  sheets render as they always did. */
-function columnTemplate(layout: SheetLayout): string {
-  return layout.columns
-    .map((column, index) => (index === 0 ? `minmax(${columnPx(column.width)}px, 1fr)` : `${columnPx(column.width)}px`))
-    .join(" ");
+function columnTemplate(layout: SheetLayout, rowEnd: boolean): string {
+  const tracks = layout.columns.map((column, index) =>
+    index === 0 ? `minmax(${columnPx(column.width)}px, 1fr)` : `${columnPx(column.width)}px`,
+  );
+  // One extra fixed track, on every row of the sheet rather than on the rows
+  // that use it, because `--sg-cols` is the whole grid's template: a row with
+  // one track fewer would put its own columns out of step with the headings.
+  if (rowEnd) tracks.push(`${ROW_END_PX}px`);
+  return tracks.join(" ");
 }
 
 /** How many *rendered* columns a cell covers. `colspan` counts workbook
@@ -223,6 +244,49 @@ export function shownFigure(
   return name && blanks.has(name) ? null : 0;
 }
 
+// Which rows a person may take off the sheet. Defined in `types` beside the
+// row itself, because the same rule decides how many lines the sheet reports
+// it is showing when it asks for one more.
+export { isListRow };
+
+/** What the remove control on this row is called. The row's own name once the
+ *  person has typed one — the lender, the creditor, the property — and its
+ *  place in the list until then. The name is the only thing standing between
+ *  somebody and deleting a different debt from the one they are looking at,
+ *  so "Remove" on its own is never an answer. */
+export function removeLabel(row: SheetRow, values: SheetValues): string {
+  for (const cell of row.cells ?? []) {
+    if (!cell.key) continue;
+    if (cell.type !== "text" && cell.type !== "select") continue;
+    const named = String(values[cell.key] ?? "").trim();
+    if (named) return `Remove ${named}`;
+  }
+  return `Remove line ${row.ordinal ?? row.r}`;
+}
+
+/** Every figure *as the sheet shows it*: the arithmetic's map with each
+ *  subtotal that reads as an em dash on screen set back to null.
+ *
+ *  This is what the clipboard is handed. `cellText` formats the `computed` map
+ *  it is given and has no way to know that a total of nothing is being
+ *  withheld, so copying an untouched sheet used to put a `0` on the clipboard
+ *  under a heading the screen left blank — a figure somebody could paste into
+ *  a lender's model as though the business had reported it. */
+export function shownFigures(
+  layout: SheetLayout,
+  computed: ComputedValues,
+  blanks: ReadonlySet<string>,
+): ComputedValues {
+  const out: ComputedValues = { ...computed };
+  for (const row of layout.rows) {
+    for (const cell of row.cells ?? []) {
+      if (cell.type !== "formula" || !cell.compute) continue;
+      if (shownFigure(cell, computed, blanks) === null) out[cell.compute] = null;
+    }
+  }
+  return out;
+}
+
 export function SheetGrid({
   layout,
   values,
@@ -237,6 +301,7 @@ export function SheetGrid({
   onPaste,
   onCursor,
   onNotice,
+  onRemoveRow,
 }: SheetGridProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const catcherRef = useRef<HTMLTextAreaElement | null>(null);
@@ -248,6 +313,26 @@ export function SheetGrid({
     [layout, values, canEdit, lockedRows],
   );
   const { state, dispatch, read } = useSelection(ctx);
+
+  const index = useMemo(() => indexFormulas(layout), [layout]);
+  const blanks = useMemo(() => blankFormulaNames(index, values), [index, values]);
+
+  /** What the clipboard copies from: the screen's figures, not the
+   *  arithmetic's. See `shownFigures`. */
+  const shownComputed = useMemo(() => shownFigures(layout, computed, blanks), [blanks, computed, layout]);
+
+  /** Which rows carry a remove control, and therefore whether the sheet has a
+   *  gutter at all. The track is drawn for a sheet that *has* list rows even
+   *  when one of them is locked, so a row somebody else owns keeps its place
+   *  in the columns with an empty cell rather than a short row. */
+  const rowEnd = !!onRemoveRow && canEdit && layout.rows.some(isListRow);
+  const removableRow = useCallback(
+    (row: SheetRow): boolean => {
+      if (!rowEnd || !isListRow(row)) return false;
+      return !(row.row_key && lockedRows?.has(row.row_key));
+    },
+    [lockedRows, rowEnd],
+  );
 
   const editableAt = useCallback(
     (row: SheetRow | undefined, cell: SheetCell | null): boolean => {
@@ -326,7 +411,7 @@ export function SheetGrid({
     const source = rows[0];
     const line = columns.map((column) => {
       const cell = source.cells?.find((candidate) => candidate.c === column.c) ?? null;
-      return cellText(cell, values, computed);
+      return cellText(cell, values, shownComputed);
     });
     const matrix = rows.map(() => [...line]);
     const plan = planPaste(layout, values, { r: source.r, c: c1 }, matrix);
@@ -336,7 +421,7 @@ export function SheetGrid({
     }
     onEdits(plan.edits);
     onNotice?.(null);
-  }, [computed, layout, onEdits, onNotice, state.active, state.anchor, values]);
+  }, [layout, onEdits, onNotice, shownComputed, state.active, state.anchor, values]);
 
   /** Move focus into the offscreen textarea so the browser's own clipboard
    *  event fires, with the payload already selected for the browsers that will
@@ -365,7 +450,7 @@ export function SheetGrid({
         switch (outcome.command) {
           case "copy":
           case "cut":
-            primeCatcher(toTsv(layout, values, computed, state.anchor, state.active));
+            primeCatcher(toTsv(layout, values, shownComputed, state.anchor, state.active));
             return;
           case "paste":
             primeCatcher("");
@@ -389,28 +474,28 @@ export function SheetGrid({
       }
       if (outcome.action) dispatch(outcome.action);
     },
-    [clearRange, computed, dispatch, fillDown, layout, onNotice, primeCatcher, read, state.active, state.anchor, values],
+    [clearRange, dispatch, fillDown, layout, onNotice, primeCatcher, read, shownComputed, state.active, state.anchor, values],
   );
 
   const onCopy = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
       if (state.editing) return;
-      event.clipboardData?.setData("text/plain", toTsv(layout, values, computed, state.anchor, state.active));
+      event.clipboardData?.setData("text/plain", toTsv(layout, values, shownComputed, state.anchor, state.active));
       event.preventDefault();
       restoreFocus();
     },
-    [computed, layout, restoreFocus, state.active, state.anchor, state.editing, values],
+    [layout, restoreFocus, shownComputed, state.active, state.anchor, state.editing, values],
   );
 
   const onCut = useCallback(
     (event: ClipboardEvent<HTMLDivElement>) => {
       if (state.editing) return;
-      event.clipboardData?.setData("text/plain", toTsv(layout, values, computed, state.anchor, state.active));
+      event.clipboardData?.setData("text/plain", toTsv(layout, values, shownComputed, state.anchor, state.active));
       event.preventDefault();
       if (canEdit) clearRange();
       restoreFocus();
     },
-    [canEdit, clearRange, computed, layout, restoreFocus, state.active, state.anchor, state.editing, values],
+    [canEdit, clearRange, layout, restoreFocus, shownComputed, state.active, state.anchor, state.editing, values],
   );
 
   const onPasteEvent = useCallback(
@@ -521,16 +606,14 @@ export function SheetGrid({
 
   // ── render ──────────────────────────────────────────────────────────────
 
-  const template = useMemo(() => columnTemplate(layout), [layout]);
+  const template = useMemo(() => columnTemplate(layout, rowEnd), [layout, rowEnd]);
   // The sheet's own width, for the CSS: the floor the grid never goes under
   // (below it the box scrolls sideways) and the width a short sheet is
   // measured against before the page cap centres it.
   const wrapStyle = useMemo(
-    () => ({ ["--sg-natural" as string]: `${naturalPx(layout)}px` }) as CSSProperties,
-    [layout],
+    () => ({ ["--sg-natural" as string]: `${naturalPx(layout, rowEnd)}px` }) as CSSProperties,
+    [layout, rowEnd],
   );
-  const index = useMemo(() => indexFormulas(layout), [layout]);
-  const blanks = useMemo(() => blankFormulaNames(index, values), [index, values]);
   const bounds = useMemo(() => normalizeRange(state.anchor, state.active), [state.anchor, state.active]);
 
   return (
@@ -548,7 +631,7 @@ export function SheetGrid({
         role="grid"
         aria-label={layout.title}
         aria-rowcount={layout.rows.length}
-        aria-colcount={layout.columns.length}
+        aria-colcount={layout.columns.length + (rowEnd ? 1 : 0)}
         aria-readonly={canEdit ? undefined : true}
         style={{ ["--sg-cols" as string]: template }}
         onMouseDown={onMouseDown}
@@ -628,6 +711,30 @@ export function SheetGrid({
       // `aria-colspan` rather than by emitting an element per covered track,
       // which would double-count the row.
       index += Math.max(1, span);
+    }
+    // The gutter closes every row that the grid draws a track for — the
+    // column heads and the banner rows included, empty. A row one cell short
+    // of its headings is a row whose columns have quietly shifted.
+    if (rowEnd) {
+      const removable = removableRow(row);
+      out.push(
+        <SheetRowEnd
+          key={`${row.r}:end`}
+          ariaRow={rowIndex + 1}
+          ariaCol={layout.columns.length + 1}
+          label={removable ? removeLabel(row, values) : null}
+          onRemove={
+            removable && row.row_key && row.block
+              ? () =>
+                  onRemoveRow?.({
+                    rowKey: row.row_key as string,
+                    block: row.block as string,
+                    label: removeLabel(row, values),
+                  })
+              : null
+          }
+        />,
+      );
     }
     return out;
   }

@@ -308,3 +308,53 @@ describe("loading the server's answer over what is held", () => {
     expect(onSave).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("telling the server how many lines are on screen", () => {
+  // The debt schedule's blank lines are not in the stored body — an empty row
+  // there would be an invented obligation, and `count_in_dscr` defaults true.
+  // So the server pads the list back up on every read, and without being told
+  // what the grid is actually showing it would add one to the same short list
+  // every time. That is what made the first "Add a line" work and every one
+  // after it do nothing. The count is taken here, from the layout the store
+  // holds, so no caller has to remember to send it.
+  const rowOpReturns = (rows: SheetRow[]) =>
+    onRowOp.mockResolvedValue({ rows: rows.map((row) => ({ ...row, values: {} })), row_meta: {}, rev: { debt_schedule: 2 } });
+
+  it("counts the lines of the block being added to", async () => {
+    rowOpReturns(DS_LAYOUT.rows as SheetRow[]);
+    await store.rowOp({ sheet: "debt_schedule", op: "insert", block: "debts", after: "d3" });
+    // Three debt lines in the fixture. The title, the column heads and the
+    // total line carry the block too and are not lines.
+    expect(onRowOp.mock.calls[0][0]).toMatchObject({ visible: 3 });
+  });
+
+  it("moves the count as the grid grows, so a second add is not a no-op", async () => {
+    const rows: SheetRow[] = DS_LAYOUT.rows.map((row) => ({ ...row }));
+    let next = 4;
+    onRowOp.mockImplementation(async () => {
+      const last = [...rows].reverse().find((row) => row.kind === "data")!;
+      const key = `d${next}`;
+      next += 1;
+      rows.splice(rows.indexOf(last) + 1, 0, { ...last, r: last.r + 1, row_key: key, ordinal: (last.ordinal ?? 0) + 1 });
+      return { rows: rows.map((row) => ({ ...row, values: {} })), row_meta: {}, rev: { debt_schedule: next } };
+    });
+
+    await store.rowOp({ sheet: "debt_schedule", op: "insert", block: "debts", after: "d3" });
+    await store.rowOp({ sheet: "debt_schedule", op: "insert", block: "debts", after: "d4" });
+    await store.rowOp({ sheet: "debt_schedule", op: "insert", block: "debts", after: "d5" });
+
+    expect(onRowOp.mock.calls.map((call) => call[0].visible)).toEqual([3, 4, 5]);
+  });
+
+  it("leaves a count the caller supplied alone", async () => {
+    rowOpReturns(DS_LAYOUT.rows as SheetRow[]);
+    await store.rowOp({ sheet: "debt_schedule", op: "insert", block: "debts", visible: 11 });
+    expect(onRowOp.mock.calls[0][0]).toMatchObject({ visible: 11 });
+  });
+
+  it("sends nothing to count when the operation names no block", async () => {
+    rowOpReturns(DS_LAYOUT.rows as SheetRow[]);
+    await store.rowOp({ sheet: "debt_schedule", op: "insert" });
+    expect(onRowOp.mock.calls[0][0]).toMatchObject({ visible: 0 });
+  });
+});

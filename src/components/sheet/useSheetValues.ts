@@ -34,6 +34,7 @@
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { planPaste } from "./clipboard";
 import { recompute, type SheetSchema } from "./compute";
+import { visibleLines } from "./types";
 import type {
   CellAddr,
   ComputedValues,
@@ -89,6 +90,10 @@ export type RowOpRequest = {
   row_id?: string | null;
   after?: string | null;
   block?: string | null;
+  /** How many lines the grid is showing for that block, blanks included.
+   *  Filled in by `rowOp` from the layout it holds, so no caller has to
+   *  count. See `visibleLines`. */
+  visible?: number | null;
 };
 export type RowOpResponse = {
   rows?: RowPayload[] | null;
@@ -463,7 +468,18 @@ export class SheetStore {
   async rowOp(request: RowOpRequest): Promise<RowOpResponse | null> {
     if (!this.options.onRowOp) return null;
     await this.flush();
-    const response = asRowOpResponse(await this.options.onRowOp(request));
+    // How many lines this grid is showing for the block, counted here rather
+    // than by each caller. The server pads a short list up to it before adding
+    // or removing, which is what makes a second consecutive "Add a line" move
+    // the count: the blank lines a read invents are not in the stored body, so
+    // without this the server would add one to the same short list every time.
+    // Counted after the flush, because a queued edit can turn a blank line
+    // into a stored one.
+    const sent: RowOpRequest =
+      request.visible == null
+        ? { ...request, visible: visibleLines(this.snapshot.sheets[request.sheet]?.layout?.rows, request.block) }
+        : request;
+    const response = asRowOpResponse(await this.options.onRowOp(sent));
     this.applyRows(request.sheet, response);
     return response;
   }
