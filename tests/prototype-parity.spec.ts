@@ -189,7 +189,7 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
   await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}/files/complete$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: "{}" });
   });
-  await page.route(/\/api\/v1\/application-profiles\/resolve$/, async (route) => {
+  await page.route(/\/api\/v1\/application-profiles\/resolve(?:\?.*)?$/, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: profileId, intake_id: intakeId, primary_bucket_id: bucketId, vertical: "dealer", owner_storage: "application" }) });
   });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/owners$`), async (route) => {
@@ -198,8 +198,112 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/verification$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ownership_total: 100, ownership_complete: true, owner_contact_complete: true, owner_count: 1, required_credit_owner_count: 1, completed_credit_owner_count: 0, pending_credit_owner_ids: [], missing_credit_contact_owner_ids: [], bank_linked: false, bank_connection_count: 0, bank_statement_months: 6, credit_returned: false, owner_credit_complete: false, business_banking_complete: false, evidence_complete: true, ready_for_step_2: true, unlocked: false, ownership_blockers: [], credit_blockers: [], banking_blockers: ["Business banking is pending"], blockers: [] }) });
   });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/underwriting$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ profile_id: profileId, source_kind: "intake", source_id: intakeId, loan_id: null, underwriting_status: "submitted", approved_amount: null, term_sheet_amount: null, current_dscr: null, target_dscr: null, approved_dscr: null, close_outcome: null, reviewer_notes: null, updated_by_user_id: null, updated_at: null }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/extracted-facts$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/banks$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true, environment: "production", consent_granted: false, disclosure_version: "2026-08", disclosure_text: "", items: [], manual_override: false, manual_override_reason: null, manual_statement_months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"], assets_enabled: true, asset_reports: [] }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/program-readiness$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        profile_id: profileId,
+        lending_applicable: true,
+        selection_mode: "auto",
+        selections: [{
+          id: "21000000-0000-0000-0000-000000000001",
+          program_key: "business_baseline",
+          program_name: "Business Lending Baseline",
+          playbook_id: "21000000-0000-0000-0000-000000000002",
+          playbook_version: 1,
+          source: "ai_auto",
+          fit_score: 85,
+          fit_confidence: 0.85,
+          fit_reasons: ["Operating business baseline"],
+          selected_at: "2026-08-24T17:30:00Z",
+        }],
+        candidates: [{
+          program_key: "business_baseline",
+          program_name: "Business Lending Baseline",
+          playbook_id: "21000000-0000-0000-0000-000000000002",
+          playbook_version: 1,
+          eligible: true,
+          fit_score: 85,
+          confidence: 0.85,
+          priority: 10,
+          reasons: ["Operating business baseline"],
+        }],
+        programs: [{
+          selection_id: "21000000-0000-0000-0000-000000000001",
+          program_key: "business_baseline",
+          program_name: "Business Lending Baseline",
+          complete: false,
+          completion_percent: 50,
+          required_count: 2,
+          satisfied_count: 1,
+          blocking_requirement_keys: ["business_debt_schedule"],
+          requirement_keys: ["business_bank_statements_6_months", "business_debt_schedule"],
+        }],
+        requirements: [
+          {
+            requirement_key: "business_bank_statements_6_months",
+            label: "Last 6 months business bank statements",
+            category: "bank_statement",
+            required_level: "required",
+            status: "verified",
+            requested_document_id: null,
+            evidence_file_id: "22000000-0000-0000-0000-000000000001",
+            evidence_file_name: "Operating statements.pdf",
+            verification_required: true,
+            source_program_keys: ["business_baseline"],
+            program_overrides: {},
+            client_visible: true,
+            can_waive: true,
+            state_reason: "Reviewed by underwriting",
+            last_requested_at: null,
+            received_at: "2026-08-24T17:00:00Z",
+            verified_at: "2026-08-24T17:15:00Z",
+            provenance: { source: "operator" },
+          },
+          {
+            requirement_key: "business_debt_schedule",
+            label: "Business debt schedule",
+            category: "business_debt_schedule",
+            required_level: "required",
+            status: "missing",
+            requested_document_id: null,
+            evidence_file_id: null,
+            evidence_file_name: null,
+            verification_required: true,
+            source_program_keys: ["business_baseline"],
+            program_overrides: {},
+            client_visible: true,
+            can_waive: true,
+            state_reason: null,
+            last_requested_at: null,
+            received_at: null,
+            verified_at: null,
+            provenance: {},
+          },
+        ],
+        can_advance: false,
+        automation: {
+          enabled: true,
+          eligible: true,
+          next_requirement_key: "business_debt_schedule",
+          next_send_at: "2026-08-25T17:30:00Z",
+          last_sent_at: null,
+          attempts: 0,
+          max_attempts: 3,
+          stop_reason: null,
+        },
+      }),
+    });
   });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/room/deliveries$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
@@ -316,6 +420,7 @@ test("AI intake Evidence accepts bulk files and ZIP archives", async ({ page }, 
   const { intakeId, uploadedFiles } = await mockAiIntakeBankingWorkspace(page);
   await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
   await page.getByRole("button", { name: /^Evidence\s/ }).click();
+  await page.getByRole("button", { name: /Evidence and data resources/ }).click();
   const dropzone = page.getByRole("button", { name: /Drop evidence files or ZIP archives here/i });
   await expect(dropzone).toBeVisible();
   const input = page.getByLabel("Upload evidence files");
@@ -338,6 +443,19 @@ test("AI intake Evidence accepts bulk files and ZIP archives", async ({ page }, 
   await expect(dropzone).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "ai-intake-evidence-upload", testInfo);
+});
+
+test("AI intake program readiness stays usable across supported widths", async ({ page }, testInfo) => {
+  test.skip(!["desktop-1600", "compact-1280", "mobile-390"].includes(testInfo.project.name), "Program readiness is reviewed at the required release widths.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence\s/ }).click();
+  await expect(page.getByRole("heading", { name: "Selected criteria" })).toBeVisible();
+  await expect(page.getByText("Business Lending Baseline", { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Requirements and decisions" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Missing-item email follow-up" })).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "ai-intake-program-readiness", testInfo);
 });
 
 test("theme control swaps between light and Obsidian without shifting the page", async ({ page }, testInfo) => {

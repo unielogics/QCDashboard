@@ -32,6 +32,7 @@ import { validPhone } from "@/lib/formCoerce";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
+import { semanticStatusClass } from "@/lib/semanticStatus";
 
 type BucketLinkedFile = {
   id: string;
@@ -2755,7 +2756,7 @@ export default function BucketsAdminPage() {
                   ) : filteredBucketFiles.length === 0 ? (
                     <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more bucket files." />
                   ) : filteredBucketFiles.map((file) => (
-                    <div key={file.id} className="itemrow bucket-file-row">
+                    <div key={file.id} className={`itemrow bucket-file-row ${semanticStatusClass(file.status)}`}>
                       <label className="row grow" style={{ cursor: "pointer" }}>
                         <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
                         <span className="grow">

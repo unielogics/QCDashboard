@@ -51,7 +51,106 @@ export type ApplicationProfile = {
   underwriting_notes: string | null;
   underwriting_updated_by_user_id: string | null;
   underwriting_updated_at: string | null;
+  program_selection_mode: "auto" | "manual";
+  program_selection_locked_at: string | null;
+  program_selection_locked_by_user_id: string | null;
+  missing_item_email_enabled: boolean;
+  missing_item_email_last_sent_at: string | null;
+  missing_item_email_next_send_at: string | null;
+  missing_item_email_attempts: number;
+  missing_item_email_requirement_key: string | null;
   owner_storage: "application" | "dealer";
+};
+
+export type RequirementStateStatus =
+  | "missing"
+  | "requested"
+  | "received_unverified"
+  | "verified"
+  | "waived"
+  | "not_applicable"
+  | "stale"
+  | "failed";
+
+export type ProgramFitCandidate = {
+  program_key: string;
+  program_name: string;
+  playbook_id: string;
+  playbook_version: number;
+  eligible: boolean;
+  fit_score: number;
+  confidence: number;
+  priority: number;
+  reasons: string[];
+};
+
+export type ApplicationProgramSelection = {
+  id: string;
+  program_key: string;
+  program_name: string;
+  playbook_id: string;
+  playbook_version: number;
+  source: "ai_auto" | "operator";
+  fit_score: number | null;
+  fit_confidence: number | null;
+  fit_reasons: string[];
+  selected_at: string;
+};
+
+export type ApplicationRequirement = {
+  requirement_key: string;
+  label: string;
+  category: string;
+  required_level: "required" | "recommended" | "optional";
+  status: RequirementStateStatus;
+  requested_document_id: string | null;
+  evidence_file_id: string | null;
+  evidence_file_name: string | null;
+  verification_required: boolean;
+  source_program_keys: string[];
+  program_overrides: Record<string, string>;
+  client_visible: boolean;
+  can_waive: boolean;
+  state_reason: string | null;
+  last_requested_at: string | null;
+  received_at: string | null;
+  verified_at: string | null;
+  provenance: Record<string, unknown>;
+};
+
+export type ProgramReadinessItem = {
+  selection_id: string;
+  program_key: string;
+  program_name: string;
+  complete: boolean;
+  completion_percent: number;
+  required_count: number;
+  satisfied_count: number;
+  blocking_requirement_keys: string[];
+  requirement_keys: string[];
+};
+
+export type MissingItemAutomation = {
+  enabled: boolean;
+  eligible: boolean;
+  next_requirement_key: string | null;
+  next_send_at: string | null;
+  last_sent_at: string | null;
+  attempts: number;
+  max_attempts: number;
+  stop_reason: string | null;
+};
+
+export type ApplicationProgramReadiness = {
+  profile_id: string;
+  lending_applicable: boolean;
+  selection_mode: "auto" | "manual";
+  selections: ApplicationProgramSelection[];
+  candidates: ProgramFitCandidate[];
+  programs: ProgramReadinessItem[];
+  requirements: ApplicationRequirement[];
+  can_advance: boolean;
+  automation: MissingItemAutomation;
 };
 
 export type ApplicationUnderwritingState = {
@@ -198,12 +297,16 @@ export type ApplicationBankState = {
 
 export type RoomDeliveryReceipt = {
   id: string;
+  requested_document_id?: string | null;
   action_kind: string;
   channel: "email" | "sms" | "none" | string;
   recipient_masked: string | null;
   status: string;
   detail: string | null;
   provider_accepted: boolean;
+  initiation_source: string | null;
+  attempt_number: number;
+  scheduled_for: string | null;
   created_at: string;
 };
 

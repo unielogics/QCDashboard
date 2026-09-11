@@ -8,12 +8,14 @@ import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
 import { ProductionSigningGate, type SignPayload as ProductionSignPayload, type SignResult as ProductionSignResult } from "@/components/intake/ProductionSigningGate";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
+import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
 import { dealerCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
 import { metricProvenance } from "@/lib/intake";
+import type { IntakeChatAction, IntakeChatActionResult } from "@/lib/intake";
 
 type RequestedDoc = {
   id: string;
@@ -107,6 +109,7 @@ type IntakeResponse = {
   }>;
   // Present when the client owes a signature on a Production Package.
   signing_gate?: import("@/components/intake/ProductionSigningGate").SigningGate | null;
+  chat_actions?: IntakeChatAction[];
 };
 
 type AssetRow = {
@@ -129,7 +132,13 @@ type SecureRoomHandoff = {
 
 type WidgetType = Widget["type"];
 type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
-type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+type QueuedFile = {
+  id: string;
+  file: File;
+  status: "ready" | "uploading" | "uploaded" | "error";
+  message?: string;
+  requested_document_id?: string | null;
+};
 type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
 type WorkspaceTab = "chat" | "files" | "intelligence";
 type IntelligenceValue = { label: string; value: string; source: "verified" | "extracted" | "estimated" | "unavailable"; detail?: string; raw?: number | null };
@@ -228,6 +237,7 @@ export default function DealerAIUnderwriterPage() {
   const [draftingDocKind, setDraftingDocKind] = useState<"pfs" | "debt_schedule" | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [chatActionBusy, setChatActionBusy] = useState("");
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>("chat");
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
@@ -545,7 +555,8 @@ export default function DealerAIUnderwriterPage() {
         body: JSON.stringify({ message: text || null, updates: updates ?? null }),
       });
       applyResponse(payload, token);
-      pushAssistantFromPayload(payload);
+      syncMessagesFromResponse(payload, true);
+      if (!payload.messages?.length) pushAssistantFromPayload(payload);
     } catch (error) {
       setStatus(errorMessage(error));
     } finally {
@@ -620,7 +631,7 @@ export default function DealerAIUnderwriterPage() {
     // the button in its busy state is the honest thing to show meanwhile.
   }
 
-  function addFiles(nextFiles: FileList | File[]) {
+  function addFiles(nextFiles: FileList | File[], requestedDocumentId?: string | null) {
     const files = Array.from(nextFiles);
     if (!files.length) return;
     setQueuedFiles((current) => {
@@ -636,6 +647,7 @@ export default function DealerAIUnderwriterPage() {
           id: `${file.name}-${file.size}-${file.lastModified}-${cryptoId()}`,
           file,
           status: "ready" as const,
+          requested_document_id: requestedDocumentId ?? null,
         }));
       return [...current, ...incoming];
     });
@@ -659,7 +671,7 @@ export default function DealerAIUnderwriterPage() {
             {
               method: "POST",
               body: JSON.stringify({
-                requested_document_id: null,
+                requested_document_id: item.requested_document_id ?? null,
                 file_name: item.file.name,
                 content_type: item.file.type || "application/octet-stream",
                 size_bytes: item.file.size,
@@ -775,6 +787,51 @@ export default function DealerAIUnderwriterPage() {
       setDraftError(errorMessage(error));
     } finally {
       setDraftBusy(false);
+    }
+  }
+
+  async function executeChatAction(action: IntakeChatAction) {
+    if (!token) return;
+    setChatActionBusy(action.id);
+    setStatus("");
+    try {
+      const result = await call<IntakeChatActionResult>(
+        `/public/dealer-ai-intake/${encodeURIComponent(token)}/chat-actions/${action.id}`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      if (action.action_type === "complete_now") {
+        setDraftError(null);
+        setDraftingDocKind(action.requirement_key === "owner_personal_financial_statement" ? "pfs" : "debt_schedule");
+      } else if (action.action_type === "upload_own") {
+        const input = document.createElement("input");
+        input.type = "file";
+        input.multiple = true;
+        input.accept = DEALER_AI_UPLOAD_ACCEPT;
+        input.onchange = () => {
+          if (input.files) addFiles(input.files, action.requested_document_id);
+        };
+        input.click();
+      } else if (action.action_type === "download_template" && result.download_url) {
+        const res = await fetch(`${apiBase}${result.download_url}`);
+        if (!res.ok) throw new Error(await responseMessage(res));
+        const blob = await res.blob();
+        const disposition = res.headers.get("content-disposition") || "";
+        const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || "financial-template";
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        window.URL.revokeObjectURL(url);
+      }
+      setStatus(result.delivery?.recipient_masked ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.` : result.detail);
+      await loadIntake();
+    } catch (error) {
+      setStatus(errorMessage(error));
+    } finally {
+      setChatActionBusy("");
     }
   }
 
@@ -1111,7 +1168,10 @@ export default function DealerAIUnderwriterPage() {
                         return (
                           <div key={line.id} style={assistantRow}>
                             <div style={assistantAvatar} aria-hidden>QC</div>
-                            <div style={assistantBubble}>{line.content}</div>
+                            <div style={assistantBubble}>
+                              {line.content}
+                              <IntakeChatActions actions={response.chat_actions ?? []} sourceMessageId={line.id} busyActionId={chatActionBusy} onAction={(action) => void executeChatAction(action)} />
+                            </div>
                           </div>
                         );
                       }

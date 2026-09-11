@@ -4,7 +4,7 @@ import type { CSSProperties } from "react";
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
-import { api } from "@/lib/api";
+import { api, apiBase } from "@/lib/api";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type Intake = {
@@ -20,7 +20,18 @@ type Intake = {
 
 type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string };
 type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; size_bytes: number; status: string; created_at: string };
-type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; ai_summary?: Record<string, unknown> | null };
+type ChatMessage = { id: string; role: "assistant" | "user"; content: string; created_at?: string };
+type ChatAction = {
+  id: string;
+  source_message_id: string;
+  requirement_key: string;
+  action_type: "upload_own" | "complete_now" | "download_template" | "email_template";
+  template_kind?: string | null;
+  label: string;
+  status: string;
+};
+type ChatActionResult = { action_id: string; status: "executed" | "failed"; detail: string; download_url?: string | null; room_url?: string | null; delivery?: { recipient_masked?: string; provider_accepted?: boolean; status?: string } | null };
+type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
 
 export default function ClientDealerIntakesPage() {
@@ -31,12 +42,13 @@ export default function ClientDealerIntakesPage() {
   const [detail, setDetail] = useState<IntakeDetail | null>(null);
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [chatText, setChatText] = useState("");
-  const [messages, setMessages] = useState<{ role: "assistant" | "user"; content: string }[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("Loading dealer intakes...");
   const [draftingDocKind, setDraftingDocKind] = useState<"pfs" | "debt_schedule" | null>(null);
   const [draftBusy, setDraftBusy] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  const [actionBusy, setActionBusy] = useState("");
 
   useEffect(() => {
     loadRows().catch((error) => setNotice(errorMessage(error)));
@@ -58,7 +70,7 @@ export default function ClientDealerIntakesPage() {
     setSelectedId(id);
     const data = await authed<IntakeDetail>(`/buckets/client/intakes/${id}`);
     setDetail(data);
-    setMessages([{ role: "assistant", content: data.assistant_message }]);
+    setMessages(data.messages?.length ? data.messages : [{ id: `welcome-${id}`, role: "assistant", content: data.assistant_message }]);
   }
 
   async function uploadQueued() {
@@ -102,7 +114,7 @@ export default function ClientDealerIntakesPage() {
   async function sendChat() {
     if (!detail || !chatText.trim()) return;
     const text = chatText.trim();
-    setMessages((current) => [...current, { role: "user", content: text }]);
+    setMessages((current) => [...current, { id: `pending-${Date.now()}`, role: "user", content: text }]);
     setChatText("");
     setBusy(true);
     try {
@@ -111,11 +123,55 @@ export default function ClientDealerIntakesPage() {
         body: JSON.stringify({ message: text }),
       });
       setDetail(data);
-      setMessages((current) => [...current, { role: "assistant", content: data.assistant_message }]);
+      setMessages(data.messages?.length ? data.messages : (current) => [...current, { id: `reply-${Date.now()}`, role: "assistant", content: data.assistant_message }]);
     } catch (error) {
       setNotice(errorMessage(error));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function executeChatAction(action: ChatAction) {
+    if (!detail) return;
+    setActionBusy(action.id);
+    setNotice("");
+    try {
+      const result = await authed<ChatActionResult>(`/buckets/client/intakes/${detail.intake.id}/chat-actions/${action.id}`, {
+        method: "POST",
+        body: JSON.stringify({}),
+      });
+      if (action.action_type === "complete_now") {
+        setDraftError(null);
+        setDraftingDocKind(action.requirement_key === "owner_personal_financial_statement" ? "pfs" : "debt_schedule");
+      } else if (action.action_type === "upload_own") {
+        fileInputRef.current?.click();
+      } else if (action.action_type === "download_template" && result.download_url) {
+        const token = await getToken();
+        const response = await fetch(`${apiBase}${result.download_url}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!response.ok) throw new Error("The approved template could not be downloaded.");
+        const blob = await response.blob();
+        const disposition = response.headers.get("content-disposition") || "";
+        const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || "financial-template";
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      }
+      const deliveryText = result.delivery?.recipient_masked
+        ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.`
+        : result.detail;
+      setNotice(deliveryText);
+      const refreshed = await authed<IntakeDetail>(`/buckets/client/intakes/${detail.intake.id}`);
+      setDetail(refreshed);
+      setMessages(refreshed.messages?.length ? refreshed.messages : messages);
+    } catch (error) {
+      setNotice(errorMessage(error));
+    } finally {
+      setActionBusy("");
     }
   }
 
@@ -245,9 +301,19 @@ export default function ClientDealerIntakesPage() {
               <div style={box()}>
                 <h3 style={smallTitle}>Ask AI</h3>
                 <div style={messagesBox}>
-                  {messages.map((message, index) => (
-                    <div key={`${message.role}-${index}`} style={message.role === "assistant" ? assistant() : userBubble()}>{message.content}</div>
-                  ))}
+                  {messages.map((message, index) => {
+                    const actions = detail.chat_actions?.filter((action) => action.source_message_id === message.id) || [];
+                    return (
+                      <div key={message.id || `${message.role}-${index}`} style={message.role === "assistant" ? assistant() : userBubble()}>
+                        <span>{message.content}</span>
+                        {message.role === "assistant" && actions.length ? (
+                          <div style={chatActions()}>
+                            {actions.map((action) => <button key={action.id} type="button" style={chatActionButton(action.action_type === "email_template")} disabled={actionBusy === action.id || action.status === "disabled" || action.status === "expired"} onClick={() => void executeChatAction(action)}>{actionBusy === action.id ? "Working..." : action.label}</button>)}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
                 </div>
                 <div style={composer}>
                   <input style={input()} value={chatText} onChange={(event) => setChatText(event.target.value)} placeholder="Ask what is still needed..." />
@@ -317,3 +383,5 @@ const userBubble = (): CSSProperties => ({ alignSelf: "flex-end", maxWidth: "80%
 const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr auto", gap: 8 };
 const input = (): CSSProperties => ({ border: `1px solid ${V.lineStrong}`, borderRadius: 999, padding: "0 14px", minHeight: 40, outline: "none" });
 const noticeBox = (): CSSProperties => ({ border: `1px solid ${V.warn}`, background: V.warnBg, color: V.warn, borderRadius: 12, padding: 12, marginTop: 12 });
+const chatActions = (): CSSProperties => ({ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${V.line}` });
+const chatActionButton = (primaryAction = false): CSSProperties => ({ border: `1px solid ${primaryAction ? V.petrol : V.lineStrong}`, borderRadius: 8, minHeight: 34, padding: "0 11px", background: primaryAction ? V.petrol : V.surface, color: primaryAction ? V.inverse : V.ink, fontSize: 12, fontWeight: 800, cursor: "pointer" });

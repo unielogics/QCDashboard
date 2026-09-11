@@ -11,6 +11,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, IconBtn, StatusLine } from "@/components/ds";
+import { semanticStatusTone } from "@/lib/semanticStatus";
 import { apiErrorMessage } from "@/components/email/EmailComposer";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
@@ -74,11 +75,13 @@ function formatEventTime(value: Date): string {
 }
 
 function classNamesForEvent(event: CalendarWorkspaceEvent): string[] {
+  const semanticTone = semanticStatusTone(event.crm_status || event.status);
   return [
     "calendar-v2-event",
     `calendar-v2-event-${event.color || TYPE_COLORS[event.kind] || "blue"}`,
     event.event_type === "internal" ? "calendar-v2-event-internal" : "calendar-v2-event-appointment",
     event.has_outcome ? "calendar-v2-event-complete" : "",
+    semanticTone ? `semantic-status-${semanticTone}` : "semantic-status-neutral",
   ].filter(Boolean);
 }
 

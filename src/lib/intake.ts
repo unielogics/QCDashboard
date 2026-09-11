@@ -102,8 +102,44 @@ export type IntakeResponse = {
   files: UploadedFile[];
   ai_summary?: Record<string, unknown> | null;
   latest_review?: { status: string; result?: Record<string, unknown> | null; error?: string | null } | null;
-  messages?: Array<{ id: string; role: "assistant" | "user" | string; content: string; created_at: string }>;  // Present when the client owes a signature on a Production Package; the room shows the signing screen and nothing else.
+  messages?: Array<{
+    id: string;
+    role: "assistant" | "user" | string;
+    content: string;
+    created_at: string;
+    sender_kind?: string | null;
+    author_name?: string | null;
+  }>;
+  // Present when the client owes a signature on a Production Package.
   signing_gate?: import("@/components/intake/ProductionSigningGate").SigningGate | null;
+  chat_actions?: IntakeChatAction[];
+};
+
+export type IntakeChatAction = {
+  id: string;
+  source_message_id: string;
+  requested_document_id?: string | null;
+  requirement_key: string;
+  action_type: "upload_own" | "complete_now" | "download_template" | "email_template";
+  template_kind?: string | null;
+  label: string;
+  status: "available" | "executed" | "failed" | "expired" | "disabled" | string;
+  expires_at: string;
+  executed_at?: string | null;
+};
+
+export type IntakeChatActionResult = {
+  action_id: string;
+  status: "executed" | "failed";
+  detail: string;
+  download_url?: string | null;
+  room_url?: string | null;
+  delivery?: {
+    id?: string;
+    status?: string;
+    recipient_masked?: string;
+    provider_accepted?: boolean;
+  } | null;
 };
 
 export type EntityStructure = {
@@ -115,7 +151,13 @@ export type EntityStructure = {
 
 export type WidgetType = Widget["type"];
 export type ChatLine = { id: string; role: "assistant" | "user"; content: string };
-export type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+export type QueuedFile = {
+  id: string;
+  file: File;
+  status: "ready" | "uploading" | "uploaded" | "error";
+  message?: string;
+  requested_document_id?: string | null;
+};
 export type ReviewProgressStage = "idle" | "attaching" | "uploading" | "reading" | "classifying" | "screening" | "preparing" | "complete" | "error";
 export type WorkspaceTab = "chat" | "files" | "intelligence";
 export type IntelligenceValue = { label: string; value: string; source: "verified" | "extracted" | "estimated" | "unavailable"; detail?: string; raw?: number | null; hint?: string };

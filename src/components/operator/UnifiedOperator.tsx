@@ -45,6 +45,7 @@ import {
   type UnifiedOrigin,
   type UnifiedVertical,
 } from "@/lib/unifiedOperator";
+import { semanticStatusClass } from "@/lib/semanticStatus";
 
 export type UnifiedFilterState = {
   vertical: UnifiedVertical | "all";
@@ -184,7 +185,7 @@ export function UnifiedFilesTable({
       ]}
     >
       {rows.length ? rows.map((row) => (
-        <Tr key={row.id} onClick={() => { window.location.href = operatorFileHref(row); }}>
+        <Tr key={row.id} className={semanticStatusClass(lifecycleStatus(row))} onClick={() => { window.location.href = operatorFileHref(row); }}>
           <Td><b>{row.title || row.label}</b><div className="sub num">{row.ref || row.id} · {formatUnifiedAmount(row.amount)}</div></Td>
           <Td><CellChip tone={verticalTone(row.vertical)}>{row.vertical_label}</CellChip></Td>
           <Td><CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip></Td>
@@ -207,7 +208,7 @@ export function UnifiedFilesTable({
 export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
   const status = lifecycleStatus(row);
   return (
-    <div className="kcard" style={{ cursor: row.can_move_pipeline ? "grab" : "default" }}>
+    <div className={`kcard ${semanticStatusClass(status)}`} style={{ cursor: row.can_move_pipeline ? "grab" : "default" }}>
       <div className="row" style={{ gap: 5, marginBottom: 4 }}>
         <UnifiedFileTags row={row} compact />
         <span className="sp" />

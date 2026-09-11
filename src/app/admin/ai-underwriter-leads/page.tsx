@@ -70,6 +70,9 @@ import { ApplicationIntelligencePanel } from "@/components/application/Applicati
 import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
+import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
+import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
+import { semanticStatusClass } from "@/lib/semanticStatus";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
@@ -909,7 +912,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                 {loading ? <tr><td colSpan={10}><div className="empty">Loading AI intake...</div></td></tr> : rows.map((row) => {
                   const unified = unifiedByIntake.get(row.id);
                   return (
-                    <tr key={row.id} onClick={() => openLead(row.id)} className={selectedId === row.id ? "tone-acc" : undefined}>
+                    <tr key={row.id} onClick={() => openLead(row.id)} className={`${semanticStatusClass(row.status)}${selectedId === row.id ? " tone-acc" : ""}`}>
                       <td className="lead-file-cell">
                         <button type="button" className="linky" onClick={() => openLead(row.id)}>{row.business_name || row.full_name}</button>
                         <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
@@ -1190,9 +1193,25 @@ function LeadDetailPanel({
   // client the signing gate then refused to show, so there is exactly one.
   const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
 
-  async function loadUnderwritingState() {
+  // The term sheet is keyed on the profile and exists only on dealer files; a
+  // 404 (not a dealer file / no package visibility) simply means "none".
+  const loadTermSheet = useCallback(async (profileId: string | null | undefined, authToken?: string | null) => {
+    if (!profileId || !isDealerFile || !canUnderwrite) {
+      setTermSheet(null);
+      return;
+    }
+    try {
+      const token = authToken ?? (await getToken());
+      setTermSheet(await api<ApplicationTermSheetState>(`/production-packages/term-sheets/${profileId}`, { authToken: token ?? undefined }));
+    } catch {
+      setTermSheet(null);
+    }
+  }, [canUnderwrite, getToken, isDealerFile]);
+
+  const loadUnderwritingState = useCallback(async () => {
+    const intakeId = detail?.intake.id;
     setProfileId(null);
-    if (!detail || !canUnderwrite) {
+    if (!intakeId || !canUnderwrite) {
       setUnderwriting(null);
       setUnderwritingDraft(emptyUnderwritingDraft());
       return;
@@ -1204,7 +1223,7 @@ function LeadDetailPanel({
       const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
         method: "POST",
         authToken: authToken ?? undefined,
-        body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
+        body: JSON.stringify({ source_kind: "intake", source_id: intakeId }),
       });
       // This runs on file open for every operator (the resolve endpoint is
       // theirs), so the strip shows on the workspace view without a trip
@@ -1222,22 +1241,7 @@ function LeadDetailPanel({
     } finally {
       setUnderwritingLoading(false);
     }
-  }
-
-  // The term sheet is keyed on the profile and exists only on dealer files; a
-  // 404 (not a dealer file / no package visibility) simply means "none".
-  async function loadTermSheet(profileId: string | null | undefined, authToken?: string | null) {
-    if (!profileId || !isDealerFile || !canUnderwrite) {
-      setTermSheet(null);
-      return;
-    }
-    try {
-      const token = authToken ?? (await getToken());
-      setTermSheet(await api<ApplicationTermSheetState>(`/production-packages/term-sheets/${profileId}`, { authToken: token ?? undefined }));
-    } catch {
-      setTermSheet(null);
-    }
-  }
+  }, [canUnderwrite, detail?.intake.id, getToken, loadTermSheet]);
 
   function openTermSheet() {
     setPrototypeView("production");
@@ -1317,7 +1321,7 @@ function LeadDetailPanel({
 
   useEffect(() => {
     void loadUnderwritingState();
-  }, [detail?.intake.id, canUnderwrite]);
+  }, [loadUnderwritingState]);
 
   useEffect(() => {
     if (!detail) {
@@ -1820,7 +1824,6 @@ function LeadDetailPanel({
                     accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic"
                     onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))}
                   />
-
                   {/* `.grid` gives the folded group its own 14px rhythm under the
                       forms; `.panel-b` itself has no gap. */}
                   <div className="grid mt">
@@ -1878,8 +1881,8 @@ function LeadDetailPanel({
                       clearLabel="Clear"
                     >
                       <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
-                      <InfoBlock title="Evidence requirements and AI blockers"><div className="grid">{detail.requested_documents.map((doc) => <div key={doc.id} className="itemrow"><CellChip tone={doc.status === "uploaded" ? "ok" : "warn"}>{doc.status}</CellChip><strong className="sp">{doc.name}</strong><span className="sub">{doc.required ? "Required" : "Optional"}</span></div>)}</div><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet. The checklist status above still applies."} /></InfoBlock>
                     </EvidenceFold>
+                    {underwriting?.profile_id ? <ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} /> : <div className="empty">{underwritingLoading ? "Loading program readiness..." : "Program readiness is available to underwriting staff after the file profile resolves."}</div>}
                   </div>
                 </Panel>
               ) : null}
@@ -1902,6 +1905,7 @@ function LeadDetailPanel({
               ) : null}
 
               {prototypeView === "underwriting" && canUnderwrite ? (
+                <div className="grid g12">
                 <Panel
                   title="Underwriting"
                   sub="Control the file lifecycle, approved amounts, DSCR overrides, and close outcome."
@@ -1984,10 +1988,13 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
+                {underwriting?.profile_id ? <Panel title="Programs and readiness" sub="Apply published lending criteria and reconcile shared evidence."><ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} /></Panel> : null}
+                </div>
               ) : null}
 
               {prototypeView === "communications" ? (
                 <div className="intake-communications">
+                  {underwriting?.profile_id ? <ApplicationMissingItemCommunications profileId={underwriting.profile_id} /> : null}
                   <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
                     {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
                   </div>

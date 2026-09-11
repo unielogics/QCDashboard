@@ -17,9 +17,10 @@
 // matching the security rule on the other public intake pages.
 
 import type { ReactNode } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
+import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
 import {
   SignRequestedDocument,
   type SignRequestedDocumentPayload,
@@ -35,6 +36,8 @@ import {
   numericOrNull,
   onlyDigits,
   type Intake,
+  type IntakeChatAction,
+  type IntakeChatActionResult,
   type IntakeResponse,
   type QueuedFile,
   type RequestedDoc,
@@ -46,7 +49,8 @@ import {
 // differ, rather than editing src/lib/intake.ts)
 // ---------------------------------------------------------------------------
 
-const API_BASE = `${process.env.NEXT_PUBLIC_API_URL ?? "https://api.qualifiedcommercial.com"}/api/v1/public/mca-refinance`;
+const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api.qualifiedcommercial.com";
+const API_BASE = `${API_ORIGIN}/api/v1/public/mca-refinance`;
 const TOKEN_KEY = "qc.mca.token";
 
 const FREQS = ["daily", "weekly", "biweekly", "monthly"] as const;
@@ -625,6 +629,8 @@ export default function McaRefinanceIntakePage() {
   const [chatText, setChatText] = useState("");
   const [chatBusy, setChatBusy] = useState(false);
   const [chatError, setChatError] = useState<string | null>(null);
+  const [chatNotice, setChatNotice] = useState<string | null>(null);
+  const [chatActionBusy, setChatActionBusy] = useState("");
 
   // Uploads (keyed by requested_document_id)
   const [uploads, setUploads] = useState<Record<string, QueuedFile[]>>({});
@@ -893,6 +899,7 @@ export default function McaRefinanceIntakePage() {
     setChatText("");
     setChatBusy(true);
     setChatError(null);
+    setChatNotice(null);
     try {
       const payload = await call<McaIntakeResponse>(`/${encodeURIComponent(tok)}/chat`, {
         method: "POST",
@@ -903,6 +910,55 @@ export default function McaRefinanceIntakePage() {
       setChatError(apiErrorText(error, c));
     } finally {
       setChatBusy(false);
+    }
+  }
+
+  async function executeChatAction(action: IntakeChatAction) {
+    const tok = tokenRef.current;
+    if (!tok) return;
+    setChatActionBusy(action.id);
+    setChatError(null);
+    setChatNotice(null);
+    try {
+      const result = await call<IntakeChatActionResult>(
+        `/${encodeURIComponent(tok)}/chat-actions/${action.id}`,
+        { method: "POST", body: JSON.stringify({}) },
+      );
+      if (action.action_type === "upload_own") {
+        if (!action.requested_document_id) throw new Error("The requested document is no longer available.");
+        const input = document.createElement("input");
+        input.type = "file";
+        input.multiple = true;
+        input.accept = ".pdf,.png,.jpg,.jpeg,.zip,.csv,.xlsx,application/pdf,image/*,application/zip";
+        input.onchange = () => {
+          if (input.files) void uploadFiles(action.requested_document_id!, Array.from(input.files));
+        };
+        input.click();
+      } else if (action.action_type === "download_template" && result.download_url) {
+        const download = await fetch(`${API_ORIGIN}${result.download_url}`);
+        if (!download.ok) throw new Error("The approved template could not be downloaded.");
+        const blob = await download.blob();
+        const disposition = download.headers.get("content-disposition") || "";
+        const filename = disposition.match(/filename="?([^";]+)"?/i)?.[1] || "financial-template";
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = filename;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      } else if (action.action_type === "complete_now" && result.room_url) {
+        window.location.assign(result.room_url);
+      }
+      setChatNotice(
+        result.delivery?.recipient_masked
+          ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.`
+          : result.detail,
+      );
+      await refresh();
+    } catch (error) {
+      setChatError(apiErrorText(error, c));
+    } finally {
+      setChatActionBusy("");
     }
   }
 
@@ -1325,8 +1381,9 @@ export default function McaRefinanceIntakePage() {
       <section className="vm-card chat" aria-label={c.chatTitle}>
         <div className="vm-chat-h">{c.chatTitle}</div>
         <div ref={messagesRef} className="vm-chat-s" aria-live="polite">
-          {chat.map((line) =>
-            line.role === "operator" ? (
+          {chat.map((line) => (
+            <Fragment key={line.id}>
+              {line.role === "operator" ? (
               <div key={line.id} className="vm-bub desk">
                 <span className="vm-bub-who">{line.authorName?.trim() || c.underwriterFallbackName}</span>
                 {line.content}
@@ -1335,8 +1392,17 @@ export default function McaRefinanceIntakePage() {
               <div key={line.id} className={line.role === "user" ? "vm-bub me" : "vm-bub"}>
                 {line.content}
               </div>
-            ),
-          )}
+              )}
+              {line.role === "assistant" ? (
+                <IntakeChatActions
+                  actions={response?.chat_actions ?? []}
+                  sourceMessageId={line.id}
+                  busyActionId={chatActionBusy}
+                  onAction={(action) => void executeChatAction(action)}
+                />
+              ) : null}
+            </Fragment>
+          ))}
           {aiPaused ? <div className="vm-sys">{c.takeoverNotice}</div> : null}
           {chatBusy && !aiPaused ? <div className="vm-bub pending">…</div> : null}
         </div>
@@ -1364,6 +1430,7 @@ export default function McaRefinanceIntakePage() {
             {chatError}
           </div>
         ) : null}
+        {chatNotice ? <div role="status" className="vm-ok">{chatNotice}</div> : null}
       </section>
     );
 
