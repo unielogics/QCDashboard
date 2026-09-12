@@ -23,6 +23,7 @@ type SmsConsentGrant = {
 type SmsConsentState = {
   phone: string | null;
   can_send: boolean;
+  delivery_enabled: boolean;
   transactional_consented: boolean;
   marketing_consented: boolean;
   opted_out: boolean;
@@ -138,7 +139,6 @@ export function AIIntakeClientConversation({
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [useSms, setUseSms] = useState(false);
   const [showConsent, setShowConsent] = useState(false);
   const [consenterName, setConsenterName] = useState(clientName || "");
   const [transactional, setTransactional] = useState(true);
@@ -170,9 +170,18 @@ export function AIIntakeClientConversation({
   }, [adapter]);
 
   const state = smsConsent.data ?? response.sms_state ?? null;
-  useEffect(() => {
-    if (!state?.can_send) setUseSms(false);
-  }, [state?.can_send]);
+  const useSms = Boolean(smsConsent.data?.delivery_enabled);
+  const sendBySms = Boolean(useSms && state?.can_send);
+
+  const smsPreference = useMutation({
+    mutationFn: (enabled: boolean) => apiCall<SmsConsentState>(`/application-profiles/${profileId}/communications/sms-preference`, {
+      method: "PATCH",
+      body: JSON.stringify({ enabled }),
+    }),
+    onSuccess: (next) => {
+      qc.setQueryData(["application-sms-consent", profileId], next);
+    },
+  });
 
   const timeline = useMemo<TimelineItem[]>(() => {
     const latestByPortal = new Map<string, ClientSmsMessage>();
@@ -197,9 +206,8 @@ export function AIIntakeClientConversation({
     setSending(true);
     setError("");
     try {
-      adopt(await adapter.replyClientThread(text, useSms));
+      adopt(await adapter.replyClientThread(text, sendBySms));
       setDraft("");
-      setUseSms(false);
       if (profileId) void qc.invalidateQueries({ queryKey: ["application-sms-consent", profileId] });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Reply failed.");
@@ -308,15 +316,16 @@ export function AIIntakeClientConversation({
               role="switch"
               aria-checked={useSms}
               className={cx("sms-delivery-toggle", useSms && "on")}
-              disabled={!state?.can_send}
-              onClick={() => setUseSms((value) => !value)}
-              title={state?.can_send ? "Send this portal reply by SMS too" : state?.blocked_reason || "SMS unavailable"}
+              disabled={!profileId || smsPreference.isPending || (!useSms && !state?.can_send)}
+              onClick={() => smsPreference.mutate(!useSms)}
+              title={useSms ? "SMS stays on for this file until you turn it off" : state?.can_send ? "Keep sending client replies by SMS" : state?.blocked_reason || "SMS unavailable"}
             ><span aria-hidden="true" /><Icon name="phone" size={14} />Also send by SMS</button>
-            <span className="sub">{state?.phone || "No mobile number"}{state?.can_send ? " · consent active" : state?.blocked_reason ? ` · ${state.blocked_reason}` : ""}</span>
+            <span className="sub">{state?.phone || "No mobile number"}{useSms ? state?.can_send ? " · stays on for this file" : ` · preference on · ${state?.blocked_reason || "SMS unavailable"}` : state?.can_send ? " · consent active" : state?.blocked_reason ? ` · ${state.blocked_reason}` : ""}</span>
             {profileId && state?.phone && !state.transactional_consented && !state.opted_out ? <Btn size="sm" onClick={() => setShowConsent((value) => !value)}>Record consent</Btn> : null}
           </div>
+          {smsPreference.isError ? <Callout tone="bad">{smsPreference.error instanceof Error ? smsPreference.error.message : "The SMS preference could not be saved."}</Callout> : null}
           {error ? <Callout tone="bad" icon={<Icon name="alert" size={15} />}>{error}</Callout> : null}
-          <div className="composer-row"><Btn variant="pri" onClick={() => void send()} disabled={sending || !draft.trim()}><Icon name="send" size={14} />{sending ? "Sending…" : useSms ? "Send to portal + SMS" : "Send to portal"}</Btn><span className="hint">Enter sends · Shift + Enter adds a line</span></div>
+          <div className="composer-row"><Btn variant="pri" onClick={() => void send()} disabled={sending || !draft.trim()}><Icon name="send" size={14} />{sending ? "Sending…" : sendBySms ? "Send to portal + SMS" : "Send to portal"}</Btn><span className="hint">Enter sends · Shift + Enter adds a line</span></div>
         </div>
       </div>
 
