@@ -147,6 +147,7 @@ export function AIIntakeClientConversation({
   const [resuming, setResuming] = useState(false);
   const timelineRef = useRef<HTMLDivElement | null>(null);
   const hasPositionedTimeline = useRef(false);
+  const clientThreadRequestVersion = useRef(0);
 
   const smsConsent = useQuery({
     queryKey: ["application-sms-consent", profileId],
@@ -160,15 +161,45 @@ export function AIIntakeClientConversation({
   });
 
   const adopt = (next: ClientThreadResponse) => setResponse(next);
+  const adoptAuthoritative = (next: ClientThreadResponse) => {
+    clientThreadRequestVersion.current += 1;
+    adopt(next);
+  };
 
   useEffect(() => {
     let alive = true;
-    setLoading(true);
-    adapter.loadClientThread()
-      .then((next) => { if (alive) adopt(next); })
-      .catch((reason) => { if (alive) setError(reason instanceof Error ? reason.message : "Could not load the client conversation."); })
-      .finally(() => { if (alive) setLoading(false); });
-    return () => { alive = false; };
+    let refreshInFlight = false;
+
+    const refresh = async (initial = false) => {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+      const requestVersion = ++clientThreadRequestVersion.current;
+      if (initial) setLoading(true);
+      try {
+        const next = await adapter.loadClientThread();
+        if (alive && requestVersion === clientThreadRequestVersion.current) adopt(next);
+      } catch (reason) {
+        if (alive && initial) setError(reason instanceof Error ? reason.message : "Could not load the client conversation.");
+      } finally {
+        refreshInFlight = false;
+        if (alive && initial) setLoading(false);
+      }
+    };
+
+    void refresh(true);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refresh();
+    }, 3000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refresh();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      alive = false;
+      clientThreadRequestVersion.current += 1;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
   }, [adapter]);
 
   const state = smsConsent.data ?? response.sms_state ?? null;
@@ -219,7 +250,7 @@ export function AIIntakeClientConversation({
     setSending(true);
     setError("");
     try {
-      adopt(await adapter.replyClientThread(text, sendBySms));
+      adoptAuthoritative(await adapter.replyClientThread(text, sendBySms));
       setDraft("");
       if (profileId) void qc.invalidateQueries({ queryKey: ["application-sms-consent", profileId] });
     } catch (reason) {
@@ -245,14 +276,14 @@ export function AIIntakeClientConversation({
       qc.setQueryData(["application-sms-consent", profileId], next);
       setShowConsent(false);
       setAcceptedLegal(false);
-      adopt(await adapter.loadClientThread());
+      adoptAuthoritative(await adapter.loadClientThread());
     },
   });
 
   async function retrySms(messageId: string) {
     setError("");
     try {
-      adopt(await apiCall<ClientThreadResponse>(`/admin/ai-underwriter-leads/${intakeId}/client-thread/${messageId}/sms-retry`, { method: "POST" }));
+      adoptAuthoritative(await apiCall<ClientThreadResponse>(`/admin/ai-underwriter-leads/${intakeId}/client-thread/${messageId}/sms-retry`, { method: "POST" }));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "SMS retry failed.");
     }
@@ -261,7 +292,7 @@ export function AIIntakeClientConversation({
   async function resumeAI() {
     if (!adapter.resumeClientThreadAI || resuming) return;
     setResuming(true);
-    try { adopt(await adapter.resumeClientThreadAI()); }
+    try { adoptAuthoritative(await adapter.resumeClientThreadAI()); }
     catch (reason) { setError(reason instanceof Error ? reason.message : "Could not hand the conversation back."); }
     finally { setResuming(false); }
   }
