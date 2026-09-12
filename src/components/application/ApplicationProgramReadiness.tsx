@@ -99,6 +99,10 @@ export function ApplicationProgramReadiness({
   aiReviewRunning = false,
   onUploadFiles,
   uploadBusy = false,
+  value,
+  onValueChange,
+  onRefresh,
+  showUploader = true,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -107,11 +111,16 @@ export function ApplicationProgramReadiness({
   aiReviewRunning?: boolean;
   onUploadFiles?: (files: File[], requestedDocumentId?: string) => Promise<void> | void;
   uploadBusy?: boolean;
+  value?: Readiness | null;
+  onValueChange?: (readiness: Readiness) => void;
+  onRefresh?: () => Promise<unknown> | void;
+  showUploader?: boolean;
 }) {
   const { getToken } = useAuth();
   const confirmAction = useConfirmAction();
   const uploadRef = useRef<HTMLInputElement>(null);
-  const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const controlled = value !== undefined;
+  const [readiness, setReadiness] = useState<Readiness | null>(value ?? null);
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
   const [programReason, setProgramReason] = useState("");
   const [evidenceSelections, setEvidenceSelections] = useState<Record<string, string>>({});
@@ -130,21 +139,35 @@ export function ApplicationProgramReadiness({
     return api<T>(path, { ...init, authToken: token ?? undefined });
   }, [getToken]);
 
+  const storeReadiness = useCallback((next: Readiness) => {
+    setReadiness(next);
+    onValueChange?.(next);
+  }, [onValueChange]);
+
   const load = useCallback(async () => {
     setBusy("load");
     setError(null);
     try {
+      if (controlled) {
+        await onRefresh?.();
+        return;
+      }
       const next = await authenticated<Readiness>(`/application-profiles/${profileId}/program-readiness`);
-      setReadiness(next);
+      storeReadiness(next);
       setSelectedPrograms(next.selections.map((selection) => selection.program_key));
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
       setBusy("");
     }
-  }, [authenticated, profileId]);
+  }, [authenticated, controlled, onRefresh, profileId, storeReadiness]);
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { if (!controlled) void load(); }, [controlled, load]);
+  useEffect(() => {
+    if (!controlled) return;
+    setReadiness(value ?? null);
+    if (value) setSelectedPrograms(value.selections.map((selection) => selection.program_key));
+  }, [controlled, value]);
   useEffect(() => {
     const refreshAfterAnalysis = () => void load();
     window.addEventListener("qc-ai-review-completed", refreshAfterAnalysis);
@@ -202,7 +225,7 @@ export function ApplicationProgramReadiness({
           reason: returnToAi ? "Operator returned selection to published AI criteria" : programReason.trim() || "Operator reviewed program selection",
         }),
       });
-      setReadiness(next);
+      storeReadiness(next);
       setSelectedPrograms(next.selections.map((selection) => selection.program_key));
       setProgramReason("");
       onNotice?.(returnToAi ? "Program selection returned to AI criteria." : "Funding programs updated.");
@@ -221,7 +244,7 @@ export function ApplicationProgramReadiness({
         `/application-profiles/${profileId}/requirements/${encodeURIComponent(requirementKey)}`,
         { method: "PATCH", body: JSON.stringify({ ...payload, confirmed: true }) },
       );
-      setReadiness(next);
+      storeReadiness(next);
       setOverrideDraft(null);
       onNotice?.(notice);
       return next;
@@ -298,7 +321,7 @@ export function ApplicationProgramReadiness({
         `/application-profiles/${profileId}/requirements/${encodeURIComponent(evidenceOverride.requirementKey)}/evidence/${evidenceOverride.fileId}`,
         { method: "PATCH", body: JSON.stringify({ decision: evidenceOverride.decision, reason_code: evidenceOverride.reasonCode, reason: evidenceOverride.reason.trim(), confirmed: true }) },
       );
-      setReadiness(next);
+      storeReadiness(next);
       setEvidenceOverride(null);
       onNotice?.(`${file.file_name} decision updated.`);
     } catch (reason) {
@@ -331,7 +354,7 @@ export function ApplicationProgramReadiness({
         method: "PATCH",
         body: JSON.stringify({ action: "link_evidence", evidence_file_ids: [file.file_id], confirmed: true }),
       });
-      setReadiness(next);
+      storeReadiness(next);
       setReassignDraft(null);
       setExpandedRequirements((current) => [...new Set([...current, target.requirement_key])]);
       onNotice?.(`${file.file_name} was reassigned for AI validation.`);
@@ -396,7 +419,7 @@ export function ApplicationProgramReadiness({
     setBusy("automation");
     try {
       const next = await authenticated<Readiness>(`/application-profiles/${profileId}/missing-item-automation`, { method: "PATCH", body: JSON.stringify({ enabled: nextEnabled }) });
-      setReadiness(next);
+      storeReadiness(next);
       onNotice?.(`Missing-item email automation ${nextEnabled ? "enabled" : "disabled"}.`);
     } catch (reason) {
       setError(errorMessage(reason));
@@ -441,6 +464,11 @@ export function ApplicationProgramReadiness({
 
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
+    <details className="program-readiness-programs">
+      <summary>
+        <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "No program selected"}</small></span>
+        <CellChip tone={readiness.selection_mode === "manual" ? "warn" : "acc"}>{readiness.selection_mode === "manual" ? "Manual selection" : "AI selection"}</CellChip>
+      </summary>
     <section className="program-readiness-band" aria-labelledby="program-selection-heading">
       <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Scoped program fit</h3><p>Only products scoped to this file appear. Published playbook versions are pinned to the selection.</p></div><div className="program-readiness-actions"><CellChip tone={readiness.selection_mode === "manual" ? "warn" : "acc"}>{readiness.selection_mode === "manual" ? "Manual selection" : "AI selection"}</CellChip>{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={() => void savePrograms(false)} disabled={!programsChanged || Boolean(busy)}>{busy === "programs" ? "Applying..." : "Review changes"}</Btn></div></div>
       {recommended.length ? <div className="program-candidate-group"><span className="lbl">Recommended</span><div className="program-candidate-grid">{recommended.map(candidateCard)}</div></div> : null}
@@ -449,13 +477,14 @@ export function ApplicationProgramReadiness({
       {ineligibleSelected.length ? <Field label="Required program-override reason"><Textarea rows={2} value={programReason} onChange={(event) => setProgramReason(event.target.value)} placeholder="Explain why these reviewed facts support the selected program" /></Field> : null}
       {!readiness.candidates.length ? <div className="empty">{readiness.lending_applicable ? "No in-scope program has published criteria yet. Keep collecting evidence; the system will not force a placeholder product." : "This enquiry is not a lending request, so lending programs do not apply."}</div> : null}
     </section>
+    </details>
 
     {readiness.lending_applicable ? <>
       {readiness.evidence_policies.length ? <section className="program-readiness-band initial-evidence-policy" aria-labelledby="initial-checklist-heading"><div className="program-readiness-heading"><div><span className="lbl">Evidence policy</span><h3 id="initial-checklist-heading">Initial evidence checklist</h3><p>{readiness.evidence_policies.map((policy) => `${policy.policy_name} v${policy.playbook_version}`).join(" · ")}</p></div><CellChip tone="mut">Not a funding product</CellChip></div></section> : null}
       <section className="program-readiness-band" aria-labelledby="program-progress-heading"><div className="program-readiness-heading"><div><span className="lbl">Independent readiness</span><h3 id="program-progress-heading">Program completion</h3></div><CellChip tone={readiness.can_advance ? "ok" : "warn"}>{readiness.can_advance ? "Ready for underwriting" : readiness.selections.length ? "Evidence still required" : "No program selected"}</CellChip></div><div className="program-progress-grid">{readiness.programs.map((program) => <div key={program.selection_id} className={semanticStatusClass(program.complete ? "ready" : program.completion_percent ? "processing" : "missing")}><div><strong>{program.program_name}</strong><span>{program.satisfied_count} of {program.required_count} required items accepted</span></div><div className="program-progress-track" aria-label={`${program.completion_percent}% complete`}><span style={{ width: `${program.completion_percent}%` }} /></div><b>{program.completion_percent}%</b></div>)}{!readiness.programs.length ? <div className="empty">No real product is selected. AI will select the highest-confidence eligible program after sufficient facts are available.</div> : null}</div></section>
       <section className="program-readiness-band" aria-labelledby="shared-evidence-heading">
         <div className="program-readiness-heading"><div><span className="lbl">Shared evidence</span><h3 id="shared-evidence-heading">Requirements and AI decisions</h3><p>AI reviews every uploaded file. Staff intervene only for exceptions, overrides, and policy decisions.</p></div><div className="program-readiness-actions requirement-bulk-actions">{onRunAiReview ? <Btn onClick={onRunAiReview} disabled={Boolean(busy) || aiReviewRunning}>{aiReviewRunning ? "Refreshing..." : "Refresh intake analysis"}</Btn> : null}{requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}<Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestKeys.length || Boolean(busy)}>{busy === "batch-request" ? "Sending one email..." : `Email selected (${selectedRequestKeys.length})`}</Btn></div></div>
-        {onUploadFiles ? <div className={cx("readiness-upload-dropzone", uploadDragging && "dragging")} role="button" tabIndex={0} onClick={() => uploadRef.current?.click()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); uploadRef.current?.click(); } }} onDragEnter={(event) => { event.preventDefault(); setUploadDragging(true); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setUploadDragging(false); }} onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}><input ref={uploadRef} type="file" hidden multiple accept={ACCEPTED_UPLOADS} onChange={(event) => void upload(Array.from(event.target.files ?? []))} /><Icon name="upload" size={20} /><span><strong>{uploadBusy ? "Uploading and queuing analysis..." : "Drop evidence files or ZIP archives"}</strong><small>PDF, spreadsheet, image, document, and ZIP files are extracted, classified, and reviewed automatically.</small></span><span className="btn sm">Browse</span></div> : null}
+        {showUploader && onUploadFiles ? <div className={cx("readiness-upload-dropzone", uploadDragging && "dragging")} role="button" tabIndex={0} onClick={() => uploadRef.current?.click()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); uploadRef.current?.click(); } }} onDragEnter={(event) => { event.preventDefault(); setUploadDragging(true); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setUploadDragging(false); }} onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}><input ref={uploadRef} type="file" hidden multiple accept={ACCEPTED_UPLOADS} onChange={(event) => void upload(Array.from(event.target.files ?? []))} /><Icon name="upload" size={20} /><span><strong>{uploadBusy ? "Uploading and queuing analysis..." : "Drop evidence files or ZIP archives"}</strong><small>PDF, spreadsheet, image, document, and ZIP files are extracted, classified, and reviewed automatically.</small></span><span className="btn sm">Browse</span></div> : null}
         <div className="requirement-table compact">
           {readiness.requirements.map((requirement) => {
             const complete = requirementIsComplete(requirement);

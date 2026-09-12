@@ -379,6 +379,281 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
       }),
     });
   });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/evidence-workspace$`), async (route) => {
+    const acceptedMonths = ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"];
+    const acceptedFile = {
+      file_id: "22000000-0000-0000-0000-000000000001",
+      file_name: "Operating statements.pdf",
+      bucket_id: bucketId,
+      created_at: "2026-08-24T17:00:00Z",
+      source: "automatic",
+      verified: true,
+      verified_at: "2026-08-24T17:15:00Z",
+      ai_decision: "accepted",
+      ai_reason_code: "coverage_complete",
+      ai_explanation: "Readable statements match the applicant and cover six distinct months.",
+      ai_confidence: "high",
+      decision_actor: "ai",
+      analysis_id: "22000000-0000-0000-0000-000000000002",
+      coverage_contribution: { months: acceptedMonths },
+    };
+    const bankRequirement = {
+      requirement_key: "business_bank_statements_6_months",
+      label: "Last 6 months business bank statements",
+      category: "bank_statement",
+      required_level: "required",
+      status: "verified",
+      requested_document_id: null,
+      evidence_file_id: acceptedFile.file_id,
+      evidence_file_name: acceptedFile.file_name,
+      evidence_files: [acceptedFile],
+      evidence_count: 1,
+      verified_evidence_count: 1,
+      coverage: { current: 6, required: 6, unit: "months" },
+      verified_coverage: { current: 6, required: 6, unit: "months" },
+      coverage_complete: true,
+      verified_coverage_complete: true,
+      allow_multiple_files: true,
+      verification_required: false,
+      source_program_keys: ["dealer_working_capital"],
+      source_policy_keys: ["business_baseline"],
+      program_overrides: {},
+      client_visible: true,
+      can_waive: true,
+      state_reason: "Accepted automatically from AI evidence analysis",
+      last_requested_at: null,
+      received_at: "2026-08-24T17:00:00Z",
+      verified_at: "2026-08-24T17:15:00Z",
+      provenance: { source: "ai_evidence_review" },
+    };
+    const debtRequirement = {
+      requirement_key: "business_debt_schedule",
+      label: "Business debt schedule",
+      category: "business_debt_schedule",
+      required_level: "required",
+      status: "missing",
+      requested_document_id: "23000000-0000-0000-0000-000000000001",
+      evidence_file_id: null,
+      evidence_file_name: null,
+      evidence_files: [],
+      evidence_count: 0,
+      verified_evidence_count: 0,
+      coverage: { current: 0, required: 1, unit: "documents" },
+      verified_coverage: { current: 0, required: 1, unit: "documents" },
+      coverage_complete: false,
+      verified_coverage_complete: false,
+      allow_multiple_files: true,
+      verification_required: false,
+      source_program_keys: ["dealer_working_capital"],
+      source_policy_keys: ["business_baseline"],
+      program_overrides: {},
+      client_visible: true,
+      can_waive: true,
+      state_reason: null,
+      last_requested_at: null,
+      received_at: null,
+      verified_at: null,
+      provenance: {},
+    };
+    const evidenceSummary = {
+      bank_statement_months: acceptedMonths,
+      bank_statement_required_months: 6,
+      bank_statement_file_count: 1,
+      bank_statement_accepted_count: 1,
+      bank_statement_processing_count: 0,
+      bank_statement_needs_more_count: 0,
+      bank_statement_rejected_count: 0,
+      bank_statement_failed_count: 0,
+      bank_statement_coverage_complete: true,
+    };
+    const verification = {
+      ownership_total: 100,
+      ownership_complete: true,
+      owner_contact_complete: true,
+      owner_count: 1,
+      required_credit_owner_count: 1,
+      completed_credit_owner_count: 0,
+      pending_credit_owner_ids: [],
+      missing_credit_contact_owner_ids: [],
+      bank_linked: false,
+      bank_connection_count: 0,
+      bank_statement_months: 6,
+      credit_returned: false,
+      owner_credit_complete: false,
+      business_banking_complete: true,
+      evidence_complete: false,
+      ready_for_step_2: true,
+      unlocked: false,
+      ownership_blockers: [],
+      credit_blockers: [],
+      banking_blockers: [],
+      blockers: ["Business debt schedule is missing"],
+    };
+    const programReadiness = {
+      profile_id: profileId,
+      lending_applicable: true,
+      selection_mode: "auto",
+      selections: [{
+        id: "21000000-0000-0000-0000-000000000001",
+        program_key: "dealer_working_capital",
+        program_name: "Dealer Working Capital",
+        playbook_id: "21000000-0000-0000-0000-000000000002",
+        playbook_version: 1,
+        source: "ai_auto",
+        fit_score: 85,
+        fit_confidence: 0.85,
+        fit_reasons: ["Dealer operating history and revenue fit the published criteria"],
+        selected_at: "2026-08-24T17:30:00Z",
+        needs_scope_review: false,
+      }],
+      evidence_policies: [{
+        id: "21000000-0000-0000-0000-000000000003",
+        policy_key: "business_baseline",
+        policy_name: "Business intake evidence",
+        playbook_id: "21000000-0000-0000-0000-000000000004",
+        playbook_version: 1,
+        selected_at: "2026-08-24T17:30:00Z",
+      }],
+      candidates: [{
+        program_key: "dealer_working_capital",
+        program_name: "Dealer Working Capital",
+        catalog_id: "21000000-0000-0000-0000-000000000005",
+        public_slug: "dealer-working-capital",
+        playbook_id: "21000000-0000-0000-0000-000000000002",
+        playbook_version: 1,
+        eligible: true,
+        recommendation_status: "recommended",
+        fit_score: 85,
+        confidence: 0.85,
+        priority: 10,
+        reasons: ["Dealer operating history and revenue fit the published criteria"],
+      }],
+      programs: [{
+        selection_id: "21000000-0000-0000-0000-000000000001",
+        program_key: "dealer_working_capital",
+        program_name: "Dealer Working Capital",
+        complete: false,
+        completion_percent: 50,
+        required_count: 2,
+        satisfied_count: 1,
+        blocking_requirement_keys: ["business_debt_schedule"],
+        requirement_keys: [bankRequirement.requirement_key, debtRequirement.requirement_key],
+      }],
+      requirements: [bankRequirement, debtRequirement],
+      available_evidence_files: [],
+      evidence_summary: evidenceSummary,
+      can_advance: false,
+      automatic_stage_status: "not_ready",
+      automation: {
+        enabled: true,
+        eligible: true,
+        next_requirement_key: "business_debt_schedule",
+        next_send_at: "2026-08-25T17:30:00Z",
+        last_sent_at: null,
+        attempts: 0,
+        max_attempts: 3,
+        stop_reason: null,
+      },
+    };
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        profile_id: profileId,
+        primary_bucket_id: bucketId,
+        primary_bucket_name: "UnieLogics secure room",
+        program_readiness: programReadiness,
+        verification,
+        banking: {
+          enabled: true,
+          environment: "production",
+          consent_granted: false,
+          disclosure_version: "2026-08",
+          disclosure_text: "",
+          items: [],
+          manual_override: false,
+          manual_override_reason: null,
+          manual_statement_months: acceptedMonths,
+          manual_statement_file_count: 1,
+          manual_statement_accepted_count: 1,
+          manual_statement_pending_count: 0,
+          manual_statement_rejected_count: 0,
+          manual_statement_failed_count: 0,
+          evidence_summary: evidenceSummary,
+          assets_enabled: true,
+          statements_enabled: true,
+          selected_products: ["assets", "statements"],
+          available_products: ["assets", "statements"],
+          consent_product_scope: ["assets", "statements"],
+          connections_requiring_client_authorization: 0,
+          plaid_policy_updated_at: null,
+          plaid_policy_updated_by_user_id: null,
+          asset_reports: [],
+        },
+        bank_evidence: {
+          source: "uploaded_statements",
+          connected_institutions: 0,
+          banking_access_complete: true,
+          accepted_statement_months: acceptedMonths,
+          required_statement_months: 6,
+          statement_coverage_complete: true,
+          processing_files: 0,
+          needs_attention_files: 0,
+          reconnect_required: false,
+        },
+        forms: { forms: [], packets: [] },
+        evidence: {
+          profile_id: profileId,
+          sources: [{
+            id: bucketId,
+            kind: "bucket",
+            relationship: "primary",
+            label: "UnieLogics secure room",
+            bucket_id: bucketId,
+            active_file_count: 1,
+            selected_file_count: 1,
+            accessible_file_count: 1,
+          }],
+          files: [{
+            id: acceptedFile.file_id,
+            source_id: bucketId,
+            bucket_id: bucketId,
+            file_name: acceptedFile.file_name,
+            content_type: "application/pdf",
+            size_bytes: 524288,
+            selected: true,
+            included_in_review: true,
+            preview_url: null,
+            created_at: acceptedFile.created_at,
+          }],
+          total_files: 1,
+          review_file_count: 1,
+          blockers: [],
+        },
+        supporting_group: {
+          id: "23000000-0000-0000-0000-000000000002",
+          bucket_id: bucketId,
+          name: "Supporting / Other",
+          description: "Optional supporting documents",
+          required: false,
+          allow_multiple_files: true,
+          status: "requested",
+          file_count: 0,
+        },
+        processing: {
+          total_files: 1,
+          analyzing_files: 0,
+          accepted_files: 1,
+          needs_attention_files: 0,
+          failed_files: 0,
+          has_processing: false,
+        },
+        can_manage_evidence: true,
+        can_manage_plaid_settings: true,
+        can_upload: true,
+      }),
+    });
+  });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/room/deliveries$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([
       { id: "30000000-0000-0000-0000-000000000001", action_kind: "business_banking_reminder", channel: "none", recipient_masked: "fr***@theceosnetwork.com", status: "created", detail: "Created without sending", provider_accepted: false, created_at: "2026-08-24T17:29:04Z" },
@@ -437,28 +712,27 @@ test("shared drawer inputs retain focus through controlled rerenders", async ({ 
   await expect(name).toBeFocused();
 });
 
-test("AI intake banking separates actions from persisted delivery status", async ({ page }, testInfo) => {
+test("AI intake banking syncs accepted statements and persisted delivery status", async ({ page }, testInfo) => {
   const { intakeId } = await mockAiIntakeBankingWorkspace(page);
   await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  await page.getByRole("tab", { name: "Banking" }).click();
   await expect(page.getByText("Accepted by email provider")).toBeVisible();
   await expect(page.getByText(/room link was created later.*without sending/i)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Resend bank request" })).toBeVisible();
+  await expect(page.getByText(/Uploaded statements provide six accepted months/i)).toBeVisible();
+  await expect(page.getByRole("button", { name: /bank request/i })).toHaveCount(0);
 
   const geometry = await page.locator(".bank-evidence-workspace").evaluate((section) => {
-    const toolbar = section.querySelector<HTMLElement>(".bank-request-toolbar")!;
     const status = section.querySelector<HTMLElement>(".bank-delivery-strip")!;
     const tabs = section.querySelector<HTMLElement>(".bank-workspace-tabs")!;
-    const toolbarBox = toolbar.getBoundingClientRect();
     const statusBox = status.getBoundingClientRect();
     const tabsBox = tabs.getBoundingClientRect();
     return {
       sectionOverflow: section.scrollWidth - section.clientWidth,
-      toolbarOverlapsStatus: toolbarBox.bottom > statusBox.top + 1,
       statusOverlapsTabs: statusBox.bottom > tabsBox.top + 1,
     };
   });
   expect(geometry.sectionOverflow).toBeLessThanOrEqual(1);
-  expect(geometry.toolbarOverlapsStatus).toBe(false);
   expect(geometry.statusOverlapsTabs).toBe(false);
   await captureReviewImage(page, "ai-intake-bank-delivery-status", testInfo);
 });
@@ -493,9 +767,8 @@ test("AI intake Evidence accepts bulk files and ZIP archives", async ({ page }, 
   test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "The evidence upload workflow is exercised at desktop and mobile widths.");
   const { intakeId, uploadedFiles } = await mockAiIntakeBankingWorkspace(page);
   await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /^Evidence\s/ }).click();
-  await page.getByRole("button", { name: /Evidence and data resources/ }).click();
-  const dropzone = page.getByRole("button", { name: /Drop evidence files or ZIP archives here/i });
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  const dropzone = page.getByRole("button", { name: /Drop files or ZIP archives here/i });
   await expect(dropzone).toBeVisible();
   const input = page.getByLabel("Upload evidence files");
   await expect(input).toHaveAttribute("multiple", "");
@@ -523,7 +796,8 @@ test("AI intake program readiness stays usable across supported widths", async (
   test.skip(!["desktop-1600", "compact-1280", "mobile-390"].includes(testInfo.project.name), "Program readiness is reviewed at the required release widths.");
   const { intakeId } = await mockAiIntakeBankingWorkspace(page);
   await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /^Evidence\s/ }).click();
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  await page.getByText("Programs and criteria", { exact: true }).click();
   await expect(page.getByRole("heading", { name: "Scoped program fit" })).toBeVisible();
   await expect(page.getByText("Dealer Working Capital", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("heading", { name: "Initial evidence checklist" })).toBeVisible();
@@ -668,6 +942,77 @@ test("application room lets the client add institutions and accounts", async ({ 
   await expect(page.getByText("Main operating bank")).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "application-room-multiple-banks", testInfo);
+});
+
+test("application room accepts six statement months without another Plaid prompt", async ({ page }) => {
+  const roomToken = "room.uploaded-statements";
+  const session = {
+    bucket: { name: "Northstar Logistics LLC", purpose: "Prepared for bank verification" },
+    recipient_name: "Avery Morgan",
+    recipient_email: "avery@example.com",
+    allow_notes: true,
+    requested_documents: [],
+    files: [],
+    evidence_banking_summary: {
+      requirements: [],
+      required_count: 0,
+      completed_required_count: 0,
+      missing_required_count: 0,
+      processing_file_count: 0,
+      supporting_group_id: "80000000-0000-0000-0000-000000000001",
+      supporting_group_name: "Supporting / Other",
+      supporting_file_count: 0,
+      bank_evidence: {
+        source: "uploaded_statements",
+        connected_institutions: 0,
+        banking_access_complete: true,
+        accepted_statement_months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"],
+        required_statement_months: 6,
+        statement_coverage_complete: true,
+        processing_files: 0,
+        needs_attention_files: 0,
+        reconnect_required: false,
+      },
+    },
+  };
+
+  await page.route(new RegExp(`/api/v1/buckets/request/${roomToken.replace(".", "\\.")}(?:/access)?$`), async (route) => {
+    if (route.request().url().endsWith("/access")) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session) });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bucket: session.bucket,
+        recipient_name: session.recipient_name,
+        recipient_email: session.recipient_email,
+        requires_passcode: true,
+        status: "active",
+      }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/dealer-os/public/room/${roomToken.replace(".", "\\.")}/features$`), async (route) => {
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/public/room/${roomToken.replace(".", "\\.")}/(?:state|merchant-offer|timeline)$`), async (route) => {
+    if (route.request().url().endsWith("/state")) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ precall: null }) });
+      return;
+    }
+    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+  });
+
+  await page.goto(`/buckets/request/${roomToken}?tab=banking`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Room PIN").fill("176646");
+  await page.getByRole("button", { name: "Open application room" }).click();
+  await expect(page.getByRole("heading", { name: "Business banking" })).toBeVisible();
+  await expect(page.getByText("Banking evidence complete.")).toBeVisible();
+  await expect(page.getByText("6 of 6 statement months accepted.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Add another institution" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "View uploaded statements" })).toBeVisible();
+  await assertStableGeometry(page);
 });
 
 test("prequalification review is one readable independently scrolling form", async ({ page }, testInfo) => {
@@ -937,9 +1282,23 @@ test("operator AI intake exposes private underwriting chat and the client transc
           { id: "client-turn", role: "user", author_name: "Fixture Client", content: "Did you receive the bank statements I uploaded?", created_at: "2026-08-22T13:00:00Z" },
           { id: "client-ai-turn", role: "assistant", author_name: "Bucket AI", content: "Yes. The statements are in your secure intake room.", created_at: "2026-08-22T13:00:01Z" },
         ],
+        sms_messages: [],
+        sms_state: { phone: "+12125550199", can_send: true, transactional_consented: true, opted_out: false, provider_available: true, blocked_reason: null },
       }),
     });
   });
+  await page.route(/\/application-profiles\/[^/]+\/communications\/sms-consent$/, async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ phone: "+12125550199", can_send: true, transactional_consented: true, marketing_consented: false, opted_out: false, provider_available: true, blocked_reason: null, grants: [] }),
+  }));
+  await page.route(/\/application-profiles\/[^/]+\/communications\/contacts$/, async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{ id: "client", kind: "client", name: "Fixture Client", email: "fixture@example.com", phone: "+12125550199", is_primary: true, owner_id: null, credit_required: false }]),
+  }));
+  await page.route(/\/application-profiles\/[^/]+\/communications\/email\/threads$/, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await page.route(/\/application-profiles\/[^/]+\/communications\/links$/, async (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
   await openConsolePage(page, `/admin/ai-underwriter-leads?lead=${intakeId}`);
   const intakeFile = page.locator(".ai-intake-detail-shell");
   await expect(intakeFile).toBeVisible();
@@ -953,8 +1312,13 @@ test("operator AI intake exposes private underwriting chat and the client transc
   await expect(intakeFile.getByText("Did you receive the bank statements I uploaded?", { exact: true })).toBeVisible();
   await expect(intakeFile.getByText("Yes. The statements are in your secure intake room.", { exact: true })).toBeVisible();
   await expect(intakeFile.getByLabel("Reply on behalf (as underwriter)")).toBeVisible();
+  await expect(intakeFile.getByRole("switch", { name: "Also send by SMS" })).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "intake-client-conversation", testInfo);
+
+  await intakeFile.getByRole("tab", { name: "Email" }).click();
+  await expect(intakeFile.getByText("New email", { exact: true })).toBeVisible();
+  await expect(intakeFile.getByText("fixture@example.com", { exact: false })).toBeVisible();
 });
 
 test("intake evidence, contact editing, and review controls share the file workspace", async ({ page }, testInfo) => {

@@ -31,6 +31,7 @@ import {
   type StatementSchema,
 } from "@/components/application/BusinessStatementForm";
 import { ShareWorksheetDialog, WorksheetModal } from "@/components/application/WorksheetModal";
+import { Drawer } from "@/components/ds/Drawer";
 
 type FormKind = "pfs" | "debt_schedule" | StatementKind;
 
@@ -210,6 +211,7 @@ export function FinancialFormsPanel({
   profileId,
   intakeId,
   nested = false,
+  onChange,
 }: {
   profileId?: string | null;
   /** Resolve the profile ourselves when the caller has not loaded it. The
@@ -218,6 +220,7 @@ export function FinancialFormsPanel({
   intakeId?: string | null;
   /** Rendered inside another panel, so it drops its own frame. */
   nested?: boolean;
+  onChange?: () => void;
 }) {
   const api = useAuthedApi();
   const pdf = useFinancialFormPdf();
@@ -300,6 +303,7 @@ export function FinancialFormsPanel({
     try {
       await work();
       await load();
+      onChange?.();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "That did not work.");
     } finally {
@@ -628,7 +632,8 @@ export function FinancialFormsPanel({
       ))}
 
       {editing === "pfs" && schema ? (
-        <div className="pfs-editor">
+        <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title="Personal financial statement" sub="Complete or update the form without expanding the evidence workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
+        <div className="pfs-editor financial-form-modal-editor">
           <Pfs413Form schema={schema} value={pfsBody} onChange={setPfsBody} disabled={busy !== ""} />
           <Row>
             <Btn variant="pri" disabled={busy !== ""} onClick={() => void savePfs()}>
@@ -637,17 +642,17 @@ export function FinancialFormsPanel({
             <Btn disabled={busy !== ""} onClick={() => void filePfs()}>
               {busy === "file" ? "Filing…" : "File on the checklist"}
             </Btn>
-            <Btn onClick={() => setEditing(null)}>Close</Btn>
             <span className="sub grow">
               Saving keeps the figures. Filing generates the sheet and satisfies the request — the
               borrower is not notified either way.
             </span>
           </Row>
-        </div>
+        </div></Drawer>
       ) : null}
 
       {editing === "debt_schedule" ? (
-        <div className="pfs-editor">
+        <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title="Business debt schedule" sub="Complete the schedule in a focused workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
+        <div className="pfs-editor financial-form-modal-editor">
           <DebtScheduleForm value={debtBody} onChange={setDebtBody} disabled={busy !== ""} />
           <Row>
             <Btn
@@ -665,16 +670,16 @@ export function FinancialFormsPanel({
             >
               {busy === "save" ? "Saving…" : "Save the schedule"}
             </Btn>
-            <Btn onClick={() => setEditing(null)}>Close</Btn>
             <span className="sub grow">
               These rows go on the file&apos;s debt schedule, which is what the DSCR reads.
             </span>
           </Row>
-        </div>
+        </div></Drawer>
       ) : null}
 
       {editing && isStatementKind(editing) && editingStatementSchema ? (
-        <div className="pfs-editor">
+        <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title={editing === "p_and_l" ? "Profit and loss statement" : "Balance sheet"} sub="Complete or update the form without expanding the evidence workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
+        <div className="pfs-editor financial-form-modal-editor">
           <BusinessStatementForm
             schema={editingStatementSchema}
             value={statementBody}
@@ -688,13 +693,12 @@ export function FinancialFormsPanel({
             <Btn disabled={busy !== ""} onClick={() => void saveStatement(editing, true)}>
               {busy === "file" ? "Filing…" : "File on the checklist"}
             </Btn>
-            <Btn onClick={() => setEditing(null)}>Close</Btn>
             <span className="sub grow">
               Saving keeps the figures. Filing generates the sheet and satisfies the request — the
               borrower is not notified either way.
             </span>
           </Row>
-        </div>
+        </div></Drawer>
       ) : null}
     </>
   );

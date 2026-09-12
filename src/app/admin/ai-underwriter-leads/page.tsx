@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
@@ -33,7 +32,6 @@ import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { Icon } from "@/components/design-system/Icon";
 import { TypingDots } from "@/components/design-system/TypingDots";
-import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
 import { FileTeamStrip } from "@/components/file/FileTeamStrip";
 import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
@@ -54,7 +52,7 @@ function apiErrorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 import { Role } from "@/lib/enums.generated";
-import { useAuthedApi, useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
@@ -63,23 +61,23 @@ import { LeadDscrPanel } from "@/components/admin/LeadDscrPanel";
 import { WhatsNewButton, WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
 import { useAIReview } from "@/components/admin/AIReviewProvider";
-import { IntakeEvidenceBrowser } from "@/components/admin/IntakeEvidenceBrowser";
 import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
+import { ApplicationEvidenceWorkspace } from "@/components/application/ApplicationEvidenceWorkspace";
 import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
 import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
 import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
-import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
+import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
 import { validPhone } from "@/lib/formCoerce";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
-import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, ExtractedFact, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 
 type LeadRow = {
   id: string;
@@ -343,6 +341,9 @@ export default function AdminAIUnderwriterLeadsPage() {
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const leadParam = searchParams.get("lead");
+  const requestedStep = searchParams.get("step");
+  const initialSubmissionStep = requestedStep === "6" ? 5 : requestedStep === "5" ? 4 : requestedStep === "4" ? 2 : requestedStep && /^[1-5]$/.test(requestedStep) ? Number(requestedStep) : undefined;
+  const initialEvidenceTab = requestedStep === "4" || searchParams.get("tab") === "banking" ? "banking" : "requirements";
   const isIntakeOperator = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
   const canGovern = me?.role === Role.SUPER_ADMIN;
   // Delete is the desk's — super admin and underwriting — and nobody else's.
@@ -656,7 +657,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       runReview: () => post<IntakeResponse>("/run-review"),
       reload: () => call<IntakeResponse>(base),
       loadClientThread: () => call<ClientThreadResponse>(`${base}/client-thread`),
-      replyClientThread: (message: string) => post<ClientThreadResponse>("/client-thread/reply", { message }),
+      replyClientThread: (message: string, alsoSms = false) => post<ClientThreadResponse>("/client-thread/reply", { message, also_sms: alsoSms }),
       resumeClientThreadAI: () => post<ClientThreadResponse>("/client-thread/resume", {}),
       // PFS/debt-schedule request + fill-in are dealer-only — real-estate
       // leads never see these fields, so the adapter omits them entirely.
@@ -781,6 +782,8 @@ export default function AdminAIUnderwriterLeadsPage() {
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
       initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "production" ? "production" : "workspace"}
+      initialSubmissionStep={initialSubmissionStep}
+      initialEvidenceTab={initialEvidenceTab}
       canGovern={canGovern}
       canDelete={canDelete}
       onClose={closeLead}
@@ -1002,6 +1005,8 @@ function LeadDetailPanel({
   loading,
   initialNotesOpen = false,
   initialView = "workspace",
+  initialSubmissionStep,
+  initialEvidenceTab = "requirements",
   canGovern,
   canDelete,
   onClose,
@@ -1031,6 +1036,8 @@ function LeadDetailPanel({
   loading: boolean;
   initialNotesOpen?: boolean;
   initialView?: "workspace" | "underwriting" | "production";
+  initialSubmissionStep?: number;
+  initialEvidenceTab?: "requirements" | "banking";
   canGovern: boolean;
   // Delete is the desk's — super admin and underwriting — and nobody else's.
   canDelete: boolean;
@@ -1099,15 +1106,14 @@ function LeadDetailPanel({
   // The current term sheet on the profile (dealer files only) for the
   // Underwriting strip. Recorded through the drawer, read here.
   const [termSheet, setTermSheet] = useState<ApplicationTermSheetState | null>(null);
-  const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "partner" | "internal">("underwriter");
-  const [submissionStep, setSubmissionStep] = useState(1);
+  const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "email" | "partner" | "internal">("underwriter");
+  const [submissionStep, setSubmissionStep] = useState(initialSubmissionStep ?? 1);
+  const [evidenceTab, setEvidenceTab] = useState<"requirements" | "banking" | "files">(initialEvidenceTab);
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
   const headerUploadRef = useRef<HTMLInputElement>(null);
-  const evidenceUploadRef = useRef<HTMLInputElement>(null);
   const initializedLeadIdRef = useRef<string | null>(null);
   const [headerUploading, setHeaderUploading] = useState(false);
-  const [evidenceDragging, setEvidenceDragging] = useState(false);
   const [uploadStatus, setUploadStatus] = useState("");
   const [profileVerification, setProfileVerification] = useState<FileOwnerRequirementState | null>(null);
   const [underwriting, setUnderwriting] = useState<ApplicationUnderwritingState | null>(null);
@@ -1158,31 +1164,6 @@ function LeadDetailPanel({
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
 
-  // ---- Evidence tab fold summaries ----
-  // Both folds under the financial forms are shut by default, which unmounts
-  // their contents. A shut fold still has to say what is inside it and open
-  // itself when something is waiting on a person, so the counts are derived
-  // here rather than inside the children.
-  //
-  // The fact list is read on the SAME react-query key ExtractedFactsReview
-  // uses, so this is one shared fetch either way, and the accept/reject
-  // inside that component invalidates this summary along with its own view.
-  const extractedFactsApi = useAuthedApi();
-  const extractedFacts = useQuery({
-    queryKey: ["application-extracted-facts", profileId],
-    enabled: Boolean(profileId),
-    queryFn: () => extractedFactsApi<ExtractedFact[]>(`/application-profiles/${profileId}/extracted-facts`),
-  });
-  const extractedFactRows = extractedFacts.data ?? [];
-  const suggestedFactCount = extractedFactRows.filter((fact) => fact.status === "suggested").length;
-  // "uploaded" is the satisfied status on a requested document; anything else
-  // (requested, rejected, pending) is still owed by the borrower.
-  const missingRequiredDocs = (detail?.requested_documents ?? []).filter((doc) => doc.required && doc.status !== "uploaded");
-  const evidenceFileCount = detail?.files.length ?? 0;
-  const evidenceResourcesSummary = missingRequiredDocs.length
-    ? `${evidenceFileCount} file${evidenceFileCount === 1 ? "" : "s"} · ${missingRequiredDocs.length} required document${missingRequiredDocs.length === 1 ? "" : "s"} outstanding`
-    : `${evidenceFileCount} file${evidenceFileCount === 1 ? "" : "s"} · every required document in`;
-  const extractedDataSummary = `${extractedFactRows.length} fact${extractedFactRows.length === 1 ? "" : "s"} extracted · ${suggestedFactCount} awaiting review · ${missing.length} blocker${missing.length === 1 ? "" : "s"}`;
   const artifacts = detail?.artifacts || [];
   const summary = artifacts.find((artifact) => artifact.artifact_type === "executive_summary");
   const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
@@ -1331,10 +1312,12 @@ function LeadDetailPanel({
     if (initializedLeadIdRef.current === detail.intake.id) return;
     initializedLeadIdRef.current = detail.intake.id;
     const rows = detail.artifacts ?? [];
-    if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
+    if (initialSubmissionStep) setSubmissionStep(initialSubmissionStep);
+    else if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
-    else if (detail.files.length) setSubmissionStep(3);
+    else if (detail.files.length) setSubmissionStep(2);
     else setSubmissionStep(1);
+    setEvidenceTab(initialEvidenceTab);
     setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : "workspace");
     setProductionTermSheetOpen(false);
     setCommunicationChannel("underwriter");
@@ -1349,7 +1332,7 @@ function LeadDetailPanel({
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
     });
-  }, [detail, initialView, canUnderwrite]);
+  }, [detail, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite]);
 
   async function saveContact() {
     if (!contactDraft.full_name.trim() || !contactDraft.email.trim()) {
@@ -1582,7 +1565,6 @@ function LeadDetailPanel({
       setHeaderUploading(false);
       setUploadStatus("");
       if (headerUploadRef.current) headerUploadRef.current.value = "";
-      if (evidenceUploadRef.current) evidenceUploadRef.current.value = "";
     }
   }
 
@@ -1698,16 +1680,17 @@ function LeadDetailPanel({
   const requiredUploaded = requiredDocs.filter((document) => document.status === "uploaded").length;
   const hasEvidence = Boolean(detail?.files.length);
   const evidenceComplete = hasEvidence && (requiredDocs.length === 0 || requiredUploaded === requiredDocs.length);
+  const evidenceAndBankingComplete = Boolean(profileVerification?.business_banking_complete && (profileVerification.evidence_complete || evidenceComplete));
+  const hasBankingActivity = Boolean(profileVerification?.bank_connection_count || profileVerification?.bank_statement_months);
   const reviewComplete = detail?.latest_review?.status === "completed" || detail?.intake.status === "reviewed";
   const reviewActive = detail ? rerunning || ["queued", "running"].includes(detail.latest_review?.status || "") : false;
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
     { id: 1, label: "Profile & ownership", sub: "Identity, owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
-    { id: 2, label: "Evidence", sub: "Financial forms, files and extraction", status: evidenceComplete ? "complete" : hasEvidence ? "partial" : "not-started" },
+    { id: 2, label: "Evidence & banking", sub: "Files, forms, AI decisions and bank coverage", status: evidenceAndBankingComplete ? "complete" : hasEvidence || hasBankingActivity ? "partial" : "not-started" },
     { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
-    { id: 4, label: "Business banking", sub: "Client Plaid or statement evidence", status: profileVerification?.business_banking_complete ? "complete" : profileVerification?.bank_connection_count || profileVerification?.bank_statement_months ? "partial" : "not-started" },
-    { id: 5, label: "AI review", sub: "Probability, coverage and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
-    { id: 6, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packet || summary ? "partial" : "not-started" },
+    { id: 4, label: "AI review", sub: "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
+    { id: 5, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packet || summary ? "partial" : "not-started" },
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -1726,8 +1709,8 @@ function LeadDetailPanel({
         </div>
         <span className="sp" />
         {detail ? (
-          <Btn variant="pri" onClick={submissionStep === 2 ? onLinkBucketIntake : submissionStep === 5 ? onRerun : submissionStep === 6 ? () => { setPackageTab("package"); setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning}>
-            {submissionStep === 2 ? "Attach evidence" : submissionStep === 5 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 6 ? "Build lender package" : submissionStep === 4 ? "Open business banking" : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
+          <Btn variant="pri" onClick={submissionStep === 2 ? () => headerUploadRef.current?.click() : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => { setPackageTab("package"); setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 2 && headerUploading)}>
+            {submissionStep === 2 ? (headerUploading ? "Uploading..." : "Add evidence") : submissionStep === 4 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? "Build lender package" : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
           </Btn>
         ) : null}
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
@@ -1792,7 +1775,7 @@ function LeadDetailPanel({
           )}>
             {prototypeView === "workspace" ? (
               <aside className="submission-rail">
-                <Panel title="Submission sequence" sub={`Step ${submissionStep} of 6`}>
+                <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
                   <div className="submission-steps submission-steps-rail">
                     {workflowSteps.map((step) => (
                       <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
@@ -1809,104 +1792,31 @@ function LeadDetailPanel({
             <main className="grid intake-file-primary">
               {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
-                <Panel
-                  title="Financial forms and evidence"
-                  sub="The four financial forms are the working surface. Evidence, data resources and extracted data fold underneath."
-                  actions={<Row><Btn onClick={() => setIngestPickerOpen(true)}>Add from Drive</Btn><Btn variant="pri" onClick={onLinkBucketIntake}>Attach another bucket</Btn></Row>}
-                >
-                  {/* Forms first and at full size. This tab is where the desk fills
-                      the four financial forms; the evidence browser and the
-                      extraction review are the material they are filled FROM, and
-                      they used to push the forms a screen and a half down. So they
-                      fold below, each with its counts on the header — shut is
-                      summarised, never hidden. */}
-                  <FinancialFormsPanel profileId={underwriting?.profile_id} intakeId={detail.intake.id} nested />
-
-                  {/* Mounted outside the fold: the picker is opened by the dropzone
-                      inside it, and an unmounted input would take the ref with it. */}
-                  <input
-                    ref={evidenceUploadRef}
-                    type="file"
-                    hidden
-                    multiple
-                    aria-label="Upload evidence files"
-                    accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic"
-                    onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))}
-                  />
-                  {/* `.grid` gives the folded group its own 14px rhythm under the
-                      forms; `.panel-b` itself has no gap. */}
-                  <div className="grid mt">
-                    {/* Opens itself while a required document is still owed — the fix
-                        for that is upstairs in this fold: drop the file in. */}
-                    <EvidenceFold
-                      storageKey={`intake-evidence-fold:${detail.intake.id}:resources-v2`}
-                      title="Evidence and data resources"
-                      summary={evidenceResourcesSummary}
-                      attention={missingRequiredDocs.length > 0}
-                      attentionLabel="Documents missing"
-                      clearLabel="Complete"
-                      defaultOpen={false}
-                      openOnAttention={false}
-                    >
-                      <div className="source-room"><div><CellChip tone="acc">Primary bucket</CellChip><strong>{detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"}</strong><span className="sub">{detail.files.length} primary files · supporting links are counted below</span></div><Link href={`/admin/buckets?bucket=${detail.intake.bucket_id}`} className="btn">Open bucket</Link></div>
-                      <button
-                        type="button"
-                        className={cx("intake-evidence-dropzone", evidenceDragging && "dragging")}
-                        disabled={headerUploading || !cockpitAdapter}
-                        onClick={() => evidenceUploadRef.current?.click()}
-                        onDragEnter={(event) => {
-                          event.preventDefault();
-                          if (!headerUploading) setEvidenceDragging(true);
-                        }}
-                        onDragOver={(event) => {
-                          event.preventDefault();
-                          event.dataTransfer.dropEffect = "copy";
-                        }}
-                        onDragLeave={(event) => {
-                          if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setEvidenceDragging(false);
-                        }}
-                        onDrop={(event) => {
-                          event.preventDefault();
-                          setEvidenceDragging(false);
-                          if (!headerUploading) void uploadFromHeader(Array.from(event.dataTransfer.files));
-                        }}
-                      >
-                        <span className="intake-evidence-dropzone-icon"><Icon name="upload" size={21} /></span>
-                        <span className="intake-evidence-dropzone-copy">
-                          <b>{headerUploading ? uploadStatus || "Uploading evidence..." : "Drop evidence files or ZIP archives here"}</b>
-                          <small>{headerUploading ? "Keep this file open while the upload finishes." : "Files are added to the primary bucket. ZIP archives are unpacked and indexed in the background."}</small>
-                        </span>
-                        <span className="intake-evidence-browse-label">{headerUploading ? "Uploading" : "Browse computer"}</span>
-                      </button>
-                      <div className="mt"><IntakeEvidenceBrowser intakeId={detail.intake.id} primaryBucketId={detail.intake.bucket_id} primaryBucketName={detail.intake.bucket_name || detail.intake.business_name || "Primary bucket"} files={detail.files} /></div>
-                    </EvidenceFold>
-
-                    {/* Opens itself while a fact is awaiting accept/reject or the last
-                        AI review left blockers behind. */}
-                    <EvidenceFold
-                      storageKey={`intake-evidence-fold:${detail.intake.id}:extracted`}
-                      title="Extracted data"
-                      summary={extractedDataSummary}
-                      attention={suggestedFactCount > 0 || missing.length > 0}
-                      attentionLabel="Needs review"
-                      clearLabel="Clear"
-                    >
-                      <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
-                    </EvidenceFold>
-                    {underwriting?.profile_id ? <ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} onUploadFiles={uploadFromHeader} uploadBusy={headerUploading} /> : <div className="empty">{underwritingLoading ? "Loading program readiness..." : "Program readiness is available to underwriting staff after the file profile resolves."}</div>}
-                  </div>
-                </Panel>
+                profileId ? <ApplicationEvidenceWorkspace
+                  profileId={profileId}
+                  intakeId={detail.intake.id}
+                  initialTab={evidenceTab}
+                  onUploadFiles={uploadFromHeader}
+                  uploadBusy={headerUploading}
+                  uploadStatus={uploadStatus}
+                  onNotice={toast.show}
+                  onRunAiReview={onRerun}
+                  aiReviewRunning={rerunning}
+                  onAddFromDrive={() => setIngestPickerOpen(true)}
+                  onAttachBucket={onLinkBucketIntake}
+                  onVerificationChange={setProfileVerification}
+                /> : <div className="empty">{underwritingLoading ? "Loading the unified evidence workspace..." : "The application profile could not be resolved."}</div>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
-              {prototypeView === "workspace" && submissionStep === 4 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="banking" onStateChange={setProfileVerification} /> : null}
-              {prototypeView === "workspace" && submissionStep === 5 ? (
+              {prototypeView === "workspace" && submissionStep === 4 ? (
                 <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
+                  <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                   <div className="intake-review-grid"><div className="kpi"><div className="lbl">Probability</div><div className="knum prose">{String(result?.probability_status || "Awaiting evidence")}</div></div><div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">primary files available</div></div><div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div></div>
                   <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
                   <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={() => setSubmissionStep(2)} />
                 </Panel>
               ) : null}
-              {prototypeView === "workspace" && submissionStep === 6 ? (
+              {prototypeView === "workspace" && submissionStep === 5 ? (
                 <Panel title="Package readiness" sub="Prepare, review, and deliver one lender-facing package." actions={packageTab === "summary" ? <Btn disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate summary" : "Generate summary"}</Btn> : packageTab === "package" ? <Btn variant="pri" disabled={busy !== "" || !summary} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild package" : "Build lender package"}</Btn> : <Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn>}>
                   <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Executive summary'], ['package', 'Lender package'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="check" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
                   {packageTab === "summary" ? summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">Generate an underwriter narrative after the AI review is complete.</div> : null}
@@ -1999,7 +1909,6 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
-                {underwriting?.profile_id ? <Panel title="Programs and readiness" sub="Apply published lending criteria and reconcile shared evidence."><ApplicationProgramReadiness profileId={underwriting.profile_id} files={detail.files} onNotice={toast.show} onRunAiReview={onRerun} aiReviewRunning={rerunning} onUploadFiles={uploadFromHeader} uploadBusy={headerUploading} /></Panel> : null}
                 </div>
               ) : null}
 
@@ -2007,11 +1916,12 @@ function LeadDetailPanel({
                 <div className="intake-communications">
                   {underwriting?.profile_id ? <ApplicationMissingItemCommunications profileId={underwriting.profile_id} /> : null}
                   <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
-                    {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
+                    {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['email', 'Email'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
                   </div>
                   {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
                   {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={onCockpitResponse} onRequestRerun={onRerun} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
-                  {communicationChannel === "client" && cockpitAdapter ? <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} /> : null}
+                  {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} /> : null}
+                  {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace profileId={underwriting.profile_id} clientName={detail.intake.full_name} /> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
                   {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
                 </div>
@@ -2379,7 +2289,7 @@ function LeadDetailPanel({
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "client" && cockpitAdapter ? (
-            <ClientConversation adapter={cockpitAdapter} clientName={detail.intake.full_name} />
+            <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} />
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "credit" ? (
@@ -3264,102 +3174,6 @@ function Spinner() {
     >
       <style>{"@keyframes qc-spin{to{transform:rotate(360deg)}}"}</style>
     </span>
-  );
-}
-
-// One fold, used twice under the financial forms on the Evidence tab.
-//
-// The desk works in the forms; the evidence browser and the extraction review
-// are the reference material behind them. Both therefore sit below the forms
-// and default to shut — but shut never means hidden: the header carries the
-// counts either way ("14 files · 3 required documents outstanding"), and a
-// fold that needs a person opens itself.
-//
-// A reader's own click outranks the attention default and is remembered per
-// fold per file, so a desk officer who expands the browser still finds it
-// expanded after a reload, and one who minimizes a fold that is shouting keeps
-// it minimized.
-//
-// Styled on the same `.evrev` fold as EvidenceReviewBlock so this tab has one
-// collapse language rather than two.
-function EvidenceFold({
-  storageKey,
-  title,
-  summary,
-  attention,
-  attentionLabel,
-  clearLabel,
-  defaultOpen,
-  openOnAttention = true,
-  children,
-}: {
-  /** Per-file, per-fold localStorage key for the reader's own choice. */
-  storageKey: string;
-  title: string;
-  /** Counts for the header, shown open or shut. */
-  summary: React.ReactNode;
-  /** Something in here needs a person. Decides the default state. */
-  attention: boolean;
-  attentionLabel: string;
-  clearLabel: string;
-  defaultOpen?: boolean;
-  openOnAttention?: boolean;
-  children: React.ReactNode;
-}) {
-  const [open, setOpen] = useState(defaultOpen ?? attention);
-  // A ref, not state: the stored-choice effect below has to be visible to the
-  // attention effect that runs immediately after it in the same commit, and a
-  // state update would not be.
-  const chosen = useRef(false);
-
-  useEffect(() => {
-    chosen.current = false;
-    let saved: string | null = null;
-    try {
-      saved = window.localStorage.getItem(storageKey);
-    } catch {
-      // Storage blocked (private window, embedded frame). Fall through to the
-      // attention default rather than failing the render.
-    }
-    if (saved === "open" || saved === "closed") {
-      chosen.current = true;
-      setOpen(saved === "open");
-    } else {
-      setOpen(defaultOpen ?? (openOnAttention ? attention : false));
-    }
-  }, [attention, defaultOpen, openOnAttention, storageKey]);
-
-  // Attention arrives late: the AI review and the extraction both finish in
-  // the background. Follow it until the reader has said otherwise.
-  useEffect(() => {
-    if (!chosen.current && openOnAttention) setOpen(attention);
-  }, [attention, openOnAttention]);
-
-  function toggle() {
-    const next = !open;
-    setOpen(next);
-    chosen.current = true;
-    try {
-      window.localStorage.setItem(storageKey, next ? "open" : "closed");
-    } catch {
-      // Best effort. The fold still works for this session.
-    }
-  }
-
-  return (
-    <section className={open ? "evrev is-open" : "evrev"}>
-      <button type="button" className="evrev-head" aria-expanded={open} onClick={toggle}>
-        <span className="evrev-caret" aria-hidden="true" />
-        <strong>{title}</strong>
-        <span className="evrev-summary">{summary}</span>
-        {attention ? <CellChip tone="warn">{attentionLabel}</CellChip> : <CellChip tone="ok">{clearLabel}</CellChip>}
-        <span className="evrev-toggle">{open ? "Minimize" : "Expand"}</span>
-      </button>
-      {/* Unmounted rather than hidden: the evidence browser and the extraction
-          review both run their own queries, and a minimized fold should not be
-          polling. */}
-      {open ? <div className="evrev-body">{children}</div> : null}
-    </section>
   );
 }
 

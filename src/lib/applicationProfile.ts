@@ -383,6 +383,104 @@ export type ApplicationBankState = {
   asset_reports: PlaidAssetReport[];
 };
 
+export type EvidenceWorkspaceFile = {
+  id: string;
+  source_id: string;
+  bucket_id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  selected: boolean;
+  included_in_review: boolean;
+  preview_url: string | null;
+  created_at: string;
+};
+
+export type ApplicationEvidenceCollection = {
+  profile_id: string;
+  sources: Array<{
+    id: string;
+    kind: string;
+    relationship: string;
+    label: string;
+    bucket_id: string | null;
+    active_file_count: number;
+    selected_file_count: number;
+    accessible_file_count: number;
+  }>;
+  files: EvidenceWorkspaceFile[];
+  total_files: number;
+  review_file_count: number;
+  blockers: string[];
+};
+
+export type FinancialFormSummary = {
+  kind: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet";
+  label: string;
+  requested: boolean;
+  satisfied: boolean;
+  source: "filled" | "uploaded" | "none";
+  analysis_pending: boolean;
+};
+
+export type SupportingDocumentGroup = {
+  id: string;
+  bucket_id: string;
+  name: string;
+  description: string | null;
+  required: false;
+  allow_multiple_files: true;
+  status: string;
+  file_count: number;
+};
+
+export type EvidenceProcessingSummary = {
+  total_files: number;
+  analyzing_files: number;
+  accepted_files: number;
+  needs_attention_files: number;
+  failed_files: number;
+  has_processing: boolean;
+};
+
+export type BusinessBankEvidence = {
+  source: "none" | "plaid" | "uploaded_statements" | "mixed";
+  connected_institutions: number;
+  banking_access_complete: boolean;
+  accepted_statement_months: string[];
+  required_statement_months: number;
+  statement_coverage_complete: boolean;
+  processing_files: number;
+  needs_attention_files: number;
+  reconnect_required: boolean;
+};
+
+export type ApplicationEvidenceWorkspace = {
+  profile_id: string;
+  primary_bucket_id: string | null;
+  primary_bucket_name: string | null;
+  program_readiness: ApplicationProgramReadiness;
+  verification: FileOwnerRequirementState;
+  banking: ApplicationBankState;
+  bank_evidence: BusinessBankEvidence;
+  forms: {
+    forms: FinancialFormSummary[];
+    packets: Array<{
+      packet_id: string;
+      created_at: string | null;
+      expires_at: string | null;
+      completed_kinds: string[];
+      revoked: boolean;
+    }>;
+  };
+  evidence: ApplicationEvidenceCollection;
+  supporting_group: SupportingDocumentGroup | null;
+  processing: EvidenceProcessingSummary;
+  can_manage_evidence: boolean;
+  can_manage_plaid_settings: boolean;
+  can_upload: boolean;
+};
+
 export type RoomDeliveryReceipt = {
   id: string;
   requested_document_id?: string | null;

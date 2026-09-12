@@ -50,6 +50,7 @@ export function BucketFileReviewPanel({
   files = [],
   activeFileId,
   onSelectFile,
+  headerActions,
 }: {
   title?: string;
   downloadUrl?: string | null;
@@ -63,6 +64,7 @@ export function BucketFileReviewPanel({
   files?: BucketReviewFile[];
   activeFileId?: string | null;
   onSelectFile?: (fileId: string) => void;
+  headerActions?: ReactNode;
 }) {
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -299,6 +301,7 @@ export function BucketFileReviewPanel({
               Open original
             </BtnLink>
           ) : null}
+          {headerActions}
           {onDelete ? (
             <Btn className="danger" onClick={onDelete}>
               <Icon name="x" size={14} />
