@@ -187,9 +187,7 @@ export function AIIntakeClientConversation({
     };
 
     void refresh(true);
-    const timer = window.setInterval(() => {
-      if (document.visibilityState === "visible") void refresh();
-    }, 3000);
+    const timer = window.setInterval(() => void refresh(), 3000);
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void refresh();
     };
