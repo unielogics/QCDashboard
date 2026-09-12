@@ -17,14 +17,19 @@ export interface ApiOptions extends RequestInit {
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
-  const { devUser, authToken, headers, ...rest } = opts;
+  const { devUser, authToken, headers, cache, ...rest } = opts;
   // Sanitize X-Dev-User: HTTP header values can't contain `[]`/`()` or other
   // separators. If a stored user.email or display string ever leaks through
   // with markdown-link formatting like `[a@b.com](mailto:a@b.com)`, extract
   // the actual email so we don't blow up Chrome's header validator.
   const safeDevUser = sanitizeDevUser(devUser);
+  const method = String(rest.method ?? "GET").toUpperCase();
   const res = await fetch(`${API_URL}/api/v1${path}`, {
     ...rest,
+    // Authenticated API reads are mutable application state. Browser or edge
+    // caching here makes a live thread look frozen until a hard refresh even
+    // when its query is polling correctly.
+    cache: cache ?? (method === "GET" ? "no-store" : undefined),
     headers: {
       "Content-Type": "application/json",
       ...(safeDevUser ? { "X-Dev-User": safeDevUser } : {}),

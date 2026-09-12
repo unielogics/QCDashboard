@@ -9,7 +9,7 @@
 // BROKER_QUESTION. INSTRUCT and BROKER_SUGGESTION are loan-scoped
 // only (they reference loan_instructions / ai_tasks).
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Panel, Seg, Textarea } from "@/components/ds";
 import { useDealAgentChat, useSendDealAgentChat } from "@/hooks/useApi";
@@ -51,6 +51,13 @@ export function DealAgentChatTab({ dealId, user }: Props) {
   const [mode, setMode] = useState<DealChatMode>(modes[0].mode);
   const [body, setBody] = useState("");
   const [flash, setFlash] = useState<string | null>(null);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const latestMessageId = messages.at(-1)?.id ?? null;
+
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (timeline) timeline.scrollTop = timeline.scrollHeight;
+  }, [latestMessageId]);
 
   const submit = async () => {
     const text = body.trim();
@@ -89,7 +96,7 @@ export function DealAgentChatTab({ dealId, user }: Props) {
       }
       sub="AI ↔ broker ↔ client — pre-funding nurture"
     >
-      <div className="thr">
+      <div ref={timelineRef} className="thr">
         {isLoading ? (
           <div className="thr-empty">Loading conversation…</div>
         ) : messages.length === 0 ? (

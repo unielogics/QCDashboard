@@ -1,5 +1,20 @@
 import type { InlineImage } from "@/lib/inlineImages";
 
+/**
+ * Every open conversation uses the same fallback refresh contract. Realtime
+ * transports may make this interval a no-op most of the time, but the poll is
+ * what keeps a dropped socket, delayed mailbox sync, or tablet relay from
+ * requiring a page refresh.
+ */
+export const LIVE_MESSAGE_POLL_MS = 3_000;
+export const LIVE_MESSAGE_QUERY_OPTIONS = {
+  staleTime: 0,
+  refetchInterval: LIVE_MESSAGE_POLL_MS,
+  refetchIntervalInBackground: true,
+  refetchOnWindowFocus: "always",
+  refetchOnReconnect: "always",
+} as const;
+
 export type UnifiedCommunicationThread = {
   id: string;
   title: string;

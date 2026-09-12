@@ -1650,7 +1650,8 @@ button.pick { width: 100%; text-align: left; }
 .ai-intake-client-timeline .msg-delivery { display: flex; align-items: center; gap: 7px; padding-top: 6px; color: var(--muted); font-size: 12px; }
 .ai-intake-client-timeline .msg-delivery .linky { font-size: 12px; }
 .ai-intake-client-composer { display: grid; gap: 8px; padding: 14px; border-top: 1px solid var(--line); background: var(--surface); }
-.ai-intake-client-composer textarea { min-height: 90px; resize: vertical; }
+.ai-intake-client-composer > textarea { min-height: 90px; resize: vertical; }
+.ai-intake-client-composer .chat-composer { padding: 0; border-top: 0; }
 .sms-delivery-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .sms-failure-alert-copy { display: grid; gap: 2px; min-width: 0; }
 .sms-failure-alert-copy span { color: inherit; font-size: 10.5px; line-height: 1.35; }

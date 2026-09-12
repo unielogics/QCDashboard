@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useToast, Toast } from "@/components/design-system/primitives";
@@ -60,6 +60,7 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [replyBody, setReplyBody] = useState("");
   const [replyBusy, setReplyBusy] = useState(false);
+  const messageTimelineRef = useRef<HTMLDivElement | null>(null);
 
   const searching = search.trim().length >= 2;
   const threadsQ = useInboxThreads({
@@ -97,6 +98,12 @@ export default function InboxPage() {
     () => threads.find((th) => th.thread_id === selectedThread) ?? null,
     [threads, selectedThread],
   );
+  const latestThreadMessageId = threadQ.data?.messages.at(-1)?.id ?? null;
+
+  useLayoutEffect(() => {
+    const timeline = messageTimelineRef.current;
+    if (timeline) timeline.scrollTop = timeline.scrollHeight;
+  }, [selectedThread, latestThreadMessageId]);
 
   if (isClient) return null;
 
@@ -367,7 +374,7 @@ export default function InboxPage() {
               {/* `.panel-b` supplies the gutters. `.thr` owns its own padding
                   shorthand, so overriding one side of it inline would leave two
                   owners for the same property. */}
-              <div className="panel-b" style={{ minHeight: 0, overflowY: "auto" }}>
+              <div ref={messageTimelineRef} className="panel-b" style={{ minHeight: 0, overflowY: "auto" }}>
                 <div className="thr">
                 {threadQ.data.messages.map((m) => {
                   const outbound = m.direction === "outbound";

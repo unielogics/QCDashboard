@@ -4,7 +4,9 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, Input, Lbl, Select, Sub, Textarea, WarnLine, cx } from "@/components/ds";
+import { ChatComposer } from "@/components/ds/ChatComposer";
 import { useAuthedApi } from "@/hooks/useApi";
+import { LIVE_MESSAGE_POLL_MS, LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import type { ClientSmsMessage, ClientThreadMessage, ClientThreadResponse, LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
 
 type SmsConsentGrant = {
@@ -187,7 +189,7 @@ export function AIIntakeClientConversation({
     };
 
     void refresh(true);
-    const timer = window.setInterval(() => void refresh(), 3000);
+    const timer = window.setInterval(() => void refresh(), LIVE_MESSAGE_POLL_MS);
     const refreshWhenVisible = () => {
       if (document.visibilityState === "visible") void refresh();
     };
@@ -344,13 +346,15 @@ export function AIIntakeClientConversation({
             {latestSmsFailure.portal_message_id ? <Btn size="sm" onClick={() => void retrySms(latestSmsFailure.portal_message_id as string)}>Retry SMS</Btn> : null}
           </Callout> : null}
           <Lbl>Reply on behalf (as underwriter)</Lbl>
-          <Textarea
+          <ChatComposer
             value={draft}
-            onChange={(event) => setDraft(event.target.value)}
-            onKeyDown={(event) => { if (event.key === "Enter" && !event.shiftKey) { event.preventDefault(); void send(); } }}
-            rows={4}
-            placeholder="Write a reply for the client…"
-            aria-label="Reply on behalf (as underwriter)"
+            onChange={setDraft}
+            onSend={() => void send()}
+            sending={sending}
+            placeholder="Write a text message"
+            sendLabel={sendBySms ? "Send to portal and SMS" : "Send to portal"}
+            hint="Enter sends · Shift + Enter adds a line"
+            autoFocus
           />
           <div className="sms-delivery-row">
             <button
@@ -367,7 +371,6 @@ export function AIIntakeClientConversation({
           </div>
           {smsPreference.isError ? <Callout tone="bad">{smsPreference.error instanceof Error ? smsPreference.error.message : "The SMS preference could not be saved."}</Callout> : null}
           {error ? <Callout tone="bad" icon={<Icon name="alert" size={15} />}>{error}</Callout> : null}
-          <div className="composer-row"><Btn variant="pri" onClick={() => void send()} disabled={sending || !draft.trim()}><Icon name="send" size={14} />{sending ? "Sending…" : sendBySms ? "Send to portal + SMS" : "Send to portal"}</Btn><span className="hint">Enter sends · Shift + Enter adds a line</span></div>
         </div>
       </div>
 
@@ -400,6 +403,7 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   const [linkKey, setLinkKey] = useState("");
   const [recipientLock, setRecipientLock] = useState<string | null>(null);
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
+  const emailTimelineRef = useRef<HTMLDivElement | null>(null);
 
   const contacts = useQuery({
     queryKey: ["application-communication-contacts", profileId],
@@ -408,7 +412,7 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   const threads = useQuery({
     queryKey: ["application-email-threads", profileId],
     queryFn: () => apiCall<EmailThread[]>(`/application-profiles/${profileId}/communications/email/threads`),
-    refetchInterval: 10000,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const links = useQuery({
     queryKey: ["application-communication-links", profileId],
@@ -418,7 +422,7 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
     queryKey: ["application-email-thread", profileId, selectedThreadId],
     enabled: Boolean(selectedThreadId && !composing),
     queryFn: () => apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads/${selectedThreadId}`),
-    refetchInterval: 8000,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   const availableContacts = useMemo(() => contacts.data ?? [], [contacts.data]);
@@ -434,6 +438,11 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   useEffect(() => {
     if (!threads.isLoading && !threads.data?.length) setComposing(true);
   }, [threads.isLoading, threads.data]);
+  const latestEmailMessageId = detail.data?.messages.at(-1)?.id ?? null;
+  useLayoutEffect(() => {
+    const timeline = emailTimelineRef.current;
+    if (timeline) timeline.scrollTop = timeline.scrollHeight;
+  }, [latestEmailMessageId]);
 
   const createThread = useMutation({
     mutationFn: () => apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads`, {
@@ -534,7 +543,7 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
         {detail.isError ? <Callout tone="bad">{detail.error instanceof Error ? detail.error.message : "Email thread unavailable."}</Callout> : null}
         {detail.data ? <>
           <header className="ai-intake-email-detail-head"><div><h3>{detail.data.thread.subject}</h3><Sub>To {detail.data.thread.to_email}{detail.data.thread.cc_emails.length ? ` · Cc ${detail.data.thread.cc_emails.join(", ")}` : ""}</Sub></div><CellChip tone={detail.data.thread.can_reply ? "ok" : "mut"}>{detail.data.thread.owner_name || detail.data.thread.owner_email || "Firm mailbox"}</CellChip></header>
-          <div className="ai-intake-email-messages">
+          <div ref={emailTimelineRef} className="ai-intake-email-messages">
             {detail.data.messages.map((message) => <article key={message.id} className={cx("email-message", message.direction)}>
               <div className="email-message-head"><b>{message.direction === "outbound" ? "You" : message.sender || "Client"}</b><span>{when(message.created_at)}</span></div>
               <p>{message.body}</p>

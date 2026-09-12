@@ -6,7 +6,7 @@
 // scoped endpoints, so posting here from either side shows up for the other.
 // Never visible to the client.
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Btn, StatusLine, Textarea } from "@/components/ds";
 import { InlineImageChips, InlineImageStrip, useInlineImages } from "@/components/InlineImages";
 import type { InlineImage } from "@/lib/inlineImages";
@@ -43,6 +43,13 @@ export function LeadNotesPanel({
 }) {
   const [draft, setDraft] = useState("");
   const pasted = useInlineImages("bucket_note");
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const latestNoteId = notes.at(-1)?.id ?? null;
+
+  useEffect(() => {
+    const timeline = timelineRef.current;
+    if (timeline) timeline.scrollTop = timeline.scrollHeight;
+  }, [latestNoteId]);
 
   async function submit() {
     const content = draft.trim();
@@ -78,7 +85,7 @@ export function LeadNotesPanel({
           caps itself at 56vh, which is correct inside a page and wrong inside
           a pane that already has a height; this one takes what is left over.
           `margin: auto` on the empty state still centres in a flex column. */}
-      <div className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflowY: "auto" }}>
+      <div ref={timelineRef} className="panel-b" style={{ display: "flex", flexDirection: "column", gap: 10, minHeight: 0, overflowY: "auto" }}>
         {notes.length === 0 ? (
           <div className="thr-empty" style={{ textAlign: "center", margin: "auto", maxWidth: 260 }}>
             {emptyLabel}

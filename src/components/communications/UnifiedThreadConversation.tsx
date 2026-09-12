@@ -8,6 +8,7 @@ import { ChatComposer } from "@/components/ds/ChatComposer";
 import { InlineImageStrip } from "@/components/InlineImages";
 import { useAuthedApi } from "@/hooks/useApi";
 import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
+import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 
 /** A new calendar day between two messages earns a divider, as in iMessage. */
 function dayBreak(previousIso: string | null, currentIso: string): boolean {
@@ -41,7 +42,7 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
   const thread = useQuery({
     queryKey: key,
     queryFn: () => apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}`),
-    refetchInterval: 6000,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const send = useMutation({
     mutationFn: (body: string) => apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body }) }),

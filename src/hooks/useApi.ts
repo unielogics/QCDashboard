@@ -3,6 +3,7 @@
 import { useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
+import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { useActiveProfile } from "@/store/role";
 import type {
@@ -328,9 +329,7 @@ export function useDealerChannelInbox(enabled = true, scope: "broker" | "admin" 
   return useQuery({
     queryKey: ["dealer-channel-inbox", scope],
     queryFn: () => apiCall<DealerChannelInbox>(path),
-    staleTime: 20 * 1000,
-    refetchOnWindowFocus: true,
-    refetchInterval: 60 * 1000,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: false,
     enabled: enabled && isLoaded && isSignedIn === true,
   });
@@ -692,6 +691,7 @@ export function useCommsMessages(filters: CommsMessageFilters = {}, options: { e
       ),
     enabled: options.enabled ?? true,
     placeholderData: (previous) => previous,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -701,6 +701,7 @@ export function useCommsMessage(messageId: string | null) {
     queryKey: ["comms-message", messageId],
     queryFn: () => apiCall<CommsMessageDetail>(`/admin/communications/messages/${messageId}`),
     enabled: Boolean(messageId),
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -722,6 +723,7 @@ export function useCommsActivity(
     ),
     enabled: options.enabled ?? true,
     placeholderData: (previous) => previous,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -865,6 +867,7 @@ export function useMessages(loanId: string | null | undefined) {
     queryKey: ["messages", loanId, devUser],
     queryFn: () => apiCall<Message[]>(`/messages?loan_id=${loanId}`),
     enabled: !!loanId,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -1649,11 +1652,9 @@ export function useAIChatThreads() {
   return useQuery({
     queryKey: ["aiChatThreads", devUser],
     queryFn: () => apiCall<AIChatThread[]>("/ai/chat/threads"),
-    // Poll so the topbar's unread dot picks up new system messages
-    // (kickoff opener, anchor narration, doc-reminder tier-1) within
-    // 15s — same cadence the loans table uses elsewhere.
-    refetchInterval: 15_000,
-    refetchOnWindowFocus: true,
+    // The list and open thread share the same fallback cadence so unread
+    // state cannot lag behind the conversation itself.
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -1664,10 +1665,7 @@ export function useAIChatThread(threadId: string | null | undefined) {
     queryKey: ["aiChatThread", threadId, devUser],
     queryFn: () => apiCall<AIChatThreadDetail>(`/ai/chat/threads/${threadId}`),
     enabled: !!threadId,
-    // Live-refresh while the thread is open so the AI's
-    // anchor-narration replies show up without a manual reopen.
-    refetchInterval: 15_000,
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -2742,6 +2740,7 @@ export function useDealChat(loanId: string | null | undefined) {
     queryKey: ["dealChat", loanId, devUser],
     queryFn: () => apiCall<LoanChatMessage[]>(`/loans/${loanId}/chat`),
     enabled: !!loanId,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -2983,7 +2982,7 @@ export function useDealAgentChat(dealId: string | null | undefined) {
     queryKey: ["dealAgentChat", dealId, devUser],
     queryFn: () => apiCall<LoanChatMessage[]>(`/deals/${dealId}/chat`),
     enabled: !!dealId,
-    refetchInterval: 15_000,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 }
 
@@ -4539,9 +4538,7 @@ export function useLenderThread(loanId: string | null) {
     // latest DB state. User explicitly reported they couldn't see
     // messages they had just sent — staleTime=10s was masking
     // freshly-committed rows.
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }
@@ -4553,9 +4550,7 @@ export function useLenderThreadSummary(loanId: string | null) {
     queryKey: ["lenderThreadSummary", loanId, devUser],
     queryFn: () => apiCall<LenderThreadSummary>(`/loans/${loanId}/lender-thread/summary`),
     enabled: !!loanId,
-    staleTime: 0,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }
@@ -7010,8 +7005,7 @@ export function useInboxThreads(opts?: { unreadOnly?: boolean; starredOnly?: boo
   return useQuery({
     queryKey: ["inboxThreads", devUser, qs],
     queryFn: () => apiCall<InboxThreadListResponse>(`/inbox/threads${qs ? `?${qs}` : ""}`),
-    refetchInterval: 30_000,
-    refetchOnWindowFocus: true,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }
@@ -7023,7 +7017,7 @@ export function useInboxThread(threadId: string | null) {
     queryKey: ["inboxThread", threadId, devUser],
     queryFn: () => apiCall<InboxThreadDetail>(`/inbox/threads/${encodeURIComponent(threadId!)}`),
     enabled: !!threadId,
-    staleTime: 0,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }
@@ -7035,6 +7029,7 @@ export function useInboxSearch(query: string) {
     queryKey: ["inboxSearch", query, devUser],
     queryFn: () => apiCall<InboxThreadListResponse>(`/inbox/search?q=${encodeURIComponent(query)}`),
     enabled: query.trim().length >= 2,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }
@@ -7077,6 +7072,7 @@ export function useClientActivity(clientId: string | null | undefined) {
     queryFn: () =>
       apiCall<ClientActivityRow[]>(`/clients/${clientId}/engagement`).catch(() => [] as ClientActivityRow[]),
     enabled: !!clientId,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }
@@ -7111,6 +7107,7 @@ export function useClientSms(clientId: string | null | undefined) {
         .then((r) => r.messages)
         .catch(() => [] as SmsMessageRow[]),
     enabled: !!clientId,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
     retry: aiQueryRetry,
   });
 }

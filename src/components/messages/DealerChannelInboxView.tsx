@@ -7,13 +7,14 @@
 // One row per AI file (lead) that has a thread, read/reply inline, click
 // through to the file. Team <-> partner only — never the client.
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, CellChip, Panel, cx } from "@/components/ds";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { useDealerChannelInbox, type DealerChannelInboxItem } from "@/hooks/useApi";
 import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { DealerChannelComposeDialog } from "@/components/messages/DealerChannelComposeDialog";
+import { LIVE_MESSAGE_POLL_MS } from "@/lib/communications";
 
 function timeAgo(iso?: string | null): string {
   if (!iso) return "";
@@ -103,6 +104,41 @@ export function DealerChannelInboxView({
       setPosting(false);
     }
   }
+
+  // The inbox summary can refresh while an already-open thread remains stale.
+  // Keep the selected note thread on the same fallback cadence as every other
+  // conversation, even when its websocket/mailbox event is missed.
+  useEffect(() => {
+    if (!selectedId) return;
+    let alive = true;
+    let inFlight = false;
+    const refreshOpenThread = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        const rows = await call<LeadNote[]>(`${apiPrefix}/${selectedId}/notes`);
+        if (alive) setNotes(rows);
+      } catch {
+        // The visible thread retains its last good snapshot; explicit send/open
+        // errors still surface through postError and threadLoading.
+      } finally {
+        inFlight = false;
+      }
+    };
+    const timer = window.setInterval(() => void refreshOpenThread(), LIVE_MESSAGE_POLL_MS);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") void refreshOpenThread();
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+    // `call` is intentionally excluded: it is recreated per render while its
+    // underlying authenticated fetch callback is stable.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiPrefix, selectedId]);
 
   function authorLabel(role: string | null): string {
     if (role === "dealer_partner") return selfRole === "partner" ? "You" : "Partner";

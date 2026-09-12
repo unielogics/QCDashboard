@@ -18,7 +18,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, Input, PageHeader, Select, cx } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { useAuthedApi } from "@/hooks/useApi";
-import type { UnifiedCommunicationThread, UnifiedContactPage } from "@/lib/communications";
+import { LIVE_MESSAGE_QUERY_OPTIONS, type UnifiedCommunicationThread, type UnifiedContactPage } from "@/lib/communications";
 import { NewMessageDrawer } from "./NewMessageDrawer";
 import { UnifiedThreadConversation } from "./UnifiedThreadConversation";
 
@@ -73,7 +73,7 @@ export function UnifiedMessagesInbox() {
   const contacts = useQuery({
     queryKey: ["unified-communication-contacts", query],
     queryFn: () => apiCall<UnifiedContactPage>(`/communications/contacts?${query}`),
-    refetchInterval: 15000,
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
   // Keep the selection valid as the list refreshes; default to the newest
