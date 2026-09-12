@@ -186,6 +186,10 @@ export function AIIntakeClientConversation({
       ...unlinked.map((sms) => ({ key: `sms:${sms.id}`, createdAt: sms.created_at, type: "sms" as const, sms })),
     ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [response]);
+  const latestOutboundSms = [...(response.sms_messages ?? [])]
+    .reverse()
+    .find((message) => message.direction === "outbound");
+  const latestSmsFailure = latestOutboundSms?.status === "failed" ? latestOutboundSms : null;
 
   async function send() {
     const text = draft.trim();
@@ -282,6 +286,13 @@ export function AIIntakeClientConversation({
         </div>
 
         <div className="ai-intake-client-composer">
+          {latestSmsFailure ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>
+            <div className="sms-failure-alert-copy">
+              <b>SMS delivery failed</b>
+              <span>{latestSmsFailure.detail || "The SMS provider did not accept this message."}</span>
+            </div>
+            {latestSmsFailure.portal_message_id ? <Btn size="sm" onClick={() => void retrySms(latestSmsFailure.portal_message_id as string)}>Retry SMS</Btn> : null}
+          </Callout> : null}
           <Lbl>Reply on behalf (as underwriter)</Lbl>
           <Textarea
             value={draft}

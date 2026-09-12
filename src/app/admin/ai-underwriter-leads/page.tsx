@@ -781,7 +781,8 @@ export default function AdminAIUnderwriterLeadsPage() {
       detail={detail}
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
-      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "production" ? "production" : "workspace"}
+      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "production" ? "production" : searchParams.get("view") === "communications" ? "communications" : "workspace"}
+      initialCommunicationChannel={searchParams.get("channel") === "client" ? "client" : searchParams.get("channel") === "email" ? "email" : "underwriter"}
       initialSubmissionStep={initialSubmissionStep}
       initialEvidenceTab={initialEvidenceTab}
       canGovern={canGovern}
@@ -1005,6 +1006,7 @@ function LeadDetailPanel({
   loading,
   initialNotesOpen = false,
   initialView = "workspace",
+  initialCommunicationChannel = "underwriter",
   initialSubmissionStep,
   initialEvidenceTab = "requirements",
   canGovern,
@@ -1035,7 +1037,8 @@ function LeadDetailPanel({
   detail: LeadDetail | null;
   loading: boolean;
   initialNotesOpen?: boolean;
-  initialView?: "workspace" | "underwriting" | "production";
+  initialView?: "workspace" | "communications" | "underwriting" | "production";
+  initialCommunicationChannel?: "underwriter" | "client" | "email";
   initialSubmissionStep?: number;
   initialEvidenceTab?: "requirements" | "banking";
   canGovern: boolean;
@@ -1318,9 +1321,9 @@ function LeadDetailPanel({
     else if (detail.files.length) setSubmissionStep(2);
     else setSubmissionStep(1);
     setEvidenceTab(initialEvidenceTab);
-    setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : "workspace");
+    setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : initialView === "communications" ? "communications" : "workspace");
     setProductionTermSheetOpen(false);
-    setCommunicationChannel("underwriter");
+    setCommunicationChannel(initialCommunicationChannel);
     setContextRailOpen(false);
     setContactDraft({
       full_name: detail.intake.full_name || "",
@@ -1332,7 +1335,7 @@ function LeadDetailPanel({
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
     });
-  }, [detail, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite]);
+  }, [detail, initialCommunicationChannel, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite]);
 
   async function saveContact() {
     if (!contactDraft.full_name.trim() || !contactDraft.email.trim()) {

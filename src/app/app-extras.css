@@ -1652,6 +1652,8 @@ button.pick { width: 100%; text-align: left; }
 .ai-intake-client-composer { display: grid; gap: 8px; padding: 14px; border-top: 1px solid var(--line); background: var(--surface); }
 .ai-intake-client-composer textarea { min-height: 90px; resize: vertical; }
 .sms-delivery-row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.sms-failure-alert-copy { display: grid; gap: 2px; min-width: 0; }
+.sms-failure-alert-copy span { color: inherit; font-size: 10.5px; line-height: 1.35; }
 .sms-delivery-toggle { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 5px 10px 5px 6px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 14px; cursor: pointer; }
 .sms-delivery-toggle > span { width: 25px; height: 15px; border-radius: 99px; background: var(--line2); position: relative; transition: background .16s ease; }
 .sms-delivery-toggle > span::after { content: ""; position: absolute; top: 2px; left: 2px; width: 11px; height: 11px; border-radius: 50%; background: var(--surface); box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .16s ease; }
