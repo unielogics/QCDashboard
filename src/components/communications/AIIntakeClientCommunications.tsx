@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, Input, Lbl, Select, Sub, Textarea, WarnLine, cx } from "@/components/ds";
@@ -145,6 +145,8 @@ export function AIIntakeClientConversation({
   const [marketing, setMarketing] = useState(false);
   const [acceptedLegal, setAcceptedLegal] = useState(false);
   const [resuming, setResuming] = useState(false);
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+  const hasPositionedTimeline = useRef(false);
 
   const smsConsent = useQuery({
     queryKey: ["application-sms-consent", profileId],
@@ -199,6 +201,17 @@ export function AIIntakeClientConversation({
     .reverse()
     .find((message) => message.direction === "outbound");
   const latestSmsFailure = latestOutboundSms?.status === "failed" ? latestOutboundSms : null;
+  const latestTimelineKey = timeline.at(-1)?.key ?? null;
+
+  useLayoutEffect(() => {
+    const container = timelineRef.current;
+    if (!container || loading) return;
+    container.scrollTo({
+      top: container.scrollHeight,
+      behavior: hasPositionedTimeline.current ? "smooth" : "auto",
+    });
+    hasPositionedTimeline.current = true;
+  }, [loading, latestTimelineKey]);
 
   async function send() {
     const text = draft.trim();
@@ -269,7 +282,7 @@ export function AIIntakeClientConversation({
       </Callout> : null}
 
       <div className="ai-intake-client-thread">
-        <div className="ai-intake-client-timeline" aria-live="polite">
+        <div ref={timelineRef} className="ai-intake-client-timeline" aria-live="polite">
           {loading ? <div className="empty"><span className="spinner solo" />Loading client conversation…</div> : null}
           {!loading && timeline.length === 0 ? <div className="empty">No client messages yet.</div> : null}
           {timeline.map((item) => {
