@@ -341,12 +341,14 @@ export const CompletionModeOptions = [
 
 export const ContractSubjectType = {
   USER: "user",
-  COMPANY: "company"
+  COMPANY: "company",
+  COUNTERPARTY: "counterparty"
 } as const;
 export type ContractSubjectType = (typeof ContractSubjectType)[keyof typeof ContractSubjectType];
 export const ContractSubjectTypeOptions = [
   { value: "user", label: "User" },
-  { value: "company", label: "Company" }
+  { value: "company", label: "Company" },
+  { value: "counterparty", label: "Counterparty" }
 ] as const;
 
 export const ContractType = {
@@ -354,7 +356,8 @@ export const ContractType = {
   REFERRAL_PROTECTION: "referral_protection",
   SBA_ENGAGEMENT: "sba_engagement",
   CLIENT_ENGAGEMENT: "client_engagement",
-  CONSULTING_ADDENDUM: "consulting_addendum"
+  CONSULTING_ADDENDUM: "consulting_addendum",
+  MUTUAL_NDA_NON_CIRCUMVENTION: "mutual_nda_non_circumvention"
 } as const;
 export type ContractType = (typeof ContractType)[keyof typeof ContractType];
 export const ContractTypeOptions = [
@@ -362,7 +365,8 @@ export const ContractTypeOptions = [
   { value: "referral_protection", label: "Referral Protection" },
   { value: "sba_engagement", label: "Sba Engagement" },
   { value: "client_engagement", label: "Client Engagement" },
-  { value: "consulting_addendum", label: "Consulting Addendum" }
+  { value: "consulting_addendum", label: "Consulting Addendum" },
+  { value: "mutual_nda_non_circumvention", label: "Mutual Nda Non Circumvention" }
 ] as const;
 
 export const CreditPullStatus = {
@@ -795,6 +799,16 @@ export const PrepayPenaltyOptions = [
   { value: "none", label: "None" }
 ] as const;
 
+export const ProductAccountType = {
+  FUNDING: "funding",
+  AUDIT: "audit"
+} as const;
+export type ProductAccountType = (typeof ProductAccountType)[keyof typeof ProductAccountType];
+export const ProductAccountTypeOptions = [
+  { value: "funding", label: "Funding" },
+  { value: "audit", label: "Audit" }
+] as const;
+
 export const PropertyType = {
   SFR: "single_family",
   UNITS_2_4: "2_4_units",
@@ -850,6 +864,7 @@ export const Role = {
   LENDER: "lender",
   VENDOR: "vendor",
   DEALER_PARTNER: "dealer_partner",
+  PROFESSIONAL_REFERRAL_PARTNER: "professional_referral_partner",
   DEALER: "dealer",
   FIELD_REP: "field_rep"
 } as const;
@@ -863,6 +878,7 @@ export const RoleOptions = [
   { value: "lender", label: "Lender" },
   { value: "vendor", label: "Vendor" },
   { value: "dealer_partner", label: "Dealer Partner" },
+  { value: "professional_referral_partner", label: "Professional Referral Partner" },
   { value: "dealer", label: "Dealer" },
   { value: "field_rep", label: "Field Rep" }
 ] as const;

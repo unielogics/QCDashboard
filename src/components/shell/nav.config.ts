@@ -108,6 +108,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         items: [
           { label: "Buckets", href: "/admin/buckets", icon: "lock" },
           { label: "AI intake", href: "/admin/ai-underwriter-leads", icon: "spark" },
+          { label: "Foreclosure rescues", href: "/foreclosure-rescues", icon: "bolt" },
           { label: "Vault", href: "/vault", icon: "vault" },
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
@@ -159,6 +160,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         label: "Underwriting",
         items: [
           { label: "AI intake", href: "/admin/ai-underwriter-leads", icon: "spark" },
+          { label: "Foreclosure rescues", href: "/foreclosure-rescues", icon: "bolt" },
           { label: "Vault", href: "/vault", icon: "vault" },
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
@@ -330,6 +332,23 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
     ],
     tools: [],
     scopeNote: "You can see the leads you referred and the programs available to you.",
+  },
+
+  [Role.PROFESSIONAL_REFERRAL_PARTNER]: {
+    shellLabel: "Professional referral portal",
+    roleLabel: "Professional partner",
+    groups: [
+      {
+        id: "rescue",
+        label: "Commercial foreclosure",
+        items: [
+          { label: "Firm rescue files", href: "/foreclosure-rescues", icon: "bolt" },
+          { label: "Profile", href: "/profile", icon: "user" },
+        ],
+      },
+    ],
+    tools: [],
+    scopeNote: "You can see every foreclosure rescue owned by your approved firm.",
   },
 
   [Role.FIELD_REP]: {

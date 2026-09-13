@@ -11,6 +11,8 @@ export interface User {
   email: string;
   name: string;
   role: Role;
+  referral_partner_company_id?: string | null;
+  referral_partner_company_admin?: boolean;
   account_types: Array<ProductAccountType | "field_desk">;
   account_status: "active" | "suspended";
   can_access_funding: boolean;

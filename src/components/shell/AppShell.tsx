@@ -89,6 +89,7 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // query is ready the instant a broker's role resolves without a
   // render-order dependency.
   const { data: platformAccessStatus } = useContractStatus(ContractType.PLATFORM_ACCESS);
+  const { data: referralProtectionStatus } = useContractStatus(ContractType.REFERRAL_PROTECTION);
 
   // Mirror the real /auth/me user into the legacy useActiveProfile() shim so
   // older call sites keep working while we migrate them off.
@@ -144,6 +145,10 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
     pathname.startsWith("/broker") || pathname.startsWith("/profile");
   const isDealerPartnerOutOfBounds =
     user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
+  const isProfessionalPartnerConfinedRoute =
+    pathname.startsWith("/foreclosure-rescues") || pathname.startsWith("/profile");
+  const isProfessionalPartnerOutOfBounds =
+    user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER && !isProfessionalPartnerConfinedRoute;
   const isAuditOnlyClient = !!user
     && (user.role === Role.CLIENT || user.role === Role.DEALER)
     && user.can_access_audit
@@ -153,6 +158,9 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
       router.replace("/broker/ai-underwriter-leads");
     }
   }, [isDealerPartnerOutOfBounds, router]);
+  useEffect(() => {
+    if (isProfessionalPartnerOutOfBounds) router.replace("/foreclosure-rescues");
+  }, [isProfessionalPartnerOutOfBounds, router]);
   useEffect(() => {
     if (isAuditOnlyClient) {
       window.location.replace("https://audit.qualifiedcommercial.com");
@@ -242,11 +250,15 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // Enforcement also lives server-side (_require_dealer_partner on every
   // broker endpoint checks both this AND the company's Referral Protection
   // Agreement) — this is the UX half of that guarantee, not the only one.
-  if (user?.role === Role.DEALER_PARTNER && platformAccessStatus?.required) {
+  if ((user?.role === Role.DEALER_PARTNER || user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER) && platformAccessStatus?.required) {
     return <PlatformAccessGate />;
   }
 
-  if (isDealerPartnerOutOfBounds) {
+  if (user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER && referralProtectionStatus?.required) {
+    return <div className="bareshell" style={{ padding: "18vh 20px" }}><div className="card" style={{ maxWidth: 620, margin: "0 auto" }}><span className="eyebrow">Firm enrollment</span><h1>Referral Protection Agreement required</h1><p className="sub">An authorized firm representative must complete the company agreement before the shared foreclosure-rescue workspace can open.</p><a className="btn pri" href="/agreement/referral-protection">Review company agreement</a></div></div>;
+  }
+
+  if (isDealerPartnerOutOfBounds || isProfessionalPartnerOutOfBounds) {
     return <div className="bareshell" />;
   }
 

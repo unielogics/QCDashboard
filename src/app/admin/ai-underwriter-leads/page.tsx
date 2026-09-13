@@ -291,6 +291,7 @@ const VARIANT_FILTERS = [
   { value: "all", label: "All reviews" },
   { value: "dealer", label: "Dealer" },
   { value: "real_estate", label: "Real estate" },
+  { value: "commercial_foreclosure_bailout_v1", label: "Foreclosure rescue" },
   // Raw slugs pass straight through the backend's variant_filter else-branch.
   { value: "mca_refi_v1", label: "MCA refinance" },
 ];
@@ -3245,6 +3246,7 @@ function variantLabel(value?: string | null) {
   if (value === "dealer_gatekeeper_v1") return "Dealer";
   if (value === "mca_refi_v1") return "MCA refinance";
   if (value === "main_street_v1") return "Main Street";
+  if (value === "commercial_foreclosure_bailout_v1") return "Foreclosure rescue";
   return "AI review";
 }
 
