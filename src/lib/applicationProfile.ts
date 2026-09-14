@@ -123,11 +123,30 @@ export type EvidencePolicySelection = {
   selected_at: string;
 };
 
+export type UnlockedCopyRequestState = {
+  requested_document_id: string | null;
+  request_status: string;
+  delivery_id: string | null;
+  delivery_status: string | null;
+  requested_at: string | null;
+  last_delivery_at: string | null;
+  replacement_review_state?: "requested" | "checking" | "received" | "needs_another_copy" | null;
+};
+
+export type UnlockedCopyRequestResult = UnlockedCopyRequestState & {
+  source_file_id: string;
+  room_url: string;
+  recipient_masked: string | null;
+  provider_accepted: boolean;
+  deduplicated: boolean;
+};
+
 export type ApplicationRequirementEvidence = {
   file_id: string;
   file_name: string;
   bucket_id: string;
   created_at: string;
+  preview_url?: string | null;
   source: "automatic" | "filename_suggestion" | "operator";
   verified: boolean;
   verified_at: string | null;
@@ -138,6 +157,37 @@ export type ApplicationRequirementEvidence = {
   decision_actor: "ai" | "staff" | "system" | null;
   analysis_id: string | null;
   coverage_contribution: Record<string, unknown>;
+  is_password_protected?: boolean;
+  unlocked_copy_request?: UnlockedCopyRequestState | null;
+};
+
+export type ApplicationBankEvidenceFile = {
+  file_id: string;
+  file_name: string;
+  bucket_id: string;
+  created_at: string;
+  preview_url?: string | null;
+  source: "automatic" | "filename_suggestion" | "operator" | null;
+  verified: boolean;
+  verified_at: string | null;
+  ai_decision: EvidenceDecisionStatus | null;
+  ai_reason_code: string | null;
+  ai_explanation: string | null;
+  ai_confidence: string | null;
+  decision_actor: "ai" | "staff" | "system" | null;
+  analysis_id: string | null;
+  coverage_contribution: Record<string, unknown>;
+  content_type?: string;
+  size_bytes?: number;
+  linked_to_requirement?: boolean;
+  analysis_status?: string | null;
+  analysis_classification?: string | null;
+  analysis_confidence?: string | null;
+  analysis_summary?: string | null;
+  analysis_reason_code?: string | null;
+  analysis_detail?: string | null;
+  is_password_protected?: boolean;
+  unlocked_copy_request?: UnlockedCopyRequestState | null;
 };
 
 export type ApplicationEvidenceOption = {
@@ -145,6 +195,7 @@ export type ApplicationEvidenceOption = {
   file_name: string;
   bucket_id: string;
   created_at: string;
+  preview_url?: string | null;
 };
 
 export type ApplicationRequirement = {
@@ -371,6 +422,8 @@ export type ApplicationBankState = {
   manual_statement_pending_count: number;
   manual_statement_rejected_count: number;
   manual_statement_failed_count?: number;
+  evidence_processing_count?: number;
+  manual_statement_files?: ApplicationBankEvidenceFile[];
   evidence_summary?: ApplicationEvidenceSummary;
   assets_enabled: boolean;
   statements_enabled: boolean;
@@ -393,6 +446,14 @@ export type EvidenceWorkspaceFile = {
   selected: boolean;
   included_in_review: boolean;
   preview_url: string | null;
+  analysis_status?: string | null;
+  analysis_classification?: string | null;
+  analysis_confidence?: string | null;
+  analysis_summary?: string | null;
+  analysis_reason_code?: string | null;
+  analysis_detail?: string | null;
+  is_password_protected?: boolean;
+  unlocked_copy_request?: UnlockedCopyRequestState | null;
   created_at: string;
 };
 
@@ -440,6 +501,7 @@ export type EvidenceProcessingSummary = {
   accepted_files: number;
   needs_attention_files: number;
   failed_files: number;
+  skipped_files?: number;
   has_processing: boolean;
 };
 
@@ -535,7 +597,7 @@ export type TaxonomyEntry = {
 
 export type TaxonomySearch = { items: TaxonomyEntry[]; total: number; page: number; page_size: number };
 export type FundingCategory = { id: string; vertical: string; slug: string; label: string; status: string; is_system: boolean };
-export type ExtractedFact = { id: string; field_key: string; value: { value?: unknown }; normalized_value: string | null; confidence: number | null; source_file_id: string | null; status: string; extraction_method: string; created_at: string };
+export type ExtractedFact = { id: string; field_key: string; canonical_field_key?: string | null; value: { value?: unknown }; normalized_value: string | null; confidence: number | null; source_file_id: string | null; status: string; extraction_method: string; created_at: string };
 export type ApplicationDraftAnalysisStatus = { profile_id: string; uploaded_file_count: number; analyzed_file_count: number; processing_file_count: number; failed_file_count: number; suggested_fact_count: number; reviewed_fact_count: number; can_finalize: boolean };
 export type ApplicationIntelligence = { profile_id: string; metrics: Array<{ key: string; label: string; applicable: boolean; value: string | number | null; unit: string | null; status: "ready" | "needs_evidence" | "not_applicable"; confidence: number | null; period: string | null; source: string | null; action: string | null }>; dscr_inputs: Record<string, unknown> };
 

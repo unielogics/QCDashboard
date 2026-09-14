@@ -328,6 +328,7 @@ export default function BucketSharePage() {
         <BucketFileReviewPanel
           title="Shared file review"
           onDownload={access?.share.can_download ? () => downloadSharedFile(reviewFile).catch(() => setStatus("Download is not available for this file.")) : undefined}
+          reviewKey={reviewFile.id}
           loadReview={() => loadSharedReview(reviewFile)}
           saveAnnotation={(payload) => saveSharedAnnotation(reviewFile, payload)}
           onClose={() => setReviewFile(null)}

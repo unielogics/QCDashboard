@@ -36,6 +36,7 @@ import {
   MissingTable,
   RiskStrengthTable,
 } from "@/components/intake/IntelligenceCharts";
+import { clientActionableRequestedDocumentUploadTarget, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 
 /**
  * Transport for the admin cockpit. The parent injects Clerk-authenticated calls
@@ -78,7 +79,13 @@ export type LeadCockpitAdapter = {
 };
 
 type ChatLine = { id: string; role: "assistant" | "user"; content: string; ts?: string };
-type QueuedFile = { id: string; file: File; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+type QueuedFile = {
+  id: string;
+  file: File;
+  status: "ready" | "uploading" | "uploaded" | "error";
+  message?: string;
+  requestedDocumentId?: string | null;
+};
 
 /**
  * Interactive admin cockpit for an AI Underwriter lead: a live chat + file
@@ -190,21 +197,17 @@ export function LeadCockpit({
   }, [result]);
   const fundability = useMemo(() => fundabilityBanner(result, bankability), [result, bankability]);
   const missingDocs = useMemo(() => {
-    const uploadedIds = new Set((current.files ?? []).map((f) => f.requested_document_id).filter(Boolean));
     const keywords = variant === "real_estate_dscr_v1" ? RE_STAGE_ONE_KEYWORDS : DEALER_STAGE_ONE_KEYWORDS;
-    // A requested doc is satisfied if a file is linked to it OR the backend
-    // reconciled its status to uploaded from an analyzed file's classification.
     return (current.requested_documents ?? []).filter(
-      (d) => d.required && isStageOneRequestedDoc(d, keywords) && d.status !== "uploaded" && !uploadedIds.has(d.id),
+      (d) => d.required && (d.request_kind === "unlocked_copy" || isStageOneRequestedDoc(d, keywords)) && clientRequestedDocumentNeedsAction(d, current.files ?? []),
     );
   }, [current, variant]);
   // PFS/debt-schedule sit outside the Stage-1 keyword set above (they're
   // Stage-2/parallel documents), so they need their own not-yet-uploaded
   // check — mirrors dealer-ai-underwriter/page.tsx's category gate exactly.
   const missingPfsOrDebtDocs = useMemo(() => {
-    const uploadedIds = new Set((current.files ?? []).map((f) => f.requested_document_id).filter(Boolean));
     return (current.requested_documents ?? []).filter(
-      (d) => (d.category === "Personal Financials" || d.category === "Debts") && d.status !== "uploaded" && !uploadedIds.has(d.id),
+      (d) => (d.category === "Personal Financials" || d.category === "Debts") && clientRequestedDocumentNeedsAction(d, current.files ?? []),
     );
   }, [current]);
   const intelligence = useMemo<IntelligenceModel | null>(
@@ -244,12 +247,12 @@ export function LeadCockpit({
     }
   }
 
-  function addFiles(files: File[]) {
+  function addFiles(files: File[], requestedDocumentId: string | null = null) {
     setQueue((q) => {
       const seen = new Set(q.map((i) => `${i.file.name}:${i.file.size}`));
       const incoming = files
         .filter((f) => !seen.has(`${f.name}:${f.size}`))
-        .map((file) => ({ id: cryptoId(), file, status: "ready" as const }));
+        .map((file) => ({ id: cryptoId(), file, status: "ready" as const, requestedDocumentId }));
       return [...q, ...incoming];
     });
   }
@@ -258,29 +261,48 @@ export function LeadCockpit({
     const ready = queue.filter((i) => i.status === "ready" || i.status === "error");
     if (ready.length === 0) return;
     setUploading(true);
+    const uploadedIds = new Set<string>();
+    const staleIds = new Set<string>();
+    let failed = 0;
     try {
       for (const item of ready) {
         setQueue((q) => q.map((i) => (i.id === item.id ? { ...i, status: "uploading" } : i)));
         try {
           const init = await adapter.uploadInit({
-            requested_document_id: null,
+            requested_document_id: item.requestedDocumentId ?? null,
             file_name: item.file.name,
             content_type: item.file.type || "application/octet-stream",
             size_bytes: item.file.size,
           });
-          await fetch(init.upload_url, { method: "PUT", body: item.file, headers: init.required_headers });
+          const put = await fetch(init.upload_url, { method: "PUT", body: item.file, headers: init.required_headers });
+          if (!put.ok) throw new Error(`${item.file.name} could not be uploaded.`);
           await adapter.uploadComplete(init.file_id);
+          uploadedIds.add(item.id);
           setQueue((q) => q.map((i) => (i.id === item.id ? { ...i, status: "uploaded" } : i)));
         } catch (err) {
-          setQueue((q) =>
-            q.map((i) => (i.id === item.id ? { ...i, status: "error", message: err instanceof Error ? err.message : "Upload failed" } : i)),
-          );
+          if (isStaleRequestedDocumentError(err)) {
+            staleIds.add(item.id);
+            setQueue((q) => q.filter((i) => i.id !== item.id));
+          } else {
+            failed += 1;
+            setQueue((q) =>
+              q.map((i) => (i.id === item.id ? { ...i, status: "error", message: err instanceof Error ? err.message : "Upload failed" } : i)),
+            );
+          }
         }
       }
       const r = await adapter.reload();
       applyResponse(r);
-      setQueue((q) => q.filter((i) => i.status !== "uploaded"));
-      pushLine("assistant", "Files uploaded. Re-run the AI review to fold them into the latest breakdown.");
+      setQueue((q) => q.filter((i) => !uploadedIds.has(i.id) && !staleIds.has(i.id)));
+      if (staleIds.size) {
+        const message = `${uploadedIds.size ? `${uploadedIds.size} file${uploadedIds.size === 1 ? "" : "s"} uploaded. ` : ""}The document checklist changed, so ${staleIds.size === 1 ? "one file was" : `${staleIds.size} files were`} not attached. Choose the current request under Still needed and add ${staleIds.size === 1 ? "it" : "them"} again.`;
+        setStatus(message);
+        pushLine("assistant", message);
+      } else if (uploadedIds.size) {
+        pushLine("assistant", "Files uploaded. Re-run the AI review to fold them into the latest breakdown.");
+      } else if (failed) {
+        setStatus("No files were uploaded. Review the upload error and try again.");
+      }
     } finally {
       setUploading(false);
     }
@@ -543,6 +565,50 @@ export function LeadCockpit({
         </div>
 
         <div className="panel-b" style={{ minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 14 }}>
+          {missingDocs.length ? (
+            <div style={chartCard()}>
+              <div style={chartHeader}>
+                <strong>Still needed</strong>
+                <span className="sub">{missingDocs.length} item{missingDocs.length === 1 ? "" : "s"}</span>
+              </div>
+              <div className="grid g6">
+                {missingDocs.map((doc) => {
+                  const uploadTarget = clientActionableRequestedDocumentUploadTarget(doc, current.files ?? []);
+                  return uploadTarget ? (
+                    <label
+                      key={doc.id}
+                      className="row"
+                      style={{
+                        justifyContent: "space-between",
+                        padding: "9px 10px",
+                        border: "1px solid var(--line)",
+                        borderRadius: 10,
+                        cursor: uploading || busy ? "not-allowed" : "pointer",
+                        opacity: uploading || busy ? 0.65 : 1,
+                      }}
+                    >
+                      <span className="truncate">{doc.request_kind === "unlocked_copy" ? "🔒 Upload unlocked copy" : "Upload"}: {doc.name}</span>
+                      <Icon name="upload" size={14} />
+                      <input
+                        type="file"
+                        multiple
+                        hidden
+                        disabled={uploading || busy}
+                        onChange={(event) => {
+                          if (event.currentTarget.files) addFiles(Array.from(event.currentTarget.files), uploadTarget);
+                          event.currentTarget.value = "";
+                        }}
+                      />
+                    </label>
+                  ) : (
+                    <div key={doc.id} className="row" style={{ padding: "9px 10px", border: "1px solid var(--line)", borderRadius: 10 }}>
+                      <span className="truncate">{doc.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           {!intelligence ? (
             <div className="thr-empty" style={{ margin: "auto", maxWidth: 300, textAlign: "center" }}>
               No AI screen yet. Attach the baseline documents and run the review to see the underwriting breakdown.
@@ -621,13 +687,15 @@ export function LeadCockpit({
                   </div>
                   <EvidenceCoverageTable rows={intelligence.coverage} />
                 </div>
-                <div style={chartCard()}>
-                  <div style={chartHeader}>
-                    <strong>Still needed</strong>
-                    <span className="sub">{intelligence.missing.length} items</span>
+                {!missingDocs.length && intelligence.missing.length ? (
+                  <div style={chartCard()}>
+                    <div style={chartHeader}>
+                      <strong>Still needed</strong>
+                      <span className="sub">{intelligence.missing.length} items</span>
+                    </div>
+                    <MissingTable rows={intelligence.missing} />
                   </div>
-                  <MissingTable rows={intelligence.missing} />
-                </div>
+                ) : null}
               </div>
 
               <div style={intelligenceTables}>

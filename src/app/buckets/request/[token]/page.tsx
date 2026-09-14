@@ -4,16 +4,19 @@ import type { DragEvent } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
+import { LockedEvidenceBadge } from "@/components/application/LockedEvidenceStatus";
 import { QCMark } from "@/components/QCMark";
 import { RoomActions } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
 import { apiBase } from "@/lib/api";
+import { clientActionNeeded, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin } from "@/lib/clientRoomDocuments";
+import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 
-type RequestedDoc = { id: string; name: string; category?: string | null; description?: string | null; required: boolean; allow_multiple_files?: boolean; status: string; requirement_key?: string | null };
+type RequestedDoc = { id: string; name: string; category?: string | null; description?: string | null; required: boolean; allow_multiple_files?: boolean; status: string; requirement_key?: string | null; request_kind?: "unlocked_copy" | null; source_file_id?: string | null; replacement_review_state?: "requested" | "checking" | "received" | "needs_another_copy" | null };
 type BucketSummary = { name: string; client_name?: string | null; purpose?: string | null };
-type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; content_type: string; size_bytes: number; uploaded_by_name?: string | null; uploaded_by_email?: string | null; status: string; created_at: string };
+type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; content_type: string; size_bytes: number; uploaded_by_name?: string | null; uploaded_by_email?: string | null; status: string; created_at: string; analysis_status?: string | null; analysis_reason_code?: string | null; analysis_classification?: string | null; analysis_review_state?: "checking" | "received" | "needs_another_copy" | null; is_password_protected?: boolean; unlocked_copy_request?: { requested_document_id?: string | null; request_status?: string | null; delivery_status?: string | null; requested_at?: string | null; last_delivery_at?: string | null; replacement_review_state?: "requested" | "checking" | "received" | "needs_another_copy" | null } | null };
 type RequestInfo = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; requires_passcode: boolean; status: string };
 type ClientRequirementSummary = { requirement_key: string; label: string; required_level: "required" | "recommended" | "optional"; status: string; complete: boolean; evidence_count: number; accepted_evidence_count: number; processing_evidence_count: number };
 type ClientEvidenceBankingSummary = {
@@ -39,7 +42,7 @@ type ClientEvidenceBankingSummary = {
 };
 type UploadSession = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
 type RoomTab = "precall" | "offer" | "updates" | "todo" | "documents" | "banking" | "agreements";
-type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" }> = [
   { id: "precall", label: "Before your call", icon: "cal" },
@@ -72,6 +75,11 @@ export default function BucketRequestPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<RoomTab>("documents");
+  // null means "honor the request id in the invite URL"; an empty string is
+  // an explicit user choice to clear that target. Keeping those states
+  // distinct makes the Clear selection control work for deep-linked rooms.
+  const [activeRequestedDocumentId, setActiveRequestedDocumentId] = useState<string | null>(null);
+  const [requiresExplicitUploadTarget, setRequiresExplicitUploadTarget] = useState(false);
   // Pre-call prep state for rooms opened by a booked call; null for every other room.
   const [precall, setPrecall] = useState<RoomPrecall | null>(null);
   const [precallRoomKind, setPrecallRoomKind] = useState<"dealer" | "application">("dealer");
@@ -105,19 +113,64 @@ export default function BucketRequestPage() {
 
   const uploadedFiles = useMemo(() => session?.files ?? [], [session?.files]);
   const uploadedDocIds = useMemo(() => new Set(uploadedFiles.map((file) => file.requested_document_id).filter(Boolean) as string[]), [uploadedFiles]);
+  const uploadedEvidenceByDocId = useMemo(() => {
+    const result = new Map<string, UploadedFile[]>();
+    for (const file of uploadedFiles) {
+      if (!file.requested_document_id) continue;
+      result.set(file.requested_document_id, [...(result.get(file.requested_document_id) ?? []), file]);
+    }
+    return result;
+  }, [uploadedFiles]);
+  const unlockedCopyDocIds = useMemo(() => new Set(uploadedFiles.map((file) => file.unlocked_copy_request?.requested_document_id).filter(Boolean) as string[]), [uploadedFiles]);
   const requirementSummaryByKey = useMemo(() => new Map((session?.evidence_banking_summary?.requirements ?? []).map((item) => [item.requirement_key, item])), [session?.evidence_banking_summary?.requirements]);
-  const missingDocs = useMemo(() => (session?.requested_documents ?? []).filter((doc) => {
-    if (!doc.required) return false;
-    const requirement = doc.requirement_key ? requirementSummaryByKey.get(doc.requirement_key) : undefined;
-    return requirement ? !requirement.complete : !isRequestedDocComplete(doc, uploadedDocIds);
-  }), [session?.requested_documents, requirementSummaryByKey, uploadedDocIds]);
+  const requestedDocumentStates = useMemo(() => {
+    const result = new Map<string, { state: "needed" | "checking" | "accepted"; unlockedCopy: boolean; replacementCount: number }>();
+    for (const doc of session?.requested_documents ?? []) {
+      const requirement = doc.requirement_key ? requirementSummaryByKey.get(doc.requirement_key) : undefined;
+      const replacements = uploadedEvidenceByDocId.get(doc.id) ?? [];
+      const unlockedCopy = isUnlockedCopyRequestedDocument({ id: doc.id, requestKind: doc.request_kind }, unlockedCopyDocIds);
+      const state = clientRequestedDocumentState({ isUnlockedCopyRequest: unlockedCopy, documentStatus: doc.status, hasUploadedFile: uploadedDocIds.has(doc.id), requirementComplete: requirement?.complete, processingEvidenceCount: requirement?.processing_evidence_count, replacementReviewState: doc.replacement_review_state, uploadedEvidence: replacements.map((file) => ({ analysisReviewState: file.analysis_review_state, analysisStatus: file.analysis_status, analysisReasonCode: file.analysis_reason_code, analysisClassification: file.analysis_classification, isPasswordProtected: file.is_password_protected })) });
+      result.set(doc.id, { state, unlockedCopy, replacementCount: replacements.length });
+    }
+    return result;
+  }, [session?.requested_documents, requirementSummaryByKey, unlockedCopyDocIds, uploadedDocIds, uploadedEvidenceByDocId]);
+  const missingDocs = useMemo(() => (session?.requested_documents ?? []).filter((doc) => doc.required && clientActionNeeded(requestedDocumentStates.get(doc.id)?.state ?? "needed")), [session?.requested_documents, requestedDocumentStates]);
+  const hasCheckingUnlockedCopyTask = useMemo(() => [...requestedDocumentStates.values()].some((item) => item.unlockedCopy && item.state === "checking"), [requestedDocumentStates]);
+  const repeatableRequestedDocumentIds = useMemo(() => new Set([...requestedDocumentStates.entries()].filter(([, item]) => item.unlockedCopy).map(([id]) => id)), [requestedDocumentStates]);
   const supportingDoc = useMemo(() => (session?.requested_documents ?? []).find((doc) => doc.id === session?.evidence_banking_summary?.supporting_group_id || (!doc.required && /supporting\s*\/\s*other/i.test(doc.name))), [session?.requested_documents, session?.evidence_banking_summary?.supporting_group_id]);
   const bankEvidence = session?.evidence_banking_summary?.bank_evidence;
-  const highlightedRequest = searchParams.get("request");
+  const requestedFromLink = searchParams.get("request") || "";
+  const highlightedRequest = activeRequestedDocumentId === null ? requestedFromLink : activeRequestedDocumentId;
+  const activeRequestedDocument = session?.requested_documents.find((doc) => doc.id === highlightedRequest) ?? null;
+  const mustChooseUploadTarget = requiresExplicitUploadTarget || Boolean(requestedFromLink && activeRequestedDocumentId === null && session && !activeRequestedDocument);
   const canSubmit = useMemo(() => {
     const pending = files.filter((item) => item.status !== "uploaded");
-    return Boolean(session && name.trim() && pending.length > 0 && pending.every((item) => item.status === "ready" || item.status === "error") && !hasDuplicateSingleUseDocs(files, session.requested_documents));
-  }, [files, name, session]);
+    return Boolean(session && name.trim() && pending.length > 0 && pending.every(clientQueuedUploadCanSubmit) && !hasDuplicateSingleUseDocs(files, session.requested_documents, repeatableRequestedDocumentIds));
+  }, [files, name, repeatableRequestedDocumentIds, session]);
+  const processingFileCount = session?.evidence_banking_summary?.processing_file_count ?? 0;
+
+  useEffect(() => {
+    if (processingFileCount <= 0 && !hasCheckingUnlockedCopyTask) return;
+    let cancelled = false;
+    let attempt = 0;
+    let timer: number | undefined;
+    const poll = async () => {
+      try {
+        const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
+        if (response.ok) {
+          const data = await response.json() as UploadSession;
+          if (!cancelled) setSession(data);
+        }
+      } catch {
+        // The room remains usable; the next bounded poll can recover.
+      } finally {
+        attempt += 1;
+        if (!cancelled) timer = window.setTimeout(() => { void poll(); }, Math.min(30_000, 4_000 + attempt * 1_000));
+      }
+    };
+    timer = window.setTimeout(() => { void poll(); }, 4_000);
+    return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
+  }, [hasCheckingUnlockedCopyTask, passcode, processingFileCount, token]);
 
   function chooseTheme(next: "light" | "obsidian") {
     setTheme(next);
@@ -126,7 +179,7 @@ export default function BucketRequestPage() {
 
   async function fetchAccessSession(): Promise<UploadSession> {
     const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
-    if (!response.ok) throw new Error(await responseMessage(response, "The room PIN did not work."));
+    if (!response.ok) throw await responseError(response, "The room PIN did not work.");
     return response.json();
   }
   async function fetchPrecall(code: string): Promise<{ precall: RoomPrecall; roomKind: "dealer" | "application" } | null> {
@@ -216,7 +269,7 @@ export default function BucketRequestPage() {
     setUpdates(await fetchUpdates(passcode.trim()));
   }
   async function openInvite() {
-    if (!passcode.trim()) return;
+    if (!isValidRoomPin(passcode.trim())) return;
     setIsAccessing(true); setStatus("");
     try {
       const data = await fetchAccessSession();
@@ -236,7 +289,8 @@ export default function BucketRequestPage() {
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
       const seen = new Set(current.map((item) => localFileKey(item.file)));
-      const incoming = Array.from(nextFiles).filter((file) => { const key = localFileKey(file); if (seen.has(key)) return false; seen.add(key); return true; }).map((file) => ({ id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`, file, requestedDocumentId: highlightedRequest && session?.requested_documents.some((doc) => doc.id === highlightedRequest) ? highlightedRequest : supportingDoc?.id || "", status: "ready" as const }));
+      const uploadTarget = mustChooseUploadTarget ? "" : clientUploadTarget(highlightedRequest, (session?.requested_documents ?? []).map((doc) => doc.id), supportingDoc?.id || "");
+      const incoming = Array.from(nextFiles).filter((file) => { const key = localFileKey(file); if (seen.has(key)) return false; seen.add(key); return true; }).map((file) => ({ id: `${file.name}-${file.size}-${file.lastModified}-${crypto.randomUUID()}`, file, requestedDocumentId: uploadTarget, status: "ready" as const, requiresRetarget: mustChooseUploadTarget }));
       return [...current, ...incoming];
     });
     setStatus("");
@@ -248,25 +302,47 @@ export default function BucketRequestPage() {
   async function submitDocuments() {
     if (!session || !canSubmit || submitInFlightRef.current) return;
     submitInFlightRef.current = true; setIsUploading(true); setStatus("Submitting documents...");
-    let noteSaved = noteSubmitted; let uploadedCount = 0; let failedCount = 0;
+    let noteSaved = noteSubmitted; let uploadedCount = 0; let failedCount = 0; let staleRequestCount = 0; let staleRequestMessage = "";
     try {
       for (const item of files.filter((queued) => queued.status !== "uploaded")) {
         try {
           updateFileState(item.id, { status: "uploading", message: "Preparing secure upload" });
           const init = await fetch(`${apiBase}/api/v1/buckets/request/${token}/upload-init`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requested_document_id: item.requestedDocumentId || null, file_name: item.file.name, content_type: item.file.type || "application/octet-stream", size_bytes: item.file.size, uploader_name: name.trim(), uploader_email: email.trim() || null, passcode: passcode.trim() }) });
-          if (!init.ok) throw new Error(await responseMessage(init, `Could not start ${item.file.name}.`));
+          if (!init.ok) throw await responseError(init, `Could not start ${item.file.name}.`);
           const payload = await init.json() as { file_id: string; upload_url: string; required_headers: Record<string, string> };
           updateFileState(item.id, { message: "Uploading securely" });
           const put = await fetch(payload.upload_url, { method: "PUT", body: item.file, headers: payload.required_headers });
           if (!put.ok) throw new Error(`Secure storage rejected ${item.file.name}.`);
           const done = await fetch(`${apiBase}/api/v1/buckets/request/${token}/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: payload.file_id, note: !noteSaved ? note.trim() || null : null }) });
-          if (!done.ok) throw new Error(await responseMessage(done, `Could not confirm ${item.file.name}.`));
+          if (!done.ok) throw await responseError(done, `Could not confirm ${item.file.name}.`);
           if (!noteSaved && note.trim()) { noteSaved = true; setNoteSubmitted(true); }
           uploadedCount += 1; updateFileState(item.id, { status: "uploaded", message: "Received" });
-        } catch (error) { failedCount += 1; updateFileState(item.id, { status: "error", message: error instanceof Error ? error.message : "Upload failed." }); }
+        } catch (error) {
+          failedCount += 1;
+          const uploadError = error as CodedResponseError;
+          const staleRequest = uploadError?.code === "stale_requested_document";
+          if (staleRequest) {
+            staleRequestCount += 1;
+            staleRequestMessage = uploadError.message;
+            setActiveRequestedDocumentId("");
+            setRequiresExplicitUploadTarget(true);
+          }
+          updateFileState(item.id, {
+            status: "error",
+            message: error instanceof Error ? error.message : "Upload failed.",
+            ...(staleRequest ? { requestedDocumentId: "", requiresRetarget: true } : {}),
+          });
+        }
       }
-      setStatus(uploadedCount && !failedCount ? `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} received.` : uploadedCount ? `${uploadedCount} received; ${failedCount} need retry.` : "No files were received. Review the messages and retry.");
-      if (uploadedCount) { setNote(""); setNoteSubmitted(false); await refreshRoom().catch(() => undefined); }
+      let roomRefreshed = false;
+      if (uploadedCount) { setNote(""); setNoteSubmitted(false); }
+      if (uploadedCount || staleRequestCount) {
+        try { await refreshRoom(); roomRefreshed = true; } catch { roomRefreshed = false; }
+      }
+      const staleGuidance = staleRequestCount
+        ? `${staleRequestMessage || "The selected document request changed."} ${roomRefreshed ? "The room was refreshed; choose the current request and retry." : "Refresh the room, choose the current request, and retry."}`
+        : "";
+      setStatus(staleGuidance || (uploadedCount && !failedCount ? `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} received.` : uploadedCount ? `${uploadedCount} received; ${failedCount} need retry.` : "No files were received. Review the messages and retry."));
     } finally { submitInFlightRef.current = false; setIsUploading(false); }
   }
 
@@ -276,8 +352,8 @@ export default function BucketRequestPage() {
       <RoomBrand />
       <div className="application-room-gate-copy"><span className="application-room-eyebrow">Secure application room</span><h1>Welcome{info?.recipient_name ? `, ${info.recipient_name}` : ""}</h1><p>{info ? <>Enter the six-digit room PIN for <strong>{info.bucket.name}</strong>.</> : "Opening your secure application room."}</p></div>
       {info && !info.requires_passcode ? <div className="application-room-alert bad">Ask Qualified Commercial to regenerate this room with a PIN.</div> : null}
-      <label className="application-room-field"><span>Room PIN</span><input value={passcode} onChange={(event) => setPasscode(event.target.value.replace(/[^A-Za-z0-9-]/g, "").slice(0, 16))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="6-digit PIN" autoComplete="one-time-code" inputMode="numeric" disabled={!info || !info.requires_passcode || isAccessing} /></label>
-      <button className="application-room-primary" onClick={() => void openInvite()} disabled={!info || !info.requires_passcode || !passcode.trim() || isAccessing}>{isAccessing ? "Checking PIN..." : "Open application room"}</button>
+      <label className="application-room-field"><span>Room PIN</span><input value={passcode} onChange={(event) => setPasscode(normalizeRoomPin(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="6-digit PIN" autoComplete="one-time-code" inputMode="numeric" maxLength={6} disabled={!info || !info.requires_passcode || isAccessing} /></label>
+      <button className="application-room-primary" onClick={() => void openInvite()} disabled={!info || !info.requires_passcode || !isValidRoomPin(passcode.trim()) || isAccessing}>{isAccessing ? "Checking PIN..." : "Open application room"}</button>
       {status ? <div className={`application-room-status ${status.toLowerCase().includes("not") || status.toLowerCase().includes("unavailable") ? "bad" : ""}`}>{status}</div> : null}
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
     </section> : <section className="application-room-shell">
@@ -293,9 +369,10 @@ export default function BucketRequestPage() {
       {activeTab === "updates" && updates !== null ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Your file</span><h2>Updates</h2><p>What has happened on your file, newest first.</p></div><button className="application-room-secondary" onClick={() => { void refreshRoom().catch(() => undefined); }}><Icon name="refresh" size={14} />Refresh</button></div><RoomTimeline events={updates} /></section> : null}
       {activeTab === "updates" && updates === null ? <section className="application-room-section"><p>There are no updates on this room yet.</p></section> : null}
 
-      {activeTab === "todo" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Next actions</span><h2>What we still need</h2></div><button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />Upload documents</button></div><div className="application-room-todo-list">{session.requested_documents.filter((doc) => doc.required).map((doc) => { const requirement = doc.requirement_key ? requirementSummaryByKey.get(doc.requirement_key) : undefined; const complete = requirement ? requirement.complete : isRequestedDocComplete(doc, uploadedDocIds); const processing = Boolean(requirement?.processing_evidence_count); return <article key={doc.id} className={`${complete ? "complete" : "needed"} ${highlightedRequest === doc.id ? "highlighted" : ""}`}><span className="application-room-task-icon"><Icon name={complete ? "check" : processing ? "refresh" : "alert"} size={15} /></span><div><b>{doc.name}</b><p>{processing ? "Your file is being reviewed" : doc.description || `Required · ${allowsMultipleFiles(doc) ? "Multiple files accepted" : "One file"}`}</p></div><span className="application-room-task-state">{complete ? "Accepted" : processing ? "Reviewing" : "Needed"}</span>{!complete ? <button onClick={() => setActiveTab("documents")}>Add file</button> : null}</article>; })}{!session.requested_documents.some((doc) => doc.required) ? <div className="application-room-empty">No action items have been requested.</div> : null}</div></section> : null}
+      {activeTab === "todo" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Next actions</span><h2>What we still need</h2></div><button className="application-room-secondary" onClick={() => { setActiveRequestedDocumentId(""); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }}><Icon name="upload" size={14} />Upload documents</button></div><div className="application-room-todo-list">{session.requested_documents.filter((doc) => doc.required).map((doc) => { const task = requestedDocumentStates.get(doc.id) ?? { state: "needed" as const, unlockedCopy: false, replacementCount: 0 }; const complete = task.state === "accepted"; const processing = task.state === "checking"; const actionable = clientActionNeeded(task.state); const needsAnotherCopy = task.unlockedCopy && task.replacementCount > 0 && actionable; return <article key={doc.id} className={`${complete ? "complete" : processing ? "checking" : "needed"} ${highlightedRequest === doc.id ? "highlighted" : ""}`}><span className="application-room-task-icon"><Icon name={complete ? "check" : processing ? "refresh" : "alert"} size={15} /></span><div><b>{doc.name}</b><p>{processing ? task.unlockedCopy ? "Replacement received; review is still in progress. No action is needed right now." : "Your file is being reviewed." : needsAnotherCopy ? "The replacement could not be read. Add another unlocked copy." : doc.description || `Required · ${allowsMultipleFiles(doc) ? "Multiple files accepted" : "One file"}`}</p></div><span className="application-room-task-state">{complete ? task.unlockedCopy ? "Unlocked copy received" : "Accepted" : processing ? "Received · checking" : "Needed"}</span>{actionable ? <button onClick={() => { setActiveRequestedDocumentId(doc.id); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }}>{task.replacementCount ? "Add another file" : "Add file"}</button> : null}</article>; })}{!session.requested_documents.some((doc) => doc.required) ? <div className="application-room-empty">No action items have been requested.</div> : null}</div></section> : null}
 
-      {activeTab === "documents" ? <section className="application-room-section application-room-documents"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Documents</span><h2>Upload and review file history</h2></div><span className="application-room-count">{uploadedFiles.length} received</span></div><div className="application-room-document-grid"><div className="application-room-upload-column"><div className="application-room-identity"><label className="application-room-field"><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label className="application-room-field"><span>Email optional</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><input ref={fileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addFiles(event.target.files)} /><button className={`application-room-dropzone ${isDragging ? "dragging" : ""}`} onClick={() => fileInputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setIsDragging(false)} onDrop={onDrop}><Icon name="upload" size={24} /><b>Drop files here or click to browse</b><span>PDF, spreadsheet, image, CSV, or ZIP</span></button>{files.length ? <div className="application-room-queue">{files.map((item) => <div key={item.id}><span className="application-room-file-icon"><Icon name="file" size={15} /></span><div className="application-room-file-name"><b>{item.file.name}</b><small>{formatSize(item.file.size)} · {item.message || item.status}</small></div><select value={item.requestedDocumentId} onChange={(event) => updateFileState(item.id, { requestedDocumentId: event.target.value, status: "ready", message: undefined })} disabled={isUploading || item.status === "uploaded"}>{!supportingDoc ? <option value="">Supporting / Other</option> : null}{session.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}</select>{item.status === "uploaded" ? <span className="application-room-received">Received</span> : <button className="application-room-icon-button" aria-label={`Remove ${item.file.name}`} onClick={() => setFiles((current) => current.filter((row) => row.id !== item.id))}><Icon name="x" size={14} /></button>}</div>)}</div> : null}{session.allow_notes ? <label className="application-room-field"><span>Note for this upload</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the review team" /></label> : null}<button className="application-room-primary" disabled={!canSubmit || isUploading} onClick={() => void submitDocuments()}>{isUploading ? "Submitting securely..." : `Submit ${files.filter((item) => item.status !== "uploaded").length || ""} file${files.filter((item) => item.status !== "uploaded").length === 1 ? "" : "s"}`}</button>{status ? <div className={`application-room-alert ${isUploadErrorStatus(status) ? "bad" : "good"}`}>{status}</div> : null}</div><aside className="application-room-history"><div className="application-room-history-head"><h3>Received files</h3><span>{uploadedFiles.length}</span></div><div className="application-room-history-list">{uploadedFiles.map((file) => <article key={file.id}><span className="application-room-file-icon"><Icon name="file" size={15} /></span><div><b>{file.file_name}</b><small>{fileKindLabel(file)} · {formatSize(file.size_bytes)} · {formatDate(file.created_at)}</small></div><span className="application-room-received">Received</span></article>)}{!uploadedFiles.length ? <div className="application-room-empty">Uploaded files will appear here.</div> : null}</div></aside></div></section> : null}
+      {activeTab === "documents" && activeRequestedDocument ? <div className="application-room-upload-target" aria-live="polite"><span><Icon name="check" size={15} aria-hidden="true" /></span><div><b>Adding files to {activeRequestedDocument.name}</b><small>Files selected below will be attached to this exact request.</small></div><button onClick={() => setActiveRequestedDocumentId("")}>Clear selection</button></div> : null}
+      {activeTab === "documents" ? <section className="application-room-section application-room-documents"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Documents</span><h2>Upload and review file history</h2></div><span className="application-room-count">{uploadedFiles.length} received</span></div><div className="application-room-document-grid"><div className="application-room-upload-column"><div className="application-room-identity"><label className="application-room-field"><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label className="application-room-field"><span>Email optional</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><input ref={fileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addFiles(event.target.files)} /><button className={`application-room-dropzone ${isDragging ? "dragging" : ""}`} onClick={() => fileInputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setIsDragging(false)} onDrop={onDrop}><Icon name="upload" size={24} /><b>Drop files here or click to browse</b><span>PDF, spreadsheet, image, CSV, or ZIP</span></button>{files.length ? <div className="application-room-queue">{files.map((item) => <div key={item.id}><span className="application-room-file-icon"><Icon name="file" size={15} /></span><div className="application-room-file-name"><b>{item.file.name}</b><small>{formatSize(item.file.size)} · {item.message || item.status}</small></div><select value={item.requestedDocumentId} onChange={(event) => { const requestedDocumentId = event.target.value; updateFileState(item.id, { requestedDocumentId, status: "ready", message: undefined, requiresRetarget: false }); if (requestedDocumentId) { setActiveRequestedDocumentId(requestedDocumentId); setRequiresExplicitUploadTarget(false); } }} disabled={isUploading || item.status === "uploaded"}>{item.requiresRetarget ? <option value="" disabled>Choose the current request...</option> : !supportingDoc ? <option value="">Supporting / Other</option> : null}{session.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}</select>{item.status === "uploaded" ? <span className="application-room-received">Received</span> : <button className="application-room-icon-button" aria-label={`Remove ${item.file.name}`} onClick={() => setFiles((current) => current.filter((row) => row.id !== item.id))}><Icon name="x" size={14} /></button>}</div>)}</div> : null}{session.allow_notes ? <label className="application-room-field"><span>Note for this upload</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the review team" /></label> : null}<button className="application-room-primary" disabled={!canSubmit || isUploading} onClick={() => void submitDocuments()}>{isUploading ? "Submitting securely..." : `Submit ${files.filter((item) => item.status !== "uploaded").length || ""} file${files.filter((item) => item.status !== "uploaded").length === 1 ? "" : "s"}`}</button>{status ? <div className={`application-room-alert ${isUploadErrorStatus(status) ? "bad" : "good"}`}>{status}</div> : null}</div><aside className="application-room-history"><div className="application-room-history-head"><h3>Received files</h3><span>{uploadedFiles.length}</span></div><div className="application-room-history-list">{uploadedFiles.map((file) => <ReceivedFileRow key={file.id} file={file} />)}{!uploadedFiles.length ? <div className="application-room-empty">Uploaded files will appear here.</div> : null}</div></aside></div></section> : null}
 
       {activeTab === "banking" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">LLC accounts only</span><h2>Business banking</h2><p>Connect the company&apos;s operating accounts or provide six months of business bank statements.</p></div></div>{bankEvidence?.banking_access_complete ? <div className="application-room-alert good"><b>Banking evidence complete.</b> {bankEvidence.statement_coverage_complete ? `${bankEvidence.accepted_statement_months.length} of ${bankEvidence.required_statement_months} statement months accepted.` : `${bankEvidence.connected_institutions} institution${bankEvidence.connected_institutions === 1 ? "" : "s"} connected.`}</div> : null}{!bankEvidence?.statement_coverage_complete || Boolean(bankEvidence.connected_institutions) ? <RoomActions token={token} passcode={passcode.trim()} view="banking" onChanged={() => { void refreshRoom(); }} /> : null}<button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />{bankEvidence?.statement_coverage_complete ? "View uploaded statements" : "Upload bank statements instead"}</button></section> : null}
       {activeTab === "agreements" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Electronic signatures</span><h2>Agreements</h2><p>Review and sign only the documents assigned to this application room.</p></div></div><RoomActions token={token} passcode={passcode.trim()} view="agreements" onChanged={() => { void refreshRoom(); }} /></section> : null}
@@ -305,12 +382,32 @@ export default function BucketRequestPage() {
 }
 
 function RoomBrand() { return <div className="application-room-brand"><QCMark size={36} /><div><b>QUALIFIED COMMERCIAL</b><span>Financing & Capital Advisory</span></div></div>; }
-async function responseMessage(response: Response, fallback: string) { try { const payload = await response.json(); return typeof payload.detail === "string" ? payload.detail : fallback; } catch { return fallback; } }
+function ReceivedFileRow({ file }: { file: UploadedFile }) {
+  const locked = lockedEvidencePresentation({ fileName: file.file_name, isPasswordProtected: file.is_password_protected });
+  const requestState = unlockedCopyActionState(file.unlocked_copy_request);
+  const lockedDetail = requestState.kind === "replacement_received"
+    ? "An unlocked replacement was accepted"
+    : requestState.kind === "replacement_checking"
+      ? "Replacement received; review is checking it"
+      : requestState.kind === "needs_another_copy"
+        ? "The replacement still cannot be read; upload another unlocked copy"
+        : requestState.kind === "requested" || requestState.kind === "retry"
+      ? "An unlocked replacement was requested"
+      : "Upload an unlocked replacement so review can continue";
+  return <article className={locked ? "password-protected" : undefined}><span className={`application-room-file-icon${locked ? " locked" : ""}`}><Icon name={locked ? "lock" : "file"} size={15} aria-hidden="true" /></span><div><b>{file.file_name}</b><small>{locked ? `${locked.title} · ${lockedDetail} · ${formatDate(file.created_at)}` : `${fileKindLabel(file)} · ${formatSize(file.size_bytes)} · ${formatDate(file.created_at)}`}</small></div>{locked ? <LockedEvidenceBadge presentation={locked} /> : <span className="application-room-received">Received</span>}</article>;
+}
+type CodedResponseError = Error & { code?: string };
+async function responseError(response: Response, fallback: string): Promise<CodedResponseError> {
+  let detail: ReturnType<typeof clientApiErrorDetail> = { message: fallback };
+  try { detail = clientApiErrorDetail(await response.json(), fallback); } catch { /* use the safe fallback */ }
+  const error = new Error(detail.message) as CodedResponseError;
+  if (detail.code) error.code = detail.code;
+  return error;
+}
 function formatSize(size: number) { if (size < 1024) return `${size} B`; if (size < 1048576) return `${Math.round(size / 1024)} KB`; return `${(size / 1048576).toFixed(1)} MB`; }
 function localFileKey(file: File) { return `${file.name}|${file.size}|${file.lastModified}`; }
 function isUploadErrorStatus(value: string) { return /failed|could not|rejected|retry|no files/i.test(value); }
 function allowsMultipleFiles(doc: RequestedDoc) { if (typeof doc.allow_multiple_files === "boolean") return doc.allow_multiple_files; return /bank statement|tax return|irs/i.test(doc.name); }
-function hasDuplicateSingleUseDocs(files: QueuedFile[], docs: RequestedDoc[]) { const single = new Set(docs.filter((doc) => !allowsMultipleFiles(doc)).map((doc) => doc.id)); const counts = new Map<string, number>(); files.forEach((file) => { if (file.requestedDocumentId && file.status !== "error" && single.has(file.requestedDocumentId)) counts.set(file.requestedDocumentId, (counts.get(file.requestedDocumentId) || 0) + 1); }); return [...counts.values()].some((count) => count > 1); }
-function isRequestedDocComplete(doc: RequestedDoc, uploadedDocIds: Set<string>) { return doc.status === "uploaded" || uploadedDocIds.has(doc.id); }
+function hasDuplicateSingleUseDocs(files: QueuedFile[], docs: RequestedDoc[], repeatableIds: ReadonlySet<string>) { return hasDuplicateSingleUseUploadTargets(files, new Set(docs.filter((doc) => !allowsMultipleFiles(doc)).map((doc) => doc.id)), repeatableIds); }
 function formatDate(value?: string | null) { return value ? new Date(value).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }) : "Recently"; }
 function fileKindLabel(file: UploadedFile) { const value = `${file.content_type} ${file.file_name}`.toLowerCase(); if (value.includes("pdf")) return "PDF"; if (value.includes("image/")) return "Image"; if (/xls|spreadsheet/.test(value)) return "Spreadsheet"; if (value.includes("csv")) return "CSV"; return "Document"; }

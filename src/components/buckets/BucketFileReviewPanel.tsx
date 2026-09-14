@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
+import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvidence";
 
 export type BucketReviewFile = {
   id: string;
@@ -10,6 +11,7 @@ export type BucketReviewFile = {
   content_type: string;
   size_bytes?: number;
   created_at?: string;
+  is_password_protected?: boolean;
 };
 
 export type BucketFileAnnotation = {
@@ -42,6 +44,7 @@ export function BucketFileReviewPanel({
   downloadUrl,
   onDownload,
   onDelete,
+  reviewKey,
   loadReview,
   saveAnnotation,
   onClose,
@@ -51,13 +54,18 @@ export function BucketFileReviewPanel({
   activeFileId,
   onSelectFile,
   headerActions,
+  reviewContext,
+  lockedFileGuidance,
+  lockedFileActions,
+  annotationsEnabled = true,
 }: {
   title?: string;
   downloadUrl?: string | null;
   onDownload?: () => void;
   onDelete?: () => void;
+  reviewKey: string;
   loadReview: () => Promise<BucketFileReview>;
-  saveAnnotation: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
+  saveAnnotation?: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
   onClose: () => void;
   onMinimize?: () => void;
   minimized?: boolean;
@@ -65,6 +73,10 @@ export function BucketFileReviewPanel({
   activeFileId?: string | null;
   onSelectFile?: (fileId: string) => void;
   headerActions?: ReactNode;
+  reviewContext?: ReactNode;
+  lockedFileGuidance?: ReactNode;
+  lockedFileActions?: ReactNode;
+  annotationsEnabled?: boolean;
 }) {
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -84,20 +96,32 @@ export function BucketFileReviewPanel({
   const [saving, setSaving] = useState(false);
   const [fileQuery, setFileQuery] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
+  const [runtimePasswordProtected, setRuntimePasswordProtected] = useState(false);
+  const loadReviewRef = useRef(loadReview);
+
+  // Callers may close over live query data, so callback identity is not a file
+  // identity. Keep the newest loader without blanking and reloading the viewer.
+  useEffect(() => {
+    loadReviewRef.current = loadReview;
+  }, [loadReview]);
 
   useEffect(() => {
     let cancelled = false;
-    loadReview()
+    setReview(null);
+    setStatus("Loading file...");
+    setPdfDoc(null);
+    setPageCount(1);
+    setPdfZoom(1);
+    setTextPreview("");
+    setDraftRect(null);
+    setDraftComment("");
+    setActiveAnnotationId(null);
+    setRuntimePasswordProtected(false);
+    loadReviewRef.current()
       .then((data) => {
         if (cancelled) return;
         setReview(data);
         setStatus("");
-        setPdfDoc(null);
-        setPageCount(1);
-        setPdfZoom(1);
-        setTextPreview("");
-        setDraftRect(null);
-        setActiveAnnotationId(null);
       })
       .catch((error) => {
         if (!cancelled) setStatus(error instanceof Error ? error.message : "Could not load review.");
@@ -105,11 +129,19 @@ export function BucketFileReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [loadReview, reloadKey]);
+  }, [reviewKey, reloadKey]);
 
   const selectedFile = files.find((file) => file.id === activeFileId) ?? null;
   const displayFile = review?.file ?? selectedFile;
   const fileType = displayFile ? reviewFileType(displayFile.content_type, displayFile.file_name) : "unsupported";
+  const passwordProtected = Boolean(displayFile?.is_password_protected || runtimePasswordProtected);
+  const displayFileName = displayFile?.file_name ?? "";
+  const lockedPresentation = useMemo(
+    () => passwordProtected
+      ? lockedEvidencePresentation({ fileName: displayFileName, analysisReasonCode: "password_protected" })
+      : null,
+    [displayFileName, passwordProtected],
+  );
   const activeAnnotation = review?.annotations.find((annotation) => annotation.id === activeAnnotationId) ?? null;
 
   useEffect(() => {
@@ -124,7 +156,7 @@ export function BucketFileReviewPanel({
 
   useEffect(() => {
     let cancelled = false;
-    if (!review?.preview_url || fileType !== "pdf") {
+    if (!review?.preview_url || fileType !== "pdf" || lockedPresentation) {
       setPdfDoc(null);
       return;
     }
@@ -150,12 +182,18 @@ export function BucketFileReviewPanel({
       setStatus("");
     }
     loadPdf().catch((error) => {
-      if (!cancelled) setStatus(error instanceof Error ? error.message : "Could not render PDF.");
+      if (cancelled) return;
+      if (isPdfPasswordError(error)) {
+        setRuntimePasswordProtected(true);
+        setStatus("");
+        return;
+      }
+      setStatus(error instanceof Error ? error.message : "Could not render PDF.");
     });
     return () => {
       cancelled = true;
     };
-  }, [fileType, review]);
+  }, [fileType, lockedPresentation, review]);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,7 +228,7 @@ export function BucketFileReviewPanel({
   }
 
   function beginMark(pageNumber: number, stage: HTMLDivElement | null, event: MouseEvent<HTMLDivElement>) {
-    if (!canAnnotate(fileType) || saving || !review?.preview_url) return;
+    if (!annotationsEnabled || lockedPresentation || !canAnnotate(fileType) || saving || !review?.preview_url) return;
     const point = stagePoint(event, stage);
     if (!point) return;
     dragStartRef.current = { page_number: pageNumber, ...point };
@@ -218,7 +256,7 @@ export function BucketFileReviewPanel({
   }
 
   async function submitComment() {
-    if (!draftRect || !draftComment.trim()) return;
+    if (!saveAnnotation || !draftRect || !draftComment.trim()) return;
     setSaving(true);
     try {
       const annotation = await saveAnnotation({ ...draftRect, comment: draftComment.trim() });
@@ -241,7 +279,9 @@ export function BucketFileReviewPanel({
     scrollToPage(annotation.page_number);
   }
 
-  const annotationHelp = canAnnotate(fileType)
+  const annotationHelp = lockedPresentation
+    ? "Area comments are unavailable until an unlocked copy can be previewed."
+    : canAnnotate(fileType)
     ? "Drag over an area of the PDF or image, then add your review note."
     : "Area comments are available for PDF and image previews.";
   const filteredFiles = useMemo(() => {
@@ -275,11 +315,12 @@ export function BucketFileReviewPanel({
         <header className="filehd-b" style={{ borderBottom: "1px solid var(--line)" }}>
           <div className="grid g4" style={{ minWidth: 0 }}>
             <span className="lbl">{title}</span>
-            <h2 className="filehd-t">{displayFile?.file_name ?? "File"}</h2>
+            <h2 className="filehd-t">{lockedPresentation ? <Icon name="lock" size={18} aria-hidden="true" /> : null}{displayFile?.file_name ?? "File"}</h2>
             {displayFile ? (
               <Sub>
                 {fileTypeLabel(fileType)}
                 {typeof displayFile.size_bytes === "number" ? ` | ${formatSize(displayFile.size_bytes)}` : ""}
+                {lockedPresentation ? ` | ${lockedPresentation.badge}` : ""}
               </Sub>
             ) : null}
           </div>
@@ -318,9 +359,10 @@ export function BucketFileReviewPanel({
           </IconBtn>
           </div>
         </header>
+        {reviewContext ? <div className="bucket-review-context">{reviewContext}</div> : null}
         {/* Bespoke track: a document that wants every pixel it can get beside a
             review rail that must not fall below a readable width. */}
-        <div className={cx("bucket-review-layout", files.length > 0 && "with-navigator")}>
+        <div className={cx("bucket-review-layout", files.length > 0 && "with-navigator", !annotationsEnabled && "without-comments")}>
           {files.length > 0 ? (
             <aside className="bucket-review-navigator">
               <div className="grid g8">
@@ -337,8 +379,8 @@ export function BucketFileReviewPanel({
                     className={cx("bucket-review-file", currentFileId === file.id && "on")}
                     onClick={() => onSelectFile?.(file.id)}
                   >
-                    <span className="evidence-file-icon"><Icon name="file" size={14} /></span>
-                    <span className="grow trunc"><b className="trunc">{file.file_name}</b><small>{fileTypeLabel(reviewFileType(file.content_type, file.file_name))}{typeof file.size_bytes === "number" ? ` · ${formatSize(file.size_bytes)}` : ""}</small></span>
+                    <span className={cx("evidence-file-icon", file.is_password_protected && "locked")}><Icon name={file.is_password_protected ? "lock" : "file"} size={14} aria-hidden="true" /></span>
+                    <span className="grow trunc"><b className="trunc">{file.file_name}</b><small>{file.is_password_protected ? "Password required" : fileTypeLabel(reviewFileType(file.content_type, file.file_name))}{typeof file.size_bytes === "number" ? ` · ${formatSize(file.size_bytes)}` : ""}</small></span>
                   </button>
                 ))}
                 {!filteredFiles.length ? <div className="empty">No files match this search.</div> : null}
@@ -347,7 +389,12 @@ export function BucketFileReviewPanel({
           ) : null}
           {/* Bespoke: the scrolling document well, sunk behind the page it holds. */}
           <main ref={viewerRef} className="bucket-review-document">
-            {review?.preview_url && fileType === "pdf" ? (
+            {lockedPresentation ? (
+              <div className="locked-evidence-preview" role="region" aria-label={`${lockedPresentation.title}: ${displayFile?.file_name ?? "file"}`}>
+                <span className="locked-evidence-preview-icon"><Icon name="lock" size={30} aria-hidden="true" /></span>
+                <div><h3>{lockedPresentation.title}</h3><p>{lockedPresentation.explanation}</p>{lockedFileGuidance ?? <Sub>You can still open or download the original. Provide an unlocked copy to preview its contents here.</Sub>}{lockedFileActions ? <div className="row locked-evidence-preview-actions">{lockedFileActions}</div> : null}</div>
+              </div>
+            ) : review?.preview_url && fileType === "pdf" ? (
               <>
                 {/* Bespoke: a toolbar that stays with the reader as the document
                     scrolls under it. Nothing in the sheet is sticky-within. */}
@@ -419,11 +466,11 @@ export function BucketFileReviewPanel({
             {status ? <StatusLine tone="warn" className="mt">{status}</StatusLine> : null}
           </main>
           {/* Bespoke: the review rail. Scrolls independently of the document. */}
-          <aside className="bucket-review-comments grid g10">
+          {annotationsEnabled ? <aside className="bucket-review-comments grid g10">
             <Panel title="Add section comment" bodyClass="grid g8">
               <Callout tone="acc">
                 <div className="grid g4">
-                  <b>{canAnnotate(fileType) ? "To leave a comment: click and drag over the exact area on the document." : "Section comments are available for PDF and image files."}</b>
+                  <b>{lockedPresentation ? "This file is locked." : canAnnotate(fileType) ? "To leave a comment: click and drag over the exact area on the document." : "Section comments are available for PDF and image files."}</b>
                   <span>{annotationHelp}</span>
                 </div>
               </Callout>
@@ -437,7 +484,7 @@ export function BucketFileReviewPanel({
                   </div>
                 </>
               ) : (
-                <Sub>{canAnnotate(fileType) ? "No area selected." : "Preview this file locally to add general feedback."}</Sub>
+                <Sub>{lockedPresentation ? "No preview area is available." : canAnnotate(fileType) ? "No area selected." : "Preview this file locally to add general feedback."}</Sub>
               )}
             </Panel>
             <Panel title="Review comments" bodyClass="grid g8">
@@ -467,7 +514,7 @@ export function BucketFileReviewPanel({
                 <p>{activeAnnotation.comment}</p>
               </Panel>
             ) : null}
-          </aside>
+          </aside> : null}
         </div>
       </section>
     </div>

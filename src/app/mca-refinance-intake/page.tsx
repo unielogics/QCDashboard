@@ -28,6 +28,8 @@ import {
 import { getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
+import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 import {
   cryptoId,
   errorMessage,
@@ -225,7 +227,11 @@ type Copy = {
   browse: string;
   uploadBusy: string;
   uploadRejected: string;
+  uploadRequestChanged: string;
   filesOnFile: (n: number) => string;
+  unlockedCopyTitle: string;
+  unlockedCopySub: string;
+  unlockedCopyChecking: string;
   creditTitle: string;
   creditSub: string;
   readSign: string;
@@ -267,6 +273,7 @@ type Copy = {
   bookBusy: string;
   booked: string;
   reviewLocked: string;
+  unlockedCopyReviewLocked: string;
   // The hand-off into the room at /buckets/request/<token>, where the bank
   // connection lives alongside anything else the desk has asked for. Named
   // for what the borrower gets: "secure room" and "bucket" are our words for
@@ -344,7 +351,11 @@ const COPY: Record<Lang, Copy> = {
     browse: "browse",
     uploadBusy: "Uploading…",
     uploadRejected: "Secure storage rejected the file.",
+    uploadRequestChanged: "The document request changed while you were uploading. We refreshed the checklist; add the file again from the current action.",
     filesOnFile: (n) => (n === 1 ? "1 file uploaded" : `${n} files uploaded`),
+    unlockedCopyTitle: "Unlocked copy needed",
+    unlockedCopySub: "Upload a password-free replacement so we can finish reviewing this file.",
+    unlockedCopyChecking: "Replacement received — checking it now.",
     creditTitle: "Credit authorization",
     creditSub: "Sign once. We run a soft check — it never affects your score.",
     readSign: "Read & sign",
@@ -387,6 +398,7 @@ const COPY: Record<Lang, Copy> = {
     bookBusy: "Booking…",
     booked: "Call booked — the invite is in your email.",
     reviewLocked: "Complete the three items to run your review.",
+    unlockedCopyReviewLocked: "Finish the open password-free replacement request before running your review.",
     roomTitle: "Connect your bank account",
     roomSub: "Connect your bank and see everything else the desk asked you for in one list. What you have done here stays saved.",
     roomCta: "Open my checklist ->",
@@ -451,7 +463,11 @@ const COPY: Record<Lang, Copy> = {
     browse: "búscalos en tu equipo",
     uploadBusy: "Subiendo…",
     uploadRejected: "El almacenamiento seguro rechazó el archivo.",
+    uploadRequestChanged: "La solicitud de documentos cambió mientras subías el archivo. Actualizamos la lista; vuelve a agregarlo desde la acción actual.",
     filesOnFile: (n) => (n === 1 ? "1 archivo subido" : `${n} archivos subidos`),
+    unlockedCopyTitle: "Se necesita una copia sin contraseña",
+    unlockedCopySub: "Sube un reemplazo sin contraseña para que podamos terminar de revisar este archivo.",
+    unlockedCopyChecking: "Recibimos el reemplazo — lo estamos revisando.",
     creditTitle: "Autorización de crédito",
     creditSub: "Firma una sola vez. Hacemos una consulta blanda — nunca afecta tu puntaje.",
     readSign: "Leer y firmar",
@@ -494,6 +510,7 @@ const COPY: Record<Lang, Copy> = {
     bookBusy: "Agendando…",
     booked: "Llamada agendada — la invitación está en tu correo.",
     reviewLocked: "Completa los tres elementos para ejecutar tu revisión.",
+    unlockedCopyReviewLocked: "Completa la solicitud abierta de reemplazo sin contraseña antes de ejecutar tu revisión.",
     roomTitle: "Conecta tu cuenta bancaria",
     roomSub: "Conecta tu banco y revisa en una sola lista todo lo demás que te pidió nuestro equipo. Lo que ya hiciste aquí queda guardado.",
     roomCta: "Abrir mi lista ->",
@@ -533,29 +550,6 @@ function secureRoomHref(handoff: SecureRoomHandoff): string {
 // ---------------------------------------------------------------------------
 // Small helpers
 // ---------------------------------------------------------------------------
-
-type DocSlots = { bank: McaRequestedDoc | null; credit: McaRequestedDoc | null; terms: McaRequestedDoc | null };
-
-function classifyDocs(docs: McaRequestedDoc[]): DocSlots {
-  const remaining = [...docs];
-  const take = (pred: (doc: McaRequestedDoc) => boolean): McaRequestedDoc | null => {
-    const index = remaining.findIndex(pred);
-    if (index < 0) return null;
-    const [doc] = remaining.splice(index, 1);
-    return doc ?? null;
-  };
-  const text = (doc: McaRequestedDoc) => `${doc.name} ${doc.category ?? ""}`.toLowerCase();
-  const credit = take(
-    (doc) => doc.signature_kind === "credit_authorization" || Boolean(doc.requires_signature) || text(doc).includes("credit"),
-  );
-  const bank = take((doc) => text(doc).includes("bank") || text(doc).includes("statement"));
-  const terms = take((doc) => /mca|advance|term/.test(text(doc)));
-  return {
-    bank: bank ?? remaining.shift() ?? null,
-    credit: credit ?? remaining.shift() ?? null,
-    terms: terms ?? remaining.shift() ?? null,
-  };
-}
 
 function slotLabel(slot: BookingSlotLite, lang: Lang): string {
   const custom = `${slot.date_label ?? ""} ${slot.label ?? ""}`.trim();
@@ -977,6 +971,8 @@ export default function McaRefinanceIntakePage() {
     setUploads((current) => ({ ...current, [docId]: [...(current[docId] ?? []), ...rows] }));
     const doneIds = new Set<string>();
     let uploaded = 0;
+    let stale = 0;
+    setChatError(null);
     for (const row of rows) {
       try {
         const init = await call<UploadInitResponse>(`/${encodeURIComponent(tokenRef.current)}/files/upload-init`, {
@@ -1000,11 +996,17 @@ export default function McaRefinanceIntakePage() {
         doneIds.add(row.id);
         patchQueued(docId, row.id, { status: "uploaded" });
       } catch (error) {
-        patchQueued(docId, row.id, { status: "error", message: apiErrorText(error, c) });
+        if (isStaleRequestedDocumentError(error)) {
+          stale += 1;
+          doneIds.add(row.id);
+          setChatError(c.uploadRequestChanged);
+        } else {
+          patchQueued(docId, row.id, { status: "error", message: apiErrorText(error, c) });
+        }
       }
     }
     try {
-      if (uploaded > 0) await refresh();
+      if (uploaded > 0 || stale > 0) await refresh();
     } catch {
       // The upload itself succeeded; the next interaction re-syncs.
     }
@@ -1206,20 +1208,24 @@ export default function McaRefinanceIntakePage() {
   }
 
   // --- derived room model ---------------------------------------------------
-  const slots = useMemo(() => classifyDocs(response?.requested_documents ?? []), [response]);
+  const slots = useMemo(() => clientMcaRequestedDocumentLayout(response?.requested_documents ?? [], response?.files ?? []), [response]);
+  const documentDone = (doc: McaRequestedDoc | null): boolean => Boolean(doc && !clientRequestedDocumentNeedsAction(doc, response?.files ?? []));
   const docCards: Array<{ kind: "bank" | "credit" | "terms"; doc: McaRequestedDoc | null }> = [
     { kind: "bank", doc: slots.bank },
     { kind: "credit", doc: slots.credit },
     { kind: "terms", doc: slots.terms },
   ];
-  const doneCount = docCards.filter((entry) => entry.doc?.status === "uploaded").length;
-  const allDone = docCards.every((entry) => entry.doc?.status === "uploaded");
+  const doneCount = docCards.filter((entry) => documentDone(entry.doc)).length;
+  const allDone = docCards.every((entry) => documentDone(entry.doc)) && slots.unresolvedUnlockedCopies.length === 0;
   const reviewDone = Boolean(response?.latest_review?.result ?? response?.intake.result_snapshot);
   const bookingSlots = response?.booking?.slots ?? [];
 
   function filesFor(docId: string | undefined): UploadedFile[] {
     if (!docId || !response) return [];
-    return response.files.filter((file) => file.requested_document_id === docId && !file.parent_zip_file_id);
+    const doc = response.requested_documents.find((item) => item.id === docId);
+    return response.files.filter((file) => (
+      file.requested_document_id === docId || (doc?.source_file_id && file.id === doc.source_file_id)
+    ) && !file.parent_zip_file_id);
   }
 
   // --- render ---------------------------------------------------------------
@@ -1437,7 +1443,9 @@ export default function McaRefinanceIntakePage() {
     const bankDoc = slots.bank;
     const creditDoc = slots.credit;
     const termsDoc = slots.terms;
-    const termsDone = termsDoc?.status === "uploaded" || termsSubmitted || termsAlready;
+    const bankDone = documentDone(bankDoc);
+    const creditDone = documentDone(creditDoc);
+    const termsDone = documentDone(termsDoc) || termsSubmitted || termsAlready;
 
     const rail = (
       <aside className="vm-rail" aria-label={c.progressLabel(doneCount)}>
@@ -1490,13 +1498,15 @@ export default function McaRefinanceIntakePage() {
               ) : null}
             </div>
           ) : (
-            <div className="vm-sub">{c.reviewLocked}</div>
+            <div className="vm-sub">
+              {slots.unresolvedUnlockedCopies.length ? c.unlockedCopyReviewLocked : c.reviewLocked}
+            </div>
           )}
         </div>
 
         {/* a. Bank statements */}
         {bankDoc ? (
-          <RailCard title={c.bankTitle} sub={c.bankSub} done={bankDoc.status === "uploaded"} c={c}>
+          <RailCard title={c.bankTitle} sub={c.bankSub} done={bankDone} c={c}>
             <UploadArea
               busy={uploadDocBusy === bankDoc.id}
               disabled={uploadDocBusy !== null}
@@ -1510,8 +1520,8 @@ export default function McaRefinanceIntakePage() {
 
         {/* b. Credit authorization -> soft pull */}
         {creditDoc ? (
-          <RailCard title={c.creditTitle} sub={c.creditSub} done={creditDoc.status === "uploaded"} c={c}>
-            {creditDoc.status === "uploaded" ? (
+          <RailCard title={c.creditTitle} sub={c.creditSub} done={creditDone} c={c}>
+            {creditDone ? (
               <div className="grid g10">
                 <div className="vm-ok">{c.signedBadge}</div>
                 {pullState === "done" ? (
@@ -1563,12 +1573,7 @@ export default function McaRefinanceIntakePage() {
             {termsDone ? (
               <div className="grid g8">
                 <div className="vm-ok">{termsAlready ? c.termsAlready : c.termsReceived}</div>
-                {filesFor(termsDoc.id).map((file) => (
-                  <div key={file.id} className="vm-file">
-                    <span className="vm-file-n">{file.file_name}</span>
-                    <span className="vm-file-m">{formatSize(file.size_bytes)}</span>
-                  </div>
-                ))}
+                {filesFor(termsDoc.id).map((file) => <EvidenceFileLine key={file.id} file={file} />)}
               </div>
             ) : (
               <div className="grid g12">
@@ -1683,6 +1688,39 @@ export default function McaRefinanceIntakePage() {
             )}
           </RailCard>
         ) : null}
+
+        {/* Password-free replacements are corrective tasks, not a fourth MCA
+            requirement. Keep them separate so a direct-bucket source with no
+            useful classification cannot disappear or become a signature or
+            typed-terms action when the three canonical slots are occupied. */}
+        {slots.unresolvedUnlockedCopies.map((doc) => {
+          const state = clientRequestedDocumentReviewState(doc, response?.files ?? []);
+          return (
+            <RailCard
+              key={doc.id}
+              title={doc.name.trim() || c.unlockedCopyTitle}
+              sub={doc.description?.trim() || c.unlockedCopySub}
+              done={false}
+              c={c}
+            >
+              {state === "checking" ? (
+                <div className="grid g8">
+                  <div className="vm-calm">{c.unlockedCopyChecking}</div>
+                  {filesFor(doc.id).map((file) => <EvidenceFileLine key={file.id} file={file} />)}
+                </div>
+              ) : (
+                <UploadArea
+                  busy={uploadDocBusy === doc.id}
+                  disabled={uploadDocBusy !== null}
+                  files={filesFor(doc.id)}
+                  queue={uploads[doc.id] ?? []}
+                  c={c}
+                  onFiles={(picked) => uploadFiles(doc.id, picked)}
+                />
+              )}
+            </RailCard>
+          );
+        })}
 
         {/* Last in the rail, and deliberately not a RailCard: it carries no
             open/done chip because it is not a fourth thing to collect. It is
@@ -1887,14 +1925,25 @@ function UploadArea({
       {files.length ? (
         <div className="grid g6">
           <div className="vm-ok">{c.filesOnFile(files.length)}</div>
-          {files.map((file) => (
-            <div key={file.id} className="vm-file">
-              <span className="vm-file-n">{file.file_name}</span>
-              <span className="vm-file-m">{formatSize(file.size_bytes)}</span>
-            </div>
-          ))}
+          {files.map((file) => <EvidenceFileLine key={file.id} file={file} />)}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function EvidenceFileLine({ file }: { file: UploadedFile }) {
+  const locked = lockedEvidencePresentation({
+    fileName: file.file_name,
+    isPasswordProtected: file.is_password_protected,
+    analysisStatus: file.analysis_status,
+    analysisReasonCode: file.analysis_reason_code,
+  });
+  const requestState = locked ? unlockedCopyActionState(file.unlocked_copy_request) : null;
+  return (
+    <div className="vm-file">
+      <span className="vm-file-n">{locked ? <span aria-label="Password required" title={locked.explanation}>🔒 </span> : null}{file.file_name}</span>
+      <span className={locked ? "vm-err" : "vm-file-m"}>{locked ? `${locked.title} · ${requestState?.label ?? locked.badge}` : formatSize(file.size_bytes)}</span>
     </div>
   );
 }

@@ -4,6 +4,8 @@ import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "reac
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
+import { clientActionableRequestedDocumentUploadTarget, clientApiError, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { lockedEvidencePresentation, unlockedCopyActionState, type UnlockedCopyRequestLike } from "@/lib/lockedEvidence";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
 import { ProductionSigningGate, type SignPayload as ProductionSignPayload, type SignResult as ProductionSignResult } from "@/components/intake/ProductionSigningGate";
@@ -29,6 +31,9 @@ type RequestedDoc = {
   signature_kind?: string | null;
   signature_document_text?: string | null;
   template_download_url?: string | null;
+  request_kind?: string | null;
+  source_file_id?: string | null;
+  replacement_review_state?: string | null;
 };
 
 type UploadedFile = {
@@ -42,6 +47,12 @@ type UploadedFile = {
   content_type: string;
   size_bytes: number;
   status: string;
+  is_password_protected?: boolean | null;
+  unlocked_copy_request?: UnlockedCopyRequestLike;
+  analysis_status?: string | null;
+  analysis_reason_code?: string | null;
+  analysis_classification?: string | null;
+  analysis_review_state?: string | null;
   created_at: string;
 };
 
@@ -212,6 +223,7 @@ export default function DealerAIUnderwriterPage() {
   const [mounted, setMounted] = useState(false);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
   const roomFileInputRef = useRef<HTMLInputElement | null>(null);
+  const requestedDocumentPickerTargetRef = useRef<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const progressTimersRef = useRef<number[]>([]);
   const completionTimerRef = useRef<number | null>(null);
@@ -304,8 +316,8 @@ export default function DealerAIUnderwriterPage() {
 
   const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
   const missingDocs = useMemo(() => {
-    const uploadedIds = new Set(response?.files.map((file) => file.requested_document_id).filter(Boolean) ?? []);
-    return (response?.requested_documents ?? []).filter((doc) => doc.required && isStageOneRequestedDoc(doc) && !uploadedIds.has(doc.id));
+    const files = response?.files ?? [];
+    return (response?.requested_documents ?? []).filter((doc) => doc.required && (doc.request_kind === "unlocked_copy" || isStageOneRequestedDoc(doc)) && clientRequestedDocumentNeedsAction(doc, files));
   }, [response]);
   const pendingFiles = queuedFiles.filter((item) => item.status !== "uploaded");
   const aiPaused = Boolean(response?.ai_paused_until);
@@ -348,7 +360,13 @@ export default function DealerAIUnderwriterPage() {
         ...(init.headers ?? {}),
       },
     });
-    if (!res.ok) throw new Error(await responseMessage(res));
+    if (!res.ok) {
+      const responseCopy = res.clone();
+      const message = await responseMessage(res);
+      let payload: unknown = null;
+      try { payload = await responseCopy.json(); } catch { /* keep message fallback */ }
+      throw clientApiError(payload, message);
+    }
     if (res.status === 204) return undefined as T;
     return res.json();
   }
@@ -662,6 +680,8 @@ export default function DealerAIUnderwriterPage() {
     setStatus("Uploading files to secure storage...");
     let uploaded = 0;
     const uploadedIds = new Set<string>();
+    const staleIds = new Set<string>();
+    let stale = 0;
     try {
       for (const item of queuedFiles.filter((file) => file.status === "ready" || file.status === "error")) {
         updateQueuedFile(item.id, { status: "uploading", message: "Preparing upload" });
@@ -690,11 +710,17 @@ export default function DealerAIUnderwriterPage() {
           uploadedIds.add(item.id);
           updateQueuedFile(item.id, { status: "uploaded", message: "Uploaded" });
         } catch (error) {
-          updateQueuedFile(item.id, { status: "error", message: errorMessage(error) });
+          if (isStaleRequestedDocumentError(error)) {
+            stale += 1;
+            staleIds.add(item.id);
+            removeQueuedFile(item.id);
+          } else {
+            updateQueuedFile(item.id, { status: "error", message: errorMessage(error) });
+          }
         }
       }
       await loadIntake();
-      setQueuedFiles((current) => current.filter((item) => !uploadedIds.has(item.id)));
+      setQueuedFiles((current) => current.filter((item) => !uploadedIds.has(item.id) && !staleIds.has(item.id)));
       if (uploaded > 0) {
         pushAssistant(c.filesUploadedAnalyzing(uploaded));
         setStatus("Analyzing uploaded files...");
@@ -703,7 +729,19 @@ export default function DealerAIUnderwriterPage() {
         applyResponse(payload, token);
         completeReviewProgress();
         pushAssistantFromPayload(payload);
-        setStatus("");
+        if (stale > 0) {
+          const message = "The document checklist changed while you were uploading. We refreshed it; add the affected file again from the current action.";
+          setStatus(message);
+          pushAssistant(message);
+        } else {
+          setStatus("");
+        }
+      } else if (stale > 0) {
+        clearProgressTimers();
+        setProgress("idle");
+        const message = "The document checklist changed while you were uploading. We refreshed it; add the file again from the current action.";
+        setStatus(message);
+        pushAssistant(message);
       } else {
         failReviewProgress();
         setStatus(c.noFilesUploaded);
@@ -896,8 +934,9 @@ export default function DealerAIUnderwriterPage() {
     setQueuedFiles((current) => current.filter((item) => item.id !== id));
   }
 
-  function openFilePicker() {
-    (composerFileInputRef.current ?? roomFileInputRef.current)?.click();
+  function openFilePicker(requestedDocumentId: string | null = null) {
+    requestedDocumentPickerTargetRef.current = requestedDocumentId;
+    roomFileInputRef.current?.click();
   }
 
   function handleRoomDragOver(event: DragEvent<HTMLElement>) {
@@ -1136,8 +1175,9 @@ export default function DealerAIUnderwriterPage() {
                 style={{ display: "none" }}
                 onChange={(event) => {
                   if (event.target.files) {
-                    addFiles(event.target.files);
+                    addFiles(event.target.files, requestedDocumentPickerTargetRef.current);
                   }
+                  requestedDocumentPickerTargetRef.current = null;
                   event.currentTarget.value = "";
                 }}
               />
@@ -1702,7 +1742,7 @@ function FileDrawerPanel({
   result: Record<string, unknown> | null;
   busy: boolean;
   fundability: FundabilityBannerData | null;
-  onAttachFiles: () => void;
+  onAttachFiles: (requestedDocumentId?: string | null) => void;
   onRemoveQueuedFile: (id: string) => void;
   onUpload: () => void;
   reviewProgress: ReviewProgressStage;
@@ -1742,7 +1782,7 @@ function FileDrawerPanel({
           <h2 style={sideTitle}>Uploaded evidence</h2>
           {!showReviewProgress && reviewCompletedAt ? <span style={smallMuted}>Last review {formatDate(reviewCompletedAt)}</span> : null}
         </div>
-        <button type="button" style={miniButton} onClick={onAttachFiles}>Attach</button>
+        <button type="button" style={miniButton} onClick={() => onAttachFiles()}>Attach</button>
       </div>
 
       {fundability ? <FundabilityBanner banner={fundability} /> : null}
@@ -1801,24 +1841,37 @@ function FileDrawerPanel({
             const doc = file.requested_document_id ? docsById.get(file.requested_document_id) : null;
             const evidence = evidenceByFileId.get(file.id);
             const extractedChildren = childFilesByParent.get(file.id) ?? [];
+            const locked = lockedEvidencePresentation({
+              fileName: file.file_name,
+              isPasswordProtected: file.is_password_protected,
+              analysisStatus: file.analysis_status,
+              analysisReasonCode: file.analysis_reason_code,
+            });
+            const unlockedCopy = locked ? unlockedCopyActionState(file.unlocked_copy_request) : null;
             return (
               <div key={file.id} style={uploadedFileCard}>
-                <div style={fileTypeBadge}>{fileLabel(file)}</div>
+                <div style={fileTypeBadge}>{locked ? <span aria-label="Password required" title={locked.explanation}>🔒</span> : fileLabel(file)}</div>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{file.file_name}</strong>
-                  <span style={smallMuted}>{evidence?.classification || doc?.name || "Let AI classify"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
+                  <span style={smallMuted}>{locked ? `${locked.title} | ${unlockedCopy?.label ?? locked.badge}` : evidence?.classification || file.analysis_classification || doc?.name || "Let AI classify"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
                   {file.extraction_status ? <span style={evidenceLine}>Archive extraction: {file.extraction_status}{extractedChildren.length ? ` | ${extractedChildren.length} file${extractedChildren.length === 1 ? "" : "s"} organized` : ""}</span> : null}
                   {evidence?.supports ? <span style={evidenceLine}>{evidence.supports}</span> : null}
                   {extractedChildren.length ? (
                     <div style={zipChildList}>
                       {extractedChildren.map((child) => {
                         const childEvidence = evidenceByFileId.get(child.id);
+                        const childLocked = lockedEvidencePresentation({
+                          fileName: child.file_name,
+                          isPasswordProtected: child.is_password_protected,
+                          analysisStatus: child.analysis_status,
+                          analysisReasonCode: child.analysis_reason_code,
+                        });
                         return (
                           <div key={child.id} style={zipChildRow}>
-                            <span style={fileTypeBadgeSmall}>{fileLabel(child)}</span>
+                            <span style={fileTypeBadgeSmall}>{childLocked ? <span aria-label="Password required" title={childLocked.explanation}>🔒</span> : fileLabel(child)}</span>
                             <div style={{ minWidth: 0 }}>
                               <strong style={truncate}>{child.zip_entry_path || child.file_name}</strong>
-                              <span style={smallMuted}>{childEvidence?.classification || "AI will classify"} | {formatSize(child.size_bytes)}</span>
+                              <span style={smallMuted}>{childLocked ? childLocked.title : childEvidence?.classification || child.analysis_classification || "AI will classify"} | {formatSize(child.size_bytes)}</span>
                             </div>
                           </div>
                         );
@@ -1838,7 +1891,9 @@ function FileDrawerPanel({
           <span style={missingDocs.length ? warningText : smallMuted}>{missingDocs.length} open</span>
         </div>
         <div style={chipWrap}>
-          {missingDocs.length ? missingDocs.map((doc) => (
+          {missingDocs.length ? missingDocs.map((doc) => {
+            const uploadTarget = clientActionableRequestedDocumentUploadTarget(doc, response.files);
+            return (
             <span key={doc.id} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
               {doc.requires_signature && setSigningDocId ? (
                 <button
@@ -1847,6 +1902,16 @@ function FileDrawerPanel({
                   style={{ ...missingChip, cursor: "pointer", border: "none" }}
                 >
                   Sign: {doc.name}
+                </button>
+              ) : uploadTarget ? (
+                <button
+                  type="button"
+                  onClick={() => onAttachFiles(uploadTarget)}
+                  style={{ ...missingChip, cursor: "pointer", border: "none" }}
+                  aria-label={`Upload ${doc.name}`}
+                  title="Choose a file for this exact request"
+                >
+                  Upload: {doc.name}
                 </button>
               ) : (
                 <span style={missingChip}>{doc.name}</span>
@@ -1866,7 +1931,8 @@ function FileDrawerPanel({
                 </button>
               ) : null}
             </span>
-          )) : <span style={completeChip}>Baseline package uploaded</span>}
+            );
+          }) : <span style={completeChip}>Baseline package uploaded</span>}
         </div>
         {onSubmitPfs ? (
           <PfsFormModal
@@ -2029,7 +2095,7 @@ function IntelligenceUnavailableCover({
         </div>
         <div style={intelligenceCoverActions}>
           <button type="button" style={primaryButton} onClick={onGoChat}>Return to chat</button>
-          <button type="button" style={coverSecondaryButton} onClick={onAttachFiles}>Attach evidence</button>
+          <button type="button" style={coverSecondaryButton} onClick={() => onAttachFiles()}>Attach evidence</button>
         </div>
         <div style={intelligenceCoverNeeds}>
           <strong>Start with Stage 1 evidence</strong>
@@ -2654,6 +2720,7 @@ async function responseMessage(res: Response): Promise<string> {
   try {
     const body = await res.json();
     if (typeof body.detail === "string") return body.detail;
+    if (body.detail && typeof body.detail === "object" && typeof body.detail.message === "string") return body.detail.message;
     // A 422 lists its reasons as {loc, msg} objects. Pydantic writes a
     // validator's own ValueError as "Value error, <sentence>"; the applicant
     // should read the sentence, not the machinery in front of it.

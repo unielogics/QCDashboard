@@ -1,14 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  BucketFileReviewPanel,
+  type BucketFileReview,
+  type BucketReviewFile,
+} from "@/components/buckets/BucketFileReviewPanel";
 import { Icon } from "@/components/design-system/Icon";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
+import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, cx } from "@/components/ds";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
   ApplicationBankState,
+  ApplicationBankEvidenceFile,
   ApplicationProfile,
+  ApplicationRequirementEvidence,
   ApplicationSourceKind,
   FileCreditInvite,
   FileOwner,
@@ -16,6 +24,15 @@ import type {
   RoomDeliveryReceipt,
   RoomRequestResult,
 } from "@/lib/applicationProfile";
+import {
+  evidenceAnalysisLabel,
+  evidenceActorLabel,
+  evidenceCoverageLabel,
+  evidenceDecisionLabel,
+  evidenceDecisionTone,
+  evidenceReasonLabel,
+} from "@/lib/evidenceDecision";
+import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 
 type OwnerDraft = {
   key: string;
@@ -28,6 +45,7 @@ type OwnerDraft = {
 };
 
 const EMPTY_DRAFT = { first_name: "", last_name: "", ownership_pct: "", email: "", phone: "" };
+const EMPTY_BANK_EVIDENCE: ApplicationBankEvidenceFile[] = [];
 
 function maskEmail(value: string | null) {
   if (!value || !value.includes("@")) return "Email missing";
@@ -92,7 +110,26 @@ export function ApplicationVerificationWorkspace({
     queryKey: ["application-profile-banks", profileId],
     queryFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks`),
     enabled: Boolean(profileId) && mode !== "owners" && mode !== "credit",
+    refetchInterval: (query) => (
+      (query.state.data?.manual_statement_pending_count ?? 0)
+      + (query.state.data?.evidence_processing_count ?? 0)
+    ) > 0 ? 4000 : false,
+    refetchOnWindowFocus: true,
   });
+  const bankEvidenceRevision = banks.data ? JSON.stringify({
+    files: banks.data.manual_statement_file_count,
+    accepted: banks.data.manual_statement_accepted_count,
+    pending: banks.data.manual_statement_pending_count,
+    rejected: banks.data.manual_statement_rejected_count,
+    failed: banks.data.manual_statement_failed_count,
+    processing: banks.data.evidence_processing_count,
+    months: banks.data.manual_statement_months,
+    override: banks.data.manual_override,
+  }) : "";
+  useEffect(() => {
+    if (!profileId || !bankEvidenceRevision) return;
+    void qc.invalidateQueries({ queryKey: ["application-profile-verification", profileId] });
+  }, [bankEvidenceRevision, profileId, qc]);
   useEffect(() => {
     if (verification.data) onStateChange?.(verification.data);
   }, [verification.data, onStateChange]);
@@ -364,7 +401,7 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
   );
 }
 
-export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, onRefresh, showStatementUploader = true }: {
+export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, loading, onRefresh, showStatementUploader = true, statementEvidence, onPreviewEvidence, onRequestUnlockedCopy, unlockedCopyRequestingFileId }: {
   profileId: string;
   sourceKind: ApplicationSourceKind;
   sourceId: string;
@@ -373,6 +410,10 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   loading: boolean;
   onRefresh: () => Promise<void>;
   showStatementUploader?: boolean;
+  statementEvidence?: ApplicationBankEvidenceFile[] | ApplicationRequirementEvidence[];
+  onPreviewEvidence?: (fileId: string) => void;
+  onRequestUnlockedCopy?: (fileId: string, fileName: string, retryFailed?: boolean, copyRoomLink?: boolean) => Promise<void> | void;
+  unlockedCopyRequestingFileId?: string | null;
 }) {
   const apiCall = useAuthedApi();
   const currentUser = useCurrentUser();
@@ -391,6 +432,60 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     statements_enabled: boolean;
   } | null>(null);
   const [policyNote, setPolicyNote] = useState("");
+  const [selectedStatementFileId, setSelectedStatementFileId] = useState<string | null>(null);
+  const statementFiles: ApplicationBankEvidenceFile[] = statementEvidence?.length
+    ? statementEvidence
+    : banks?.manual_statement_files ?? EMPTY_BANK_EVIDENCE;
+  const selectedStatementFile = statementFiles.find((file) => file.file_id === selectedStatementFileId) ?? null;
+  const statementReviewFiles = useMemo<BucketReviewFile[]>(() => statementFiles.map((file) => ({
+    id: file.file_id,
+    file_name: file.file_name,
+    content_type: file.content_type ?? (file.file_name.toLocaleLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream"),
+    size_bytes: file.size_bytes,
+    created_at: file.created_at,
+    is_password_protected: Boolean(lockedEvidencePresentation({
+      fileName: file.file_name,
+      isPasswordProtected: file.is_password_protected,
+      analysisStatus: file.analysis_status,
+      analysisReasonCode: file.analysis_reason_code,
+      analysisDetail: file.analysis_detail,
+      decisionReasonCode: file.ai_reason_code,
+      decisionExplanation: file.ai_explanation,
+    })),
+  })), [statementFiles]);
+  const selectedReviewId = selectedStatementFile?.file_id ?? "";
+  const selectedReviewName = selectedStatementFile?.file_name ?? "";
+  const selectedReviewContentType = selectedStatementFile?.content_type
+    ?? (selectedReviewName.toLocaleLowerCase().endsWith(".pdf") ? "application/pdf" : "application/octet-stream");
+  const selectedReviewSize = selectedStatementFile?.size_bytes;
+  const selectedReviewCreatedAt = selectedStatementFile?.created_at;
+  const selectedLockedEvidence = selectedStatementFile ? lockedEvidencePresentation({
+    fileName: selectedStatementFile.file_name,
+    isPasswordProtected: selectedStatementFile.is_password_protected,
+    analysisStatus: selectedStatementFile.analysis_status,
+    analysisReasonCode: selectedStatementFile.analysis_reason_code,
+    analysisDetail: selectedStatementFile.analysis_detail,
+    decisionReasonCode: selectedStatementFile.ai_reason_code,
+    decisionExplanation: selectedStatementFile.ai_explanation,
+  }) : null;
+  const selectedStatementPasswordProtected = Boolean(selectedLockedEvidence);
+  const selectedStatementReviewFile = useMemo<BucketReviewFile | null>(() => selectedReviewId ? ({
+    id: selectedReviewId,
+    file_name: selectedReviewName,
+    content_type: selectedReviewContentType,
+    size_bytes: selectedReviewSize,
+    created_at: selectedReviewCreatedAt,
+    is_password_protected: selectedStatementPasswordProtected,
+  }) : null, [selectedReviewContentType, selectedReviewCreatedAt, selectedReviewId, selectedReviewName, selectedReviewSize, selectedStatementPasswordProtected]);
+  const loadStatementReview = useCallback(async (): Promise<BucketFileReview> => {
+    if (!selectedStatementReviewFile) throw new Error("Bank statement file is no longer available.");
+    const signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedStatementReviewFile.id}/url`);
+    return { file: selectedStatementReviewFile, preview_url: signed.url, annotations: [] };
+  }, [apiCall, profileId, selectedStatementReviewFile]);
+  const previewStatement = useCallback((fileId: string) => {
+    if (onPreviewEvidence) onPreviewEvidence(fileId);
+    else setSelectedStatementFileId(fileId);
+  }, [onPreviewEvidence]);
   const deliveries = useQuery({
     queryKey: ["application-room-deliveries", profileId],
     queryFn: () => apiCall<RoomDeliveryReceipt[]>(`/application-profiles/${profileId}/room/deliveries`),
@@ -416,6 +511,11 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     mutationFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks/manual-override`, { method: "POST", body: JSON.stringify({ reason: overrideReason.trim() }) }),
     onSuccess: async () => { setOverrideReason(""); setError(""); await onRefresh(); },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "Manual statement evidence could not be approved."),
+  });
+  const retryAnalysis = useMutation({
+    mutationFn: (fileId: string) => apiCall(`/application-profiles/${profileId}/evidence/${fileId}/reanalyze`, { method: "POST" }),
+    onSuccess: async () => { setError(""); await onRefresh(); },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "AI analysis could not be retried."),
   });
   const createAssetReport = useMutation({
     mutationFn: () => apiCall(`/application-profiles/${profileId}/asset-reports`, { method: "POST", body: JSON.stringify({ days_requested: 210 }) }),
@@ -477,6 +577,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     ? evidenceSummary.bank_statement_needs_more_count + evidenceSummary.bank_statement_rejected_count
     : banks?.manual_statement_rejected_count ?? 0;
   const manualFailedCount = evidenceSummary?.bank_statement_failed_count ?? banks?.manual_statement_failed_count ?? 0;
+  const manualUnassignedCount = statementFiles.filter((file) => !file.ai_decision && file.analysis_status === "completed").length;
   const hasManualEvidence = manualFileCount > 0;
   const needsClientBankRequest = !state?.business_banking_complete;
   const bankDeliveries = (deliveries.data ?? []).filter((receipt) => receipt.action_kind === "business_banking_reminder");
@@ -484,6 +585,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   const latestEmail = bankDeliveries.find((receipt) => receipt.channel === "email");
   const laterUnsentActivity = latestActivity?.channel === "none" && latestEmail && new Date(latestActivity.created_at).getTime() > new Date(latestEmail.created_at).getTime();
   const isSuperAdmin = currentUser.data?.role === "super_admin";
+  const canRunAi = isSuperAdmin || currentUser.data?.role === "loan_exec";
   const selectedProducts = banks?.selected_products ?? [];
   const availableProducts = banks?.available_products ?? [];
   const requestPolicyChange = (product: "assets" | "statements") => {
@@ -500,7 +602,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   return <><section className="verification-section bank-evidence-workspace">
     <header className="verification-section-head">
       <div><span className="lbl">Evidence &amp; banking</span><h3>Business bank evidence</h3><Sub>AI-accepted uploaded statements and client-authorized Plaid data are alternative evidence sources. Staff only override exceptions.</Sub></div>
-      <CellChip tone={state?.business_banking_complete ? "ok" : manualAcceptedCount || manualPendingCount ? "acc" : manualFailedCount ? "bad" : "warn"}>{state?.business_banking_complete ? "Complete" : manualAcceptedCount ? `${manualMonths.length} of ${requiredMonths} months accepted` : manualPendingCount ? "AI review in progress" : manualFailedCount ? "Analysis failed" : "Awaiting applicant"}</CellChip>
+      <CellChip tone={state?.business_banking_complete ? "ok" : manualFailedCount || manualRejectedCount ? "bad" : manualAcceptedCount || manualPendingCount ? "acc" : "warn"}>{state?.business_banking_complete ? "Complete" : manualFailedCount ? "Analysis failed" : manualRejectedCount ? "Needs attention" : manualPendingCount ? "AI review in progress" : manualAcceptedCount ? `${manualMonths.length} of ${requiredMonths} months accepted` : manualUnassignedCount ? "Evidence needs mapping" : "Awaiting applicant"}</CellChip>
     </header>
     <div className="bank-evidence-stats"><div><span>Connected institutions</span><b className="num">{connected.length}</b></div><div><span>Evidence source</span><b>{hasManualEvidence ? "Uploaded statements" : connected.length ? "Plaid" : "-"}</b></div><div><span>Accepted coverage</span><b className="num">{manualMonths.length ? `${manualMonths.length} / ${requiredMonths}` : state?.bank_statement_months || (manualPendingCount ? "Analyzing" : "-")}</b></div></div>
     <div className="plaid-product-policy">
@@ -543,10 +645,52 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     </div> : null}
     <div className="bank-workspace-tabs" role="tablist" aria-label="Business banking workspace"><button type="button" className={bankTab === "connections" ? "on" : undefined} onClick={() => setBankTab("connections")}>Connections</button><button type="button" className={bankTab === "statements" ? "on" : undefined} onClick={() => setBankTab("statements")}>Uploaded statements</button><button type="button" className={bankTab === "assets" ? "on" : undefined} onClick={() => setBankTab("assets")}>Asset reports</button></div>
     {bankTab === "connections" ? <div className="bank-connection-list">{connected.map((item) => <div key={item.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="building" size={17} /></span><div className="grow trunc"><Row><b className="trunc">{item.institution_name || "Connected institution"}</b>{item.is_primary_operating ? <CellChip tone="acc">Primary operating</CellChip> : null}<CellChip tone={item.authorization_state === "authorized" ? "ok" : item.error ? "bad" : "warn"}>{item.authorization_state === "client_authorization_required" ? "Authorization needed" : item.authorization_state === "fallback_required" ? "PDF fallback" : item.status}</CellChip></Row><Sub>{item.accounts_label || "Accounts connected"} · {item.statement_months.length ? `${item.statement_months.length} months available` : "Evidence syncing"} · refreshed {when(item.last_pulled_at)}</Sub>{item.unavailable_products.length ? <Sub>Statement PDFs are unavailable from this institution. Request bank PDF upload instead; Assets continues when enabled.</Sub> : item.pending_products.length ? <Sub>Client action needed: authorize {item.pending_products.map((value) => value === "assets" ? "Assets" : "Statement PDFs").join(" and ")} from the secure room.</Sub> : item.update_mode_reason ? <Sub>Client action needed: {item.update_mode_account_selection ? "review newly available accounts" : item.error || "repair or renew the connection"}. Send the room link as a reminder.</Sub> : null}</div></div>)}{!connected.length ? <div className="empty">{hasManualEvidence ? "Uploaded statement evidence is already available. A Plaid connection is optional for this file." : "No bank connection has been authorized. The client completes this from their own device in the secure room."}</div> : null}</div> : null}
-    {bankTab === "statements" ? <div className="bank-statements-workspace"><input ref={picker} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />{showStatementUploader ? <button type="button" className={cx("bank-statement-dropzone", dragging && "dragging")} disabled={uploading || sourceKind !== "intake"} onClick={() => picker.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); void uploadFiles(Array.from(event.dataTransfer.files)); }}><Icon name="upload" size={22} /><b>{uploading ? uploadState : "Drop bank statements here or click to browse"}</b><span>Files are stored in the primary bucket, extracted, and reviewed by AI for entity and statement-month coverage.</span></button> : null}{uploadState && !uploading ? <Callout tone="acc">{uploadState}</Callout> : null}{manualMonths.length ? <><div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="ok">{month}</CellChip>)}</div><Sub>{manualMonths.length} of {requiredMonths} distinct statement months accepted by AI.</Sub></> : hasManualEvidence ? <div className="empty">{manualPendingCount ? `AI is analyzing ${manualPendingCount} statement file${manualPendingCount === 1 ? "" : "s"} for entity and period coverage.` : "Statement evidence is present, but no accepted month could be established."}</div> : <div className="empty">No uploaded statement periods have been identified.</div>}{manualRejectedCount ? <Callout tone="bad">{manualRejectedCount} uploaded statement file{manualRejectedCount === 1 ? " needs" : "s need"} attention. Open Evidence to inspect, reassign, retry, or override the AI decision.</Callout> : null}{manualFailedCount ? <Callout tone="bad">AI analysis failed for {manualFailedCount} statement file{manualFailedCount === 1 ? "" : "s"}. Open Evidence and retry analysis; failed files do not advance coverage.</Callout> : null}{hasManualEvidence && !state?.business_banking_complete && !banks?.manual_override ? <div className="manual-bank-override"><Input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Emergency override reason for incomplete AI-accepted coverage" /><Btn variant="pri" disabled={overrideReason.trim().length < 8 || override.isPending} onClick={() => override.mutate()}><Icon name="check" size={14} />Override coverage</Btn></div> : null}{banks?.manual_override ? <Callout tone="acc" icon={<Icon name="check" size={16} />}>Bank evidence was completed by a reviewed staff override. {banks.manual_override_reason}</Callout> : null}</div> : null}
+    {bankTab === "statements" ? <div className="bank-statements-workspace">
+      <input ref={picker} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.zip,image/*" onChange={(event) => void uploadFiles(Array.from(event.target.files ?? []))} />
+      {showStatementUploader ? <button type="button" className={cx("bank-statement-dropzone", dragging && "dragging")} disabled={uploading || sourceKind !== "intake"} onClick={() => picker.current?.click()} onDragEnter={(event) => { event.preventDefault(); setDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setDragging(false)} onDrop={(event) => { event.preventDefault(); void uploadFiles(Array.from(event.dataTransfer.files)); }}><Icon name="upload" size={22} /><b>{uploading ? uploadState : "Drop bank statements here or click to browse"}</b><span>Files are stored in the primary bucket, extracted, and reviewed by AI for entity and statement-month coverage.</span></button> : null}
+      {uploadState && !uploading ? <Callout tone="acc">{uploadState}</Callout> : null}
+      {statementFiles.length ? <div className="bank-statement-file-list" aria-label="Uploaded bank statement evidence">{statementFiles.map((file) => {
+        const coverage = evidenceCoverageLabel(file.coverage_contribution);
+        const analysisLabel = evidenceAnalysisLabel(file.analysis_status, file.analysis_reason_code);
+        const analysisDetail = file.analysis_detail || file.analysis_summary;
+        const hasDecision = Boolean(file.ai_decision);
+        const locked = lockedEvidencePresentation({ fileName: file.file_name, isPasswordProtected: file.is_password_protected, analysisStatus: file.analysis_status, analysisReasonCode: file.analysis_reason_code, analysisDetail: file.analysis_detail, decisionReasonCode: file.ai_reason_code, decisionExplanation: file.ai_explanation });
+        return <article key={file.file_id} className={cx("evidence-workspace-file-row", locked && "password-protected", `decision-${file.ai_decision || file.analysis_status || "unassigned"}`)}>
+          <span className={cx("evidence-file-icon", locked && "locked")}><Icon name={locked ? "lock" : "file"} size={16} aria-hidden="true" /></span>
+          <div className="grow trunc">
+            <b className="trunc">{file.file_name}</b>
+            {locked ? <Sub><strong>{locked.title}</strong> · {locked.explanation} AI cannot establish statement coverage until an unlocked replacement is uploaded.</Sub> : hasDecision ? <Sub><strong>{evidenceReasonLabel(file.ai_reason_code, file.ai_decision)}</strong>{file.ai_explanation ? ` · ${file.ai_explanation}` : " · Decision explanation not available"}{coverage ? ` · Coverage: ${coverage}` : ""} · {evidenceActorLabel(file.decision_actor)}{file.ai_confidence ? ` (${file.ai_confidence} confidence)` : ""}</Sub> : <Sub><strong>{analysisLabel}</strong>{analysisDetail ? ` · ${analysisDetail}` : ""}{coverage ? ` · Detected periods: ${coverage}` : ""} · Not assigned to the bank-statement requirement</Sub>}
+          </div>
+          {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={hasDecision ? evidenceDecisionTone(file.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{hasDecision ? evidenceDecisionLabel(file.ai_decision, file.decision_actor) : analysisLabel}</CellChip>}
+          {locked ? <UnlockedCopyRequestControl request={file.unlocked_copy_request} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, file.file_name, false, true) : undefined} /> : null}
+          <Btn onClick={() => previewStatement(file.file_id)}><Icon name="eye" size={14} />Preview</Btn>
+        </article>;
+      })}</div> : null}
+      {manualMonths.length ? <><div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="ok">{month}</CellChip>)}</div><Sub>{manualMonths.length} of {requiredMonths} distinct statement months accepted after evidence review.</Sub></> : hasManualEvidence ? <div className="empty">{manualPendingCount ? `AI is analyzing ${manualPendingCount} statement file${manualPendingCount === 1 ? "" : "s"} for entity and period coverage.` : "Statement evidence is present, but no accepted month could be established."}</div> : <div className="empty">No uploaded statement periods have been identified.</div>}
+      {manualRejectedCount ? <Callout tone="bad">{manualRejectedCount} uploaded statement file{manualRejectedCount === 1 ? " needs" : "s need"} attention. Preview each file above to inspect its decision and rationale.</Callout> : null}
+      {manualFailedCount ? <Callout tone="bad">AI analysis failed for {manualFailedCount} statement file{manualFailedCount === 1 ? "" : "s"}. Preview the file to inspect the failure; failed files do not advance coverage.</Callout> : null}
+      {manualUnassignedCount ? <Callout tone="warn">{manualUnassignedCount} bank statement file{manualUnassignedCount === 1 ? " was" : "s were"} analyzed but not mapped to the bank-statement requirement. Preview the file{manualUnassignedCount === 1 ? "" : "s"} above, then assign the evidence before relying on its coverage.</Callout> : null}
+      {hasManualEvidence && !state?.business_banking_complete && !banks?.manual_override ? <div className="manual-bank-override"><Input value={overrideReason} onChange={(event) => setOverrideReason(event.target.value)} placeholder="Emergency override reason for incomplete AI-accepted coverage" /><Btn variant="pri" disabled={overrideReason.trim().length < 8 || override.isPending} onClick={() => override.mutate()}><Icon name="check" size={14} />Override coverage</Btn></div> : null}
+      {banks?.manual_override ? <Callout tone="acc" icon={<Icon name="check" size={16} />}>Bank evidence was completed by a reviewed staff override. {banks.manual_override_reason}</Callout> : null}
+    </div> : null}
     {bankTab === "assets" ? <div className="bank-assets-workspace">{banks?.assets_enabled ? <div className="manual-bank-override"><div className="grow"><b>Plaid Asset Report</b><Sub>A 210-day report is queued automatically after the selected products are authorized. Manual refresh may be billable.</Sub></div>{assetReview ? <><Btn variant="pri" disabled={createAssetReport.isPending} onClick={() => createAssetReport.mutate()}>{createAssetReport.isPending ? "Requesting..." : "Confirm 210-day report"}</Btn><Btn onClick={() => setAssetReview(false)}>Cancel</Btn></> : <Btn disabled={!connected.length} onClick={() => setAssetReview(true)}>Refresh report</Btn>}</div> : <Callout tone="mut">Plaid Assets is disabled for this file.</Callout>}{(banks?.asset_reports ?? []).filter((report) => report.status !== "removed").map((report) => <div key={report.id} className="bank-connection-row"><span className="bank-connection-icon"><Icon name="file" size={17} /></span><div className="grow"><b>Asset Report · {report.days_requested} days</b><Sub>Requested {when(report.created_at)}{report.error ? ` · ${report.error}` : ""}</Sub></div><CellChip tone={report.status === "ready" ? "ok" : report.status === "error" ? "bad" : "acc"}>{report.status}</CellChip></div>)}</div> : null}
     {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
-  </section><ConfirmDialog
+  </section>
+  {selectedStatementFile && selectedStatementReviewFile ? <BucketFileReviewPanel
+    title="Business bank evidence"
+    files={statementReviewFiles}
+    activeFileId={selectedStatementFile.file_id}
+    onSelectFile={setSelectedStatementFileId}
+    reviewKey={selectedStatementFile.file_id}
+    loadReview={loadStatementReview}
+    annotationsEnabled={false}
+    onClose={() => setSelectedStatementFileId(null)}
+    reviewContext={selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot establish statement coverage.</span><small>This file cannot contribute bank-statement coverage until an unlocked replacement is uploaded.</small></div></Callout> : selectedStatementFile.ai_decision ? <Callout tone={evidenceDecisionTone(selectedStatementFile.ai_decision)}><div className="grid g4"><b>{evidenceReasonLabel(selectedStatementFile.ai_reason_code, selectedStatementFile.ai_decision)}</b><span>{selectedStatementFile.ai_explanation || "Decision explanation not available."}</span>{evidenceCoverageLabel(selectedStatementFile.coverage_contribution) ? <small>Coverage: {evidenceCoverageLabel(selectedStatementFile.coverage_contribution)}</small> : null}<small>{evidenceActorLabel(selectedStatementFile.decision_actor)}{selectedStatementFile.ai_confidence ? ` · ${selectedStatementFile.ai_confidence} confidence` : ""}{selectedStatementFile.verified ? " · Human verified" : ""}</small></div></Callout> : <Callout tone={selectedStatementFile.analysis_status === "failed" ? "bad" : selectedStatementFile.analysis_status === "skipped" ? "warn" : "mut"}><div className="grid g4"><b>{evidenceAnalysisLabel(selectedStatementFile.analysis_status, selectedStatementFile.analysis_reason_code)}</b><span>{selectedStatementFile.analysis_detail || selectedStatementFile.analysis_summary || "This bank-like file has not been assigned to the bank-statement requirement."}</span>{selectedStatementFile.analysis_classification ? <small>Classification: {selectedStatementFile.analysis_classification.replaceAll("_", " ")}{selectedStatementFile.analysis_confidence ? ` · ${selectedStatementFile.analysis_confidence} confidence` : ""}</small> : null}</div></Callout>}
+    lockedFileGuidance={<Sub>AI review can resume after the client uploads an unlocked replacement. The original remains in Evidence for the audit trail.</Sub>}
+    lockedFileActions={<UnlockedCopyRequestControl request={selectedStatementFile.unlocked_copy_request} busy={unlockedCopyRequestingFileId === selectedStatementFile.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(selectedStatementFile.file_id, selectedStatementFile.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(selectedStatementFile.file_id, selectedStatementFile.file_name, false, true) : undefined} />}
+    headerActions={<>{selectedLockedEvidence ? <LockedEvidenceBadge presentation={selectedLockedEvidence} /> : <CellChip tone={selectedStatementFile.ai_decision ? evidenceDecisionTone(selectedStatementFile.ai_decision) : selectedStatementFile.analysis_status === "failed" ? "bad" : selectedStatementFile.analysis_status === "skipped" ? "warn" : "mut"}>{selectedStatementFile.ai_decision ? evidenceDecisionLabel(selectedStatementFile.ai_decision, selectedStatementFile.decision_actor) : evidenceAnalysisLabel(selectedStatementFile.analysis_status, selectedStatementFile.analysis_reason_code)}</CellChip>}{!selectedLockedEvidence && canRunAi && (selectedStatementFile.ai_decision === "failed" || selectedStatementFile.analysis_status === "failed") ? <Btn disabled={retryAnalysis.isPending} onClick={() => retryAnalysis.mutate(selectedStatementFile.file_id)}><Icon name="refresh" size={14} />{retryAnalysis.isPending ? "Retrying..." : "Retry AI"}</Btn> : null}</>}
+  /> : null}
+  <ConfirmDialog
     open={Boolean(policyChange)}
     onClose={() => { if (!updatePolicy.isPending) setPolicyChange(null); }}
     title="Confirm Plaid products for this file"

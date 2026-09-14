@@ -16,6 +16,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, cx, IconBtn, Sub } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
+import { aiReviewInvalidationKeys } from "@/lib/aiReviewInvalidation";
 
 export type ReviewProgress = {
   review_id: string;
@@ -139,7 +140,9 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
     for (const job of jobs) {
       if (job.status !== "completed" || announcedCompleted.current.has(job.review_id)) continue;
       announcedCompleted.current.add(job.review_id);
-      queryClient.invalidateQueries({ queryKey: ["unified-operator-files"] });
+      for (const queryKey of aiReviewInvalidationKeys(job.intakeId)) {
+        void queryClient.invalidateQueries({ queryKey });
+      }
       window.dispatchEvent(new CustomEvent("qc-ai-review-completed", { detail: { intakeId: job.intakeId } }));
     }
   }, [jobs, queryClient]);

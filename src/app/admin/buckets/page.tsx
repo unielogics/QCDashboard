@@ -34,6 +34,7 @@ import { APP_ORIGIN } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
+import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 
 type BucketLinkedFile = {
   id: string;
@@ -90,6 +91,7 @@ type AdminQueuedFile = {
   requested_document_id: string;
   status: "ready" | "uploading" | "uploaded" | "error";
   message?: string;
+  requiresRetarget?: boolean;
 };
 type Share = {
   id: string;
@@ -900,7 +902,7 @@ export default function BucketsAdminPage() {
     detail &&
       adminUploadForm.uploader_name.trim() &&
       adminUploadFiles.length > 0 &&
-      adminUploadFiles.every((file) => file.status === "ready" || file.status === "error") &&
+      adminUploadFiles.every(clientQueuedUploadCanSubmit) &&
       !adminUploading,
   );
   const filteredBuckets = useMemo(() => {
@@ -1614,8 +1616,9 @@ export default function BucketsAdminPage() {
     let noteSaved = false;
     let uploadedCount = 0;
     let failedCount = 0;
+    let staleCount = 0;
     try {
-      for (const queued of adminUploadFiles.filter((file) => file.status !== "uploaded")) {
+      for (const queued of adminUploadFiles.filter(clientQueuedUploadCanSubmit)) {
         try {
           updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload" });
           const init = await call<UploadInitResponse>(`/buckets/admin/${detail.id}/files/upload-init`, {
@@ -1641,18 +1644,34 @@ export default function BucketsAdminPage() {
           uploadedCount += 1;
           updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded" });
         } catch (error) {
-          failedCount += 1;
-          updateAdminUploadFile(queued.id, { status: "error", message: readableError(error) });
+          if (isStaleRequestedDocumentError(error)) {
+            staleCount += 1;
+            updateAdminUploadFile(queued.id, {
+              status: "error",
+              requested_document_id: "",
+              requiresRetarget: true,
+              message: "The request changed. Choose a current document before retrying.",
+            });
+          } else {
+            failedCount += 1;
+            updateAdminUploadFile(queued.id, { status: "error", message: readableError(error) });
+          }
         }
       }
       await loadBucket(detail.id);
       await loadBuckets();
-      if (failedCount === 0) {
+      setAdminUploadFiles((current) => current.filter((file) => file.status !== "uploaded"));
+      if (failedCount === 0 && staleCount === 0) {
         setAdminUploadFiles([]);
         setAdminUploadForm((form) => ({ ...form, note: "" }));
         setAdminUploadStatus({ kind: "success", message: `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded.` });
       } else {
-        setAdminUploadStatus({ kind: "error", message: `${uploadedCount} uploaded. ${failedCount} file${failedCount === 1 ? "" : "s"} need attention.` });
+        setAdminUploadStatus({
+          kind: "error",
+          message: staleCount
+            ? `${uploadedCount} uploaded. The checklist changed for ${staleCount} file${staleCount === 1 ? "" : "s"}; choose a current request before retrying.`
+            : `${uploadedCount} uploaded. ${failedCount} file${failedCount === 1 ? "" : "s"} need attention.`,
+        });
       }
     } finally {
       setAdminUploading(false);
@@ -2904,11 +2923,11 @@ export default function BucketsAdminPage() {
                         <Select
                           style={{ width: 190 }}
                           value={item.requested_document_id}
-                          onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, status: "ready", message: undefined })}
+                          onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, status: "ready", message: undefined, requiresRetarget: event.target.value ? false : item.requiresRetarget })}
                           disabled={adminUploading || item.status === "uploaded"}
                           aria-label={`Assign ${item.file.name} to a requested document`}
                         >
-                          <option value="">General upload / unmatched</option>
+                          <option value="" disabled={Boolean(item.requiresRetarget)}>{item.requiresRetarget ? "Choose the current request..." : "General upload / unmatched"}</option>
                           {detail.requested_documents.map((doc) => {
                             const alreadyUploaded = doc.status === "uploaded" && !doc.allow_multiple_files;
                             const linkedByQueuedFile = adminUploadFiles.some((file) => file.id !== item.id && file.requested_document_id === doc.id && file.status !== "error");
@@ -3619,6 +3638,7 @@ export default function BucketsAdminPage() {
           title="Admin file review"
           minimized={reviewMinimized}
           onMinimize={() => setReviewMinimized(true)}
+          reviewKey={reviewFile.id}
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
           onDelete={() => {

@@ -5,6 +5,7 @@ import { V, type CssVars } from "@/components/design-system/cssVars";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { api, apiBase } from "@/lib/api";
+import { clientQueuedUploadCanSubmit, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type Intake = {
@@ -18,8 +19,8 @@ type Intake = {
   updated_at: string;
 };
 
-type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string };
-type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; size_bytes: number; status: string; created_at: string };
+type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string; request_kind?: string | null; source_file_id?: string | null; replacement_review_state?: string | null };
+type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; size_bytes: number; status: string; created_at: string; is_password_protected?: boolean | null; analysis_status?: string | null; analysis_reason_code?: string | null; analysis_classification?: string | null; analysis_review_state?: string | null };
 type ChatMessage = { id: string; role: "assistant" | "user"; content: string; created_at?: string };
 type ChatAction = {
   id: string;
@@ -32,7 +33,7 @@ type ChatAction = {
 };
 type ChatActionResult = { action_id: string; status: "executed" | "failed"; detail: string; download_url?: string | null; room_url?: string | null; delivery?: { recipient_masked?: string; provider_accepted?: boolean; status?: string } | null };
 type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null };
-type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string };
+type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 export default function ClientDealerIntakesPage() {
   const { getToken } = useAuth();
@@ -77,8 +78,10 @@ export default function ClientDealerIntakesPage() {
     if (!detail) return;
     setBusy(true);
     setNotice("Uploading files...");
+    const uploadedIds = new Set<string>();
+    let staleCount = 0;
     try {
-      for (const item of queuedFiles.filter((file) => file.status === "ready" || file.status === "error")) {
+      for (const item of queuedFiles.filter(clientQueuedUploadCanSubmit)) {
         setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "uploading", message: "Preparing upload" } : file)));
         try {
           const init = await authed<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(
@@ -99,13 +102,28 @@ export default function ClientDealerIntakesPage() {
             method: "POST",
             body: JSON.stringify({ file_id: init.file_id }),
           });
+          uploadedIds.add(item.id);
           setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "uploaded", message: "Uploaded" } : file)));
         } catch (error) {
-          setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "error", message: errorMessage(error) } : file)));
+          if (isStaleRequestedDocumentError(error)) {
+            staleCount += 1;
+            setQueuedFiles((current) => current.map((file) => (file.id === item.id ? {
+              ...file,
+              status: "error",
+              requestedDocumentId: "",
+              requiresRetarget: true,
+              message: "The request changed. Choose a current document before retrying.",
+            } : file)));
+          } else {
+            setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "error", message: errorMessage(error) } : file)));
+          }
         }
       }
       await openIntake(detail.intake.id);
-      setNotice("");
+      setQueuedFiles((current) => current.filter((file) => !uploadedIds.has(file.id)));
+      setNotice(staleCount
+        ? "The document checklist changed while you were uploading. We refreshed it; choose the current request for the affected file and try again."
+        : "");
     } finally {
       setBusy(false);
     }
@@ -260,12 +278,15 @@ export default function ClientDealerIntakesPage() {
               <div style={twoCol}>
                 <div style={box()}>
                   <h3 style={smallTitle}>Required documents</h3>
-                  {detail.requested_documents.map((doc) => (
+                  {detail.requested_documents.map((doc) => {
+                    const needsAction = clientRequestedDocumentNeedsAction(doc, detail.files);
+                    const hasLockedFile = detail.files.some((file) => (file.requested_document_id === doc.id || file.id === doc.source_file_id) && file.is_password_protected);
+                    return (
                     <div key={doc.id} style={docRow()}>
-                      <span>{doc.name}</span>
+                      <span>{hasLockedFile ? <span aria-label="Password required" title="This file is password-protected.">🔒 </span> : null}{doc.name}</span>
                       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <strong>{doc.status === "uploaded" ? "Uploaded" : "Needed"}</strong>
-                        {doc.status !== "uploaded" && (doc.category === "Personal Financials" || doc.category === "Debts") ? (
+                        <strong>{needsAction ? doc.request_kind === "unlocked_copy" ? "Unlocked copy needed" : "Needed" : "Uploaded"}</strong>
+                        {needsAction && (doc.category === "Personal Financials" || doc.category === "Debts") ? (
                           <button
                             type="button"
                             onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
@@ -276,7 +297,8 @@ export default function ClientDealerIntakesPage() {
                         ) : null}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={box()}>
                   <h3 style={smallTitle}>Upload more files</h3>
@@ -285,15 +307,15 @@ export default function ClientDealerIntakesPage() {
                     {queuedFiles.map((item) => (
                       <div key={item.id} style={fileRow()}>
                         <span>{item.file.name}</span>
-                        <select value={item.requestedDocumentId} onChange={(event) => setQueuedFiles(queuedFiles.map((file) => (file.id === item.id ? { ...file, requestedDocumentId: event.target.value } : file)))}>
-                          <option value="">Unmatched</option>
+                        <select value={item.requestedDocumentId} onChange={(event) => setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, requestedDocumentId: event.target.value, requiresRetarget: event.target.value ? false : file.requiresRetarget } : file)))}>
+                          <option value="" disabled={Boolean(item.requiresRetarget)}>{item.requiresRetarget ? "Choose the current request..." : "Unmatched"}</option>
                           {detail.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}
                         </select>
                         <small>{item.message || item.status}</small>
                       </div>
                     ))}
                   </div>
-                  <button style={primary()} disabled={busy || !queuedFiles.length} onClick={() => uploadQueued().catch((error) => setNotice(errorMessage(error)))}>
+                  <button style={primary()} disabled={busy || !queuedFiles.some(clientQueuedUploadCanSubmit)} onClick={() => uploadQueued().catch((error) => setNotice(errorMessage(error)))}>
                     Upload files
                   </button>
                 </div>
@@ -350,8 +372,7 @@ export default function ClientDealerIntakesPage() {
 }
 
 function missingDocs(detail: IntakeDetail): RequestedDoc[] {
-  const uploaded = new Set(detail.files.map((file) => file.requested_document_id).filter(Boolean));
-  return detail.requested_documents.filter((doc) => doc.required && !uploaded.has(doc.id));
+  return detail.requested_documents.filter((doc) => doc.required && clientRequestedDocumentNeedsAction(doc, detail.files));
 }
 
 function errorMessage(error: unknown): string {

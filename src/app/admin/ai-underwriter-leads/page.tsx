@@ -36,6 +36,7 @@ import { FileTeamStrip } from "@/components/file/FileTeamStrip";
 import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
 import { api, ApiError } from "@/lib/api";
+import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
 // "422 Unprocessable Entity" so operators see WHY a send was rejected.
@@ -78,6 +79,7 @@ import type { IntakeResponse } from "@/lib/intake";
 import { validPhone } from "@/lib/formCoerce";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
 import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
 
 type LeadRow = {
   id: string;
@@ -1113,6 +1115,7 @@ function LeadDetailPanel({
   const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "email" | "partner" | "internal">("underwriter");
   const [submissionStep, setSubmissionStep] = useState(initialSubmissionStep ?? 1);
   const [evidenceTab, setEvidenceTab] = useState<"requirements" | "banking" | "files">(initialEvidenceTab);
+  const [evidenceFocus, setEvidenceFocus] = useState<{ query: string; requestId: number } | null>(null);
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
   const headerUploadRef = useRef<HTMLInputElement>(null);
@@ -1165,6 +1168,7 @@ function LeadDetailPanel({
   const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
+  const reviewMissingItems = compactMissingItems(missing);
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
 
@@ -1322,6 +1326,7 @@ function LeadDetailPanel({
     else if (detail.files.length) setSubmissionStep(2);
     else setSubmissionStep(1);
     setEvidenceTab(initialEvidenceTab);
+    setEvidenceFocus(null);
     setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : initialView === "communications" ? "communications" : "workspace");
     setProductionTermSheetOpen(false);
     setCommunicationChannel(initialCommunicationChannel);
@@ -1541,6 +1546,7 @@ function LeadDetailPanel({
     setUploadStatus(`Preparing ${files.length} file${files.length === 1 ? "" : "s"}...`);
     const failed: string[] = [];
     let uploaded = 0;
+    let stale = 0;
     try {
       for (const [index, file] of files.entries()) {
         setUploadStatus(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
@@ -1550,17 +1556,20 @@ function LeadDetailPanel({
           if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
           await cockpitAdapter.uploadComplete(init.file_id);
           uploaded += 1;
-        } catch {
-          failed.push(file.name);
+        } catch (error) {
+          if (isStaleRequestedDocumentError(error)) stale += 1;
+          else failed.push(file.name);
         }
       }
-      if (!uploaded) throw new Error(`None of the ${files.length} selected files could be uploaded.`);
+      if (!uploaded && !stale) throw new Error(`None of the ${files.length} selected files could be uploaded.`);
       setUploadStatus("Refreshing evidence...");
       const response = await cockpitAdapter.reload();
       onCockpitResponse(response);
       setSubmissionStep(2);
       setPrototypeView("workspace");
-      toast.show(failed.length
+      toast.show(stale
+        ? `${uploaded ? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. ` : ""}The document checklist changed, so ${stale === 1 ? "one file was" : `${stale} files were`} not attached. Use the current requirement and add ${stale === 1 ? "it" : "them"} again.`
+        : failed.length
         ? `${uploaded} uploaded; ${failed.length} failed: ${failed.join(", ")}`
         : `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded and queued for AI review`);
     } catch (error) {
@@ -1570,6 +1579,40 @@ function LeadDetailPanel({
       setUploadStatus("");
       if (headerUploadRef.current) headerUploadRef.current.value = "";
     }
+  }
+
+  function openReviewDestination(destination: ReviewDestination) {
+    if (destination.kind === "profile") {
+      setContactEditOpen(true);
+      return;
+    }
+    setPrototypeView("workspace");
+    setEvidenceFocus(null);
+    if (destination.kind === "owners") {
+      setSubmissionStep(1);
+      return;
+    }
+    if (destination.kind === "credit") {
+      setSubmissionStep(3);
+      return;
+    }
+    setSubmissionStep(2);
+    if (destination.kind === "banking") {
+      setEvidenceTab("banking");
+      return;
+    }
+    setEvidenceTab("requirements");
+    setEvidenceFocus((current) => ({
+      query: destination.query,
+      requestId: (current?.requestId ?? 0) + 1,
+    }));
+  }
+
+  function openEvidenceFiles() {
+    setEvidenceFocus(null);
+    setEvidenceTab("files");
+    setSubmissionStep(2);
+    setPrototypeView("workspace");
   }
 
   function openDocumentRequest() {
@@ -1809,15 +1852,39 @@ function LeadDetailPanel({
                   onAddFromDrive={() => setIngestPickerOpen(true)}
                   onAttachBucket={onLinkBucketIntake}
                   onVerificationChange={setProfileVerification}
+                  focusRequirement={evidenceFocus}
                 /> : <div className="empty">{underwritingLoading ? "Loading the unified evidence workspace..." : "The application profile could not be resolved."}</div>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 4 ? (
                 <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
+                  <section className="ai-review-overview" aria-label="AI review overview">
+                    <div className="ai-review-summary-strip">
+                      <div className="ai-review-summary-primary">
+                        <span>Probability</span>
+                        <strong>{String(result?.probability_status || "Awaiting evidence")}</strong>
+                      </div>
+                      <button type="button" onClick={openEvidenceFiles} aria-label={`Open ${detail.files.length} evidence file${detail.files.length === 1 ? "" : "s"}`}>
+                        <span>Evidence</span>
+                        <strong className="num">{detail.files.length}</strong>
+                        <small>files</small>
+                        <Icon name="arrowR" size={13} />
+                      </button>
+                      {reviewMissingItems.length ? <button type="button" className="needs" onClick={() => openReviewDestination(reviewDestination(reviewMissingItems[0].query))} aria-label={`Open ${reviewMissingItems.length} missing item${reviewMissingItems.length === 1 ? "" : "s"}`}>
+                        <span>Missing</span>
+                        <strong className="num">{reviewMissingItems.length}</strong>
+                        <small>{reviewMissingItems.length === 1 ? "item" : "items"}</small>
+                        <Icon name="arrowR" size={13} />
+                      </button> : <div className="ai-review-summary-complete"><span>Missing</span><strong className="num">0</strong><small>items</small><Icon name="check" size={13} /></div>}
+                    </div>
+                    {reviewMissingItems.length ? <nav className="ai-review-missing-items" aria-label="Open missing requirements">
+                      <span className="lbl">Open items</span>
+                      <div>{reviewMissingItems.map((item) => <button key={item.title} type="button" title={item.detail || item.title} aria-label={`Open missing item: ${item.title}${item.detail ? `. ${item.detail}` : ""}`} onClick={() => openReviewDestination(reviewDestination(item.query))}><span>{item.title}</span><Icon name="arrowR" size={12} /></button>)}</div>
+                    </nav> : null}
+                    <div className="ai-review-next-action"><span className="lbl">Next best action</span><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
+                    <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
+                  </section>
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
-                  <div className="intake-review-grid"><div className="kpi"><div className="lbl">Probability</div><div className="knum prose">{String(result?.probability_status || "Awaiting evidence")}</div></div><div className="kpi"><div className="lbl">Evidence</div><div className="knum num">{detail.files.length}</div><div className="sub">primary files available</div></div><div className="kpi"><div className="lbl">Missing</div><div className="knum num">{missing.length}</div><div className="sub">blocking items</div></div></div>
-                  <div className="hintbox mt"><div className="lbl">Next best action</div><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
-                  <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={() => setSubmissionStep(2)} />
                 </Panel>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 5 ? (

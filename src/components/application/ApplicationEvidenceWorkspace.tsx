@@ -6,13 +6,14 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
+import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import {
   BucketFileReviewPanel,
-  type BucketFileAnnotation,
   type BucketFileReview,
   type BucketReviewFile,
 } from "@/components/buckets/BucketFileReviewPanel";
 import { Icon } from "@/components/design-system/Icon";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { Btn, Callout, CellChip, Field, IconBtn, Select, Sub, Textarea, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -20,10 +21,25 @@ import type {
   ApplicationEvidenceWorkspace as EvidenceWorkspace,
   ApplicationProgramReadiness as Readiness,
   ApplicationRequirement,
+  ApplicationRequirementEvidence,
   EvidenceWorkspaceFile,
+  UnlockedCopyRequestResult,
+  UnlockedCopyRequestState,
 } from "@/lib/applicationProfile";
+import {
+  aggregateEvidenceDecisions,
+  evidenceAnalysisLabel,
+  evidenceActorLabel,
+  evidenceCoverageLabel,
+  evidenceDecisionLabel,
+  evidenceDecisionTone,
+  evidenceReasonLabel,
+} from "@/lib/evidenceDecision";
+import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
+import { useProductionCall } from "@/lib/productionTrainingCall";
 
 type WorkspaceTab = "requirements" | "banking" | "files";
+type RequirementFocus = { query: string; requestId: number };
 type ReviewActionKind = "reject" | "override" | "reassign" | "unlink" | "verify" | "unverify";
 type ReviewAction = {
   kind: ReviewActionKind;
@@ -48,6 +64,16 @@ function requirementComplete(requirement: ApplicationRequirement): boolean {
   return requirement.verified_coverage_complete || ["verified", "waived", "not_applicable"].includes(requirement.status);
 }
 
+function evidenceDecisionDetailsMixed(decisions: ApplicationRequirementEvidence[]): boolean {
+  return new Set(decisions.map((decision) => JSON.stringify([
+    decision.ai_decision,
+    decision.decision_actor,
+    decision.ai_reason_code,
+    decision.ai_explanation,
+    decision.ai_confidence,
+  ]))).size > 1;
+}
+
 function formatDate(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
@@ -59,23 +85,6 @@ function formatSize(bytes: number): string {
   const units = ["B", "KB", "MB", "GB"];
   const index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   return `${(bytes / 1024 ** index).toFixed(index ? 1 : 0)} ${units[index]}`;
-}
-
-function decisionLabel(decision?: string): string {
-  if (decision === "accepted") return "Accepted by AI";
-  if (decision === "needs_more") return "Needs more";
-  if (decision === "rejected") return "Rejected by AI";
-  if (decision === "failed") return "Analysis failed";
-  if (decision === "processing") return "Processing";
-  return "Unassigned evidence";
-}
-
-function decisionTone(decision?: string): "ok" | "acc" | "warn" | "bad" | "mut" {
-  if (decision === "accepted") return "ok";
-  if (decision === "rejected" || decision === "failed") return "bad";
-  if (decision === "needs_more") return "warn";
-  if (decision === "processing") return "acc";
-  return "mut";
 }
 
 export function ApplicationEvidenceWorkspace({
@@ -91,6 +100,7 @@ export function ApplicationEvidenceWorkspace({
   onAddFromDrive,
   onAttachBucket,
   onVerificationChange,
+  focusRequirement,
 }: {
   profileId: string;
   intakeId: string;
@@ -104,8 +114,11 @@ export function ApplicationEvidenceWorkspace({
   onAddFromDrive?: () => void;
   onAttachBucket?: () => void;
   onVerificationChange?: (state: EvidenceWorkspace["verification"]) => void;
+  focusRequirement?: RequirementFocus | null;
 }) {
   const apiCall = useAuthedApi();
+  const productionCall = useProductionCall();
+  const confirmAction = useConfirmAction();
   const queryClient = useQueryClient();
   const uploadRef = useRef<HTMLInputElement>(null);
   const queryKey = useMemo(() => ["application-evidence-workspace", profileId] as const, [profileId]);
@@ -113,8 +126,10 @@ export function ApplicationEvidenceWorkspace({
   const [dragging, setDragging] = useState(false);
   const [formsOpen, setFormsOpen] = useState(false);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [selectedRequirementKey, setSelectedRequirementKey] = useState<string | null>(null);
   const [action, setAction] = useState<ReviewAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [requestingUnlockedCopyFileId, setRequestingUnlockedCopyFileId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const workspace = useQuery({
@@ -126,6 +141,9 @@ export function ApplicationEvidenceWorkspace({
   const data = workspace.data;
 
   useEffect(() => setTab(initialTab), [initialTab]);
+  useEffect(() => {
+    if (focusRequirement?.requestId) setTab("requirements");
+  }, [focusRequirement?.requestId]);
   useEffect(() => {
     if (data) onVerificationChange?.(data.verification);
   }, [data, onVerificationChange]);
@@ -158,23 +176,89 @@ export function ApplicationEvidenceWorkspace({
   );
   const requiredRequirements = requirements.filter((item) => item.required_level === "required");
   const completeRequirements = requiredRequirements.filter(requirementComplete);
-  const files = data?.evidence.files ?? [];
+  const files = useMemo(() => data?.evidence.files ?? [], [data?.evidence.files]);
+  const lockedEvidenceByFileId = useMemo(() => {
+    const result = new Map<string, ReturnType<typeof lockedEvidencePresentation>>();
+    for (const file of files) {
+      let presentation = lockedEvidencePresentation({
+        fileName: file.file_name,
+        isPasswordProtected: file.is_password_protected,
+        analysisStatus: file.analysis_status,
+        analysisReasonCode: file.analysis_reason_code,
+        analysisDetail: file.analysis_detail,
+      });
+      if (!presentation && file.is_password_protected == null) {
+        const decisions = requirements.flatMap((requirement) => requirement.evidence_files)
+          .filter((decision) => decision.file_id === file.id);
+        for (const decision of decisions) {
+          presentation = lockedEvidencePresentation({
+            fileName: file.file_name,
+            isPasswordProtected: decision.is_password_protected,
+            decisionReasonCode: decision.ai_reason_code,
+            decisionExplanation: decision.ai_explanation,
+          });
+          if (presentation) break;
+        }
+      }
+      result.set(file.id, presentation);
+    }
+    return result;
+  }, [files, requirements]);
+  const unlockedCopyRequestByFileId = useMemo(() => {
+    const result = new Map<string, UnlockedCopyRequestState | null>();
+    for (const file of files) {
+      const linkedRequest = requirements
+        .flatMap((requirement) => requirement.evidence_files)
+        .find((decision) => decision.file_id === file.id && decision.unlocked_copy_request)?.unlocked_copy_request;
+      result.set(file.id, file.unlocked_copy_request ?? linkedRequest ?? null);
+    }
+    return result;
+  }, [files, requirements]);
   const selectedFile = files.find((file) => file.id === selectedFileId) ?? null;
+  const selectedLockedEvidence = selectedFileId ? lockedEvidenceByFileId.get(selectedFileId) ?? null : null;
+  const selectedUnlockedCopyRequest = selectedFileId ? unlockedCopyRequestByFileId.get(selectedFileId) ?? null : null;
   const assignments = useMemo(
     () => selectedFileId
       ? requirements.filter((requirement) => requirement.evidence_files.some((file) => file.file_id === selectedFileId))
       : [],
     [requirements, selectedFileId],
   );
-  const currentAssignment = assignments.find((item) => item.requirement_key === action?.requirementKey) ?? assignments[0] ?? null;
+  const currentAssignment = assignments.find((item) => item.requirement_key === (action?.requirementKey || selectedRequirementKey)) ?? assignments[0] ?? null;
   const currentDecision = currentAssignment?.evidence_files.find((file) => file.file_id === selectedFileId) ?? null;
+  const selectedUnlockedCopyRequirement = assignments.find(
+    (requirement) => requirement.client_visible && requirement.requested_document_id && !requirementComplete(requirement),
+  ) ?? null;
+  const bankRequirement = requirements.find((item) => item.requirement_key === "business_bank_statements_6_months")
+    ?? requirements.find((item) => item.category.toLocaleLowerCase().includes("bank") && item.label.toLocaleLowerCase().includes("statement"));
+  const statementEvidence = data?.banking.manual_statement_files?.length
+    ? data.banking.manual_statement_files
+    : bankRequirement?.evidence_files ?? [];
+  const assignmentDecisions = assignments.flatMap((requirement) => requirement.evidence_files.filter((file) => file.file_id === selectedFileId));
+  const assignmentAggregate = aggregateEvidenceDecisions(assignmentDecisions.map((decision) => decision.ai_decision));
+  const assignmentSummaryMixed = assignmentAggregate.mixed || evidenceDecisionDetailsMixed(assignmentDecisions);
+  const aggregateDecision = assignmentDecisions.find((decision) => decision.ai_decision === assignmentAggregate.decision) ?? currentDecision;
   const reviewFiles: BucketReviewFile[] = files.map((file) => ({
     id: file.id,
     file_name: file.file_name,
     content_type: file.content_type,
     size_bytes: file.size_bytes,
     created_at: file.created_at,
+    is_password_protected: Boolean(lockedEvidenceByFileId.get(file.id)),
   }));
+  const selectedReviewId = selectedFile?.id ?? "";
+  const selectedReviewName = selectedFile?.file_name ?? "";
+  const selectedReviewContentType = selectedFile?.content_type ?? "application/octet-stream";
+  const selectedReviewSize = selectedFile?.size_bytes;
+  const selectedReviewCreatedAt = selectedFile?.created_at;
+  const selectedReviewPasswordProtected = Boolean(selectedLockedEvidence);
+  const selectedReviewFile = useMemo<BucketReviewFile | null>(() => selectedReviewId ? {
+    id: selectedReviewId,
+    file_name: selectedReviewName,
+    content_type: selectedReviewContentType,
+    size_bytes: selectedReviewSize,
+    created_at: selectedReviewCreatedAt,
+    is_password_protected: selectedReviewPasswordProtected,
+  } : null, [selectedReviewContentType, selectedReviewCreatedAt, selectedReviewId, selectedReviewName, selectedReviewPasswordProtected, selectedReviewSize]);
 
   const setReadinessAndRefresh = useCallback(async (next: Readiness) => {
     updateReadiness(next);
@@ -189,8 +273,14 @@ export function ApplicationEvidenceWorkspace({
     await setReadinessAndRefresh(next);
   }, [apiCall, profileId, setReadinessAndRefresh]);
 
+  const openEvidenceFile = useCallback((fileId: string, requirementKey?: string) => {
+    setSelectedFileId(fileId);
+    setSelectedRequirementKey(requirementKey ?? null);
+    setAction(null);
+  }, []);
+
   const startAction = useCallback((kind: ReviewActionKind) => {
-    const requirement = assignments[0];
+    const requirement = currentAssignment;
     setAction({
       kind,
       requirementKey: requirement?.requirement_key ?? "",
@@ -198,7 +288,7 @@ export function ApplicationEvidenceWorkspace({
       reasonCode: kind === "override" ? "ai_override" : "wrong_document",
       reason: "",
     });
-  }, [assignments]);
+  }, [currentAssignment]);
 
   async function applyReviewAction() {
     if (!selectedFile || !action) return;
@@ -257,19 +347,76 @@ export function ApplicationEvidenceWorkspace({
     }
   }
 
-  async function loadReview(file: EvidenceWorkspaceFile): Promise<BucketFileReview> {
-    return apiCall<BucketFileReview>(`/buckets/admin/${file.bucket_id}/files/${file.id}/review`);
+  async function requestUnlockedCopy(fileId: string, fileName: string, retryFailed = false, copyRoomLink = false, requirementKey?: string) {
+    const requirement = requirementKey ? requirements.find((item) => item.requirement_key === requirementKey) : null;
+    if (!copyRoomLink) {
+      const confirmed = await confirmAction({
+        title: retryFailed ? "Retry the unlocked-copy request?" : "Request an unlocked copy?",
+        body: `The client will receive a file-specific secure-room request${requirement ? ` for ${requirement.label}` : ""}. ${fileName} remains in Evidence for the audit trail.`,
+        confirmLabel: retryFailed ? "Retry request" : "Send request",
+      });
+      if (!confirmed) return;
+    }
+    setRequestingUnlockedCopyFileId(fileId);
+    setError("");
+    try {
+      const request = unlockedCopyRequest(
+        profileId,
+        fileId,
+        retryFailed,
+        copyRoomLink ? "room_link_only" : "email_if_available",
+      );
+      const call = copyRoomLink ? apiCall : productionCall;
+      const receipt = await call<UnlockedCopyRequestResult>(request.path, {
+        method: "POST",
+        body: JSON.stringify(request.payload),
+      });
+      if (copyRoomLink) {
+        if (!receipt.room_url) throw new Error("The secure room link is unavailable.");
+        try {
+          await navigator.clipboard.writeText(receipt.room_url);
+          onNotice?.(`Secure room link copied for ${fileName}.`);
+        } catch {
+          setError(`Clipboard access was blocked. Secure room link: ${receipt.room_url}`);
+        }
+      } else if (!receipt.provider_accepted) {
+        setError(receipt.delivery_status === "created"
+          ? "The unlocked-copy request is recorded, but no email was sent. Retry email or use Copy room link."
+          : receipt.delivery_status === "sending"
+            ? "The unlocked-copy request is recorded and email delivery is still processing. You can also use Copy room link."
+            : "The unlocked-copy request is recorded, but delivery failed. Retry the request or use Copy room link.");
+      } else {
+        onNotice?.(`${receipt.deduplicated ? "Unlocked-copy request already active" : "Unlocked copy requested"} for ${fileName}.`);
+      }
+      await refresh();
+    } catch (reason) {
+      // The endpoint revalidates the stored bytes before it creates a request.
+      // A legacy permission-encrypted PDF can therefore be corrected and
+      // rejected as "not locked" in the same call; refresh so that correction
+      // immediately clears the stale lock badge instead of waiting for a page
+      // reload.
+      await refresh().catch(() => undefined);
+      setError(reason instanceof Error ? reason.message : "The unlocked-copy request could not be sent.");
+    } finally {
+      setRequestingUnlockedCopyFileId(null);
+    }
   }
 
-  async function saveAnnotation(
-    file: EvidenceWorkspaceFile,
-    payload: { page_number: number; x: number; y: number; width: number; height: number; comment: string },
-  ): Promise<BucketFileAnnotation> {
-    return apiCall<BucketFileAnnotation>(`/buckets/admin/${file.bucket_id}/files/${file.id}/annotations`, {
-      method: "POST",
-      body: JSON.stringify(payload),
-    });
+  async function copyUnlockedRoomLink(fileId: string, fileName: string, requirementKey?: string) {
+    // Always resolve a fresh URL from the idempotent endpoint. A cached room
+    // URL can become stale when staff rotate or replace the secure room.
+    await requestUnlockedCopy(fileId, fileName, false, true, requirementKey);
   }
+
+  const loadSelectedReview = useCallback(async (): Promise<BucketFileReview> => {
+    if (!selectedReviewFile) throw new Error("Evidence file is no longer available.");
+    const signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url`);
+    return {
+      file: selectedReviewFile,
+      preview_url: signed.url,
+      annotations: [],
+    };
+  }, [apiCall, profileId, selectedReviewFile]);
 
   const actionValid = Boolean(action && (
     action.kind === "reassign"
@@ -317,7 +464,7 @@ export function ApplicationEvidenceWorkspace({
       <div><span>Requirements</span><b>{completeRequirements.length} / {requiredRequirements.length}</b><small>accepted or overridden</small></div>
       <div><span>Bank statements</span><b>{data.bank_evidence.accepted_statement_months.length} / {data.bank_evidence.required_statement_months}</b><small>{data.bank_evidence.statement_coverage_complete ? "coverage complete" : "distinct months accepted"}</small></div>
       <div><span>Plaid</span><b>{data.bank_evidence.connected_institutions}</b><small>{data.bank_evidence.connected_institutions ? "connected institutions" : data.bank_evidence.statement_coverage_complete ? "optional" : "not connected"}</small></div>
-      <div><span>Processing</span><b>{data.processing.analyzing_files}</b><small>{data.processing.failed_files ? `${data.processing.failed_files} failed` : `${data.processing.total_files} total files`}</small></div>
+      <div><span>Processing</span><b>{data.processing.analyzing_files}</b><small>{data.processing.failed_files || data.processing.skipped_files ? [data.processing.failed_files ? `${data.processing.failed_files} failed` : "", data.processing.skipped_files ? `${data.processing.skipped_files} skipped` : ""].filter(Boolean).join(" · ") : `${data.processing.total_files} total files`}</small></div>
     </div>
 
     {error ? <Callout tone="bad">{error}</Callout> : null}
@@ -331,7 +478,16 @@ export function ApplicationEvidenceWorkspace({
 
     {tab === "requirements" ? <ApplicationProgramReadiness
       profileId={profileId}
-      files={files.map((file) => ({ id: file.id, file_name: file.file_name, created_at: file.created_at }))}
+      files={files.map((file) => ({
+        id: file.id,
+        file_name: file.file_name,
+        created_at: file.created_at,
+        analysis_status: file.analysis_status,
+        analysis_reason_code: file.analysis_reason_code,
+        analysis_detail: file.analysis_detail,
+        is_password_protected: file.is_password_protected,
+        unlocked_copy_request: file.unlocked_copy_request,
+      }))}
       value={data.program_readiness}
       onValueChange={updateReadiness}
       onRefresh={refresh}
@@ -341,6 +497,11 @@ export function ApplicationEvidenceWorkspace({
       aiReviewRunning={aiReviewRunning}
       onUploadFiles={upload}
       uploadBusy={uploadBusy}
+      onPreviewEvidence={(fileId, requirementKey) => openEvidenceFile(fileId, requirementKey)}
+      onRequestUnlockedCopy={(fileId, requirementKey, fileName, retryFailed, copyRoomLink) => requestUnlockedCopy(fileId, fileName, retryFailed, copyRoomLink, requirementKey)}
+      unlockedCopyRequestingFileId={requestingUnlockedCopyFileId}
+      focusRequirementQuery={focusRequirement?.query}
+      focusRequestId={focusRequirement?.requestId}
     /> : null}
 
     {tab === "banking" ? <BankingPanel
@@ -352,6 +513,10 @@ export function ApplicationEvidenceWorkspace({
       loading={false}
       onRefresh={refresh}
       showStatementUploader={false}
+      statementEvidence={statementEvidence}
+      onPreviewEvidence={(fileId) => openEvidenceFile(fileId, bankRequirement?.requirement_key)}
+      onRequestUnlockedCopy={(fileId, fileName, retryFailed, copyRoomLink) => requestUnlockedCopy(fileId, fileName, retryFailed, copyRoomLink, bankRequirement?.requirement_key)}
+      unlockedCopyRequestingFileId={requestingUnlockedCopyFileId}
     /> : null}
 
     {tab === "files" ? <div className="evidence-workspace-files">
@@ -363,12 +528,21 @@ export function ApplicationEvidenceWorkspace({
       <div className="evidence-workspace-file-list">
         {files.map((file) => {
           const fileAssignments = requirements.filter((requirement) => requirement.evidence_files.some((item) => item.file_id === file.id));
-          const decision = fileAssignments.flatMap((requirement) => requirement.evidence_files).find((item) => item.file_id === file.id);
-          return <article key={file.id} className={cx("evidence-workspace-file-row", `decision-${decision?.ai_decision || "unassigned"}`)}>
-            <span className="evidence-file-icon"><Icon name="file" size={16} /></span>
-            <div className="grow trunc"><b className="trunc">{file.file_name}</b><Sub>{formatSize(file.size_bytes)} · {formatDate(file.created_at)} · {fileAssignments.map((item) => item.label).join(", ") || "Supporting / Other"}</Sub></div>
-            <CellChip tone={decisionTone(decision?.ai_decision)}>{decisionLabel(decision?.ai_decision)}</CellChip>
-            <Btn onClick={() => setSelectedFileId(file.id)}><Icon name="eye" size={14} />View</Btn>
+          const fileDecisions = fileAssignments.flatMap((requirement) => requirement.evidence_files.filter((item) => item.file_id === file.id));
+          const aggregate = aggregateEvidenceDecisions(fileDecisions.map((item) => item.ai_decision));
+          const decisionSummaryMixed = aggregate.mixed || evidenceDecisionDetailsMixed(fileDecisions);
+          const decision = fileDecisions.find((item) => item.ai_decision === aggregate.decision);
+          const analysisLabel = evidenceAnalysisLabel(file.analysis_status, file.analysis_reason_code);
+          const analysisDetail = file.analysis_detail || file.analysis_summary || (file.analysis_classification ? `Classified as ${file.analysis_classification.replaceAll("_", " ")}` : "Analysis explanation not available");
+          const locked = lockedEvidenceByFileId.get(file.id) ?? null;
+          const unlockedCopyRequestState = unlockedCopyRequestByFileId.get(file.id) ?? null;
+          const unlockedCopyRequirement = fileAssignments.find((requirement) => requirement.client_visible && requirement.requested_document_id && !requirementComplete(requirement));
+          return <article key={file.id} className={cx("evidence-workspace-file-row", locked && "password-protected", `decision-${decision?.ai_decision || "unassigned"}`)}>
+            <span className={cx("evidence-file-icon", locked && "locked")}><Icon name={locked ? "lock" : "file"} size={16} aria-hidden="true" /></span>
+            <div className="grow trunc"><b className="trunc">{file.file_name}</b><Sub>{formatSize(file.size_bytes)} · {formatDate(file.created_at)} · {fileAssignments.map((item) => item.label).join(", ") || "Supporting / Other"}</Sub>{locked ? <Sub><strong>{locked.title}</strong> · {locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.</Sub> : decision ? decisionSummaryMixed ? <Sub><strong>Multiple requirement decisions</strong> · Preview the file to inspect each assignment.</Sub> : <Sub><strong>{evidenceReasonLabel(decision.ai_reason_code, decision.ai_decision)}</strong>{decision.ai_explanation ? ` · ${decision.ai_explanation}` : " · Decision explanation not available"}</Sub> : <Sub><strong>{analysisLabel}</strong>{analysisDetail ? ` · ${analysisDetail}` : ""}</Sub>}</div>
+            {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decision ? evidenceDecisionTone(decision.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{decision ? decisionSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(decision.ai_decision, decision.decision_actor) : analysisLabel}</CellChip>}
+            {locked ? <UnlockedCopyRequestControl request={unlockedCopyRequestState} busy={requestingUnlockedCopyFileId === file.id} onRequest={(retryFailed) => requestUnlockedCopy(file.id, file.file_name, retryFailed, false, unlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(file.id, file.file_name, unlockedCopyRequirement?.requirement_key)} /> : null}
+            <Btn onClick={() => openEvidenceFile(file.id, fileAssignments[0]?.requirement_key)}><Icon name="eye" size={14} />Preview</Btn>
           </article>;
         })}
         {!files.length ? <div className="empty">No evidence files have been uploaded.</div> : null}
@@ -383,14 +557,23 @@ export function ApplicationEvidenceWorkspace({
       title="Evidence review"
       files={reviewFiles}
       activeFileId={selectedFile.id}
-      onSelectFile={setSelectedFileId}
-      loadReview={() => loadReview(selectedFile)}
-      saveAnnotation={(payload) => saveAnnotation(selectedFile, payload)}
-      onClose={() => { setSelectedFileId(null); setAction(null); }}
+      onSelectFile={(fileId) => openEvidenceFile(fileId)}
+      reviewKey={selectedFile.id}
+      loadReview={loadSelectedReview}
+      annotationsEnabled={false}
+      onClose={() => { setSelectedFileId(null); setSelectedRequirementKey(null); setAction(null); }}
+      reviewContext={<>
+        <div><b>{currentAssignment?.label || "Supporting / Other"}</b>{assignments.length > 1 ? <Select aria-label="Evidence requirement decision" value={currentAssignment?.requirement_key || ""} onChange={(event) => { setSelectedRequirementKey(event.target.value); setAction(null); }}>{assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}{decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}</option>; })}</Select> : null}<Sub>{currentDecision ? `${evidenceActorLabel(currentDecision.decision_actor)}${currentDecision.ai_confidence ? ` · ${currentDecision.ai_confidence} confidence` : ""}${currentDecision.verified ? " · Human verified" : ""}` : `${evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)} · This file is not assigned to a requirement.`}</Sub></div>
+        {selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot review its contents.</span><small>This file cannot satisfy {currentAssignment?.label || "an evidence requirement"} until an unlocked replacement is uploaded.</small></div></Callout> : currentDecision ? <Callout tone={evidenceDecisionTone(currentDecision.ai_decision)}><div className="grid g4"><b>{evidenceReasonLabel(currentDecision.ai_reason_code, currentDecision.ai_decision)}</b><span>{currentDecision.ai_explanation || "Decision explanation not available."}</span>{evidenceCoverageLabel(currentDecision.coverage_contribution) ? <small>Coverage: {evidenceCoverageLabel(currentDecision.coverage_contribution)}</small> : null}</div></Callout> : null}
+        {!selectedLockedEvidence && !currentDecision ? <Callout tone={selectedFile.analysis_status === "failed" ? "bad" : selectedFile.analysis_status === "skipped" ? "warn" : "mut"}><div className="grid g4"><b>{evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)}</b><span>{selectedFile.analysis_detail || selectedFile.analysis_summary || "Analysis explanation not available."}</span>{selectedFile.analysis_classification ? <small>Classification: {selectedFile.analysis_classification.replaceAll("_", " ")}{selectedFile.analysis_confidence ? ` · ${selectedFile.analysis_confidence} confidence` : ""}</small> : null}</div></Callout> : null}
+      </>}
+      lockedFileGuidance={<Sub>AI review can resume after the client uploads an unlocked replacement. The original remains in Evidence for the audit trail.</Sub>}
+      lockedFileActions={<UnlockedCopyRequestControl request={selectedUnlockedCopyRequest} busy={requestingUnlockedCopyFileId === selectedFile.id} onRequest={(retryFailed) => requestUnlockedCopy(selectedFile.id, selectedFile.file_name, retryFailed, false, selectedUnlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(selectedFile.id, selectedFile.file_name, selectedUnlockedCopyRequirement?.requirement_key)} />}
       headerActions={<>
-        <CellChip tone={decisionTone(currentDecision?.ai_decision)}>{assignments.length > 1 ? `${assignments.length} assignments` : decisionLabel(currentDecision?.ai_decision)}</CellChip>
-        {currentDecision?.ai_decision === "failed" ? <Btn disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)}><Icon name="refresh" size={14} />Retry AI</Btn> : null}
-        {currentDecision && currentDecision.ai_decision !== "accepted" ? <Btn disabled={actionBusy} onClick={() => startAction("override")}>Override AI</Btn> : null}
+        {selectedLockedEvidence ? <LockedEvidenceBadge presentation={selectedLockedEvidence} /> : <CellChip tone={evidenceDecisionTone(assignmentAggregate.decision)}>{assignmentSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(assignmentAggregate.decision, aggregateDecision?.decision_actor)}</CellChip>}
+        {assignments.length > 1 ? <CellChip tone="mut">{assignments.length} requirements</CellChip> : null}
+        {!selectedLockedEvidence && (currentDecision?.ai_decision === "failed" || (!currentDecision && selectedFile.analysis_status === "failed")) ? <Btn disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)}><Icon name="refresh" size={14} />Retry AI</Btn> : null}
+        {!selectedLockedEvidence && currentDecision && currentDecision.ai_decision !== "accepted" ? <Btn disabled={actionBusy} onClick={() => startAction("override")}>Override AI</Btn> : null}
         <Btn disabled={actionBusy} onClick={() => startAction("reassign")}>{assignments.length ? "Reassign" : "Assign"}</Btn>
         {currentAssignment ? <Btn disabled={actionBusy} onClick={() => startAction("unlink")}>Unlink</Btn> : null}
         {currentAssignment?.verification_required ? <Btn disabled={actionBusy} onClick={() => startAction(currentDecision?.verified ? "unverify" : "verify")}>{currentDecision?.verified ? "Remove verification" : "Human verify"}</Btn> : null}

@@ -17,6 +17,10 @@ export type RequestedDoc = {
   required: boolean;
   allow_multiple_files?: boolean;
   status: string;
+  requires_signature?: boolean;
+  request_kind?: string | null;
+  source_file_id?: string | null;
+  replacement_review_state?: string | null;
 };
 
 export type UploadedFile = {
@@ -30,6 +34,12 @@ export type UploadedFile = {
   content_type: string;
   size_bytes: number;
   status: string;
+  is_password_protected?: boolean | null;
+  unlocked_copy_request?: import("@/lib/lockedEvidence").UnlockedCopyRequestLike;
+  analysis_status?: string | null;
+  analysis_reason_code?: string | null;
+  analysis_classification?: string | null;
+  analysis_review_state?: string | null;
   created_at: string;
 };
 

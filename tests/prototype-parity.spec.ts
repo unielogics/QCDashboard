@@ -103,7 +103,7 @@ async function mockEmptyOperatorPipeline(page: Page) {
   });
 }
 
-async function mockAiIntakeBankingWorkspace(page: Page) {
+async function mockAiIntakeBankingWorkspace(page: Page, reviewResult: Record<string, unknown> = {}) {
   const intakeId = "20000000-0000-0000-0000-000000000001";
   const profileId = "20000000-0000-0000-0000-000000000002";
   const bucketId = "20000000-0000-0000-0000-000000000003";
@@ -142,7 +142,7 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
     loan_purpose: "Working capital",
     referral_source_detail: null,
     asset_rows: null,
-    result_snapshot: {},
+    result_snapshot: reviewResult,
   };
 
   await page.route(/\/api\/v1\/auth\/me$/, async (route) => {
@@ -155,7 +155,7 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [lead], total: 1, limit: 25, offset: 0 }) });
   });
   await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}$`), async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intake: lead, requested_documents: [], files: [], latest_review: { status: "completed", result: {} }, messages: [], artifacts: [], email_sends: [], notes: [], upload_url: null, secure_room_pin: null, room_delivery_status: "sent", room_delivery_detail: "Emailed." }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ intake: lead, requested_documents: [], files: [], latest_review: { status: "completed", result: reviewResult }, messages: [], artifacts: [], email_sends: [], notes: [], upload_url: null, secure_room_pin: null, room_delivery_status: "sent", room_delivery_detail: "Emailed." }) });
   });
   await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}/chat$`), async (route) => {
     const requestBody = route.request().postDataJSON() as { message?: string };
@@ -203,6 +203,20 @@ async function mockAiIntakeBankingWorkspace(page: Page) {
   });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/extracted-facts$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/intelligence$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        profile_id: profileId,
+        metrics: [
+          { key: "requested", label: "Requested", applicable: true, value: 1000000, unit: "USD", status: "ready", confidence: 1, period: null, source: "intake", action: null },
+          { key: "dscr", label: "DSCR", applicable: true, value: null, unit: "x", status: "needs_evidence", confidence: null, period: null, source: null, action: "request_debt_schedule" },
+        ],
+        dscr_inputs: {},
+      }),
+    });
   });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/banks$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: true, environment: "production", consent_granted: false, disclosure_version: "2026-08", disclosure_text: "", items: [], manual_override: false, manual_override_reason: null, manual_statement_months: ["2026-02", "2026-03", "2026-04", "2026-05", "2026-06", "2026-07"], assets_enabled: true, asset_reports: [] }) });
@@ -807,6 +821,36 @@ test("AI intake program readiness stays usable across supported widths", async (
   await expect(page.getByRole("heading", { name: "Combined missing-item follow-up" })).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "ai-intake-program-readiness", testInfo);
+});
+
+test("AI review puts its compact overview first and opens the exact missing requirement", async ({ page }) => {
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page, {
+    probability_status: "Promising but needs one clarification",
+    one_next_step: "Collect the current business debt schedule.",
+    missing_or_incomplete_items: [
+      { title: "Business debt schedule", detail: "Upload the current schedule.", priority: "high" },
+      { title: "Debt schedule", detail: "Needed to calculate DSCR.", priority: "high" },
+      { title: "Personal financial statement", detail: "Upload an unlocked statement.", priority: "medium" },
+    ],
+  });
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+
+  const overview = page.getByLabel("AI review overview");
+  await expect(overview).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Open missing item: Business debt schedule/ })).toHaveCount(1);
+  await expect(page.getByRole("button", { name: /^Open missing item: Debt schedule\./ })).toHaveCount(0);
+  const order = await page.locator(".panel").filter({ hasText: "AI review" }).first().evaluate((panel) => {
+    const summary = panel.querySelector(".ai-review-overview")?.getBoundingClientRect();
+    const suggestions = panel.querySelector(".extracted-facts-review")?.getBoundingClientRect();
+    return summary && suggestions ? summary.top < suggestions.top : false;
+  });
+  expect(order).toBe(true);
+
+  await page.getByRole("button", { name: /^Open missing item: Business debt schedule/ }).click();
+  await expect(page.getByRole("tab", { name: "Requirements" })).toHaveAttribute("aria-selected", "true");
+  const debtSchedule = page.getByRole("button", { name: /Business debt schedule/ }).first();
+  await expect(debtSchedule).toHaveAttribute("aria-expanded", "true");
+  await expect(debtSchedule).toBeFocused();
 });
 
 test("theme control swaps between light and Obsidian without shifting the page", async ({ page }, testInfo) => {

@@ -319,6 +319,7 @@ export default function VendorBucketsPage() {
         <BucketFileReviewPanel
           title="Vendor file review"
           onDownload={room?.vendor_access.can_download ? () => downloadFile(reviewFile) : undefined}
+          reviewKey={reviewFile.id}
           loadReview={() => loadReview(reviewFile)}
           saveAnnotation={(payload) => saveAnnotation(reviewFile, payload)}
           onClose={() => setReviewFile(null)}
