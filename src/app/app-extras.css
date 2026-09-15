@@ -375,6 +375,22 @@
 .actmenu a:hover { background: var(--sunken2); color: var(--ink); }
 .menu-scrim { position: fixed; inset: 0; z-index: 39; }
 
+/* PageActionMenu is also used in horizontally scrollable tables. Rendered in
+   a body portal, this fixed variant escapes the table/panel overflow boundary
+   and remains above drawers and full-screen workspaces. Its coordinates are
+   clamped and flipped by the component, so the final row can open upward. */
+.actmenu.actmenu--portal {
+  position: fixed;
+  top: auto;
+  right: auto;
+  z-index: 701;
+  width: 232px;
+  max-width: calc(100vw - 24px);
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+.menu-scrim.menu-scrim--portal { z-index: 700; }
+
 .completed-state { min-height: 310px; display: grid; place-items: center; align-content: center; gap: 10px; text-align: center; }
 .completed-state h3 { font-size: 18px; }
 .completed-state p { max-width: 500px; margin: 0; }
