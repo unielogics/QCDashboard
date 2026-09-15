@@ -5,6 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 import { clientActionableRequestedDocumentUploadTarget, clientApiError, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
 import { lockedEvidencePresentation, unlockedCopyActionState, type UnlockedCopyRequestLike } from "@/lib/lockedEvidence";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/components/intake/SignRequestedDocument";
@@ -314,7 +316,7 @@ export default function DealerAIUnderwriterPage() {
     setCheckingResume(false);
   }, []);
 
-  const currentResult = response?.intake.result_snapshot ?? response?.latest_review?.result ?? null;
+  const currentResult = response ? preferredIntakeReviewResult(response) : null;
   const missingDocs = useMemo(() => {
     const files = response?.files ?? [];
     return (response?.requested_documents ?? []).filter((doc) => doc.required && (doc.request_kind === "unlocked_copy" || isStageOneRequestedDoc(doc)) && clientRequestedDocumentNeedsAction(doc, files));
@@ -681,11 +683,14 @@ export default function DealerAIUnderwriterPage() {
     let uploaded = 0;
     const uploadedIds = new Set<string>();
     const staleIds = new Set<string>();
+    const lockedIds = new Set<string>();
+    const lockedFiles: File[] = [];
     let stale = 0;
     try {
       for (const item of queuedFiles.filter((file) => file.status === "ready" || file.status === "error")) {
         updateQueuedFile(item.id, { status: "uploading", message: "Preparing upload" });
         try {
+          await assertPdfUploadUnlocked(item.file);
           const init = await call<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(
             `/public/dealer-ai-intake/${encodeURIComponent(token)}/files/upload-init`,
             {
@@ -710,7 +715,11 @@ export default function DealerAIUnderwriterPage() {
           uploadedIds.add(item.id);
           updateQueuedFile(item.id, { status: "uploaded", message: "Uploaded" });
         } catch (error) {
-          if (isStaleRequestedDocumentError(error)) {
+          if (isPasswordProtectedPdfUploadError(error)) {
+            lockedIds.add(item.id);
+            lockedFiles.push(item.file);
+            removeQueuedFile(item.id);
+          } else if (isStaleRequestedDocumentError(error)) {
             stale += 1;
             staleIds.add(item.id);
             removeQueuedFile(item.id);
@@ -720,7 +729,11 @@ export default function DealerAIUnderwriterPage() {
         }
       }
       await loadIntake();
-      setQueuedFiles((current) => current.filter((item) => !uploadedIds.has(item.id) && !staleIds.has(item.id)));
+      setQueuedFiles((current) => current.filter((item) => !uploadedIds.has(item.id) && !staleIds.has(item.id) && !lockedIds.has(item.id)));
+      const guidance = [
+        stale > 0 ? "The document checklist changed while you were uploading. We refreshed it; add the affected file again from the current action." : "",
+        lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
+      ].filter(Boolean).join(" ");
       if (uploaded > 0) {
         pushAssistant(c.filesUploadedAnalyzing(uploaded));
         setStatus("Analyzing uploaded files...");
@@ -729,19 +742,17 @@ export default function DealerAIUnderwriterPage() {
         applyResponse(payload, token);
         completeReviewProgress();
         pushAssistantFromPayload(payload);
-        if (stale > 0) {
-          const message = "The document checklist changed while you were uploading. We refreshed it; add the affected file again from the current action.";
-          setStatus(message);
-          pushAssistant(message);
+        if (guidance) {
+          setStatus(guidance);
+          pushAssistant(guidance);
         } else {
           setStatus("");
         }
-      } else if (stale > 0) {
+      } else if (guidance) {
         clearProgressTimers();
         setProgress("idle");
-        const message = "The document checklist changed while you were uploading. We refreshed it; add the file again from the current action.";
-        setStatus(message);
-        pushAssistant(message);
+        setStatus(guidance);
+        pushAssistant(guidance);
       } else {
         failReviewProgress();
         setStatus(c.noFilesUploaded);

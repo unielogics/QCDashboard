@@ -36,6 +36,7 @@ import {
   evidenceReasonLabel,
 } from "@/lib/evidenceDecision";
 import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
+import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { useProductionCall } from "@/lib/productionTrainingCall";
 
 type WorkspaceTab = "requirements" | "banking" | "files";
@@ -100,6 +101,7 @@ export function ApplicationEvidenceWorkspace({
   onAddFromDrive,
   onAttachBucket,
   onVerificationChange,
+  onProgramReadinessChange,
   focusRequirement,
 }: {
   profileId: string;
@@ -114,6 +116,7 @@ export function ApplicationEvidenceWorkspace({
   onAddFromDrive?: () => void;
   onAttachBucket?: () => void;
   onVerificationChange?: (state: EvidenceWorkspace["verification"]) => void;
+  onProgramReadinessChange?: (readiness: Readiness) => void;
   focusRequirement?: RequirementFocus | null;
 }) {
   const apiCall = useAuthedApi();
@@ -147,6 +150,9 @@ export function ApplicationEvidenceWorkspace({
   useEffect(() => {
     if (data) onVerificationChange?.(data.verification);
   }, [data, onVerificationChange]);
+  useEffect(() => {
+    if (data?.program_readiness) onProgramReadinessChange?.(data.program_readiness);
+  }, [data?.program_readiness, onProgramReadinessChange]);
 
   const updateReadiness = useCallback((readiness: Readiness) => {
     queryClient.setQueryData<EvidenceWorkspace>(queryKey, (current) => current ? { ...current, program_readiness: readiness } : current);
@@ -156,14 +162,31 @@ export function ApplicationEvidenceWorkspace({
     await workspace.refetch();
   }, [workspace]);
 
+  // AI review completion updates evidence decisions and canonical readiness
+  // without changing this component's query key. Refetch the mounted evidence
+  // workspace so accepted uploads disappear from Still needed immediately.
+  useEffect(() => {
+    const refreshAfterReview = (event: Event) => {
+      const completedIntakeId = (event as CustomEvent<{ intakeId?: string }>).detail?.intakeId;
+      if (completedIntakeId !== intakeId) return;
+      void refresh();
+    };
+    window.addEventListener("qc-ai-review-completed", refreshAfterReview);
+    return () => window.removeEventListener("qc-ai-review-completed", refreshAfterReview);
+  }, [intakeId, refresh]);
+
   const upload = useCallback(async (files: File[], requestedDocumentId?: string) => {
     if (!files.length || uploadBusy) return;
     setError("");
     try {
-      await onUploadFiles(files, requestedDocumentId ?? data?.supporting_group?.id);
-      await refresh();
+      const screened = await screenPdfUploads(files);
+      if (screened.uploadable.length) {
+        await onUploadFiles(screened.uploadable, requestedDocumentId ?? data?.supporting_group?.id);
+      }
+      if (screened.uploadable.length || screened.rejected.length) await refresh();
+      if (screened.rejected.length) setError(passwordProtectedPdfUploadNotice(screened.rejected));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Evidence could not be uploaded.");
+      setError(documentUploadErrorMessage(reason, "Evidence could not be uploaded."));
     } finally {
       setDragging(false);
       if (uploadRef.current) uploadRef.current.value = "";

@@ -29,6 +29,7 @@ import { getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCop
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 import {
   cryptoId,
@@ -970,11 +971,13 @@ export default function McaRefinanceIntakePage() {
     setUploadDocBusy(docId);
     setUploads((current) => ({ ...current, [docId]: [...(current[docId] ?? []), ...rows] }));
     const doneIds = new Set<string>();
+    const lockedFiles: File[] = [];
     let uploaded = 0;
     let stale = 0;
     setChatError(null);
     for (const row of rows) {
       try {
+        await assertPdfUploadUnlocked(row.file);
         const init = await call<UploadInitResponse>(`/${encodeURIComponent(tokenRef.current)}/files/upload-init`, {
           method: "POST",
           body: JSON.stringify({
@@ -996,7 +999,10 @@ export default function McaRefinanceIntakePage() {
         doneIds.add(row.id);
         patchQueued(docId, row.id, { status: "uploaded" });
       } catch (error) {
-        if (isStaleRequestedDocumentError(error)) {
+        if (isPasswordProtectedPdfUploadError(error)) {
+          lockedFiles.push(row.file);
+          doneIds.add(row.id);
+        } else if (isStaleRequestedDocumentError(error)) {
           stale += 1;
           doneIds.add(row.id);
           setChatError(c.uploadRequestChanged);
@@ -1006,10 +1012,15 @@ export default function McaRefinanceIntakePage() {
       }
     }
     try {
-      if (uploaded > 0 || stale > 0) await refresh();
+      if (uploaded > 0 || stale > 0 || lockedFiles.length > 0) await refresh();
     } catch {
       // The upload itself succeeded; the next interaction re-syncs.
     }
+    const uploadGuidance = [
+      stale > 0 ? c.uploadRequestChanged : "",
+      lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
+    ].filter(Boolean).join(" ");
+    if (uploadGuidance) setChatError(uploadGuidance);
     setUploads((current) => ({ ...current, [docId]: (current[docId] ?? []).filter((row) => !doneIds.has(row.id)) }));
     setUploadDocBusy(null);
   }

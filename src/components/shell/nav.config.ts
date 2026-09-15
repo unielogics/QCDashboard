@@ -182,8 +182,8 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
 
   // ── Agent (broker) ─────────────────────────────────────────────────────
   [Role.BROKER]: {
-    shellLabel: "Funding command centre",
-    roleLabel: "Agent",
+    shellLabel: "Real Estate Funding",
+    roleLabel: "Real Estate Agent",
     groups: [
       {
         id: "desk",
@@ -212,13 +212,6 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         items: [
           { label: "Elara inbox", href: "/ai-inbox", icon: "bolt", desc: "Suggestions awaiting approval" },
           { label: "AI outreach", href: "/ai-agents", icon: "spark", desc: "Cadences and sequences" },
-        ],
-      },
-      {
-        id: "underwriting",
-        label: "Underwriting",
-        items: [
-          { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
       },
       ANALYSIS_TOOLS,
@@ -316,14 +309,15 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
 
   // ── Dealer partner ─────────────────────────────────────────────────────
   [Role.DEALER_PARTNER]: {
-    shellLabel: "Referral portal",
-    roleLabel: "Dealer partner",
+    shellLabel: "Dealer AI Intake",
+    roleLabel: "Auto Dealer Agent",
     groups: [
       {
         id: "referrals",
         label: "Referrals",
         items: [
-          { label: "My leads", href: "/broker/ai-underwriter-leads", icon: "spark", badge: "myLeads" },
+          { label: "Auto AI intake", href: "/broker/ai-underwriter-leads", icon: "spark", badge: "myLeads" },
+          { label: "Document rooms", href: "/broker/buckets", icon: "lock" },
           { label: "Messages", href: "/broker/messages", icon: "chat", badge: "dealerUnread" },
           { label: "Programs and resources", href: "/broker/programs", icon: "docCheck" },
           { label: "Profile", href: "/profile", icon: "user" },
@@ -331,7 +325,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
       },
     ],
     tools: [],
-    scopeNote: "You can see the leads you referred and the programs available to you.",
+    scopeNote: "Auto workspace: you can see only the dealer leads and document rooms you referred.",
   },
 
   [Role.PROFESSIONAL_REFERRAL_PARTNER]: {

@@ -95,6 +95,11 @@ export default function ForgotPasswordPage() {
   const [status, setStatus] = useState<Status>("idle");
   const [err, setErr] = useState<string | null>(null);
 
+  useEffect(() => {
+    const requestedEmail = new URLSearchParams(window.location.search).get("email")?.trim();
+    if (requestedEmail) setEmail(requestedEmail);
+  }, []);
+
   // Already signed in → nothing to reset; go home.
   useEffect(() => {
     if (authLoaded && isSignedIn) router.replace("/");

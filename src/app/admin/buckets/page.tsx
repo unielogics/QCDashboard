@@ -35,6 +35,7 @@ import { openSignedUrl } from "@/lib/safeOpen";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 
 type BucketLinkedFile = {
   id: string;
@@ -1617,10 +1618,12 @@ export default function BucketsAdminPage() {
     let uploadedCount = 0;
     let failedCount = 0;
     let staleCount = 0;
+    const lockedFiles: File[] = [];
     try {
       for (const queued of adminUploadFiles.filter(clientQueuedUploadCanSubmit)) {
         try {
           updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload" });
+          await assertPdfUploadUnlocked(queued.file);
           const init = await call<UploadInitResponse>(`/buckets/admin/${detail.id}/files/upload-init`, {
             method: "POST",
             body: JSON.stringify({
@@ -1644,7 +1647,10 @@ export default function BucketsAdminPage() {
           uploadedCount += 1;
           updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded" });
         } catch (error) {
-          if (isStaleRequestedDocumentError(error)) {
+          if (isPasswordProtectedPdfUploadError(error)) {
+            lockedFiles.push(queued.file);
+            removeAdminUploadFile(queued.id);
+          } else if (isStaleRequestedDocumentError(error)) {
             staleCount += 1;
             updateAdminUploadFile(queued.id, {
               status: "error",
@@ -1661,16 +1667,18 @@ export default function BucketsAdminPage() {
       await loadBucket(detail.id);
       await loadBuckets();
       setAdminUploadFiles((current) => current.filter((file) => file.status !== "uploaded"));
-      if (failedCount === 0 && staleCount === 0) {
+      if (failedCount === 0 && staleCount === 0 && lockedFiles.length === 0) {
         setAdminUploadFiles([]);
         setAdminUploadForm((form) => ({ ...form, note: "" }));
         setAdminUploadStatus({ kind: "success", message: `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded.` });
       } else {
         setAdminUploadStatus({
           kind: "error",
-          message: staleCount
-            ? `${uploadedCount} uploaded. The checklist changed for ${staleCount} file${staleCount === 1 ? "" : "s"}; choose a current request before retrying.`
-            : `${uploadedCount} uploaded. ${failedCount} file${failedCount === 1 ? "" : "s"} need attention.`,
+          message: [
+            staleCount ? `${uploadedCount} uploaded. The checklist changed for ${staleCount} file${staleCount === 1 ? "" : "s"}; choose a current request before retrying.` : "",
+            lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
+            !staleCount && failedCount ? `${uploadedCount} uploaded. ${failedCount} file${failedCount === 1 ? "" : "s"} need attention.` : "",
+          ].filter(Boolean).join(" "),
         });
       }
     } finally {

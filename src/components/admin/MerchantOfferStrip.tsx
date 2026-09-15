@@ -16,6 +16,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Btn, CellChip, cx, Field, Input, Row, Select, Textarea, WarnLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
+import { assertPdfUploadUnlocked, documentUploadErrorMessage } from "@/lib/documentUpload";
 
 type OfferOption = { label: string | null; effective_rate_pct: number | null; monthly_fees: number | null; monthly_savings: number | null };
 type OfferTerms = Record<string, string | number | null | OfferOption[] | undefined> & { options?: OfferOption[] };
@@ -204,6 +205,7 @@ export function MerchantOfferStrip({
     setError(null);
     setUploadStatus(`Uploading ${file.name}…`);
     try {
+      await assertPdfUploadUnlocked(file);
       const init = await post<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>("/upload-init", {
         file_name: file.name,
         content_type: file.type || "application/pdf",
@@ -218,7 +220,7 @@ export function MerchantOfferStrip({
       setDraft(draftFromOffer(next.offer));
       onStatus?.(next.offer?.status ?? null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Upload failed");
+      setError(documentUploadErrorMessage(reason));
     } finally {
       setUploading(false);
       setUploadStatus("");

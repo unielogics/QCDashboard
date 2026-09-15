@@ -6,6 +6,8 @@ import { Icon } from "@/components/design-system/Icon";
 import { Pill } from "@/components/design-system/primitives";
 import { useUI } from "@/store/ui";
 import { useGlobalSearch } from "@/hooks/useApi";
+import { useCurrentUser } from "@/hooks/useApi";
+import { Role } from "@/lib/enums.generated";
 
 // The ⌘K palette. Restyled onto `.panel` / `.panel-h` / `.pick` / `.kbd`;
 // the scrim and its top-anchored placement stay inline because a command
@@ -18,7 +20,9 @@ export default function GlobalSearch() {
   const setOpen = useUI((s) => s.setSearchOpen);
   const router = useRouter();
   const [q, setQ] = useState("");
-  const { data: groups } = useGlobalSearch(q);
+  const { data: user } = useCurrentUser();
+  const isDealerPartner = user?.role === Role.DEALER_PARTNER;
+  const { data: groups } = useGlobalSearch(isDealerPartner ? "" : q);
 
   useEffect(() => { if (!open) setQ(""); }, [open]);
 
@@ -44,7 +48,7 @@ export default function GlobalSearch() {
             autoFocus
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Search loans, clients, documents, messages…"
+            placeholder={isDealerPartner ? "Open an auto workspace…" : "Search loans, clients, documents, messages…"}
             className="grow cmdk-in"
             aria-label="Search"
           />
@@ -54,7 +58,12 @@ export default function GlobalSearch() {
         </div>
 
         <div className="cmdk-b">
-          {q.trim().length < 2 && (
+          {isDealerPartner ? (
+            <div className="grid" style={{ padding: 14 }}>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/ai-underwriter-leads"); }}><Icon name="spark" size={15} /><span className="grow"><b>Auto AI Intake</b><span className="sub">Dealer leads, uploads, and AI review</span></span><Icon name="chevR" size={13} /></button>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/buckets"); }}><Icon name="lock" size={15} /><span className="grow"><b>Document rooms</b><span className="sub">Your assigned dealer files only</span></span><Icon name="chevR" size={13} /></button>
+            </div>
+          ) : q.trim().length < 2 && (
             <div className="cmdk-empty">
               <Icon name="search" size={28} />
               <div className="cmdk-empty-t">Type at least 2 characters to search.</div>
@@ -63,12 +72,12 @@ export default function GlobalSearch() {
               </div>
             </div>
           )}
-          {groups?.length === 0 && q.trim().length >= 2 && (
+          {!isDealerPartner && groups?.length === 0 && q.trim().length >= 2 && (
             <div className="cmdk-empty sub">
               No matches for &ldquo;{q}&rdquo;.
             </div>
           )}
-          {groups?.map((g) => (
+          {!isDealerPartner && groups?.map((g) => (
             <div key={g.client_id} className="cmdk-grp">
               <div className="lbl">{g.client_name}</div>
               {g.items.map((item) => (
@@ -103,9 +112,7 @@ export default function GlobalSearch() {
           <KbdHint keys={["↑", "↓"]} label="Navigate" />
           <KbdHint keys={["↵"]} label="Open" />
           <KbdHint keys={["Esc"]} label="Close" />
-          <span className="cmdk-f-note">
-            Searches loans, clients, documents, messages, events, AI tasks
-          </span>
+          <span className="cmdk-f-note">{isDealerPartner ? "Auto-industry workspace only" : "Searches loans, clients, documents, messages, events, AI tasks"}</span>
         </div>
       </div>
     </div>

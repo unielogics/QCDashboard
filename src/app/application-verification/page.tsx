@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
+import { clientApiError } from "@/lib/clientRoomDocuments";
+import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import {
   clearRoomHandoff,
   stashApplicationVerificationHandoff,
@@ -55,8 +57,8 @@ async function publicCall<T>(path: string, init?: RequestInit): Promise<T> {
     headers: { "Content-Type": "application/json", ...init?.headers },
   });
   if (!response.ok) {
-    const body = (await response.json().catch(() => null)) as { detail?: string } | null;
-    throw new Error(body?.detail || "This request could not be completed.");
+    const body = await response.json().catch(() => null);
+    throw clientApiError(body, "This request could not be completed.");
   }
   if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
@@ -262,7 +264,9 @@ export default function ApplicationVerificationPage() {
     setError("");
     let count = 0;
     try {
-      for (const file of files) {
+      const screened = await screenPdfUploads(files);
+      const lockedNotice = screened.rejected.length ? passwordProtectedPdfUploadNotice(screened.rejected) : "";
+      for (const file of screened.uploadable) {
         setMessage(`Uploading ${file.name} (${count + 1} of ${files.length})`);
         const init = await publicCall<{
           file_id: string;
@@ -291,10 +295,11 @@ export default function ApplicationVerificationPage() {
         );
         count += 1;
       }
-      setMessage(`${count} statement file${count === 1 ? "" : "s"} received and queued for review.`);
-      await load(token);
+      setMessage(count ? `${count} statement file${count === 1 ? "" : "s"} received and queued for review.` : "");
+      if (count || screened.rejected.length) await load(token);
+      if (lockedNotice) setError(lockedNotice);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The statements could not be uploaded.");
+      setError(documentUploadErrorMessage(reason, "The statements could not be uploaded."));
     } finally {
       setBusy(false);
       setDragging(false);

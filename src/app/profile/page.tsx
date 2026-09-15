@@ -24,24 +24,7 @@ import { Role } from "@/lib/enums.generated";
 import { InvestorProfileDialog } from "./components/InvestorProfileDialog";
 import { MySignatureCard } from "@/components/profile/MySignatureCard";
 import { YourContactDetails } from "@/components/settings/BookingPageSettingsSection";
-
-const ROLE_LABEL: Record<string, string> = {
-  super_admin: "Super Admin",
-  broker: "Agent",
-  loan_exec: "Underwriter",
-  dealer_partner: "Dealer Partner",
-  client: "Client",
-};
-
-// Tier label per role — operator roles get an "Operator · …" chip; the
-// end-consumer tier label reflects their borrower-portal identity.
-const ROLE_TIER: Record<string, string> = {
-  super_admin: "Operator · Super Admin",
-  broker: "Operator · Agent",
-  loan_exec: "Operator · Underwriter",
-  dealer_partner: "Partner · Dealer",
-  client: "Tier II Client",
-};
+import { roleAccessProfile } from "@/lib/roleAccess";
 
 // THEME_OPTIONS (Light / Auto / Dark) went with dark mode; the Appearance
 // section it fed was already removed and nothing referenced the constant.
@@ -94,7 +77,8 @@ export default function ProfilePage() {
     ? user.name.split(" ").map((p) => p[0]).slice(0, 2).join("").toUpperCase()
     : "?";
   const isClient = user.role === Role.CLIENT;
-  const tierLabel = ROLE_TIER[user.role] ?? ROLE_LABEL[user.role] ?? user.role;
+  const accessProfile = roleAccessProfile(user.role);
+  const tierLabel = accessProfile.label;
   const memberSince = "2025"; // backend doesn't yet return user.created_at — placeholder
 
   const handleSignOut = async () => {
@@ -127,7 +111,7 @@ export default function ProfilePage() {
     },
     {
       label: "Investor Profile",
-      sub: isClient ? `${tierLabel} · properties + experience` : "Borrower-only — N/A for operator accounts",
+      sub: isClient ? `${tierLabel} · properties + experience` : `${accessProfile.workspace} · ${accessProfile.scope}`,
       icon: "shield",
       onClick: () => setInvestorOpen(true),
       hidden: !isClient,

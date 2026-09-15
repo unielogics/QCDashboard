@@ -12,6 +12,7 @@ import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChe
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
 import { apiBase } from "@/lib/api";
 import { clientActionNeeded, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 
 type RequestedDoc = { id: string; name: string; category?: string | null; description?: string | null; required: boolean; allow_multiple_files?: boolean; status: string; requirement_key?: string | null; request_kind?: "unlocked_copy" | null; source_file_id?: string | null; replacement_review_state?: "requested" | "checking" | "received" | "needs_another_copy" | null };
@@ -303,10 +304,12 @@ export default function BucketRequestPage() {
     if (!session || !canSubmit || submitInFlightRef.current) return;
     submitInFlightRef.current = true; setIsUploading(true); setStatus("Submitting documents...");
     let noteSaved = noteSubmitted; let uploadedCount = 0; let failedCount = 0; let staleRequestCount = 0; let staleRequestMessage = "";
+    const lockedFiles: File[] = [];
     try {
       for (const item of files.filter((queued) => queued.status !== "uploaded")) {
         try {
           updateFileState(item.id, { status: "uploading", message: "Preparing secure upload" });
+          await assertPdfUploadUnlocked(item.file);
           const init = await fetch(`${apiBase}/api/v1/buckets/request/${token}/upload-init`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requested_document_id: item.requestedDocumentId || null, file_name: item.file.name, content_type: item.file.type || "application/octet-stream", size_bytes: item.file.size, uploader_name: name.trim(), uploader_email: email.trim() || null, passcode: passcode.trim() }) });
           if (!init.ok) throw await responseError(init, `Could not start ${item.file.name}.`);
           const payload = await init.json() as { file_id: string; upload_url: string; required_headers: Record<string, string> };
@@ -321,6 +324,12 @@ export default function BucketRequestPage() {
           failedCount += 1;
           const uploadError = error as CodedResponseError;
           const staleRequest = uploadError?.code === "stale_requested_document";
+          const lockedPdf = isPasswordProtectedPdfUploadError(error);
+          if (lockedPdf) {
+            lockedFiles.push(item.file);
+            setFiles((current) => current.filter((row) => row.id !== item.id));
+            continue;
+          }
           if (staleRequest) {
             staleRequestCount += 1;
             staleRequestMessage = uploadError.message;
@@ -336,13 +345,14 @@ export default function BucketRequestPage() {
       }
       let roomRefreshed = false;
       if (uploadedCount) { setNote(""); setNoteSubmitted(false); }
-      if (uploadedCount || staleRequestCount) {
+      if (uploadedCount || staleRequestCount || lockedFiles.length) {
         try { await refreshRoom(); roomRefreshed = true; } catch { roomRefreshed = false; }
       }
       const staleGuidance = staleRequestCount
         ? `${staleRequestMessage || "The selected document request changed."} ${roomRefreshed ? "The room was refreshed; choose the current request and retry." : "Refresh the room, choose the current request, and retry."}`
         : "";
-      setStatus(staleGuidance || (uploadedCount && !failedCount ? `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} received.` : uploadedCount ? `${uploadedCount} received; ${failedCount} need retry.` : "No files were received. Review the messages and retry."));
+      const lockedGuidance = lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "";
+      setStatus([staleGuidance, lockedGuidance].filter(Boolean).join(" ") || (uploadedCount && !failedCount ? `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} received.` : uploadedCount ? `${uploadedCount} received; ${failedCount} need retry.` : "No files were received. Review the messages and retry."));
     } finally { submitInFlightRef.current = false; setIsUploading(false); }
   }
 

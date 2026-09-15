@@ -37,6 +37,7 @@ import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
 import { api, ApiError } from "@/lib/api";
 import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
 // "422 Unprocessable Entity" so operators see WHY a send was rejected.
@@ -76,9 +77,14 @@ import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
+import {
+  leadCockpitNonDocumentMissingRows,
+  leadCockpitOutstandingDocuments,
+  preferredIntakeReviewResult,
+} from "@/lib/leadCockpitDocuments";
 import { validPhone } from "@/lib/formCoerce";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
-import type { ApplicationProfile, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
 
 type LeadRow = {
@@ -344,6 +350,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
   const leadParam = searchParams.get("lead");
+  const partnerUserId = searchParams.get("partner");
   const requestedStep = searchParams.get("step");
   const initialSubmissionStep = requestedStep === "6" ? 5 : requestedStep === "5" ? 4 : requestedStep === "4" ? 2 : requestedStep && /^[1-5]$/.test(requestedStep) ? Number(requestedStep) : undefined;
   const initialEvidenceTab = requestedStep === "4" || searchParams.get("tab") === "banking" ? "banking" : "requirements";
@@ -358,7 +365,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [variantFilter, setVariantFilter] = useState("all");
+  const [variantFilter, setVariantFilter] = useState(searchParams.get("variant") || "all");
   const [probabilityFilter, setProbabilityFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<LeadDetail | null>(null);
@@ -388,6 +395,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         variant_filter: variantFilter,
       });
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
+      if (partnerUserId) params.set("partner_user_id", partnerUserId);
       const data = await call<LeadPage>(`/admin/ai-underwriter-leads?${params.toString()}`);
       setRows(data.items);
       setTotal(data.total);
@@ -419,6 +427,12 @@ export default function AdminAIUnderwriterLeadsPage() {
     setCreating(true);
     setNotice("");
     try {
+      const screened = await screenPdfUploads(evidenceFiles);
+      const lockedNotice = screened.rejected.length ? passwordProtectedPdfUploadNotice(screened.rejected) : "";
+      if (!screened.uploadable.length && screened.rejected.length) {
+        setNotice(lockedNotice);
+        return;
+      }
       const res = await call<LeadDetail>("/admin/ai-underwriter-leads", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -427,14 +441,17 @@ export default function AdminAIUnderwriterLeadsPage() {
       const profile = await call<ApplicationProfile>("/application-profiles/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_kind: "intake", source_id: res.intake.id }) });
       await call(`/application-profiles/${profile.id}/draft`, { method: "POST" });
       let uploaded = 0;
-      for (const file of evidenceFiles) {
+      for (const file of screened.uploadable) {
         const init = await call<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${res.intake.id}/files/upload-init`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
         const upload = await fetch(init.upload_url, { method: "PUT", headers: init.required_headers, body: file });
         if (!upload.ok) throw new Error(`${file.name} could not be uploaded. The draft was preserved.`);
         await call(`/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: init.file_id }) });
         uploaded += 1;
       }
-      if (uploaded) setNotice(`${uploaded} evidence file${uploaded === 1 ? "" : "s"} uploaded. Extraction continues in the background.`);
+      setNotice([
+        uploaded ? `${uploaded} evidence file${uploaded === 1 ? "" : "s"} uploaded. Extraction continues in the background.` : "",
+        lockedNotice,
+      ].filter(Boolean).join(" "));
       await loadLeads(0);
       await openLead(res.intake.id);
       router.replace(`/admin/ai-underwriter-leads?lead=${res.intake.id}&step=1`, { scroll: false });
@@ -451,7 +468,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           return;
         }
       }
-      setNotice(error instanceof Error ? error.message : "Could not create the lead.");
+      setNotice(documentUploadErrorMessage(error, "Could not create the lead."));
     } finally {
       setCreating(false);
     }
@@ -750,7 +767,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   useEffect(() => {
     if (isIntakeOperator) loadLeads(0).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isIntakeOperator, statusFilter, variantFilter, probabilityFilter, submittedQuery]);
+  }, [isIntakeOperator, statusFilter, variantFilter, probabilityFilter, submittedQuery, partnerUserId]);
 
   useEffect(() => {
     if (isIntakeOperator && leadParam && leadParam !== selectedId) {
@@ -875,7 +892,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create intake</Btn> : null}
           <PageActionMenu label="AI intake actions" items={[
             { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
-            { label: "Open document buckets", href: "/admin/buckets" },
+            ...(canGovern ? [{ label: "Open document buckets", href: "/admin/buckets" }] : []),
           ]} />
         </div>
         <div className="cktabs" role="tablist" aria-label="AI intake vertical">
@@ -1129,6 +1146,7 @@ function LeadDetailPanel({
   // read from `underwriting`, which only fills once the Underwriting tab has
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [programReadiness, setProgramReadiness] = useState<ApplicationProgramReadiness | null>(null);
   const [underwritingDraft, setUnderwritingDraft] = useState<UnderwritingDraft>(() => emptyUnderwritingDraft());
   const [underwritingLoading, setUnderwritingLoading] = useState(false);
   const [underwritingSaving, setUnderwritingSaving] = useState(false);
@@ -1165,10 +1183,31 @@ function LeadDetailPanel({
     estimated_credit_score: "",
     referral_source: "",
   });
-  const result = detail?.latest_review?.result || detail?.intake.result_snapshot || null;
+  const result = detail ? preferredIntakeReviewResult(detail) : null;
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
-  const reviewMissingItems = compactMissingItems(missing);
+  const canonicalMissingDocuments = useMemo(
+    () => leadCockpitOutstandingDocuments(
+      detail?.requested_documents ?? [],
+      detail?.files ?? [],
+      programReadiness,
+    ),
+    [detail?.files, detail?.requested_documents, programReadiness],
+  );
+  const reviewMissingItems = useMemo(() => {
+    const snapshotRows = compactMissingItems(missing);
+    if (!programReadiness) return snapshotRows;
+    const canonicalRows = canonicalMissingDocuments.map((document) => ({
+      title: document.name,
+      detail: document.description || "Required evidence is still outstanding.",
+      priority: "high",
+      query: [document.category, document.name].filter(Boolean).join(" "),
+    }));
+    return compactMissingItems([
+      ...canonicalRows,
+      ...leadCockpitNonDocumentMissingRows(snapshotRows, programReadiness),
+    ]);
+  }, [canonicalMissingDocuments, missing, programReadiness]);
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
 
@@ -1200,6 +1239,7 @@ function LeadDetailPanel({
   const loadUnderwritingState = useCallback(async () => {
     const intakeId = detail?.intake.id;
     setProfileId(null);
+    setProgramReadiness(null);
     if (!intakeId || !canUnderwrite) {
       setUnderwriting(null);
       setUnderwritingDraft(emptyUnderwritingDraft());
@@ -1219,10 +1259,16 @@ function LeadDetailPanel({
       // through Underwriting — and it is set before the underwriting read, so
       // a failure there does not hide the team.
       setProfileId(profile.id);
-      const state = await api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting`, {
-        authToken: authToken ?? undefined,
-      });
+      const [state, readiness] = await Promise.all([
+        api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting`, {
+          authToken: authToken ?? undefined,
+        }),
+        api<ApplicationProgramReadiness>(`/application-profiles/${profile.id}/program-readiness`, {
+          authToken: authToken ?? undefined,
+        }),
+      ]);
       setUnderwriting(state);
+      setProgramReadiness(readiness);
       setUnderwritingDraft(underwritingDraftFromState(state));
       await loadTermSheet(profile.id, authToken);
     } catch (reason) {
@@ -1231,6 +1277,29 @@ function LeadDetailPanel({
       setUnderwritingLoading(false);
     }
   }, [canUnderwrite, detail?.intake.id, getToken, loadTermSheet]);
+
+  const refreshProgramReadiness = useCallback(async () => {
+    if (!canUnderwrite) return;
+    if (!profileId) {
+      await loadUnderwritingState();
+      return;
+    }
+    try {
+      const authToken = await getToken();
+      setProgramReadiness(await api<ApplicationProgramReadiness>(`/application-profiles/${profileId}/program-readiness`, {
+        authToken: authToken ?? undefined,
+      }));
+    } catch (reason) {
+      setUnderwritingError(apiErrorMessage(reason, "Evidence readiness could not be refreshed."));
+    }
+  }, [canUnderwrite, getToken, loadUnderwritingState, profileId]);
+
+  const handleCockpitResponse = useCallback((response: IntakeResponse) => {
+    onCockpitResponse(response);
+    // Uploads and accepted/overridden evidence can change readiness without
+    // changing the selected intake id, so its initial-load effect will not run.
+    void refreshProgramReadiness();
+  }, [onCockpitResponse, refreshProgramReadiness]);
 
   function openTermSheet() {
     setPrototypeView("production");
@@ -1311,6 +1380,16 @@ function LeadDetailPanel({
   useEffect(() => {
     void loadUnderwritingState();
   }, [loadUnderwritingState]);
+
+  useEffect(() => {
+    const refreshAfterReview = (event: Event) => {
+      const completedIntakeId = (event as CustomEvent<{ intakeId?: string }>).detail?.intakeId;
+      if (completedIntakeId !== detail?.intake.id) return;
+      void refreshProgramReadiness();
+    };
+    window.addEventListener("qc-ai-review-completed", refreshAfterReview);
+    return () => window.removeEventListener("qc-ai-review-completed", refreshAfterReview);
+  }, [detail?.intake.id, refreshProgramReadiness]);
 
   useEffect(() => {
     if (!detail) {
@@ -1545,35 +1624,39 @@ function LeadDetailPanel({
     setHeaderUploading(true);
     setUploadStatus(`Preparing ${files.length} file${files.length === 1 ? "" : "s"}...`);
     const failed: string[] = [];
+    const lockedFiles: File[] = [];
     let uploaded = 0;
     let stale = 0;
     try {
       for (const [index, file] of files.entries()) {
         setUploadStatus(`Uploading ${index + 1} of ${files.length}: ${file.name}`);
         try {
+          await assertPdfUploadUnlocked(file);
           const init = await cockpitAdapter.uploadInit({ requested_document_id: requestedDocumentId ?? null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size });
           const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
           if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
           await cockpitAdapter.uploadComplete(init.file_id);
           uploaded += 1;
         } catch (error) {
-          if (isStaleRequestedDocumentError(error)) stale += 1;
+          if (isPasswordProtectedPdfUploadError(error)) lockedFiles.push(file);
+          else if (isStaleRequestedDocumentError(error)) stale += 1;
           else failed.push(file.name);
         }
       }
-      if (!uploaded && !stale) throw new Error(`None of the ${files.length} selected files could be uploaded.`);
+      if (!uploaded && !stale && !lockedFiles.length) throw new Error(`None of the ${files.length} selected files could be uploaded.`);
       setUploadStatus("Refreshing evidence...");
       const response = await cockpitAdapter.reload();
-      onCockpitResponse(response);
+      handleCockpitResponse(response);
       setSubmissionStep(2);
       setPrototypeView("workspace");
-      toast.show(stale
-        ? `${uploaded ? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. ` : ""}The document checklist changed, so ${stale === 1 ? "one file was" : `${stale} files were`} not attached. Use the current requirement and add ${stale === 1 ? "it" : "them"} again.`
-        : failed.length
-        ? `${uploaded} uploaded; ${failed.length} failed: ${failed.join(", ")}`
-        : `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded and queued for AI review`);
+      toast.show([
+        stale ? `${uploaded ? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded. ` : ""}The document checklist changed, so ${stale === 1 ? "one file was" : `${stale} files were`} not attached. Use the current requirement and add ${stale === 1 ? "it" : "them"} again.` : "",
+        lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
+        failed.length ? `${uploaded} uploaded; ${failed.length} failed: ${failed.join(", ")}` : "",
+        !stale && !lockedFiles.length && !failed.length ? `${uploaded} file${uploaded === 1 ? "" : "s"} uploaded and queued for AI review` : "",
+      ].filter(Boolean).join(" "));
     } catch (error) {
-      toast.show(error instanceof Error ? error.message : "Upload failed");
+      toast.show(documentUploadErrorMessage(error));
     } finally {
       setHeaderUploading(false);
       setUploadStatus("");
@@ -1655,7 +1738,7 @@ function LeadDetailPanel({
           sms_reminder: requestDraft.sms_reminder,
         }),
       });
-      if (cockpitAdapter) onCockpitResponse(await cockpitAdapter.reload());
+      if (cockpitAdapter) handleCockpitResponse(await cockpitAdapter.reload());
       setRequestResult(result);
       setSubmissionStep(2);
       setPrototypeView("workspace");
@@ -1852,6 +1935,7 @@ function LeadDetailPanel({
                   onAddFromDrive={() => setIngestPickerOpen(true)}
                   onAttachBucket={onLinkBucketIntake}
                   onVerificationChange={setProfileVerification}
+                  onProgramReadinessChange={setProgramReadiness}
                   focusRequirement={evidenceFocus}
                 /> : <div className="empty">{underwritingLoading ? "Loading the unified evidence workspace..." : "The application profile could not be resolved."}</div>
               ) : null}
@@ -1881,7 +1965,11 @@ function LeadDetailPanel({
                       <span className="lbl">Open items</span>
                       <div>{reviewMissingItems.map((item) => <button key={item.title} type="button" title={item.detail || item.title} aria-label={`Open missing item: ${item.title}${item.detail ? `. ${item.detail}` : ""}`} onClick={() => openReviewDestination(reviewDestination(item.query))}><span>{item.title}</span><Icon name="arrowR" size={12} /></button>)}</div>
                     </nav> : null}
-                    <div className="ai-review-next-action"><span className="lbl">Next best action</span><p>{String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
+                    <div className="ai-review-next-action"><span className="lbl">Next best action</span><p>{programReadiness?.can_advance
+                      ? "Canonical evidence requirements are complete. Advance the file to underwriting."
+                      : canonicalMissingDocuments.length
+                        ? `Collect ${canonicalMissingDocuments.map((document) => document.name).join(", ")}.`
+                        : String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
                     <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
                   </section>
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
@@ -1990,7 +2078,7 @@ function LeadDetailPanel({
                     {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['email', 'Email'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
                   </div>
                   {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
-                  {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={onCockpitResponse} onRequestRerun={onRerun} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
+                  {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={handleCockpitResponse} onRequestRerun={onRerun} programReadiness={programReadiness} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
                   {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} /> : null}
                   {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace profileId={underwriting.profile_id} clientName={detail.intake.full_name} /> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
@@ -2227,8 +2315,9 @@ function LeadDetailPanel({
                   adapter={cockpitAdapter}
                   variant={detail.intake.variant}
                   initialMessages={detail.messages}
-                  onResponse={onCockpitResponse}
+                  onResponse={handleCockpitResponse}
                   onRequestRerun={onRerun}
+                  programReadiness={programReadiness}
                 />
                 <button
                   type="button"

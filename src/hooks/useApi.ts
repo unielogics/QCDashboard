@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
+import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
 import type {
   AccessMutationResult,
@@ -1128,6 +1129,7 @@ export function useUploadLeadCreditTemplate(intakeId: string) {
   const apiCall = useAuthedApi();
   return useMutation({
     mutationFn: async (file: File): Promise<string> => {
+      await assertPdfUploadUnlocked(file);
       const init = await apiCall<BucketFileUploadInitResponse>(`/admin/ai-underwriter-leads/${intakeId}/files/upload-init`, {
         method: "POST",
         body: JSON.stringify({
@@ -1420,6 +1422,35 @@ export function useDeleteUser() {
       apiCall<void>(`/users/${userId}`, { method: "DELETE" }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
   });
+}
+
+function useTeamAccessAction(path: (userId: string) => string, method: "POST" | "PATCH" = "POST") {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, body }: { userId: string; body?: Record<string, unknown> }) =>
+      apiCall<import("@/lib/types").TeamAccessActionResult>(path(userId), {
+        method,
+        body: body ? JSON.stringify(body) : undefined,
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+  });
+}
+
+export function useResendTeamInvite() {
+  return useTeamAccessAction((userId) => `/users/${userId}/resend-invite`);
+}
+
+export function useSendTeamPasswordReset() {
+  return useTeamAccessAction((userId) => `/users/${userId}/send-password-reset`);
+}
+
+export function useRevokeTeamSessions() {
+  return useTeamAccessAction((userId) => `/users/${userId}/revoke-sessions`);
+}
+
+export function useSetTeamAccountStatus() {
+  return useTeamAccessAction((userId) => `/users/${userId}/account-status`, "PATCH");
 }
 
 // Borrower-self credit pull (mirrors mobile useCurrentCredit / useStartCreditPull).
@@ -1779,6 +1810,7 @@ export function useChatAttachmentInit() {
       threadId: string;
       file: File;
     }): Promise<{ document_id: string }> => {
+      await assertPdfUploadUnlocked(vars.file);
       const init = await apiCall<{
         document_id: string;
         upload_url: string | null;
@@ -2164,6 +2196,7 @@ export function useUploadDocument() {
       checklist_key?: string | null;
       is_other?: boolean;
     }) => {
+      await assertPdfUploadUnlocked(file);
       const init = await apiCall<DocumentUploadInitResponse>("/documents/upload-init", {
         method: "POST",
         body: JSON.stringify({
@@ -4698,6 +4731,7 @@ export function useUploadLenderAttachment(loanId: string) {
   const init = useLenderAttachmentInit();
   const complete = useLenderAttachmentComplete();
   return async function upload(file: File): Promise<LenderAttachmentRef> {
+    await assertPdfUploadUnlocked(file);
     const res = await init.mutateAsync({
       loanId,
       payload: {
@@ -5200,6 +5234,7 @@ export function useUploadAgentKnowledge() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (file: File): Promise<AgentKnowledgeDocument> => {
+      await assertPdfUploadUnlocked(file);
       const content_type = file.type || "application/pdf";
       const init = await apiCall<KnowledgeUploadInitResponse>(
         `/me/ai-knowledge/upload-init`,

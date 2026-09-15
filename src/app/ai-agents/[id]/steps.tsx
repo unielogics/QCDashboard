@@ -69,6 +69,7 @@ import {
   type AiAgentKind,
   type AiAgentSynth,
 } from "@/hooks/useAiAgents";
+import { documentUploadErrorMessage } from "@/lib/documentUpload";
 import {
   Btn,
   ChipToggle,
@@ -253,6 +254,7 @@ export function KnowledgePanel({ agent }: PanelProps) {
   const fileRef = useRef<HTMLInputElement>(null);
   const [pasteTitle, setPasteTitle] = useState("");
   const [pasteBody, setPasteBody] = useState("");
+  const [uploadError, setUploadError] = useState("");
 
   const linkedDocIds = new Set(links.map((l) => l.knowledge_document_id));
   const reusable = library.filter((d) => !linkedDocIds.has(d.id));
@@ -263,12 +265,19 @@ export function KnowledgePanel({ agent }: PanelProps) {
 
   const onUpload = async (f: File | undefined) => {
     if (!f) return;
-    const doc = await upload.mutateAsync(f);
-    await addLink.mutateAsync({
-      id: agent.id,
-      knowledge_document_id: doc.id,
-      attach_to_emails: false,
-    });
+    setUploadError("");
+    try {
+      const doc = await upload.mutateAsync(f);
+      await addLink.mutateAsync({
+        id: agent.id,
+        knowledge_document_id: doc.id,
+        attach_to_emails: false,
+      });
+    } catch (error) {
+      setUploadError(documentUploadErrorMessage(error, `${f.name} could not be uploaded.`));
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
   };
 
   const onPaste = async () => {
@@ -301,6 +310,7 @@ export function KnowledgePanel({ agent }: PanelProps) {
       <Btn variant="primary" onClick={() => fileRef.current?.click()} disabled={upload.isPending}>
         <Icon name="upload" size={14} /> {upload.isPending ? "Uploading…" : "Upload a file"}
       </Btn>
+      {uploadError ? <StatusLine tone="bad" className="mt">{uploadError}</StatusLine> : null}
 
       {/* Paste a note inline — no file needed */}
       <Panel className="mt" title="Or paste a note">

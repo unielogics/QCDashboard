@@ -10,6 +10,12 @@ import { useInviteUser, useReferralCompanies } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { CONSOLE_LABELS, GRANTABLE_CONSOLES, INHERITED_CONSOLES } from "@/lib/consoles";
 import type { OperatorAccountAccessType } from "@/lib/types";
+import {
+  roleAccessProfile,
+  roleRequiresPartnerCompany,
+  roleUsesHouseProfile,
+  TEAM_ASSIGNABLE_ROLES,
+} from "@/lib/roleAccess";
 
 interface Props {
   open: boolean;
@@ -17,14 +23,11 @@ interface Props {
   onInvited?: () => void;
 }
 
-const ROLE_OPTIONS: { value: Role; label: string; sub: string }[] = [
-  { value: Role.BROKER, label: "Agent", sub: "Owns deals, sees their assigned pipeline." },
-  { value: Role.REGIONAL_MANAGER, label: "Regional Manager", sub: "Sees assigned agents and their portfolio metrics." },
-  { value: Role.LOAN_EXEC, label: "Underwriter", sub: "Sees all loans, runs UW + risk scoring." },
-  { value: Role.DEALER_PARTNER, label: "Dealer Partner", sub: "External broker — starts and works dealer AI-intake leads for their own clients only." },
-  { value: Role.FIELD_REP, label: "Field Rep", sub: "Visits businesses in person and opens files on site. Works only the files they own, on rep.qualifiedcommercial.com." },
-  { value: Role.SUPER_ADMIN, label: "Super Admin", sub: "Full access: settings, team, every loan." },
-];
+const ROLE_OPTIONS = TEAM_ASSIGNABLE_ROLES.map((value) => ({
+  value,
+  label: roleAccessProfile(value).label,
+  sub: `${roleAccessProfile(value).workspace} — ${roleAccessProfile(value).scope}`,
+}));
 
 export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const invite = useInviteUser();
@@ -51,19 +54,23 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   }, [open]);
 
   // Everyone is linked to a business relationship profile: the house for
-  // staff, their own company for a dealer partner. The house is preselected
+  // staff, their own company for an external partner. The house is preselected
   // for staff roles; a partner picks (or the desk types) their company.
-  const isDealerPartner = role === Role.DEALER_PARTNER;
-  const isStaff = role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC || role === Role.FIELD_REP;
+  const requiresPartnerCompany = roleRequiresPartnerCompany(role);
+  const isStaff = roleUsesHouseProfile(role);
+  const hasConsoleAccess = Boolean((INHERITED_CONSOLES[role] ?? []).length || (GRANTABLE_CONSOLES[role] ?? []).length);
   const chooseRole = (next: Role) => {
     setRole(next);
-    const staff = next === Role.SUPER_ADMIN || next === Role.LOAN_EXEC || next === Role.FIELD_REP;
-    setCompanyId(staff && house ? house.id : next === Role.DEALER_PARTNER && companyId === house?.id ? "" : companyId);
+    const staff = roleUsesHouseProfile(next);
+    const partner = roleRequiresPartnerCompany(next);
+    setCompanyId(staff && house ? house.id : partner && companyId === house?.id ? "" : companyId);
+    const grantable = GRANTABLE_CONSOLES[next] ?? [];
+    setAccountTypes((current) => current.filter((item) => grantable.includes(item)));
   };
   const valid =
     /\S+@\S+\.\S+/.test(email) &&
     name.trim().length > 0 &&
-    (!isDealerPartner || companyId.length > 0);
+    (!(requiresPartnerCompany || isStaff) || companyId.length > 0);
 
   const submit = async () => {
     setErr(null);
@@ -189,7 +196,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
         </div>
       </div>
 
-      {!isDealerPartner ? (
+      {hasConsoleAccess ? (
         <div>
           <div style={{ fontSize: 10.5, fontWeight: 700, color: V.ink3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 8 }}>
             Console access
@@ -222,9 +229,9 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
 
       <Field label="Business relationship profile">
         <select value={companyId} onChange={(event) => setCompanyId(event.target.value)} style={inputStyle()}>
-          <option value="">{isDealerPartner ? "Select their company…" : isStaff ? "The house" : "None"}</option>
+          <option value="">{requiresPartnerCompany ? "Select their company…" : isStaff ? "Select the house…" : "None"}</option>
           {companies
-            .filter((company) => !(isDealerPartner && company.kind === "house"))
+            .filter((company) => requiresPartnerCompany ? company.kind !== "house" : isStaff ? company.kind === "house" : true)
             .map((company) => <option key={company.id} value={company.id}>{company.name} · {company.kind === "house" ? "House" : company.signed ? "Signed" : "Unsigned"}</option>)}
         </select>
         <div style={{ fontSize: 11, color: V.ink3, marginTop: 6, lineHeight: 1.4 }}>

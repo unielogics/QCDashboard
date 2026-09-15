@@ -1,3 +1,5 @@
+import { PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE, isPasswordProtectedPdfUploadError } from "@/lib/documentUpload";
+
 // Typed fetcher for the qcbackend API.
 //
 // In dev mode, the backend doesn't enforce Clerk auth; we send X-Dev-User to
@@ -55,7 +57,11 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       : typeof nestedMessage === "string" && nestedMessage.trim()
         ? nestedMessage
         : fieldMessage || `${res.status} ${res.statusText}`;
-    throw new ApiError(res.status, message, body);
+    const error = new ApiError(res.status, message, body);
+    if (isPasswordProtectedPdfUploadError(error)) {
+      throw new ApiError(res.status, PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE, body);
+    }
+    throw error;
   }
   if (res.status === 204) return undefined as T;
   return (await res.json()) as T;

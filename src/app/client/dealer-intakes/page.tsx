@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { api, apiBase } from "@/lib/api";
 import { clientQueuedUploadCanSubmit, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 
 type Intake = {
@@ -79,11 +80,14 @@ export default function ClientDealerIntakesPage() {
     setBusy(true);
     setNotice("Uploading files...");
     const uploadedIds = new Set<string>();
+    const lockedIds = new Set<string>();
+    const lockedFiles: File[] = [];
     let staleCount = 0;
     try {
       for (const item of queuedFiles.filter(clientQueuedUploadCanSubmit)) {
         setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "uploading", message: "Preparing upload" } : file)));
         try {
+          await assertPdfUploadUnlocked(item.file);
           const init = await authed<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(
             `/buckets/client/intakes/${detail.intake.id}/files/upload-init`,
             {
@@ -105,7 +109,11 @@ export default function ClientDealerIntakesPage() {
           uploadedIds.add(item.id);
           setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "uploaded", message: "Uploaded" } : file)));
         } catch (error) {
-          if (isStaleRequestedDocumentError(error)) {
+          if (isPasswordProtectedPdfUploadError(error)) {
+            lockedIds.add(item.id);
+            lockedFiles.push(item.file);
+            setQueuedFiles((current) => current.filter((file) => file.id !== item.id));
+          } else if (isStaleRequestedDocumentError(error)) {
             staleCount += 1;
             setQueuedFiles((current) => current.map((file) => (file.id === item.id ? {
               ...file,
@@ -120,10 +128,11 @@ export default function ClientDealerIntakesPage() {
         }
       }
       await openIntake(detail.intake.id);
-      setQueuedFiles((current) => current.filter((file) => !uploadedIds.has(file.id)));
-      setNotice(staleCount
-        ? "The document checklist changed while you were uploading. We refreshed it; choose the current request for the affected file and try again."
-        : "");
+      setQueuedFiles((current) => current.filter((file) => !uploadedIds.has(file.id) && !lockedIds.has(file.id)));
+      setNotice([
+        staleCount ? "The document checklist changed while you were uploading. We refreshed it; choose the current request for the affected file and try again." : "",
+        lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
+      ].filter(Boolean).join(" "));
     } finally {
       setBusy(false);
     }

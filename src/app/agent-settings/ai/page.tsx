@@ -52,6 +52,7 @@ import {
   type PlaybookRequirement,
 } from "@/hooks/useApi";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
+import { documentUploadErrorMessage } from "@/lib/documentUpload";
 import {
   AFTER_HOURS_LABEL,
   DEFAULT_WORKING_HOURS,
@@ -803,12 +804,19 @@ function KnowledgeUploadCard({
   const del = useDeleteAgentKnowledge();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [uploadError, setUploadError] = useState("");
 
   async function handleFiles(files: FileList | File[] | null) {
     if (!files) return;
+    setUploadError("");
     for (const f of Array.from(files)) {
-      try { await upload.mutateAsync(f); } catch {/* banner / row will show failed */}
+      try {
+        await upload.mutateAsync(f);
+      } catch (error) {
+        setUploadError(documentUploadErrorMessage(error, `${f.name} could not be uploaded.`));
+      }
     }
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   return (
@@ -844,6 +852,8 @@ function KnowledgeUploadCard({
           onChange={(e) => handleFiles(e.target.files)}
         />
       </div>
+
+      {uploadError ? <WarnLine>{uploadError}</WarnLine> : null}
 
       {/* Document list */}
       {isAINotDeployed(list.error) ? (

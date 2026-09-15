@@ -28,7 +28,6 @@ import {
 } from "@/components/ds";
 import {
   useCurrentUser,
-  useDeleteUser,
   useAddRegionalManagerAgent,
   useGoogleConnection,
   useStartGoogleOAuth,
@@ -44,7 +43,6 @@ import {
   useSettings,
   useUpdateProviderSettings,
   useUpdateSettings,
-  useUpdateUserRole,
   useUsers,
   useReferralCompanies,
 } from "@/hooks/useApi";
@@ -66,10 +64,10 @@ import type {
   SecuritySettings,
   SimulatorSettings,
   OperatorAccountAccessType,
-  UserRow,
 } from "@/lib/types";
 import { useAuthedApi, useInitSignatureUpload } from "@/hooks/useApi";
-import { GRANTABLE_CONSOLES, INHERITED_CONSOLES, OPERATOR_CONSOLE_ROLES } from "@/lib/consoles";
+import { TeamMemberDrawer } from "@/components/settings/TeamMemberDrawer";
+import { roleAccessProfile } from "@/lib/roleAccess";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError } from "@/lib/api";
 import { DealAnalyzerSection } from "./DealAnalyzerSection";
@@ -1347,34 +1345,11 @@ function SecretField({
 
 // ── Section: Team ───────────────────────────────────────────────────────
 
-const ASSIGNABLE_ROLES: { value: Role; label: string }[] = [
-  { value: Role.BROKER, label: "Agent" },
-  { value: Role.REGIONAL_MANAGER, label: "Regional Manager" },
-  { value: Role.LOAN_EXEC, label: "Underwriter" },
-  { value: Role.DEALER_PARTNER, label: "Dealer Partner" },
-  { value: Role.FIELD_REP, label: "Field Rep" },
-  { value: Role.SUPER_ADMIN, label: "Super Admin" },
-];
-
 const ACCOUNT_TYPE_OPTIONS: Array<{ value: OperatorAccountAccessType; label: string }> = [
   { value: "funding", label: "Funding" },
   { value: "field_desk", label: "Field Desk" },
   { value: "audit", label: "Audit" },
 ];
-
-// A console is a sign-in; the role decides what the person may do inside it.
-// The server says which ones the role brings by itself (`inherited_account_types`
-// on every row; the client map is only the pre-row fallback) and which a
-// super admin may add (GRANTABLE_CONSOLES). Anything else is derived.
-function consoleChipState(u: UserRow, value: OperatorAccountAccessType): { active: boolean; disabled: boolean; title: string } {
-  const label = ACCOUNT_TYPE_OPTIONS.find((o) => o.value === value)?.label ?? value;
-  const inherited = (u.inherited_account_types ?? INHERITED_CONSOLES[u.role] ?? []).includes(value);
-  const active = u.account_types.includes(value);
-  if (!OPERATOR_CONSOLE_ROLES.has(u.role)) return { active: false, disabled: true, title: "Console access is not available for this role" };
-  if (inherited) return { active: true, disabled: true, title: `${label} is included by the role` };
-  if ((GRANTABLE_CONSOLES[u.role] ?? []).includes(value)) return { active, disabled: false, title: `${active ? "Remove" : "Allow"} sign-in to ${label}` };
-  return { active, disabled: true, title: value === "audit" ? "Audit comes with Field Desk for this role" : `${label} is not available for this role` };
-}
 
 const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
@@ -1545,24 +1520,13 @@ function RegionalMetrics({ metrics }: { metrics: import("@/lib/types").Portfolio
   );
 }
 
-// The roles named on production agreements: the first-login gate asks these for a mobile.
-const PHONE_REQUIRED_ROLES = new Set<Role>([Role.SUPER_ADMIN, Role.LOAN_EXEC, Role.FIELD_REP]);
-
 function TeamSection({ canEdit }: { canEdit: boolean }) {
   const { data: users, isLoading, error } = useUsers();
   const { data: companies = [] } = useReferralCompanies();
   const { data: me } = useCurrentUser();
-  const updateRole = useUpdateUserRole();
-  const deleteUser = useDeleteUser();
-  const apiCall = useAuthedApi();
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [confirmRevoke, setConfirmRevoke] = useState<string | null>(null);
-  // A dealer partner's own signed Platform Access Agreement, through the
-  // super-admin certificate route that already exists.
-  const openCertificate = async (userId: string) => {
-    const r = await apiCall<{ download_url: string | null }>(`/contracts/platform_access/certificate?subject_id=${userId}`);
-    if (r.download_url) window.open(r.download_url, "_blank", "noopener");
-  };
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const selectedUser = users?.find((user) => user.id === selectedUserId) ?? null;
 
   if (!canEdit) {
     return (
@@ -1572,40 +1536,8 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
     );
   }
 
-  const onChangeRole = (userId: string, role: Role) => {
-    // DEALER_PARTNER is hard-blocked server-side until their company has a
-    // signed Referral Protection Agreement -- a user with no company link
-    // at all (e.g. one promoted via this dropdown rather than invited)
-    // can never pass that check. Collect a company name here, same as the
-    // invite flow, so this path can't create a permanently-locked-out user.
-    const target = users?.find((u) => u.id === userId);
-    if (role === Role.DEALER_PARTNER && (!target?.referral_partner_company_name || target.company_kind === "house")) {
-      const companyName = window.prompt(
-        "A dealer partner belongs to their own company, which must sign the Referral Protection Agreement before they can use the platform.\n\nEnter the company name (existing companies are matched by name; a new name creates the profile):"
-      );
-      if (!companyName?.trim()) return;
-      updateRole.mutate({ userId, role, company_name: companyName.trim() });
-      return;
-    }
-    updateRole.mutate({ userId, role });
-  };
-  const onRevoke = (userId: string) => {
-    deleteUser.mutate({ userId });
-    setConfirmRevoke(null);
-  };
-  const toggleAccountType = (userId: string, current: OperatorAccountAccessType[], product: OperatorAccountAccessType) => {
-    const next = current.includes(product)
-      ? current.filter((value) => value !== product)
-      : [...current, product];
-    updateRole.mutate({ userId, account_types: next });
-  };
-
   return (
     <>
-      {/* Was a six-column div grid pretending to be a table, with the header
-          row hand-built. It is a real <table class="tbl"> now: same columns,
-          same cells, and a scroll container so a wide row cannot widen the
-          page. `noPad` lets the table sit flush to the panel edge. */}
       <Panel
         title="Operator team"
         sub={`${users?.length ?? 0} members`}
@@ -1626,81 +1558,45 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
           <Table
             caption="Operator team members"
             cols={[
-              { label: "Name" },
-              { label: "Email" },
-              { label: "Phone", width: 140 },
-              { label: "Role", width: 160 },
-              { label: "Consoles", width: 190 },
-              { label: "Profile / Agreement" },
-              { label: "Acknowledgment", width: 230 },
-              { label: "Joined", width: 110 },
-              { label: "" },
+              { label: "Member" },
+              { label: "Contact" },
+              { label: "Role & workspace" },
+              { label: "Consoles", width: 180 },
+              { label: "Company / agreement" },
+              { label: "Joined & acknowledgment" },
+              { label: "", width: 44 },
             ]}
           >
             {users.map((u) => {
               const isSelf = me?.id === u.id;
+              const access = roleAccessProfile(u.role);
+              const loginTone = u.account_status === "suspended"
+                ? "bad"
+                : u.login_state === "active" ? "ok" : u.login_state === "invite_failed" ? "bad" : "warn";
               return (
-                <Tr key={u.id}>
+                <Tr key={u.id} onClick={() => setSelectedUserId(u.id)}>
                   <Td>
-                    <b>{u.name}</b> {isSelf && <CellChip>You</CellChip>}
-                  </Td>
-                  <Td>{u.email}</Td>
-                  <Td>
-                    {/* Set once on the person and reused on every package; a
-                        super admin can fix it here without asking them. */}
-                    <button type="button" className="cellchip c-mut" style={{ border: 0, cursor: "pointer" }}
-                      title={u.phone ? "Change their mobile number" : "Add their mobile number"}
-                      disabled={updateRole.isPending}
-                      onClick={() => { const next = window.prompt(`Mobile number for ${u.name}:`, u.phone ?? ""); if (next !== null) updateRole.mutate({ userId: u.id, phone: next.trim() || null }); }}>
-                      {u.phone ? u.phone : PHONE_REQUIRED_ROLES.has(u.role) ? "Missing" : "—"}
-                    </button>
-                  </Td>
-                  <Td>
-                    <Select
-                      value={u.role}
-                      onChange={(e) => onChangeRole(u.id, e.target.value as Role)}
-                      disabled={isSelf || updateRole.isPending}
-                      style={{ width: "100%" }}
-                    >
-                      {ASSIGNABLE_ROLES.map((r) => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
-                      ))}
-                    </Select>
-                  </Td>
-                  <Td>
-                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
-                      {ACCOUNT_TYPE_OPTIONS.map((option) => {
-                        // Which sign-ins this person may use; the role decides what they can do inside each.
-                        const chip = consoleChipState(u, option.value);
-                        return (
-                          <button
-                            key={option.value}
-                            type="button"
-                            className={cx("cellchip", chip.active ? "c-acc" : "c-mut")}
-                            aria-pressed={chip.active}
-                            title={chip.title}
-                            disabled={chip.disabled || updateRole.isPending}
-                            onClick={() => toggleAccountType(u.id, u.account_types, option.value)}
-                            style={{ border: 0, cursor: chip.disabled ? "default" : "pointer" }}
-                          >
-                            {option.label}
-                          </button>
-                        );
-                      })}
+                    <div className="grid g2">
+                      <span><b>{u.name}</b> {isSelf && <CellChip>You</CellChip>}</span>
+                      <span><CellChip tone={loginTone}>{(u.login_state || "not invited").replaceAll("_", " ")}</CellChip></span>
                     </div>
                   </Td>
                   <Td>
-                    <div className="row" style={{ gap: 6, flexWrap: "nowrap" }}>
-                      <Select
-                        aria-label={`Business relationship profile for ${u.name}`}
-                        value={u.referral_partner_company_id ?? ""}
-                        disabled={updateRole.isPending}
-                        onChange={(event) => updateRole.mutate({ userId: u.id, referral_partner_company_id: event.target.value || null })}
-                        style={{ minWidth: 170, maxWidth: 260 }}
-                      >
-                        {!u.referral_partner_company_id ? <option value="">No linked profile</option> : null}
-                        {companies.map((company) => <option key={company.id} value={company.id}>{company.name}</option>)}
-                      </Select>
+                    <div className="grid g2"><span>{u.email}</span><span className="sub">{u.phone || "No phone on file"}</span></div>
+                  </Td>
+                  <Td>
+                    <div className="grid g2"><b>{access.label}</b><span className="sub">{access.workspace}</span></div>
+                  </Td>
+                  <Td>
+                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                      {u.account_types.length
+                        ? ACCOUNT_TYPE_OPTIONS.filter((option) => u.account_types.includes(option.value)).map((option) => <CellChip key={option.value} tone="acc">{option.label}</CellChip>)
+                        : <span className="sub">Role portal only</span>}
+                    </div>
+                  </Td>
+                  <Td>
+                    <div className="grid g2">
+                      <span>{u.referral_partner_company_name || "No linked profile"}</span>
                       {u.referral_partner_company_id
                         ? u.company_kind === "house" ? <CellChip>House</CellChip>
                           : u.company_agreement_signed ? <CellChip tone="ok">Signed</CellChip>
@@ -1709,15 +1605,12 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                     </div>
                   </Td>
                   <Td>
-                    {/* The person's own record: a dealer partner's e-signed Platform
-                        Access Agreement, and everyone's click-through acknowledgment
-                        of the platform documents. The chip to the left is the
-                        company's agreement. Acknowledgments are deliberately not on
-                        /admin/agreements (a different evidentiary class). */}
-                    <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
+                    <div className="grid g2">
+                      <span className="sub">Joined {fmtDate(u.created_at) || "unknown"}</span>
+                      <div className="row" style={{ gap: 6, flexWrap: "wrap" }}>
                       {u.role === Role.DEALER_PARTNER ? (
                         u.platform_access_signed_at
-                          ? <button type="button" className="cellchip c-ok" style={{ border: 0, cursor: "pointer" }} title={`Platform Access Agreement ${u.platform_access_contract_number ?? ""} — open the signed certificate`} onClick={() => void openCertificate(u.id)}>PAA signed {fmtDate(u.platform_access_signed_at)}</button>
+                          ? <CellChip tone="ok">PAA signed {fmtDate(u.platform_access_signed_at)}</CellChip>
                           : <CellChip tone="warn" title="Signed at first sign-in through the Platform Access gate">PAA missing</CellChip>
                       ) : null}
                       {u.acknowledgment_status === "current" ? <CellChip tone="ok" title="Terms, Privacy and Disclosure acknowledged at the current versions">Accepted {fmtDate(u.acknowledged_at)} · current</CellChip>
@@ -1725,36 +1618,11 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                         : u.acknowledgment_status === "missing" ? <CellChip tone="warn" title="Asked at next sign-in">Missing</CellChip>
                         : u.acknowledgment_status === "not_asked" ? <CellChip title="This role signs a contract instead of clicking through the platform documents">Not asked</CellChip>
                         : null}
+                      </div>
                     </div>
                   </Td>
-                  <Td>
-                    {u.created_at ? new Date(u.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—"}
-                  </Td>
                   <Td align="r">
-                    {!isSelf && (
-                      confirmRevoke === u.id ? (
-                        <span style={{ display: "inline-flex", gap: 4 }}>
-                          <Btn
-                            size="sm"
-                            className="c-bad"
-                            onClick={() => onRevoke(u.id)}
-                            disabled={deleteUser.isPending}
-                          >
-                            Revoke
-                          </Btn>
-                          <Btn size="sm" onClick={() => setConfirmRevoke(null)}>
-                            Cancel
-                          </Btn>
-                        </span>
-                      ) : (
-                        <IconBtn
-                          aria-label={`Remove ${u.name}`}
-                          onClick={() => setConfirmRevoke(u.id)}
-                        >
-                          <Icon name="x" size={13} />
-                        </IconBtn>
-                      )
-                    )}
+                    <IconBtn aria-label={`Manage ${u.name}`} title={`Manage ${u.name}`} onClick={() => setSelectedUserId(u.id)}><Icon name="chevR" size={13} /></IconBtn>
                   </Td>
                 </Tr>
               );
@@ -1764,6 +1632,7 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
         {users && users.length === 0 && <div className="panel-b sub">No team members yet.</div>}
       </Panel>
       <InviteMemberDialog open={inviteOpen} onClose={() => setInviteOpen(false)} />
+      <TeamMemberDrawer user={selectedUser} companies={companies} currentUserId={me?.id} onClose={() => setSelectedUserId(null)} />
     </>
   );
 }

@@ -33,6 +33,7 @@ import {
   evidenceReasonLabel,
 } from "@/lib/evidenceDecision";
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
+import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 
 type OwnerDraft = {
   key: string;
@@ -547,7 +548,8 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     setUploading(true); setError("");
     let uploaded = 0;
     try {
-      for (const file of files) {
+      const screened = await screenPdfUploads(files);
+      for (const file of screened.uploadable) {
         setUploadState(`Uploading ${file.name} · ${uploaded + 1} of ${files.length}`);
         const init = await apiCall<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${sourceId}/files/upload-init`, { method: "POST", body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
         const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
@@ -555,10 +557,11 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
         await apiCall(`/admin/ai-underwriter-leads/${sourceId}/files/complete`, { method: "POST", body: JSON.stringify({ file_id: init.file_id }) });
         uploaded += 1;
       }
-      setUploadState(`${uploaded} statement file${uploaded === 1 ? "" : "s"} uploaded and queued for extraction.`);
-      await onRefresh();
+      setUploadState(uploaded ? `${uploaded} statement file${uploaded === 1 ? "" : "s"} uploaded and queued for extraction.` : "");
+      if (uploaded || screened.rejected.length) await onRefresh();
+      if (screened.rejected.length) setError(passwordProtectedPdfUploadNotice(screened.rejected));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Bank statements could not be uploaded.");
+      setError(documentUploadErrorMessage(reason, "Bank statements could not be uploaded."));
     } finally {
       setUploading(false); setDragging(false);
       if (picker.current) picker.current.value = "";

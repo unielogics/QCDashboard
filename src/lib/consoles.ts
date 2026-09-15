@@ -20,11 +20,11 @@ export const INHERITED_CONSOLES: Record<string, OperatorAccountAccessType[]> = {
 };
 
 // What a super admin may toggle per role beyond what the role inherits. Audit
-// is never a standalone grant for a broker or a regional manager: it arrives
-// with Field Desk (the dealer-OS backend serves both rep. and audit.).
+// is never a standalone grant for a broker: it arrives with Field Desk (the
+// dealer-OS backend serves both rep. and audit.). Regional managers stay in
+// Funding until a region-scoped Dealer OS data boundary exists server-side.
 export const GRANTABLE_CONSOLES: Record<string, OperatorAccountAccessType[]> = {
   [Role.BROKER]: ["field_desk"],
-  [Role.REGIONAL_MANAGER]: ["field_desk"],
   [Role.FIELD_REP]: ["funding"],
 };
 

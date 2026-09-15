@@ -11,12 +11,9 @@ import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtSche
 import {
   buildIntelligenceModel,
   cryptoId,
-  DEALER_STAGE_ONE_KEYWORDS,
   evidenceMapByFileId,
   fundabilityBanner,
   humanizeClassification,
-  isStageOneRequestedDoc,
-  RE_STAGE_ONE_KEYWORDS,
   type IntakeResponse,
   type IntelligenceModel,
   type IntelligenceValue,
@@ -36,7 +33,16 @@ import {
   MissingTable,
   RiskStrengthTable,
 } from "@/components/intake/IntelligenceCharts";
-import { clientActionableRequestedDocumentUploadTarget, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import {
+  evidenceRequirementIdentity,
+  leadCockpitMissingDocumentUploadTarget,
+  leadCockpitNonDocumentMissingRows,
+  leadCockpitOutstandingDocuments,
+  preferredIntakeReviewResult,
+  type LeadCockpitReadiness,
+} from "@/lib/leadCockpitDocuments";
 
 /**
  * Transport for the admin cockpit. The parent injects Clerk-authenticated calls
@@ -100,6 +106,7 @@ export function LeadCockpit({
   initialMessages,
   onResponse,
   onRequestRerun,
+  programReadiness = null,
   hideFinancialForms = false,
 }: {
   response: IntakeResponse;
@@ -107,6 +114,9 @@ export function LeadCockpit({
   variant?: string | null;
   initialMessages?: Array<{ id: string; role: string; content: string; created_at?: string }>;
   onResponse?: (r: IntakeResponse) => void;
+  /** Canonical evidence decisions. When present, these override legacy upload
+   *  status and stale document gaps from the AI review snapshot. */
+  programReadiness?: LeadCockpitReadiness | null;
   /** When provided, the cockpit's "Re-run review" button delegates to the
    *  parent's RunReviewDialog (themed confirm + live progress) instead of
    *  running inline. */
@@ -187,7 +197,7 @@ export function LeadCockpit({
   }, [fullScreen]);
 
   const result = useMemo(
-    () => (current.intake?.result_snapshot as Record<string, unknown> | null) ?? current.latest_review?.result ?? null,
+    () => preferredIntakeReviewResult(current),
     [current],
   );
   const bankability = useMemo(() => {
@@ -197,22 +207,34 @@ export function LeadCockpit({
   }, [result]);
   const fundability = useMemo(() => fundabilityBanner(result, bankability), [result, bankability]);
   const missingDocs = useMemo(() => {
-    const keywords = variant === "real_estate_dscr_v1" ? RE_STAGE_ONE_KEYWORDS : DEALER_STAGE_ONE_KEYWORDS;
-    return (current.requested_documents ?? []).filter(
-      (d) => d.required && (d.request_kind === "unlocked_copy" || isStageOneRequestedDoc(d, keywords)) && clientRequestedDocumentNeedsAction(d, current.files ?? []),
-    );
-  }, [current, variant]);
-  // PFS/debt-schedule sit outside the Stage-1 keyword set above (they're
-  // Stage-2/parallel documents), so they need their own not-yet-uploaded
-  // check — mirrors dealer-ai-underwriter/page.tsx's category gate exactly.
+    return leadCockpitOutstandingDocuments(current.requested_documents ?? [], current.files ?? [], programReadiness);
+  }, [current.files, current.requested_documents, programReadiness]);
+  // Financial-form shortcuts remain separate from the all-requirements list:
+  // they decide which inline editor to offer, while `missingDocs` decides what
+  // belongs in the clickable Still needed card.
   const missingPfsOrDebtDocs = useMemo(() => {
-    return (current.requested_documents ?? []).filter(
-      (d) => (d.category === "Personal Financials" || d.category === "Debts") && clientRequestedDocumentNeedsAction(d, current.files ?? []),
-    );
-  }, [current]);
-  const intelligence = useMemo<IntelligenceModel | null>(
-    () => (result ? buildIntelligenceModel(current, result, missingDocs, fundability) : null),
-    [current, result, missingDocs, fundability],
+    return missingDocs.filter((document) => {
+      const identity = evidenceRequirementIdentity(`${document.name} ${document.category ?? ""}`);
+      return identity === "personal financial statement" || identity === "debt schedule";
+    });
+  }, [missingDocs]);
+  const intelligence = useMemo<IntelligenceModel | null>(() => {
+    if (!result) return null;
+    const model = buildIntelligenceModel(current, result, missingDocs, fundability);
+    if (!programReadiness) return model;
+    return {
+      ...model,
+      lendingReady: programReadiness.can_advance,
+      oneNextStep: programReadiness.can_advance
+        ? "Canonical evidence requirements are complete. Advance the file to underwriting."
+        : missingDocs.length
+          ? `Collect ${missingDocs.map((document) => document.name).join(", ")}.`
+          : model.oneNextStep,
+    };
+  }, [current, result, missingDocs, fundability, programReadiness]);
+  const nonDocumentMissingRows = useMemo(
+    () => leadCockpitNonDocumentMissingRows(intelligence?.missing ?? [], programReadiness),
+    [intelligence?.missing, programReadiness],
   );
   const evidenceByFile = useMemo(() => evidenceMapByFileId(result), [result]);
 
@@ -263,11 +285,14 @@ export function LeadCockpit({
     setUploading(true);
     const uploadedIds = new Set<string>();
     const staleIds = new Set<string>();
+    const lockedIds = new Set<string>();
+    const lockedFiles: File[] = [];
     let failed = 0;
     try {
       for (const item of ready) {
         setQueue((q) => q.map((i) => (i.id === item.id ? { ...i, status: "uploading" } : i)));
         try {
+          await assertPdfUploadUnlocked(item.file);
           const init = await adapter.uploadInit({
             requested_document_id: item.requestedDocumentId ?? null,
             file_name: item.file.name,
@@ -280,22 +305,29 @@ export function LeadCockpit({
           uploadedIds.add(item.id);
           setQueue((q) => q.map((i) => (i.id === item.id ? { ...i, status: "uploaded" } : i)));
         } catch (err) {
-          if (isStaleRequestedDocumentError(err)) {
+          if (isPasswordProtectedPdfUploadError(err)) {
+            lockedIds.add(item.id);
+            lockedFiles.push(item.file);
+            setQueue((q) => q.filter((i) => i.id !== item.id));
+          } else if (isStaleRequestedDocumentError(err)) {
             staleIds.add(item.id);
             setQueue((q) => q.filter((i) => i.id !== item.id));
           } else {
             failed += 1;
             setQueue((q) =>
-              q.map((i) => (i.id === item.id ? { ...i, status: "error", message: err instanceof Error ? err.message : "Upload failed" } : i)),
+              q.map((i) => (i.id === item.id ? { ...i, status: "error", message: documentUploadErrorMessage(err) } : i)),
             );
           }
         }
       }
       const r = await adapter.reload();
       applyResponse(r);
-      setQueue((q) => q.filter((i) => !uploadedIds.has(i.id) && !staleIds.has(i.id)));
-      if (staleIds.size) {
-        const message = `${uploadedIds.size ? `${uploadedIds.size} file${uploadedIds.size === 1 ? "" : "s"} uploaded. ` : ""}The document checklist changed, so ${staleIds.size === 1 ? "one file was" : `${staleIds.size} files were`} not attached. Choose the current request under Still needed and add ${staleIds.size === 1 ? "it" : "them"} again.`;
+      setQueue((q) => q.filter((i) => !uploadedIds.has(i.id) && !staleIds.has(i.id) && !lockedIds.has(i.id)));
+      if (staleIds.size || lockedFiles.length) {
+        const message = [
+          staleIds.size ? `${uploadedIds.size ? `${uploadedIds.size} file${uploadedIds.size === 1 ? "" : "s"} uploaded. ` : ""}The document checklist changed, so ${staleIds.size === 1 ? "one file was" : `${staleIds.size} files were`} not attached. Choose the current request under Still needed and add ${staleIds.size === 1 ? "it" : "them"} again.` : "",
+          lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
+        ].filter(Boolean).join(" ");
         setStatus(message);
         pushLine("assistant", message);
       } else if (uploadedIds.size) {
@@ -573,7 +605,11 @@ export function LeadCockpit({
               </div>
               <div className="grid g6">
                 {missingDocs.map((doc) => {
-                  const uploadTarget = clientActionableRequestedDocumentUploadTarget(doc, current.files ?? []);
+                  // `missingDocs` has already reconciled canonical readiness.
+                  // An old intake row may say "uploaded" even when its evidence
+                  // was rejected, so re-running the legacy status helper here
+                  // would incorrectly make this row non-clickable.
+                  const uploadTarget = leadCockpitMissingDocumentUploadTarget(doc);
                   return uploadTarget ? (
                     <label
                       key={doc.id}
@@ -587,7 +623,10 @@ export function LeadCockpit({
                         opacity: uploading || busy ? 0.65 : 1,
                       }}
                     >
-                      <span className="truncate">{doc.request_kind === "unlocked_copy" ? "🔒 Upload unlocked copy" : "Upload"}: {doc.name}</span>
+                      <span className="grid g2 truncate">
+                        <span className="truncate">{doc.request_kind === "unlocked_copy" ? "🔒 Upload unlocked copy" : "Upload"}: {doc.name}</span>
+                        {doc.description ? <small className="sub truncate">{doc.description}</small> : null}
+                      </span>
                       <Icon name="upload" size={14} />
                       <input
                         type="file"
@@ -687,13 +726,13 @@ export function LeadCockpit({
                   </div>
                   <EvidenceCoverageTable rows={intelligence.coverage} />
                 </div>
-                {!missingDocs.length && intelligence.missing.length ? (
+                {nonDocumentMissingRows.length && (programReadiness || !missingDocs.length) ? (
                   <div style={chartCard()}>
                     <div style={chartHeader}>
-                      <strong>Still needed</strong>
-                      <span className="sub">{intelligence.missing.length} items</span>
+                      <strong>Clarifications</strong>
+                      <span className="sub">{nonDocumentMissingRows.length} items</span>
                     </div>
-                    <MissingTable rows={intelligence.missing} />
+                    <MissingTable rows={nonDocumentMissingRows} />
                   </div>
                 ) : null}
               </div>

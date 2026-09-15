@@ -1541,6 +1541,21 @@ export interface UserRow {
   platform_access_signed_at?: string | null;
   platform_access_contract_number?: string | null;
   created_at: string | null;
+  account_status?: "active" | "suspended";
+  login_state?: "active" | "suspended" | "invited" | "invite_failed" | "not_invited";
+  last_seen_at?: string | null;
+  last_invited_at?: string | null;
+  last_invite_status?: string | null;
+  last_invite_error?: string | null;
+}
+
+export interface TeamAccessActionResult {
+  user_id: string;
+  account_status: "active" | "suspended";
+  invitation_sent: boolean;
+  sessions_revoked: boolean;
+  reset_instructions_sent: boolean;
+  message: string;
 }
 
 /** Every business relationship profile: the house first, each saying whether it signed. */

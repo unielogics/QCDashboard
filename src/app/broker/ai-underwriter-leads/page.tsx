@@ -470,7 +470,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   // stage-one Production Package on the partner's own lead: the partner fills
   // and sends it, the desk picks the sponsor. Dealer-variant leads only.
   const detailTabOptions: TabOption<DetailTab>[] = [
-    { id: "files", label: "Files & Review" },
+    { id: "files", label: "Document room & AI review" },
     {
       id: "messages",
       label: "Messages",
@@ -483,8 +483,8 @@ export default function BrokerAIUnderwriterLeadsPage() {
   return (
     <div className="grid">
       <PageHeader
-        title="My Leads"
-        lede={`${total} leads on file`}
+        title="Auto AI Intake"
+        lede={`${total} dealer lead${total === 1 ? "" : "s"} and document room${total === 1 ? "" : "s"}`}
         actions={
           <Btn variant="pri" onClick={() => setCreateOpen(true)}>
             New lead

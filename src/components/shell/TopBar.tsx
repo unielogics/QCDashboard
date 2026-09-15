@@ -71,14 +71,14 @@ export default function TopBar() {
       {/* Search trigger — fixed-width 360px per design */}
       <button
         type="button"
-        onClick={() => setSearchOpen(true)}
+        onClick={() => isDealerPartner ? router.push("/broker/buckets") : setSearchOpen(true)}
         className="btn topsearch"
         // A fixed 360px rail is this bar's own measurement, not a system step.
         style={{ width: 360 }}
       >
         <Icon name="search" size={14} />
-        <span className="grow">Search loans, clients, properties…</span>
-        <span className="kbd">{searchShortcutLabel}</span>
+        <span className="grow">{isDealerPartner ? "Search dealer leads and document rooms…" : "Search loans, clients, properties…"}</span>
+        {!isDealerPartner ? <span className="kbd">{searchShortcutLabel}</span> : null}
       </button>
 
       {/* Read-only badge for borrower-view (client role) */}
