@@ -140,7 +140,7 @@ export function PrecallChecklist({ token, passcode, precall, roomKind = "dealer"
       <li className={precall.bank_complete ? "done" : "open"}>
         <header><span className="application-room-step-num"><Icon name={precall.bank_complete ? "check" : "building"} size={14} /></span><div><b>Connect the business bank</b><small>{precall.bank_complete ? precall.bank_detail || "Connected" : "Read-only, through Plaid. Use the company's operating account login, not a personal one."}</small></div></header>
         {!precall.bank_complete ? <div className="application-room-step-body">
-          <RoomActions token={token} passcode={passcode} view="banking" onChanged={() => { void onChanged(); }} />
+          <RoomActions token={token} passcode={passcode} roomKind={roomKind} view="banking" onChanged={() => { void onChanged(); }} />
           <button className="application-room-link" onClick={onGoToDocuments}>Upload bank statements instead</button>
         </div> : null}
       </li>

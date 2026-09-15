@@ -78,7 +78,7 @@ type Features = {
   contracts: RoomContract[];
   envelopes: RoomEnvelope[];
 };
-type RoomKind = "dealer" | "application";
+export type RoomKind = "dealer" | "application";
 
 function bankUpdateMessage(connection: BankConnection): string {
   if (connection.update_mode_reason === "new_accounts_available") return "New business accounts are available to add.";
@@ -478,17 +478,18 @@ function BankConnect({
 export function RoomActions({
   token,
   passcode,
+  roomKind,
   onChanged,
   view = "all",
 }: {
   token: string;
   passcode: string;
+  roomKind: RoomKind;
   /** Called after a connection or signature lands so the page can refresh its checklist. */
   onChanged: () => void;
   view?: "all" | "banking" | "agreements";
 }) {
   const [features, setFeatures] = useState<Features | null>(null);
-  const [roomKind, setRoomKind] = useState<RoomKind>("dealer");
   const [signing, setSigning] = useState<Signable | null>(null);
   const [signingContract, setSigningContract] = useState<RoomContract | null>(null);
   const [signingEnvelope, setSigningEnvelope] = useState<RoomEnvelope | null>(null);
@@ -497,23 +498,20 @@ export function RoomActions({
 
   const load = useCallback(async () => {
     try {
-      const res = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/features`, {
+      const res = await fetch(`${apiBase}/api/v1/${roomKind === "dealer" ? "dealer-os" : "application-profiles"}/public/room/${token}/${roomKind === "dealer" ? "features" : "state"}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passcode }),
       });
-      if (res.ok) {
-        setRoomKind("dealer");
+      if (!res.ok) {
+        setFeatures(null);
+        return;
+      }
+      if (roomKind === "dealer") {
         setFeatures((await res.json()) as Features);
         return;
       }
-      const application = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/state`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ passcode }),
-      });
-      if (!application.ok) return;
-      const state = (await application.json()) as {
+      const state = (await res.json()) as {
         business_name: string;
         signable: Signable[];
         banking: {
@@ -528,7 +526,6 @@ export function RoomActions({
           available_products: string[];
         };
       };
-      setRoomKind("application");
       setFeatures({
         business_name: state.business_name,
         bank_connect_available: state.banking.enabled,
@@ -546,8 +543,9 @@ export function RoomActions({
       });
     } catch {
       /* capabilities are additive; failure to load them is not a room failure */
+      setFeatures(null);
     }
-  }, [token, passcode]);
+  }, [token, passcode, roomKind]);
 
   useEffect(() => {
     void load();

@@ -6,7 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { LockedEvidenceBadge } from "@/components/application/LockedEvidenceStatus";
 import { QCMark } from "@/components/QCMark";
-import { RoomActions } from "@/components/room/RoomActions";
+import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
@@ -41,7 +41,8 @@ type ClientEvidenceBankingSummary = {
     reconnect_required: boolean;
   };
 };
-type UploadSession = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
+type ClientRoomKind = RoomKind | "basic";
+type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
 type RoomTab = "precall" | "offer" | "updates" | "todo" | "documents" | "banking" | "agreements";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
@@ -160,6 +161,7 @@ export default function BucketRequestPage() {
         const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/status`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
         if (response.ok) {
           const data = await response.json() as UploadSession;
+          data.room_kind ??= "basic";
           if (!cancelled) setSession(data);
         }
       } catch {
@@ -181,27 +183,46 @@ export default function BucketRequestPage() {
   async function fetchAccessSession(): Promise<UploadSession> {
     const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
     if (!response.ok) throw await responseError(response, "The room PIN did not work.");
-    return response.json();
+    const data = await response.json() as UploadSession;
+    return { ...data, room_kind: data.room_kind ?? "basic" };
   }
-  async function fetchPrecall(code: string): Promise<{ precall: RoomPrecall; roomKind: "dealer" | "application" } | null> {
+  async function fetchRoomContext(code: string, roomKind: ClientRoomKind): Promise<{
+    precall: RoomPrecall | null;
+    roomKind: RoomKind | null;
+    hasMerchantOffer: boolean;
+    hasTimeline: boolean;
+  }> {
+    const empty = {
+      precall: null,
+      roomKind: roomKind === "basic" ? null : roomKind,
+      hasMerchantOffer: false,
+      hasTimeline: false,
+    };
+    if (roomKind === "basic") return empty;
     try {
-      const response = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/features`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
-      if (response.ok) {
+      if (roomKind === "dealer") {
+        const response = await fetch(`${apiBase}/api/v1/dealer-os/public/room/${token}/features`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
+        if (!response.ok) return empty;
         const data = await response.json() as { precall?: RoomPrecall | null };
-        return data.precall?.enabled ? { precall: data.precall, roomKind: "dealer" } : null;
+        return { ...empty, precall: data.precall?.enabled ? data.precall : null };
       }
       const application = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/state`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
-      if (!application.ok) return null;
+      if (!application.ok) return empty;
       const state = await application.json() as {
         business_name: string;
         owners: Array<{ id: string; first_name: string; last_name: string; email: string | null; phone: string | null; ownership_pct: number | null; is_primary: boolean; has_invite: boolean; invite_opened_at: string | null; credit_required: boolean; credit_complete: boolean }>;
         verification: { ownership_complete: boolean; ownership_total: number; owner_contact_complete: boolean; business_banking_complete: boolean; bank_connection_count: number; bank_statement_months: number; owner_credit_complete: boolean; required_credit_owner_count: number; completed_credit_owner_count: number };
         precall: { status: "in_progress" | "complete" | "stopped" | "disabled"; complete: boolean; done_count: number; missing: string[] } | null;
+        merchant_offer?: { id: string; status: string } | null;
       };
-      if (!state.precall || state.precall.status === "disabled") return null;
+      if (!state.precall || state.precall.status === "disabled") {
+        return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true };
+      }
       const verification = state.verification;
       return {
         roomKind: "application",
+        hasMerchantOffer: Boolean(state.merchant_offer),
+        hasTimeline: true,
         precall: {
           enabled: true,
           starts_at: null,
@@ -241,7 +262,7 @@ export default function BucketRequestPage() {
           completed_at: null,
         },
       };
-    } catch { return null; }
+    } catch { return empty; }
   }
   async function fetchOffer(code: string): Promise<RoomMerchantOffer | null> {
     try {
@@ -259,29 +280,39 @@ export default function BucketRequestPage() {
     } catch { return null; }
   }
   async function refreshPrecall() {
-    const loaded = await fetchPrecall(passcode.trim());
-    setPrecall(loaded?.precall ?? null);
-    if (loaded) setPrecallRoomKind(loaded.roomKind);
+    if (!session) return;
+    const loaded = await fetchRoomContext(passcode.trim(), session.room_kind);
+    setPrecall(loaded.precall);
+    if (loaded.roomKind) setPrecallRoomKind(loaded.roomKind);
   }
   async function refreshRoom() {
-    setSession(await fetchAccessSession());
-    await refreshPrecall();
-    setOffer(await fetchOffer(passcode.trim()));
-    setUpdates(await fetchUpdates(passcode.trim()));
+    const nextSession = await fetchAccessSession();
+    const context = await fetchRoomContext(passcode.trim(), nextSession.room_kind);
+    const [nextOffer, nextUpdates] = await Promise.all([
+      context.hasMerchantOffer ? fetchOffer(passcode.trim()) : Promise.resolve(null),
+      context.hasTimeline ? fetchUpdates(passcode.trim()) : Promise.resolve(null),
+    ]);
+    setSession(nextSession);
+    setPrecall(context.precall);
+    if (context.roomKind) setPrecallRoomKind(context.roomKind);
+    setOffer(nextOffer);
+    setUpdates(nextUpdates);
   }
   async function openInvite() {
     if (!isValidRoomPin(passcode.trim())) return;
     setIsAccessing(true); setStatus("");
     try {
       const data = await fetchAccessSession();
-      const prep = await fetchPrecall(passcode.trim());
-      const waitingOffer = await fetchOffer(passcode.trim());
-      const fileUpdates = await fetchUpdates(passcode.trim());
+      const context = await fetchRoomContext(passcode.trim(), data.room_kind);
+      const [waitingOffer, fileUpdates] = await Promise.all([
+        context.hasMerchantOffer ? fetchOffer(passcode.trim()) : Promise.resolve(null),
+        context.hasTimeline ? fetchUpdates(passcode.trim()) : Promise.resolve(null),
+      ]);
       setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus("");
-      setPrecall(prep?.precall ?? null); setPrecallRoomKind(prep?.roomKind ?? "dealer"); setPrecallLoaded(true);
+      setPrecall(context.precall); setPrecallRoomKind(context.roomKind ?? "dealer"); setPrecallLoaded(true);
       setOffer(waitingOffer); setUpdates(fileUpdates);
       // A booked call lands on its checklist until it is done; the URL still wins.
-      if (prep && !prep.precall.complete && !searchParams.get("tab")) setActiveTab("precall");
+      if (context.precall && !context.precall.complete && !searchParams.get("tab")) setActiveTab("precall");
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
@@ -384,8 +415,8 @@ export default function BucketRequestPage() {
       {activeTab === "documents" && activeRequestedDocument ? <div className="application-room-upload-target" aria-live="polite"><span><Icon name="check" size={15} aria-hidden="true" /></span><div><b>Adding files to {activeRequestedDocument.name}</b><small>Files selected below will be attached to this exact request.</small></div><button onClick={() => setActiveRequestedDocumentId("")}>Clear selection</button></div> : null}
       {activeTab === "documents" ? <section className="application-room-section application-room-documents"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Documents</span><h2>Upload and review file history</h2></div><span className="application-room-count">{uploadedFiles.length} received</span></div><div className="application-room-document-grid"><div className="application-room-upload-column"><div className="application-room-identity"><label className="application-room-field"><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label className="application-room-field"><span>Email optional</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><input ref={fileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addFiles(event.target.files)} /><button className={`application-room-dropzone ${isDragging ? "dragging" : ""}`} onClick={() => fileInputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setIsDragging(false)} onDrop={onDrop}><Icon name="upload" size={24} /><b>Drop files here or click to browse</b><span>PDF, spreadsheet, image, CSV, or ZIP</span></button>{files.length ? <div className="application-room-queue">{files.map((item) => <div key={item.id}><span className="application-room-file-icon"><Icon name="file" size={15} /></span><div className="application-room-file-name"><b>{item.file.name}</b><small>{formatSize(item.file.size)} · {item.message || item.status}</small></div><select value={item.requestedDocumentId} onChange={(event) => { const requestedDocumentId = event.target.value; updateFileState(item.id, { requestedDocumentId, status: "ready", message: undefined, requiresRetarget: false }); if (requestedDocumentId) { setActiveRequestedDocumentId(requestedDocumentId); setRequiresExplicitUploadTarget(false); } }} disabled={isUploading || item.status === "uploaded"}>{item.requiresRetarget ? <option value="" disabled>Choose the current request...</option> : !supportingDoc ? <option value="">Supporting / Other</option> : null}{session.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}</select>{item.status === "uploaded" ? <span className="application-room-received">Received</span> : <button className="application-room-icon-button" aria-label={`Remove ${item.file.name}`} onClick={() => setFiles((current) => current.filter((row) => row.id !== item.id))}><Icon name="x" size={14} /></button>}</div>)}</div> : null}{session.allow_notes ? <label className="application-room-field"><span>Note for this upload</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the review team" /></label> : null}<button className="application-room-primary" disabled={!canSubmit || isUploading} onClick={() => void submitDocuments()}>{isUploading ? "Submitting securely..." : `Submit ${files.filter((item) => item.status !== "uploaded").length || ""} file${files.filter((item) => item.status !== "uploaded").length === 1 ? "" : "s"}`}</button>{status ? <div className={`application-room-alert ${isUploadErrorStatus(status) ? "bad" : "good"}`}>{status}</div> : null}</div><aside className="application-room-history"><div className="application-room-history-head"><h3>Received files</h3><span>{uploadedFiles.length}</span></div><div className="application-room-history-list">{uploadedFiles.map((file) => <ReceivedFileRow key={file.id} file={file} />)}{!uploadedFiles.length ? <div className="application-room-empty">Uploaded files will appear here.</div> : null}</div></aside></div></section> : null}
 
-      {activeTab === "banking" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">LLC accounts only</span><h2>Business banking</h2><p>Connect the company&apos;s operating accounts or provide six months of business bank statements.</p></div></div>{bankEvidence?.banking_access_complete ? <div className="application-room-alert good"><b>Banking evidence complete.</b> {bankEvidence.statement_coverage_complete ? `${bankEvidence.accepted_statement_months.length} of ${bankEvidence.required_statement_months} statement months accepted.` : `${bankEvidence.connected_institutions} institution${bankEvidence.connected_institutions === 1 ? "" : "s"} connected.`}</div> : null}{!bankEvidence?.statement_coverage_complete || Boolean(bankEvidence.connected_institutions) ? <RoomActions token={token} passcode={passcode.trim()} view="banking" onChanged={() => { void refreshRoom(); }} /> : null}<button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />{bankEvidence?.statement_coverage_complete ? "View uploaded statements" : "Upload bank statements instead"}</button></section> : null}
-      {activeTab === "agreements" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Electronic signatures</span><h2>Agreements</h2><p>Review and sign only the documents assigned to this application room.</p></div></div><RoomActions token={token} passcode={passcode.trim()} view="agreements" onChanged={() => { void refreshRoom(); }} /></section> : null}
+      {activeTab === "banking" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">LLC accounts only</span><h2>Business banking</h2><p>Connect the company&apos;s operating accounts or provide six months of business bank statements.</p></div></div>{bankEvidence?.banking_access_complete ? <div className="application-room-alert good"><b>Banking evidence complete.</b> {bankEvidence.statement_coverage_complete ? `${bankEvidence.accepted_statement_months.length} of ${bankEvidence.required_statement_months} statement months accepted.` : `${bankEvidence.connected_institutions} institution${bankEvidence.connected_institutions === 1 ? "" : "s"} connected.`}</div> : null}{session.room_kind !== "basic" && (!bankEvidence?.statement_coverage_complete || Boolean(bankEvidence.connected_institutions)) ? <RoomActions token={token} passcode={passcode.trim()} roomKind={session.room_kind} view="banking" onChanged={() => { void refreshRoom(); }} /> : null}<button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />{bankEvidence?.statement_coverage_complete ? "View uploaded statements" : "Upload bank statements instead"}</button></section> : null}
+      {activeTab === "agreements" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Electronic signatures</span><h2>Agreements</h2><p>Review and sign only the documents assigned to this application room.</p></div></div>{session.room_kind !== "basic" ? <RoomActions token={token} passcode={passcode.trim()} roomKind={session.room_kind} view="agreements" onChanged={() => { void refreshRoom(); }} /> : null}</section> : null}
       <footer className="application-room-footer"><span><Icon name="lock" size={14} />Encrypted in transit and at rest</span><span>Qualified Commercial</span></footer>
     </section>}
   </main>;

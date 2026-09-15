@@ -920,9 +920,10 @@ test("secure business banking offers Plaid and statement upload without staff co
   await captureReviewImage(page, "secure-bank-verification", testInfo);
 });
 
-test("application room lets the client add institutions and accounts", async ({ page }, testInfo) => {
+test("dealer upload room lets the client add institutions and accounts", async ({ page }, testInfo) => {
   const roomToken = "room.visual";
   const session = {
+    room_kind: "dealer",
     bucket: { name: "Northstar Logistics LLC", purpose: "Prepared for bank verification" },
     recipient_name: "Avery Morgan",
     recipient_email: "avery@example.com",
@@ -936,6 +937,10 @@ test("application room lets the client add institutions and accounts", async ({ 
     plaid_environment: "production",
     bank_consent_granted: true,
     bank_consent_disclosure: "Authorized for verified business bank evidence.",
+    plaid_assets_enabled: true,
+    plaid_statements_enabled: true,
+    plaid_selected_products: ["assets", "statements"],
+    plaid_available_products: ["assets", "statements"],
     bank_connections: [
       {
         id: "50000000-0000-0000-0000-000000000001",
@@ -949,6 +954,12 @@ test("application room lets the client add institutions and accounts", async ({ 
         is_primary_operating: true,
         last_pulled_at: "2026-08-24T14:00:00Z",
         statement_months: ["2026-05", "2026-06", "2026-07"],
+        products: ["assets", "statements"],
+        consented_products: ["assets", "statements"],
+        billed_products: ["assets", "statements"],
+        unavailable_products: [],
+        pending_products: [],
+        authorization_state: "authorized",
       },
     ],
     signable: [],
@@ -988,9 +999,72 @@ test("application room lets the client add institutions and accounts", async ({ 
   await captureReviewImage(page, "application-room-multiple-banks", testInfo);
 });
 
+test("application upload room uses only its declared capability endpoints", async ({ page }) => {
+  const roomToken = "room.application-capabilities";
+  const session = {
+    room_kind: "application",
+    bucket: { name: "Northstar Logistics LLC", purpose: "Prepared for bank verification" },
+    recipient_name: "Avery Morgan",
+    recipient_email: "avery@example.com",
+    allow_notes: true,
+    requested_documents: [],
+    files: [],
+  };
+  const state = {
+    business_name: "Northstar Logistics LLC",
+    precall: null,
+    merchant_offer: null,
+    banking: {
+      enabled: true,
+      environment: "production",
+      consent_granted: false,
+      disclosure_text: "Authorized for verified business bank evidence.",
+      items: [],
+      assets_enabled: true,
+      statements_enabled: true,
+      selected_products: ["assets", "statements"],
+      available_products: ["assets", "statements"],
+    },
+    signable: [],
+  };
+  let dealerFeatureCalls = 0;
+  let merchantOfferCalls = 0;
+  let applicationStateCalls = 0;
+
+  await page.route(new RegExp(`/api/v1/buckets/request/${roomToken.replace(".", "\\.")}(?:/access)?$`), async (route) => {
+    if (route.request().url().endsWith("/access")) {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(session) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ bucket: session.bucket, recipient_name: session.recipient_name, recipient_email: session.recipient_email, requires_passcode: true, status: "active" }) });
+  });
+  await page.route(new RegExp(`/api/v1/dealer-os/public/room/${roomToken.replace(".", "\\.")}/features$`), async (route) => {
+    dealerFeatureCalls += 1;
+    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/public/room/${roomToken.replace(".", "\\.")}/(?:state|merchant-offer|timeline)$`), async (route) => {
+    if (route.request().url().endsWith("/state")) {
+      applicationStateCalls += 1;
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(state) });
+      return;
+    }
+    if (route.request().url().endsWith("/merchant-offer")) merchantOfferCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ events: [] }) });
+  });
+
+  await page.goto(`/buckets/request/${roomToken}?tab=banking`, { waitUntil: "domcontentloaded" });
+  await page.getByLabel("Room PIN").fill("176646");
+  await page.getByRole("button", { name: "Open application room" }).click();
+  await expect(page.getByRole("checkbox", { name: "I have read and agree to the above." })).toBeVisible();
+  expect(applicationStateCalls).toBeGreaterThanOrEqual(2);
+  expect(dealerFeatureCalls).toBe(0);
+  expect(merchantOfferCalls).toBe(0);
+});
+
 test("application room accepts six statement months without another Plaid prompt", async ({ page }) => {
   const roomToken = "room.uploaded-statements";
   const session = {
+    room_kind: "application",
     bucket: { name: "Northstar Logistics LLC", purpose: "Prepared for bank verification" },
     recipient_name: "Avery Morgan",
     recipient_email: "avery@example.com",
@@ -1037,15 +1111,19 @@ test("application room accepts six statement months without another Plaid prompt
       }),
     });
   });
+  let unexpectedDealerFeatureCalls = 0;
+  let unexpectedMerchantOfferCalls = 0;
   await page.route(new RegExp(`/api/v1/dealer-os/public/room/${roomToken.replace(".", "\\.")}/features$`), async (route) => {
-    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    unexpectedDealerFeatureCalls += 1;
+    await route.fulfill({ status: 500, contentType: "application/json", body: "{}" });
   });
   await page.route(new RegExp(`/api/v1/application-profiles/public/room/${roomToken.replace(".", "\\.")}/(?:state|merchant-offer|timeline)$`), async (route) => {
     if (route.request().url().endsWith("/state")) {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ precall: null }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ precall: null, merchant_offer: null }) });
       return;
     }
-    await route.fulfill({ status: 404, contentType: "application/json", body: "{}" });
+    if (route.request().url().endsWith("/merchant-offer")) unexpectedMerchantOfferCalls += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ events: [] }) });
   });
 
   await page.goto(`/buckets/request/${roomToken}?tab=banking`, { waitUntil: "domcontentloaded" });
@@ -1056,6 +1134,8 @@ test("application room accepts six statement months without another Plaid prompt
   await expect(page.getByText("6 of 6 statement months accepted.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Add another institution" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: "View uploaded statements" })).toBeVisible();
+  expect(unexpectedDealerFeatureCalls).toBe(0);
+  expect(unexpectedMerchantOfferCalls).toBe(0);
   await assertStableGeometry(page);
 });
 
