@@ -316,6 +316,83 @@ export type ApplicationUnderwritingPatch = Partial<{
   reviewer_notes: string | null;
 }>;
 
+export type ClientTermsFunderType = "bank" | "credit_union" | "private_fund" | "private_capital" | "family_office" | "balance_sheet" | "warehouse" | "table_funder" | "other";
+export type ClientTermsRepaymentFrequency = "daily" | "weekly" | "biweekly" | "monthly" | "custom";
+export type ClientTermsDebtTreatment = "additive" | "refinance";
+
+export type ClientTermsCalculation = {
+  periodic_payment: number | null;
+  payment_count: number | null;
+  payments_per_year: number | null;
+  annual_debt_service: number | null;
+  total_repayment: number | null;
+  financing_cost: number | null;
+  dscr_before: number | null;
+  dscr_after: number | null;
+  cash_flow_value: number | null;
+  cash_flow_label: string;
+  current_annual_debt_service: number | null;
+  annual_property_carrying_costs: number | null;
+  projected_annual_debt_service: number | null;
+  dscr_method: "business" | "real_estate";
+  dscr_status: "ready" | "needs_evidence";
+  dscr_explanation: string;
+  source: string;
+};
+
+export type ApplicationClientTerms = {
+  profile_id: string;
+  version: number;
+  status: "not_started" | "draft" | "issued";
+  loan_type: string | null;
+  loan_type_label: string | null;
+  amount: number | null;
+  apr_pct: number | null;
+  term_months: number | null;
+  funder_type: ClientTermsFunderType | null;
+  funder_name: string | null;
+  repayment_frequency: ClientTermsRepaymentFrequency;
+  custom_payments_per_year: number | null;
+  custom_repayment_label: string | null;
+  debt_service_treatment: ClientTermsDebtTreatment;
+  retained_annual_debt_service: number | null;
+  expiration_days: number | null;
+  closing_estimate_days: number | null;
+  co_brand_enabled: boolean;
+  sponsor_name: string | null;
+  client_note: string | null;
+  conditions: string[];
+  issued_at: string | null;
+  expires_on: string | null;
+  updated_at: string | null;
+  updated_by_user_id: string | null;
+  client_email: string | null;
+  direct_client_contact_suppressed: boolean;
+  loan_type_options: Array<{ value: string; label: string; description: string | null }>;
+  calculation: ClientTermsCalculation;
+};
+
+export type ApplicationClientTermsWrite = {
+  expected_version: number;
+  loan_type: string;
+  amount: number;
+  apr_pct: number;
+  term_months: number;
+  funder_type: ClientTermsFunderType;
+  funder_name: string | null;
+  repayment_frequency: ClientTermsRepaymentFrequency;
+  custom_payments_per_year: number | null;
+  custom_repayment_label: string | null;
+  debt_service_treatment: ClientTermsDebtTreatment;
+  retained_annual_debt_service: number | null;
+  expiration_days: number;
+  closing_estimate_days: number;
+  co_brand_enabled: boolean;
+  sponsor_name: string | null;
+  client_note: string | null;
+  conditions: string[];
+};
+
 export type FileOwner = {
   id: string;
   full_name: string;

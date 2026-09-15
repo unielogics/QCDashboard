@@ -71,6 +71,7 @@ import { ExtractedFactsReview } from "@/components/application/ExtractedFactsRev
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
+import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
@@ -177,11 +178,7 @@ type LeadDetail = {
 
 type UnderwritingDraft = {
   underwriting_status: UnderwritingLifecycleStatus;
-  approved_amount: string;
-  term_sheet_amount: string;
-  current_dscr: string;
   target_dscr: string;
-  approved_dscr: string;
   reviewer_notes: string;
 };
 
@@ -313,11 +310,7 @@ function presentContact(value?: string | null): string {
 function emptyUnderwritingDraft(): UnderwritingDraft {
   return {
     underwriting_status: "collecting_docs",
-    approved_amount: "",
-    term_sheet_amount: "",
-    current_dscr: "",
     target_dscr: "",
-    approved_dscr: "",
     reviewer_notes: "",
   };
 }
@@ -326,11 +319,7 @@ function underwritingDraftFromState(state: ApplicationUnderwritingState | null):
   if (!state) return emptyUnderwritingDraft();
   return {
     underwriting_status: state.underwriting_status,
-    approved_amount: state.approved_amount == null ? "" : String(state.approved_amount),
-    term_sheet_amount: state.term_sheet_amount == null ? "" : String(state.term_sheet_amount),
-    current_dscr: state.current_dscr == null ? "" : String(state.current_dscr),
     target_dscr: state.target_dscr == null ? "" : String(state.target_dscr),
-    approved_dscr: state.approved_dscr == null ? "" : String(state.approved_dscr),
     reviewer_notes: state.reviewer_notes || "",
   };
 }
@@ -1294,6 +1283,26 @@ function LeadDetailPanel({
     }
   }, [canUnderwrite, getToken, loadUnderwritingState, profileId]);
 
+  const refreshUnderwritingFromTerms = useCallback(async () => {
+    const activeProfileId = underwriting?.profile_id ?? profileId;
+    if (!activeProfileId || !canUnderwrite) return;
+    try {
+      const authToken = await getToken();
+      const state = await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting`, {
+        authToken: authToken ?? undefined,
+      });
+      setUnderwriting(state);
+      // Terms may advance the lifecycle, but must never erase target DSCR or
+      // reviewer notes that are still being drafted in the parent panel.
+      setUnderwritingDraft((current) => ({
+        ...current,
+        underwriting_status: state.underwriting_status,
+      }));
+    } catch (reason) {
+      setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be refreshed."));
+    }
+  }, [canUnderwrite, getToken, profileId, underwriting?.profile_id]);
+
   const handleCockpitResponse = useCallback((response: IntakeResponse) => {
     onCockpitResponse(response);
     // Uploads and accepted/overridden evidence can change readiness without
@@ -1363,11 +1372,7 @@ function LeadDetailPanel({
   function saveUnderwritingDraft() {
     void saveUnderwritingPatch({
       underwriting_status: underwritingDraft.underwriting_status,
-      approved_amount: numberOrNull(underwritingDraft.approved_amount),
-      term_sheet_amount: numberOrNull(underwritingDraft.term_sheet_amount),
-      current_dscr: numberOrNull(underwritingDraft.current_dscr),
       target_dscr: numberOrNull(underwritingDraft.target_dscr),
-      approved_dscr: numberOrNull(underwritingDraft.approved_dscr),
       reviewer_notes: underwritingDraft.reviewer_notes.trim() || null,
     });
   }
@@ -1988,8 +1993,8 @@ function LeadDetailPanel({
                 <div className="grid g12">
                 <Panel
                   title="Underwriting"
-                  sub="Control the file lifecycle, approved amounts, DSCR overrides, and close outcome."
-                  actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}<Btn variant="pri" onClick={saveUnderwritingDraft} disabled={underwritingLoading || underwritingSaving}>{underwritingSaving ? "Saving..." : "Save underwriting"}</Btn></Row>}
+                  sub="Build client-ready terms, review the evidence-based DSCR, and control the file lifecycle."
+                  actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}<Btn variant="pri" onClick={saveUnderwritingDraft} disabled={underwritingLoading || underwritingSaving}>{underwritingSaving ? "Saving..." : "Save review"}</Btn></Row>}
                 >
                   {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
                   {underwritingLoading ? <div className="empty">Loading underwriting controls...</div> : (
@@ -2033,31 +2038,23 @@ function LeadDetailPanel({
                         onStatus={setMerchantOfferStatus}
                         onTargetDscr={(value) => setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }))}
                       />
-                      <div className="fldgrid three">
+                      {!isDealerFile && underwriting?.profile_id ? <ApplicationClientTermsPanel key={underwriting.profile_id} profileId={underwriting.profile_id} onSaved={refreshUnderwritingFromTerms} /> : null}
+                      <div className="terms-review-controls">
+                        <div className="terms-section-title"><span>4</span><div><b>Reviewer controls</b><small>These notes stay internal and never appear on the client PDF.</small></div></div>
+                        <div className="fldgrid two">
                         <Field label="Lifecycle status">
                           <Select value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>
                             {PIPELINE_LIFECYCLE.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
                           </Select>
                         </Field>
-                        <Field label="Approved amount">
-                          <Input inputMode="decimal" value={underwritingDraft.approved_amount} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, approved_amount: event.target.value })} placeholder="0.00" />
-                        </Field>
-                        <Field label="Term-sheet amount">
-                          <Input inputMode="decimal" value={underwritingDraft.term_sheet_amount} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, term_sheet_amount: event.target.value })} placeholder="0.00" />
-                        </Field>
-                        <Field label="Current DSCR">
-                          <Input inputMode="decimal" value={underwritingDraft.current_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, current_dscr: event.target.value })} placeholder="1.00" />
-                        </Field>
-                        <Field label="Target DSCR">
+                        <Field label="Policy target DSCR">
                           <Input inputMode="decimal" value={underwritingDraft.target_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, target_dscr: event.target.value })} placeholder="1.25" />
-                        </Field>
-                        <Field label="Approved DSCR">
-                          <Input inputMode="decimal" value={underwritingDraft.approved_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, approved_dscr: event.target.value })} placeholder="1.25" />
                         </Field>
                       </div>
                       <Field label="Reviewer notes">
                         <Textarea rows={6} value={underwritingDraft.reviewer_notes} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, reviewer_notes: event.target.value })} placeholder="Record underwriting conditions, exceptions, committee notes, or close reason." />
                       </Field>
+                      </div>
                       <div className="underwriting-close-actions">
                         <Btn onClick={() => changeUnderwritingStatus("term_sheet_provided")} disabled={underwritingSaving}>Term sheet provided</Btn>
                         <Btn onClick={() => changeUnderwritingStatus("approved")} disabled={underwritingSaving}>Approved</Btn>

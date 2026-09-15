@@ -103,14 +103,18 @@ async function mockEmptyOperatorPipeline(page: Page) {
   });
 }
 
-async function mockAiIntakeBankingWorkspace(page: Page, reviewResult: Record<string, unknown> = {}) {
+async function mockAiIntakeBankingWorkspace(
+  page: Page,
+  reviewResult: Record<string, unknown> = {},
+  variant = "dealer_gatekeeper_v1",
+) {
   const intakeId = "20000000-0000-0000-0000-000000000001";
   const profileId = "20000000-0000-0000-0000-000000000002";
   const bucketId = "20000000-0000-0000-0000-000000000003";
   const uploadedFiles: string[] = [];
   const lead = {
     id: intakeId,
-    variant: "dealer_gatekeeper_v1",
+    variant,
     bucket_id: bucketId,
     bucket_name: "UnieLogics secure room",
     full_name: "Jonathan Franco",
@@ -200,6 +204,101 @@ async function mockAiIntakeBankingWorkspace(page: Page, reviewResult: Record<str
   });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/underwriting$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ profile_id: profileId, source_kind: "intake", source_id: intakeId, loan_id: null, underwriting_status: "submitted", approved_amount: null, term_sheet_amount: null, current_dscr: null, target_dscr: null, approved_dscr: null, close_outcome: null, reviewer_notes: null, updated_by_user_id: null, updated_at: null }) });
+  });
+  const clientTermsBase = {
+    profile_id: profileId,
+    version: 0,
+    status: "not_started",
+    loan_type: null,
+    loan_type_label: null,
+    amount: 1_000_000,
+    apr_pct: null,
+    term_months: null,
+    funder_type: null,
+    funder_name: null,
+    repayment_frequency: "monthly",
+    custom_payments_per_year: null,
+    custom_repayment_label: null,
+    debt_service_treatment: "additive",
+    retained_annual_debt_service: null,
+    expiration_days: 7,
+    closing_estimate_days: 5,
+    co_brand_enabled: true,
+    sponsor_name: "UrChoice",
+    client_note: null,
+    conditions: [],
+    issued_at: null,
+    expires_on: null,
+    updated_at: null,
+    updated_by_user_id: null,
+    client_email: "jonathan@example.com",
+    direct_client_contact_suppressed: false,
+    loan_type_options: [
+      { value: "business_term_loan", label: "Business Term Loan", description: "Amortizing working-capital financing" },
+      { value: "commercial_line", label: "Commercial Line of Credit", description: "Revolving capital" },
+    ],
+    calculation: {
+      periodic_payment: null,
+      payment_count: null,
+      payments_per_year: null,
+      annual_debt_service: null,
+      total_repayment: null,
+      financing_cost: null,
+      dscr_before: 1.5,
+      dscr_after: null,
+      cash_flow_value: 600_000,
+      cash_flow_label: "Bankable annual EBITDA",
+      current_annual_debt_service: 400_000,
+      annual_property_carrying_costs: null,
+      projected_annual_debt_service: null,
+      dscr_method: "business",
+      dscr_status: "needs_evidence",
+      dscr_explanation: "Enter proposed terms to calculate the after-acceptance DSCR.",
+      source: "Verified business financial evidence",
+    },
+  };
+  let clientTermsVersion = 0;
+  let clientTerms: Record<string, unknown> = clientTermsBase;
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/client-terms$`), async (route) => {
+    if (route.request().method() === "PUT") {
+      const payload = route.request().postDataJSON() as Record<string, unknown>;
+      if (payload.expected_version !== clientTermsVersion) {
+        await route.fulfill({ status: 409, contentType: "application/json", body: JSON.stringify({ detail: "These terms changed in another session." }) });
+        return;
+      }
+      const amount = Number(payload.amount);
+      const apr = Number(payload.apr_pct);
+      const months = Number(payload.term_months);
+      const periods = payload.repayment_frequency === "custom" ? Number(payload.custom_payments_per_year) : 12;
+      const count = Math.max(1, Math.round(months * periods / 12));
+      const rate = apr / 100 / periods;
+      const payment = rate === 0 ? amount / count : amount * rate / (1 - Math.pow(1 + rate, -count));
+      const annual = payment * Math.min(count, periods);
+      const projected = 400_000 + annual;
+      clientTermsVersion += 1;
+      clientTerms = {
+        ...clientTermsBase,
+        ...payload,
+        version: clientTermsVersion,
+        status: "draft",
+        loan_type_label: payload.loan_type === "commercial_line" ? "Commercial Line of Credit" : "Business Term Loan",
+        updated_at: "2026-09-15T17:00:00Z",
+        calculation: {
+          ...clientTermsBase.calculation,
+          periodic_payment: Number(payment.toFixed(2)),
+          payment_count: count,
+          payments_per_year: periods,
+          annual_debt_service: Number(annual.toFixed(2)),
+          total_repayment: Number((payment * count).toFixed(2)),
+          financing_cost: Number((payment * count - amount).toFixed(2)),
+          dscr_after: Number((600_000 / projected).toFixed(3)),
+          projected_annual_debt_service: Number(projected.toFixed(2)),
+          dscr_status: "ready",
+          dscr_explanation: "Current and projected DSCR are calculated from the file evidence and proposed payment schedule.",
+        },
+      };
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(clientTerms) });
   });
   await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/extracted-facts$`), async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
@@ -821,6 +920,32 @@ test("AI intake program readiness stays usable across supported widths", async (
   await expect(page.getByRole("heading", { name: "Combined missing-item follow-up" })).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "ai-intake-program-readiness", testInfo);
+});
+
+test("client terms calculate from formatted amount, APR, and time without manual DSCR fields", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The full terms editor is exercised once at its widest release viewport.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page, {}, "business_underwriting_v1");
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Underwriting" }).click();
+
+  await expect(page.getByRole("heading", { name: /Structure the offer once/i })).toBeVisible();
+  await page.getByLabel("Loan type").selectOption("business_term_loan");
+  await page.getByLabel("Amount").fill("$750,000");
+  await page.getByLabel("APR").fill("12.99%");
+  await page.getByLabel("Time in months").fill("36");
+  await page.getByLabel("Funder type").selectOption("private_fund");
+
+  const preview = page.getByLabel("Live client terms preview");
+  await expect(preview).toContainText("$750,000");
+  await expect(preview).toContainText("12.99%");
+  await expect(preview).toContainText("1.50x");
+  await expect(preview).toContainText("0.85x");
+  await page.getByRole("button", { name: "Save client terms" }).click();
+  await expect(page.getByText(/Client terms v1 saved/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Issue & download" })).toBeEnabled();
+  await assertStableGeometry(page);
+  await page.locator(".client-terms-shell").evaluate((element) => element.scrollIntoView({ block: "start" }));
+  await captureReviewImage(page, "ai-intake-client-terms", testInfo);
 });
 
 test("AI review puts its compact overview first and opens the exact missing requirement", async ({ page }) => {
