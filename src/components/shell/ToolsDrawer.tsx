@@ -12,8 +12,9 @@
 // ⌘/Ctrl+J opens it, kept clear of ⌘K for the same reason.
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { restoreTransientFocus } from "@/lib/focusManagement";
 import type { ToolGroup } from "./nav.config";
 
 export function ToolsDrawer({
@@ -25,20 +26,61 @@ export function ToolsDrawer({
   onClose: () => void;
   groups: ToolGroup[];
 }) {
-  useEffect(() => {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const activeTarget = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const returnTarget = activeTarget?.matches(".table-workspace")
+      ? activeTarget.querySelector<HTMLElement>(".table-workspace__focus-button")
+      : activeTarget;
+    const first = dialogRef.current?.querySelector<HTMLElement>('a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])');
+    (first ?? dialogRef.current)?.focus({ preventScroll: true });
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
     const onKey = (e: KeyboardEvent) => {
-      if (open && e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (!focusable.length) {
+        e.preventDefault();
+        dialogRef.current.focus({ preventScroll: true });
+        return;
+      }
+      const firstItem = focusable[0];
+      const lastItem = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === firstItem) {
+        e.preventDefault();
+        lastItem.focus();
+      } else if (!e.shiftKey && document.activeElement === lastItem) {
+        e.preventDefault();
+        firstItem.focus();
+      }
     };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    document.addEventListener("keydown", onKey, true);
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      document.body.style.overflow = previousOverflow;
+      restoreTransientFocus(returnTarget);
+    };
+  }, [open]);
 
   if (!open || !groups.length) return null;
 
   return (
     <>
-      <div className="navmore" onClick={onClose} aria-hidden="true" />
-      <div className="navmore-p" role="dialog" aria-modal="true" aria-label="All tools">
+      <div className="navmore" onClick={() => onCloseRef.current()} aria-hidden="true" />
+      <div ref={dialogRef} className="navmore-p" role="dialog" aria-modal="true" aria-label="All tools" tabIndex={-1}>
         {/* `.hd` ships a 2px bottom margin for a page header sitting straight
             on top of its content; here it is a dialog title with a grid under
             it, so `.mb` takes the spacing. */}
@@ -57,7 +99,7 @@ export function ToolsDrawer({
               <div className="lbl toolgrp">{g.label}</div>
               <div className="grid cols-auto g6">
                 {g.items.map((it) => (
-                  <Link key={it.href} href={it.href} className="toollink" onClick={onClose}>
+                  <Link key={it.href} href={it.href} className="toollink" onClick={() => onCloseRef.current()}>
                     <Icon name={it.icon} size={17} />
                     <span className="grow">
                       <b>{it.label}</b>

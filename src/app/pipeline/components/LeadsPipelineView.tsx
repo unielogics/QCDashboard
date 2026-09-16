@@ -8,15 +8,16 @@ import { QC_FMT } from "@/lib/fmt";
 import {
   Btn,
   CellChip,
-  Panel,
   Seg,
   Tag,
   WarnLine,
   type ChipTone,
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
-import { useClients, useCreateDeal, useLoans, usePipelineClientSummary, type DealCreateBody } from "@/hooks/useApi";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
+import { useClients, useCreateDeal, useCurrentUser, useLoans, usePipelineClientSummary, type DealCreateBody } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
+import { usePinnedRows } from "@/lib/tablePinning";
 import type { Client, ClientStage, ClientType, DealType, Loan, PipelineClientSummary } from "@/lib/types";
 import { AiStatusBadge } from "@/components/AiStatusBadge";
 import { useAiAgents, useAssignWarmupLeads } from "@/hooks/useAiAgents";
@@ -111,6 +112,7 @@ interface Props {
 
 export function LeadsPipelineView({ view, search }: Props) {
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
   const isAgent = profile.role === "broker";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
   // Scope hint: agents always run "mine" so the network surface matches
@@ -172,6 +174,21 @@ export function LeadsPipelineView({ view, search }: Props) {
     return rows;
   }, [enriched, search, sideFilter]);
 
+  const relationshipTableStorageKey = currentUser?.id
+    ? `pipeline:relationships:${currentUser.id}`
+    : null;
+  const {
+    rows: orderedVisible,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows: visible,
+    getId: (client) => client.id,
+    storageKey: relationshipTableStorageKey,
+  });
+
   const sideCounts = useMemo(() => ({
     buyer: enriched.filter((c) => (c.client_type ?? "buyer") === "buyer").length,
     seller: enriched.filter((c) => c.client_type === "seller").length,
@@ -199,6 +216,8 @@ export function LeadsPipelineView({ view, search }: Props) {
     clientId: string;
     x: number;
     y: number;
+    portalHost: HTMLElement | null;
+    returnFocus: HTMLElement | null;
   } | null>(null);
   function openFile(client: EnrichedClient) {
     const s = summariesByClient.get(client.id);
@@ -250,97 +269,126 @@ export function LeadsPipelineView({ view, search }: Props) {
       <>
         <RelationshipSummaryRow clients={visible} />
         {header}
-        <Panel
-          noPad
+        <TableWorkspace
           title="Agent Relationship Pipeline"
-          sub="Buyer and seller work stays agent-owned here. Funding files open only after handoff."
+          description="Buyer and seller work stays agent-owned here. Funding files open only after handoff."
+          storageKey={relationshipTableStorageKey ?? undefined}
+          ariaLabel="Agent relationship pipeline"
+          actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
         >
           <div
-            className="lbl"
-            style={{
-              display: "grid",
-              gridTemplateColumns: gridCols,
-              gap: 12,
-              padding: "12px 16px",
-              background: "var(--sunken2)",
-              borderBottom: "1px solid var(--line2)",
-            }}
+            className="gridhd"
+            style={{ gridTemplateColumns: "minmax(0, 1fr) 44px", gap: 0, padding: 0 }}
           >
-            <div>Relationship</div>
-            <div>Workflow</div>
-            <div>Property</div>
-            <div>Readiness</div>
-            <div>Funding File</div>
-            <div>Next Agent Move</div>
+            <div
+              className="lbl"
+              style={{ display: "grid", gridTemplateColumns: gridCols, gap: 12, padding: "12px 16px" }}
+            >
+              <div>Relationship</div>
+              <div>Workflow</div>
+              <div>Property</div>
+              <div>Readiness</div>
+              <div>Funding File</div>
+              <div>Next Agent Move</div>
+            </div>
+            <div className="lbl" style={{ display: "grid", placeItems: "center" }}>Pin</div>
           </div>
-          {visible.map((client) => {
+          {orderedVisible.map((client) => {
             const summary = summariesByClient.get(client.id);
             const tint = fundingTint(summary);
+            const pinned = isPinned(client.id);
             return (
-            <button
-              key={client.id}
-              onClick={() => openFile(client)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                setAssignAiFor({ clientId: client.id, x: e.clientX, y: e.clientY });
-              }}
-              // The funding tint + left stripe are data-derived — a row already
-              // in funding has to be spottable without reading it.
-              style={{
-                display: "grid",
-                gridTemplateColumns: gridCols,
-                gap: 12,
-                padding: "14px 16px",
-                borderBottom: "1px solid var(--line)",
-                borderLeft: `3px solid ${tint ? tint.border : "transparent"}`,
-                alignItems: "center",
-                color: "var(--ink)",
-                background: tint ? tint.bg : "transparent",
-                cursor: "pointer",
-                textAlign: "left",
-                width: "100%",
-              }}
-            >
-              <div style={{ minWidth: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
-                  <b style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {client.name}
-                  </b>
-                  <SidePill type={clientSide(client)} />
-                </div>
-                <div className="sub row">
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {client.email ?? "No email"}{client.city ? ` · ${client.city}` : ""}
-                  </span>
-                  {/* Owner reference — operator-only. Helps super-admin /
-                      UW see which agent owns each relationship without
-                      drilling in. Agents see only their own clients so
-                      this is implicit for them. */}
-                  {isInternal && client.broker_name ? (
-                    <CellChip tone="acc">Agent: {client.broker_name}</CellChip>
-                  ) : null}
+              <div
+                key={client.id}
+                className={pinned ? "gridrow table-row-pinned" : "gridrow"}
+                data-pinned={pinned ? "true" : undefined}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) 44px",
+                  gap: 0,
+                  padding: 0,
+                  borderLeft: `3px solid ${tint ? tint.border : "transparent"}`,
+                  alignItems: "center",
+                  background: pinned ? undefined : tint ? tint.bg : "transparent",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => openFile(client)}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    const workspace = e.currentTarget.closest<HTMLElement>(".table-workspace");
+                    setAssignAiFor({
+                      clientId: client.id,
+                      x: e.clientX,
+                      y: e.clientY,
+                      portalHost: workspace?.dataset.focused === "true" ? workspace : null,
+                      returnFocus: e.currentTarget,
+                    });
+                  }}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: gridCols,
+                    gap: 12,
+                    padding: "14px 16px",
+                    border: 0,
+                    alignItems: "center",
+                    color: "var(--ink)",
+                    background: "transparent",
+                    cursor: "pointer",
+                    textAlign: "left",
+                    width: "100%",
+                    font: "inherit",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <b style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {client.name}
+                      </b>
+                      <SidePill type={clientSide(client)} />
+                    </div>
+                    <div className="sub row">
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {client.email ?? "No email"}{client.city ? ` · ${client.city}` : ""}
+                      </span>
+                      {/* Owner reference — operator-only. Helps super-admin /
+                          UW see which agent owns each relationship without
+                          drilling in. Agents see only their own clients so
+                          this is implicit for them. */}
+                      {isInternal && client.broker_name ? (
+                        <CellChip tone="acc">Agent: {client.broker_name}</CellChip>
+                      ) : null}
+                    </div>
+                  </div>
+                  <StagePill stage={client._stage} />
+                  <PropertyCell client={client} />
+                  <div>
+                    <b>{readinessLabel(client, client._stage)}</b>
+                    <div className="sub">FICO {client.fico ?? "not pulled"}</div>
+                  </div>
+                  <div>
+                    <div className={client._activeLoanCount > 0 ? undefined : "sub"}>
+                      <b>{client._activeLoanCount > 0 ? `${client._activeLoanCount} active` : "No file"}</b>
+                    </div>
+                    <div className="sub">
+                      {client._activeLoanValue > 0 ? QC_FMT.short(client._activeLoanValue) : "Agent owned"}
+                    </div>
+                  </div>
+                  <div>
+                    {nextMove(client, client._stage)}
+                    <PipelineSignals summary={summariesByClient.get(client.id)} />
+                  </div>
+                </button>
+                <div style={{ display: "grid", placeItems: "center" }}>
+                  <PinRowButton
+                    pinned={pinned}
+                    onToggle={() => togglePin(client.id)}
+                    label={client.name}
+                  />
                 </div>
               </div>
-              <StagePill stage={client._stage} />
-              <PropertyCell client={client} />
-              <div>
-                <b>{readinessLabel(client, client._stage)}</b>
-                <div className="sub">FICO {client.fico ?? "not pulled"}</div>
-              </div>
-              <div>
-                <div className={client._activeLoanCount > 0 ? undefined : "sub"}>
-                  <b>{client._activeLoanCount > 0 ? `${client._activeLoanCount} active` : "No file"}</b>
-                </div>
-                <div className="sub">
-                  {client._activeLoanValue > 0 ? QC_FMT.short(client._activeLoanValue) : "Agent owned"}
-                </div>
-              </div>
-              <div>
-                {nextMove(client, client._stage)}
-                <PipelineSignals summary={summariesByClient.get(client.id)} />
-              </div>
-            </button>
             );
           })}
           {visible.length === 0 && (
@@ -348,13 +396,15 @@ export function LeadsPipelineView({ view, search }: Props) {
               {search ? `No relationships match "${search}".` : "No active relationships in the pipeline right now."}
             </div>
           )}
-        </Panel>
+        </TableWorkspace>
         {createFor ? <CreateFileModal client={createFor} onClose={() => setCreateFor(null)} /> : null}
         {assignAiFor ? (
           <AIAgentAssignPicker
             clientId={assignAiFor.clientId}
             source="clients"
             anchor={{ x: assignAiFor.x, y: assignAiFor.y }}
+            portalHost={assignAiFor.portalHost}
+            returnFocus={assignAiFor.returnFocus}
             onClose={() => setAssignAiFor(null)}
           />
         ) : null}
@@ -392,6 +442,8 @@ export function LeadsPipelineView({ view, search }: Props) {
                         clientId: client.id,
                         x: e.clientX,
                         y: e.clientY,
+                        portalHost: null,
+                        returnFocus: e.currentTarget,
                       });
                     }}
                     className="kcard"
@@ -443,6 +495,8 @@ export function LeadsPipelineView({ view, search }: Props) {
           clientId={assignAiFor.clientId}
           source="clients"
           anchor={{ x: assignAiFor.x, y: assignAiFor.y }}
+          portalHost={assignAiFor.portalHost}
+          returnFocus={assignAiFor.returnFocus}
           onClose={() => setAssignAiFor(null)}
         />
       ) : null}

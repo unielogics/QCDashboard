@@ -495,12 +495,12 @@
 .toollink { display: flex; align-items: center; gap: 10px; width: 100%; padding: 7.5px 10px; border: 0; background: transparent; border-radius: 9px; color: var(--ink2); font-family: inherit; font-size: 13px; font-weight: 500; cursor: pointer; text-align: left; text-decoration: none; }
 .toollink:hover { background: var(--sunken2); }
 .toollink svg { width: 16.5px; height: 16.5px; flex-shrink: 0; opacity: 0.85; }
-.navmore { position: fixed; inset: 0; background: rgba(15, 23, 32, 0.34); z-index: 62; }
+.navmore { position: fixed; inset: 0; background: rgba(15, 23, 32, 0.34); z-index: 760; }
 .navmore-p {
   position: fixed; top: 8vh; left: 50%; transform: translateX(-50%);
   width: min(820px, 92vw); max-height: 84vh; overflow-y: auto;
   background: var(--surface); border: 1px solid var(--line2); border-radius: 16px;
-  box-shadow: var(--sh2); z-index: 63; padding: 22px 24px 24px;
+  box-shadow: var(--sh2); z-index: 761; padding: 22px 24px 24px;
 }
 
 /* Elara rail — a sticky sibling of .content, not a grid column, so opening it
@@ -1098,7 +1098,7 @@ button.pick { width: 100%; text-align: left; }
    `.callout` — that is a block in the page, this is chrome above it. */
 .toast {
   position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%);
-  z-index: 200; display: inline-flex; align-items: center; gap: 8px;
+  z-index: 650; display: inline-flex; align-items: center; gap: 8px;
   padding: 10px 16px; border-radius: 10px;
   background: var(--ink); color: #fff; font-size: 13px; font-weight: 600;
   box-shadow: var(--sh2);

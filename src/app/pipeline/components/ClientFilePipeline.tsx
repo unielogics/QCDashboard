@@ -10,10 +10,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CellChip, PageHeader, Panel, cx, type ChipTone } from "@/components/ds";
+import { Btn, CellChip, PageHeader, cx, type ChipTone } from "@/components/ds";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import { loanTypeLabel } from "@/lib/types";
-import { useMyFiles, type MyFileRow, type MyFileStatus } from "@/hooks/useApi";
+import { useCurrentUser, useMyFiles, type MyFileRow, type MyFileStatus } from "@/hooks/useApi";
 import { ClientFileModal } from "@/components/client/ClientFileModal";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 type FilterId = MyFileStatus | "all";
 
@@ -59,6 +61,7 @@ const GRID = "4px 116px minmax(0, 1.7fr) 130px minmax(0, 1.3fr) 96px 100px";
 
 export function ClientFilePipeline() {
   const { data: files = [], isLoading } = useMyFiles();
+  const { data: user } = useCurrentUser();
   const router = useRouter();
   const searchParams = useSearchParams();
   const [filter, setFilter] = useState<FilterId>("all");
@@ -67,6 +70,10 @@ export function ClientFilePipeline() {
   // (?file=&tab=), undefined for a plain row click.
   const [openInitialTab, setOpenInitialTab] = useState<string | undefined>(undefined);
   const deepLinkConsumed = useRef(false);
+  const listViewRef = useRef<HTMLDivElement | null>(null);
+  const detailViewRef = useRef<HTMLDivElement | null>(null);
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+  const hadOpenFileRef = useRef(false);
 
   // Honor a ?file=<id>&tab=<tab> deep-link (the dashboard "needs
   // attention" items point here). Fires once, after files load, then
@@ -89,10 +96,32 @@ export function ClientFilePipeline() {
     }
   }, [fileParam, tabParam, files, router]);
 
-  const openFromRow = (f: MyFileRow) => {
+  const openFromRow = (f: MyFileRow, opener?: HTMLElement) => {
+    returnFocusRef.current = opener
+      ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     setOpenInitialTab(undefined);
     setOpenFile(f);
   };
+
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (openFile) {
+        hadOpenFileRef.current = true;
+        detailViewRef.current?.focus({ preventScroll: true });
+        return;
+      }
+      if (!hadOpenFileRef.current) return;
+      hadOpenFileRef.current = false;
+      const returnTarget = returnFocusRef.current;
+      if (returnTarget?.isConnected && returnTarget.getClientRects().length > 0) {
+        returnTarget.focus({ preventScroll: true });
+      } else {
+        listViewRef.current?.focus({ preventScroll: true });
+      }
+      returnFocusRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [openFile]);
 
   const counts = useMemo(() => {
     const c: Record<MyFileStatus, number> = {
@@ -123,6 +152,19 @@ export function ClientFilePipeline() {
     });
   }, [files, filter]);
 
+  const fileTableStorageKey = user?.id ? `pipeline:my-files:${user.id}` : null;
+  const {
+    rows: orderedVisible,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows: visible,
+    getId: (file) => `${file.kind}:${file.id}`,
+    storageKey: fileTableStorageKey,
+  });
+
   // While a file is open the panel takes over the whole content area
   // (right of the sidebar) — a full in-content view, not a popup.
   // Negative margin cancels the <main> padding so the panel runs
@@ -131,7 +173,13 @@ export function ClientFilePipeline() {
     return (
       // Cancels the shell's `.content` padding exactly, the same way `.ckhead`
       // does — the hard-coded -24 predated the padding becoming a clamp().
-      <div style={{ margin: "calc(var(--pad-y) * -1) calc(var(--pad-x) * -1)" }}>
+      <div
+        ref={detailViewRef}
+        role="region"
+        aria-label={`${openFile.address || openFile.ref} file detail`}
+        tabIndex={-1}
+        style={{ margin: "calc(var(--pad-y) * -1) calc(var(--pad-x) * -1)" }}
+      >
         <ClientFileModal
           key={openFile.id}
           file={openFile}
@@ -143,7 +191,7 @@ export function ClientFilePipeline() {
   }
 
   return (
-    <>
+    <div ref={listViewRef} tabIndex={-1} aria-label="My files list">
       <PageHeader
         title="My Files"
         lede="Every property file you have with us — from the agent stage through funding. Click a file to open it."
@@ -178,14 +226,30 @@ export function ClientFilePipeline() {
             : "No files in this status."}
         </div>
       ) : (
-        <Panel className="mt" noPad>
+        <TableWorkspace
+          className="mt"
+          title="My file table"
+          description="Pin active files to keep them at the top, or focus the table for more rows."
+          storageKey={fileTableStorageKey ?? undefined}
+          ariaLabel="My files"
+          actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
+        >
           <Header />
-          {visible.map((f) => (
-            <Row key={`${f.kind}-${f.id}`} file={f} onClick={() => openFromRow(f)} />
-          ))}
-        </Panel>
+          {orderedVisible.map((f) => {
+            const rowId = `${f.kind}:${f.id}`;
+            return (
+              <Row
+                key={rowId}
+                file={f}
+                pinned={isPinned(rowId)}
+                onTogglePin={() => togglePin(rowId)}
+                onClick={(opener) => openFromRow(f, opener)}
+              />
+            );
+          })}
+        </TableWorkspace>
       )}
-    </>
+    </div>
   );
 }
 
@@ -195,97 +259,106 @@ function Header() {
   );
   return (
     <div
-      className="lbl clientfile-header"
-      style={{
-        display: "grid",
-        gridTemplateColumns: GRID,
-        gap: 12,
-        padding: "12px 16px 12px 12px",
-        borderBottom: "1px solid var(--line2)",
-        background: "var(--sunken2)",
-      }}
+      className="gridhd clientfile-header"
+      style={{ gridTemplateColumns: "minmax(0, 1fr) 44px", gap: 0, padding: 0 }}
     >
-      <div />
-      {cell("Status")}
-      {cell("Property")}
-      {cell("Type")}
-      {cell("What's happening")}
-      {cell("Amount", true)}
-      {cell("Updated", true)}
+      <div
+        className="lbl"
+        style={{ display: "grid", gridTemplateColumns: GRID, gap: 12, padding: "12px 16px 12px 12px" }}
+      >
+        <div />
+        {cell("Status")}
+        {cell("Property")}
+        {cell("Type")}
+        {cell("What's happening")}
+        {cell("Amount", true)}
+        {cell("Updated", true)}
+      </div>
+      <div className="lbl" style={{ display: "grid", placeItems: "center" }}>Pin</div>
     </div>
   );
 }
 
 function Row({
   file,
+  pinned,
+  onTogglePin,
   onClick,
 }: {
   file: MyFileRow;
-  onClick: () => void;
+  pinned: boolean;
+  onTogglePin: () => void;
+  onClick: (opener: HTMLButtonElement) => void;
 }) {
   const s = statusAccent(file.status);
   const propLine = file.address || file.ref;
   const typeLabel = file.loan_type ? loanTypeLabel(file.loan_type) : "—";
   return (
     <div
-      className="clientfile-row"
-      role="button"
-      tabIndex={0}
-      onClick={onClick}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onClick();
-        }
-      }}
-      style={{
-        display: "grid",
-        gridTemplateColumns: GRID,
-        gap: 12,
-        padding: "14px 16px 14px 12px",
-        borderBottom: "1px solid var(--line)",
-        alignItems: "center",
-        color: "var(--ink)",
-        cursor: "pointer",
-        transition: "background .12s",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = "var(--sunken2)";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLDivElement).style.background = "transparent";
-      }}
+      className={pinned ? "gridrow table-row-pinned" : "gridrow"}
+      data-pinned={pinned ? "true" : undefined}
+      style={{ gridTemplateColumns: "minmax(0, 1fr) 44px", gap: 0, padding: 0 }}
     >
-      <div style={{ alignSelf: "stretch", background: s.stripe, borderRadius: 2 }} />
-      <div>
-        <CellChip tone={s.tone}>{s.label}</CellChip>
-      </div>
-      <div style={{ minWidth: 0 }}>
-        <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-          {propLine}
-        </b>
-        <div
-          className="sub"
-          style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-        >
-          {file.city ? `${file.city} · ` : ""}
-          {file.ref} · {file.stage_detail}
-        </div>
-      </div>
-      <div>{typeLabel}</div>
-      <div
-        className={file.ai_status ? undefined : "sub"}
+      <button
+        type="button"
+        className="clientfile-row"
+        onClick={(event) => onClick(event.currentTarget)}
         style={{
-          display: "-webkit-box",
-          WebkitLineClamp: 2,
-          WebkitBoxOrient: "vertical",
-          overflow: "hidden",
+          display: "grid",
+          gridTemplateColumns: GRID,
+          gap: 12,
+          padding: "14px 16px 14px 12px",
+          border: 0,
+          alignItems: "center",
+          color: "var(--ink)",
+          background: "transparent",
+          cursor: "pointer",
+          font: "inherit",
+          textAlign: "left",
+          width: "100%",
+          transition: "background .12s",
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = "var(--sunken2)";
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = "transparent";
         }}
       >
-        {file.ai_status || "—"}
+        <div style={{ alignSelf: "stretch", background: s.stripe, borderRadius: 2 }} />
+        <div>
+          <CellChip tone={s.tone}>{s.label}</CellChip>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <b style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {propLine}
+          </b>
+          <div
+            className="sub"
+            style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+          >
+            {file.city ? `${file.city} · ` : ""}
+            {file.ref} · {file.stage_detail}
+          </div>
+        </div>
+        <div>{typeLabel}</div>
+        <div
+          className={file.ai_status ? undefined : "sub"}
+          style={{
+            display: "-webkit-box",
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: "vertical",
+            overflow: "hidden",
+          }}
+        >
+          {file.ai_status || "—"}
+        </div>
+        <div className="align-r num"><b>{fmtAmount(file.amount)}</b></div>
+        <div className="align-r num sub">{fmtDate(file.updated_at)}</div>
+      </button>
+      <div style={{ display: "grid", placeItems: "center" }}>
+        <PinRowButton pinned={pinned} onToggle={onTogglePin} label={propLine} />
       </div>
-      <div className="align-r num"><b>{fmtAmount(file.amount)}</b></div>
-      <div className="align-r num sub">{fmtDate(file.updated_at)}</div>
     </div>
   );
 }

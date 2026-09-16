@@ -12,6 +12,7 @@ import {
   Field,
   IconBtn,
   Panel,
+  PinRowButton,
   Seg,
   Select,
   Table,
@@ -21,6 +22,7 @@ import {
   type ChipTone,
 } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import {
   useBucketIntakeLinkOptions,
   useBucketIntakeLinks,
@@ -28,6 +30,7 @@ import {
   useOperatorBucketFiles,
   useUnlinkBucketIntake,
   useUpdateBucketIntakeLink,
+  useCurrentUser,
 } from "@/hooks/useApi";
 import {
   OPEN_PIPELINE_LIFECYCLE,
@@ -46,6 +49,7 @@ import {
   type UnifiedVertical,
 } from "@/lib/unifiedOperator";
 import { semanticStatusClass } from "@/lib/semanticStatus";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 export type UnifiedFilterState = {
   vertical: UnifiedVertical | "all";
@@ -168,6 +172,12 @@ export function UnifiedFilesTable({
   empty?: string;
   onLinkBucketIntake?: (row: UnifiedFileRow) => void;
 }) {
+  const { data: currentUser } = useCurrentUser();
+  const { rows: orderedRows, isPinned, togglePin } = usePinnedRows({
+    rows,
+    getId: (row) => row.id,
+    storageKey: currentUser?.id ? `pipeline-files:${currentUser.id}` : null,
+  });
   return (
     <Table
       caption="Unified operator files"
@@ -184,8 +194,10 @@ export function UnifiedFilesTable({
         { label: "", width: 44 },
       ]}
     >
-      {rows.length ? rows.map((row) => (
-        <Tr key={row.id} className={semanticStatusClass(lifecycleStatus(row))} onClick={() => { window.location.href = operatorFileHref(row); }}>
+      {orderedRows.length ? orderedRows.map((row) => {
+        const pinned = isPinned(row.id);
+        return (
+        <Tr key={row.id} className={`${semanticStatusClass(lifecycleStatus(row))}${pinned ? " table-row-pinned" : ""}`} onClick={() => { window.location.href = operatorFileHref(row); }}>
           <Td><b>{row.title || row.label}</b><div className="sub num">{row.ref || row.id} · {formatUnifiedAmount(row.amount)}</div></Td>
           <Td><CellChip tone={verticalTone(row.vertical)}>{row.vertical_label}</CellChip></Td>
           <Td><CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip></Td>
@@ -196,9 +208,10 @@ export function UnifiedFilesTable({
           <Td><span className={row.underwriter_names?.length ? undefined : "sub"}>{row.underwriter_names?.length ? row.underwriter_names.join(", ") : "—"}</span></Td>
           <Td><UnifiedDocumentPack row={row} /></Td>
           <Td><CellChip tone={row.health_tone}>{row.health}</CellChip></Td>
-          <Td align="r"><UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} /></Td>
+          <Td align="r"><span className="row" style={{ gap: 4, flexWrap: "nowrap", justifyContent: "flex-end" }}><PinRowButton pinned={pinned} onToggle={() => togglePin(row.id)} label={row.title || row.label} /><UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} /></span></Td>
         </Tr>
-      )) : (
+        );
+      }) : (
         <Tr><Td colSpan={10}><div className="empty">{empty}</div></Td></Tr>
       )}
     </Table>
@@ -320,19 +333,19 @@ function DraggableFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFil
 }
 
 export function UnifiedActionMenu({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
-  const [open, setOpen] = useState(false);
   return (
-    <span className="popwrap" onClick={(event) => event.stopPropagation()}>
-      <IconBtn aria-label={`Actions for ${row.title || row.label}`} onClick={() => setOpen((value) => !value)}><Icon name="dots" size={14} /></IconBtn>
-      {open ? (
-        <>
-          <span className="menu-scrim" onClick={() => setOpen(false)} />
-          <span className="actmenu">
-            <button type="button" onClick={() => { window.location.href = operatorFileHref(row); }}>Open file</button>
-            {(row.bucket_id || row.intake_id) && onLinkBucketIntake ? <button type="button" onClick={() => { setOpen(false); onLinkBucketIntake(row); }}>Manage linked evidence</button> : null}
-          </span>
-        </>
-      ) : null}
+    <span onClick={(event) => event.stopPropagation()}>
+      <PageActionMenu
+        label={`Actions for ${row.title || row.label}`}
+        items={[
+          { label: "Open file", onSelect: () => { window.location.href = operatorFileHref(row); } },
+          {
+            label: "Manage linked evidence",
+            hidden: !(row.bucket_id || row.intake_id) || !onLinkBucketIntake,
+            onSelect: () => onLinkBucketIntake?.(row),
+          },
+        ]}
+      />
     </span>
   );
 }

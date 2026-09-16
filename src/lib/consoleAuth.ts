@@ -6,6 +6,7 @@ export const isVisualQa =
   process.env.NEXT_PUBLIC_QC_VISUAL_QA === "1";
 export const VISUAL_QA_USER_KEY = "qc.visualQaUser";
 export const VISUAL_QA_USER_COOKIE = "qc_visual_qa_user";
+const visualQaGetToken = async () => null;
 
 /**
  * Local screenshot harness adapter. Production and ordinary development use
@@ -20,7 +21,10 @@ export function useConsoleAuth() {
     isLoaded: true,
     isSignedIn: true,
     userId: "visual-qa",
-    getToken: async () => null,
+    // Keep the function identity stable. Effects throughout the console use
+    // getToken as a dependency; recreating it on every render caused repeated
+    // refetch/unmount cycles in the visual-QA harness.
+    getToken: visualQaGetToken,
   };
 }
 

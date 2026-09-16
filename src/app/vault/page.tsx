@@ -24,10 +24,12 @@ import {
   Loading,
   PageHeader,
   Panel,
+  PinRowButton,
   Row,
   Seg,
   Select,
   Table,
+  TableWorkspace,
   Tag,
   Td,
   cx,
@@ -49,6 +51,7 @@ import {
 import { Role } from "@/lib/enums.generated";
 import type { Document, Loan, User, VaultLoanSummary } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 type UploadKind = "experience" | "active_asset";
 type LoanOption = Pick<Loan, "id" | "deal_id" | "address">;
@@ -75,7 +78,11 @@ const DOC_COLS: Col[] = [
   { label: "Loan", width: 130 },
   { label: "Received", width: 120 },
   { label: "Status", width: 120 },
+  { label: "Pin", align: "r", width: 52 },
 ];
+
+const documentId = (document: Document) => document.id;
+const vaultLoanId = (loan: VaultLoanSummary) => loan.loan_id;
 
 export default function VaultPage() {
   const { data: user, isLoading, isError } = useCurrentUser();
@@ -87,7 +94,7 @@ export default function VaultPage() {
       </div>
     );
   }
-  return user.role === Role.CLIENT ? <PersonalVaultPage /> : <OperatorVaultPage user={user} />;
+  return user.role === Role.CLIENT ? <PersonalVaultPage user={user} /> : <OperatorVaultPage user={user} />;
 }
 
 const VAULT_LOAN_COLS: Col[] = [
@@ -97,12 +104,14 @@ const VAULT_LOAN_COLS: Col[] = [
   { label: "Docs", width: 66, align: "r" },
   { label: "Attention", width: 92, align: "r" },
   { label: "Updated", width: 96 },
+  { label: "Pin", align: "r", width: 52 },
 ];
 
 const VAULT_DOCUMENT_COLS: Col[] = [
   { label: "Document" },
   { label: "Received", width: 88 },
   { label: "Status", width: 96 },
+  { label: "Pin", align: "r", width: 52 },
 ];
 
 function OperatorVaultPage({ user }: { user: User }) {
@@ -115,8 +124,10 @@ function OperatorVaultPage({ user }: { user: User }) {
   const [documentSearch, setDocumentSearch] = useState("");
   const [documentOffset, setDocumentOffset] = useState(0);
   const [uploadOpen, setUploadOpen] = useState(false);
-  const limit = 20;
-  const documentLimit = 25;
+  // Both Vault endpoints cap at 50. Use the full page so operators can scan
+  // substantially more records before paging without changing API behavior.
+  const limit = 50;
+  const documentLimit = 50;
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -136,6 +147,17 @@ function OperatorVaultPage({ user }: { user: User }) {
 
   const loanFiles = useVaultLoanFiles({ search, limit, offset });
   const loanItems = useMemo(() => loanFiles.data?.items ?? [], [loanFiles.data?.items]);
+  const {
+    rows: orderedLoanItems,
+    isPinned: isLoanPinned,
+    togglePin: toggleLoanPin,
+  } = usePinnedRows({
+    rows: loanItems,
+    getId: vaultLoanId,
+    storageKey: `vault:operator-folders:${user.id}`,
+  });
+  const pinnedLoanItems = orderedLoanItems.filter((item) => isLoanPinned(item.loan_id));
+  const unpinnedLoanItems = orderedLoanItems.filter((item) => !isLoanPinned(item.loan_id));
 
   useEffect(() => {
     if (selectedLoanId && loanItems.some((item) => item.loan_id === selectedLoanId)) return;
@@ -153,15 +175,25 @@ function OperatorVaultPage({ user }: { user: User }) {
     limit: documentLimit,
     offset: documentOffset,
   });
+  const loanDocumentItems = useMemo(() => loanDocuments.data?.items ?? [], [loanDocuments.data?.items]);
+  const {
+    rows: orderedLoanDocuments,
+    isPinned: isDocumentPinned,
+    togglePin: toggleDocumentPin,
+  } = usePinnedRows({
+    rows: loanDocumentItems,
+    getId: documentId,
+    storageKey: `vault:operator-documents:${user.id}:${selectedLoanId ?? "none"}`,
+  });
   const borrowerGroups = useMemo(() => {
     const groups = new Map<string, { borrowerId: string; borrowerName: string; items: VaultLoanSummary[] }>();
-    for (const item of loanItems) {
+    for (const item of unpinnedLoanItems) {
       const current = groups.get(item.borrower_id);
       if (current) current.items.push(item);
       else groups.set(item.borrower_id, { borrowerId: item.borrower_id, borrowerName: item.borrower_name, items: [item] });
     }
     return [...groups.values()];
-  }, [loanItems]);
+  }, [unpinnedLoanItems]);
 
   const totals = loanFiles.data?.totals;
   const totalLoanFiles = loanFiles.data?.total ?? 0;
@@ -222,28 +254,43 @@ function OperatorVaultPage({ user }: { user: User }) {
             <Loading>Loading borrower folders…</Loading>
           ) : loanFiles.isError ? (
             <Empty title="Could not load Vault folders" action={<Btn onClick={() => loanFiles.refetch()}>Retry</Btn>} />
-          ) : borrowerGroups.length === 0 ? (
+          ) : loanItems.length === 0 ? (
             <Empty icon="vault" title="No loan folders found">Try a different search or upload from a loan file.</Empty>
           ) : (
-            <Table cols={VAULT_LOAN_COLS} caption="Borrower loan folders" className="vault-loan-table">
-              {borrowerGroups.map((group) => (
-                <BorrowerLoanRows
-                  key={group.borrowerId}
-                  borrowerName={group.borrowerName}
-                  items={group.items}
-                  selectedLoanId={selectedLoanId}
-                  onSelect={setSelectedLoanId}
-                />
-              ))}
-            </Table>
+            <TableWorkspace
+              className="table-workspace--embedded"
+              title="Borrower loan folders"
+              ariaLabel="Borrower loan folders"
+              focusLabel="Focus borrower loan folders"
+              footer={totalLoanFiles > limit ? (
+                <VaultPager offset={offset} limit={limit} total={totalLoanFiles} onChange={setOffset} label="loan folders" />
+              ) : null}
+            >
+              <Table focusable={false} cols={VAULT_LOAN_COLS} caption="Borrower loan folders" className="vault-loan-table">
+                {pinnedLoanItems.length ? (
+                  <BorrowerLoanRows
+                    borrowerName="Pinned loan folders"
+                    items={pinnedLoanItems}
+                    selectedLoanId={selectedLoanId}
+                    onSelect={setSelectedLoanId}
+                    isPinned={isLoanPinned}
+                    onTogglePin={toggleLoanPin}
+                  />
+                ) : null}
+                {borrowerGroups.map((group) => (
+                  <BorrowerLoanRows
+                    key={group.borrowerId}
+                    borrowerName={group.borrowerName}
+                    items={group.items}
+                    selectedLoanId={selectedLoanId}
+                    onSelect={setSelectedLoanId}
+                    isPinned={isLoanPinned}
+                    onTogglePin={toggleLoanPin}
+                  />
+                ))}
+              </Table>
+            </TableWorkspace>
           )}
-          <VaultPager
-            offset={offset}
-            limit={limit}
-            total={totalLoanFiles}
-            onChange={setOffset}
-            label="loan folders"
-          />
         </Panel>
 
         <Panel
@@ -286,19 +333,27 @@ function OperatorVaultPage({ user }: { user: User }) {
               ) : (loanDocuments.data?.items.length ?? 0) === 0 ? (
                 <Empty icon="doc" title="No documents in this view">Change the filter or upload evidence to this loan.</Empty>
               ) : (
-                <Table cols={VAULT_DOCUMENT_COLS} caption={`Documents for ${selectedLoan.deal_id}`}>
-                  {loanDocuments.data?.items.map((document) => (
-                    <OperatorDocumentRow key={document.id} document={document} />
-                  ))}
-                </Table>
+                <TableWorkspace
+                  className="table-workspace--embedded"
+                  title={`Documents for ${selectedLoan.deal_id}`}
+                  ariaLabel={`Documents for ${selectedLoan.deal_id}`}
+                  focusLabel={`Focus documents for ${selectedLoan.deal_id}`}
+                  footer={totalDocuments > documentLimit ? (
+                    <VaultPager offset={documentOffset} limit={documentLimit} total={totalDocuments} onChange={setDocumentOffset} label="documents" />
+                  ) : null}
+                >
+                  <Table focusable={false} cols={VAULT_DOCUMENT_COLS} caption={`Documents for ${selectedLoan.deal_id}`}>
+                    {orderedLoanDocuments.map((document) => (
+                      <OperatorDocumentRow
+                        key={document.id}
+                        document={document}
+                        pinned={isDocumentPinned(document.id)}
+                        onTogglePin={() => toggleDocumentPin(document.id)}
+                      />
+                    ))}
+                  </Table>
+                </TableWorkspace>
               )}
-              <VaultPager
-                offset={documentOffset}
-                limit={documentLimit}
-                total={totalDocuments}
-                onChange={setDocumentOffset}
-                label="documents"
-              />
             </>
           )}
         </Panel>
@@ -312,11 +367,15 @@ function BorrowerLoanRows({
   items,
   selectedLoanId,
   onSelect,
+  isPinned,
+  onTogglePin,
 }: {
   borrowerName: string;
   items: VaultLoanSummary[];
   selectedLoanId: string | null;
   onSelect: (loanId: string) => void;
+  isPinned: (loanId: string) => boolean;
+  onTogglePin: (loanId: string) => void;
 }) {
   return (
     <>
@@ -329,30 +388,40 @@ function BorrowerLoanRows({
       {items.map((item) => {
         const attention = item.requested + item.flagged;
         const selected = item.loan_id === selectedLoanId;
+        const pinned = isPinned(item.loan_id);
         return (
           <tr
             key={item.loan_id}
-            className={cx("vault-loan-row", selected && "is-selected")}
+            className={cx("vault-loan-row", selected && "is-selected", pinned && "is-pinned")}
             onClick={() => onSelect(item.loan_id)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                onSelect(item.loan_id);
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            aria-pressed={selected}
           >
-            <Td><span className="mono vault-deal-id">{item.deal_id}</span></Td>
+            <Td>
+              <button
+                type="button"
+                className="linky mono vault-deal-id"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(item.loan_id);
+                }}
+              >
+                {item.deal_id}
+              </button>
+            </Td>
             <Td>
               <b>{item.entity_name ?? item.address}</b>
-              <div className="sub vault-property-line">{item.entity_name ? item.address : [item.city, item.state].filter(Boolean).join(", ") || "Address pending"}</div>
+              <div className="sub vault-property-line">{item.borrower_name} · {item.entity_name ? item.address : [item.city, item.state].filter(Boolean).join(", ") || "Address pending"}</div>
             </Td>
             <Td><CellChip tone="mut">{humanize(item.stage)}</CellChip></Td>
             <Td align="r"><b>{item.documents}</b></Td>
             <Td align="r">{attention ? <CellChip tone="warn">{attention}</CellChip> : <CellChip tone="ok">Clear</CellChip>}</Td>
             <Td><span className="sub">{formatShortDate(item.updated_at)}</span></Td>
+            <Td align="r">
+              <PinRowButton
+                pinned={pinned}
+                onToggle={() => onTogglePin(item.loan_id)}
+                label={`${item.deal_id} loan folder`}
+              />
+            </Td>
           </tr>
         );
       })}
@@ -360,10 +429,18 @@ function BorrowerLoanRows({
   );
 }
 
-function OperatorDocumentRow({ document }: { document: Document }) {
+function OperatorDocumentRow({
+  document,
+  pinned,
+  onTogglePin,
+}: {
+  document: Document;
+  pinned: boolean;
+  onTogglePin: () => void;
+}) {
   const status = documentStatus(document);
   return (
-    <tr>
+    <tr className={pinned ? "is-pinned" : undefined}>
       <Td>
         <div className="vault-document-name">
           <span className="vault-file-icon"><Icon name="doc" size={14} /></span>
@@ -372,6 +449,7 @@ function OperatorDocumentRow({ document }: { document: Document }) {
       </Td>
       <Td><span className="sub">{document.received_on ? formatShortDate(document.received_on) : "—"}</span></Td>
       <Td><CellChip tone={status.tone}>{status.label}</CellChip></Td>
+      <Td align="r"><PinRowButton pinned={pinned} onToggle={onTogglePin} label={document.name} /></Td>
     </tr>
   );
 }
@@ -416,7 +494,7 @@ function documentStatus(document: Document): { label: string; tone: ChipTone } {
   return { label: "Pending", tone: "warn" };
 }
 
-function PersonalVaultPage() {
+function PersonalVaultPage({ user }: { user: User }) {
   const { data: loans = [] } = useLoans();
   const { data: docs = [] } = useDocuments();
   const [tab, setTab] = useState<VaultTab>("requested");
@@ -435,6 +513,11 @@ function PersonalVaultPage() {
     }
     return docs.filter((d) => d.status !== "requested" && tabFor(d.category) === tab);
   }, [docs, tab]);
+  const { rows: orderedDocuments, isPinned, togglePin } = usePinnedRows({
+    rows: filtered,
+    getId: documentId,
+    storageKey: `vault:personal:${user.id}`,
+  });
 
   // First-load default: land on Requested whenever there's an open
   // request (the AI's task list); otherwise on Experience.
@@ -541,12 +624,14 @@ function PersonalVaultPage() {
       ) : (
         <Panel noPad>
           <Table cols={DOC_COLS} caption="Vault documents">
-            {filtered.map((d) => (
+            {orderedDocuments.map((d) => (
               <DocRow
                 key={d.id}
                 doc={d}
                 loan={loanById[d.loan_id]}
                 onTapRequested={d.status === "requested" ? () => onTapRequestedDoc(d) : undefined}
+                pinned={isPinned(d.id)}
+                onTogglePin={() => togglePin(d.id)}
               />
             ))}
           </Table>
@@ -560,6 +645,8 @@ function DocRow({
   doc,
   loan,
   onTapRequested,
+  pinned,
+  onTogglePin,
 }: {
   doc: Document;
   loan: Loan | undefined;
@@ -567,6 +654,8 @@ function DocRow({
   // modal with this doc pre-bound. Other statuses pass undefined
   // (the row stays as plain layout).
   onTapRequested?: () => void;
+  pinned: boolean;
+  onTogglePin: () => void;
 }) {
   // Same three-way split VerifiedBadge carried; the chip tones hold it now.
   const kind = doc.status === "verified"
@@ -580,21 +669,10 @@ function DocRow({
   return (
     <tr
       onClick={isRequested ? onTapRequested : undefined}
-      role={isRequested ? "button" : undefined}
-      tabIndex={isRequested ? 0 : undefined}
-      onKeyDown={
-        isRequested
-          ? (e) => {
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
-                onTapRequested?.();
-              }
-            }
-          : undefined
-      }
       // Status-derived tint on the row that is also the call to action; the
       // stylesheet has no "row needs you" state to reach for.
       style={isRequested ? { cursor: "pointer", background: "var(--warn-tint)" } : undefined}
+      className={pinned ? "is-pinned" : undefined}
     >
       <Td>
         <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
@@ -613,7 +691,18 @@ function DocRow({
             <Icon name="doc" size={14} />
           </span>
           <div style={{ minWidth: 0 }}>
-            <b>{doc.name}</b>
+            {isRequested ? (
+              <button
+                type="button"
+                className="linky"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onTapRequested?.();
+                }}
+              >
+                {doc.name}
+              </button>
+            ) : <b>{doc.name}</b>}
             {isRequested ? (
               <div style={{ marginTop: 3 }}>
                 <CellChip tone="warn">Click to upload →</CellChip>
@@ -644,6 +733,9 @@ function DocRow({
       </Td>
       <Td>
         <CellChip tone={statusTone}>{statusLabel}</CellChip>
+      </Td>
+      <Td align="r">
+        <PinRowButton pinned={pinned} onToggle={onTogglePin} label={doc.name} />
       </Td>
     </tr>
   );

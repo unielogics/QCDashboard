@@ -38,6 +38,7 @@ import {
   Linky,
   PageHeader,
   Panel,
+  PinRowButton,
   Seg,
   StatusLine,
   Table,
@@ -54,11 +55,13 @@ import { Role } from "@/lib/enums.generated";
 import {
   useCapitalPartnerApplication,
   useCapitalPartnerApplications,
+  useCurrentUser,
   useDecideCapitalPartnerApplication,
   type CapitalPartnerAppListRow,
   type CapitalPartnerApp,
   type CapitalPartnerStatus,
 } from "@/hooks/useApi";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 type FilterId = CapitalPartnerStatus | "all";
 
@@ -87,6 +90,7 @@ const fmtUsd = (n: number | null | undefined) => {
 
 export default function CapitalPartnerApplicationsPage() {
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
   const router = useRouter();
   const [filter, setFilter] = useState<FilterId>("pending");
   const [openId, setOpenId] = useState<string | null>(null);
@@ -118,6 +122,11 @@ export default function CapitalPartnerApplicationsPage() {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
     });
   }, [rows, filter]);
+  const { rows: orderedRows, isPinned, togglePin } = usePinnedRows({
+    rows: visible,
+    getId: (row) => row.id,
+    storageKey: currentUser?.id ? `capital-partner-applications:${currentUser.id}` : null,
+  });
 
   if (profile.role !== Role.SUPER_ADMIN) {
     return (
@@ -176,8 +185,8 @@ export default function CapitalPartnerApplicationsPage() {
               { label: "Submitted" },
             ]}
           >
-            {visible.map((r) => (
-              <ApplicationRow key={r.id} row={r} onOpen={() => setOpenId(r.id)} />
+            {orderedRows.map((r) => (
+              <ApplicationRow key={r.id} row={r} pinned={isPinned(r.id)} onTogglePin={() => togglePin(r.id)} onOpen={() => setOpenId(r.id)} />
             ))}
           </Table>
         </Panel>
@@ -194,15 +203,19 @@ export default function CapitalPartnerApplicationsPage() {
 
 function ApplicationRow({
   row,
+  pinned,
+  onTogglePin,
   onOpen,
 }: {
   row: CapitalPartnerAppListRow;
+  pinned: boolean;
+  onTogglePin: () => void;
   onOpen: () => void;
 }) {
   const s = statusMeta(row.status);
   const created = new Date(row.created_at);
   return (
-    <Tr onClick={onOpen}>
+    <Tr onClick={onOpen} className={pinned ? "table-row-pinned" : undefined}>
       <Td>
         <CellChip tone={s.tone}>{s.label}</CellChip>
       </Td>
@@ -211,6 +224,7 @@ function ApplicationRow({
             the same action reachable from the keyboard, which the old
             role="button" div carried via its own Enter/Space handler. */}
         <div className="row">
+          <PinRowButton pinned={pinned} onToggle={onTogglePin} label={row.company_name} />
           <Linky
             onClick={(e) => {
               e.stopPropagation();

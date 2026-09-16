@@ -10,7 +10,7 @@ import {
 import { Icon } from "@/components/design-system/Icon";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
-import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
   ApplicationBankState,
@@ -287,8 +287,16 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
       </header>
 
       {loading ? <div className="empty"><span className="spinner solo" />Loading ownership...</div> : (
-        <div className="tblwrap ownership-table-wrap">
-          <table className="tbl ownership-table">
+        <TableWorkspace
+          className="table-workspace--embedded"
+          title="Business ownership"
+          ariaLabel="Business ownership table"
+          storageKey="application-business-ownership"
+          focusLabel="Focus business ownership table"
+        >
+          <div className="tblwrap ownership-table-wrap">
+            <table className="tbl ownership-table">
+            <caption className="sr-only">Business ownership</caption>
             <thead><tr><th>First name</th><th>Last name</th><th>Ownership %</th><th>Personal email</th><th>Personal phone</th><th>Credit requirement</th><th>Save</th><th aria-label="Actions" /></tr></thead>
             <tbody>
               {owners.map((owner) => {
@@ -323,8 +331,9 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
               })}
               {!owners.length && !drafts.length ? <tr><td colSpan={8}><div className="empty">Add every business owner to begin the verification schedule.</div></td></tr> : null}
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        </TableWorkspace>
       )}
       {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
       <footer className="verification-section-footer">

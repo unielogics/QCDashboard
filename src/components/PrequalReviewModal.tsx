@@ -25,10 +25,10 @@
 // sidebar width (68 / 232) so the operator keeps their navigation context
 // while reviewing, per #facelift, and it carries no scrim at all. Drawer
 // cannot express that geometry, so the overlay stays bespoke and is only
-// restyled. Escape-to-close is kept here explicitly; there was never a
-// backdrop, a scroll lock or a focus restore on this surface to lose.
+// restyled. It still owns the same keyboard focus, scroll lock, Escape, and
+// focus-return behavior as the shared dialog surfaces.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useUI } from "@/store/ui";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
@@ -114,6 +114,10 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   const approve = useApprovePrequalRequest();
   const reject = useRejectPrequalRequest();
   const revise = useRevisePrequalRequest();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const restoreFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // ── Approval fields ───────────────────────────────────────────────────
   const [purchaseText, setPurchaseText] = useState("");
@@ -180,15 +184,30 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     setConfirmReject(false);
   }, [open, request]);
 
-  // Esc closes
+  // This bespoke full-height panel still behaves as a modal: it takes focus,
+  // locks background scroll, closes on Escape, and returns focus to its row.
   useEffect(() => {
     if (!open) return;
+    restoreFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    dialogRef.current?.focus({ preventScroll: true });
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCloseRef.current();
+      }
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = previousOverflow;
+      const restoreTarget = restoreFocusRef.current;
+      window.requestAnimationFrame(() => {
+        if (restoreTarget?.isConnected) restoreTarget.focus({ preventScroll: true });
+      });
+    };
+  }, [open]);
 
   const num = (s: string) => Number(s.replace(/[^0-9.]/g, "")) || 0;
 
@@ -388,6 +407,8 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 
   return (
     <div
+      ref={dialogRef}
+      tabIndex={-1}
       role="dialog"
       aria-modal="true"
       aria-label="Review pre-qualification request"

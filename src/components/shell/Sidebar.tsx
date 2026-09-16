@@ -16,7 +16,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useClerk } from "@clerk/nextjs";
 import { Icon } from "@/components/design-system/Icon";
 import { QCMark } from "@/components/QCMark";
@@ -26,7 +26,7 @@ import { useCurrentUser, useGoogleConnection } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { isActive, navForRole, type NavItem } from "./nav.config";
 import { useNavBadges } from "./useNavBadges";
-import { ToolsDrawer } from "./ToolsDrawer";
+import { ToolsDrawer, useToolsHotkey } from "./ToolsDrawer";
 
 export function Sidebar() {
   const pathname = usePathname() || "/";
@@ -41,6 +41,8 @@ export function Sidebar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
+  const openTools = useCallback(() => setToolsOpen(true), []);
+  useToolsHotkey(openTools);
 
   const nav = navForRole(user?.role);
   const badges = useNavBadges(user?.role);

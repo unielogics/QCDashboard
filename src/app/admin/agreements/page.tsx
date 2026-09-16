@@ -28,6 +28,8 @@ import { api } from "@/lib/api";
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser } from "@/hooks/useApi";
 import { IssueDealRegistrationModal } from "@/components/IssueDealRegistrationModal";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 type AgreementRow = {
   id: string;
@@ -60,7 +62,7 @@ const LIMIT = 50;
 // The list's own track. Bespoke — five columns sized to their contents, not
 // spans of the twelve-column page grid — so it stays inline (rule 3) while
 // `.gridhd` / `.gridrow` own everything that is not the track.
-const COLS = "minmax(220px,1.3fr) minmax(200px,1fr) 140px 170px 130px";
+const COLS = "minmax(220px,1.3fr) minmax(200px,1fr) 140px 170px minmax(130px,max-content)";
 
 const TYPE_FILTERS = [
   { value: "all", label: "All types" },
@@ -127,6 +129,19 @@ export default function AdminAgreementsPage() {
     setSubmittedQuery(query);
   }
 
+  const agreementsTableStorageKey = me?.id ? `admin-agreements:${me.id}` : null;
+  const {
+    rows: orderedRows,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows,
+    getId: (row) => `${row.source}:${row.id}`,
+    storageKey: agreementsTableStorageKey,
+  });
+
   if (me && me.role !== Role.SUPER_ADMIN) return null;
 
   return (
@@ -162,7 +177,21 @@ export default function AdminAgreementsPage() {
 
       {notice ? <WarnLine>{notice}</WarnLine> : null}
 
-      <Panel noPad>
+      <TableWorkspace
+        title="Signed agreements"
+        description="Pin agreements to keep them at the top of this page."
+        storageKey={agreementsTableStorageKey ?? undefined}
+        ariaLabel="Signed agreements"
+        actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pins</Btn> : null}
+        footer={(
+          <div className="row" style={{ width: "100%", flexWrap: "nowrap" }}>
+            <Sub>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 agreements"}</Sub>
+            <span className="sp" />
+            <Btn disabled={offset === 0 || loading} onClick={() => loadAgreements(Math.max(0, offset - LIMIT))}>Previous</Btn>
+            <Btn disabled={offset + LIMIT >= total || loading} onClick={() => loadAgreements(offset + LIMIT)}>Next</Btn>
+          </div>
+        )}
+      >
         <div className="gridhd" style={{ gridTemplateColumns: COLS }}>
           <span>Agreement</span>
           <span>Party</span>
@@ -172,49 +201,54 @@ export default function AdminAgreementsPage() {
         </div>
         {loading ? (
           <div className="panel-b"><Loading>Loading agreements...</Loading></div>
-        ) : rows.map((row) => (
-          <div key={`${row.source}-${row.id}`} className="gridrow" style={{ gridTemplateColumns: COLS }}>
-            <div>
-              <div className="trunc"><strong>{row.title}</strong></div>
-              <Sub>{sourceLabel(row.source)} · v{row.document_version}</Sub>
-            </div>
-            <div>
-              <div className="trunc">{row.party_name || row.typed_name || "—"}</div>
-              <div className="trunc sub">
-                {[row.party_email, row.party_company].filter(Boolean).join(" · ") || partyKindLabel(row.party_kind)}
+        ) : orderedRows.map((row) => {
+          const rowId = `${row.source}:${row.id}`;
+          const pinned = isPinned(rowId);
+          return (
+            <div
+              key={rowId}
+              className={pinned ? "gridrow table-row-pinned" : "gridrow"}
+              data-pinned={pinned ? "true" : undefined}
+              style={{ gridTemplateColumns: COLS }}
+            >
+              <div>
+                <div className="trunc"><strong>{row.title}</strong></div>
+                <Sub>{sourceLabel(row.source)} · v{row.document_version}</Sub>
               </div>
+              <div>
+                <div className="trunc">{row.party_name || row.typed_name || "—"}</div>
+                <div className="trunc sub">
+                  {[row.party_email, row.party_company].filter(Boolean).join(" · ") || partyKindLabel(row.party_kind)}
+                </div>
+              </div>
+              <div>{row.contract_number || "—"}</div>
+              <Sub>{formatDateTime(row.signed_at)}</Sub>
+              <Row className="end">
+                {row.agreement_type === "referral_protection" && row.company_id ? (
+                  <Btn
+                    size="sm"
+                    onClick={() => setDealRegTarget({ id: row.company_id!, name: row.party_company || row.party_name || "Referral partner" })}
+                  >
+                    Issue Deal Registration
+                  </Btn>
+                ) : null}
+                {row.certificate_download_url ? (
+                  <BtnLink size="sm" href={row.certificate_download_url} target="_blank" rel="noreferrer">
+                    Certificate
+                  </BtnLink>
+                ) : (
+                  <CellChip>No certificate</CellChip>
+                )}
+                <PinRowButton
+                  pinned={pinned}
+                  onToggle={() => togglePin(rowId)}
+                  label={row.title || row.party_name || "agreement"}
+                />
+              </Row>
             </div>
-            <div>{row.contract_number || "—"}</div>
-            <Sub>{formatDateTime(row.signed_at)}</Sub>
-            <Row className="end">
-              {row.agreement_type === "referral_protection" && row.company_id ? (
-                <Btn
-                  size="sm"
-                  onClick={() => setDealRegTarget({ id: row.company_id!, name: row.party_company || row.party_name || "Referral partner" })}
-                >
-                  Issue Deal Registration
-                </Btn>
-              ) : null}
-              {row.certificate_download_url ? (
-                <BtnLink size="sm" href={row.certificate_download_url} target="_blank" rel="noreferrer">
-                  Certificate
-                </BtnLink>
-              ) : (
-                <CellChip>No certificate</CellChip>
-              )}
-            </Row>
-          </div>
-        ))}
-        {/* Pagination bar. `.panel > .panel-h:last-child` already drops the
-            hairline under it, and the last `.gridrow` above supplies the one
-            over it, so this needs no border of its own. */}
-        <div className="panel-h">
-          <Sub>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 agreements"}</Sub>
-          <span className="sp" />
-          <Btn disabled={offset === 0 || loading} onClick={() => loadAgreements(Math.max(0, offset - LIMIT))}>Previous</Btn>
-          <Btn disabled={offset + LIMIT >= total || loading} onClick={() => loadAgreements(offset + LIMIT)}>Next</Btn>
-        </div>
-      </Panel>
+          );
+        })}
+      </TableWorkspace>
 
       {dealRegTarget ? (
         <IssueDealRegistrationModal

@@ -295,6 +295,7 @@ export default function TokenUsagePage() {
           </div>
         ) : (
           <Table
+            caption="Token usage supplemental dimensions"
             cols={[
               { label: DIMENSIONS.find((d) => d.key === dimension)?.label.replace("By ", "") },
               { label: "Calls", align: "r" },
@@ -468,6 +469,7 @@ function SourceAttributionTable({ rows, loading }: { rows: TokenUsageAttribution
         </div>
       ) : (
         <Table
+          caption="Top AI spend by source"
           cols={[
             { label: "Source" },
             { label: "Area" },
@@ -574,6 +576,7 @@ function RecentUsageEvents({ rows, loading }: { rows: TokenUsageEventRow[]; load
         </div>
       ) : (
         <Table
+          caption="Recent expensive AI usage events"
           cols={[
             { label: "When" },
             { label: "Source" },

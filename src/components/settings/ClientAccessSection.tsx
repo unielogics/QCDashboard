@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   useClientAccessDetail,
   useClientAccessDirectory,
+  useCurrentUser,
   useInviteClientAccess,
   useResendClientInvite,
   useRevokeClientSessions,
@@ -14,9 +15,10 @@ import type {
   ClientAccessDirectoryRow,
   ProductAccountType,
 } from "@/lib/types";
-import { Btn, CellChip, Input, Panel, Select, Table, Td, Tr, cx, type ChipTone } from "@/components/ds";
+import { Btn, CellChip, Input, Panel, PinRowButton, Select, Table, TableWorkspace, Td, Tr, cx, type ChipTone } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 type ReviewAction = "save" | "resend" | "sessions" | null;
 
@@ -36,7 +38,12 @@ const LOGIN_LABEL: Record<ClientAccessDirectoryRow["login_state"], string> = {
   invite_failed: "Invite failed",
 };
 
+function clientAccessRowId(row: ClientAccessDirectoryRow) {
+  return `${row.subject_kind}:${row.subject_id}`;
+}
+
 export function ClientAccessSection({ initialClientId }: { initialClientId?: string | null }) {
+  const { data: currentUser } = useCurrentUser();
   const [search, setSearch] = useState(initialClientId ?? "");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [loginFilter, setLoginFilter] = useState("all");
@@ -50,6 +57,12 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
     account_type: productFilter,
     page,
     page_size: 50,
+  });
+  const directoryRows = useMemo(() => directory.data?.items ?? [], [directory.data?.items]);
+  const { rows: orderedRows, isPinned, togglePin } = usePinnedRows({
+    rows: directoryRows,
+    getId: clientAccessRowId,
+    storageKey: currentUser?.id ? `settings:client-access:${currentUser.id}` : null,
   });
   const totalPages = Math.max(1, Math.ceil((directory.data?.total ?? 0) / (directory.data?.page_size ?? 50)));
 
@@ -95,9 +108,25 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
         )}
         noPad
       >
-        <Table
-          caption="Client access directory"
-          cols={[
+        <TableWorkspace
+          className="table-workspace--embedded"
+          title="Client access directory"
+          ariaLabel="Client access directory"
+          footer={directory.data && directory.data.total > 0 ? (
+            <div className="row client-access-pagination" style={{ width: "100%" }}>
+              <span className="sub">
+                Page {directory.data.page} of {totalPages} · {directory.data.total} records
+              </span>
+              <span className="grow" />
+              <Btn size="sm" disabled={page <= 1 || directory.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Btn>
+              <Btn size="sm" disabled={page >= totalPages || directory.isFetching} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</Btn>
+            </div>
+          ) : null}
+        >
+          <Table
+            focusable={false}
+            caption="Client access directory"
+            cols={[
             { label: "Client" },
             { label: "Business" },
             { label: "Contact", width: 210 },
@@ -107,11 +136,14 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
             { label: "Files", width: 62, align: "r" },
             { label: "Last active", width: 126 },
             { label: "Status", width: 112 },
-            { label: "", width: 116 },
+            { label: "", width: 156 },
           ]}
         >
-          {(directory.data?.items ?? []).map((row) => (
-            <Tr key={`${row.subject_kind}:${row.subject_id}`} onClick={() => setSelected(row)}>
+          {orderedRows.map((row) => {
+            const rowId = clientAccessRowId(row);
+            const pinned = isPinned(rowId);
+            return (
+            <Tr key={rowId} onClick={() => setSelected(row)} className={pinned ? "table-row-pinned" : undefined}>
               <Td>
                 <b>{row.client_name}</b>
                 <div className="sub">
@@ -133,28 +165,23 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
               <Td><span className="sub">{formatDate(row.last_active_at)}</span></Td>
               <Td><CellChip tone={row.account_status === "suspended" ? "bad" : "mut"}>{labelize(row.status)}</CellChip></Td>
               <Td>
-                <Btn size="sm" onClick={(event) => { event.stopPropagation(); setSelected(row); }}>
-                  Manage access
-                </Btn>
+                <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 4 }}>
+                  <PinRowButton pinned={pinned} onToggle={() => togglePin(rowId)} label={row.client_name} />
+                  <Btn size="sm" onClick={(event) => { event.stopPropagation(); setSelected(row); }}>
+                    Manage access
+                  </Btn>
+                </span>
               </Td>
             </Tr>
-          ))}
+            );
+          })}
           {!directory.isLoading && (directory.data?.items.length ?? 0) === 0 ? (
             <tr><td colSpan={10} className="sub" style={{ textAlign: "center", padding: 28 }}>No client access records match these filters.</td></tr>
           ) : null}
-        </Table>
+          </Table>
+        </TableWorkspace>
         {directory.isLoading ? <div className="panel-b sub">Loading client access…</div> : null}
         {directory.error ? <div className="panel-b"><CellChip tone="bad">{directory.error.message}</CellChip></div> : null}
-        {directory.data && directory.data.total > 0 ? (
-          <div className="panel-b row client-access-pagination">
-            <span className="sub">
-              Page {directory.data.page} of {totalPages} · {directory.data.total} records
-            </span>
-            <span className="grow" />
-            <Btn size="sm" disabled={page <= 1 || directory.isFetching} onClick={() => setPage((current) => Math.max(1, current - 1))}>Previous</Btn>
-            <Btn size="sm" disabled={page >= totalPages || directory.isFetching} onClick={() => setPage((current) => Math.min(totalPages, current + 1))}>Next</Btn>
-          </div>
-        ) : null}
       </Panel>
       <ClientAccessDrawer row={selected} onClose={() => setSelected(null)} />
     </div>

@@ -47,6 +47,17 @@ test("bucket row actions escape the table overflow boundary", async ({ context, 
         limit: 200,
         filters: { vertical: "all", origin: "all", q: null },
       };
+    } else if (path.endsWith("/search")) {
+      body = [{
+        client_id: "10000000-0000-0000-0000-000000000099",
+        client_name: "Alpha Client",
+        items: [{
+          id: "10000000-0000-0000-0000-000000000098",
+          kind: "client",
+          title: "Alpha Client",
+          subtitle: "Keyboard result",
+        }],
+      }];
     }
 
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -79,4 +90,61 @@ test("bucket row actions escape the table overflow boundary", async ({ context, 
   expect(geometry.menuTop).toBeGreaterThanOrEqual(12);
   expect(geometry.menuBottom).toBeLessThanOrEqual(geometry.viewportHeight - 12 + 1);
   expect(geometry.menuBottom).toBeGreaterThan(geometry.tableBottom);
+
+  await page.keyboard.press("Escape");
+  await expect(menu).toBeHidden();
+  await expect(actionButton).toBeFocused();
+
+  const workspace = page.getByRole("region", { name: "Bucket list" });
+  await workspace.getByRole("button", { name: "Focus table" }).click();
+  const focusedWorkspace = page.getByRole("dialog", { name: "Bucket list" });
+  await focusedWorkspace.getByRole("button", { name: "Actions for Valentin Deheljan" }).click();
+  const focusedMenu = focusedWorkspace.getByRole("menu", { name: "Actions for Valentin Deheljan" });
+  await expect(focusedMenu).toBeVisible();
+  await expect(focusedMenu.getByRole("menuitem").first()).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(focusedMenu.getByRole("menuitem").nth(1)).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(focusedMenu).toBeHidden();
+  await expect(focusedWorkspace).toHaveAttribute("data-focused", "true");
+
+  // The application-shell command palette is a higher-priority modal. A
+  // focused table must yield its focus trap and scroll lock, then receive
+  // focus back after the palette closes.
+  await page.keyboard.press("Control+k");
+  const globalSearch = page.getByRole("dialog", { name: "Global search" });
+  await expect(globalSearch).toBeVisible();
+  await expect(page.getByRole("region", { name: "Bucket list" })).toHaveAttribute("data-focused", "false");
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+  await globalSearch.getByRole("textbox", { name: "Search" }).fill("alpha");
+  const searchResult = globalSearch.getByRole("button", { name: /Alpha Client/ });
+  await expect(searchResult).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(searchResult).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(globalSearch).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("");
+  await expect(actionButton).toBeFocused();
+
+  await page.getByRole("button", { name: "Focus table" }).click();
+  // Chromium reserves Ctrl+J for downloads, so dispatch the app shortcut
+  // directly to exercise the same document-level handler in automation.
+  await page.evaluate(() => document.dispatchEvent(new KeyboardEvent("keydown", {
+    key: "j",
+    ctrlKey: true,
+    bubbles: true,
+    cancelable: true,
+  })));
+  const tools = page.getByRole("dialog", { name: "All tools" });
+  await expect(tools).toBeVisible();
+  await expect(page.getByRole("region", { name: "Bucket list" })).toHaveAttribute("data-focused", "false");
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+  const toolLinks = tools.getByRole("link");
+  await expect(toolLinks.first()).toBeFocused();
+  await page.keyboard.press("Shift+Tab");
+  await expect(toolLinks.last()).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(tools).toBeHidden();
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("");
+  await expect(page.getByRole("button", { name: "Focus table" })).toBeFocused();
 });

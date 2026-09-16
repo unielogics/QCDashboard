@@ -2053,6 +2053,7 @@ function SimRunsTable({
       />
       <Panel noPad>
         <Table
+          caption="Saved simulator runs"
           cols={[
             { label: "User" },
             { label: "Created" },

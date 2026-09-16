@@ -14,6 +14,7 @@ import {
   Kpi,
   KpiRow,
   Panel,
+  PinRowButton,
   Table,
   Td,
   Tr,
@@ -26,6 +27,7 @@ import {
   useRemoveMyRegionalAgent,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 // One column per portfolio metric. The per-row "Clients / Active / Pipeline /
 // Funded / Overdue" captions the old card rows repeated five times each are
@@ -48,6 +50,11 @@ export default function RegionalAgentsPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  const { rows: orderedAgents, isPinned, togglePin } = usePinnedRows({
+    rows: agents,
+    getId: (agent) => agent.user_id,
+    storageKey: user?.id ? `regional-agents:${user.id}` : null,
+  });
 
   if (userLoading) return <div className="sub">Loading...</div>;
   if (user?.role !== Role.REGIONAL_MANAGER) {
@@ -160,8 +167,10 @@ export default function RegionalAgentsPage() {
                 </Td>
               </Tr>
             )}
-            {agents.map((agent) => (
-              <Tr key={agent.user_id}>
+            {orderedAgents.map((agent) => {
+              const pinned = isPinned(agent.user_id);
+              return (
+              <Tr key={agent.user_id} className={pinned ? "table-row-pinned" : undefined}>
                 <Td>
                   <b>{agent.display_name ?? agent.name}</b>
                   <div className="sub">{agent.email}</div>
@@ -186,15 +195,19 @@ export default function RegionalAgentsPage() {
                   )}
                 </Td>
                 <Td align="r">
-                  <IconBtn
-                    aria-label={`Remove ${agent.name}`}
-                    onClick={() => remove.mutate(agent.user_id)}
-                  >
-                    <Icon name="x" size={13} />
-                  </IconBtn>
+                  <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 4 }}>
+                    <PinRowButton pinned={pinned} onToggle={() => togglePin(agent.user_id)} label={agent.display_name ?? agent.name} />
+                    <IconBtn
+                      aria-label={`Remove ${agent.name}`}
+                      onClick={() => remove.mutate(agent.user_id)}
+                    >
+                      <Icon name="x" size={13} />
+                    </IconBtn>
+                  </span>
                 </Td>
               </Tr>
-            ))}
+              );
+            })}
             {!isLoading && agents.length === 0 && (
               <Tr>
                 <Td colSpan={7}>

@@ -17,9 +17,11 @@ import {
   Kpi,
   KpiRow,
   Lbl,
+  Linky,
   Note,
   PageHeader,
   Panel,
+  PinRowButton,
   Seg,
   Select,
   Sub,
@@ -41,6 +43,7 @@ import {
   useClosingCostTiers,
   useConvertAnalysisRunToPrequal,
   useCreateAnalysisRun,
+  useCurrentUser,
   useCurrentCredit,
   useFixFlipScenario,
   useFixFlipScenarios,
@@ -52,6 +55,7 @@ import {
   type FixFlipScenarioRow,
 } from "@/hooks/useApi";
 import { analyzeFixFlip } from "@/lib/fixFlip/calc";
+import { usePinnedRows } from "@/lib/tablePinning";
 import type {
   ExperienceTier,
   FixFlipInputs,
@@ -987,6 +991,13 @@ function RunsTable({
   onNew: () => void;
   onOpen: (id: string) => void;
 }) {
+  const { data: currentUser } = useCurrentUser();
+  const { rows: orderedRows, isPinned, togglePin } = usePinnedRows({
+    rows,
+    getId: (row) => row.id,
+    storageKey: currentUser?.id ? `fix-flip-runs:${currentUser.id}` : null,
+  });
+
   return (
     <div className="grid" style={{ maxWidth: 1100, margin: "0 auto" }}>
       <PageHeader
@@ -1016,13 +1027,23 @@ function RunsTable({
           ) : rows.length === 0 ? (
             <Tr><Td colSpan={7}><Sub>No runs yet.</Sub></Td></Tr>
           ) : (
-            rows.map((r) => {
+            orderedRows.map((r) => {
               const ctc = runCashToClose(r);
+              const pinned = isPinned(r.id);
               return (
-                <Tr key={r.id} onClick={() => onOpen(r.id)}>
-                  <Td>{runCreator(r)}</Td>
+                <Tr key={r.id} onClick={() => onOpen(r.id)} className={pinned ? "table-row-pinned" : undefined}>
+                  <Td>
+                    <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                      <PinRowButton pinned={pinned} onToggle={() => togglePin(r.id)} label={runAddress(r)} />
+                      <span>{runCreator(r)}</span>
+                    </div>
+                  </Td>
                   <Td><Sub>{new Date(r.created_at).toLocaleDateString()}</Sub></Td>
-                  <Td>{runAddress(r)}</Td>
+                  <Td>
+                    <Linky onClick={(event) => { event.stopPropagation(); onOpen(r.id); }}>
+                      {runAddress(r)}
+                    </Linky>
+                  </Td>
                   <Td>{r.deal_grade ?? "—"}</Td>
                   <Td>{r.deal_score ?? "—"}</Td>
                   <Td>{ctc != null ? $(ctc) : "—"}</Td>

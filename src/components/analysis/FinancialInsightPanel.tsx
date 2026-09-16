@@ -1,6 +1,6 @@
 "use client";
 
-import { Callout, Card, Kpi, KpiRow, Lbl, Panel } from "@/components/ds";
+import { Callout, Card, Kpi, KpiRow, Lbl, Panel, TableWorkspace } from "@/components/ds";
 import { QC_FMT } from "@/lib/fmt";
 import type { AnalysisProduct } from "@/lib/types";
 import type { ReactNode } from "react";
@@ -159,29 +159,37 @@ export function FinancialInsightPanel({
           // Hand-rolled rather than the ds `Table` for the 620px floor: five
           // money columns squeezed into a phone width wrap into mush, and
           // `.tbl` carries no min-width of its own.
-          <div className="tblwrap">
-            <table className="tbl" style={{ minWidth: 620 }}>
-              <caption className="sr-only">{interestOnly ? "Interest-only schedule" : "Amortization schedule"}</caption>
-              <thead>
-                <tr>
-                  {AMORT_COLS.map((h) => (
-                    <th key={h} scope="col">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {amortization.map((row) => (
-                  <tr key={row.month}>
-                    <td className="num">{row.month}</td>
-                    <td className="num">{fmtMoney(row.payment)}</td>
-                    <td className="num">{fmtMoney(row.principal)}</td>
-                    <td className="num">{fmtMoney(row.interest)}</td>
-                    <td className="num">{fmtMoney(row.balance)}</td>
+          <TableWorkspace
+            className="table-workspace--embedded"
+            title={interestOnly ? "Interest-only schedule" : "Amortization schedule"}
+            ariaLabel={interestOnly ? "Interest-only schedule" : "Amortization schedule"}
+            storageKey={`financial-${product}-payment-schedule`}
+            focusLabel={`Focus ${interestOnly ? "interest-only" : "amortization"} schedule`}
+          >
+            <div className="tblwrap">
+              <table className="tbl" style={{ minWidth: 620 }}>
+                <caption className="sr-only">{interestOnly ? "Interest-only schedule" : "Amortization schedule"}</caption>
+                <thead>
+                  <tr>
+                    {AMORT_COLS.map((h) => (
+                      <th key={h} scope="col">{h}</th>
+                    ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {amortization.map((row) => (
+                    <tr key={row.month}>
+                      <td className="num">{row.month}</td>
+                      <td className="num">{fmtMoney(row.payment)}</td>
+                      <td className="num">{fmtMoney(row.principal)}</td>
+                      <td className="num">{fmtMoney(row.interest)}</td>
+                      <td className="num">{fmtMoney(row.balance)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </TableWorkspace>
         ) : (
           <Callout tone="acc">Run a calculation with loan amount and rate to generate the schedule.</Callout>
         )}

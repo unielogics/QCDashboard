@@ -1,12 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
+} from "react";
 import { useSort } from "@/components/design-system/primitives";
 import {
   Btn,
   CellChip,
   Input,
+  Linky,
   Panel,
+  PinRowButton,
   Table,
   Td,
   Tr,
@@ -32,6 +42,7 @@ import { QC_FMT } from "@/lib/fmt";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { VERTICAL_OPTIONS, verticalTone, type UnifiedVertical } from "@/lib/unifiedOperator";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 // Stages-as-filter-chips shown above the table.
 type StageFilter = "all" | ClientStage;
@@ -220,6 +231,17 @@ export default function ClientsPage() {
 
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
+  const {
+    rows: orderedClients,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows: sorted,
+    getId: (client) => client.id,
+    storageKey: user?.id ? `clients:${user.id}` : null,
+  });
 
   const visibleClientCols: ClientCol[] = isSuperAdmin
     ? [...CLIENT_COLS.slice(0, 5), { label: "Access", width: 176 }, ...CLIENT_COLS.slice(5)]
@@ -245,6 +267,7 @@ export default function ClientsPage() {
             style={{ width: 260 }}
           />
           {canCreate ? <Btn variant="pri" size="sm" onClick={() => setIntakeOpen(true)}><Icon name="plus" size={14} /> New client</Btn> : null}
+          {pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
           <PageActionMenu items={[
             { label: "Open pipeline", href: "/pipeline" },
             { label: "Open prequalifications", href: "/admin/prequal-requests" },
@@ -268,11 +291,26 @@ export default function ClientsPage() {
 
       <Panel noPad>
         <Table cols={cols} caption="Clients">
-          {sorted.map((c) => (
-            <Tr key={c.id} onClick={() => (window.location.href = `/clients/${c.id}`)}>
+          {orderedClients.map((c) => {
+            const pinned = isPinned(c.id);
+            return (
+            <Tr key={c.id} onClick={() => (window.location.href = `/clients/${c.id}`)} className={pinned ? "table-row-pinned" : undefined}>
               <Td>
-                <b>{c.name}</b>
-                <div className="sub">{c.email || c.city || c.id}</div>
+                <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                  <PinRowButton pinned={pinned} onToggle={() => togglePin(c.id)} label={c.name} />
+                  <span style={{ minWidth: 0 }}>
+                    <Linky
+                      style={{ display: "block", textAlign: "left", fontWeight: 800 }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        window.location.href = `/clients/${c.id}`;
+                      }}
+                    >
+                      {c.name}
+                    </Linky>
+                    <span className="sub" style={{ display: "block" }}>{c.email || c.city || c.id}</span>
+                  </span>
+                </div>
               </Td>
               <Td>
                 <CellChip tone={c._record_shape === "Person + business" ? "acc" : "mut"}>{c._record_shape}</CellChip>
@@ -307,8 +345,9 @@ export default function ClientsPage() {
                 <b className="num">{QC_FMT.short(c.exposure)}</b>
               </Td>
             </Tr>
-          ))}
-          {sorted.length === 0 && (
+            );
+          })}
+          {orderedClients.length === 0 && (
             <tr>
               <td colSpan={visibleClientCols.length} style={{ textAlign: "center", padding: 24 }}>
                 <span className="sub">
@@ -347,6 +386,9 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
   const { data: brokers = [], isLoading } = useBrokers();
   const update = useUpdateClient();
   const anchorRef = useRef<HTMLDivElement | null>(null);
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+  const menuId = useId();
 
   // Click-outside closer for the dropdown.
   useEffect(() => {
@@ -355,7 +397,13 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
       if (!anchorRef.current) return;
       if (!anchorRef.current.contains(e.target as Node)) setOpen(false);
     };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setOpen(false); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      setOpen(false);
+      window.requestAnimationFrame(() => triggerRef.current?.focus({ preventScroll: true }));
+    };
     window.addEventListener("mousedown", onDown);
     window.addEventListener("keydown", onKey);
     return () => {
@@ -383,15 +431,38 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
   }
 
   const assigned = !!client.broker_id;
+  const navigateMenu = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (!menuRef.current || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+    const items = Array.from(
+      menuRef.current.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not([disabled])'),
+    );
+    if (!items.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const current = items.indexOf(document.activeElement as HTMLButtonElement);
+    const next = event.key === "Home"
+      ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? current < 0 ? 0 : (current + 1) % items.length
+            : current < 0 ? items.length - 1 : (current - 1 + items.length) % items.length;
+    items[next]?.focus();
+  };
+
   return (
     <div ref={anchorRef} className="popwrap">
       <button
+        ref={triggerRef}
         type="button"
         className={cx("cellchip", assigned ? "c-mut" : "c-warn")}
         onClick={(e) => {
           e.stopPropagation();
           setOpen((v) => !v);
         }}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
         title={assigned ? "Reassign agent" : "Assign an agent"}
         style={{ maxWidth: 150 }}
       >
@@ -402,7 +473,16 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
         <Icon name="chevR" size={9} />
       </button>
       {open ? (
-        <div className="popmenu" onClick={(e) => e.stopPropagation()} style={{ width: 260 }}>
+        <div
+          ref={menuRef}
+          id={menuId}
+          role="menu"
+          aria-label={assigned ? "Reassign agent" : "Assign agent"}
+          className="popmenu"
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={navigateMenu}
+          style={{ width: 260 }}
+        >
           <div style={{ padding: "4px 6px 8px" }}>
             <div className="lbl" style={{ marginBottom: 5 }}>
               {assigned ? "Reassign agent" : "Assign agent"}
@@ -428,6 +508,7 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
                   <button
                     key={b.id}
                     type="button"
+                    role="menuitem"
                     className="mi"
                     onClick={() => pick(b)}
                     disabled={isCurrent || busyId !== null}
@@ -449,6 +530,7 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
           {assigned ? (
             <button
               type="button"
+              role="menuitem"
               className="mi"
               onClick={() => pick(null)}
               disabled={busyId !== null}

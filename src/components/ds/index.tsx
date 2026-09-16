@@ -28,6 +28,10 @@ import type {
   TextareaHTMLAttributes,
 } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { TableWorkspace } from "./TableWorkspace";
+
+export { PinRowButton, TableWorkspace } from "./TableWorkspace";
+export type { PinRowButtonProps, TableWorkspaceProps } from "./TableWorkspace";
 
 export function cx(...parts: Array<string | false | null | undefined>): string {
   return parts.filter(Boolean).join(" ");
@@ -537,23 +541,28 @@ export function Seg<T extends string>({
 export type Col = { label: ReactNode; align?: "r"; width?: number | string };
 
 /**
- * A real `<table class="tbl">` in a scroll container.
+ * A real `<table class="tbl">` in a scroll container with an optional
+ * full-viewport review mode (enabled by default).
  *
  * The wrapper is not decoration: a wide table must scroll inside its own box,
  * or it widens the page and every other element on the screen goes with it.
+ * The embedded workspace intentionally stays compact for small summary tables.
  */
 export function Table({
   cols,
   children,
   caption,
   className,
+  focusable = true,
 }: {
   cols: Col[];
   children: ReactNode;
   caption?: string;
   className?: string;
+  /** Set false for print-only or already-expanded tables. */
+  focusable?: boolean;
 }) {
-  return (
+  const table = (
     <div className={cx("tblwrap", className)} style={{ minWidth: 0 }}>
       <table className="tbl">
         {caption && <caption className="sr-only">{caption}</caption>}
@@ -574,6 +583,19 @@ export function Table({
         <tbody>{children}</tbody>
       </table>
     </div>
+  );
+
+  if (!focusable) return table;
+
+  return (
+    <TableWorkspace
+      className="table-workspace--embedded"
+      title={caption || "Table"}
+      ariaLabel={caption || "Data table"}
+      focusLabel={`Focus ${caption ? caption.toLocaleLowerCase() : "table"}`}
+    >
+      {table}
+    </TableWorkspace>
   );
 }
 

@@ -11,9 +11,12 @@
 // joined by loan_id so reassigning the loan implicitly carries them.
 
 import { useEffect, useMemo, useState } from "react";
-import { V, type CssVars } from "@/components/design-system/cssVars";
-import { Card, Pill } from "@/components/design-system/primitives";
+import { createPortal } from "react-dom";
+import { V } from "@/components/design-system/cssVars";
+import { Pill } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
+import { Btn } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { useLoans, useUpdateLoan } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
 import type { Broker } from "@/lib/types";
@@ -31,6 +34,15 @@ interface Props {
 export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClose }: Props) {
   const { data: loans = [], isLoading } = useLoans();
   const update = useUpdateLoan();
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+
+  // This dialog can be triggered by a control inside a focused table. Portal
+  // it outside that table's modal subtree so TableWorkspace can yield its
+  // focus/scroll ownership to Drawer instead of running two traps at once.
+  useEffect(() => {
+    setPortalHost(document.body);
+    return () => setPortalHost(null);
+  }, []);
 
   // Candidates = the client's loans currently on a different broker
   // (or no broker) AND not yet funded. Funded loans are historical;
@@ -102,58 +114,47 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
   // Don't render if there's no broker (unassign path) or nothing to ask.
   if (!newBroker) return null;
   if (!isLoading && candidates.length === 0) return null;
+  if (!portalHost) return null;
 
-  return (
-    <div
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      style={{
-        position: "fixed",
-        inset: 0,
-        background: "rgba(0,0,0,0.45)",
-        zIndex: 75,
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        padding: 20,
-      }}
-    >
-      <div
-        style={{
-          background: V.surface,
-          border: `1px solid ${V.line}`,
-          borderRadius: 12,
-          width: 560,
-          maxWidth: "100%",
-          maxHeight: "85vh",
-          padding: 20,
-          display: "flex",
-          flexDirection: "column",
-          gap: 12,
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+  return createPortal(
+    <Drawer
+      open
+      onClose={() => { if (!busy) onClose(); }}
+      closeOnBackdrop={!busy}
+      width="md"
+      ariaLabel="Sweep client loans to the assigned agent"
+      title={(
+        <span className="row">
           <Icon name="user" size={16} stroke={2.2} />
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: V.ink }}>
-              Sweep loans onto {brokerName ?? "this agent"}?
-            </div>
-            <div style={{ fontSize: 12, color: V.ink3, marginTop: 2 }}>
-              This client carries {candidates.length} open loan{candidates.length === 1 ? "" : "s"} on a
-              different broker. Reassign them so this agent sees the full picture in their pipeline,
-              or skip to keep the funding-side ownership where it is.
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            style={{ background: "transparent", border: "none", color: V.ink3, cursor: "pointer", padding: 4 }}
+          Sweep loans onto {brokerName ?? "this agent"}?
+        </span>
+      )}
+      sub={isLoading
+        ? "Checking this client's open loans…"
+        : `This client carries ${candidates.length} open loan${candidates.length === 1 ? "" : "s"} on a different broker. Reassign them so this agent sees the full picture, or skip to keep funding-side ownership where it is.`}
+      footer={(
+        <>
+          <Btn onClick={onClose} disabled={busy}>Skip — just the client</Btn>
+          <span className="sp" />
+          <Btn onClick={() => void sweep(true)} disabled={busy || isLoading || candidates.length === 0}>Sweep all</Btn>
+          <Btn
+            variant="pri"
+            onClick={() => void sweep(false)}
+            disabled={busy || isLoading || picked.size === 0}
           >
-            <Icon name="x" size={16} />
-          </button>
-        </div>
-
-        <div style={{ flex: 1, minHeight: 0, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6 }}>
+            {busy
+              ? "Reassigning…"
+              : picked.size === 0
+                ? "Pick at least one"
+                : `Reassign ${picked.size} loan${picked.size === 1 ? "" : "s"}`}
+          </Btn>
+        </>
+      )}
+    >
+      {isLoading ? (
+        <div className="sub">Loading open loans…</div>
+      ) : (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {candidates.map((loan) => {
             const checked = picked.has(loan.id);
             return (
@@ -195,56 +196,9 @@ export function MultiLoanReassignModal({ clientId, newBroker, brokerName, onClos
             );
           })}
         </div>
-
-        {err ? <div style={{ fontSize: 12, color: V.danger }}>{err}</div> : null}
-
-        <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-          <button onClick={onClose} disabled={busy} style={btnSecondary()}>
-            Skip — just the client
-          </button>
-          <button onClick={() => sweep(true)} disabled={busy} style={btnSecondary()}>
-            Sweep all
-          </button>
-          <button
-            onClick={() => sweep(false)}
-            disabled={busy || picked.size === 0}
-            style={btnPrimary(busy || picked.size === 0)}
-          >
-            {busy
-              ? "Reassigning…"
-              : picked.size === 0
-              ? "Pick at least one"
-              : `Reassign ${picked.size} loan${picked.size === 1 ? "" : "s"}`}
-          </button>
-        </div>
-      </div>
-    </div>
+      )}
+      {err ? <div className="statusline c-bad mt">{err}</div> : null}
+    </Drawer>,
+    portalHost,
   );
-}
-
-function btnPrimary(disabled: boolean): React.CSSProperties {
-  return {
-    padding: "8px 14px",
-    fontSize: 12,
-    fontWeight: 800,
-    borderRadius: 6,
-    border: "none",
-    background: V.brand,
-    color: V.inverse,
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.5 : 1,
-  };
-}
-
-function btnSecondary(): React.CSSProperties {
-  return {
-    padding: "8px 14px",
-    fontSize: 12,
-    fontWeight: 700,
-    borderRadius: 6,
-    border: `1px solid ${V.line}`,
-    background: V.surface,
-    color: V.ink2,
-    cursor: "pointer",
-  };
 }

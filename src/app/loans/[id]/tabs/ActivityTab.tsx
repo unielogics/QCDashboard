@@ -18,8 +18,11 @@
 
 import { Icon } from "@/components/design-system/Icon";
 import { fieldLabel, formatFieldValue } from "@/lib/activityFormat";
-import { CellChip, Panel, cx, type ChipTone } from "@/components/ds";
+import { Btn, CellChip, Panel, cx, type ChipTone } from "@/components/ds";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import type { Activity } from "@/lib/types";
+import { usePinnedRows } from "@/lib/tablePinning";
+import { useCurrentUser } from "@/hooks/useApi";
 
 type Family = "loan" | "document" | "credit" | "hud" | "calendar" | "ai" | "instruction" | "prequal" | "intake" | "other";
 
@@ -78,43 +81,87 @@ function familyForKind(kind: string): Family {
 
 
 export function ActivityTab({ activity, isLoading }: { activity: Activity[]; isLoading: boolean }) {
+  const { data: currentUser } = useCurrentUser();
+  const loanId = activity.find((entry) => entry.loan_id)?.loan_id ?? "unscoped";
+  const activityTableStorageKey = currentUser?.id
+    ? `loan-activity:${currentUser.id}:${loanId}`
+    : null;
+  const {
+    rows: orderedActivity,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows: activity,
+    getId: (entry) => entry.id,
+    storageKey: activityTableStorageKey,
+  });
+
   if (isLoading) return <Panel><span className="sub">Loading activity…</span></Panel>;
   if (activity.length === 0) return <Panel><span className="sub">No activity yet for this loan.</span></Panel>;
 
-  // Group by date so the feed reads as a timeline. The Activity API
-  // already returns rows newest-first; we just inject a date header
-  // every time the day changes.
-  const groups = groupByDay(activity);
+  // Keep pinned events in one explicit section, then retain the API's
+  // newest-first date grouping for everything else. This avoids duplicate
+  // date headings when an older event is pinned above today's activity.
+  const pinnedActivity = orderedActivity.filter((entry) => isPinned(entry.id));
+  const groups = [
+    ...(pinnedActivity.length
+      ? [{ dayKey: "pinned", dayLabel: "Pinned", entries: pinnedActivity }]
+      : []),
+    ...groupByDay(orderedActivity.filter((entry) => !isPinned(entry.id))),
+  ];
 
   return (
-    <Panel title={`Full activity log · ${activity.length} entries`} noPad>
-      {groups.map((group) => (
-        <div key={group.dayKey}>
+    <TableWorkspace
+      title={`Full activity log · ${activity.length} entries`}
+      description="Pin important events to keep them at the top while you review the loan history."
+      storageKey={activityTableStorageKey ?? undefined}
+      ariaLabel="Loan activity log"
+      actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
+    >
+      {groups.map((group, groupIndex) => (
+        <div key={`${group.dayKey}:${groupIndex}`}>
           <div className="gridhd">
             <span className="lbl">{group.dayLabel}</span>
           </div>
           {group.entries.map((e) => (
-            <ActivityRow key={e.id} entry={e} />
+            <ActivityRow
+              key={e.id}
+              entry={e}
+              pinned={isPinned(e.id)}
+              onTogglePin={() => togglePin(e.id)}
+            />
           ))}
         </div>
       ))}
-    </Panel>
+    </TableWorkspace>
   );
 }
 
 
-function ActivityRow({ entry }: { entry: Activity }) {
+function ActivityRow({
+  entry,
+  pinned,
+  onTogglePin,
+}: {
+  entry: Activity;
+  pinned: boolean;
+  onTogglePin: () => void;
+}) {
   const family = familyForKind(entry.kind);
   const meta = FAMILY_META[family];
   const changes = extractChanges(entry.payload);
 
   return (
     <div
-      className="gridrow top"
+      className={cx("gridrow", "top", pinned && "table-row-pinned")}
+      data-pinned={pinned ? "true" : undefined}
       // Bespoke track: plate, timestamp column, and everything else. This is
       // data about this screen, not a page grid.
-      style={{ gridTemplateColumns: "38px 130px 1fr" }}
+      style={{ gridTemplateColumns: "30px 38px 130px 1fr" }}
     >
+      <PinRowButton pinned={pinned} onToggle={onTogglePin} label={entry.summary || entry.kind} />
       <span className={cx("botmark", PLATE_TONE[meta.tone])}>
         <Icon name={meta.icon} size={15} />
       </span>

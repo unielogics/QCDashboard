@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { Pill } from "@/components/design-system/primitives";
@@ -20,11 +20,83 @@ export default function GlobalSearch() {
   const setOpen = useUI((s) => s.setSearchOpen);
   const router = useRouter();
   const [q, setQ] = useState("");
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const searchInputRef = useRef<HTMLInputElement | null>(null);
   const { data: user } = useCurrentUser();
   const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const { data: groups } = useGlobalSearch(isDealerPartner ? "" : q);
 
   useEffect(() => { if (!open) setQ(""); }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open) return;
+    const restoreTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    // Focus first so a focused TableWorkspace can yield and release its own
+    // scroll lock. This dialog then becomes the single lock owner.
+    searchInputRef.current?.focus({ preventScroll: true });
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        setOpen(false);
+        return;
+      }
+      const choices = dialogRef.current
+        ? Array.from(dialogRef.current.querySelectorAll<HTMLElement>("button.pick:not([disabled])"))
+        : [];
+      if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key) && choices.length) {
+        event.preventDefault();
+        const current = choices.indexOf(document.activeElement as HTMLElement);
+        const next = event.key === "Home"
+          ? 0
+          : event.key === "End"
+            ? choices.length - 1
+            : event.key === "ArrowDown"
+              ? current < 0 || current === choices.length - 1 ? 0 : current + 1
+              : current <= 0 ? choices.length - 1 : current - 1;
+        choices[next].focus({ preventScroll: true });
+        return;
+      }
+      if (event.key === "Enter" && document.activeElement === searchInputRef.current && choices.length) {
+        event.preventDefault();
+        choices[0].click();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(dialogRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      )).filter((element) => element.getClientRects().length > 0);
+      if (!focusable.length) {
+        event.preventDefault();
+        dialogRef.current.focus({ preventScroll: true });
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown, true);
+      document.body.style.overflow = previousOverflow;
+      if (restoreTo?.isConnected) {
+        const target = restoreTo.matches(".table-workspace")
+          ? restoreTo.querySelector<HTMLElement>(".table-workspace__focus-button")
+          : restoreTo;
+        target?.focus({ preventScroll: true });
+      }
+    };
+  }, [open, setOpen]);
 
   if (!open) return null;
 
@@ -32,11 +104,16 @@ export default function GlobalSearch() {
     <div
       onClick={() => setOpen(false)}
       style={{
-        position: "fixed", inset: 0, background: "rgba(15,23,32,0.34)", zIndex: 100,
+        position: "fixed", inset: 0, background: "rgba(15,23,32,0.34)", zIndex: 820,
         display: "flex", alignItems: "flex-start", justifyContent: "center", paddingTop: "10vh",
       }}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Global search"
+        tabIndex={-1}
         onClick={(e) => e.stopPropagation()}
         className="panel cmdk"
         // The palette's own measurements, not a system step.
@@ -45,7 +122,7 @@ export default function GlobalSearch() {
         <div className="panel-h">
           <Icon name="search" size={16} />
           <input
-            autoFocus
+            ref={searchInputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder={isDealerPartner ? "Open an auto workspace…" : "Search loans, clients, documents, messages…"}

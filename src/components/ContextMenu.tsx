@@ -13,8 +13,10 @@
 // instance — open just stamps the right row's id into state.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { V } from "@/components/design-system/cssVars";
 import { Icon } from "@/components/design-system/Icon";
+import { restoreTransientFocus } from "@/lib/focusManagement";
 
 export interface ContextMenuItem {
   label: string;
@@ -30,15 +32,27 @@ export interface ContextMenuState<T = unknown> {
   x: number;
   y: number;
   payload: T | null;
+  portalHost: HTMLElement | null;
+  returnFocus: HTMLElement | null;
 }
 
-const CLOSED: ContextMenuState<unknown> = { open: false, x: 0, y: 0, payload: null };
+const CLOSED: ContextMenuState<unknown> = { open: false, x: 0, y: 0, payload: null, portalHost: null, returnFocus: null };
 
 export function useContextMenu<T = unknown>() {
   const [state, setState] = useState<ContextMenuState<T>>(CLOSED as ContextMenuState<T>);
   const open = useCallback((e: React.MouseEvent, payload: T) => {
     e.preventDefault();
-    setState({ open: true, x: e.clientX, y: e.clientY, payload });
+    const trigger = e.currentTarget instanceof HTMLElement ? e.currentTarget : null;
+    if (trigger && trigger.tabIndex < 0) trigger.tabIndex = -1;
+    const workspace = trigger?.closest<HTMLElement>(".table-workspace") ?? null;
+    setState({
+      open: true,
+      x: e.clientX,
+      y: e.clientY,
+      payload,
+      portalHost: workspace?.dataset.focused === "true" ? workspace : null,
+      returnFocus: trigger,
+    });
   }, []);
   const close = useCallback(() => setState(CLOSED as ContextMenuState<T>), []);
   return { state, open, close };
@@ -55,10 +69,40 @@ export function ContextMenu<T>({
   items: ContextMenuItem[] | ((payload: T) => ContextMenuItem[]);
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const menuReceivedFocusRef = useRef(false);
 
   useEffect(() => {
     if (!state.open) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    menuReceivedFocusRef.current = false;
+    const menu = ref.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      const firstItem = menu?.querySelector<HTMLButtonElement>("button:not([disabled])");
+      (firstItem ?? menu)?.focus({ preventScroll: true });
+    });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === "Tab") {
+        onClose();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const choices = Array.from(ref.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? []);
+      if (!choices.length) return;
+      e.preventDefault();
+      const current = choices.indexOf(document.activeElement as HTMLButtonElement);
+      const next = e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? choices.length - 1
+          : e.key === "ArrowDown"
+            ? current < 0 || current === choices.length - 1 ? 0 : current + 1
+            : current <= 0 ? choices.length - 1 : current - 1;
+      choices[next].focus({ preventScroll: true });
+    };
     const onClick = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) onClose();
     };
@@ -66,11 +110,15 @@ export function ContextMenu<T>({
     window.addEventListener("mousedown", onClick);
     window.addEventListener("contextmenu", onClick);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("mousedown", onClick);
       window.removeEventListener("contextmenu", onClick);
+      if (menuReceivedFocusRef.current) {
+        restoreTransientFocus(state.returnFocus);
+      }
     };
-  }, [state.open, onClose]);
+  }, [state.open, state.returnFocus, onClose]);
 
   if (!state.open || state.payload === null) return null;
   const resolved = typeof items === "function" ? items(state.payload) : items;
@@ -88,10 +136,13 @@ export function ContextMenu<T>({
     ? Math.max(8, window.innerHeight - totalH - 8)
     : state.y;
 
-  return (
+  const menu = (
     <div
       ref={ref}
       role="menu"
+      aria-label="Row actions"
+      tabIndex={-1}
+      onFocusCapture={() => { menuReceivedFocusRef.current = true; }}
       style={{
         position: "fixed",
         top, left,
@@ -109,11 +160,14 @@ export function ContextMenu<T>({
         <button
           key={`${item.label}-${i}`}
           type="button"
+          role="menuitem"
           disabled={item.disabled}
           onClick={() => {
             if (item.disabled) return;
-            item.onSelect();
+            menuReceivedFocusRef.current = false;
+            state.returnFocus?.focus({ preventScroll: true });
             onClose();
+            item.onSelect();
           }}
           style={{
             all: "unset",
@@ -151,4 +205,6 @@ export function ContextMenu<T>({
       ))}
     </div>
   );
+  if (typeof document === "undefined") return menu;
+  return createPortal(menu, state.portalHost ?? document.body);
 }

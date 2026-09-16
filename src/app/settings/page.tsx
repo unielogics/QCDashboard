@@ -17,6 +17,7 @@ import {
   Lbl,
   PageHeader,
   Panel,
+  PinRowButton,
   Row,
   Select,
   Table,
@@ -74,6 +75,7 @@ import { DealAnalyzerSection } from "./DealAnalyzerSection";
 import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
 import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
 import { FundingProgramsSection } from "@/components/settings/FundingProgramsSection";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
 // Lending AI portal (/admin/lending-ai → Legacy tiles) but no longer
@@ -1354,6 +1356,7 @@ const ACCOUNT_TYPE_OPTIONS: Array<{ value: OperatorAccountAccessType; label: str
 const fmtDate = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "");
 
 function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
+  const { data: currentUser } = useCurrentUser();
   const { data: managers = [], isLoading, error } = useRegionalManagers();
   const { data: brokers = [] } = useBrokers();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1365,6 +1368,18 @@ function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
   const removeAgent = useRemoveRegionalManagerAgent(selectedId);
   const selected = selectedId ?? managers[0]?.id ?? null;
   const detail = useRegionalManagerDetail(selected);
+  const regionalAgents = useMemo(() => detail.data?.agents ?? [], [detail.data?.agents]);
+  const {
+    rows: orderedRegionalAgents,
+    isPinned: isRegionalAgentPinned,
+    togglePin: toggleRegionalAgentPin,
+  } = usePinnedRows({
+    rows: regionalAgents,
+    getId: (agent) => agent.user_id,
+    storageKey: currentUser?.id
+      ? `settings:regional-manager-agents:${currentUser.id}:${selected ?? "none"}`
+      : null,
+  });
 
   useEffect(() => {
     if (!selectedId && managers[0]?.id) setSelectedId(managers[0].id);
@@ -1468,8 +1483,10 @@ function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
                 { label: "" },
               ]}
             >
-              {detail.data.agents.map((agent) => (
-                <Tr key={agent.user_id}>
+              {orderedRegionalAgents.map((agent) => {
+                const pinned = isRegionalAgentPinned(agent.user_id);
+                return (
+                <Tr key={agent.user_id} className={pinned ? "table-row-pinned" : undefined}>
                   <Td>
                     <b>{agent.display_name ?? agent.name}</b>
                     <div className="sub">{agent.email}</div>
@@ -1477,15 +1494,23 @@ function RegionalManagersSection({ canEdit }: { canEdit: boolean }) {
                   <Td align="r">{agent.metrics.client_count}</Td>
                   <Td align="r">{QC_FMT.short(agent.metrics.pipeline_value)}</Td>
                   <Td align="r">
-                    <IconBtn
-                      aria-label={`Remove ${agent.name}`}
-                      onClick={() => removeAgent.mutate(agent.user_id)}
-                    >
-                      <Icon name="x" size={13} />
-                    </IconBtn>
+                    <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 4 }}>
+                      <PinRowButton
+                        pinned={pinned}
+                        onToggle={() => toggleRegionalAgentPin(agent.user_id)}
+                        label={agent.display_name ?? agent.name}
+                      />
+                      <IconBtn
+                        aria-label={`Remove ${agent.name}`}
+                        onClick={() => removeAgent.mutate(agent.user_id)}
+                      >
+                        <Icon name="x" size={13} />
+                      </IconBtn>
+                    </span>
                   </Td>
                 </Tr>
-              ))}
+                );
+              })}
             </Table>
           )}
         </Panel>
@@ -1527,6 +1552,12 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const selectedUser = users?.find((user) => user.id === selectedUserId) ?? null;
+  const teamMembers = useMemo(() => users ?? [], [users]);
+  const { rows: orderedTeamMembers, isPinned, togglePin } = usePinnedRows({
+    rows: teamMembers,
+    getId: (user) => user.id,
+    storageKey: me?.id ? `settings:operator-team:${me.id}` : null,
+  });
 
   if (!canEdit) {
     return (
@@ -1567,14 +1598,14 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
               { label: "", width: 44 },
             ]}
           >
-            {users.map((u) => {
+            {orderedTeamMembers.map((u) => {
               const isSelf = me?.id === u.id;
               const access = roleAccessProfile(u.role);
               const loginTone = u.account_status === "suspended"
                 ? "bad"
                 : u.login_state === "active" ? "ok" : u.login_state === "invite_failed" ? "bad" : "warn";
               return (
-                <Tr key={u.id} onClick={() => setSelectedUserId(u.id)}>
+                <Tr key={u.id} onClick={() => setSelectedUserId(u.id)} className={isPinned(u.id) ? "table-row-pinned" : undefined}>
                   <Td>
                     <div className="grid g2">
                       <span><b>{u.name}</b> {isSelf && <CellChip>You</CellChip>}</span>
@@ -1622,7 +1653,10 @@ function TeamSection({ canEdit }: { canEdit: boolean }) {
                     </div>
                   </Td>
                   <Td align="r">
-                    <IconBtn aria-label={`Manage ${u.name}`} title={`Manage ${u.name}`} onClick={() => setSelectedUserId(u.id)}><Icon name="chevR" size={13} /></IconBtn>
+                    <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 4 }}>
+                      <PinRowButton pinned={isPinned(u.id)} onToggle={() => togglePin(u.id)} label={u.name} />
+                      <IconBtn aria-label={`Manage ${u.name}`} title={`Manage ${u.name}`} onClick={() => setSelectedUserId(u.id)}><Icon name="chevR" size={13} /></IconBtn>
+                    </span>
                   </Td>
                 </Tr>
               );

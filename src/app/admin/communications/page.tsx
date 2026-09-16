@@ -22,8 +22,10 @@
 import { useMemo, useState } from "react";
 import { Btn, CellChip, Empty, Input, Loading, PageHeader, Panel, Row, Select, StatusLine, Sub } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import { Tabs } from "@/components/design-system/Tabs";
 import { Role } from "@/lib/enums.generated";
+import { usePinnedRows } from "@/lib/tablePinning";
 import {
   useCommsActivity,
   useCommsMessage,
@@ -33,8 +35,8 @@ import {
 } from "@/hooks/useApi";
 
 const LIMIT = 50;
-const MSG_COLS = "minmax(150px,1.1fr) minmax(180px,1.4fr) 120px 130px minmax(140px,1fr)";
-const ACT_COLS = "minmax(160px,1.2fr) minmax(220px,2fr) 130px 150px";
+const MSG_COLS = "minmax(150px,1.1fr) minmax(180px,1.4fr) 120px 130px minmax(140px,1fr) 40px";
+const ACT_COLS = "minmax(160px,1.2fr) minmax(220px,2fr) 130px 150px 40px";
 
 type ChipTone = "ok" | "warn" | "bad" | "mut" | "acc";
 
@@ -117,10 +119,35 @@ export default function CommunicationsAuditPage() {
     [messages.data?.contexts],
   );
 
-  if (me && !operator) return null;
-
   const rows = messages.data?.rows ?? [];
   const acts = activity.data?.rows ?? [];
+  const messageTableStorageKey = me?.id ? `admin-communications-messages:${me.id}` : null;
+  const {
+    rows: orderedMessages,
+    pinnedIds: messagePinnedIds,
+    isPinned: isMessagePinned,
+    togglePin: toggleMessagePin,
+    clearPins: clearMessagePins,
+  } = usePinnedRows({
+    rows,
+    getId: (row) => row.id,
+    storageKey: messageTableStorageKey,
+  });
+  const activityTableStorageKey = me?.id ? `admin-communications-activity:${me.id}` : null;
+  const {
+    rows: orderedActs,
+    pinnedIds: activityPinnedIds,
+    isPinned: isActivityPinned,
+    togglePin: toggleActivityPin,
+    clearPins: clearActivityPins,
+  } = usePinnedRows({
+    rows: acts,
+    getId: (row) => row.id,
+    storageKey: activityTableStorageKey,
+  });
+
+  if (me && !operator) return null;
+
   const total = (tab === "messages" ? messages.data?.total : activity.data?.total) ?? 0;
   const loading = tab === "messages" ? messages.isLoading : activity.isLoading;
 
@@ -191,7 +218,29 @@ export default function CommunicationsAuditPage() {
         </form>
       </Panel>
 
-      <Panel noPad>
+      <TableWorkspace
+        title={tab === "messages" ? "Message log" : "Activity log"}
+        description={
+          tab === "messages"
+            ? "Open a message to inspect its delivery details, or pin it to the top of this page."
+            : "Pin important activity to keep it at the top of this page."
+        }
+        storageKey={me?.id ? `admin-communications-${tab}:${me.id}` : undefined}
+        ariaLabel={tab === "messages" ? "Communications message log" : "Communications activity log"}
+        actions={tab === "messages" && messagePinnedIds.length ? (
+          <Btn size="sm" onClick={clearMessagePins}>Clear pins</Btn>
+        ) : tab === "activity" && activityPinnedIds.length ? (
+          <Btn size="sm" onClick={clearActivityPins}>Clear pins</Btn>
+        ) : null}
+        footer={(
+          <div className="row" style={{ width: "100%", flexWrap: "nowrap" }}>
+            <Sub>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "Nothing to show"}</Sub>
+            <span className="sp" />
+            <Btn disabled={offset === 0 || loading} onClick={() => move(offset - LIMIT)}>Previous</Btn>
+            <Btn disabled={offset + LIMIT >= total || loading} onClick={() => move(offset + LIMIT)}>Next</Btn>
+          </div>
+        )}
+      >
         {tab === "messages" ? (
           <>
             <div className="gridhd" style={{ gridTemplateColumns: MSG_COLS }}>
@@ -200,6 +249,7 @@ export default function CommunicationsAuditPage() {
               <span>Channel</span>
               <span>Outcome</span>
               <span>By</span>
+              <span aria-label="Pinned" />
             </div>
             {loading ? (
               <div className="panel-b"><Loading>Reading the log…</Loading></div>
@@ -210,33 +260,49 @@ export default function CommunicationsAuditPage() {
                   existed was never recorded, so it is deliberately not shown.
                 </Empty>
               </div>
-            ) : rows.map((row) => (
-              <button
-                key={row.id}
-                type="button"
-                className="gridrow act"
-                style={{ gridTemplateColumns: MSG_COLS, textAlign: "left", width: "100%", background: "none", border: 0 }}
-                onClick={() => { setOpenId(row.id); setAsHtml(false); }}
-              >
-                <div>
-                  <div className="trunc"><strong>{when(row.occurred_at)}</strong></div>
-                  <Sub>{label(row.context)}</Sub>
+            ) : orderedMessages.map((row) => {
+              const pinned = isMessagePinned(row.id);
+              const openMessage = () => { setOpenId(row.id); setAsHtml(false); };
+              return (
+                <div
+                  key={row.id}
+                  className={pinned ? "gridrow act table-row-pinned" : "gridrow act"}
+                  data-pinned={pinned ? "true" : undefined}
+                  style={{ gridTemplateColumns: MSG_COLS, textAlign: "left", width: "100%" }}
+                  onClick={openMessage}
+                >
+                  <div>
+                    <div className="trunc"><strong>{when(row.occurred_at)}</strong></div>
+                    <Sub>{label(row.context)}</Sub>
+                  </div>
+                  <div>
+                    <button
+                      type="button"
+                      className="linky trunc"
+                      aria-label={`Open message to ${row.to || "recipient"}`}
+                      onClick={(event) => { event.stopPropagation(); openMessage(); }}
+                    >
+                      {row.to || "—"}
+                    </button>
+                    <div className="trunc sub">{row.subject || (row.channel === "sms" ? "Text message" : "No subject")}</div>
+                  </div>
+                  <div><CellChip tone="mut">{row.channel}</CellChip></div>
+                  <div>
+                    <CellChip tone={STATUS_TONE[row.status] ?? "mut"}>{label(row.status)}</CellChip>
+                    <div className="trunc sub">{outcome(row)}</div>
+                  </div>
+                  <div>
+                    <div className="trunc">{row.actor_name || (row.actor_label === "cron" ? "Scheduled" : "—")}</div>
+                    <Sub>{row.job ? label(row.job.replace(/^job_/, "")) : label(row.actor_label)}</Sub>
+                  </div>
+                  <PinRowButton
+                    pinned={pinned}
+                    onToggle={() => toggleMessagePin(row.id)}
+                    label={row.subject || row.to || "message"}
+                  />
                 </div>
-                <div>
-                  <div className="trunc">{row.to || "—"}</div>
-                  <div className="trunc sub">{row.subject || (row.channel === "sms" ? "Text message" : "No subject")}</div>
-                </div>
-                <div><CellChip tone="mut">{row.channel}</CellChip></div>
-                <div>
-                  <CellChip tone={STATUS_TONE[row.status] ?? "mut"}>{label(row.status)}</CellChip>
-                  <div className="trunc sub">{outcome(row)}</div>
-                </div>
-                <div>
-                  <div className="trunc">{row.actor_name || (row.actor_label === "cron" ? "Scheduled" : "—")}</div>
-                  <Sub>{row.job ? label(row.job.replace(/^job_/, "")) : label(row.actor_label)}</Sub>
-                </div>
-              </button>
-            ))}
+              );
+            })}
           </>
         ) : (
           <>
@@ -245,32 +311,39 @@ export default function CommunicationsAuditPage() {
               <span>What happened</span>
               <span>Trail</span>
               <span>Who</span>
+              <span aria-label="Pinned" />
             </div>
             {loading ? (
               <div className="panel-b"><Loading>Reading the trails…</Loading></div>
             ) : acts.length === 0 ? (
               <div className="panel-b"><Empty title="No activity matched" /></div>
-            ) : acts.map((row) => (
-              <div key={row.id} className="gridrow" style={{ gridTemplateColumns: ACT_COLS }}>
-                <Sub>{when(row.occurred_at)}</Sub>
-                <div>
-                  <div className="trunc"><strong>{label(row.action)}</strong></div>
-                  <div className="trunc sub">{row.summary}</div>
+            ) : orderedActs.map((row) => {
+              const pinned = isActivityPinned(row.id);
+              return (
+                <div
+                  key={row.id}
+                  className={pinned ? "gridrow table-row-pinned" : "gridrow"}
+                  data-pinned={pinned ? "true" : undefined}
+                  style={{ gridTemplateColumns: ACT_COLS }}
+                >
+                  <Sub>{when(row.occurred_at)}</Sub>
+                  <div>
+                    <div className="trunc"><strong>{label(row.action)}</strong></div>
+                    <div className="trunc sub">{row.summary}</div>
+                  </div>
+                  <div><CellChip tone="mut">{label(row.source)}</CellChip></div>
+                  <div className="trunc">{row.actor_name || label(row.actor_role || "—")}</div>
+                  <PinRowButton
+                    pinned={pinned}
+                    onToggle={() => toggleActivityPin(row.id)}
+                    label={row.summary || label(row.action)}
+                  />
                 </div>
-                <div><CellChip tone="mut">{label(row.source)}</CellChip></div>
-                <div className="trunc">{row.actor_name || label(row.actor_role || "—")}</div>
-              </div>
-            ))}
+              );
+            })}
           </>
         )}
-
-        <div className="panel-h">
-          <Sub>{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "Nothing to show"}</Sub>
-          <span className="sp" />
-          <Btn disabled={offset === 0 || loading} onClick={() => move(offset - LIMIT)}>Previous</Btn>
-          <Btn disabled={offset + LIMIT >= total || loading} onClick={() => move(offset + LIMIT)}>Next</Btn>
-        </div>
-      </Panel>
+      </TableWorkspace>
 
       <Drawer
         open={Boolean(openId)}

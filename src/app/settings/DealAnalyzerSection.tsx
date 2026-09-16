@@ -9,7 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, IconBtn, Input, Panel } from "@/components/ds";
+import { Btn, IconBtn, Input, Panel, TableWorkspace } from "@/components/ds";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
 import { useClosingCostTiers, useReplaceClosingCostTiers } from "@/hooks/useApi";
@@ -149,8 +149,16 @@ export function DealAnalyzerSection() {
 
         {/* A real `.tbl` in its own scroll container, so a wide grid scrolls
             inside the panel instead of widening the page. */}
-        <div className="tblwrap mt">
-          <table className="tbl" style={{ minWidth: 560 }}>
+        <TableWorkspace
+          className="table-workspace--embedded mt"
+          title="Closing-cost tiers"
+          ariaLabel="Closing-cost tiers table"
+          storageKey="settings-deal-analyzer-closing-cost-tiers"
+          focusLabel="Focus closing-cost tiers table"
+        >
+          <div className="tblwrap">
+            <table className="tbl" style={{ minWidth: 560 }}>
+            <caption className="sr-only">Closing-cost tiers</caption>
             <thead>
               <tr>
                 {["From $", "To $", "% with construction", "% without construction", ""].map((h) => (
@@ -195,8 +203,9 @@ export function DealAnalyzerSection() {
                 ))
               )}
             </tbody>
-          </table>
-        </div>
+            </table>
+          </div>
+        </TableWorkspace>
         {canEdit ? (
           <div className="mt">
             <Btn onClick={addRow}>

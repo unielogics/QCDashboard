@@ -9,9 +9,11 @@
 // whose domain matches the source ("pipeline" agents on funding-file
 // rows; "clients" on lead/client rows; "both" always).
 
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Icon } from "@/components/design-system/Icon";
 import { useAiAgents, useAssignWarmupLeads } from "@/hooks/useAiAgents";
+import { restoreTransientFocus } from "@/lib/focusManagement";
 
 type DomainSource = "pipeline" | "clients";
 
@@ -20,16 +22,24 @@ export function AIAgentAssignPicker({
   dealId,
   source,
   anchor,
+  portalHost,
+  returnFocus,
   onClose,
 }: {
   clientId: string;
   dealId?: string;
   source: DomainSource;
   anchor: { x: number; y: number };
+  portalHost?: HTMLElement | null;
+  returnFocus?: HTMLElement | null;
   onClose: () => void;
 }) {
   const { data: agents = [], isLoading } = useAiAgents();
   const assign = useAssignWarmupLeads();
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuReceivedFocusRef = useRef(false);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
 
   // Match the picker to where the broker came from. Pipeline cards
   // surface pipeline + both; client cards surface clients + both.
@@ -50,20 +60,51 @@ export function AIAgentAssignPicker({
 
   // Dismiss on Escape + outside-click.
   useEffect(() => {
+    menuReceivedFocusRef.current = false;
+    const menu = menuRef.current;
+    const focusFrame = window.requestAnimationFrame(() => {
+      const firstItem = menu?.querySelector<HTMLButtonElement>("button:not([disabled])");
+      (firstItem ?? menu)?.focus({ preventScroll: true });
+    });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+      if (e.key === "Tab") {
+        onCloseRef.current();
+        return;
+      }
+      if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(e.key)) return;
+      const choices = Array.from(menuRef.current?.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]:not([disabled])') ?? []);
+      if (!choices.length) return;
+      e.preventDefault();
+      const current = choices.indexOf(document.activeElement as HTMLButtonElement);
+      const next = e.key === "Home"
+        ? 0
+        : e.key === "End"
+          ? choices.length - 1
+          : e.key === "ArrowDown"
+            ? current < 0 || current === choices.length - 1 ? 0 : current + 1
+            : current <= 0 ? choices.length - 1 : current - 1;
+      choices[next].focus({ preventScroll: true });
     };
-    const onClick = () => onClose();
+    const onClick = () => onCloseRef.current();
     window.addEventListener("keydown", onKey);
     const id = window.setTimeout(() => {
       window.addEventListener("click", onClick);
     }, 0);
     return () => {
+      window.cancelAnimationFrame(focusFrame);
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("click", onClick);
       window.clearTimeout(id);
+      if (menuReceivedFocusRef.current) {
+        restoreTransientFocus(returnFocus ?? null);
+      }
     };
-  }, [onClose]);
+  }, [returnFocus]);
 
   const pick = async (agentId: string) => {
     await assign.mutateAsync({
@@ -71,14 +112,21 @@ export function AIAgentAssignPicker({
       client_ids: [clientId],
       ...(dealId ? { deal_id: dealId } : {}),
     });
-    onClose();
+    menuReceivedFocusRef.current = false;
+    returnFocus?.focus({ preventScroll: true });
+    onCloseRef.current();
   };
 
   // Cursor coordinates are the only genuinely dynamic value; they sit on a
   // zero-height fixed anchor so `.popmenu` keeps owning the panel's own box
   // (and `.popmenu .mi:hover` replaces the JS hover handlers).
-  return (
+  const picker = (
     <div
+      ref={menuRef}
+      role="menu"
+      aria-label="Assign an AI agent"
+      tabIndex={-1}
+      onFocusCapture={() => { menuReceivedFocusRef.current = true; }}
       onClick={(e) => e.stopPropagation()}
       onContextMenu={(e) => e.preventDefault()}
       style={{ position: "fixed", top: anchor.y, left: anchor.x, zIndex: 90, width: 280, height: 0 }}
@@ -97,6 +145,7 @@ export function AIAgentAssignPicker({
           <button
             key={a.id}
             type="button"
+            role="menuitem"
             className="mi"
             onClick={(e) => {
               e.stopPropagation();
@@ -117,4 +166,6 @@ export function AIAgentAssignPicker({
       </div>
     </div>
   );
+  if (!portalHost) return picker;
+  return createPortal(picker, portalHost);
 }

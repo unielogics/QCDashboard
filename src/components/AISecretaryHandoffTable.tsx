@@ -36,7 +36,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useDraggable, useDroppable } from "@dnd-kit/core";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, CellChip, cx } from "@/components/ds";
+import { Btn, CellChip, TableWorkspace, cx } from "@/components/ds";
 import type { DSDealSecretaryView, DSTaskRow } from "@/lib/types";
 
 export interface HandoffRow {
@@ -190,35 +190,41 @@ export function AISecretaryHandoffTable({
   };
 
   return (
-    <div className="grid g8">
-      <div className="grid g8" style={TRACK}>
-        <span className="lbl">#</span>
-        <span>
-          <CellChip tone="acc">
-            <Icon name="ai" size={11} stroke={2.2} />
-            AI
-          </CellChip>
-        </span>
-        <span>
-          <CellChip tone="mut">
-            <Icon name="user" size={11} stroke={2.2} />
-            Human
-          </CellChip>
-        </span>
+    <TableWorkspace
+      className="table-workspace--embedded"
+      title="AI and human handoff sequence"
+      ariaLabel="AI and human handoff sequence"
+    >
+      <div className="grid g8">
+        <div className="grid g8" style={TRACK}>
+          <span className="lbl">#</span>
+          <span>
+            <CellChip tone="acc">
+              <Icon name="ai" size={11} stroke={2.2} />
+              AI
+            </CellChip>
+          </span>
+          <span>
+            <CellChip tone="mut">
+              <Icon name="user" size={11} stroke={2.2} />
+              Human
+            </CellChip>
+          </span>
+        </div>
+        {rows.map((row, i) => (
+          <HandoffRowView
+            key={row.id}
+            rowNumber={i + 1}
+            row={row}
+            tasksByKey={tasksByKey}
+            onRemoveKey={(key) => removeKeyFromRow(row.id, key)}
+            onDeleteRow={() => deleteRow(row.id)}
+            showDelete={rows.length > 1}
+            onUnplaceTask={onUnplaceTask}
+          />
+        ))}
       </div>
-      {rows.map((row, i) => (
-        <HandoffRowView
-          key={row.id}
-          rowNumber={i + 1}
-          row={row}
-          tasksByKey={tasksByKey}
-          onRemoveKey={(key) => removeKeyFromRow(row.id, key)}
-          onDeleteRow={() => deleteRow(row.id)}
-          showDelete={rows.length > 1}
-          onUnplaceTask={onUnplaceTask}
-        />
-      ))}
-    </div>
+    </TableWorkspace>
   );
 }
 

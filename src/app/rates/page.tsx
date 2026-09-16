@@ -8,6 +8,7 @@ import {
   Input,
   PageHeader,
   Panel,
+  PinRowButton,
   Row,
   Select,
   Table,
@@ -25,6 +26,7 @@ import type { LoanType } from "@/lib/enums.generated";
 import type { RateSKU, RateSKUInput } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 const EMPTY_DRAFT: RateSKUInput = {
   id: "",
@@ -41,6 +43,8 @@ const EMPTY_DRAFT: RateSKUInput = {
   max_ltv: 0.75,
   delta_bps: 0,
 };
+
+const rateId = (rate: RateSKU) => rate.id;
 
 export default function RatesPage() {
   const { data: rates = [], isLoading } = useRates();
@@ -60,6 +64,11 @@ export default function RatesPage() {
     () => (filter === "all" ? rates : rates.filter((r) => r.loan_type === filter)),
     [filter, rates],
   );
+  const { rows: orderedRates, isPinned, togglePin } = usePinnedRows({
+    rows: filtered,
+    getId: rateId,
+    storageKey: user?.id ? `rates:${user.id}` : null,
+  });
 
   // A negative move is a rate improvement, so it reads as the good tone. Was a
   // computed colour (t.profit / t.danger / t.ink3); the chip tones carry the
@@ -77,6 +86,7 @@ export default function RatesPage() {
     { label: "Min FICO", align: "r" },
     { label: "Max LTV", align: "r" },
     { label: "Δ vs y'day", align: "r" },
+    { label: "Pin", align: "r", width: 52 },
     ...(canManage ? ([{ label: "Actions", align: "r" }] as Col[]) : []),
   ];
 
@@ -186,8 +196,10 @@ export default function RatesPage() {
 
       <Panel noPad>
         <Table cols={cols} caption="Published rate SKUs">
-          {filtered.map((r) => (
-            <Tr key={r.id}>
+          {orderedRates.map((r) => {
+            const pinned = isPinned(r.id);
+            return (
+              <Tr key={r.id} className={pinned ? "is-pinned" : undefined}>
               <Td>
                 <b>{r.label}</b>
                 {/* `.sub` owns size and colour; only the mono face is inline —
@@ -221,6 +233,9 @@ export default function RatesPage() {
                   {deltaLabel(r.delta_bps)}
                 </CellChip>
               </Td>
+              <Td align="r">
+                <PinRowButton pinned={pinned} onToggle={() => togglePin(r.id)} label={r.label} />
+              </Td>
               {canManage && (
                 <Td align="r">
                   <span style={{ display: "inline-flex", gap: 8 }}>
@@ -235,8 +250,9 @@ export default function RatesPage() {
                   </span>
                 </Td>
               )}
-            </Tr>
-          ))}
+              </Tr>
+            );
+          })}
           {!isLoading && filtered.length === 0 && (
             <Tr>
               <Td colSpan={cols.length}>

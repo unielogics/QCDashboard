@@ -2,7 +2,6 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
-import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
 import {
@@ -27,6 +26,7 @@ import {
 } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
@@ -87,6 +87,8 @@ import { validPhone } from "@/lib/formCoerce";
 import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
 import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
+import { usePinnedRows } from "@/lib/tablePinning";
+import { useConsoleAuth } from "@/lib/consoleAuth";
 
 type LeadRow = {
   id: string;
@@ -301,7 +303,8 @@ const VARIANT_FILTERS = [
   { value: "mca_refi_v1", label: "MCA refinance" },
 ];
 
-const LIMIT = 25;
+const DEFAULT_PAGE_SIZE = 50;
+const PAGE_SIZES = [25, 50, 100] as const;
 
 function presentContact(value?: string | null): string {
   return value?.trim() || "Not provided";
@@ -334,7 +337,7 @@ function numberOrNull(value: string): number | null {
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { getToken } = useAuth();
+  const { getToken } = useConsoleAuth();
   const { requestReview, isReviewing } = useAIReview();
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
@@ -351,6 +354,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [rows, setRows] = useState<LeadRow[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -366,6 +370,10 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [creating, setCreating] = useState(false);
   const [linkLead, setLinkLead] = useState<LinkLead | null>(null);
   const [leadDetailMinimized, setLeadDetailMinimized] = useState(false);
+  const listShellRef = useRef<HTMLDivElement | null>(null);
+  const detailShellRef = useRef<HTMLDivElement | null>(null);
+  const minimizedResumeRef = useRef<HTMLButtonElement | null>(null);
+  const detailReturnFocusRef = useRef<HTMLElement | null>(null);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -377,7 +385,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     setNotice("");
     try {
       const params = new URLSearchParams({
-        limit: String(LIMIT),
+        limit: String(pageSize),
         offset: String(nextOffset),
         status_filter: statusFilter,
         probability_status: probabilityFilter,
@@ -398,6 +406,8 @@ export default function AdminAIUnderwriterLeadsPage() {
   }
 
   async function openLead(id: string) {
+    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    if (active?.closest(".ai-intake-list-shell")) detailReturnFocusRef.current = active;
     setSelectedId(id);
     setLeadDetailMinimized(false);
     setDetailLoading(true);
@@ -609,6 +619,25 @@ export default function AdminAIUnderwriterLeadsPage() {
     loadLeads().catch(() => undefined);
   }
 
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => {
+      if (selectedId) {
+        if (leadDetailMinimized) minimizedResumeRef.current?.focus({ preventScroll: true });
+        else detailShellRef.current?.focus({ preventScroll: true });
+        return;
+      }
+
+      const returnTarget = detailReturnFocusRef.current;
+      if (returnTarget?.isConnected && returnTarget.getClientRects().length > 0) {
+        returnTarget.focus({ preventScroll: true });
+      } else {
+        listShellRef.current?.focus({ preventScroll: true });
+      }
+      detailReturnFocusRef.current = null;
+    });
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, [leadDetailMinimized, selectedId]);
+
   function openRerun() {
     if (!selectedId) return;
     requestReview({
@@ -756,7 +785,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   useEffect(() => {
     if (isIntakeOperator) loadLeads(0).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isIntakeOperator, statusFilter, variantFilter, probabilityFilter, submittedQuery, partnerUserId]);
+  }, [isIntakeOperator, statusFilter, variantFilter, probabilityFilter, submittedQuery, partnerUserId, pageSize]);
 
   useEffect(() => {
     if (isIntakeOperator && leadParam && leadParam !== selectedId) {
@@ -774,6 +803,18 @@ export default function AdminAIUnderwriterLeadsPage() {
   const unifiedByIntake = useMemo(() => new Map(
     (unifiedFiles?.items ?? []).filter((file) => file.intake_id).map((file) => [file.intake_id as string, file]),
   ), [unifiedFiles]);
+  const aiIntakeTableStorageKey = me?.id ? `ai-intake:${me.id}` : null;
+  const {
+    rows: orderedRows,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows,
+    getId: (row) => row.id,
+    storageKey: aiIntakeTableStorageKey,
+  });
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -868,10 +909,13 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   return (
     <>
-    <div className={cx("ai-intake-list-shell", selectedLeadPanel && !leadDetailMinimized && "workspace-hidden")} // 105px was measured when the content padding was 0. It reads the variable
-      // now, so the shell stops overflowing the only scroller on a screen built
-      // not to scroll.
-      style={{ height: "calc(100dvh - 95px - var(--pad-y))", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
+    <div
+      ref={listShellRef}
+      tabIndex={-1}
+      aria-label="AI intake file list"
+      className={cx("ai-intake-list-shell", selectedLeadPanel && !leadDetailMinimized && "workspace-hidden")}
+      style={{ maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: "calc(100dvh - 95px - var(--pad-y))" }}
+    >
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow">
           <h1>AI intake</h1>
@@ -916,54 +960,79 @@ export default function AdminAIUnderwriterLeadsPage() {
 
       {notice ? <WarnLine>{notice}</WarnLine> : null}
 
-      <div style={{ flex: 1, minHeight: 0, display: "grid", gridTemplateColumns: "1fr", gap: 14, alignItems: "stretch", overflow: "hidden" }}>
-        <div className="panel" style={{ minHeight: 0 }}>
-          <div className="tblwrap" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-            <table className="tbl">
-              <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Evidence</th><th>Missing</th><th className="r" /></tr></thead>
-              <tbody>
-                {loading ? <tr><td colSpan={10}><div className="empty">Loading AI intake...</div></td></tr> : rows.map((row) => {
-                  const unified = unifiedByIntake.get(row.id);
-                  return (
-                    <tr key={row.id} onClick={() => openLead(row.id)} className={`${semanticStatusClass(row.status)}${selectedId === row.id ? " tone-acc" : ""}`}>
-                      <td className="lead-file-cell">
-                        <button type="button" className="linky" onClick={() => openLead(row.id)}>{row.business_name || row.full_name}</button>
-                        <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
-                        {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
-                      </td>
-                      <td className="lead-contact-cell">
-                        <div className="lead-contact-line">{presentContact(row.email)}</div>
-                        <div className="lead-contact-line sub">{presentContact(row.phone)}</div>
-                      </td>
-                      <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || unified?.case_ref || "Internal"}</div></td>
-                      <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
-                      <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
-                      <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
-                      <td><CellChip tone={row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.status}</CellChip></td>
-                      <td><button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button></td>
-                      <td className="num">{row.missing_required_count}</td>
-                      <td className="r">
-                        <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                          <Btn size="sm" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>Open</Btn>
-                          {canDelete ? <Btn size="sm" className="danger" title="Delete this intake — irreversible" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Delete</Btn> : null}
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {!loading && !rows.length ? <tr><td colSpan={10}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
-              </tbody>
-            </table>
-          </div>
-          <div className="row" style={{ flexShrink: 0, padding: "12px 16px", borderTop: "1px solid var(--line)" }}>
-            <span className="sub">{total ? `${offset + 1}-${Math.min(offset + LIMIT, total)} of ${total}` : "0 leads"}</span>
+      <TableWorkspace
+        title="AI intake files"
+        description="Scroll the page to give the file list the full workspace, or focus the table for concentrated review."
+        storageKey={aiIntakeTableStorageKey ?? undefined}
+        actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
+        footer={(
+          <div className="row" style={{ width: "100%", flexWrap: "nowrap" }}>
+            <span className="sub">{total ? `${offset + 1}-${Math.min(offset + pageSize, total)} of ${total}` : "0 leads"}</span>
             <span className="sp" />
-            <Btn disabled={offset === 0 || loading} onClick={() => loadLeads(Math.max(0, offset - LIMIT))}>Previous</Btn>
-            <Btn disabled={offset + LIMIT >= total || loading} onClick={() => loadLeads(offset + LIMIT)}>Next</Btn>
+            <label className="row sub" style={{ gap: 6, flexWrap: "nowrap" }}>
+              Rows
+              <Select
+                aria-label="Rows per page"
+                value={String(pageSize)}
+                onChange={(event) => {
+                  setOffset(0);
+                  setPageSize(Number(event.target.value));
+                }}
+              >
+                {PAGE_SIZES.map((size) => <option key={size} value={size}>{size}</option>)}
+              </Select>
+            </label>
+            <Btn disabled={offset === 0 || loading} onClick={() => loadLeads(Math.max(0, offset - pageSize))}>Previous</Btn>
+            <Btn disabled={offset + pageSize >= total || loading} onClick={() => loadLeads(offset + pageSize)}>Next</Btn>
           </div>
+        )}
+      >
+        <div className="tblwrap">
+          <table className="tbl">
+            <caption className="sr-only">AI intake files</caption>
+            <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Evidence</th><th>Missing</th><th className="r">Actions</th></tr></thead>
+            <tbody>
+              {loading ? <tr><td colSpan={10}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
+                const unified = unifiedByIntake.get(row.id);
+                const pinned = isPinned(row.id);
+                return (
+                  <tr
+                    key={row.id}
+                    onClick={() => openLead(row.id)}
+                    className={cx(semanticStatusClass(row.status), selectedId === row.id && "tone-acc", pinned && "table-row-pinned")}
+                    data-pinned={pinned || undefined}
+                  >
+                    <td className="lead-file-cell">
+                      <button type="button" className="linky" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>{row.business_name || row.full_name}</button>
+                      <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
+                      {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
+                    </td>
+                    <td className="lead-contact-cell">
+                      <div className="lead-contact-line">{presentContact(row.email)}</div>
+                      <div className="lead-contact-line sub">{presentContact(row.phone)}</div>
+                    </td>
+                    <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || unified?.case_ref || "Internal"}</div></td>
+                    <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
+                    <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
+                    <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
+                    <td><CellChip tone={row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.status}</CellChip></td>
+                    <td><button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button></td>
+                    <td className="num">{row.missing_required_count}</td>
+                    <td className="r">
+                      <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                        <PinRowButton pinned={pinned} onToggle={() => togglePin(row.id)} label={row.business_name || row.full_name} />
+                        <Btn size="sm" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>Open</Btn>
+                        {canDelete ? <Btn size="sm" className="danger" title="Delete this intake — irreversible" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Delete</Btn> : null}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!loading && !orderedRows.length ? <tr><td colSpan={10}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
+            </tbody>
+          </table>
         </div>
-
-      </div>
+      </TableWorkspace>
 
       <WhatsNewRail
         open={whatsNewOpen}
@@ -985,14 +1054,21 @@ export default function AdminAIUnderwriterLeadsPage() {
       ) : null}
     </div>
     {selectedLeadPanel ? (
-      <div className={cx("ai-intake-detail-shell", leadDetailMinimized && "workspace-minimized")} aria-hidden={leadDetailMinimized}>
+      <div
+        ref={detailShellRef}
+        className={cx("ai-intake-detail-shell", leadDetailMinimized && "workspace-minimized")}
+        role="region"
+        aria-label={`${activeLeadTitle} detail`}
+        aria-hidden={leadDetailMinimized}
+        tabIndex={leadDetailMinimized ? undefined : -1}
+      >
         {notice ? <WarnLine>{notice}</WarnLine> : null}
         {selectedLeadPanel}
       </div>
     ) : null}
     {selectedLeadPanel && leadDetailMinimized ? (
       <div className="workspace-minimized-dock" role="status" aria-live="polite">
-        <button type="button" className="workspace-minimized-summary" onClick={() => setLeadDetailMinimized(false)}>
+        <button ref={minimizedResumeRef} type="button" className="workspace-minimized-summary" onClick={() => setLeadDetailMinimized(false)}>
           <span className="workspace-minimized-mark">-</span>
           <span>
             <b>{activeLeadTitle}</b>
@@ -1077,7 +1153,7 @@ function LeadDetailPanel({
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
   const toast = useToast();
-  const { getToken } = useAuth();
+  const { getToken } = useConsoleAuth();
   const bookingLink = useBookingLink();
   const { data: currentUser } = useCurrentUser();
   const canUnderwrite = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.LOAN_EXEC;

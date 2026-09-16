@@ -59,7 +59,9 @@ import {
   type Col,
 } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { PinRowButton } from "@/components/ds/TableWorkspace";
 import { FUNDING_LADDER, VERTICAL_OPTIONS, formatUnifiedAmount, operatorFileHref, verticalTone, type UnifiedFileRow, type UnifiedVertical } from "@/lib/unifiedOperator";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -132,6 +134,16 @@ export default function DashboardPage() {
   // pattern as isVendor below.
   const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const showOperatorPipeline = !isClient && !isBroker;
+  const closingLoans = loans.filter((loan) => loan.stage === "closing" || loan.stage === "processing");
+  const {
+    rows: orderedClosingLoans,
+    isPinned: isClosingLoanPinned,
+    togglePin: toggleClosingLoanPin,
+  } = usePinnedRows({
+    rows: closingLoans,
+    getId: (loan) => loan.id,
+    storageKey: user?.id ? `dashboard-closing-loans:${user.id}` : null,
+  });
 
   useEffect(() => {
     if (isVendor) router.replace("/vendor/buckets");
@@ -166,9 +178,7 @@ export default function DashboardPage() {
     );
   }
 
-  const closingSoon = loans
-    .filter((l) => l.stage === "closing" || l.stage === "processing")
-    .slice(0, 5);
+  const closingSoon = orderedClosingLoans.slice(0, 5);
 
   return (
     <CG>
@@ -265,38 +275,48 @@ export default function DashboardPage() {
 
         <div className="lbl mt mb">Closing in next 14 days</div>
         <Table cols={CLOSING_COLS} caption="Loans closing in the next 14 days">
-          {closingSoon.map((loan) => (
-            // The row is clickable AND the deal id is a real link, so the row
-            // stays reachable by keyboard — a bare <tr onClick> is not.
-            <Tr key={loan.id} onClick={() => router.push(`/loans/${loan.id}`)}>
-              <Td>
-                <Link href={`/loans/${loan.id}`} className="linky num">
-                  {loan.deal_id}
-                </Link>
-              </Td>
-              <Td>
-                <b>{loan.address}</b>
-                <div className="sub">{loan.type.replace("_", " ")}</div>
-              </Td>
-              <Td align="r">
-                <b className="num">{QC_FMT.short(Number(loan.amount))}</b>
-              </Td>
-              <Td>
-                <StageChip stage={loan.stage} />
-              </Td>
-              <Td>
-                <span className="sub">
-                  {loan.close_date
-                    ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-                    : "—"}
-                </span>
-              </Td>
-            </Tr>
-          ))}
-          {inFlight.length === 0 && (
+          {closingSoon.map((loan) => {
+            const pinned = isClosingLoanPinned(loan.id);
+            return (
+              // The row is clickable AND the deal id is a real link, so the row
+              // stays reachable by keyboard — a bare <tr onClick> is not.
+              <Tr key={loan.id} className={pinned ? "table-row-pinned" : undefined} onClick={() => router.push(`/loans/${loan.id}`)}>
+                <Td>
+                  <Link href={`/loans/${loan.id}`} className="linky num">
+                    {loan.deal_id}
+                  </Link>
+                </Td>
+                <Td>
+                  <b>{loan.address}</b>
+                  <div className="sub">{loan.type.replace("_", " ")}</div>
+                </Td>
+                <Td align="r">
+                  <b className="num">{QC_FMT.short(Number(loan.amount))}</b>
+                </Td>
+                <Td>
+                  <StageChip stage={loan.stage} />
+                </Td>
+                <Td>
+                  <span className="sub">
+                    {loan.close_date
+                      ? `Close ${new Date(loan.close_date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+                      : "—"}
+                  </span>
+                </Td>
+                <Td align="r">
+                  <PinRowButton
+                    pinned={pinned}
+                    onToggle={() => toggleClosingLoanPin(loan.id)}
+                    label={loan.deal_id || loan.address || "closing loan"}
+                  />
+                </Td>
+              </Tr>
+            );
+          })}
+          {closingSoon.length === 0 && (
             <Tr>
-              <Td colSpan={5}>
-                <span className="sub">No loans in flight yet. Create one from the Pipeline page.</span>
+              <Td colSpan={6}>
+                <span className="sub">No loans are processing or closing right now.</span>
               </Td>
             </Tr>
           )}
@@ -537,6 +557,7 @@ const CLOSING_COLS: Col[] = [
   { label: "Amount", align: "r" },
   { label: "Stage" },
   { label: "Close" },
+  { label: "", align: "r", width: 40 },
 ];
 
 // Calendar-event kind → chip tone. Same four-way split the inline colour

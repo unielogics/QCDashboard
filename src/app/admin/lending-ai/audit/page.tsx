@@ -15,10 +15,11 @@
 // owns both, and setting them again double-padded inside it.
 
 import { useState } from "react";
-import { CellChip, Empty, Input, Loading, Panel, Row, Select, Sub } from "@/components/ds";
+import { Btn, CellChip, Empty, Input, Loading, PinRowButton, Row, Select, Sub, TableWorkspace } from "@/components/ds";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
-import { isAINotDeployed, useAuditEvents } from "@/hooks/useApi";
+import { isAINotDeployed, useAuditEvents, useCurrentUser } from "@/hooks/useApi";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 const EVENT_TYPES = [
   "",
@@ -36,10 +37,17 @@ const EVENT_TYPES = [
 export default function AuditFeedPage() {
   const [eventType, setEventType] = useState<string>("");
   const [clientId, setClientId] = useState<string>("");
+  const { data: currentUser } = useCurrentUser();
   const { data: events = [], isLoading, error: auditErr } = useAuditEvents({
     event_type: eventType || undefined,
     client_id: clientId || undefined,
     limit: 200,
+  });
+  const auditTableStorageKey = currentUser?.id ? `lending-ai-audit:${currentUser.id}` : null;
+  const { rows: orderedEvents, pinnedIds, isPinned, togglePin, clearPins } = usePinnedRows({
+    rows: events,
+    getId: (event) => event.id,
+    storageKey: auditTableStorageKey,
   });
 
   return (
@@ -53,41 +61,47 @@ export default function AuditFeedPage() {
         <AINotDeployedBanner surface="Lending AI" />
       ) : null}
 
-      <Panel noPad>
-        <div className="panel-h">
-          <Select
-            grow
-            aria-label="Filter by event type"
-            value={eventType}
-            onChange={(e) => setEventType(e.target.value)}
-          >
-            {EVENT_TYPES.map((et) => (
-              <option key={et} value={et}>{et || "All event types"}</option>
-            ))}
-          </Select>
-          <Input
-            grow
-            aria-label="Filter by client id"
-            placeholder="Client ID (UUID, optional)"
-            value={clientId}
-            onChange={(e) => setClientId(e.target.value)}
-          />
-        </div>
+      <TableWorkspace
+        title="Lending AI audit events"
+        description={`${events.length} events loaded for review`}
+        storageKey={auditTableStorageKey ?? undefined}
+        actions={(
+          <>
+            <Select
+              aria-label="Filter by event type"
+              value={eventType}
+              onChange={(e) => setEventType(e.target.value)}
+            >
+              {EVENT_TYPES.map((et) => (
+                <option key={et} value={et}>{et || "All event types"}</option>
+              ))}
+            </Select>
+            <Input
+              aria-label="Filter by client id"
+              placeholder="Client ID (UUID, optional)"
+              value={clientId}
+              onChange={(e) => setClientId(e.target.value)}
+            />
+            {pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pins</Btn> : null}
+          </>
+        )}
+      >
 
         {isLoading ? (
           <div className="panel-b"><Loading>Loading…</Loading></div>
         ) : events.length === 0 ? (
           <div className="panel-b"><Empty>No events match those filters.</Empty></div>
         ) : (
-          events.map((e) => (
+          orderedEvents.map((e) => (
             // `.gridrow.top` is the feed row: hairline under, top-aligned
             // because the value line under the header wraps to two lines.
-            <div key={e.id} className="gridrow top">
+            <div key={e.id} className={isPinned(e.id) ? "gridrow top table-row-pinned" : "gridrow top"}>
               <Row>
                 <CellChip tone="mut" className="mono">{e.event_type}</CellChip>
                 <Sub>{e.actor_type}</Sub>
                 <span className="sub mono grow">{e.requirement_key || ""}</span>
                 <Sub>{new Date(e.created_at).toLocaleString()}</Sub>
+                <PinRowButton pinned={isPinned(e.id)} onToggle={() => togglePin(e.id)} label={`${e.event_type} event`} />
               </Row>
               {(e.old_value || e.new_value || e.payload) ? (
                 <Row>
@@ -101,7 +115,7 @@ export default function AuditFeedPage() {
             </div>
           ))
         )}
-      </Panel>
+      </TableWorkspace>
     </div>
   );
 }

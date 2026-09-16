@@ -28,7 +28,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Btn, CellChip, CG, Empty, Field, Loading, PageHeader, Panel, Row, Seg, StatusLine, Sub, Textarea } from "@/components/ds";
+import { Btn, CellChip, CG, Empty, Field, Loading, PageHeader, Panel, PinRowButton, Row, Seg, StatusLine, Sub, TableWorkspace, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
@@ -36,8 +36,11 @@ import {
   useAiTaskConfigs,
   useSaveAiTaskConfig,
   useAiTrainingFeedback,
+  useCurrentUser,
   type AiTaskConfig,
+  type AiTrainingFeedbackItem,
 } from "@/hooks/useApi";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 const linesToArr = (s: string): string[] =>
   s.split("\n").map((x) => x.trim()).filter(Boolean);
@@ -61,9 +64,20 @@ function formOf(cfg: AiTaskConfig | undefined): Form {
   };
 }
 
+function feedbackId(item: AiTrainingFeedbackItem): string {
+  const input = `${item.kind}|${item.created_at}|${item.loan_id ?? ""}|${item.output_type ?? ""}|${item.text}`;
+  let hash = 2166136261;
+  for (let index = 0; index < input.length; index += 1) {
+    hash ^= input.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `${item.kind}:${item.created_at}:${hash >>> 0}`;
+}
+
 export default function AiTrainingPage() {
   const router = useRouter();
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
 
   const { data, isLoading } = useAiTaskConfigs();
   const { data: feedback = [] } = useAiTrainingFeedback();
@@ -73,6 +87,12 @@ export default function AiTrainingPage() {
   const [selected, setSelected] = useState<string | null>(null);
   const [form, setForm] = useState<Form>(formOf(undefined));
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
+  const trainingTableStorageKey = currentUser?.id ? `lending-ai-training:${currentUser.id}` : null;
+  const { rows: orderedFeedback, pinnedIds, isPinned, togglePin, clearPins } = usePinnedRows({
+    rows: feedback,
+    getId: feedbackId,
+    storageKey: trainingTableStorageKey,
+  });
 
   // Default the selection to the first task once loaded.
   useEffect(() => {
@@ -222,19 +242,22 @@ export default function AiTrainingPage() {
 
         {/* ── Corrections review ────────────────────────────────── */}
         <div className="s5">
-          <Panel
+          <TableWorkspace
             title="What operators flagged"
-            sub="Recent thumbs-down ratings + corrections. Use these to refine the instructions on the left."
-            noPad
+            description="Recent thumbs-down ratings and corrections. Pin the examples that need follow-up."
+            storageKey={trainingTableStorageKey ?? undefined}
+            actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pins</Btn> : null}
           >
-            <div className="qscroll">
-              {feedback.length === 0 ? (
+              {orderedFeedback.length === 0 ? (
                 <div className="panel-b"><Empty>No flagged AI output yet.</Empty></div>
               ) : (
-                feedback.map((f, i) => (
+                orderedFeedback.map((f) => {
+                  const rowId = feedbackId(f);
+                  const pinned = isPinned(rowId);
+                  return (
                   // `.gridrow.top` owns the hairline between entries and drops
                   // it on the last one, which the old `i < len - 1` did by hand.
-                  <div key={`${f.kind}-${i}`} className="gridrow top">
+                  <div key={rowId} className={pinned ? "gridrow top table-row-pinned" : "gridrow top"}>
                     <Row>
                       <CellChip
                         className="caps"
@@ -247,6 +270,7 @@ export default function AiTrainingPage() {
                       <Sub>
                         {new Date(f.created_at).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                       </Sub>
+                      <PinRowButton pinned={pinned} onToggle={() => togglePin(rowId)} label="flagged AI output" />
                     </Row>
                     <div className="pretext">{f.text}</div>
                     <Row>
@@ -259,10 +283,10 @@ export default function AiTrainingPage() {
                       </Btn>
                     </Row>
                   </div>
-                ))
+                  );
+                })
               )}
-            </div>
-          </Panel>
+          </TableWorkspace>
         </div>
       </CG>
     </div>

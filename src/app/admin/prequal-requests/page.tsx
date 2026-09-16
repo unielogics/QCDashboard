@@ -13,13 +13,11 @@
 //   hand-rolled filter pills → Seg as="filter" (it narrows the list; it does
 //                              not switch which view you are on)
 //   CSS-grid faux table      → `.gridhd` / `.gridrow`, which is exactly what
-//                              those classes are for. The nine-column track is
-//                              data, so it stays inline (rule 3), and the row
-//                              stays a role="button" div rather than becoming a
-//                              <tr>, because it carries BOTH Enter/Space and a
-//                              right-click menu that a table row cannot.
-//   JS mouseenter/mouseleave → `.gridrow.act`, which also gives the row a
-//                              focus ring it never had despite being tabbable
+//                              those classes are for. The ten-column track is
+//                              data, so it stays inline (rule 3). The property
+//                              name is the keyboard-accessible open control;
+//                              the row also keeps click and right-click actions.
+//   JS mouseenter/mouseleave → `.gridrow.act`
 //   hand-rolled cursor menu  → `.popmenu.atcursor` + `.mhd` + `.mi`
 //   status Pill + stripe     → CellChip tone; the stripe keeps its computed
 //                              colour inline (rule 2)
@@ -33,11 +31,14 @@ import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
-import { useAdminPrequalQueue } from "@/hooks/useApi";
+import { useAdminPrequalQueue, useCurrentUser } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
 import { AdminPrequalCreateModal } from "@/components/AdminPrequalCreateModal";
 import { PREQUAL_LOAN_TYPE_LABELS, PREQUAL_LTV_CAPS, type PrequalRequest, type PrequalStatus } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
+import { usePinnedRows } from "@/lib/tablePinning";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 
 type FilterId = PrequalStatus | "all";
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -74,6 +75,7 @@ function statusInfo(s: PrequalStatus): { label: string; tone: ChipTone } {
 
 export default function AdminPrequalQueuePage() {
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
   const router = useRouter();
   const searchParams = useSearchParams();
   // Default to "all" so admin lands on a populated queue regardless of
@@ -90,10 +92,7 @@ export default function AdminPrequalQueuePage() {
     profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   const canCreatePrequal =
     profile.role === Role.BROKER || profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
-  // Right-click context menu state. The row that fired the menu plus
-  // viewport coordinates so we can render at the cursor without an extra
-  // library. Cleared on any document click / Escape — see effect below.
-  const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
+  const rowMenu = useContextMenu<PrequalRequest>();
 
   useEffect(() => {
     setHydrated(true);
@@ -105,20 +104,6 @@ export default function AdminPrequalQueuePage() {
       setFilter(status);
     }
   }, [searchParams]);
-
-  useEffect(() => {
-    if (!menu) return;
-    const dismiss = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
-    // Mousedown (not click) so right-clicking another row immediately
-    // re-opens the menu at the new position rather than first dismissing.
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
 
   // Always pull "all" from the server then filter client-side. Lets the
   // count chips show all-status counts at once.
@@ -213,6 +198,19 @@ export default function AdminPrequalQueuePage() {
     return sorted;
   }, [allRequests, filter, sortKey, sortDir]);
 
+  const prequalTableStorageKey = currentUser?.id ? `admin-prequal-requests:${currentUser.id}` : null;
+  const {
+    rows: orderedVisible,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows: visible,
+    getId: (request) => request.id,
+    storageKey: prequalTableStorageKey,
+  });
+
   // Borrower-only or unknown role → kick to home.
   if (profile.role === Role.CLIENT) {
     return (
@@ -282,34 +280,68 @@ export default function AdminPrequalQueuePage() {
         />
       </Row>
 
-      {/* Table */}
-      {isLoading ? (
-        <Panel><Loading>Loading queue…</Loading></Panel>
-      ) : visible.length === 0 ? (
-        <Panel>
-          <Sub>
-            No requests in this status. {filter !== "all" && "Try changing the filter."}
-          </Sub>
-        </Panel>
-      ) : (
-        <Panel noPad>
-          <HeaderRow sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
-          {visible.map((r) => (
-            <QueueRow
-              key={r.id}
-              req={r}
-              hydrated={hydrated}
-              onOpen={() => {
-                if (canUnderwrite) setSelected(r);
-              }}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                if (canUnderwrite) setMenu({ req: r, x: e.clientX, y: e.clientY });
-              }}
-            />
-          ))}
-        </Panel>
-      )}
+      <TableWorkspace
+        title="Prequalification queue"
+        description="Pin active requests to keep them at the top of the current queue."
+        storageKey={prequalTableStorageKey ?? undefined}
+        ariaLabel="Prequalification requests"
+        actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pins</Btn> : null}
+      >
+        {isLoading ? (
+          <div className="panel-b"><Loading>Loading queue…</Loading></div>
+        ) : orderedVisible.length === 0 ? (
+          <div className="panel-b">
+            <Sub>
+              No requests in this status. {filter !== "all" && "Try changing the filter."}
+            </Sub>
+          </div>
+        ) : (
+          <>
+            <HeaderRow sortKey={sortKey} sortDir={sortDir} onSort={onSort} />
+            {orderedVisible.map((r) => (
+              <QueueRow
+                key={r.id}
+                req={r}
+                hydrated={hydrated}
+                pinned={isPinned(r.id)}
+                onTogglePin={() => togglePin(r.id)}
+                onOpen={() => {
+                  if (canUnderwrite) setSelected(r);
+                }}
+                onContextMenu={(e) => {
+                  if (canUnderwrite) rowMenu.open(e, r);
+                }}
+              />
+            ))}
+          </>
+        )}
+        <ContextMenu
+          state={rowMenu.state}
+          onClose={rowMenu.close}
+          items={(req): ContextMenuItem[] => {
+            const head = findChainHead(req);
+            const isSuperseded = req.superseded_by_id != null;
+            return [
+              {
+                label: isSuperseded ? "Open this version" : "Open",
+                icon: "docCheck",
+                onSelect: () => setSelected(req),
+              },
+              ...(isSuperseded ? [{
+                label: `Open latest (v${head.version_num})`,
+                icon: "arrowR",
+                onSelect: () => setSelected(head),
+              }] : []),
+              {
+                label: head.pdf_url ? "Print latest letter" : "Print latest letter · no PDF yet",
+                icon: "docCheck",
+                disabled: !head.pdf_url,
+                onSelect: () => onPrintLatest(req),
+              },
+            ];
+          }}
+        />
+      </TableWorkspace>
 
       {canUnderwrite ? (
         <PrequalReviewModal
@@ -324,114 +356,14 @@ export default function AdminPrequalQueuePage() {
         onClose={() => setCreateOpen(false)}
       />
 
-      {menu ? (
-        <ContextMenu
-          x={menu.x}
-          y={menu.y}
-          req={menu.req}
-          head={findChainHead(menu.req)}
-          onOpen={() => { setSelected(menu.req); setMenu(null); }}
-          onOpenLatest={() => { setSelected(findChainHead(menu.req)); setMenu(null); }}
-          onPrintLatest={() => { onPrintLatest(menu.req); setMenu(null); }}
-        />
-      ) : null}
     </div>
-  );
-}
-
-// Context menu (right-click on a row). Rendered as a portal-less fixed
-// container at the cursor — dismiss is handled by the document-level
-// mousedown listener in the parent. The menu items are status-aware so
-// the operator never sees an action that won't work on this row.
-function ContextMenu({
-  x,
-  y,
-  req,
-  head,
-  onOpen,
-  onOpenLatest,
-  onPrintLatest,
-}: {
-  x: number;
-  y: number;
-  req: PrequalRequest;
-  head: PrequalRequest;
-  onOpen: () => void;
-  onOpenLatest: () => void;
-  onPrintLatest: () => void;
-}) {
-  const isSuperseded = req.superseded_by_id != null;
-  // Clamp position so the menu doesn't fall off the right / bottom edge
-  // of the viewport. Width 240px, ~5 items × 36px tall + padding.
-  const MENU_W = 240;
-  const MENU_H = 230;
-  const left = typeof window !== "undefined" ? Math.min(x, window.innerWidth - MENU_W - 8) : x;
-  const top = typeof window !== "undefined" ? Math.min(y, window.innerHeight - MENU_H - 8) : y;
-
-  return (
-    <div
-      role="menu"
-      className="popmenu atcursor"
-      onMouseDown={(e) => e.stopPropagation()}
-      // Measured geometry: the cursor position, clamped against the viewport.
-      // `.popmenu.atcursor` exists precisely to hand these three over and keep
-      // everything the menu LOOKS like in the stylesheet (rule 2).
-      style={{ left, top, width: MENU_W }}
-    >
-      <div className="mhd">
-        <div className="lbl">
-          {req.quote_number ?? "Pre-qualification"}
-          {(req.version_num ?? 1) > 1 ? <span className="c-pet"> · v{req.version_num}</span> : null}
-        </div>
-        <div className="trunc"><b>{req.target_property_address}</b></div>
-      </div>
-      <MenuItem icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
-      {isSuperseded ? (
-        <MenuItem icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
-      ) : null}
-      <MenuItem
-        icon="docCheck"
-        label="Print latest letter"
-        sublabel={head.pdf_url ? head.quote_number ?? undefined : "no PDF yet"}
-        disabled={!head.pdf_url}
-        onClick={onPrintLatest}
-      />
-    </div>
-  );
-}
-
-function MenuItem({
-  icon,
-  label,
-  sublabel,
-  onClick,
-  disabled,
-}: {
-  icon: React.ComponentProps<typeof Icon>["name"];
-  label: string;
-  sublabel?: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="mi"
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-    >
-      <Icon name={icon} size={14} />
-      {" "}{label}
-      {sublabel ? <small>{sublabel}</small> : null}
-    </button>
   );
 }
 
 // 4px color stripe + status column + the rest. Each row's first column
 // is a colored stripe per status; the legend stays inside the Status
 // pill so the stripe carries the at-a-glance signal.
-const GRID_COLS = "4px 110px minmax(0, 2fr) minmax(0, 1fr) 130px 130px 110px 100px 90px";
+const GRID_COLS = "4px 110px minmax(0, 2fr) minmax(0, 1fr) 130px 130px 110px 100px 90px 40px";
 
 /** Stripe colour per status. A discrete lookup, but it paints a bare 4px
  *  column that no class owns, so it is passed inline (rule 2). */
@@ -506,7 +438,7 @@ function HeaderRow({
   };
 
   return (
-    // Bespoke nine-column track (rule 3); `.gridhd` owns everything else.
+    // Bespoke ten-column track (rule 3); `.gridhd` owns everything else.
     <div className="gridhd" style={{ gridTemplateColumns: GRID_COLS }}>
       <div />
       <div>{cell("Status", "status")}</div>
@@ -517,6 +449,7 @@ function HeaderRow({
       <div>{cell("LTV", "ltv")}</div>
       <div>{cell("Closing", "closing")}</div>
       <div>{cell("Submitted", "submitted")}</div>
+      <div aria-label="Pinned" />
     </div>
   );
 }
@@ -524,11 +457,15 @@ function HeaderRow({
 function QueueRow({
   req,
   hydrated,
+  pinned,
+  onTogglePin,
   onOpen,
   onContextMenu,
 }: {
   req: PrequalRequest;
   hydrated: boolean;
+  pinned: boolean;
+  onTogglePin: () => void;
   onOpen: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -560,15 +497,14 @@ function QueueRow({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
-      // Both affordances stay: click / Enter / Space to open, right-click for
-      // the quick-actions menu. This is why the row is not a <tr>.
+      // The row remains pointer-clickable and right-clickable. Its property
+      // button below is the keyboard-accessible open control, which avoids
+      // nesting the pin button inside another element with button semantics.
       onClick={onOpen}
       onContextMenu={onContextMenu}
-      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(); } }}
-      className={cx("gridrow", "act", isSuperseded && "done")}
-      // Bespoke nine-column track (rule 3).
+      className={cx("gridrow", "act", isSuperseded && "done", pinned && "table-row-pinned")}
+      data-pinned={pinned ? "true" : undefined}
+      // Bespoke ten-column track (rule 3).
       style={{ gridTemplateColumns: GRID_COLS }}
     >
       {/* Status stripe — colored left border. Carries the status signal
@@ -591,7 +527,18 @@ function QueueRow({
       </div>
 
       <div>
-        <div className="trunc"><b>{req.target_property_address}</b></div>
+        <div className="trunc">
+          <button
+            type="button"
+            className="linky"
+            onClick={(event) => {
+              event.stopPropagation();
+              onOpen();
+            }}
+          >
+            {req.target_property_address || req.borrower_entity || "Open request"}
+          </button>
+        </div>
         <div className="lbl">
           {PREQUAL_LOAN_TYPE_LABELS[req.loan_type]?.title ?? req.loan_type}
         </div>
@@ -646,6 +593,16 @@ function QueueRow({
       </div>
 
       <div className="sub num">{submittedRel ?? submittedAbs ?? "—"}</div>
+
+      <div
+        onClick={(event) => event.stopPropagation()}
+      >
+        <PinRowButton
+          pinned={pinned}
+          onToggle={onTogglePin}
+          label={req.target_property_address || req.borrower_entity || "prequalification request"}
+        />
+      </div>
     </div>
   );
 }

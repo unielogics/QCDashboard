@@ -15,6 +15,7 @@ import {
   Lbl,
   Note,
   Panel,
+  PinRowButton,
   Row,
   Seg,
   Select,
@@ -44,6 +45,7 @@ import { deriveExperienceMode } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
+import { usePinnedRows } from "@/lib/tablePinning";
 import type { Broker, Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
 export default function ClientDetailPage() {
@@ -523,7 +525,7 @@ export default function ClientDetailPage() {
           their own /vault. Subject Property = docs tied to in-flight loans;
           REO Schedule = docs tied to funded loans. Backed by the new
           GET /documents?client_id={id} server-side join. */}
-      <ClientVaultCard clientLoans={clientLoans} docs={clientDocs} />
+      <ClientVaultCard clientId={id} clientLoans={clientLoans} docs={clientDocs} />
     </div>
   );
 }
@@ -781,12 +783,15 @@ const VAULT_COLS: Col[] = [
 ];
 
 function ClientVaultCard({
+  clientId,
   clientLoans,
   docs,
 }: {
+  clientId: string;
   clientLoans: Loan[];
   docs: Document[];
 }) {
+  const { data: currentUser } = useCurrentUser();
   const [tab, setTab] = useState<"subject" | "reo">("subject");
   const subjectLoans = clientLoans.filter((l) => l.stage !== "funded");
   const subjectLoanIds = new Set(subjectLoans.map((l) => l.id));
@@ -795,6 +800,13 @@ function ClientVaultCard({
   const visible = docs.filter((d) =>
     (tab === "subject" ? subjectLoanIds : reoLoanIds).has(d.loan_id),
   );
+  const { rows: orderedDocuments, isPinned, togglePin } = usePinnedRows({
+    rows: visible,
+    getId: (document) => document.id,
+    storageKey: currentUser?.id
+      ? `client-documents:${currentUser.id}:${clientId}`
+      : null,
+  });
   const subjectCount = docs.filter((d) => subjectLoanIds.has(d.loan_id)).length;
   const reoCount = docs.filter((d) => reoLoanIds.has(d.loan_id)).length;
   // Replaces the firm-wide /vault entry for agents — they now upload
@@ -866,17 +878,23 @@ function ClientVaultCard({
         </div>
       ) : (
         <Table cols={VAULT_COLS} caption="Client documents">
-          {visible.map((d) => {
+          {orderedDocuments.map((d) => {
             const loan = loanById[d.loan_id];
+            const pinned = isPinned(d.id);
             // Same three-way split VerifiedBadge carried; the chip tones hold it now.
             const kind: "verified" | "pending" | "flagged" =
               d.status === "verified" ? "verified" : d.status === "flagged" ? "flagged" : "pending";
             const statusTone: ChipTone = kind === "verified" ? "ok" : kind === "flagged" ? "bad" : "warn";
             const statusLabel = kind === "verified" ? "Verified" : kind === "flagged" ? "Flagged" : "Pending";
             return (
-              <tr key={d.id}>
+              <tr key={d.id} className={pinned ? "table-row-pinned" : undefined}>
                 <Td>
                   <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                    <PinRowButton
+                      pinned={pinned}
+                      onToggle={() => togglePin(d.id)}
+                      label={d.name}
+                    />
                     <span
                       style={{
                         width: 30,

@@ -26,14 +26,15 @@ import {
   Field,
   IconBtn,
   Input,
-  Panel,
   StatusLine,
   cx,
   type ChipTone,
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import {
   useAddCustomDocument,
+  useCurrentUser,
   useLoanWorkflow,
   useMarkDocumentVerified,
   usePatchDocument,
@@ -42,6 +43,7 @@ import {
 } from "@/hooks/useApi";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import type { Loan } from "@/lib/types";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 // Maps each scenario to a (label, tone) pair. heads_up + due_today are
 // calm/neutral; just_late warns; week_late + escalating signal blocking.
@@ -75,6 +77,7 @@ export function WorkflowTab({
   const runReminders = useRunDocReminders();
   const addCustom = useAddCustomDocument();
   const markVerified = useMarkDocumentVerified();
+  const { data: currentUser } = useCurrentUser();
   const ctxMenu = useContextMenu<WorkflowDoc>();
 
   const [shiftDays, setShiftDays] = useState<number>(7);
@@ -82,11 +85,25 @@ export function WorkflowTab({
   const [showSkipped, setShowSkipped] = useState<boolean>(false);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
 
-  const docs = workflowQ.data ?? [];
+  const docs = useMemo(() => workflowQ.data ?? [], [workflowQ.data]);
   const visibleDocs = useMemo(
     () => (showSkipped ? docs : docs.filter((d) => d.status !== "skipped")),
     [docs, showSkipped],
   );
+  const workflowTableStorageKey = currentUser?.id
+    ? `loan-workflow:${currentUser.id}:${loan.id}`
+    : null;
+  const {
+    rows: orderedVisibleDocs,
+    pinnedIds,
+    isPinned,
+    togglePin,
+    clearPins,
+  } = usePinnedRows({
+    rows: visibleDocs,
+    getId: (doc) => doc.document_id,
+    storageKey: workflowTableStorageKey,
+  });
   const requestedDocs = useMemo(
     () => docs.filter((d) => d.status === "requested"),
     [docs],
@@ -215,9 +232,10 @@ export function WorkflowTab({
   };
 
   return (
-    <Panel
+    <>
+    <TableWorkspace
       title={`AI Collection Schedule · ${requestedDocs.length} open`}
-      sub={
+      description={
         <>
           {Object.entries(counts).map(([key, n]) => {
             const meta = SCENARIO_META[key];
@@ -230,8 +248,10 @@ export function WorkflowTab({
         </>
       }
       actions={
-        canEdit ? (
-          <>
+        <>
+          {pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
+          {canEdit ? (
+            <>
             <Btn onClick={() => setShowAddModal(true)}>
               <Icon name="plus" size={13} /> Add custom item
             </Btn>
@@ -239,10 +259,12 @@ export function WorkflowTab({
               <Icon name="bell" size={13} />
               {runReminders.isPending ? "Sending…" : "Send reminders now"}
             </Btn>
-          </>
-        ) : undefined
+            </>
+          ) : null}
+        </>
       }
-      noPad
+      storageKey={workflowTableStorageKey ?? undefined}
+      ariaLabel="Loan document collection schedule"
     >
       {canEdit && (
         // A second header strip under the title row — same padding and
@@ -309,27 +331,18 @@ export function WorkflowTab({
             : "Everything's been skipped — toggle \"Show skipped\" to see them."}
         </div>
       )}
-      {visibleDocs.map((d) => (
+      {orderedVisibleDocs.map((d) => (
         <WorkflowRow
           key={d.document_id}
           doc={d}
+          pinned={isPinned(d.document_id)}
+          onTogglePin={() => togglePin(d.document_id)}
           canEdit={canEdit}
           onSetDate={(v) => onSetDate(d, v)}
           onToggleSkip={() => onToggleSkip(d)}
           onContextMenu={canEdit ? (e) => ctxMenu.open(e, d) : undefined}
         />
       ))}
-      {/* Mounted only while open, exactly as the modal it replaces was: the
-          drawer's own state (name, due date) has to start empty each time it
-          is opened, and a component that stays mounted keeps the last entry. */}
-      {showAddModal && (
-        <AddCustomDrawer
-          open
-          busy={addCustom.isPending}
-          onClose={() => setShowAddModal(false)}
-          onSave={onAddCustom}
-        />
-      )}
       <ContextMenu
         state={ctxMenu.state}
         onClose={ctxMenu.close}
@@ -352,7 +365,18 @@ export function WorkflowTab({
           ];
         }}
       />
-    </Panel>
+    </TableWorkspace>
+    {/* Keep the modal outside the table's modal subtree. Opening it while the
+        table is focused yields the table trap and leaves one dialog owner. */}
+    {showAddModal && (
+      <AddCustomDrawer
+        open
+        busy={addCustom.isPending}
+        onClose={() => setShowAddModal(false)}
+        onSave={onAddCustom}
+      />
+    )}
+    </>
   );
 }
 
@@ -405,12 +429,16 @@ function AddCustomDrawer({
 
 function WorkflowRow({
   doc,
+  pinned,
+  onTogglePin,
   canEdit,
   onSetDate,
   onToggleSkip,
   onContextMenu,
 }: {
   doc: WorkflowDoc;
+  pinned: boolean;
+  onTogglePin: () => void;
   canEdit: boolean;
   onSetDate: (value: string | null) => void;
   onToggleSkip: () => void;
@@ -438,11 +466,12 @@ function WorkflowRow({
     <div
       // `.gridrow.done` carries the dimmed, sunken surface a skipped row had
       // as an inline opacity + background pair.
-      className={cx("gridrow", isSkipped && "done")}
+      className={cx("gridrow", isSkipped && "done", pinned && "table-row-pinned")}
+      data-pinned={pinned ? "true" : undefined}
       onContextMenu={onContextMenu}
       // Bespoke 8-column track: this is data about this screen, not a page
       // grid, so it stays inline (`.cg` is the 12-column PAGE grid).
-      style={{ gridTemplateColumns: "30px 1.1fr 95px 95px 95px 1fr 110px 80px" }}
+      style={{ gridTemplateColumns: "30px 1.1fr 95px 95px 95px 1fr 110px 80px 36px" }}
       title={onContextMenu ? "Right-click for actions" : undefined}
     >
       <input
@@ -499,6 +528,7 @@ function WorkflowRow({
       </div>
       <div className="sub">{nextLine ?? ""}</div>
       <div className="lbl align-r">{isOverridden ? "OVERRIDE" : "default"}</div>
+      <PinRowButton pinned={pinned} onToggle={onTogglePin} label={doc.name} />
     </div>
   );
 }

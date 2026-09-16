@@ -691,7 +691,9 @@ function CsvPreview({ text }: { text: string }) {
   return (
     <Panel noPad>
       {/* Bespoke: the preview scrolls in both directions inside a bounded box,
-          so a 4000-row export does not become a 4000-row page. */}
+          so a 4000-row export does not become a 4000-row page. This component
+          already lives in the full-screen file-review shell, so it deliberately
+          does not add a nested TableWorkspace/modal focus layer. */}
       <div className="tblwrap" style={{ maxHeight: "76vh", overflowY: "auto" }}>
         <table className="tbl nowrap">
           <caption className="sr-only">CSV preview</caption>

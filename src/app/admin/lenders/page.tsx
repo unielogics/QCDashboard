@@ -22,17 +22,18 @@
 //   Pill                      → CellChip tone
 
 import { useMemo, useState } from "react";
-import { Btn, CellChip, cx, Input, Linky, Loading, PageHeader, Panel, Row, Sub, Table, Td, Tr } from "@/components/ds";
+import { Btn, CellChip, cx, Input, Linky, Loading, PageHeader, Panel, PinRowButton, Row, Sub, Table, Td, Tr } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useActiveProfile } from "@/store/role";
 import { Role } from "@/lib/enums.generated";
-import { useLenders } from "@/hooks/useApi";
+import { useCurrentUser, useLenders } from "@/hooks/useApi";
 import { LenderEditModal } from "@/components/LenderEditModal";
 import type { Lender } from "@/lib/types";
 import { ConnectLenderHealthCard } from "./ConnectLenderHealthCard";
 import { LenderLoansDrawer } from "./LenderLoansDrawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { Drawer } from "@/components/ds/Drawer";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 import { LENDER_PRODUCT_LABEL as PRODUCT_LABEL } from "@/lib/lenderProducts";
 
@@ -40,6 +41,7 @@ type SortKey = "name" | "products" | "contact" | "active";
 
 export default function LendersAdminPage() {
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
   const [search, setSearch] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("name");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -96,6 +98,11 @@ export default function LendersAdminPage() {
     });
     return rows;
   }, [lenders, search, sortKey, sortDir]);
+  const { rows: orderedLenders, isPinned, togglePin } = usePinnedRows({
+    rows: visible,
+    getId: (lender) => lender.id,
+    storageKey: currentUser?.id ? `lenders:${currentUser.id}` : null,
+  });
 
   if (profile.role !== Role.SUPER_ADMIN) {
     return (
@@ -179,8 +186,10 @@ export default function LendersAdminPage() {
               { label: "" },
             ]}
           >
-            {visible.map((l) => (
-              <Tr key={l.id} onClick={() => setEditing(l)} className={cx(!l.is_active && "done")}>
+            {orderedLenders.map((l) => {
+              const pinned = isPinned(l.id);
+              return (
+              <Tr key={l.id} onClick={() => setEditing(l)} className={cx(!l.is_active && "done", pinned && "table-row-pinned")}>
                 <Td>
                   {/* The whole row is clickable with a mouse; this button is
                       what makes the same action reachable from the keyboard,
@@ -228,18 +237,22 @@ export default function LendersAdminPage() {
                   )}
                 </Td>
                 <Td align="r">
-                  <Btn
-                    size="sm"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setDrilldown(l);
-                    }}
-                  >
-                    View loans →
-                  </Btn>
+                  <div className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap" }}>
+                    <PinRowButton pinned={pinned} onToggle={() => togglePin(l.id)} label={l.name} />
+                    <Btn
+                      size="sm"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setDrilldown(l);
+                      }}
+                    >
+                      View loans →
+                    </Btn>
+                  </div>
                 </Td>
               </Tr>
-            ))}
+              );
+            })}
           </Table>
         </Panel>
       )}

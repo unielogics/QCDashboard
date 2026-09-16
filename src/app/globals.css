@@ -215,6 +215,62 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .tbl td { padding: 10px 12px; border-bottom: 1px solid var(--line); }
 .tbl tr:hover td { background: var(--sunken2); }
 .tbl .r { text-align: right; }
+.table-workspace { min-width: 0; min-height: clamp(30rem, 62dvh, 54rem); display: flex; flex-direction: column; overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); box-shadow: var(--sh1); }
+.table-workspace__toolbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; padding: 9px 12px 9px 16px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.table-workspace__heading { min-width: 0; }
+.table-workspace__heading h2 { margin: 0; color: var(--ink); font-size: 14px; line-height: 1.3; }
+.table-workspace__heading p { margin: 2px 0 0; color: var(--muted); font-size: 11.5px; line-height: 1.35; }
+.table-workspace__actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.table-workspace__focus-button { white-space: nowrap; }
+.table-workspace__viewport { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: auto; }
+.table-workspace__footer { flex: 0 0 auto; display: flex; align-items: center; min-height: 54px; padding: 9px 14px; border-top: 1px solid var(--line); background: var(--surface); }
+.table-workspace.is-focused { position: fixed; inset: 12px; z-index: 600; width: auto; height: auto; min-height: 0; max-height: none; border-color: var(--line2); box-shadow: 0 24px 72px rgba(17, 24, 39, 0.24); }
+.table-workspace.is-focused:focus { outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent); outline-offset: -3px; }
+.table-workspace.is-focused .table-workspace__toolbar { min-height: 58px; }
+.table-workspace.is-focused .table-workspace__viewport { flex: 1 1 0; overflow: auto; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.table-workspace.is-focused .table-workspace__viewport > .tblwrap { overflow: visible; }
+.table-workspace.is-focused .table-workspace__viewport .tbl thead th { position: sticky; top: 0; z-index: 3; box-shadow: inset 0 -1px 0 var(--line2); }
+.table-workspace.is-focused .table-workspace__viewport > .gridhd,
+.table-workspace.is-focused .table-workspace__viewport > :first-child.gridhd { position: sticky; top: 0; z-index: 3; background: var(--sunken2); box-shadow: inset 0 -1px 0 var(--line2); }
+.table-workspace--embedded { min-height: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+.panel > .table-workspace--embedded { flex: 1; }
+.table-workspace--embedded .table-workspace__toolbar { min-height: 34px; padding: 3px 7px; justify-content: flex-end; background: transparent; }
+.table-workspace--embedded:not(.is-focused) .table-workspace__heading { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.table-workspace--embedded .table-workspace__heading h2 { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .035em; }
+.table-workspace--embedded .table-workspace__focus-button { min-height: 28px; padding: 5px 9px; }
+/* Tables embedded in a drawer are supporting detail, not a competing
+   workspace. Keep their normal compact shape and let the drawer own focus. */
+[role="dialog"] .table-workspace--embedded:not(.is-focused) > .table-workspace__toolbar { display: none; }
+.table-workspace--embedded.is-focused { inset: 12px; min-height: 0; overflow: hidden; border: 1px solid var(--line2); border-radius: var(--r); background: var(--surface); box-shadow: 0 24px 72px rgba(17, 24, 39, 0.24); }
+.table-workspace--embedded.is-focused .table-workspace__toolbar { min-height: 52px; padding: 8px 12px 8px 16px; background: var(--surface); }
+.table-workspace--embedded.is-focused .table-workspace__heading h2 { color: var(--ink); font-size: 14px; letter-spacing: 0; }
+.table-row-pin { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--muted); cursor: pointer; }
+.table-row-pin:hover { border-color: var(--line); background: var(--sunken2); color: var(--ink); }
+.table-row-pin.is-pinned { border-color: var(--accent-200); background: var(--accent-100); color: var(--accent); }
+.table-row-pin:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.table-row-pin:disabled { opacity: .45; cursor: default; }
+.table-workspace tr:has(.table-row-pin.is-pinned) > td { background: color-mix(in srgb, var(--accent-100) 42%, var(--surface)); }
+.table-workspace tr:has(.table-row-pin.is-pinned):hover > td { background: color-mix(in srgb, var(--accent-100) 62%, var(--surface)); }
+.table-workspace .gridrow.table-row-pinned { background: color-mix(in srgb, var(--accent-100) 42%, var(--surface)); }
+.table-workspace .gridrow.table-row-pinned:hover { background: color-mix(in srgb, var(--accent-100) 62%, var(--surface)); }
+@media (max-width: 720px) {
+  .table-workspace { min-height: 70dvh; }
+  .table-workspace--embedded { min-height: 0; }
+  .table-workspace__toolbar { align-items: flex-start; flex-wrap: wrap; }
+  .table-workspace__heading { flex: 1 1 180px; }
+  .table-workspace__actions { flex: 1 1 100%; width: 100%; min-width: 0; justify-content: flex-start; }
+  .table-workspace__actions > * { max-width: 100%; }
+  .table-workspace__focus-button { margin-left: auto; }
+  .table-workspace__focus-button span { display: none; }
+  .table-workspace.is-focused { inset: 0; border: 0; border-radius: 0; }
+}
+@media print {
+  body.table-workspace-focus-active { overflow: visible !important; }
+  .table-workspace, .table-workspace.is-focused { position: static; min-height: 0; overflow: visible; border: 0; box-shadow: none; }
+  .table-workspace--embedded > .table-workspace__toolbar { display: none; }
+  .table-workspace__focus-button, .table-row-pin { display: none; }
+  .table-workspace__viewport { overflow: visible; }
+}
 .lead-file-cell,
 .lead-contact-cell { min-width: 150px; max-width: 240px; }
 .lead-contact-line { overflow-wrap: anywhere; line-height: 1.35; }

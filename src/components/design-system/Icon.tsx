@@ -66,6 +66,7 @@ const ICON_PATHS: Record<string, string> = {
   filter:    "M4 5h16M7 12h10M10 19h4",
   search:    "M11 19a8 8 0 100-16 8 8 0 000 16zM21 21l-4.3-4.3",
   pin:       "M12 22s7-7.5 7-13a7 7 0 10-14 0c0 5.5 7 13 7 13zM12 11a2 2 0 100-4 2 2 0 000 4z",
+  pinTop:    "M9 3h6l-1 5 3 3v2H7v-2l3-3-1-5zM12 13v8",
   scan:      "M4 7V5a1 1 0 011-1h2M17 4h2a1 1 0 011 1v2M20 17v2a1 1 0 01-1 1h-2M7 20H5a1 1 0 01-1-1v-2M4 12h16",
   star:      "M12 2l3 7 7 1-5 5 1 7-6-3-6 3 1-7-5-5 7-1z",
   more:      "M5 12h.01M12 12h.01M19 12h.01",

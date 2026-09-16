@@ -9,6 +9,7 @@ import {
   Input,
   Note,
   Panel,
+  PinRowButton,
   Select,
   StatusLine,
   Table,
@@ -24,6 +25,7 @@ import {
   useAddPastedKnowledge,
   useAgentKnowledge,
   useClients,
+  useCurrentUser,
   useUploadAgentKnowledge,
 } from "@/hooks/useApi";
 import {
@@ -70,6 +72,7 @@ import {
   type AiAgentSynth,
 } from "@/hooks/useAiAgents";
 import { documentUploadErrorMessage } from "@/lib/documentUpload";
+import { usePinnedRows } from "@/lib/tablePinning";
 import {
   Btn,
   ChipToggle,
@@ -676,20 +679,40 @@ const LEAD_COLS: Col[] = [{ label: "Contact" }, { label: "Status", align: "r" }]
 
 function AgentLeadList({ agentId }: { agentId: string }) {
   const { data: leads = [] } = useAiAgentLeads(agentId);
+  const { data: currentUser } = useCurrentUser();
+  const { rows: orderedLeads, isPinned, togglePin } = usePinnedRows({
+    rows: leads,
+    getId: (lead) => lead.id,
+    storageKey: currentUser?.id
+      ? `ai-agent-enrolled:${currentUser.id}:${agentId}`
+      : null,
+  });
   if (leads.length === 0) return null;
   return (
     <Panel className="mt" title={`Enrolled contacts (${leads.length})`} noPad>
       <Table cols={LEAD_COLS} caption="Contacts enrolled with this agent">
-        {leads.slice(0, 25).map((l) => (
-          <Tr key={l.id}>
-            <Td>{l.name}</Td>
-            <Td align="r">
-              <span className="sub">
-                {l.status} · {l.attempts_made} sent
-              </span>
-            </Td>
-          </Tr>
-        ))}
+        {orderedLeads.map((l) => {
+          const pinned = isPinned(l.id);
+          return (
+            <Tr key={l.id} className={pinned ? "table-row-pinned" : undefined}>
+              <Td>
+                <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                  <PinRowButton
+                    pinned={pinned}
+                    onToggle={() => togglePin(l.id)}
+                    label={l.name}
+                  />
+                  <span>{l.name}</span>
+                </div>
+              </Td>
+              <Td align="r">
+                <span className="sub">
+                  {l.status} · {l.attempts_made} sent
+                </span>
+              </Td>
+            </Tr>
+          );
+        })}
       </Table>
     </Panel>
   );
@@ -1301,6 +1324,7 @@ export function WarmupPanel({ agent }: PanelProps) {
   const { data: leads = [] } = useAiAgentLeads(agent.id);
   const { data: messages = [] } = useAiAgentMessages(agent.id);
   const { data: clients = [] } = useClients();
+  const { data: currentUser } = useCurrentUser();
   const assign = useAssignWarmupLeads();
   const createContact = useCreateWarmupContact();
   const warmup = useWarmupSend();
@@ -1315,6 +1339,13 @@ export function WarmupPanel({ agent }: PanelProps) {
   const enrolledIds = new Set(leads.map((l) => l.client_id));
   const available = clients.filter((c) => !enrolledIds.has(c.id));
   const inWarmup = agent.status === "active" && agent.warmup_mode;
+  const { rows: orderedLeads, isPinned, togglePin } = usePinnedRows({
+    rows: leads,
+    getId: (lead) => lead.id,
+    storageKey: currentUser?.id
+      ? `ai-agent-warmup:${currentUser.id}:${agent.id}`
+      : null,
+  });
 
   // Terminal step. Activation is its own button below — Save & Next
   // is hidden by the page footer for the last step.
@@ -1389,33 +1420,47 @@ export function WarmupPanel({ agent }: PanelProps) {
               </Td>
             </Tr>
           )}
-          {leads.map((l) => (
-            <Tr key={l.id}>
-              <Td>
-                <b>{l.name}</b>
-                <div className="sub">{l.email ?? "no email"}</div>
-              </Td>
-              <Td>
-                <span className="sub">
-                  {l.status} · {l.attempts_made} sent
-                </span>
-              </Td>
-              <Td align="r">
-                <Btn
-                  onClick={() =>
-                    warmup.mutate({
-                      id: agent.id,
-                      client_id: l.client_id,
-                      touchpoint_key: "intro",
-                    })
-                  }
-                  disabled={warmup.isPending}
-                >
-                  Draft a message now
-                </Btn>
-              </Td>
-            </Tr>
-          ))}
+          {orderedLeads.map((l) => {
+            const pinned = isPinned(l.id);
+            return (
+              <Tr key={l.id} className={pinned ? "table-row-pinned" : undefined}>
+                <Td>
+                  <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                    <PinRowButton
+                      pinned={pinned}
+                      onToggle={() => togglePin(l.id)}
+                      label={l.name}
+                    />
+                    <span style={{ minWidth: 0 }}>
+                      <b>{l.name}</b>
+                      <span className="sub" style={{ display: "block" }}>
+                        {l.email ?? "no email"}
+                      </span>
+                    </span>
+                  </div>
+                </Td>
+                <Td>
+                  <span className="sub">
+                    {l.status} · {l.attempts_made} sent
+                  </span>
+                </Td>
+                <Td align="r">
+                  <Btn
+                    onClick={() =>
+                      warmup.mutate({
+                        id: agent.id,
+                        client_id: l.client_id,
+                        touchpoint_key: "intro",
+                      })
+                    }
+                    disabled={warmup.isPending}
+                  >
+                    Draft a message now
+                  </Btn>
+                </Td>
+              </Tr>
+            );
+          })}
         </Table>
       </Panel>
 

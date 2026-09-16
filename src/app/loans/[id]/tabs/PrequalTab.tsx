@@ -8,32 +8,28 @@
 // `<table class="tbl">` now: the rows used to be `role="button"` divs, and a
 // table row cannot be focused or Enter-activated, so the row's keyboard
 // affordance moved onto a real button on the property cell (the row keeps its
-// click and its right-click). The cursor-anchored menu is `.popmenu.atcursor`.
+// click and its right-click). The shared context menu portals into a focused
+// table workspace, so its actions remain reachable in full-screen review.
 
-import { useEffect, useMemo, useState } from "react";
-import { Icon } from "@/components/design-system/Icon";
+import { useMemo, useState } from "react";
 import { QC_FMT } from "@/lib/fmt";
-import { useLoanPrequalRequests } from "@/hooks/useApi";
+import { useCurrentUser, useLoanPrequalRequests } from "@/hooks/useApi";
 import { PrequalReviewModal } from "@/components/PrequalReviewModal";
 import { PREQUAL_LOAN_TYPE_LABELS, type Loan, type PrequalRequest } from "@/lib/types";
-import { CellChip, Linky, Panel, Table, Td, cx, type ChipTone } from "@/components/ds";
+import { CellChip, Linky, Panel, PinRowButton, Table, Td, cx, type ChipTone } from "@/components/ds";
+import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 export function PrequalTab({ loan }: { loan: Loan }) {
   const { data: requests = [], isLoading } = useLoanPrequalRequests(loan.id);
+  const { data: currentUser } = useCurrentUser();
   const [selected, setSelected] = useState<PrequalRequest | null>(null);
-  const [menu, setMenu] = useState<{ req: PrequalRequest; x: number; y: number } | null>(null);
-
-  useEffect(() => {
-    if (!menu) return;
-    const dismiss = () => setMenu(null);
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setMenu(null); };
-    window.addEventListener("mousedown", dismiss);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", dismiss);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [menu]);
+  const rowMenu = useContextMenu<PrequalRequest>();
+  const { rows: orderedRequests, isPinned, togglePin } = usePinnedRows({
+    rows: requests,
+    getId: (request) => request.id,
+    storageKey: currentUser?.id ? `loan-prequal:${currentUser.id}:${loan.id}` : null,
+  });
 
   const requestById = useMemo(() => {
     const m = new Map<string, PrequalRequest>();
@@ -100,15 +96,14 @@ export function PrequalTab({ loan }: { loan: Loan }) {
               { label: "Closing", width: 100 },
             ]}
           >
-            {requests.map((r) => (
+            {orderedRequests.map((r) => (
               <PrequalRow
                 key={r.id}
                 req={r}
+                pinned={isPinned(r.id)}
+                onTogglePin={() => togglePin(r.id)}
                 onOpen={() => setSelected(r)}
-                onContextMenu={(e) => {
-                  e.preventDefault();
-                  setMenu({ req: r, x: e.clientX, y: e.clientY });
-                }}
+                onContextMenu={(e) => rowMenu.open(e, r)}
               />
             ))}
           </Table>
@@ -121,112 +116,46 @@ export function PrequalTab({ loan }: { loan: Loan }) {
         request={selected}
       />
 
-      {menu ? (
-        <TabContextMenu
-          x={menu.x}
-          y={menu.y}
-          req={menu.req}
-          head={findChainHead(menu.req)}
-          onOpen={() => { setSelected(menu.req); setMenu(null); }}
-          onOpenLatest={() => { setSelected(findChainHead(menu.req)); setMenu(null); }}
-          onPrintLatest={() => { onPrintLatest(menu.req); setMenu(null); }}
-        />
-      ) : null}
-    </div>
-  );
-}
-
-function TabContextMenu({
-  x,
-  y,
-  req,
-  head,
-  onOpen,
-  onOpenLatest,
-  onPrintLatest,
-}: {
-  x: number;
-  y: number;
-  req: PrequalRequest;
-  head: PrequalRequest;
-  onOpen: () => void;
-  onOpenLatest: () => void;
-  onPrintLatest: () => void;
-}) {
-  const isSuperseded = req.superseded_by_id != null;
-  const MENU_W = 240;
-  const MENU_H = 200;
-  const left = typeof window !== "undefined" ? Math.min(x, window.innerWidth - MENU_W - 8) : x;
-  const top = typeof window !== "undefined" ? Math.min(y, window.innerHeight - MENU_H - 8) : y;
-  return (
-    <div
-      role="menu"
-      className="popmenu atcursor"
-      onMouseDown={(e) => e.stopPropagation()}
-      // Measured geometry: the menu opens where the pointer is, clamped to the
-      // viewport. `.atcursor` hands `left`/`top`/`width` to the caller precisely
-      // so these three can live here and nothing else has to.
-      style={{ left, top, width: MENU_W }}
-    >
-      <div className="mhd">
-        <div className="lbl">
-          {req.quote_number ?? "Pre-qualification"}
-          {(req.version_num ?? 1) > 1 ? <> · v{req.version_num}</> : null}
-        </div>
-        <div className="trunc"><strong>{req.target_property_address}</strong></div>
-      </div>
-      <hr className="hr" />
-      <TabMenuItem icon="docCheck" label={isSuperseded ? "Open this version" : "Open"} onClick={onOpen} />
-      {isSuperseded ? (
-        <TabMenuItem icon="arrowR" label={`Open latest (v${head.version_num})`} onClick={onOpenLatest} />
-      ) : null}
-      <TabMenuItem
-        icon="docCheck"
-        label="Print latest letter"
-        sublabel={head.pdf_url ? head.quote_number ?? undefined : "no PDF yet"}
-        disabled={!head.pdf_url}
-        onClick={onPrintLatest}
+      <ContextMenu
+        state={rowMenu.state}
+        onClose={rowMenu.close}
+        items={(req): ContextMenuItem[] => {
+          const head = findChainHead(req);
+          const isSuperseded = req.superseded_by_id != null;
+          return [
+            {
+              label: isSuperseded ? "Open this version" : "Open",
+              icon: "docCheck",
+              onSelect: () => setSelected(req),
+            },
+            ...(isSuperseded ? [{
+              label: `Open latest (v${head.version_num})`,
+              icon: "arrowR",
+              onSelect: () => setSelected(head),
+            }] : []),
+            {
+              label: head.pdf_url ? "Print latest letter" : "Print latest letter · no PDF yet",
+              icon: "docCheck",
+              disabled: !head.pdf_url,
+              onSelect: () => onPrintLatest(req),
+            },
+          ];
+        }}
       />
     </div>
   );
 }
 
-function TabMenuItem({
-  icon,
-  label,
-  sublabel,
-  onClick,
-  disabled,
-}: {
-  icon: React.ComponentProps<typeof Icon>["name"];
-  label: string;
-  sublabel?: string;
-  onClick: () => void;
-  disabled?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="menuitem"
-      className="mi"
-      onClick={disabled ? undefined : onClick}
-      disabled={disabled}
-    >
-      <span className="row">
-        <Icon name={icon} size={14} />
-        {label}
-      </span>
-      {sublabel ? <small>{sublabel}</small> : null}
-    </button>
-  );
-}
-
 function PrequalRow({
   req,
+  pinned,
+  onTogglePin,
   onOpen,
   onContextMenu,
 }: {
   req: PrequalRequest;
+  pinned: boolean;
+  onTogglePin: () => void;
   onOpen: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
 }) {
@@ -247,13 +176,16 @@ function PrequalRow({
     // The row keeps its click and right-click; the KEYBOARD path is the real
     // button on the property cell, because a <tr> cannot carry one.
     <tr
-      className={cx(isSuperseded && "done")}
+      className={cx(isSuperseded && "done", pinned && "table-row-pinned")}
       onClick={onOpen}
       onContextMenu={onContextMenu}
       style={{ cursor: "pointer" }}
     >
       <Td>
-        <CellChip tone={status.tone}>{status.label}</CellChip>
+        <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+          <PinRowButton pinned={pinned} onToggle={onTogglePin} label={req.target_property_address} />
+          <CellChip tone={status.tone}>{status.label}</CellChip>
+        </div>
         {isRevision || isSuperseded ? (
           <div className="row">
             {req.quote_number ? (

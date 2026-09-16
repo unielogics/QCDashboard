@@ -5,7 +5,9 @@ import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { Btn, Callout, CellChip, Input, Select, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import { Icon } from "@/components/design-system/Icon";
+import { usePinnedRows } from "@/lib/tablePinning";
 import { ForeclosureRescueCreateDrawer } from "./ForeclosureRescueCreateDrawer";
 
 type RescueDocument = { id: string; name: string; category: string | null; required: boolean; status: string };
@@ -92,6 +94,18 @@ export default function ForeclosureRescuesPage() {
     ready: visible.filter((row) => row.status === "ready_for_initial_review" || row.status === "in_underwriting").length,
     missing: visible.reduce((sum, row) => sum + row.documents.filter((document) => document.required && ["missing", "requested"].includes(document.status)).length, 0),
   }), [visible]);
+  const rescueTableStorageKey = user?.id ? `foreclosure-rescues:${user.id}` : null;
+  const {
+    rows: orderedVisible,
+    pinnedIds: pinnedRescueIds,
+    isPinned: isRescuePinned,
+    togglePin: toggleRescuePin,
+    clearPins: clearRescuePins,
+  } = usePinnedRows({
+    rows: visible,
+    getId: (row) => row.id,
+    storageKey: rescueTableStorageKey,
+  });
 
   async function createdRescue(created: { id: string }) {
     const updated = await load();
@@ -175,7 +189,7 @@ export default function ForeclosureRescuesPage() {
   if (!canOperate && !isPartner) return <div className="card">This workspace is limited to underwriting and approved professional partners.</div>;
 
   return <>
-    <div className={cx("ai-intake-list-shell", selected && "workspace-hidden")} style={{ height: "calc(100dvh - 95px - var(--pad-y))", maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: 0, overflow: "hidden" }}>
+    <div className={cx("ai-intake-list-shell", selected && "workspace-hidden")} style={{ maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: "calc(100dvh - 95px - var(--pad-y))" }}>
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow"><h1>Foreclosure rescues</h1><CellChip tone="mut">{rows.length} files</CellChip><span className="sp" /><span className="sub">Deadline-first underwriting for commercial payoff files.</span><Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create rescue</Btn></div>
         <div className="cktabs" role="tablist" aria-label="Rescue status"><button type="button" role="tab" aria-selected={filter === "all"} className={filter === "all" ? "on" : undefined} onClick={() => setFilter("all")}>All files</button>{STATUSES.slice(0, 5).map(([key, label]) => <button type="button" role="tab" aria-selected={filter === key} className={filter === key ? "on" : undefined} key={key} onClick={() => setFilter(key)}>{label}</button>)}</div>
@@ -189,7 +203,52 @@ export default function ForeclosureRescuesPage() {
       {canOperate && applications.length ? <div className="panel" style={{ flexShrink: 0, maxHeight: 190, overflow: "auto" }}><div className="panel-h"><strong>Professional partner applications</strong><CellChip tone="warn">{applications.length} pending</CellChip></div><div className="panel-b grid g8">{applications.map((application) => <div className="line" key={application.id}><div><strong>{application.company_name}</strong><div className="sub">{application.contact_name} · {application.contact_email} · {application.firm_type.replaceAll("_", " ")}</div>{application.notes ? <div className="sub">{application.notes}</div> : null}</div><span className="sp" /><Btn size="sm" onClick={() => void decide(application, "denied")}>Deny</Btn><Btn variant="pri" size="sm" onClick={() => void decide(application, "approved")}>Approve & invite</Btn></div>)}</div></div> : null}
       {isPartner && user.referral_partner_company_admin ? <div className="panel" style={{ flexShrink: 0, maxHeight: 190, overflow: "auto" }}><div className="panel-h"><strong>Firm members</strong><span className="sub">{firmMembers.filter((member) => member.active).length} active</span><span className="sp" /><Btn size="sm" onClick={() => void inviteFirmMember()}><Icon name="plus" size={12} /> Invite colleague</Btn></div><div className="panel-b grid g8">{firmMembers.map((member) => <div className="line" key={member.id}><div><strong>{member.name}</strong><div className="sub">{member.email}{member.is_company_admin ? " · Firm administrator" : ""}</div></div><span className="sp" /><CellChip tone={member.active ? "ok" : "mut"}>{member.active ? "Active" : "Inactive"}</CellChip>{member.active && member.id !== user.id ? <Btn size="sm" onClick={() => void deactivateFirmMember(member)}>Deactivate</Btn> : null}</div>)}</div></div> : null}
 
-      <div style={{ flex: 1, minHeight: 0, overflow: "hidden" }}><div className="panel" style={{ height: "100%", minHeight: 0 }}><div className="tblwrap" style={{ height: "100%", overflow: "auto" }}><table className="tbl"><thead><tr><th>File</th><th>Deadline</th><th>Urgency</th><th className="r">Payoff</th><th className="r">Value / LTV</th><th>Status</th><th>Documents</th><th>Assigned</th><th className="r" /></tr></thead><tbody>{visible.map((row) => { const received = row.documents.filter((document) => ["uploaded", "received_unverified", "verified", "waived", "not_applicable"].includes(document.status)).length; const urgencyTone = row.urgency.key === "critical" ? "bad" : row.urgency.key === "urgent" || row.urgency.key === "time_sensitive" ? "warn" : "mut"; return <tr key={row.id} onClick={() => setSelected(row)} className={selected?.id === row.id ? "tone-acc" : undefined}><td><button type="button" className="linky" onClick={() => setSelected(row)}>{row.holding_entity || row.borrower_name}</button><div className="sub">{row.property_addresses.join(" · ") || "Address pending"}</div><div className="sub num">{row.id.slice(0, 8)}</div></td><td><strong>{date(row.sale_date)}</strong>{row.urgency.days_remaining != null ? <div className="sub num">{row.urgency.days_remaining < 0 ? `${Math.abs(row.urgency.days_remaining)} days past` : `${row.urgency.days_remaining} days left`}</div> : <div className="sub">Date required</div>}</td><td><CellChip tone={urgencyTone}>{row.urgency.label}</CellChip></td><td className="r num">{money.format(row.payoff_balance)}</td><td className="r"><strong className="num">{money.format(row.estimated_market_value)}</strong><div className="sub num">{row.calculated_ltv_pct.toFixed(1)}% LTV</div></td><td><CellChip tone={row.status === "funded" ? "ok" : row.status === "declined" || row.status === "withdrawn_expired" ? "bad" : row.status === "new_rescue" ? "warn" : "acc"}>{row.status_label}</CellChip></td><td><CellChip tone={received === row.documents.length ? "ok" : "pet"}>{received}/{row.documents.length}</CellChip></td><td>{row.assigned_underwriter_name || "Unassigned"}</td><td className="r"><Btn size="sm" onClick={(event) => { event.stopPropagation(); setSelected(row); }}>Open</Btn></td></tr>; })}{!visible.length ? <tr><td colSpan={9}><div className="empty">No rescue files match these filters.</div></td></tr> : null}</tbody></table></div></div></div>
+      <TableWorkspace
+        title="Foreclosure rescue files"
+        description="Scroll the page to give the deadline queue more room, or focus the table for full-screen review."
+        storageKey={rescueTableStorageKey ?? undefined}
+        actions={pinnedRescueIds.length ? <Btn size="sm" onClick={clearRescuePins}>Clear pinned ({pinnedRescueIds.length})</Btn> : null}
+      >
+        <div className="tblwrap">
+          <table className="tbl">
+            <caption className="sr-only">Foreclosure rescue files</caption>
+            <thead>
+              <tr><th>File</th><th>Deadline</th><th>Urgency</th><th className="r">Payoff</th><th className="r">Value / LTV</th><th>Status</th><th>Documents</th><th>Assigned</th><th className="r">Actions</th></tr>
+            </thead>
+            <tbody>
+              {orderedVisible.map((row) => {
+                const received = row.documents.filter((document) => ["uploaded", "received_unverified", "verified", "waived", "not_applicable"].includes(document.status)).length;
+                const urgencyTone = row.urgency.key === "critical" ? "bad" : row.urgency.key === "urgent" || row.urgency.key === "time_sensitive" ? "warn" : "mut";
+                const pinned = isRescuePinned(row.id);
+                return (
+                  <tr
+                    key={row.id}
+                    onClick={() => setSelected(row)}
+                    className={cx(selected?.id === row.id && "tone-acc", pinned && "table-row-pinned")}
+                    data-pinned={pinned || undefined}
+                  >
+                    <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); setSelected(row); }}>{row.holding_entity || row.borrower_name}</button><div className="sub">{row.property_addresses.join(" · ") || "Address pending"}</div><div className="sub num">{row.id.slice(0, 8)}</div></td>
+                    <td><strong>{date(row.sale_date)}</strong>{row.urgency.days_remaining != null ? <div className="sub num">{row.urgency.days_remaining < 0 ? `${Math.abs(row.urgency.days_remaining)} days past` : `${row.urgency.days_remaining} days left`}</div> : <div className="sub">Date required</div>}</td>
+                    <td><CellChip tone={urgencyTone}>{row.urgency.label}</CellChip></td>
+                    <td className="r num">{money.format(row.payoff_balance)}</td>
+                    <td className="r"><strong className="num">{money.format(row.estimated_market_value)}</strong><div className="sub num">{row.calculated_ltv_pct.toFixed(1)}% LTV</div></td>
+                    <td><CellChip tone={row.status === "funded" ? "ok" : row.status === "declined" || row.status === "withdrawn_expired" ? "bad" : row.status === "new_rescue" ? "warn" : "acc"}>{row.status_label}</CellChip></td>
+                    <td><CellChip tone={received === row.documents.length ? "ok" : "pet"}>{received}/{row.documents.length}</CellChip></td>
+                    <td>{row.assigned_underwriter_name || "Unassigned"}</td>
+                    <td className="r">
+                      <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 6 }}>
+                        <PinRowButton pinned={pinned} onToggle={() => toggleRescuePin(row.id)} label={row.holding_entity || row.borrower_name} />
+                        <Btn size="sm" onClick={(event) => { event.stopPropagation(); setSelected(row); }}>Open</Btn>
+                      </span>
+                    </td>
+                  </tr>
+                );
+              })}
+              {!orderedVisible.length ? <tr><td colSpan={9}><div className="empty">No rescue files match these filters.</div></td></tr> : null}
+            </tbody>
+          </table>
+        </div>
+      </TableWorkspace>
     </div>
 
     {createOpen ? <ForeclosureRescueCreateDrawer user={user} isPartner={isPartner} onClose={() => setCreateOpen(false)} onCreated={createdRescue} /> : null}

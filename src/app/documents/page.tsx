@@ -7,6 +7,7 @@ import {
   Input,
   PageHeader,
   Panel,
+  PinRowButton,
   Table,
   Td,
   Tr,
@@ -14,8 +15,10 @@ import {
   type Col,
 } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { useDocuments, useLoans, useClients } from "@/hooks/useApi";
+import { useDocuments, useLoans, useClients, useCurrentUser } from "@/hooks/useApi";
 import { useActiveProfile } from "@/store/role";
+import { usePinnedRows } from "@/lib/tablePinning";
+import type { Document, Loan } from "@/lib/types";
 import { DocRequestModal } from "./components/DocRequestModal";
 import { DocUploadButton } from "./components/DocUploadButton";
 
@@ -33,10 +36,14 @@ const BASE_COLS: Col[] = [
   { label: "Document" },
   { label: "Source", width: 120 },
   { label: "Status", width: 140 },
+  { label: "Pin", align: "r", width: 52 },
 ];
+
+const documentId = (document: Document) => document.id;
 
 export default function DocumentsPage() {
   const profile = useActiveProfile();
+  const { data: currentUser } = useCurrentUser();
   const { data: docs = [] } = useDocuments();
   const { data: loans = [] } = useLoans();
   const { data: clients = [] } = useClients();
@@ -115,55 +122,101 @@ export default function DocumentsPage() {
         const clientName = client?.name ?? "Unknown client";
         return (
           <Panel key={clientId} title={clientName} noPad>
-            <Table cols={cols} caption={`Documents for ${clientName}`}>
-              {items.map((d) => {
-                const loan = loansById[d.loan_id];
-                const showUpload = canRequest && (d.status === "requested" || d.status === "pending" || d.status === "flagged");
-                return (
-                  <Tr key={d.id}>
-                    <Td>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
-                        <span className="sub">
-                          <Icon name="doc" size={16} />
-                        </span>
-                        <div style={{ minWidth: 0 }}>
-                          <b>{d.name}</b>
-                          <div className="sub">
-                            {loan?.deal_id} — {loan?.address}
-                          </div>
-                        </div>
-                      </div>
-                    </Td>
-                    {/* Source label per Architecture decision #6. Every row in this
-                        Document table is lender/funding-side. Agent-requested
-                        transaction docs (Purchase Agreement, Inspection, etc.)
-                        live in the future agent_document_request table and will
-                        render alongside with a "Transaction" chip — P1. */}
-                    <Td>
-                      <CellChip tone="acc">Funding</CellChip>
-                    </Td>
-                    <Td>
-                      <CellChip tone={statusTone(d.status)}>{d.status}</CellChip>
-                    </Td>
-                    {canRequest ? (
-                      <Td align="r">
-                        {showUpload ? (
-                          <DocUploadButton
-                            loanId={d.loan_id}
-                            category={d.category ?? undefined}
-                            compact
-                            label="Upload"
-                          />
-                        ) : null}
-                      </Td>
-                    ) : null}
-                  </Tr>
-                );
-              })}
-            </Table>
+            <ClientDocumentTable
+              clientId={clientId}
+              clientName={clientName}
+              items={items}
+              loansById={loansById}
+              cols={cols}
+              canRequest={canRequest}
+              pinScope={currentUser?.id ?? null}
+            />
           </Panel>
         );
       })}
     </div>
+  );
+}
+
+function ClientDocumentTable({
+  clientId,
+  clientName,
+  items,
+  loansById,
+  cols,
+  canRequest,
+  pinScope,
+}: {
+  clientId: string;
+  clientName: string;
+  items: Document[];
+  loansById: Record<string, Loan>;
+  cols: Col[];
+  canRequest: boolean;
+  pinScope: string | null;
+}) {
+  const { rows, isPinned, togglePin } = usePinnedRows({
+    rows: items,
+    getId: documentId,
+    storageKey: pinScope ? `documents:${pinScope}:${clientId}` : null,
+  });
+
+  return (
+    <Table cols={cols} caption={`Documents for ${clientName}`}>
+      {rows.map((document) => {
+        const loan = loansById[document.loan_id];
+        const showUpload =
+          canRequest &&
+          (document.status === "requested" || document.status === "pending" || document.status === "flagged");
+        const pinned = isPinned(document.id);
+        return (
+          <Tr key={document.id} className={pinned ? "is-pinned" : undefined}>
+            <Td>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+                <span className="sub">
+                  <Icon name="doc" size={16} />
+                </span>
+                <div style={{ minWidth: 0 }}>
+                  <b>{document.name}</b>
+                  <div className="sub">
+                    {loan?.deal_id} — {loan?.address}
+                  </div>
+                </div>
+              </div>
+            </Td>
+            {/* Source label per Architecture decision #6. Every row in this
+                Document table is lender/funding-side. Agent-requested
+                transaction docs (Purchase Agreement, Inspection, etc.)
+                live in the future agent_document_request table and will
+                render alongside with a "Transaction" chip — P1. */}
+            <Td>
+              <CellChip tone="acc">Funding</CellChip>
+            </Td>
+            <Td>
+              <CellChip tone={statusTone(document.status)}>{document.status}</CellChip>
+            </Td>
+            <Td align="r">
+              <PinRowButton
+                pinned={pinned}
+                onToggle={() => togglePin(document.id)}
+                label={document.name}
+              />
+            </Td>
+            {canRequest ? (
+              <Td align="r">
+                {showUpload ? (
+                  <DocUploadButton
+                    loanId={document.loan_id}
+                    category={document.category ?? undefined}
+                    compact
+                    label="Upload"
+                  />
+                ) : null}
+              </Td>
+            ) : null}
+          </Tr>
+        );
+      })}
+    </Table>
   );
 }

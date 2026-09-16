@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
-import { useAuth } from "@clerk/nextjs";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -22,6 +21,7 @@ import {
 } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
@@ -36,6 +36,8 @@ import { semanticStatusClass } from "@/lib/semanticStatus";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { usePinnedRows } from "@/lib/tablePinning";
+import { useConsoleAuth } from "@/lib/consoleAuth";
 
 type BucketLinkedFile = {
   id: string;
@@ -410,7 +412,7 @@ export default function BucketsAdminPage() {
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const { data: bucketLinks = [] } = useBucketIntakeLinks({ all: true });
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
-  const { getToken } = useAuth();
+  const { getToken } = useConsoleAuth();
   const adminFileInputRef = useRef<HTMLInputElement | null>(null);
   const shareMenuRef = useRef<HTMLDivElement | null>(null);
   const dismissedBucketParamRef = useRef<string | null>(null);
@@ -939,6 +941,18 @@ export default function BucketsAdminPage() {
         .includes(q);
     });
   }, [buckets, search, bucketView]);
+  const bucketTableStorageKey = me?.id ? `document-buckets:${me.id}` : null;
+  const {
+    rows: orderedBuckets,
+    pinnedIds: pinnedBucketIds,
+    isPinned: isBucketPinned,
+    togglePin: toggleBucketPin,
+    clearPins: clearBucketPins,
+  } = usePinnedRows({
+    rows: filteredBuckets,
+    getId: (bucket) => bucket.id,
+    storageKey: bucketTableStorageKey,
+  });
   const primaryIntakeByBucket = useMemo(() => {
     const pairs = new Map<string, string>();
     for (const file of unifiedFiles?.items ?? []) {
@@ -2114,28 +2128,35 @@ export default function BucketsAdminPage() {
         )}
       </Drawer>
 
-      <Panel
+      <TableWorkspace
         title="Bucket list"
-        noPad
+        description="Scroll the page to give the bucket directory more room, or focus the table for full-screen review."
+        storageKey={bucketTableStorageKey ?? undefined}
         actions={
-          // The magnifier is inset INTO the field, so its offset and the text
-          // inset that clears it are geometry, not decoration.
-          <div style={{ position: "relative", width: 320 }}>
-            <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }} />
-            <Input
-              style={{ width: "100%", paddingLeft: 32 }}
-              placeholder="Search name, email, case, loan..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
+          <>
+            {/* The magnifier is inset INTO the field, so its offset and the text
+                inset that clears it are geometry, not decoration. */}
+            <div style={{ position: "relative", width: "min(320px, 100%)", flex: "1 1 240px" }}>
+              <Icon name="search" size={14} style={{ position: "absolute", left: 11, top: 10, color: "var(--muted)" }} />
+              <Input
+                style={{ width: "100%", paddingLeft: 32 }}
+                placeholder="Search name, email, case, loan..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                aria-label="Search buckets"
+              />
+            </div>
+            {pinnedBucketIds.length ? <Btn size="sm" onClick={clearBucketPins}>Clear pinned ({pinnedBucketIds.length})</Btn> : null}
+          </>
         }
       >
         <BucketTable
-          buckets={filteredBuckets}
+          buckets={orderedBuckets}
           links={bucketLinks}
           primaryIntakeByBucket={primaryIntakeByBucket}
           deletingId={deletingId}
+          isPinned={isBucketPinned}
+          onTogglePin={toggleBucketPin}
           onSelect={(id) => openBucket(id)}
           onOpenVendors={openVendorAssignment}
           onConvertToLead={setConvertLeadBucket}
@@ -2143,7 +2164,7 @@ export default function BucketsAdminPage() {
           onOpenLinkedFile={openLinkedFile}
           onDelete={setDeleteReviewBucket}
         />
-      </Panel>
+      </TableWorkspace>
 
       {convertLeadBucket ? (
         <ConvertToLeadModal
@@ -4033,6 +4054,8 @@ function BucketTable({
   links,
   primaryIntakeByBucket,
   deletingId,
+  isPinned,
+  onTogglePin,
   onSelect,
   onOpenVendors,
   onConvertToLead,
@@ -4044,6 +4067,8 @@ function BucketTable({
   links: BucketIntakeLinkRead[];
   primaryIntakeByBucket: Map<string, string>;
   deletingId: string | null;
+  isPinned: (id: string) => boolean;
+  onTogglePin: (id: string) => void;
   onSelect: (id: string) => void;
   onOpenVendors: (id: string) => void;
   onConvertToLead: (bucket: Bucket) => void;
@@ -4064,9 +4089,15 @@ function BucketTable({
             const primaryIntakeId = primaryIntakeByBucket.get(bucket.id);
             const connected = bucket.linked_files?.[0];
             const connectedDetail = connected?.reference || connected?.email || connected?.phone;
+            const pinned = isPinned(bucket.id);
             return (
-              <tr key={bucket.id} onClick={() => onSelect(bucket.id)}>
-                <td><button type="button" className="linky" onClick={() => onSelect(bucket.id)}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}</div></td>
+              <tr
+                key={bucket.id}
+                onClick={() => onSelect(bucket.id)}
+                className={cx(pinned && "table-row-pinned")}
+                data-pinned={pinned || undefined}
+              >
+                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}</div></td>
                 <td>{bucket.client_name || <span className="sub">No client</span>}</td>
                 <td className="num">{bucket.file_count ?? 0} / {bucket.uploaded_file_count ?? 0}</td>
                 <td className="num">{bucket.vendor_access_count ?? 0}</td>
@@ -4084,6 +4115,7 @@ function BucketTable({
                 <td className="sub">{formatDate(bucket.updated_at)}</td>
                 <td>
                   <span className="bucket-list-actions" onClick={(event) => event.stopPropagation()}>
+                    <PinRowButton pinned={pinned} onToggle={() => onTogglePin(bucket.id)} label={bucket.name} />
                     <PageActionMenu label={`Actions for ${bucket.name}`} items={[
                       { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
                       ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),

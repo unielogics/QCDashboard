@@ -12,16 +12,20 @@ import {
   Kpi,
   KpiRow,
   Lbl,
+  Linky,
   PageHeader,
   Panel,
+  PinRowButton,
   Row,
   Sub,
+  TableWorkspace,
   Td,
 } from "@/components/ds";
 import { ContextMenu, useContextMenu, type ContextMenuItem } from "@/components/ContextMenu";
 import { FinancialInsightPanel } from "@/components/analysis/FinancialInsightPanel";
-import { useClients } from "@/hooks/useApi";
+import { useClients, useCurrentUser } from "@/hooks/useApi";
 import type { AnalysisRun } from "@/lib/types";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 export interface AnalysisRunAction {
   label: string;
@@ -122,6 +126,7 @@ export function AnalysisRunsTable({
 }) {
   const router = useRouter();
   const { data: clients = [] } = useClients("mine");
+  const { data: currentUser } = useCurrentUser();
   const rowMenu = useContextMenu<AnalysisRun>();
   const [query, setQuery] = useState("");
   const q = query.trim().toLowerCase();
@@ -148,6 +153,13 @@ export function AnalysisRunsTable({
         }),
     [clients, q, runs],
   );
+  const { rows: orderedRuns, isPinned, togglePin } = usePinnedRows({
+    rows: filtered,
+    getId: (run) => run.id,
+    storageKey: currentUser?.id
+      ? `analysis-runs:${currentUser.id}:${title.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`
+      : null,
+  });
 
   return (
     <div className="grid">
@@ -168,7 +180,12 @@ export function AnalysisRunsTable({
         />
       </div>
 
-      <Panel noPad>
+      <TableWorkspace
+        title="Saved analysis runs"
+        description={`${filtered.length} ${filtered.length === 1 ? "run" : "runs"} in this view`}
+        ariaLabel="Saved analysis runs"
+        storageKey="analysis-runs"
+      >
         {/* Hand-rolled rather than the ds `Table` for one reason: the 960px
             floor. Seven columns squeezed into a phone width wrap into mush,
             and `.tbl` carries no min-width, so the table has to state its own
@@ -199,23 +216,37 @@ export function AnalysisRunsTable({
                   </Td>
                 </tr>
               ) : (
-                filtered.map((run) => {
+                orderedRuns.map((run) => {
                   const amount = amountFor(run);
+                  const pinned = isPinned(run.id);
                   return (
                     <tr
                       key={run.id}
+                      className={pinned ? "table-row-pinned" : undefined}
                       onClick={() => onOpen(run.id)}
                       onContextMenu={(e) => rowMenu.open(e, run)}
                       title="Right-click for actions"
                       style={{ cursor: "pointer" }}
                     >
                       <Td>
-                        {/* Bespoke truncation: a long property address must not push
-                            the other six columns off the table. */}
-                        <b className="trunc" style={{ display: "block", maxWidth: 360 }}>
-                          {titleFor(run)}
-                        </b>
-                        <div className="sub">{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</div>
+                        <div className="row" style={{ alignItems: "flex-start", flexWrap: "nowrap" }}>
+                          <PinRowButton pinned={pinned} onToggle={() => togglePin(run.id)} label={titleFor(run)} />
+                          <span style={{ minWidth: 0 }}>
+                            {/* Bespoke truncation: a long property address must not push
+                                the other six columns off the table. */}
+                            <Linky
+                              className="trunc"
+                              style={{ display: "block", maxWidth: 320, textAlign: "left", fontWeight: 800 }}
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                onOpen(run.id);
+                              }}
+                            >
+                              {titleFor(run)}
+                            </Linky>
+                            <span className="sub">{SOURCE_LABEL[run.tool_source] ?? run.tool_source}</span>
+                          </span>
+                        </div>
                       </Td>
                       <Td>{clientNameFor(run, clients)}</Td>
                       <Td>{PRODUCT_LABEL[run.product] ?? run.product}</Td>
@@ -236,7 +267,7 @@ export function AnalysisRunsTable({
             </tbody>
           </table>
         </div>
-      </Panel>
+      </TableWorkspace>
 
       <ContextMenu
         state={rowMenu.state}

@@ -8,6 +8,7 @@ import { useCurrentUser } from "@/hooks/useApi";
 import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { Role } from "@/lib/enums.generated";
 import { openSignedUrl } from "@/lib/safeOpen";
+import { usePinnedRows } from "@/lib/tablePinning";
 import {
   Btn,
   CG,
@@ -25,6 +26,7 @@ import {
   cx,
   type Col,
 } from "@/components/ds";
+import { PinRowButton } from "@/components/ds/TableWorkspace";
 
 type VendorBucket = {
   id: string;
@@ -161,6 +163,16 @@ export default function VendorBucketsPage() {
   }
 
   const selectedBucket = useMemo(() => buckets.find((bucket) => bucket.id === selectedId), [buckets, selectedId]);
+  const files = room?.files ?? [];
+  const {
+    rows: orderedFiles,
+    isPinned: isFilePinned,
+    togglePin: toggleFilePin,
+  } = usePinnedRows({
+    rows: files,
+    getId: (file) => file.id,
+    storageKey: me?.id && room?.bucket.id ? `vendor-bucket-files:${me.id}:${room.bucket.id}` : null,
+  });
 
   if (meLoading) return <div className="sub">Loading vendor buckets...</div>;
   if (me && me.role !== Role.VENDOR) return null;
@@ -234,37 +246,45 @@ export default function VendorBucketsPage() {
                       </Td>
                     </Tr>
                   ) : (
-                    room.files.map((file) => (
-                      <Tr key={file.id}>
-                        <Td>
-                          <b>{file.file_name}</b>
-                          <div className="sub">{fileKindLabel(file)}</div>
-                        </Td>
-                        <Td>
-                          <CellChip tone="pet">{fileExtension(file.file_name)}</CellChip>
-                        </Td>
-                        <Td>{formatDate(file.created_at)}</Td>
-                        <Td align="r">{typeof file.size_bytes === "number" ? formatSize(file.size_bytes) : "Unknown size"}</Td>
-                        <Td align="r">
-                          <div className="row end">
-                            {file.preview_url ? (
-                              <Btn size="sm" onClick={() => setReviewFile(file)}>
-                                <Icon name="eye" size={13} />
-                                Preview
-                              </Btn>
-                            ) : null}
-                            {room.vendor_access.can_download ? (
-                              <Btn size="sm" variant="pri" onClick={() => downloadFile(file)} disabled={downloadingId === file.id}>
-                                <Icon name="download" size={13} />
-                                {downloadingId === file.id ? "Preparing..." : "Download"}
-                              </Btn>
-                            ) : (
-                              <span className="sub">Download disabled</span>
-                            )}
-                          </div>
-                        </Td>
-                      </Tr>
-                    ))
+                    orderedFiles.map((file) => {
+                      const pinned = isFilePinned(file.id);
+                      return (
+                        <Tr key={file.id} className={pinned ? "table-row-pinned" : undefined}>
+                          <Td>
+                            <b>{file.file_name}</b>
+                            <div className="sub">{fileKindLabel(file)}</div>
+                          </Td>
+                          <Td>
+                            <CellChip tone="pet">{fileExtension(file.file_name)}</CellChip>
+                          </Td>
+                          <Td>{formatDate(file.created_at)}</Td>
+                          <Td align="r">{typeof file.size_bytes === "number" ? formatSize(file.size_bytes) : "Unknown size"}</Td>
+                          <Td align="r">
+                            <div className="row end">
+                              <PinRowButton
+                                pinned={pinned}
+                                onToggle={() => toggleFilePin(file.id)}
+                                label={file.file_name}
+                              />
+                              {file.preview_url ? (
+                                <Btn size="sm" onClick={() => setReviewFile(file)}>
+                                  <Icon name="eye" size={13} />
+                                  Preview
+                                </Btn>
+                              ) : null}
+                              {room.vendor_access.can_download ? (
+                                <Btn size="sm" variant="pri" onClick={() => downloadFile(file)} disabled={downloadingId === file.id}>
+                                  <Icon name="download" size={13} />
+                                  {downloadingId === file.id ? "Preparing..." : "Download"}
+                                </Btn>
+                              ) : (
+                                <span className="sub">Download disabled</span>
+                              )}
+                            </div>
+                          </Td>
+                        </Tr>
+                      );
+                    })
                   )}
                 </Table>
               </Panel>

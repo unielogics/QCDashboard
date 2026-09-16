@@ -19,18 +19,20 @@
 // `.content` owns both.
 
 import { useState } from "react";
-import { Btn, CellChip, Input, Note, Panel, Row, Select, Sub, Textarea } from "@/components/ds";
+import { Btn, CellChip, Input, Note, PinRowButton, Row, Select, Sub, TableWorkspace, Textarea } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LendingAIHeader } from "@/components/LendingAIHeader";
 import { AIPreviewPanel } from "@/components/AIPreviewPanel";
 import { AINotDeployedBanner } from "@/components/AINotDeployedBanner";
 import {
   isAINotDeployed,
+  useCurrentUser,
   useDeleteFundingCadenceRule,
   useFundingCadenceRules,
   useUpsertFundingCadenceRule,
   type AgentCadenceRule,
 } from "@/hooks/useApi";
+import { usePinnedRows } from "@/lib/tablePinning";
 
 const TRIGGERS = [
   { value: "requirement_missing", label: "Requirement missing for N hours" },
@@ -54,10 +56,17 @@ const ACTIONS = [
 const RULE_COLS = "38px minmax(0, 1fr) auto";
 
 export default function FundingCadencePage() {
+  const { data: currentUser } = useCurrentUser();
   const { data: rules = [], error: cadErr } = useFundingCadenceRules();
   const upsert = useUpsertFundingCadenceRule();
   const del = useDeleteFundingCadenceRule();
   const [draft, setDraft] = useState<Partial<AgentCadenceRule> | null>(null);
+  const cadenceTableStorageKey = currentUser?.id ? `lending-ai-cadence:${currentUser.id}` : null;
+  const { rows: orderedRules, pinnedIds, isPinned, togglePin, clearPins } = usePinnedRows({
+    rows: rules,
+    getId: (rule) => rule.id,
+    storageKey: cadenceTableStorageKey,
+  });
 
   return (
     <div className="grid">
@@ -76,22 +85,25 @@ export default function FundingCadencePage() {
         <CadenceNote icon="shield" title="Human-safe by default" body="Draft-first stays the default. Auto-send still requires file-level outreach mode, consent, and a rule that explicitly allows it." />
       </div>
 
-      <Panel
+      <TableWorkspace
         title="Cadence rules"
-        sub={`${rules.length} rule(s)`}
-        noPad
+        description={`${rules.length} rule(s)`}
+        storageKey={cadenceTableStorageKey ?? undefined}
         actions={
-          <Btn
-            variant="pri"
-            size="sm"
-            onClick={() => setDraft({ trigger_event: "requirement_missing", action_type: "draft_message", approval_required: true, wait_hours: 24, visibility: "borrower", is_active: true, requires_ai_owner: true })}
-          >
-            + Add rule
-          </Btn>
+          <>
+            {pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pins</Btn> : null}
+            <Btn
+              variant="pri"
+              size="sm"
+              onClick={() => setDraft({ trigger_event: "requirement_missing", action_type: "draft_message", approval_required: true, wait_hours: 24, visibility: "borrower", is_active: true, requires_ai_owner: true })}
+            >
+              + Add rule
+            </Btn>
+          </>
         }
       >
-        {rules.map(r => (
-          <div key={r.id} className="gridrow" style={{ gridTemplateColumns: RULE_COLS }}>
+        {orderedRules.map(r => (
+          <div key={r.id} className={isPinned(r.id) ? "gridrow table-row-pinned" : "gridrow"} style={{ gridTemplateColumns: RULE_COLS }}>
             <span className="botmark pet">
               <Icon name={r.requires_ai_owner === false ? "bell" : "spark"} size={15} />
             </span>
@@ -109,6 +121,7 @@ export default function FundingCadencePage() {
             <Row>
               <CellChip className="caps">{r.requires_ai_owner === false ? "Global" : "AI-owned only"}</CellChip>
               <CellChip className="caps">{r.visibility}</CellChip>
+              <PinRowButton pinned={isPinned(r.id)} onToggle={() => togglePin(r.id)} label={`${r.trigger_event} cadence rule`} />
               <Btn size="sm" onClick={() => setDraft(r)}>Edit</Btn>
               <Btn size="sm" className="danger" onClick={() => del.mutate(r.id)}>Delete</Btn>
             </Row>
@@ -178,7 +191,7 @@ export default function FundingCadencePage() {
             </Row>
           </div>
         ) : null}
-      </Panel>
+      </TableWorkspace>
 
       <AIPreviewPanel mode="cadence" />
     </div>

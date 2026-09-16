@@ -776,8 +776,123 @@ async function mockAiIntakeBankingWorkspace(
   await page.route(/\/api\/v1\/me\/booking-link$/, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ enabled: false, slug: null, url: null }) });
   });
-  return { intakeId, uploadedFiles };
+  return { intakeId, uploadedFiles, lead };
 }
+
+test("AI intake table expands, requests more rows, and keeps pinned files on top", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The dense table workspace is exercised at the canonical desktop viewport.");
+  const { lead } = await mockAiIntakeBankingWorkspace(page);
+  const leads = [
+    { ...lead, id: "20000000-0000-0000-0000-000000000011", business_name: "Alpha Motors", full_name: "Alex Owner" },
+    { ...lead, id: "20000000-0000-0000-0000-000000000012", business_name: "Bravo Motors", full_name: "Blake Owner" },
+    { ...lead, id: "20000000-0000-0000-0000-000000000013", business_name: "Charlie Motors", full_name: "Casey Owner" },
+  ];
+  let requestedLimit = "";
+  await page.route(/\/api\/v1\/admin\/ai-underwriter-leads\?.*$/, async (route) => {
+    const requestUrl = new URL(route.request().url());
+    requestedLimit = requestUrl.searchParams.get("limit") || "";
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: leads, total: leads.length, limit: Number(requestedLimit), offset: 0 }),
+    });
+  });
+
+  await page.goto("/admin/ai-underwriter-leads", { waitUntil: "domcontentloaded" });
+  const workspace = page.getByRole("region", { name: "AI intake files" });
+  await expect(workspace).toBeVisible();
+  await expect.poll(() => requestedLimit).toBe("50");
+  await expect(page.getByLabel("Rows per page")).toHaveValue("50");
+  const normalLayout = await page.locator("main").evaluate((main) => ({
+    clientHeight: main.clientHeight,
+    scrollHeight: main.scrollHeight,
+  }));
+  expect(normalLayout.scrollHeight, "summary content should scroll away above the taller table").toBeGreaterThan(normalLayout.clientHeight);
+
+  const bodyRows = workspace.locator("tbody tr");
+  await expect(bodyRows).toHaveCount(3);
+  await page.getByRole("button", { name: "Pin Charlie Motors" }).click();
+  await expect(bodyRows.first()).toContainText("Charlie Motors");
+  await expect(bodyRows.first()).toHaveAttribute("data-pinned", "true");
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  const reloadedWorkspace = page.getByRole("region", { name: "AI intake files" });
+  await expect(reloadedWorkspace.locator("tbody tr").first()).toContainText("Charlie Motors");
+
+  await page.getByRole("button", { name: "Focus table" }).click();
+  const focusedWorkspace = page.getByRole("dialog", { name: "AI intake files" });
+  await expect(focusedWorkspace).toHaveAttribute("data-focused", "true");
+  const focusedLayout = await focusedWorkspace.evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const viewport = element.querySelector<HTMLElement>(".table-workspace__viewport");
+    const header = element.querySelector<HTMLElement>("thead th");
+    return {
+      inset: Math.max(bounds.left, bounds.top, window.innerWidth - bounds.right, window.innerHeight - bounds.bottom),
+      viewportOverflow: viewport ? getComputedStyle(viewport).overflow : "",
+      headerPosition: header ? getComputedStyle(header).position : "",
+    };
+  });
+  expect(focusedLayout.inset).toBeLessThanOrEqual(14);
+  expect(focusedLayout.viewportOverflow).toBe("auto");
+  expect(focusedLayout.headerPosition).toBe("sticky");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "AI intake files" })).toHaveAttribute("data-focused", "false");
+});
+
+test("shared embedded tables expand beyond their panel without inflating normal pages", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The full table workspace is exercised at the canonical desktop viewport.");
+  await mockEmptyOperatorPipeline(page);
+  await page.goto("/ds-gallery", { waitUntil: "domcontentloaded" });
+
+  const embedded = page.getByRole("region", { name: "Sample loans" });
+  await expect(embedded).toBeVisible();
+  const normalBounds = await embedded.evaluate((element) => element.getBoundingClientRect().toJSON());
+  expect(normalBounds.height, "a small table should stay compact before focus mode").toBeLessThan(300);
+
+  await embedded.getByRole("button", { name: "Focus sample loans" }).click();
+  const focused = page.getByRole("dialog", { name: "Sample loans" });
+  await expect(focused).toHaveAttribute("data-focused", "true");
+  const focusedBounds = await focused.evaluate((element) => element.getBoundingClientRect().toJSON());
+  expect(focusedBounds.left).toBeLessThanOrEqual(14);
+  expect(focusedBounds.top).toBeLessThanOrEqual(14);
+  expect(focusedBounds.width).toBeGreaterThan(1400);
+  expect(focusedBounds.height).toBeGreaterThan(800);
+
+  await page.evaluate(() => {
+    const testWindow = window as Window & { __outsideTableClicks?: number };
+    testWindow.__outsideTableClicks = 0;
+    const outside = document.createElement("button");
+    outside.id = "outside-focused-table-action";
+    outside.textContent = "Outside focused table";
+    outside.style.cssText = "position:fixed;top:0;left:0;z-index:900";
+    outside.addEventListener("click", () => { testWindow.__outsideTableClicks = (testWindow.__outsideTableClicks ?? 0) + 1; });
+    document.body.appendChild(outside);
+  });
+  await page.locator("#outside-focused-table-action").click();
+  await expect.poll(() => page.evaluate(() => (window as Window & { __outsideTableClicks?: number }).__outsideTableClicks)).toBe(0);
+  await expect(focused).toHaveAttribute("data-focused", "true");
+  await page.locator("#outside-focused-table-action").evaluate((element) => element.remove());
+
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("region", { name: "Sample loans" })).toHaveAttribute("data-focused", "false");
+
+  await page.getByRole("region", { name: "Sample loans" }).getByRole("button", { name: "Focus sample loans" }).click();
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+  await page.evaluate(() => {
+    const dialog = document.createElement("section");
+    dialog.id = "table-focus-test-dialog";
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.tabIndex = -1;
+    document.body.appendChild(dialog);
+  });
+  await expect(page.getByRole("region", { name: "Sample loans" })).toHaveAttribute("data-focused", "false");
+  await expect(page.locator("#table-focus-test-dialog")).toBeFocused();
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("hidden");
+  await page.locator("#table-focus-test-dialog").evaluate((element) => element.remove());
+  await expect.poll(() => page.evaluate(() => document.body.style.overflow)).toBe("");
+
+});
 
 for (const [name, route] of [...ROUTES, ...DETAIL_ROUTES]) {
   test(`${name} keeps the prototype page geometry`, async ({ page }, testInfo) => {
