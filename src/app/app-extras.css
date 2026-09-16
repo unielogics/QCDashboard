@@ -1689,6 +1689,8 @@ button.pick { width: 100%; text-align: left; }
 .consent-choice small { color: var(--muted); line-height: 1.45; }
 
 .ai-intake-email-workspace { min-height: 600px; display: grid; grid-template-columns: minmax(230px, 300px) minmax(0, 1fr); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; background: var(--surface); }
+.email-contact-suppression { grid-column: 1 / -1; padding: 10px 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.email-contact-suppression .callout { margin: 0; }
 .ai-intake-email-list { min-width: 0; border-right: 1px solid var(--line); background: var(--sunken2); overflow-y: auto; }
 .ai-intake-email-list-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 12px; border-bottom: 1px solid var(--line); background: var(--surface); }
 .ai-intake-email-list-head > div { min-width: 0; flex: 1; }
@@ -1710,6 +1712,25 @@ button.pick { width: 100%; text-align: left; }
 .email-cc-choices label { display: inline-flex; align-items: center; gap: 5px; padding: 5px 8px; border: 1px solid var(--line); border-radius: 999px; font-size: 13px; }
 .email-link-toolbar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken2); }
 .email-link-toolbar select { min-width: min(100%, 290px); }
+.email-attachment-picker { min-width: 0; display: grid; gap: 8px; margin: 0; padding: 9px 10px 10px; border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--sunken2); }
+.email-attachment-picker legend { display: inline-flex; align-items: center; gap: 5px; padding: 0 5px; color: var(--muted); font-size: 11px; font-weight: 800; letter-spacing: .45px; text-transform: uppercase; }
+.email-attachment-controls { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
+.email-attachment-featured { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.email-attachment-toggle { min-height: 34px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.email-attachment-toggle:hover:not(:disabled) { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.email-attachment-toggle.on { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); background: color-mix(in srgb, var(--accent) 9%, var(--surface)); color: var(--accent); }
+.email-attachment-toggle:focus-visible,
+.email-attachment-chip button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.email-attachment-toggle:disabled { opacity: .55; cursor: not-allowed; }
+.email-attachment-controls > select { min-width: min(100%, 250px); max-width: 360px; }
+.email-attachment-chips,
+.email-message-attachments { min-width: 0; display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.email-attachment-chip { min-width: 0; max-width: min(100%, 360px); display: inline-flex; align-items: center; gap: 5px; padding: 4px 7px; border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--line)); border-radius: 999px; background: var(--surface); color: var(--ink); font-size: 11px; font-weight: 700; }
+.email-attachment-chip > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.email-attachment-chip button { width: 19px; height: 19px; flex: 0 0 auto; display: inline-grid; place-items: center; margin: -2px -3px -2px 0; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--muted); cursor: pointer; }
+.email-attachment-chip button:hover:not(:disabled) { background: var(--sunken2); color: var(--ink); }
+.email-attachment-chip button:disabled { cursor: not-allowed; }
+.email-attachment-error { color: var(--bad); font-size: 12px; }
 .email-compose-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .ai-intake-email-detail { height: 100%; min-height: 600px; display: grid; grid-template-rows: auto minmax(260px, 1fr) auto; }
 .ai-intake-email-detail-head { display: flex; align-items: center; gap: 10px; padding: 13px 16px; border-bottom: 1px solid var(--line); }
@@ -1734,6 +1755,7 @@ button.pick { width: 100%; text-align: left; }
   .ai-intake-email-detail { min-height: 520px; }
   .ai-intake-client-timeline .msg,
   .email-message { max-width: 94%; width: auto; }
+  .email-attachment-controls > select { width: 100%; max-width: none; }
 }
 .intake-channel-tabs { display: flex; align-items: center; gap: 3px; padding: 4px; width: max-content; max-width: 100%; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunken2); overflow-x: auto; }
 .intake-channel-tabs button { min-height: 33px; padding: 0 12px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); font: inherit; font-size: 11.5px; font-weight: 700; white-space: nowrap; cursor: pointer; }
@@ -1874,6 +1896,21 @@ button.pick { width: 100%; text-align: left; }
 .underwriting-status-strip > div { min-width: 0; display: grid; gap: 3px; padding: 12px 14px; border-right: 1px solid var(--line); }
 .underwriting-status-strip > div:last-child { border-right: 0; }
 .underwriting-status-strip b { overflow-wrap: anywhere; }
+.underwriting-merchant-strip { display: grid; gap: 14px; min-width: 0; padding: 18px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.underwriting-merchant-summary { display: grid; gap: 5px; min-width: 0; padding-bottom: 14px; border-bottom: 1px solid var(--line); }
+.underwriting-merchant-summary > b { font-size: 17px; line-height: 1.25; overflow-wrap: anywhere; }
+.merchant-offer-facts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--line); }
+.merchant-offer-fact { min-width: 0; display: grid; align-content: start; gap: 5px; padding: 12px 14px; background: var(--sunken2); }
+.merchant-offer-fact > b { font-size: 14px; line-height: 1.35; overflow-wrap: anywhere; }
+.merchant-offer-fact-wide { grid-column: 1 / -1; }
+.merchant-offer-option-list { display: grid; gap: 7px; }
+.merchant-offer-option { min-width: 0; display: grid; grid-template-columns: minmax(150px, .45fr) minmax(0, 1fr); gap: 8px 16px; align-items: baseline; padding-top: 7px; border-top: 1px solid var(--line); }
+.merchant-offer-option:first-child { padding-top: 0; border-top: 0; }
+.merchant-offer-option span { color: var(--muted); font-size: 11.5px; line-height: 1.45; overflow-wrap: anywhere; }
+.merchant-offer-partner-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px; align-items: end; }
+.merchant-offer-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.merchant-offer-actions > .btn { flex: 0 0 auto; width: auto; }
+.merchant-offer-actions > .field { flex: 0 1 320px; }
 .underwriting-term-sheet-actions { justify-items: end; align-content: center; min-width: max-content; }
 .dealer-term-document-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .dealer-term-document-actions .iconbtn { width: 36px; height: 36px; }
@@ -1969,6 +2006,8 @@ button.pick { width: 100%; text-align: left; }
 @media (max-width: 640px) { .extracted-facts-review article { grid-template-columns: 1fr; } .extracted-facts-review article > div { grid-template-columns: 1fr; } .extracted-facts-review article small { grid-column: 1; } }
 @media (max-width: 640px) { .intake-evidence-dropzone { grid-template-columns: 34px minmax(0, 1fr); padding: 13px; } .intake-evidence-dropzone-icon { width: 34px; height: 34px; } .intake-evidence-browse-label { grid-column: 2; width: max-content; min-width: 0; } }
 @media (max-width: 760px) { .underwriting-status-strip { grid-template-columns: 1fr; } .underwriting-status-strip > div { border-right: 0; border-bottom: 1px solid var(--line); } .underwriting-status-strip > div:last-child { border-bottom: 0; } .underwriting-term-sheet-actions { justify-items: start; min-width: 0; } .dealer-term-document-actions { justify-content: flex-start; } .dealer-term-document-status { text-align: left; } }
+@media (max-width: 900px) { .merchant-offer-facts { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .underwriting-merchant-strip { padding: 14px; } .merchant-offer-facts, .merchant-offer-partner-grid { grid-template-columns: 1fr; } .merchant-offer-option { grid-template-columns: 1fr; gap: 3px; } }
 @media (max-width: 640px) { .bank-evidence-stats { grid-template-columns: 1fr; } .bank-evidence-stats > div { border-right: 0; border-bottom: 1px solid var(--line); } .manual-bank-override { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .bank-request-toolbar { grid-template-columns: 1fr; align-items: stretch; } .bank-request-actions { display: grid; grid-template-columns: 1fr; } .bank-request-actions .btn { width: 100%; } .bank-delivery-strip { grid-template-columns: 34px minmax(0, 1fr); } .bank-delivery-strip > .cellchip { grid-column: 2; justify-self: start; } .plaid-product-policy { align-items: stretch; } .plaid-product-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; } .plaid-product-toggle { justify-content: center; } }
 @media (max-width: 1000px) {

@@ -82,10 +82,34 @@ type EmailMessage = {
   provider: string | null;
   delivery_status: string;
   delivery_detail: string | null;
+  attachment_names?: string[];
   created_at: string;
 };
 
 type EmailThreadDetail = { thread: EmailThread; messages: EmailMessage[] };
+
+type EmailAttachmentKind = "merchant_offer" | "production_term_sheet" | "evidence_file";
+
+type EmailAttachmentOption = {
+  kind: EmailAttachmentKind;
+  id: string;
+  label: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number | null;
+  expected_version: number | null;
+};
+
+type EmailAttachmentOptions = {
+  direct_client_contact_suppressed: boolean;
+  suppression_reason: string | null;
+  options: EmailAttachmentOption[];
+};
+
+type EmailAttachmentRef =
+  | { kind: "merchant_offer"; offer_id: string; expected_version: number }
+  | { kind: "production_term_sheet"; term_sheet_id: string; expected_version: number }
+  | { kind: "evidence_file"; file_id: string };
 
 type CommunicationLinkOption = {
   key: string;
@@ -117,6 +141,100 @@ function deliveryTone(status: string): "ok" | "warn" | "bad" | "mut" {
   if (["failed", "blocked", "bounced", "complained"].includes(status)) return "bad";
   if (status === "queued") return "warn";
   return "mut";
+}
+
+function attachmentOptionKey(option: EmailAttachmentOption): string {
+  return `${option.kind}:${option.id}`;
+}
+
+function attachmentRef(option: EmailAttachmentOption): EmailAttachmentRef {
+  if (option.kind === "evidence_file") return { kind: option.kind, file_id: option.id };
+  if (option.expected_version == null) throw new Error(`${option.label} does not have a sendable version.`);
+  if (option.kind === "merchant_offer") {
+    return { kind: option.kind, offer_id: option.id, expected_version: option.expected_version };
+  }
+  return { kind: option.kind, term_sheet_id: option.id, expected_version: option.expected_version };
+}
+
+function attachmentKindLabel(kind: EmailAttachmentKind): string {
+  if (kind === "merchant_offer") return "Merchant offer";
+  if (kind === "production_term_sheet") return "Loan term sheet";
+  return "File";
+}
+
+function EmailAttachmentPicker({
+  context,
+  options,
+  selected,
+  onChange,
+  disabled = false,
+  loading = false,
+  error = false,
+}: {
+  context: "email" | "reply";
+  options: EmailAttachmentOption[];
+  selected: EmailAttachmentOption[];
+  onChange: (next: EmailAttachmentOption[]) => void;
+  disabled?: boolean;
+  loading?: boolean;
+  error?: boolean;
+}) {
+  const selectedKeys = new Set(selected.map(attachmentOptionKey));
+  const featured = options.filter((option) => option.kind !== "evidence_file");
+  const files = options.filter((option) => option.kind === "evidence_file");
+  const availableFiles = files.filter((option) => !selectedKeys.has(attachmentOptionKey(option)));
+  const contextLabel = context === "email" ? "email" : "reply";
+
+  const toggle = (option: EmailAttachmentOption) => {
+    const key = attachmentOptionKey(option);
+    onChange(selectedKeys.has(key) ? selected.filter((item) => attachmentOptionKey(item) !== key) : [...selected, option]);
+  };
+
+  return <fieldset className="email-attachment-picker" disabled={disabled}>
+    <legend><Icon name="paperclip" size={13} />Attachments</legend>
+    <div className="email-attachment-controls">
+      <div className="email-attachment-featured">
+        {featured.map((option) => {
+          const isSelected = selectedKeys.has(attachmentOptionKey(option));
+          const sendable = option.expected_version != null;
+          return <button
+            key={attachmentOptionKey(option)}
+            type="button"
+            className={cx("email-attachment-toggle", isSelected && "on")}
+            aria-pressed={isSelected}
+            aria-label={`${isSelected ? "Remove" : "Attach"} ${attachmentKindLabel(option.kind)} to ${contextLabel}`}
+            title={sendable ? option.label : `${option.label} is not ready to send`}
+            disabled={disabled || !sendable}
+            onClick={() => toggle(option)}
+          >
+            <Icon name="paperclip" size={13} />
+            {attachmentKindLabel(option.kind)}
+            {isSelected ? <span aria-hidden="true">✓</span> : null}
+          </button>;
+        })}
+      </div>
+      <Select
+        value=""
+        aria-label={`Tag a file for this ${contextLabel}`}
+        disabled={disabled || loading || !availableFiles.length}
+        onChange={(event) => {
+          const option = availableFiles.find((item) => attachmentOptionKey(item) === event.target.value);
+          if (option) onChange([...selected, option]);
+        }}
+      >
+        <option value="">{loading ? "Loading files…" : availableFiles.length ? "Tag a file…" : files.length ? "All files tagged" : "No file-room files"}</option>
+        {availableFiles.map((option) => <option key={attachmentOptionKey(option)} value={attachmentOptionKey(option)}>{option.label || option.file_name}</option>)}
+      </Select>
+    </div>
+    {selected.length ? <div className="email-attachment-chips" aria-label={`Selected ${contextLabel} attachments`}>
+      {selected.map((option) => <span key={attachmentOptionKey(option)} className="email-attachment-chip">
+        <Icon name="paperclip" size={12} />
+        <span>{option.label || option.file_name}</span>
+        <button type="button" disabled={disabled} onClick={() => toggle(option)} aria-label={`Remove ${option.label || option.file_name}`}><Icon name="close" size={11} /></button>
+      </span>)}
+    </div> : null}
+    {error ? <span className="email-attachment-error" role="status">Attachments are unavailable right now. You can still send the email without them.</span> : null}
+  </fieldset>;
 }
 
 type TimelineItem =
@@ -390,7 +508,15 @@ export function AIIntakeClientConversation({
   );
 }
 
-export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: string; clientName?: string | null }) {
+export function AIIntakeEmailWorkspace({
+  profileId,
+  clientName,
+  contactSuppressed = false,
+}: {
+  profileId: string;
+  clientName?: string | null;
+  contactSuppressed?: boolean;
+}) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
@@ -400,6 +526,8 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [reply, setReply] = useState("");
+  const [composeAttachments, setComposeAttachments] = useState<EmailAttachmentOption[]>([]);
+  const [replyAttachments, setReplyAttachments] = useState<EmailAttachmentOption[]>([]);
   const [linkKey, setLinkKey] = useState("");
   const [recipientLock, setRecipientLock] = useState<string | null>(null);
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -418,6 +546,10 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
     queryKey: ["application-communication-links", profileId],
     queryFn: () => apiCall<CommunicationLinkOption[]>(`/application-profiles/${profileId}/communications/links`),
   });
+  const attachmentOptions = useQuery({
+    queryKey: ["application-email-attachments", profileId],
+    queryFn: () => apiCall<EmailAttachmentOptions>(`/application-profiles/${profileId}/communications/email/attachments`),
+  });
   const detail = useQuery({
     queryKey: ["application-email-thread", profileId, selectedThreadId],
     enabled: Boolean(selectedThreadId && !composing),
@@ -426,6 +558,8 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   });
 
   const availableContacts = useMemo(() => contacts.data ?? [], [contacts.data]);
+  const directContactSuppressed = contactSuppressed || Boolean(attachmentOptions.data?.direct_client_contact_suppressed);
+  const suppressionReason = attachmentOptions.data?.suppression_reason || "Direct client email is suppressed on this referral-managed file. Route communication through the referring professional.";
   useEffect(() => {
     if (toContactId || !availableContacts.length) return;
     const primary = availableContacts.find((item) => item.is_primary && item.email) ?? availableContacts.find((item) => item.email);
@@ -445,24 +579,40 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   }, [latestEmailMessageId]);
 
   const createThread = useMutation({
-    mutationFn: () => apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads`, {
-      method: "POST",
-      body: JSON.stringify({ to_contact_id: toContactId, cc_contact_ids: ccContactIds, subject: subject.trim(), body: body.trim() }),
-    }),
+    mutationFn: () => {
+      if (directContactSuppressed) throw new Error(suppressionReason);
+      return apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads`, {
+        method: "POST",
+        body: JSON.stringify({
+          to_contact_id: toContactId,
+          cc_contact_ids: ccContactIds,
+          subject: subject.trim(),
+          body: body.trim(),
+          attachments: composeAttachments.map(attachmentRef),
+        }),
+      });
+    },
     onSuccess: (created) => {
       qc.setQueryData(["application-email-thread", profileId, created.thread.id], created);
       void qc.invalidateQueries({ queryKey: ["application-email-threads", profileId] });
       setSelectedThreadId(created.thread.id);
       setComposing(false);
-      setSubject(""); setBody(""); setCcContactIds([]); setLinkKey(""); setRecipientLock(null);
+      setSubject(""); setBody(""); setCcContactIds([]); setComposeAttachments([]); setLinkKey(""); setRecipientLock(null);
     },
   });
   const sendReply = useMutation({
-    mutationFn: () => apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads/${selectedThreadId}/messages`, { method: "POST", body: JSON.stringify({ body: reply.trim() }) }),
+    mutationFn: () => {
+      if (directContactSuppressed) throw new Error(suppressionReason);
+      return apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads/${selectedThreadId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ body: reply.trim(), attachments: replyAttachments.map(attachmentRef) }),
+      });
+    },
     onSuccess: (next) => {
       qc.setQueryData(["application-email-thread", profileId, selectedThreadId], next);
       void qc.invalidateQueries({ queryKey: ["application-email-threads", profileId] });
       setReply("");
+      setReplyAttachments([]);
     },
   });
   const addLink = useMutation({
@@ -492,17 +642,18 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
   });
 
   const resetCompose = () => {
-    setComposing(false); setSubject(""); setBody(""); setCcContactIds([]); setLinkKey(""); setRecipientLock(null);
+    setComposing(false); setSubject(""); setBody(""); setCcContactIds([]); setComposeAttachments([]); setLinkKey(""); setRecipientLock(null);
     if (!selectedThreadId && threads.data?.[0]) setSelectedThreadId(threads.data[0].id);
   };
   const selectedContact = availableContacts.find((item) => item.id === toContactId);
 
-  return <section className="ai-intake-email-workspace">
+  return <section className={cx("ai-intake-email-workspace", directContactSuppressed && "contact-suppressed")}>
+    {directContactSuppressed ? <div className="email-contact-suppression"><Callout tone="warn" icon={<Icon name="alert" size={15} />}><b>Client email is disabled.</b> {suppressionReason}</Callout></div> : null}
     <aside className="ai-intake-email-list">
-      <div className="ai-intake-email-list-head"><div><Lbl>Email</Lbl><Sub>{clientName || "Client"} and verified file owners</Sub></div><Btn size="sm" variant="pri" onClick={() => setComposing(true)}><Icon name="plus" size={13} />New email</Btn></div>
+      <div className="ai-intake-email-list-head"><div><Lbl>Email</Lbl><Sub>{clientName || "Client"} and verified file owners</Sub></div><Btn size="sm" variant="pri" disabled={directContactSuppressed} title={directContactSuppressed ? suppressionReason : undefined} onClick={() => setComposing(true)}><Icon name="plus" size={13} />New email</Btn></div>
       {threads.isLoading ? <div className="empty"><span className="spinner solo" />Loading email…</div> : null}
       {!threads.isLoading && !threads.data?.length ? <div className="empty">No email conversations yet.</div> : null}
-      {(threads.data ?? []).map((thread) => <button key={thread.id} type="button" className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); }}>
+      {(threads.data ?? []).map((thread) => <button key={thread.id} type="button" className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); setReply(""); setReplyAttachments([]); }}>
         <span><b>{thread.subject}</b><small>{thread.participant_names.join(", ") || thread.to_email}</small></span>
         <time>{when(thread.last_message_at || thread.created_at)}</time>
       </button>)}
@@ -512,32 +663,41 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
       {composing ? <div className="ai-intake-email-compose">
         <header><div><Lbl>New email</Lbl><Sub>Recipients are limited to contacts verified on this file.</Sub></div>{recipientLock ? <CellChip tone="warn">Private credit recipient locked</CellChip> : null}</header>
         <Field label="To">
-          <Select value={toContactId} onChange={(event) => setToContactId(event.target.value)} disabled={Boolean(recipientLock)}>
+          <Select aria-label="To" value={toContactId} onChange={(event) => setToContactId(event.target.value)} disabled={directContactSuppressed || Boolean(recipientLock)}>
             <option value="">Choose a recipient</option>
             {availableContacts.map((contact) => <option key={contact.id} value={contact.id} disabled={!contact.email}>{contact.name}{contact.email ? ` — ${contact.email}` : " — no email"}</option>)}
           </Select>
         </Field>
         <Field label="Cc" hint={recipientLock ? "Credit authorization links cannot be copied to anyone else." : "Optional verified file contacts."}>
           <div className="email-cc-choices">
-            {availableContacts.filter((contact) => contact.email && contact.id !== toContactId).map((contact) => <label key={contact.id}><input type="checkbox" disabled={Boolean(recipientLock)} checked={ccContactIds.includes(contact.id)} onChange={(event) => setCcContactIds((current) => event.target.checked ? [...current, contact.id] : current.filter((id) => id !== contact.id))} />{contact.name}</label>)}
+            {availableContacts.filter((contact) => contact.email && contact.id !== toContactId).map((contact) => <label key={contact.id}><input type="checkbox" disabled={directContactSuppressed || Boolean(recipientLock)} checked={ccContactIds.includes(contact.id)} onChange={(event) => setCcContactIds((current) => event.target.checked ? [...current, contact.id] : current.filter((id) => id !== contact.id))} />{contact.name}</label>)}
             {!availableContacts.some((contact) => contact.email && contact.id !== toContactId) ? <span className="sub">No additional file contacts have email addresses.</span> : null}
           </div>
         </Field>
-        <Field label="Subject"><Input value={subject} maxLength={200} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject" /></Field>
+        <Field label="Subject"><Input aria-label="Subject" value={subject} maxLength={200} disabled={directContactSuppressed} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject" /></Field>
         <Field label="Message">
-          <textarea ref={composeRef} className="field" rows={10} value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write your email…" />
+          <textarea ref={composeRef} className="field" rows={10} value={body} disabled={directContactSuppressed} onChange={(event) => setBody(event.target.value)} placeholder="Write your email…" aria-label="Message" />
         </Field>
+        <EmailAttachmentPicker
+          context="email"
+          options={attachmentOptions.data?.options ?? []}
+          selected={composeAttachments}
+          onChange={setComposeAttachments}
+          disabled={directContactSuppressed}
+          loading={attachmentOptions.isLoading}
+          error={attachmentOptions.isError}
+        />
         <div className="email-link-toolbar">
-          <Select value={linkKey} onChange={(event) => setLinkKey(event.target.value)} aria-label="Secure link to insert">
+          <Select value={linkKey} disabled={directContactSuppressed} onChange={(event) => setLinkKey(event.target.value)} aria-label="Secure link to insert">
             <option value="">Add a secure link…</option>
             {(links.data ?? []).map((option) => <option key={option.key} value={option.key} disabled={!option.enabled || Boolean(recipientLock && option.recipient_contact_id && option.recipient_contact_id !== recipientLock)}>{option.label}{option.disabled_reason ? ` — ${option.disabled_reason}` : ""}</option>)}
           </Select>
-          <Btn disabled={!linkKey || addLink.isPending} onClick={() => addLink.mutate()}><Icon name="link" size={14} />{addLink.isPending ? "Creating link…" : "Insert link"}</Btn>
+          <Btn disabled={directContactSuppressed || !linkKey || addLink.isPending} onClick={() => addLink.mutate()}><Icon name="link" size={14} />{addLink.isPending ? "Creating link…" : "Insert link"}</Btn>
           <span className="sub">A fresh secure link is inserted at the cursor.</span>
         </div>
         {addLink.isError ? <Callout tone="bad">{addLink.error instanceof Error ? addLink.error.message : "The secure link could not be created."}</Callout> : null}
         {createThread.isError ? <Callout tone="bad">{createThread.error instanceof Error ? createThread.error.message : "The email could not be sent."}</Callout> : null}
-        <div className="email-compose-actions"><Btn onClick={resetCompose}>Cancel</Btn><Btn variant="pri" disabled={createThread.isPending || !selectedContact?.email || !subject.trim() || !body.trim()} onClick={() => createThread.mutate()}><Icon name="send" size={14} />{createThread.isPending ? "Sending…" : "Send email"}</Btn></div>
+        <div className="email-compose-actions"><Btn onClick={resetCompose}>Cancel</Btn><Btn variant="pri" disabled={directContactSuppressed || createThread.isPending || !selectedContact?.email || !subject.trim() || !body.trim()} onClick={() => createThread.mutate()}><Icon name="send" size={14} />{createThread.isPending ? "Sending…" : "Send email"}</Btn></div>
       </div> : selectedThreadId ? <div className="ai-intake-email-detail">
         {detail.isLoading ? <div className="empty"><span className="spinner solo" />Loading thread…</div> : null}
         {detail.isError ? <Callout tone="bad">{detail.error instanceof Error ? detail.error.message : "Email thread unavailable."}</Callout> : null}
@@ -547,10 +707,16 @@ export function AIIntakeEmailWorkspace({ profileId, clientName }: { profileId: s
             {detail.data.messages.map((message) => <article key={message.id} className={cx("email-message", message.direction)}>
               <div className="email-message-head"><b>{message.direction === "outbound" ? "You" : message.sender || "Client"}</b><span>{when(message.created_at)}</span></div>
               <p>{message.body}</p>
+              {message.attachment_names?.length ? <div className="email-message-attachments" aria-label="Attachments">{message.attachment_names.map((name, index) => <span key={`${name}:${index}`} className="email-attachment-chip"><Icon name="paperclip" size={12} /><span>{name}</span></span>)}</div> : null}
               <div className="email-message-meta"><CellChip tone={message.direction === "inbound" ? "acc" : deliveryTone(message.delivery_status)}>{message.direction === "inbound" ? "Reply received" : message.delivery_status}</CellChip>{message.provider ? <span>{message.provider}</span> : null}{message.delivery_detail && ["failed", "blocked", "bounced", "complained"].includes(message.delivery_status) ? <span>{message.delivery_detail}</span> : null}</div>
             </article>)}
           </div>
-          {detail.data.thread.can_reply ? <div className="ai-intake-email-reply"><Textarea rows={4} value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Reply by email…" aria-label="Email reply" />{sendReply.isError ? <Callout tone="bad">{sendReply.error instanceof Error ? sendReply.error.message : "Reply failed."}</Callout> : null}<div className="row"><span className="sub">Replies sync here when the connected mailbox receives them.</span><span className="sp" /><Btn variant="pri" disabled={sendReply.isPending || !reply.trim()} onClick={() => sendReply.mutate()}><Icon name="send" size={14} />{sendReply.isPending ? "Sending…" : "Send reply"}</Btn></div></div> : <Callout tone="mut">This thread belongs to {detail.data.thread.owner_name || detail.data.thread.owner_email || "another mailbox"}. Start a new email to reply from your mailbox.</Callout>}
+          {detail.data.thread.can_reply ? <div className="ai-intake-email-reply">
+            <Textarea rows={4} value={reply} disabled={directContactSuppressed} onChange={(event) => setReply(event.target.value)} placeholder="Reply by email…" aria-label="Email reply" />
+            <EmailAttachmentPicker context="reply" options={attachmentOptions.data?.options ?? []} selected={replyAttachments} onChange={setReplyAttachments} disabled={directContactSuppressed} loading={attachmentOptions.isLoading} error={attachmentOptions.isError} />
+            {sendReply.isError ? <Callout tone="bad">{sendReply.error instanceof Error ? sendReply.error.message : "Reply failed."}</Callout> : null}
+            <div className="row"><span className="sub">Replies sync here when the connected mailbox receives them.</span><span className="sp" /><Btn variant="pri" disabled={directContactSuppressed || sendReply.isPending || !reply.trim()} onClick={() => sendReply.mutate()}><Icon name="send" size={14} />{sendReply.isPending ? "Sending…" : "Send reply"}</Btn></div>
+          </div> : <Callout tone="mut">This thread belongs to {detail.data.thread.owner_name || detail.data.thread.owner_email || "another mailbox"}. Start a new email to reply from your mailbox.</Callout>}
         </> : null}
       </div> : <div className="empty">Choose an email thread or start a new email.</div>}
     </div>

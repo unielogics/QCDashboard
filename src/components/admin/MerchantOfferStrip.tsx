@@ -132,7 +132,7 @@ export function MerchantOfferStrip({
   profileId?: string | null;
   /** The page shows a chip in its header from this. */
   onStatus?: (status: string | null) => void;
-  /** Fills the panel's Target DSCR input; the human presses Save. */
+  /** Stages the target in Reviewer controls; the human presses Save. */
   onTargetDscr?: (value: number) => void;
 }) {
   const api = useAuthedApi();
@@ -330,8 +330,8 @@ export function MerchantOfferStrip({
   ) : null;
 
   return (
-    <div className="underwriting-status-strip underwriting-merchant-strip" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
-      <div>
+    <div className="underwriting-merchant-strip" role="region" aria-label="Merchant processing offer">
+      <div className="underwriting-merchant-summary">
         <span className="lbl">Merchant processing offer</span>
         {!panel ? (
           <b>Loading the processing offer…</b>
@@ -412,25 +412,38 @@ export function MerchantOfferStrip({
               </Row>
             </div>
           ) : (
-            <div className="fldgrid three" style={{ rowGap: 4 }}>
+            <div className="merchant-offer-facts">
               {MONEY_FIELDS.filter((field) => offer.terms?.[field.key] !== null && offer.terms?.[field.key] !== undefined).map((field) => {
                 const value = offer.terms[field.key];
                 const text = field.kind === "money" ? money(typeof value === "number" ? value : null) : field.kind === "pct" ? `${value}%` : String(value);
                 return (
-                  <div key={field.key}>
+                  <div key={field.key} className="merchant-offer-fact">
                     <span className="lbl">{field.label}</span>
                     <b>{text}</b>
                   </div>
                 );
               })}
               {Array.isArray(offer.terms?.options) && offer.terms.options.length ? (
-                <div style={{ gridColumn: "1 / -1" }}>
+                <div className="merchant-offer-fact merchant-offer-fact-wide">
                   <span className="lbl">Options the sheet prints</span>
-                  <b>{offer.terms.options.map((option) => `${option.label || "Option"}${option.effective_rate_pct !== null ? ` · ${option.effective_rate_pct}%` : ""}${option.monthly_savings !== null ? ` · saves ${money(option.monthly_savings)}/mo` : ""}`).join(" — ")}</b>
+                  <div className="merchant-offer-option-list">
+                    {offer.terms.options.map((option, index) => (
+                      <div className="merchant-offer-option" key={`${option.label || "option"}-${index}`}>
+                        <b>{option.label || `Option ${index + 1}`}</b>
+                        <span>
+                          {[
+                            option.effective_rate_pct !== null ? `${option.effective_rate_pct}% effective rate` : "",
+                            option.monthly_fees !== null ? `${money(option.monthly_fees)}/mo fees` : "",
+                            option.monthly_savings !== null ? `saves ${money(option.monthly_savings)}/mo` : "",
+                          ].filter(Boolean).join(" · ") || "No additional figures printed"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ) : null}
               {DESK_FIELDS.some((field) => offer.desk_terms?.[field.key] !== null && offer.desk_terms?.[field.key] !== undefined) ? (
-                <div style={{ gridColumn: "1 / -1" }}>
+                <div className="merchant-offer-fact merchant-offer-fact-wide">
                   <span className="lbl">Desk only</span>
                   <b>{DESK_FIELDS.filter((field) => offer.desk_terms?.[field.key] !== null && offer.desk_terms?.[field.key] !== undefined).map((field) => `${field.label}: ${offer.desk_terms[field.key]}`).join(" · ")}</b>
                 </div>
@@ -438,7 +451,7 @@ export function MerchantOfferStrip({
             </div>
           )}
 
-          <div className="fldgrid three" style={{ alignItems: "end" }}>
+          <div className="merchant-offer-partner-grid">
             <Field label="Processing partner (emailed when the client answers)">
               <Select value={offer.lender_id ?? ""} disabled={busy !== "" || offer.status === "sent"} onChange={(event) => void choosePartner(event.target.value)}>
                 <option value="">No partner selected</option>
@@ -456,9 +469,9 @@ export function MerchantOfferStrip({
           </div>
 
           {offer.status !== "sent" ? (
-            <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <div className="row merchant-offer-actions">
               {!editing && offer.status !== "unreadable" ? <IconBtn onClick={() => setEditing(true)} disabled={busy !== ""} aria-label="Correct processing figures" title="Correct figures"><Icon name="pencil" size={15} /></IconBtn> : null}
-              <Btn variant="pri" onClick={send} disabled={busy !== "" || editing || offer.estimated_annual_savings === null}><Icon name="send" size={14} />{busy === "send" ? "Sending…" : "Send"}</Btn>
+              <IconBtn className="pri" onClick={send} disabled={busy !== "" || editing || offer.estimated_annual_savings === null} aria-label="Send merchant offer" title={busy === "send" ? "Sending merchant offer" : "Send merchant offer"}><Icon name={busy === "send" ? "refresh" : "send"} size={15} /></IconBtn>
               {offer.estimated_annual_savings !== null && offer.estimated_annual_savings <= 0 ? (
                 <label className="sub" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={sendAnyway} onChange={(event) => setSendAnyway(event.target.checked)} /> send anyway (no saving)</label>
               ) : null}
@@ -470,7 +483,7 @@ export function MerchantOfferStrip({
               <IconBtn className="danger" onClick={withdraw} disabled={busy !== ""} aria-label="Withdraw processing offer" title="Withdraw offer"><Icon name="trash" size={15} /></IconBtn>
             </div>
           ) : (
-            <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+            <div className="row merchant-offer-actions">
               {panel?.room_url ? <IconBtn onClick={() => void copyRoomLink()} aria-label={copied ? "Room link copied" : "Copy room link"} title={copied ? "Link copied" : "Copy room link"}><Icon name={copied ? "check" : "copy"} size={15} /></IconBtn> : null}
               <IconBtn onClick={notifyClient} disabled={busy !== ""} aria-label="Email the room link" title={busy === "notify" ? "Emailing room link" : "Email room link"}><Icon name="mail" size={15} /></IconBtn>
               {offer.source_file_url ? <a className="btn sm iconbtn" href={offer.source_file_url} target="_blank" rel="noreferrer" aria-label="Open source processing PDF" title="Open source processing PDF"><Icon name="eye" size={15} /></a> : null}
@@ -481,7 +494,7 @@ export function MerchantOfferStrip({
       ) : null}
 
       {offer?.client_response ? (
-        <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+        <div className="row merchant-offer-actions">
           {offer.client_response_reason ? <span className="sub">Reason: {offer.client_response_reason}</span> : null}
           {offer.partner_email_status !== "sent" ? <IconBtn onClick={resend} disabled={busy !== ""} aria-label="Resend processing partner email" title={busy === "resend" ? "Sending partner email" : "Resend partner email"}><Icon name="send" size={15} /></IconBtn> : null}
           {offer.partner_email_status !== "sent" && !offer.lender_id ? (

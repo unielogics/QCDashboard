@@ -186,6 +186,8 @@ type UnderwritingDraft = {
   reviewer_notes: string;
 };
 
+type LeadDetailView = "workspace" | "underwriting" | "reviewer" | "production" | "communications" | "audit";
+
 type Artifact = {
   id: string;
   intake_id: string;
@@ -833,7 +835,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       detail={detail}
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
-      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "production" ? "production" : searchParams.get("view") === "communications" ? "communications" : "workspace"}
+      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "reviewer" ? "reviewer" : searchParams.get("view") === "production" ? "production" : searchParams.get("view") === "communications" ? "communications" : searchParams.get("view") === "audit" ? "audit" : "workspace"}
       initialCommunicationChannel={searchParams.get("channel") === "client" ? "client" : searchParams.get("channel") === "email" ? "email" : "underwriter"}
       initialSubmissionStep={initialSubmissionStep}
       initialEvidenceTab={initialEvidenceTab}
@@ -1124,7 +1126,7 @@ function LeadDetailPanel({
   detail: LeadDetail | null;
   loading: boolean;
   initialNotesOpen?: boolean;
-  initialView?: "workspace" | "communications" | "underwriting" | "production";
+  initialView?: LeadDetailView;
   initialCommunicationChannel?: "underwriter" | "client" | "email";
   initialSubmissionStep?: number;
   initialEvidenceTab?: "requirements" | "banking";
@@ -1188,7 +1190,7 @@ function LeadDetailPanel({
   const [ingestFiles, setIngestFiles] = useState<DriveFile[]>([]);
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
-  const [prototypeView, setPrototypeView] = useState<"workspace" | "communications" | "underwriting" | "audit" | "production">(initialView);
+  const [prototypeView, setPrototypeView] = useState<LeadDetailView>(initialView);
   const [productionShareOpen, setProductionShareOpen] = useState(false);
   // "Record loan terms": the term-sheet drawer lives in the Production tab; the
   // Underwriting tab and the page-action menu ask for it through this flag.
@@ -1489,7 +1491,15 @@ function LeadDetailPanel({
     else setSubmissionStep(1);
     setEvidenceTab(initialEvidenceTab);
     setEvidenceFocus(null);
-    setPrototypeView(initialView === "underwriting" && canUnderwrite ? "underwriting" : initialView === "production" && canUnderwrite ? "production" : initialView === "communications" ? "communications" : "workspace");
+    setPrototypeView(
+      (initialView === "underwriting" || initialView === "reviewer" || initialView === "production") && canUnderwrite
+        ? initialView
+        : initialView === "communications"
+          ? "communications"
+          : initialView === "audit"
+            ? "audit"
+            : "workspace",
+    );
     setProductionTermSheetOpen(false);
     setCommunicationChannel(initialCommunicationChannel);
     setContextRailOpen(false);
@@ -1971,6 +1981,7 @@ function LeadDetailPanel({
             {[
               ["workspace", "File workspace"],
               ...(canUnderwrite ? [["underwriting", "Underwriting"] as const] : []),
+              ...(canUnderwrite ? [["reviewer", "Reviewer controls"] as const] : []),
               ...(canUnderwrite && isDealerFile ? [["production", "Production Package"] as const] : []),
               ["communications", "Communications"],
               ["audit", "Audit trail"],
@@ -2071,8 +2082,8 @@ function LeadDetailPanel({
                 <div className="grid g12">
                 <Panel
                   title="Underwriting"
-                  sub="Build client-ready terms, review the evidence-based DSCR, and control the file lifecycle."
-                  actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}<Btn variant="pri" onClick={saveUnderwritingDraft} disabled={underwritingLoading || underwritingSaving}>{underwritingSaving ? "Saving..." : "Save review"}</Btn></Row>}
+                  sub="Build and review the client-ready financial offers for this file."
+                  actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}</Row>}
                 >
                   {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
                   {underwritingLoading ? <div className="empty">Loading underwriting controls...</div> : (
@@ -2125,24 +2136,41 @@ function LeadDetailPanel({
                       <MerchantOfferStrip
                         profileId={underwriting?.profile_id}
                         onStatus={setMerchantOfferStatus}
-                        onTargetDscr={(value) => setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }))}
+                        onTargetDscr={(value) => {
+                          setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }));
+                          setPrototypeView("reviewer");
+                        }}
                       />
                       {!isDealerFile && underwriting?.profile_id ? <ApplicationClientTermsPanel key={underwriting.profile_id} profileId={underwriting.profile_id} onSaved={refreshUnderwritingFromTerms} /> : null}
+                    </div>
+                  )}
+                </Panel>
+                </div>
+              ) : null}
+
+              {prototypeView === "reviewer" && canUnderwrite ? (
+                <Panel
+                  title="Reviewer controls"
+                  sub="Set the policy target, record internal notes, and make the desk's lifecycle decision away from client-facing terms."
+                  actions={<Btn variant="pri" onClick={saveUnderwritingDraft} disabled={underwritingLoading || underwritingSaving}>{underwritingSaving ? "Saving..." : "Save review"}</Btn>}
+                >
+                  {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
+                  {underwritingLoading ? <div className="empty">Loading reviewer controls...</div> : (
+                    <div className="grid g12">
                       <div className="terms-review-controls">
-                        <div className="terms-section-title"><span>4</span><div><b>Reviewer controls</b><small>These notes stay internal and never appear on the client PDF.</small></div></div>
                         <div className="fldgrid two">
-                        <Field label="Lifecycle status">
-                          <Select value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>
-                            {PIPELINE_LIFECYCLE.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
-                          </Select>
+                          <Field label="Lifecycle status">
+                            <Select aria-label="Lifecycle status" value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>
+                              {PIPELINE_LIFECYCLE.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
+                            </Select>
+                          </Field>
+                          <Field label="Policy target DSCR">
+                            <Input aria-label="Policy target DSCR" inputMode="decimal" value={underwritingDraft.target_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, target_dscr: event.target.value })} placeholder="1.25" />
+                          </Field>
+                        </div>
+                        <Field label="Reviewer notes" hint="Internal only — these notes never appear on the client PDF.">
+                          <Textarea aria-label="Reviewer notes" rows={6} value={underwritingDraft.reviewer_notes} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, reviewer_notes: event.target.value })} placeholder="Record underwriting conditions, exceptions, committee notes, or close reason." />
                         </Field>
-                        <Field label="Policy target DSCR">
-                          <Input inputMode="decimal" value={underwritingDraft.target_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, target_dscr: event.target.value })} placeholder="1.25" />
-                        </Field>
-                      </div>
-                      <Field label="Reviewer notes">
-                        <Textarea rows={6} value={underwritingDraft.reviewer_notes} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, reviewer_notes: event.target.value })} placeholder="Record underwriting conditions, exceptions, committee notes, or close reason." />
-                      </Field>
                       </div>
                       <div className="underwriting-close-actions">
                         <Btn onClick={() => changeUnderwritingStatus("term_sheet_provided")} disabled={underwritingSaving}>Term sheet provided</Btn>
@@ -2154,7 +2182,6 @@ function LeadDetailPanel({
                     </div>
                   )}
                 </Panel>
-                </div>
               ) : null}
 
               {prototypeView === "communications" ? (
@@ -2166,7 +2193,7 @@ function LeadDetailPanel({
                   {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
                   {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={handleCockpitResponse} onRequestRerun={onRerun} programReadiness={programReadiness} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
                   {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} /> : null}
-                  {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace profileId={underwriting.profile_id} clientName={detail.intake.full_name} /> : null}
+                  {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace key={underwriting.profile_id} profileId={underwriting.profile_id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} /> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
                   {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
                 </div>

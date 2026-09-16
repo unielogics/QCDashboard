@@ -1089,6 +1089,164 @@ test("client terms calculate from formatted amount, APR, and time without manual
   await captureReviewImage(page, "ai-intake-client-terms", testInfo);
 });
 
+test("client email attaches the current offer, loan terms, and tagged file on create and reply", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The email attachment workflow is exercised once at the canonical desktop viewport.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  const profileId = "20000000-0000-0000-0000-000000000002";
+  const threadId = "26000000-0000-0000-0000-000000000001";
+  const thread = {
+    id: threadId,
+    subject: "Your financing documents",
+    owner_user_id: "10000000-0000-0000-0000-000000000001",
+    owner_name: "Visual QA",
+    owner_email: "franco@qualifiedcommercial.com",
+    to_email: "jonathan@example.com",
+    cc_emails: [],
+    participant_names: ["Jonathan Franco"],
+    last_message_at: "2026-09-15T20:00:00Z",
+    unread_count: 0,
+    can_reply: true,
+    created_at: "2026-09-15T20:00:00Z",
+  };
+  const attachmentNames = ["Merchant offer v4.pdf", "Loan terms v7.pdf", "Operating statements.pdf"];
+  let created = false;
+  let messages: Record<string, unknown>[] = [];
+  let createPayload: Record<string, unknown> | null = null;
+  let replyPayload: Record<string, unknown> | null = null;
+
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/contacts$`), async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{ id: "client-contact", kind: "client", name: "Jonathan Franco", email: "jonathan@example.com", phone: "+19735550188", is_primary: true, owner_id: null, credit_required: false }]),
+  }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/links$`), async (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/attachments$`), async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({
+      direct_client_contact_suppressed: false,
+      suppression_reason: null,
+      options: [
+        { kind: "merchant_offer", id: "merchant-offer-1", label: "Merchant offer v4", file_name: "merchant-offer-v4.pdf", content_type: "application/pdf", size_bytes: 124000, expected_version: 4 },
+        { kind: "production_term_sheet", id: "term-sheet-1", label: "Loan terms v7", file_name: "loan-terms-v7.pdf", content_type: "application/pdf", size_bytes: 98000, expected_version: 7 },
+        { kind: "evidence_file", id: "evidence-file-1", label: "Operating statements.pdf", file_name: "Operating statements.pdf", content_type: "application/pdf", size_bytes: 524288, expected_version: null },
+      ],
+    }),
+  }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/threads/${threadId}/messages$`), async (route) => {
+    replyPayload = route.request().postDataJSON() as Record<string, unknown>;
+    messages = [...messages, {
+      id: "email-message-2",
+      thread_id: threadId,
+      direction: "outbound",
+      subject: null,
+      body: "The documents are attached again.",
+      sender: "franco@qualifiedcommercial.com",
+      recipient: "jonathan@example.com",
+      cc_emails: [],
+      provider: "resend",
+      delivery_status: "sent",
+      delivery_detail: null,
+      attachment_names: attachmentNames,
+      created_at: "2026-09-15T20:05:00Z",
+    }];
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ thread, messages }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/threads/${threadId}$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ thread, messages }) });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/threads$`), async (route) => {
+    if (route.request().method() === "POST") {
+      createPayload = route.request().postDataJSON() as Record<string, unknown>;
+      created = true;
+      messages = [{
+        id: "email-message-1",
+        thread_id: threadId,
+        direction: "outbound",
+        subject: thread.subject,
+        body: "Please review the attached documents.",
+        sender: "franco@qualifiedcommercial.com",
+        recipient: "jonathan@example.com",
+        cc_emails: [],
+        provider: "resend",
+        delivery_status: "sent",
+        delivery_detail: null,
+        attachment_names: attachmentNames,
+        created_at: "2026-09-15T20:00:00Z",
+      }];
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ thread, messages }) });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(created ? [thread] : []) });
+  });
+
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}&view=communications&channel=email`, { waitUntil: "domcontentloaded" });
+  const workspace = page.locator(".ai-intake-email-workspace");
+  await expect(workspace.getByRole("button", { name: "New email" })).toBeVisible();
+  await workspace.getByRole("button", { name: "Attach Merchant offer to email" }).click();
+  await workspace.getByRole("button", { name: "Attach Loan term sheet to email" }).click();
+  await workspace.getByLabel("Tag a file for this email").selectOption({ label: "Operating statements.pdf" });
+  await expect(workspace.getByLabel("Selected email attachments").locator(".email-attachment-chip")).toHaveCount(3);
+  await workspace.getByPlaceholder("Email subject").fill(thread.subject);
+  await workspace.getByPlaceholder("Write your email…").fill("Please review the attached documents.");
+  await workspace.getByRole("button", { name: "Send email" }).click();
+
+  await expect.poll(() => createPayload).not.toBeNull();
+  expect((createPayload as { attachments: unknown } | null)?.attachments).toEqual([
+    { kind: "merchant_offer", offer_id: "merchant-offer-1", expected_version: 4 },
+    { kind: "production_term_sheet", term_sheet_id: "term-sheet-1", expected_version: 7 },
+    { kind: "evidence_file", file_id: "evidence-file-1" },
+  ]);
+  await expect(workspace.locator(".email-message-attachments .email-attachment-chip")).toHaveCount(3);
+
+  await workspace.getByRole("button", { name: "Attach Merchant offer to reply" }).click();
+  await workspace.getByRole("button", { name: "Attach Loan term sheet to reply" }).click();
+  await workspace.getByLabel("Tag a file for this reply").selectOption({ label: "Operating statements.pdf" });
+  await workspace.getByLabel("Email reply").fill("The documents are attached again.");
+  await workspace.getByRole("button", { name: "Send reply" }).click();
+
+  await expect.poll(() => replyPayload).not.toBeNull();
+  expect((replyPayload as { attachments: unknown } | null)?.attachments).toEqual([
+    { kind: "merchant_offer", offer_id: "merchant-offer-1", expected_version: 4 },
+    { kind: "production_term_sheet", term_sheet_id: "term-sheet-1", expected_version: 7 },
+    { kind: "evidence_file", file_id: "evidence-file-1" },
+  ]);
+  await expect(workspace.locator(".email-message-attachments .email-attachment-chip")).toHaveCount(6);
+});
+
+test("client email is clearly disabled when direct contact is suppressed", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The suppressed-contact state is exercised once at the canonical desktop viewport.");
+  const { intakeId, lead } = await mockAiIntakeBankingWorkspace(page);
+  const profileId = "20000000-0000-0000-0000-000000000002";
+  await page.route(new RegExp(`/api/v1/admin/ai-underwriter-leads/${intakeId}$`), async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ intake: { ...lead, client_contact_suppressed: true }, requested_documents: [], files: [], latest_review: { status: "completed", result: {} }, messages: [], artifacts: [], email_sends: [], notes: [], upload_url: null, secure_room_pin: null, room_delivery_status: "sent", room_delivery_detail: "Emailed." }),
+  }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/contacts$`), async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify([{ id: "client-contact", kind: "client", name: "Jonathan Franco", email: "jonathan@example.com", phone: "+19735550188", is_primary: true, owner_id: null, credit_required: false }]),
+  }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/links$`), async (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/threads$`), async (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/attachments$`), async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ direct_client_contact_suppressed: true, suppression_reason: "Client email is managed by the referring partner.", options: [] }),
+  }));
+
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}&view=communications&channel=email`, { waitUntil: "domcontentloaded" });
+  const workspace = page.locator(".ai-intake-email-workspace");
+  await expect(workspace.getByText("Client email is disabled.", { exact: true })).toBeVisible();
+  await expect(workspace.locator(".email-contact-suppression")).toContainText("Client email is managed by the referring partner.");
+  await expect(workspace.getByRole("button", { name: "New email" })).toBeDisabled();
+  await expect(workspace.getByPlaceholder("Email subject")).toBeDisabled();
+  await expect(workspace.getByPlaceholder("Write your email…")).toBeDisabled();
+  await expect(workspace.getByLabel("Tag a file for this email")).toBeDisabled();
+  await expect(workspace.getByRole("button", { name: "Send email" })).toBeDisabled();
+});
+
 test("dealer loan terms preview its own PDF without leaving underwriting", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1600", "The authenticated PDF preview is exercised once at the canonical desktop viewport.");
   const { intakeId } = await mockAiIntakeBankingWorkspace(page);
@@ -1183,7 +1341,15 @@ test("dealer loan terms preview its own PDF without leaving underwriting", async
         offer: {
           id: "25000000-0000-0000-0000-000000000001",
           status: "extracted",
-          terms: { provider_name: "Watertown Mitsubishi Processing", current_monthly_fees: 9_000, proposed_monthly_fees: 5_076 },
+          terms: {
+            provider_name: "Watertown Mitsubishi Processing",
+            current_monthly_fees: 9_000,
+            proposed_monthly_fees: 5_076,
+            options: [
+              { label: "Qualified IC+", effective_rate_pct: 2.26, monthly_fees: 4_700, monthly_savings: 5 },
+              { label: "ConsumerChoice", effective_rate_pct: 0.37, monthly_fees: 778, monthly_savings: 3_924 },
+            ],
+          },
           desk_terms: {},
           terms_version: 1,
           estimated_monthly_savings: 3_924,
@@ -1207,7 +1373,7 @@ test("dealer loan terms preview its own PDF without leaving underwriting", async
           partner_email_status: null,
           partner_email_error: null,
           partner_email_at: null,
-          pro_forma: null,
+          pro_forma: { dscr_now: 1.08, dscr_with_saving: 1.42, annual_saving: 47_088, basis: "fees_diff" },
           created_at: "2026-09-15T20:00:00Z",
         },
       }),
@@ -1224,6 +1390,22 @@ test("dealer loan terms preview its own PDF without leaving underwriting", async
   await expect(loanActions.getByRole("button", { name: "Email loan terms" })).toBeVisible();
   const processingSource = page.getByRole("link", { name: "Open source processing PDF" });
   await expect(processingSource).toHaveAttribute("href", "https://files.example.test/processing-source.pdf");
+  const merchantOffer = page.locator(".underwriting-merchant-strip");
+  await expect(merchantOffer).toBeVisible();
+  await expect(merchantOffer.locator(".merchant-offer-option")).toHaveCount(2);
+  expect(await merchantOffer.evaluate((element) => getComputedStyle(element).display)).toBe("grid");
+  expect(await merchantOffer.locator(".merchant-offer-actions").evaluate((element) => getComputedStyle(element).display)).toBe("flex");
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "ai-intake-merchant-offer", testInfo);
+  await expect(page.getByLabel("Policy target DSCR")).toHaveCount(0);
+  await merchantOffer.getByRole("button", { name: "Use as target DSCR" }).click();
+  await expect(page.getByRole("tab", { name: "Reviewer controls" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("heading", { name: "Reviewer controls" })).toBeVisible();
+  await expect(page.getByLabel("Policy target DSCR")).toHaveValue("1.42");
+  await expect(page.getByLabel("Reviewer notes")).toBeVisible();
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "ai-intake-reviewer-controls", testInfo);
+  await page.getByRole("tab", { name: "Underwriting" }).click();
 
   await loanActions.getByRole("button", { name: "Preview loan terms PDF" }).click();
   const preview = page.getByRole("dialog", { name: "Loan terms · version 3" });
@@ -1251,6 +1433,80 @@ test("dealer loan terms preview its own PDF without leaving underwriting", async
     to_emails: ["client@example.com"],
   });
   expect(typeof (emailPayload as unknown as { delivery_key: string }).delivery_key).toBe("string");
+});
+
+test("client email composes merchant, loan-term, and tagged file attachments together", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The attachment composer is exercised once at the canonical desktop viewport.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  const profileId = "20000000-0000-0000-0000-000000000002";
+  const threadId = "26000000-0000-0000-0000-000000000001";
+  let sentPayload: Record<string, unknown> | null = null;
+
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/contacts$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify([{ id: "client", kind: "client", name: "Jonathan Franco", email: "jonathan@example.com", phone: null, is_primary: true, owner_id: null, credit_required: false }]),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/attachments$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        direct_client_contact_suppressed: false,
+        suppression_reason: null,
+        options: [
+          { kind: "merchant_offer", id: "26000000-0000-0000-0000-000000000010", label: "Merchant processing offer v2", file_name: "UnieLogics-Merchant-Processing-Offer-v2.pdf", content_type: "application/pdf", size_bytes: null, expected_version: 2 },
+          { kind: "production_term_sheet", id: "26000000-0000-0000-0000-000000000011", label: "Client loan terms v3", file_name: "UnieLogics-Loan-Terms-v3.pdf", content_type: "application/pdf", size_bytes: null, expected_version: 3 },
+          { kind: "evidence_file", id: "26000000-0000-0000-0000-000000000012", label: "Closing checklist.pdf", file_name: "Closing checklist.pdf", content_type: "application/pdf", size_bytes: 41200, expected_version: null },
+        ],
+      }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/links$`), async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/communications/email/threads$`), async (route) => {
+    if (route.request().method() === "POST") {
+      sentPayload = route.request().postDataJSON() as Record<string, unknown>;
+      await route.fulfill({
+        status: 201,
+        contentType: "application/json",
+        body: JSON.stringify({
+          thread: { id: threadId, subject: "Your financing options", owner_user_id: "10000000-0000-0000-0000-000000000001", owner_name: "Visual QA", owner_email: "franco@qualifiedcommercial.com", to_email: "jonathan@example.com", cc_emails: [], participant_names: ["Jonathan Franco"], last_message_at: "2026-09-15T22:00:00Z", unread_count: 0, can_reply: true, created_at: "2026-09-15T22:00:00Z" },
+          messages: [{ id: "26000000-0000-0000-0000-000000000002", thread_id: threadId, direction: "outbound", subject: "Your financing options", body: "Please review the attached options.", sender: "franco@qualifiedcommercial.com", recipient: "jonathan@example.com", cc_emails: [], provider: "gmail", delivery_status: "sent", delivery_detail: null, attachment_names: ["UnieLogics-Merchant-Processing-Offer-v2.pdf", "UnieLogics-Loan-Terms-v3.pdf", "Closing checklist.pdf"], created_at: "2026-09-15T22:00:00Z" }],
+        }),
+      });
+      return;
+    }
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}&view=communications&channel=email`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: "New email" }).click();
+  await page.getByRole("button", { name: "Attach Merchant offer to email" }).click();
+  await page.getByRole("button", { name: "Attach Loan term sheet to email" }).click();
+  await page.getByLabel("Tag a file for this email").selectOption("evidence_file:26000000-0000-0000-0000-000000000012");
+  await expect(page.getByLabel("Selected email attachments").locator(".email-attachment-chip")).toHaveCount(3);
+  await page.getByLabel("Subject").fill("Your financing options");
+  await page.getByLabel("Message").fill("Please review the attached options.");
+  await assertStableGeometry(page);
+  await captureReviewImage(page, "ai-intake-email-attachments", testInfo);
+  await page.getByRole("button", { name: "Send email" }).click();
+
+  expect(sentPayload).toMatchObject({
+    to_contact_id: "client",
+    subject: "Your financing options",
+    body: "Please review the attached options.",
+    attachments: [
+      { kind: "merchant_offer", offer_id: "26000000-0000-0000-0000-000000000010", expected_version: 2 },
+      { kind: "production_term_sheet", term_sheet_id: "26000000-0000-0000-0000-000000000011", expected_version: 3 },
+      { kind: "evidence_file", file_id: "26000000-0000-0000-0000-000000000012" },
+    ],
+  });
+  await expect(page.getByLabel("Attachments").locator(".email-attachment-chip")).toHaveCount(3);
+  await expect(page.getByText("UnieLogics-Loan-Terms-v3.pdf", { exact: true })).toBeVisible();
 });
 
 test("AI review puts its compact overview first and opens the exact missing requirement", async ({ page }) => {
