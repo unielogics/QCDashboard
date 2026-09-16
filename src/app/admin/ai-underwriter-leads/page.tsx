@@ -181,8 +181,17 @@ type UploadedFile = {
   content_type: string;
   size_bytes: number;
   status: string;
+  source_kind?: string | null;
+  source_detail?: string | null;
   created_at: string;
 };
+
+function isSourceEvidenceFile(file: UploadedFile): boolean {
+  return !(
+    file.source_kind === "generated"
+    && file.source_detail?.startsWith("package_readiness:")
+  );
+}
 
 type LeadDetail = {
   intake: LeadRow & {
@@ -221,9 +230,43 @@ type Artifact = {
   body_json?: Record<string, unknown> | null;
   s3_key?: string | null;
   download_url?: string | null;
+  preview_url?: string | null;
+  version?: number;
+  status?: "current" | "superseded";
+  bucket_file_id?: string | null;
+  supersedes_artifact_id?: string | null;
+  superseded_by_artifact_id?: string | null;
+  sha256?: string | null;
+  generation_id?: string | null;
+  input_fingerprint?: string | null;
+  is_fresh?: boolean | null;
   created_by_user_id?: string | null;
   created_at: string;
   updated_at: string;
+};
+
+type PackageReadinessBucketFile = {
+  id: string;
+  bucket_id: string;
+  file_name: string;
+  content_type: string;
+  size_bytes: number;
+  source_kind: string;
+  source_detail?: string | null;
+  status: string;
+  preview_url?: string | null;
+  download_url?: string | null;
+  created_at: string;
+};
+
+type PackageReadinessGeneration = {
+  generation_id: string;
+  generated_at: string;
+  executive_summary: Artifact;
+  lender_packet: Artifact;
+  bucket_files: PackageReadinessBucketFile[];
+  superseded_bucket_file_ids: string[];
+  artifact_history: Artifact[];
 };
 
 type EmailSend = {
@@ -696,7 +739,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         result_snapshot: detail.intake.result_snapshot ?? null,
       },
       requested_documents: detail.requested_documents,
-      files: detail.files,
+      files: detail.files.filter(isSourceEvidenceFile),
       latest_review: detail.latest_review ?? null,
       messages: detail.messages,
       assistant_message: "",
@@ -754,6 +797,26 @@ export default function AdminAIUnderwriterLeadsPage() {
       setNotice("Lender packet generated.");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Lender packet failed.");
+    }
+  }
+
+  async function generatePackageReadiness(id: string): Promise<PackageReadinessGeneration> {
+    setNotice("");
+    try {
+      const generated = await call<PackageReadinessGeneration>(`/admin/ai-underwriter-leads/${id}/package-readiness/generate`, { method: "POST" });
+      try {
+        await refreshSelectedLead();
+        setNotice("Executive summary and lender package refreshed together and saved to the bucket.");
+      } catch {
+        // The generation POST already committed immutable package versions.
+        // A failed follow-up reload must not look like generation failed and
+        // tempt the operator to create another version unnecessarily.
+        setNotice("Both PDFs were generated and saved. Reload the file to refresh the surrounding workspace.");
+      }
+      return generated;
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "The lender package could not be refreshed.");
+      throw error;
     }
   }
 
@@ -870,6 +933,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       onExport={() => exportPdf(activeLeadId)}
       onGenerateSummary={() => generateExecutiveSummary(activeLeadId)}
       onGeneratePacket={() => generateLenderPacket(activeLeadId)}
+      onGeneratePackage={() => generatePackageReadiness(activeLeadId)}
       onGeneratePrequalification={() => generatePrequalification(activeLeadId)}
       onPreviewEmail={(payload) => previewVendorEmail(activeLeadId, payload)}
       onSendEmail={(payload) => sendVendorEmail(activeLeadId, payload)}
@@ -1129,6 +1193,7 @@ function LeadDetailPanel({
   onExport,
   onGenerateSummary,
   onGeneratePacket,
+  onGeneratePackage,
   onGeneratePrequalification,
   onPreviewEmail,
   onSendEmail,
@@ -1162,6 +1227,7 @@ function LeadDetailPanel({
   onExport: () => void;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
+  onGeneratePackage: () => Promise<PackageReadinessGeneration>;
   onGeneratePrequalification: () => Promise<void> | void;
   onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
   onSendEmail: (payload: VendorEmailSendPayload) => Promise<VendorEmailSendResult>;
@@ -1309,15 +1375,56 @@ function LeadDetailPanel({
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
 
-  const artifacts = detail?.artifacts || [];
-  const summary = artifacts.find((artifact) => artifact.artifact_type === "executive_summary");
-  const packet = artifacts.find((artifact) => artifact.artifact_type === "lender_packet");
+  const artifacts = useMemo(
+    () => [...(detail?.artifacts || [])].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()),
+    [detail?.artifacts],
+  );
+  const summaryHistory = artifacts.filter((artifact) => artifact.artifact_type === "executive_summary");
+  const packetHistory = artifacts.filter((artifact) => artifact.artifact_type === "lender_packet");
+  const summary = summaryHistory[0];
+  const packet = packetHistory[0];
+  const packageInSync = Boolean(
+    summary?.generation_id
+    && summary.generation_id === packet?.generation_id
+    && summary.status === "current"
+    && packet?.status === "current"
+    && summary.is_fresh === true
+    && packet.is_fresh === true
+  );
+  const packageNeedsRefresh = Boolean(summary && packet && !packageInSync);
+  const evidenceFiles = detail?.files.filter(isSourceEvidenceFile) ?? [];
+  const evidenceFileCount = evidenceFiles.length;
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
   // "dealer_gatekeeper_v1" is the dealer marker, and the only one the backend
   // gates on. A second legacy value here would have let a package be sent to a
   // client the signing gate then refused to show, so there is exactly one.
   const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
+
+  async function refreshFullPackage(openPreview = true) {
+    const previewWindow = openPreview ? window.open("", "qc-lender-package-preview") : null;
+    if (previewWindow) {
+      previewWindow.opener = null;
+      previewWindow.document.title = "Preparing lender package";
+      previewWindow.document.body.innerHTML = "<p style='font:16px system-ui;padding:32px'>Preparing the branded lender package preview…</p>";
+    }
+    setBusy("package-all");
+    try {
+      const generated = await onGeneratePackage();
+      setPackageTab("summary");
+      const previewUrl = generated.lender_packet.preview_url || generated.lender_packet.download_url || generated.executive_summary.preview_url || generated.executive_summary.download_url;
+      if (previewWindow && previewUrl) previewWindow.location.replace(previewUrl);
+      else if (previewWindow) previewWindow.close();
+      toast.show(generated.superseded_bucket_file_ids.length
+        ? "Package refreshed. The previous bucket PDFs were superseded."
+        : "Executive summary and lender package are ready in the bucket.");
+    } catch (reason) {
+      previewWindow?.close();
+      toast.show(apiErrorMessage(reason, "The lender package could not be refreshed."));
+    } finally {
+      setBusy("");
+    }
+  }
 
   const productionTermSelection = useMemo<OfferSelection | null>(() => {
     const current = termSheet?.current;
@@ -1591,7 +1698,7 @@ function LeadDetailPanel({
     if (initialSubmissionStep) setSubmissionStep(initialSubmissionStep);
     else if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
-    else if (detail.files.length) setSubmissionStep(2);
+    else if (detail.files.some(isSourceEvidenceFile)) setSubmissionStep(2);
     else setSubmissionStep(1);
     setEvidenceTab(initialEvidenceTab);
     setEvidenceFocus(null);
@@ -2005,7 +2112,7 @@ function LeadDetailPanel({
 
   const requiredDocs = detail?.requested_documents.filter((document) => document.required) ?? [];
   const requiredUploaded = requiredDocs.filter((document) => document.status === "uploaded").length;
-  const hasEvidence = Boolean(detail?.files.length);
+  const hasEvidence = evidenceFileCount > 0;
   const evidenceComplete = hasEvidence && (requiredDocs.length === 0 || requiredUploaded === requiredDocs.length);
   const evidenceAndBankingComplete = Boolean(profileVerification?.business_banking_complete && (profileVerification.evidence_complete || evidenceComplete));
   const hasBankingActivity = Boolean(profileVerification?.bank_connection_count || profileVerification?.bank_statement_months);
@@ -2017,7 +2124,7 @@ function LeadDetailPanel({
     { id: 2, label: "Evidence & banking", sub: "Files, forms, AI decisions and bank coverage", status: evidenceAndBankingComplete ? "complete" : hasEvidence || hasBankingActivity ? "partial" : "not-started" },
     { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
     { id: 4, label: "AI review", sub: "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
-    { id: 5, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packet || summary ? "partial" : "not-started" },
+    { id: 5, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packageInSync ? "partial" : packet || summary ? "partial" : "not-started" },
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -2036,8 +2143,8 @@ function LeadDetailPanel({
         </div>
         <span className="sp" />
         {detail ? (
-          <Btn variant="pri" onClick={submissionStep === 2 ? () => headerUploadRef.current?.click() : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => { setPackageTab("package"); setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); } : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 2 && headerUploading)}>
-            {submissionStep === 2 ? (headerUploading ? "Uploading..." : "Add evidence") : submissionStep === 4 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? "Build lender package" : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
+          <Btn variant="pri" onClick={submissionStep === 2 ? () => headerUploadRef.current?.click() : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => void refreshFullPackage(true) : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 2 && headerUploading)}>
+            {submissionStep === 2 ? (headerUploading ? "Uploading..." : "Add evidence") : submissionStep === 4 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? (busy === "package-all" ? "Refreshing package..." : summary && packet ? "Refresh package" : "Generate package") : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
           </Btn>
         ) : null}
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
@@ -2135,6 +2242,9 @@ function LeadDetailPanel({
                   onVerificationChange={setProfileVerification}
                   onProgramReadinessChange={setProgramReadiness}
                   focusRequirement={evidenceFocus}
+                  canCreatePrograms={currentUser?.role === Role.SUPER_ADMIN}
+                  programVertical={programVerticalForVariant(detail.intake.variant)}
+                  intakeVariant={detail.intake.variant}
                 /> : <div className="empty">{underwritingLoading ? "Loading the unified evidence workspace..." : "The application profile could not be resolved."}</div>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
@@ -2146,9 +2256,9 @@ function LeadDetailPanel({
                         <span>Probability</span>
                         <strong>{String(result?.probability_status || "Awaiting evidence")}</strong>
                       </div>
-                      <button type="button" onClick={openEvidenceFiles} aria-label={`Open ${detail.files.length} evidence file${detail.files.length === 1 ? "" : "s"}`}>
+                      <button type="button" onClick={openEvidenceFiles} aria-label={`Open ${evidenceFileCount} evidence file${evidenceFileCount === 1 ? "" : "s"}`}>
                         <span>Evidence</span>
-                        <strong className="num">{detail.files.length}</strong>
+                        <strong className="num">{evidenceFileCount}</strong>
                         <small>files</small>
                         <Icon name="arrowR" size={13} />
                       </button>
@@ -2174,11 +2284,33 @@ function LeadDetailPanel({
                 </Panel>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 5 ? (
-                <Panel title="Package readiness" sub="Prepare, review, and deliver one lender-facing package." actions={packageTab === "summary" ? <Btn disabled={busy !== ""} onClick={() => { setBusy("summary"); Promise.resolve(onGenerateSummary()).finally(() => setBusy("")); }}>{busy === "summary" ? "Generating..." : summary ? "Regenerate summary" : "Generate summary"}</Btn> : packageTab === "package" ? <Btn variant="pri" disabled={busy !== "" || !summary} onClick={() => { setBusy("packet"); Promise.resolve(onGeneratePacket()).finally(() => setBusy("")); }}>{busy === "packet" ? "Building..." : packet ? "Rebuild package" : "Build lender package"}</Btn> : <Btn variant="pri" disabled={busy !== ""} onClick={previewEmail}>{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn>}>
-                  <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Executive summary'], ['package', 'Lender package'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="check" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
-                  {packageTab === "summary" ? summary ? <div className="artifact-preview"><strong>{summary.title}</strong><p>{summary.body_text || String(summary.body_json?.executive_summary || "")}</p><span className="sub">Generated {formatDateTime(summary.created_at)}</span></div> : <div className="empty">Generate an underwriter narrative after the AI review is complete.</div> : null}
-                  {packageTab === "package" ? packet ? <div className="source-room"><div><CellChip tone="ok">Ready</CellChip><strong>{packet.title}</strong><span className="sub">Redacted lender-facing PDF · {formatDateTime(packet.created_at)}</span></div>{packet.download_url ? <a href={packet.download_url} target="_blank" rel="noreferrer" className="btn">Preview PDF</a> : null}</div> : <div className="empty">Build the lender package after the executive summary is ready.</div> : null}
-                  {packageTab === "delivery" ? <div className="package-delivery"><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packet || busy !== ""} onClick={() => setSendReviewOpen(true)}>Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
+                <Panel
+                  title="Package readiness"
+                  sub="One refresh creates both branded PDFs, saves them to the bucket, and supersedes the prior package."
+                  actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => void refreshFullPackage(true)}><Icon name="refresh" size={14} />{busy === "package-all" ? "Building both PDFs..." : summary && packet ? "Refresh package + preview" : "Generate package + preview"}</Btn>}
+                >
+                  <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Overview'], ['package', 'PDF versions'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary && packet ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="docCheck" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
+                  {packageTab === "summary" ? summary && packet ? <div className="package-readiness-overview">
+                    {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild both PDFs from the current Package Readiness snapshot.</Callout> : null}
+                    <div className="package-readiness-status">
+                      <div><span className="lbl">Current package</span><strong>Version {Math.max(artifactVersion(summary, summaryHistory.length), artifactVersion(packet, packetHistory.length))}</strong><small>Generated {formatDateTime(packet.created_at)}</small></div>
+                      <div><span className="lbl">Programs in scope</span><strong>{programReadiness?.selections.length || 0}</strong><small>{programReadiness?.selections.map((item) => item.program_name).join(" · ") || "Select a program before delivery"}</small></div>
+                      <div><span className="lbl">Evidence</span><strong>{evidenceFileCount} files</strong><small>{programReadiness?.can_advance ? "Program requirements complete" : `${canonicalMissingDocuments.length} open requirement${canonicalMissingDocuments.length === 1 ? "" : "s"}`}</small></div>
+                    </div>
+                    <div className="package-document-grid">
+                      <PackageArtifactCard artifact={summary} label="Executive summary" description="Concise credit brief with decision metrics, strengths, risks, and next action." version={artifactVersion(summary, summaryHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(summary))} />
+                      <PackageArtifactCard artifact={packet} label="Lender package" description="Branded underwriting packet with month-by-month cash-flow charts and supporting schedules." version={artifactVersion(packet, packetHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(packet))} />
+                    </div>
+                    <UnderwriterDigest artifact={summary} />
+                  </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate once to create the executive-summary PDF and lender-package PDF from the same evidence snapshot. Both will be saved in this file&apos;s bucket.</p></div> : null}
+                  {packageTab === "package" ? <div className="package-version-workspace">
+                    <Callout tone="acc">The current pair is the only active package in the bucket. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
+                    <div className="package-version-columns">
+                      <PackageVersionList label="Executive summary" artifacts={summaryHistory} />
+                      <PackageVersionList label="Lender package" artifacts={packetHistory} />
+                    </div>
+                  </div> : null}
+                  {packageTab === "delivery" ? <div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild both PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
                 </Panel>
               ) : null}
 
@@ -2677,7 +2809,7 @@ function LeadDetailPanel({
           ) : null}
 
           {activeTab === "workspace" && workspaceSub === "documents" ? (
-            <InfoBlock title={`Uploaded files (${detail.files.length})`}>
+            <InfoBlock title={`Uploaded files (${evidenceFileCount})`}>
               <div className="grid g10">
                 <Row>
                   <span className="sub" style={{ flex: 1, minWidth: 200 }}>
@@ -2692,7 +2824,7 @@ function LeadDetailPanel({
                   </Btn>
                 </Row>
                 <div>
-                  {detail.files.length ? detail.files.slice(0, 60).map((file) => (
+                  {evidenceFiles.length ? evidenceFiles.slice(0, 60).map((file) => (
                     <div key={file.id} className="filerow">
                       <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{file.zip_entry_path || file.file_name}</span>
                       <span className="sub">{formatSize(file.size_bytes)}</span>
@@ -2869,7 +3001,7 @@ function LeadDetailPanel({
                         <input type="checkbox" checked={attachPacket} onChange={(e) => setAttachPacket(e.target.checked)} /> Lender packet PDF
                       </label>
                       <label className={cx("pick", attachSummary && "on")}>
-                        <input type="checkbox" checked={attachSummary} onChange={(e) => setAttachSummary(e.target.checked)} /> Executive summary (.txt)
+                        <input type="checkbox" checked={attachSummary} onChange={(e) => setAttachSummary(e.target.checked)} /> Executive summary PDF
                       </label>
                       <label className={cx("pick", attachZip && "on")}>
                         <input type="checkbox" checked={attachZip} onChange={(e) => setAttachZip(e.target.checked)} /> Full package (.zip)
@@ -3659,6 +3791,70 @@ function variantLabel(value?: string | null) {
   if (value === "main_street_v1") return "Main Street";
   if (value === "commercial_foreclosure_bailout_v1") return "Foreclosure rescue";
   return "AI review";
+}
+
+function programVerticalForVariant(value?: string | null): "real_estate" | "dealer" | "main_street" | "mca" {
+  const variant = String(value || "").toLowerCase();
+  if (variant.includes("mca")) return "mca";
+  if (variant.includes("dealer")) return "dealer";
+  if (variant.includes("real_estate") || variant.includes("funding_review") || variant.includes("foreclosure")) return "real_estate";
+  return "main_street";
+}
+
+function artifactVersion(artifact: Artifact, fallback = 1): number {
+  const value = Number(artifact.version);
+  return Number.isFinite(value) && value > 0 ? value : Math.max(1, fallback);
+}
+
+function artifactBucketFileId(artifact: Artifact): string | null {
+  const value = artifact.bucket_file_id;
+  return typeof value === "string" && value ? value : null;
+}
+
+function artifactSha(artifact: Artifact): string | null {
+  const value = artifact.sha256;
+  return typeof value === "string" && value ? value : null;
+}
+
+function artifactList(artifact: Artifact, key: string): string[] {
+  const value = asRecord(artifact.body_json)?.[key];
+  if (Array.isArray(value)) return value.map((item) => typeof item === "string" ? item : String(asRecord(item)?.label || asRecord(item)?.value || "")).filter(Boolean);
+  return typeof value === "string" && value.trim() ? [value.trim()] : [];
+}
+
+function PackageArtifactCard({ artifact, label, description, version, current, bucketSynced }: { artifact: Artifact; label: string; description: string; version: number; current: boolean; bucketSynced: boolean }) {
+  const sha = artifactSha(artifact);
+  const previewUrl = artifact.preview_url || artifact.download_url;
+  return <article className="package-document-card">
+    <div className="package-document-icon"><Icon name="docCheck" size={20} /></div>
+    <div className="package-document-copy"><div><span className="lbl">{label}</span><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip></div><strong>{artifact.title}</strong><p>{description}</p><small>v{version} · {formatDateTime(artifact.created_at)} · {bucketSynced ? "Synced to bucket" : "Legacy artifact"}{sha ? ` · ${sha.slice(0, 10)}…` : ""}</small></div>
+    <div className="package-document-actions">{previewUrl ? <><a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm"><Icon name="eye" size={14} />Preview</a>{artifact.download_url ? <a href={artifact.download_url} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Download ${label}`} aria-label={`Download ${label}`}><Icon name="download" size={14} /></a> : null}</> : <CellChip tone="warn">PDF unavailable</CellChip>}</div>
+  </article>;
+}
+
+function PackageVersionList({ label, artifacts }: { label: string; artifacts: Artifact[] }) {
+  return <section className="package-version-list"><header><span className="lbl">{label}</span><strong>{artifacts.length ? `${artifacts.length} version${artifacts.length === 1 ? "" : "s"}` : "Not generated"}</strong></header>{artifacts.length ? artifacts.map((artifact, index) => {
+    const version = artifactVersion(artifact, artifacts.length - index);
+    const previewUrl = artifact.preview_url || artifact.download_url;
+    const current = index === 0 && artifact.status !== "superseded";
+    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Bucket PDF" : " · Legacy artifact"}</small></span></div>{previewUrl ? <a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Preview ${label} version ${version}`} aria-label={`Preview ${label} version ${version}`}><Icon name="eye" size={14} /></a> : null}</div>;
+  }) : <div className="empty">No PDF versions yet.</div>}</section>;
+}
+
+function UnderwriterDigest({ artifact }: { artifact: Artifact }) {
+  const body = asRecord(artifact.body_json) || {};
+  const rawMetrics = body.key_metrics;
+  const metrics = Array.isArray(rawMetrics)
+    ? rawMetrics.map((item) => {
+      const row = asRecord(item);
+      return row ? { label: String(row.label || "Metric"), value: String(row.value || "—"), note: String(row.note || "") } : null;
+    }).filter((item): item is { label: string; value: string; note: string } => Boolean(item))
+    : Object.entries(asRecord(rawMetrics) || {}).map(([label, value]) => ({ label: label.replaceAll("_", " "), value: String(value || "—"), note: "" }));
+  const risks = artifactList(artifact, "risks").slice(0, 4);
+  const mitigants = artifactList(artifact, "mitigants").slice(0, 4);
+  const nextAction = typeof body.next_best_action === "string" ? body.next_best_action : null;
+  if (!metrics.length && !risks.length && !mitigants.length && !nextAction) return null;
+  return <section className="underwriter-digest"><header><div><span className="lbl">Decision view</span><h3>Underwriter highlights</h3></div><span className="sub">The full narrative and schedules remain in the PDFs.</span></header>{metrics.length ? <div className="underwriter-metrics">{metrics.slice(0, 6).map((metric, index) => <div key={`${metric.label}:${index}`}><span>{metric.label}</span><strong>{metric.value}</strong>{metric.note ? <small>{metric.note}</small> : null}</div>)}</div> : null}<div className="underwriter-watch-grid">{mitigants.length ? <div><span className="lbl">Strengths / mitigants</span><ul>{mitigants.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}{risks.length ? <div><span className="lbl">Risks / watchpoints</span><ul>{risks.map((item) => <li key={item}>{item}</li>)}</ul></div> : null}</div>{nextAction ? <div className="underwriter-next-action"><Icon name="arrowR" size={15} /><span><small>Next best action</small><strong>{nextAction}</strong></span></div> : null}</section>;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

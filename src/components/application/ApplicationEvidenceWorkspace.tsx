@@ -38,6 +38,7 @@ import {
 import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { useProductionCall } from "@/lib/productionTrainingCall";
+import type { FundingProgramVertical } from "@/lib/fundingPrograms";
 
 type WorkspaceTab = "requirements" | "banking" | "files";
 type RequirementFocus = { query: string; requestId: number };
@@ -103,6 +104,9 @@ export function ApplicationEvidenceWorkspace({
   onVerificationChange,
   onProgramReadinessChange,
   focusRequirement,
+  canCreatePrograms = false,
+  programVertical = "main_street",
+  intakeVariant,
 }: {
   profileId: string;
   intakeId: string;
@@ -118,6 +122,9 @@ export function ApplicationEvidenceWorkspace({
   onVerificationChange?: (state: EvidenceWorkspace["verification"]) => void;
   onProgramReadinessChange?: (readiness: Readiness) => void;
   focusRequirement?: RequirementFocus | null;
+  canCreatePrograms?: boolean;
+  programVertical?: FundingProgramVertical;
+  intakeVariant?: string | null;
 }) {
   const apiCall = useAuthedApi();
   const productionCall = useProductionCall();
@@ -525,6 +532,9 @@ export function ApplicationEvidenceWorkspace({
       unlockedCopyRequestingFileId={requestingUnlockedCopyFileId}
       focusRequirementQuery={focusRequirement?.query}
       focusRequestId={focusRequirement?.requestId}
+      canCreatePrograms={canCreatePrograms}
+      programVertical={programVertical}
+      intakeVariant={intakeVariant}
     /> : null}
 
     {tab === "banking" ? <BankingPanel

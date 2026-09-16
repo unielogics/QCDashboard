@@ -2,7 +2,8 @@
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
-import { Btn, Callout, CellChip, Field, IconBtn, Select, Textarea, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } from "@/components/ds";
+import { Drawer } from "@/components/ds/Drawer";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -19,6 +20,7 @@ import type {
   RoomDeliveryReceipt,
   UnlockedCopyRequestState,
 } from "@/lib/applicationProfile";
+import { manualProgramDraftMatches, type FundingProgramCatalogItem, type FundingProgramVersion, type FundingProgramVertical } from "@/lib/fundingPrograms";
 import { semanticChipTone, semanticStatusClass } from "@/lib/semanticStatus";
 
 type EvidenceFile = {
@@ -46,6 +48,14 @@ type EvidenceOverrideDraft = {
   reason: string;
 };
 type ReassignDraft = { requirementKey: string; fileId: string; targetKey: string };
+type CustomProgramDraft = {
+  name: string;
+  programKey: string;
+  description: string;
+  vertical: FundingProgramVertical;
+  requirements: string;
+  reason: string;
+};
 
 const ACCEPTED_UPLOADS = ".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,image/*";
 function errorMessage(error: unknown): string {
@@ -97,6 +107,15 @@ function candidateTone(candidate: ProgramFitCandidate): "ok" | "acc" | "warn" | 
   return "mut";
 }
 
+function programKey(value: string): string {
+  return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
+}
+
+function requirementKey(program: string, label: string, index: number): string {
+  const suffix = programKey(label).slice(0, 66) || "document";
+  return `${programKey(program).slice(0, 40)}_${suffix}_${index + 1}`.slice(0, 120);
+}
+
 export function ApplicationProgramReadiness({
   profileId,
   files,
@@ -114,6 +133,9 @@ export function ApplicationProgramReadiness({
   unlockedCopyRequestingFileId,
   focusRequirementQuery,
   focusRequestId = 0,
+  canCreatePrograms = false,
+  programVertical = "main_street",
+  intakeVariant,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -131,6 +153,9 @@ export function ApplicationProgramReadiness({
   unlockedCopyRequestingFileId?: string | null;
   focusRequirementQuery?: string | null;
   focusRequestId?: number;
+  canCreatePrograms?: boolean;
+  programVertical?: FundingProgramVertical;
+  intakeVariant?: string | null;
 }) {
   const apiCall = useAuthedApi();
   const confirmAction = useConfirmAction();
@@ -150,6 +175,8 @@ export function ApplicationProgramReadiness({
   const [uploadDragging, setUploadDragging] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [customProgramOpen, setCustomProgramOpen] = useState(false);
+  const [customProgram, setCustomProgram] = useState<CustomProgramDraft>({ name: "", programKey: "", description: "", vertical: programVertical, requirements: "", reason: "" });
 
   const authenticated = useCallback(async function authenticated<T>(path: string, init: RequestInit = {}): Promise<T> {
     return apiCall<T>(path, init);
@@ -184,6 +211,9 @@ export function ApplicationProgramReadiness({
     setReadiness(value ?? null);
     if (value) setSelectedPrograms(value.selections.map((selection) => selection.program_key));
   }, [controlled, value]);
+  useEffect(() => {
+    if (!customProgramOpen) setCustomProgram((current) => ({ ...current, vertical: programVertical }));
+  }, [customProgramOpen, programVertical]);
   useEffect(() => {
     const refreshAfterAnalysis = () => void load();
     window.addEventListener("qc-ai-review-completed", refreshAfterAnalysis);
@@ -279,6 +309,131 @@ export function ApplicationProgramReadiness({
       setSelectedPrograms(next.selections.map((selection) => selection.program_key));
       setProgramReason("");
       onNotice?.(returnToAi ? "Program selection returned to AI criteria." : "Funding programs updated.");
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function createAndSelectProgram() {
+    const key = programKey(customProgram.programKey || customProgram.name);
+    const labels = [...new Set(customProgram.requirements.split(/\r?\n/).map((item) => item.trim()).filter(Boolean))];
+    if (customProgram.name.trim().length < 2 || key.length < 2) {
+      setError("Enter a program name and a stable program key.");
+      return;
+    }
+    if (customProgram.reason.trim().length < 8) {
+      setError("Enter a review reason of at least eight characters.");
+      return;
+    }
+    const confirmed = await confirmAction({
+      title: `Create and select ${customProgram.name.trim()}?`,
+      body: `This creates a published catalog program for ${customProgram.vertical.replaceAll("_", " ")}, pins it to this file, and records the review reason. ${labels.length ? `${labels.length} evidence requirement${labels.length === 1 ? "" : "s"} will be included.` : "No additional evidence requirements will be added."}`,
+      confirmLabel: "Create and select program",
+    });
+    if (!confirmed) return;
+    setBusy("create-program");
+    setError(null);
+    try {
+      const catalogPath = "/admin/funding-programs";
+      let catalog = await authenticated<FundingProgramCatalogItem[]>(catalogPath);
+      let program = catalog.find((item) => item.program_key === key);
+      if (!program) {
+        try {
+          catalog = await authenticated<FundingProgramCatalogItem[]>(catalogPath, {
+            method: "POST",
+            body: JSON.stringify({
+              program_key: key,
+              public_slug: key.replaceAll("_", "-"),
+              name: customProgram.name.trim(),
+              short_description: customProgram.description.trim() || null,
+              aliases: [],
+              display_order: 1000,
+              scopes: [{
+                vertical: customProgram.vertical,
+                scope_key: `manual_${programKey(intakeVariant || "default")}`.slice(0, 80),
+                intake_variants: intakeVariant ? [intakeVariant] : [],
+                intent_keys: [],
+                naics_prefixes: [],
+                industry_keys: [],
+                required_fact_keys: [],
+              }],
+              confirmed: true,
+            }),
+          });
+        } catch (reason) {
+          if (!(reason instanceof ApiError) || reason.status !== 409) throw reason;
+          // A previous attempt may have committed the catalog row before a
+          // later step failed. Reload it and resume instead of stranding the
+          // program or forcing the operator to invent a new key.
+          catalog = await authenticated<FundingProgramCatalogItem[]>(catalogPath);
+        }
+        program = catalog.find((item) => item.program_key === key);
+      }
+      if (!program) throw new Error("The catalog program could not be created or recovered.");
+      if (
+        program.name.trim().toLowerCase() !== customProgram.name.trim().toLowerCase()
+        || !program.scopes.some((scope) => scope.vertical === customProgram.vertical)
+      ) {
+        throw new Error(`The key “${key}” already belongs to a different catalog program. Choose another key or edit that program in Catalog.`);
+      }
+
+      if (!program.published_version) {
+        let draft: FundingProgramVersion | undefined = [...program.draft_versions]
+          .filter((version) => manualProgramDraftMatches(version, customProgram.vertical, labels))
+          .sort((a, b) => b.version - a.version)[0];
+        if (!draft) {
+          const versionRows = await authenticated<FundingProgramCatalogItem[]>(`/admin/funding-programs/${key}/versions`, {
+            method: "POST",
+            body: JSON.stringify({
+              name: customProgram.name.trim(),
+              description: customProgram.description.trim() || null,
+              rules: { priority: 0, fit: { field: "vertical", op: "eq", value: customProgram.vertical } },
+              requirements: labels.map((label, index) => ({
+                requirement_key: requirementKey(key, label, index),
+                label,
+                category: "financials",
+                required_level: "required",
+                blocks_stage: "underwriting",
+                visibility: ["borrower", "underwriter"],
+                can_underwriter_waive: true,
+                verification_required: false,
+                display_order: index,
+                objective_text: `Collect and review ${label}.`,
+                completion_criteria: `A current, readable ${label} is accepted for underwriting.`,
+                completion_mode: "ai_can_complete",
+              })),
+              reason: customProgram.reason.trim(),
+              confirmed: true,
+            }),
+          });
+          draft = versionRows.find((item) => item.program_key === key)?.draft_versions
+            .filter((version) => manualProgramDraftMatches(version, customProgram.vertical, labels))
+            .sort((a, b) => b.version - a.version)[0];
+        }
+        if (!draft) throw new Error("The program exists, but its criteria draft could not be recovered.");
+        await authenticated<FundingProgramCatalogItem[]>(`/admin/funding-programs/${key}/versions/${draft.playbook_id}/publish`, {
+          method: "POST",
+          body: JSON.stringify({ reason: customProgram.reason.trim(), confirmed: true }),
+        });
+      }
+      // Do not GET readiness between publish and selection. In automatic mode
+      // that read can itself auto-select the new program and incorrectly audit
+      // this operator action as an AI selection. The screen already carries
+      // the reviewed selection set; PATCH it directly so the new row is pinned
+      // to the just-published version with source="operator".
+      const nextKeys = [...new Set([...(readiness?.selections ?? []).map((item) => item.program_key), key])];
+      const selected = await authenticated<Readiness>(`/application-profiles/${profileId}/programs`, {
+        method: "PATCH",
+        body: JSON.stringify({ program_keys: nextKeys, return_to_ai: false, confirmed: true, reason: customProgram.reason.trim() }),
+      });
+      storeReadiness(selected);
+      setSelectedPrograms(selected.selections.map((selection) => selection.program_key));
+      setCustomProgramOpen(false);
+      setCustomProgram({ name: "", programKey: "", description: "", vertical: programVertical, requirements: "", reason: "" });
+      onNotice?.(`${customProgram.name.trim()} was published and added to this file.`);
+      await onRefresh?.();
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -524,20 +679,32 @@ export function ApplicationProgramReadiness({
 
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
-    <details className="program-readiness-programs">
+    <details className="program-readiness-programs" open>
       <summary>
-        <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "No program selected"}</small></span>
+        <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "Choose a catalog program or add one manually"}</small></span>
         <CellChip tone={readiness.selection_mode === "manual" ? "warn" : "acc"}>{readiness.selection_mode === "manual" ? "Manual selection" : "AI selection"}</CellChip>
       </summary>
     <section className="program-readiness-band" aria-labelledby="program-selection-heading">
-      <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Scoped program fit</h3><p>Only products scoped to this file appear. Published playbook versions are pinned to the selection.</p></div><div className="program-readiness-actions"><CellChip tone={readiness.selection_mode === "manual" ? "warn" : "acc"}>{readiness.selection_mode === "manual" ? "Manual selection" : "AI selection"}</CellChip>{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={() => void savePrograms(false)} disabled={!programsChanged || Boolean(busy)}>{busy === "programs" ? "Applying..." : "Review changes"}</Btn></div></div>
+      <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Program selection</h3><p>Select any published program below. AI fit is advisory: staff may override an ineligible recommendation with an audited reason.</p></div><div className="program-readiness-actions">{canCreatePrograms ? <Btn onClick={() => setCustomProgramOpen(true)} disabled={Boolean(busy)}><Icon name="plus" size={14} />Add program</Btn> : null}{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={() => void savePrograms(false)} disabled={!programsChanged || Boolean(busy)}>{busy === "programs" ? "Applying..." : "Apply manual selection"}</Btn></div></div>
       {recommended.length ? <div className="program-candidate-group"><span className="lbl">Recommended</span><div className="program-candidate-grid">{recommended.map(candidateCard)}</div></div> : null}
       {alternatives.length ? <div className="program-candidate-group"><span className="lbl">Alternatives</span><div className="program-candidate-grid">{alternatives.map(candidateCard)}</div></div> : null}
       {notEligible.length ? <details className="program-candidate-collapsed"><summary>Not eligible ({notEligible.length})</summary><div className="program-candidate-grid">{notEligible.map(candidateCard)}</div></details> : null}
+      {readiness.selections.some((selection) => selection.needs_scope_review) ? <Callout tone="warn">A staff-selected program is outside the AI fit or file scope. The manual override is active and remains flagged for underwriting review.</Callout> : null}
       {ineligibleSelected.length ? <Field label="Required program-override reason"><Textarea rows={2} value={programReason} onChange={(event) => setProgramReason(event.target.value)} placeholder="Explain why these reviewed facts support the selected program" /></Field> : null}
-      {!readiness.candidates.length ? <div className="empty">{readiness.lending_applicable ? "No in-scope program has published criteria yet. Keep collecting evidence; the system will not force a placeholder product." : "This enquiry is not a lending request, so lending programs do not apply."}</div> : null}
+      {!readiness.candidates.length ? <div className="empty">{readiness.lending_applicable ? canCreatePrograms ? "No published program matches this file yet. Add a program manually or update the file classification." : "No in-scope program has published criteria yet. Ask a super admin to add one, or update the file classification." : "This enquiry is not a lending request, so lending programs do not apply."}</div> : null}
     </section>
     </details>
+
+    <Drawer open={customProgramOpen} onClose={() => { if (busy !== "create-program") setCustomProgramOpen(false); }} title="Add a funding program" sub="Create a reviewed catalog program, publish its first criteria version, and select it on this file." width="md" closeOnBackdrop={busy !== "create-program"} footer={<><Btn onClick={() => setCustomProgramOpen(false)} disabled={busy === "create-program"}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={() => void createAndSelectProgram()} disabled={busy === "create-program" || customProgram.name.trim().length < 2 || programKey(customProgram.programKey || customProgram.name).length < 2 || customProgram.reason.trim().length < 8}>{busy === "create-program" ? "Creating and selecting..." : "Create and select"}</Btn></>}>
+      <div className="grid g12">
+        <Callout tone="warn">This is a reusable catalog program, not a temporary label. It will be scoped to this intake type and can be managed later in Funding Program settings.</Callout>
+        <div className="fldgrid two"><Field label="Program name"><Input autoFocus value={customProgram.name} onChange={(event) => setCustomProgram((current) => ({ ...current, name: event.target.value, programKey: programKey(event.target.value) }))} placeholder="Business-purpose HELOC" /></Field><Field label="Program key"><Input value={customProgram.programKey} onChange={(event) => setCustomProgram((current) => ({ ...current, programKey: programKey(event.target.value) }))} placeholder="business_purpose_heloc" /></Field></div>
+        <Field label="Description"><Textarea rows={3} value={customProgram.description} onChange={(event) => setCustomProgram((current) => ({ ...current, description: event.target.value }))} placeholder="When this program should be considered and what it is designed to finance." /></Field>
+        <Field label="Program vertical"><Input value={customProgram.vertical.replaceAll("_", " ")} readOnly aria-readonly="true" /></Field>
+        <Field label="Required evidence (optional, one item per line)"><Textarea rows={5} value={customProgram.requirements} onChange={(event) => setCustomProgram((current) => ({ ...current, requirements: event.target.value }))} placeholder={"Current rent roll\nTrailing 12-month operating statement\nPayoff statement"} /></Field>
+        <Field label="Required review reason"><Textarea rows={3} value={customProgram.reason} onChange={(event) => setCustomProgram((current) => ({ ...current, reason: event.target.value }))} placeholder="Explain why this program is being added and applied to the file." /></Field>
+      </div>
+    </Drawer>
 
     {readiness.lending_applicable ? <>
       {readiness.evidence_policies.length ? <section className="program-readiness-band initial-evidence-policy" aria-labelledby="initial-checklist-heading"><div className="program-readiness-heading"><div><span className="lbl">Evidence policy</span><h3 id="initial-checklist-heading">Initial evidence checklist</h3><p>{readiness.evidence_policies.map((policy) => `${policy.policy_name} v${policy.playbook_version}`).join(" · ")}</p></div><CellChip tone="mut">Not a funding product</CellChip></div></section> : null}

@@ -40,3 +40,33 @@ export type FundingProgramCatalogItem = {
 export type PublicFundingProgram = Pick<FundingProgramCatalogItem, "program_key" | "public_slug" | "name" | "short_description" | "display_order"> & {
   verticals: FundingProgramVertical[];
 };
+
+/**
+ * A manual-program retry may resume a draft created by an earlier interrupted
+ * attempt, but it must never publish an arbitrary draft that happens to share
+ * the same catalog key. Keep this deliberately strict: a more sophisticated
+ * criteria tree belongs in the catalog editor, not the quick-add workflow.
+ */
+export function manualProgramDraftMatches(
+  version: FundingProgramVersion,
+  vertical: FundingProgramVertical,
+  requirementLabels: string[],
+): boolean {
+  const rules = version.rules && typeof version.rules === "object" ? version.rules : {};
+  const fit = rules.fit;
+  if (!fit || typeof fit !== "object" || Array.isArray(fit)) return false;
+  const fitRule = fit as Record<string, unknown>;
+  if (
+    fitRule.field !== "vertical"
+    || fitRule.op !== "eq"
+    || fitRule.value !== vertical
+    || Object.keys(fitRule).some((key) => !["field", "op", "value"].includes(key))
+  ) return false;
+  if (Array.isArray(rules.unresolved_review_items) && rules.unresolved_review_items.length) return false;
+
+  const normalize = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase();
+  const actualLabels = version.requirements.map((requirement) => normalize(requirement.label));
+  const expectedLabels = requirementLabels.map(normalize);
+  return actualLabels.length === expectedLabels.length
+    && actualLabels.every((label, index) => label === expectedLabels[index]);
+}
