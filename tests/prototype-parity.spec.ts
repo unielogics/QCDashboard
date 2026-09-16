@@ -27,6 +27,16 @@ const ROUTES = [
   ["settings", "/settings"],
 ] as const;
 
+// Cover both direct page-grid banners and banners nested in operational list
+// shells. Nested shells previously carried a spacing exception that could
+// reintroduce the page background between the global and local headers.
+const FLUSH_PAGE_HEADER_ROUTES = [
+  ["pipeline", "/pipeline"],
+  ["clients", "/clients"],
+  ["AI intake", "/admin/ai-underwriter-leads"],
+  ["foreclosure rescue", "/foreclosure-rescues"],
+] as const;
+
 const DETAIL_ROUTES: Array<readonly [string, string]> = [];
 if (process.env.QC_E2E_DEAL_ID) DETAIL_ROUTES.push(["deal-file", `/deals/${process.env.QC_E2E_DEAL_ID}`]);
 if (process.env.QC_E2E_LOAN_ID) DETAIL_ROUTES.push(["funding-file", `/loans/${process.env.QC_E2E_LOAN_ID}`]);
@@ -100,6 +110,22 @@ async function mockEmptyOperatorPipeline(page: Page) {
   });
   await page.route(/\/api\/v1\/settings$/, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+  });
+}
+
+async function mockFlushHeaderPages(page: Page) {
+  await mockEmptyOperatorPipeline(page);
+  await page.route(/\/api\/v1\/admin\/ai-underwriter-leads(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, limit: 50, offset: 0 }) });
+  });
+  await page.route(/\/api\/v1\/foreclosure-rescues(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route(/\/api\/v1\/users\/team$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
+  });
+  await page.route(/\/api\/v1\/foreclosure-rescues\/partner-applications(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([]) });
   });
 }
 
@@ -1268,17 +1294,30 @@ test("theme control swaps between light and Obsidian without shifting the page",
   expect(after?.x).toBe(before?.x);
 });
 
-test("floating page headers meet the global top bar without a ground gap", async ({ page }) => {
-  await openConsolePage(page, "/pipeline");
-  const edges = await page.evaluate(() => {
-    const top = document.querySelector<HTMLElement>(".top")?.getBoundingClientRect();
-    const pageHeader = document.querySelector<HTMLElement>(".ckhead")?.getBoundingClientRect();
-    return { topBottom: top?.bottom, pageHeaderTop: pageHeader?.top };
+for (const [name, route] of FLUSH_PAGE_HEADER_ROUTES) {
+  test(`${name} page header meets the global shell edge without a ground gap`, async ({ page }) => {
+    await mockFlushHeaderPages(page);
+    await openConsolePage(page, route);
+
+    const topBar = page.locator(".top");
+    const content = page.locator("main.content");
+    const pageHeader = page.locator(".ckhead").first();
+    await expect(pageHeader).toBeVisible();
+
+    const [topBarBox, contentBox, pageHeaderBox] = await Promise.all([
+      topBar.boundingBox(),
+      content.boundingBox(),
+      pageHeader.boundingBox(),
+    ]);
+    expect(contentBox).not.toBeNull();
+    expect(pageHeaderBox).not.toBeNull();
+    const shellEdge = topBarBox ? topBarBox.y + topBarBox.height : (contentBox?.y ?? 0);
+    expect(
+      Math.abs(shellEdge - (pageHeaderBox?.y ?? 0)),
+      `${name} must not expose the page ground before its route banner`,
+    ).toBeLessThanOrEqual(1);
   });
-  expect(edges.topBottom).toBeDefined();
-  expect(edges.pageHeaderTop).toBeDefined();
-  expect(Math.abs((edges.topBottom ?? 0) - (edges.pageHeaderTop ?? 0))).toBeLessThanOrEqual(1);
-});
+}
 
 test("secure business banking offers Plaid and statement upload without staff controls", async ({ page }, testInfo) => {
   const verification = {

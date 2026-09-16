@@ -756,13 +756,6 @@
 .ckhead { top: calc(var(--pad-y) * -1); }
 .ckhead h1 { font-size: 17.5px; line-height: 1.15; letter-spacing: 0; }
 
-/* `.ckhead` pulls itself up by the content padding so it can run full-bleed.
-   That only makes sense when it is laid out against that padding. The AI-intake
-   list nests it inside a fixed-height `overflow: hidden` shell instead, where
-   there is no padding to cancel — so the pull just dragged the bar above the
-   clip edge and sliced its title, chip and buttons off. Seven other pages put
-   `.ckhead` in a non-clipping parent and are unaffected. */
-.ai-intake-list-shell > .ckhead { margin-top: 0; top: 0; }
 .pagehead {
   position: static;
   z-index: auto;
