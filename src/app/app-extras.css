@@ -1770,6 +1770,7 @@ button.pick { width: 100%; text-align: left; }
 .intake-evidence-dropzone-copy b { overflow-wrap: anywhere; font-size: 12.5px; }
 .intake-evidence-dropzone-copy small { color: var(--muted); font-size: 10.5px; line-height: 1.45; }
 .intake-evidence-browse-label { min-width: 116px; padding: 8px 11px; border: 1px solid var(--line2); border-radius: 6px; background: var(--surface); color: var(--ink); font-size: 11px; font-weight: 750; text-align: center; }
+.intake-evidence-browse-label.intake-evidence-browse-icon { min-width: 34px; width: 34px; height: 34px; padding: 0; display: grid; place-items: center; }
 .create-evidence-files { max-height: 210px; overflow-y: auto; border-block: 1px solid var(--line); }
 .create-evidence-files > div { display: flex; align-items: center; gap: 9px; min-width: 0; padding: 8px 2px; border-bottom: 1px solid var(--line); }
 .create-evidence-files > div:last-child { border-bottom: 0; }
@@ -1880,6 +1881,13 @@ button.pick { width: 100%; text-align: left; }
 .underwriting-status-strip > div { min-width: 0; display: grid; gap: 3px; padding: 12px 14px; border-right: 1px solid var(--line); }
 .underwriting-status-strip > div:last-child { border-right: 0; }
 .underwriting-status-strip b { overflow-wrap: anywhere; }
+.underwriting-term-sheet-actions { justify-items: end; align-content: center; min-width: max-content; }
+.dealer-term-document-actions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.dealer-term-document-actions .iconbtn { width: 36px; height: 36px; }
+.dealer-term-document-status { max-width: 250px; color: var(--muted); font-size: 11px; line-height: 1.35; text-align: right; }
+.dealer-term-preview-body { min-height: min(76vh, 860px); padding: 12px; background: var(--sunken2); }
+.dealer-term-preview-frame { display: block; width: 100%; height: min(74vh, 830px); border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+.dealer-term-preview-loading { min-height: min(72vh, 800px); display: grid; place-items: center; color: var(--muted); font-size: 13px; }
 .underwriting-close-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding-top: 2px; }
 .underwriting-close-actions .danger { color: var(--danger); border-color: rgba(185, 28, 28, .25); }
 .client-terms-shell { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); overflow: hidden; }
@@ -1967,7 +1975,7 @@ button.pick { width: 100%; text-align: left; }
 .extracted-facts-review article small { grid-column: 2; color: var(--muted); font-size: 10px; }
 @media (max-width: 640px) { .extracted-facts-review article { grid-template-columns: 1fr; } .extracted-facts-review article > div { grid-template-columns: 1fr; } .extracted-facts-review article small { grid-column: 1; } }
 @media (max-width: 640px) { .intake-evidence-dropzone { grid-template-columns: 34px minmax(0, 1fr); padding: 13px; } .intake-evidence-dropzone-icon { width: 34px; height: 34px; } .intake-evidence-browse-label { grid-column: 2; width: max-content; min-width: 0; } }
-@media (max-width: 760px) { .underwriting-status-strip { grid-template-columns: 1fr; } .underwriting-status-strip > div { border-right: 0; border-bottom: 1px solid var(--line); } .underwriting-status-strip > div:last-child { border-bottom: 0; } }
+@media (max-width: 760px) { .underwriting-status-strip { grid-template-columns: 1fr; } .underwriting-status-strip > div { border-right: 0; border-bottom: 1px solid var(--line); } .underwriting-status-strip > div:last-child { border-bottom: 0; } .underwriting-term-sheet-actions { justify-items: start; min-width: 0; } .dealer-term-document-actions { justify-content: flex-start; } .dealer-term-document-status { text-align: left; } }
 @media (max-width: 640px) { .bank-evidence-stats { grid-template-columns: 1fr; } .bank-evidence-stats > div { border-right: 0; border-bottom: 1px solid var(--line); } .manual-bank-override { grid-template-columns: 1fr; } }
 @media (max-width: 760px) { .bank-request-toolbar { grid-template-columns: 1fr; align-items: stretch; } .bank-request-actions { display: grid; grid-template-columns: 1fr; } .bank-request-actions .btn { width: 100%; } .bank-delivery-strip { grid-template-columns: 34px minmax(0, 1fr); } .bank-delivery-strip > .cellchip { grid-column: 2; justify-self: start; } .plaid-product-policy { align-items: stretch; } .plaid-product-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; } .plaid-product-toggle { justify-content: center; } }
 @media (max-width: 1000px) {

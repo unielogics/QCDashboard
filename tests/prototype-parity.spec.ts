@@ -1063,6 +1063,170 @@ test("client terms calculate from formatted amount, APR, and time without manual
   await captureReviewImage(page, "ai-intake-client-terms", testInfo);
 });
 
+test("dealer loan terms preview its own PDF without leaving underwriting", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The authenticated PDF preview is exercised once at the canonical desktop viewport.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  const profileId = "20000000-0000-0000-0000-000000000002";
+  const recordedTerms = {
+    id: "24000000-0000-0000-0000-000000000001",
+    version: 3,
+    status: "current",
+    funding_party_kind: "Lender",
+    lender_id: null,
+    funding_party_name: "Summit Private Credit",
+    facility_type: "Term advance",
+    approved_amount: 500_000,
+    min_activation_amount: 450_000,
+    rate_pct: 35,
+    term_months: 12,
+    monthly_debt_service: 50_000,
+    debt_service_is_level_payment: true,
+    expected_funding_date: "2026-09-21",
+    activation_date: null,
+    commencement_date: null,
+    maturity_date: null,
+    use_of_funds: null,
+    conditions: "Final approval remains subject to closing conditions.",
+    notes: null,
+    entered_at: "2026-09-15T20:14:00Z",
+    entered_by_name: "Jonathan Franco",
+    superseded_at: null,
+    withdrawn_at: null,
+    consumed_by_package_id: null,
+    level_payment: 50_000,
+  };
+  let inlinePdfRequests = 0;
+  let attachmentPdfRequests = 0;
+  let emailPayload: Record<string, unknown> | null = null;
+  const onePagePdf = Buffer.from(
+    "JVBERi0xLjMKJeLjz9MKMSAwIG9iago8PAovUHJvZHVjZXIgKHB5cGRmKQo+PgplbmRvYmoKMiAwIG9iago8PAovVHlwZSAvUGFnZXMKL0NvdW50IDEKL0tpZHMgWyA0IDAgUiBdCj4+CmVuZG9iagozIDAgb2JqCjw8Ci9UeXBlIC9DYXRhbG9nCi9QYWdlcyAyIDAgUgo+PgplbmRvYmoKNCAwIG9iago8PAovVHlwZSAvUGFnZQovUmVzb3VyY2VzIDw8Cj4+Ci9NZWRpYUJveCBbIDAuMCAwLjAgNjEyIDc5MiBdCi9QYXJlbnQgMiAwIFIKPj4KZW5kb2JqCnhyZWYKMCA1CjAwMDAwMDAwMDAgNjU1MzUgZiAKMDAwMDAwMDAxNSAwMDAwMCBuIAowMDAwMDAwMDU0IDAwMDAwIG4gCjAwMDAwMDAxMTMgMDAwMDAgbiAKMDAwMDAwMDE2MiAwMDAwMCBuIAp0cmFpbGVyCjw8Ci9TaXplIDUKL1Jvb3QgMyAwIFIKL0luZm8gMSAwIFIKPj4Kc3RhcnR4cmVmCjI1NgolJUVPRgo=",
+    "base64",
+  );
+
+  await page.route(new RegExp(`/api/v1/production-packages/term-sheets/${profileId}$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        current: recordedTerms,
+        history: [recordedTerms],
+        defaults: {},
+        defaults_source: {},
+        lenders: [],
+        can_edit: true,
+        facility_types: ["Term advance"],
+        funding_party_kinds: ["Lender"],
+      }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/production-packages/term-sheets/${profileId}/client\\.pdf\\?.*$`), async (route) => {
+    const requestUrl = new URL(route.request().url());
+    expect(requestUrl.searchParams.get("expected_version")).toBe("3");
+    const disposition = requestUrl.searchParams.get("disposition");
+    expect(["inline", "attachment"]).toContain(disposition);
+    if (disposition === "inline") inlinePdfRequests += 1;
+    if (disposition === "attachment") attachmentPdfRequests += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/pdf",
+      headers: {
+        "Access-Control-Expose-Headers": "Content-Disposition",
+        "Content-Disposition": `${disposition}; filename=unie-logics-loan-terms-v3.pdf`,
+      },
+      body: onePagePdf,
+    });
+  });
+  await page.route(new RegExp(`/api/v1/production-packages/term-sheets/${profileId}/client/email$`), async (route) => {
+    emailPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ sent: true, filename: "unie-logics-loan-terms-v3.pdf", message_id: "test-message" }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/application-profiles/${profileId}/merchant-offer$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        available: true,
+        reason: null,
+        history_count: 1,
+        room_url: "https://secure.example.test/room",
+        partners: [],
+        offer: {
+          id: "25000000-0000-0000-0000-000000000001",
+          status: "extracted",
+          terms: { provider_name: "Watertown Mitsubishi Processing", current_monthly_fees: 9_000, proposed_monthly_fees: 5_076 },
+          desk_terms: {},
+          terms_version: 1,
+          estimated_monthly_savings: 3_924,
+          estimated_annual_savings: 47_088,
+          savings_basis: "fees_diff",
+          savings_warning: null,
+          extraction_confidence: "high",
+          extraction_error: null,
+          lender_id: null,
+          lender_name: null,
+          source_file_id: "25000000-0000-0000-0000-000000000002",
+          source_file_name: "Watertown Mitsubishi Processing & Savings Analysis.pdf",
+          source_file_url: "https://files.example.test/processing-source.pdf",
+          sent_at: null,
+          sent_by_name: null,
+          client_response: null,
+          client_response_at: null,
+          client_response_reason: null,
+          client_response_name: null,
+          client_response_ip: null,
+          partner_email_status: null,
+          partner_email_error: null,
+          partner_email_at: null,
+          pro_forma: null,
+          created_at: "2026-09-15T20:00:00Z",
+        },
+      }),
+    });
+  });
+
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Underwriting" }).click();
+
+  const loanActions = page.getByLabel("Loan terms document actions");
+  await expect(loanActions.getByRole("button", { name: "Edit loan terms" })).toBeVisible();
+  await expect(loanActions.getByRole("button", { name: "Preview loan terms PDF" })).toBeVisible();
+  await expect(loanActions.getByRole("button", { name: "Download loan terms PDF" })).toBeVisible();
+  await expect(loanActions.getByRole("button", { name: "Email loan terms" })).toBeVisible();
+  const processingSource = page.getByRole("link", { name: "Open source processing PDF" });
+  await expect(processingSource).toHaveAttribute("href", "https://files.example.test/processing-source.pdf");
+
+  await loanActions.getByRole("button", { name: "Preview loan terms PDF" }).click();
+  const preview = page.getByRole("dialog", { name: "Loan terms · version 3" });
+  await expect(preview).toBeVisible();
+  await expect(preview.getByTitle("Loan terms PDF version 3")).toHaveAttribute("src", /^blob:/);
+  await expect(page.getByRole("tab", { name: "Underwriting" })).toHaveAttribute("aria-selected", "true");
+  await expect(page.getByRole("tab", { name: "Production Package" })).toHaveAttribute("aria-selected", "false");
+  await expect.poll(() => inlinePdfRequests).toBe(1);
+
+  await preview.getByRole("button", { name: "Close" }).click();
+  const downloadStarted = page.waitForEvent("download");
+  await loanActions.getByRole("button", { name: "Download loan terms PDF" }).click();
+  const download = await downloadStarted;
+  expect(download.suggestedFilename()).toBe("unie-logics-loan-terms-v3.pdf");
+  await expect.poll(() => attachmentPdfRequests).toBe(1);
+
+  await loanActions.getByRole("button", { name: "Email loan terms" }).click();
+  const emailDrawer = page.getByRole("dialog", { name: "Email loan terms" });
+  await expect(emailDrawer).toBeVisible();
+  await emailDrawer.getByLabel("Loan terms email recipients").fill("client@example.com");
+  await emailDrawer.getByRole("button", { name: "Send PDF" }).click();
+  await expect(page.getByText("unie-logics-loan-terms-v3.pdf was emailed successfully.")).toBeVisible();
+  expect(emailPayload).toMatchObject({
+    expected_version: 3,
+    to_emails: ["client@example.com"],
+  });
+  expect(typeof (emailPayload as unknown as { delivery_key: string }).delivery_key).toBe("string");
+});
+
 test("AI review puts its compact overview first and opens the exact missing requirement", async ({ page }) => {
   const { intakeId } = await mockAiIntakeBankingWorkspace(page, {
     probability_status: "Promising but needs one clarification",

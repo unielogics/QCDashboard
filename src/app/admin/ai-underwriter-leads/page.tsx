@@ -35,6 +35,7 @@ import { TypingDots } from "@/components/design-system/TypingDots";
 import { FileTeamStrip } from "@/components/file/FileTeamStrip";
 import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
+import { DealerTermSheetDocumentActions } from "@/components/admin/DealerTermSheetDocumentActions";
 import { api, ApiError } from "@/lib/api";
 import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
@@ -119,6 +120,7 @@ type LeadRow = {
   created_at: string;
   updated_at: string;
   last_message_at?: string | null;
+  client_contact_suppressed?: boolean;
   delete_requested_at?: string | null;
   unseen_activity_count?: number;
   delete_requested_by?: string | null;
@@ -2102,10 +2104,21 @@ function LeadDetailPanel({
                                 : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
                             </span>
                           </div>
-                          <div style={{ justifyItems: "end" }}>
-                            <Btn variant={termSheet?.current ? undefined : "pri"} onClick={openTermSheet}>
-                              {termSheet?.current ? "Open the Production Package" : "Record loan terms"}
-                            </Btn>
+                          <div className="underwriting-term-sheet-actions">
+                            {termSheet?.current && underwriting?.profile_id ? (
+                              <DealerTermSheetDocumentActions
+                                profileId={underwriting.profile_id}
+                                terms={termSheet.current}
+                                defaultRecipient={detail.intake.email}
+                                contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
+                                onEdit={openTermSheet}
+                              />
+                            ) : (
+                              <Btn variant="pri" size="sm" onClick={openTermSheet}>
+                                <Icon name="pencil" size={14} />
+                                Record terms
+                              </Btn>
+                            )}
                           </div>
                         </div>
                       ) : null}

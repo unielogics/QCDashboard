@@ -13,7 +13,7 @@
 // sit below this strip.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Btn, CellChip, cx, Field, Input, Row, Select, Textarea, WarnLine } from "@/components/ds";
+import { Btn, CellChip, cx, Field, IconBtn, Input, Row, Select, Textarea, WarnLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage } from "@/lib/documentUpload";
@@ -285,6 +285,7 @@ export function MerchantOfferStrip({
       <button
         type="button"
         className={cx("intake-evidence-dropzone", dragging && "dragging")}
+        aria-label={uploading ? uploadStatus || "Uploading processing terms PDF" : offer ? "Choose a newer processing terms PDF" : "Choose the processing partner's terms PDF"}
         disabled={uploading}
         onClick={() => fileInputRef.current?.click()}
         onDragEnter={(event) => { event.preventDefault(); if (!uploading) setDragging(true); }}
@@ -295,9 +296,11 @@ export function MerchantOfferStrip({
         <span className="intake-evidence-dropzone-icon"><Icon name="upload" size={21} /></span>
         <span className="intake-evidence-dropzone-copy">
           <b>{uploading ? uploadStatus || "Uploading…" : offer ? "Drop a newer terms PDF to replace this offer" : "Drop the processing partner's terms PDF here"}</b>
-          <small>{uploading ? "Keep this file open while the upload finishes." : "The system reads it, works out the estimated annual saving, and you send it to the client from here. The PDF never reaches the client's file list or a lender package."}</small>
+          <small role={uploading ? "status" : undefined} aria-live={uploading ? "polite" : undefined}>{uploading ? "Keep this file open while the upload finishes." : "The system reads it, works out the estimated annual saving, and you send it to the client from here. The PDF never reaches the client's file list or a lender package."}</small>
         </span>
-        <span className="intake-evidence-browse-label">{uploading ? "Uploading" : "Browse computer"}</span>
+        <span className="intake-evidence-browse-label intake-evidence-browse-icon" title={uploading ? "Uploading PDF" : "Choose PDF"} aria-hidden="true">
+          <Icon name={uploading ? "refresh" : "plus"} size={16} />
+        </span>
       </button>
     </>
   );
@@ -454,24 +457,24 @@ export function MerchantOfferStrip({
 
           {offer.status !== "sent" ? (
             <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {!editing && offer.status !== "unreadable" ? <Btn onClick={() => setEditing(true)} disabled={busy !== ""}>Correct figures</Btn> : null}
-              <Btn variant="pri" onClick={send} disabled={busy !== "" || editing || offer.estimated_annual_savings === null}>{busy === "send" ? "Sending…" : "Send to client"}</Btn>
+              {!editing && offer.status !== "unreadable" ? <IconBtn onClick={() => setEditing(true)} disabled={busy !== ""} aria-label="Correct processing figures" title="Correct figures"><Icon name="pencil" size={15} /></IconBtn> : null}
+              <Btn variant="pri" onClick={send} disabled={busy !== "" || editing || offer.estimated_annual_savings === null}><Icon name="send" size={14} />{busy === "send" ? "Sending…" : "Send"}</Btn>
               {offer.estimated_annual_savings !== null && offer.estimated_annual_savings <= 0 ? (
                 <label className="sub" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={sendAnyway} onChange={(event) => setSendAnyway(event.target.checked)} /> send anyway (no saving)</label>
               ) : null}
               {!offer.lender_id ? (
                 <label className="sub" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={sendNoPartner} onChange={(event) => setSendNoPartner(event.target.checked)} /> send without a partner</label>
               ) : null}
-              {offer.source_file_id ? <Btn onClick={reread} disabled={busy !== ""}>{busy === "reread" ? "Reading…" : "Re-read PDF"}</Btn> : null}
-              {offer.source_file_url ? <a className="btn" href={offer.source_file_url} target="_blank" rel="noreferrer">Open PDF</a> : null}
-              <Btn onClick={withdraw} disabled={busy !== ""}>Withdraw</Btn>
+              {offer.source_file_id ? <IconBtn onClick={reread} disabled={busy !== ""} aria-label="Re-read source processing PDF" title={busy === "reread" ? "Reading PDF" : "Re-read source PDF"}><Icon name="refresh" size={15} /></IconBtn> : null}
+              {offer.source_file_url ? <a className="btn sm iconbtn" href={offer.source_file_url} target="_blank" rel="noreferrer" aria-label="Open source processing PDF" title="Open source processing PDF"><Icon name="eye" size={15} /></a> : null}
+              <IconBtn className="danger" onClick={withdraw} disabled={busy !== ""} aria-label="Withdraw processing offer" title="Withdraw offer"><Icon name="trash" size={15} /></IconBtn>
             </div>
           ) : (
             <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-              {panel?.room_url ? <Btn onClick={() => void copyRoomLink()}>{copied ? "Link copied" : "Copy room link"}</Btn> : null}
-              <Btn onClick={notifyClient} disabled={busy !== ""}>{busy === "notify" ? "Emailing…" : "Email the room link"}</Btn>
-              {offer.source_file_url ? <a className="btn" href={offer.source_file_url} target="_blank" rel="noreferrer">Open PDF</a> : null}
-              <Btn onClick={withdraw} disabled={busy !== ""}>Withdraw</Btn>
+              {panel?.room_url ? <IconBtn onClick={() => void copyRoomLink()} aria-label={copied ? "Room link copied" : "Copy room link"} title={copied ? "Link copied" : "Copy room link"}><Icon name={copied ? "check" : "copy"} size={15} /></IconBtn> : null}
+              <IconBtn onClick={notifyClient} disabled={busy !== ""} aria-label="Email the room link" title={busy === "notify" ? "Emailing room link" : "Email room link"}><Icon name="mail" size={15} /></IconBtn>
+              {offer.source_file_url ? <a className="btn sm iconbtn" href={offer.source_file_url} target="_blank" rel="noreferrer" aria-label="Open source processing PDF" title="Open source processing PDF"><Icon name="eye" size={15} /></a> : null}
+              <IconBtn className="danger" onClick={withdraw} disabled={busy !== ""} aria-label="Withdraw processing offer" title="Withdraw offer"><Icon name="trash" size={15} /></IconBtn>
             </div>
           )}
         </>
@@ -480,15 +483,15 @@ export function MerchantOfferStrip({
       {offer?.client_response ? (
         <div className="row" style={{ flexWrap: "wrap", gap: 8, alignItems: "center" }}>
           {offer.client_response_reason ? <span className="sub">Reason: {offer.client_response_reason}</span> : null}
-          {offer.partner_email_status !== "sent" ? <Btn onClick={resend} disabled={busy !== ""}>{busy === "resend" ? "Sending…" : "Resend partner email"}</Btn> : null}
+          {offer.partner_email_status !== "sent" ? <IconBtn onClick={resend} disabled={busy !== ""} aria-label="Resend processing partner email" title={busy === "resend" ? "Sending partner email" : "Resend partner email"}><Icon name="send" size={15} /></IconBtn> : null}
           {offer.partner_email_status !== "sent" && !offer.lender_id ? (
             <Select value="" disabled={busy !== ""} onChange={(event) => void choosePartner(event.target.value)} aria-label="Pick the processing partner">
               <option value="">Pick a partner first…</option>
               {panel?.partners.map((partner) => <option key={partner.id} value={partner.id}>{partner.name}</option>)}
             </Select>
           ) : null}
-          {offer.source_file_url ? <a className="btn" href={offer.source_file_url} target="_blank" rel="noreferrer">Open PDF</a> : null}
-          <Btn onClick={withdraw} disabled={busy !== ""}>Withdraw</Btn>
+          {offer.source_file_url ? <a className="btn sm iconbtn" href={offer.source_file_url} target="_blank" rel="noreferrer" aria-label="Open source processing PDF" title="Open source processing PDF"><Icon name="eye" size={15} /></a> : null}
+          <IconBtn className="danger" onClick={withdraw} disabled={busy !== ""} aria-label="Withdraw processing offer" title="Withdraw offer"><Icon name="trash" size={15} /></IconBtn>
         </div>
       ) : null}
     </div>
