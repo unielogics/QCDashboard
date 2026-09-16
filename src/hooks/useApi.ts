@@ -136,6 +136,8 @@ import type {
   BookingTestSendResult,
   UserBookingSettings,
   UserRow,
+  DealerProspectUserAccess,
+  DealerProspectUserAccessList,
   WorkspaceState,
   WorkspaceData,
   Deal,
@@ -1369,6 +1371,42 @@ export function useUsers() {
   });
 }
 
+export function useDealerProspectUserAccess(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["dealer-prospect-user-access", devUser],
+    queryFn: () => apiCall<DealerProspectUserAccessList>("/dealer-os/admin/prospect-access"),
+    enabled,
+    staleTime: 15_000,
+    retry: aiQueryRetry,
+  });
+}
+
+export function useUpdateDealerProspectUserAccess() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ userId, enabled, reason }: { userId: string; enabled: boolean; reason?: string }) =>
+      apiCall<DealerProspectUserAccess>(`/dealer-os/admin/prospect-access/${encodeURIComponent(userId)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled, reason: reason?.trim() || null }),
+      }),
+    onSuccess: (updated) => {
+      qc.setQueryData<DealerProspectUserAccessList>(["dealer-prospect-user-access", devUser], (current) => current ? {
+        ...current,
+        items: current.items.some((item) => item.user_id === updated.user_id)
+          ? current.items.map((item) => item.user_id === updated.user_id ? updated : item)
+          : [...current.items, updated],
+      } : current);
+      void qc.invalidateQueries({ queryKey: ["dealer-prospect-user-access"] });
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["auth-me"] });
+    },
+  });
+}
+
 export function useSignedReferralCompanies() {
   const apiCall = useAuthedApi();
   return useQuery({
@@ -1409,7 +1447,10 @@ export function useUpdateUserRole() {
         method: "PATCH",
         body: JSON.stringify(patch),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["dealer-prospect-user-access"] });
+    },
   });
 }
 
@@ -1420,7 +1461,10 @@ export function useDeleteUser() {
     // invalidates: ["users"]
     mutationFn: ({ userId }: { userId: string }) =>
       apiCall<void>(`/users/${userId}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["dealer-prospect-user-access"] });
+    },
   });
 }
 
@@ -1433,7 +1477,10 @@ function useTeamAccessAction(path: (userId: string) => string, method: "POST" | 
         method,
         body: body ? JSON.stringify(body) : undefined,
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["users"] }),
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["users"] });
+      void qc.invalidateQueries({ queryKey: ["dealer-prospect-user-access"] });
+    },
   });
 }
 

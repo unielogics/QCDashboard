@@ -3426,6 +3426,20 @@ a.pick { color: inherit; text-decoration: none; }
 .client-access-review-row { min-width: 0; display: grid; grid-template-columns: 128px minmax(0, 1fr); gap: 14px; align-items: start; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
 .client-access-review-row:last-child { border-bottom: 0; padding-bottom: 0; }
 .client-access-review-row b { min-width: 0; overflow-wrap: anywhere; }
+.team-outreach-package { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 18px; align-items: center; margin-top: 14px; padding: 15px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken2); }
+.team-outreach-package.on { border-color: color-mix(in srgb, var(--accent) 48%, var(--line)); background: var(--accent-100); }
+.team-outreach-copy { min-width: 0; display: grid; gap: 6px; }
+.team-outreach-title { gap: 7px; }
+.team-outreach-path { color: var(--ink2); font-size: 12px; }
+.team-outreach-switch { min-width: 116px; display: grid; justify-items: center; gap: 7px; padding: 10px 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); color: var(--ink2); font: inherit; cursor: pointer; }
+.team-outreach-switch:hover:not(:disabled) { border-color: var(--accent-400); }
+.team-outreach-switch:focus-visible { outline: 3px solid color-mix(in srgb, var(--accent) 28%, transparent); outline-offset: 2px; }
+.team-outreach-switch:disabled { cursor: not-allowed; opacity: .56; }
+.team-outreach-switch.on { border-color: var(--accent); color: var(--accent); }
+.team-outreach-switch-track { position: relative; width: 42px; height: 24px; border-radius: 999px; background: var(--line2); transition: background .15s ease; }
+.team-outreach-switch-track i { position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgb(15 23 42 / 22%); transition: transform .15s ease; }
+.team-outreach-switch.on .team-outreach-switch-track { background: var(--accent); }
+.team-outreach-switch.on .team-outreach-switch-track i { transform: translateX(18px); }
 @media (max-width: 920px) {
   .client-access-filters { width: 100%; }
   .client-access-filters .field:first-child { width: 100%; }
@@ -3440,6 +3454,8 @@ a.pick { color: inherit; text-decoration: none; }
   .client-access-summary > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .client-access-summary > div:last-child { border-bottom: 0; }
   .client-access-review-row { grid-template-columns: 1fr; gap: 3px; }
+  .team-outreach-package { grid-template-columns: 1fr; align-items: stretch; }
+  .team-outreach-switch { width: 100%; grid-template-columns: auto auto; justify-content: center; }
 }
 
 /* Calendar V2: appointment-first calendar and CRM workspace. */

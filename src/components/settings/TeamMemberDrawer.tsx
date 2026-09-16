@@ -1,16 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Field, Input, Panel, Row, Select } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import {
   useAuthedApi,
   useDeleteUser,
+  useDealerProspectUserAccess,
   useResendTeamInvite,
   useRevokeTeamSessions,
   useSendTeamPasswordReset,
   useSetTeamAccountStatus,
+  useUpdateDealerProspectUserAccess,
   useUpdateUserRole,
 } from "@/hooks/useApi";
 import { CONSOLE_LABELS, GRANTABLE_CONSOLES, INHERITED_CONSOLES } from "@/lib/consoles";
@@ -24,6 +26,23 @@ import {
 import type { OperatorAccountAccessType, ReferralCompany, UserRow } from "@/lib/types";
 
 const CONSOLES: OperatorAccountAccessType[] = ["funding", "field_desk", "audit"];
+const OUTREACH_ELIGIBLE_ROLES = new Set<Role>([
+  Role.SUPER_ADMIN,
+  Role.LOAN_EXEC,
+  Role.FIELD_REP,
+  Role.BROKER,
+]);
+
+function editableConsoleAccess(role: Role, values: OperatorAccountAccessType[]): OperatorAccountAccessType[] {
+  const inherited = INHERITED_CONSOLES[role] ?? [];
+  const grantable = GRANTABLE_CONSOLES[role] ?? [];
+  const directGrants = values.filter((value) => grantable.includes(value));
+  // /users returns effective consoles. A Broker with Field Desk therefore
+  // also receives implied Audit, but Audit is not a direct Broker grant and
+  // the PATCH contract correctly rejects it. Persist only inherited consoles
+  // plus grants this role may actually hold.
+  return [...new Set([...inherited, ...directGrants])];
+}
 
 function when(value?: string | null): string {
   if (!value) return "Never";
@@ -46,6 +65,8 @@ export function TeamMemberDrawer({
 }) {
   const apiCall = useAuthedApi();
   const update = useUpdateUserRole();
+  const outreachAccess = useDealerProspectUserAccess(Boolean(user));
+  const updateOutreachAccess = useUpdateDealerProspectUserAccess();
   const remove = useDeleteUser();
   const resend = useResendTeamInvite();
   const reset = useSendTeamPasswordReset();
@@ -61,25 +82,38 @@ export function TeamMemberDrawer({
   const [error, setError] = useState("");
   const [confirmRemove, setConfirmRemove] = useState(false);
   const [certificateBusy, setCertificateBusy] = useState(false);
+  const [outreachEnabled, setOutreachEnabled] = useState(false);
+  const [outreachDirty, setOutreachDirty] = useState(false);
+  const initializedUserId = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!user) return;
+    if (!user) {
+      initializedUserId.current = null;
+      return;
+    }
+    // React Query replaces the row object after each refetch. Preserve the
+    // in-progress outreach draft and any partial-save warning for the same
+    // person; only initialize again when the drawer changes users.
+    if (initializedUserId.current === user.id) return;
+    initializedUserId.current = user.id;
     setName(user.name);
     setPhone(user.phone || "");
     setRole(user.role);
     setCompanyId(user.referral_partner_company_id || "");
-    setAccountTypes(user.account_types || []);
+    setAccountTypes(editableConsoleAccess(user.role, user.account_types || []));
     setReason("");
     setNotice("");
     setError("");
     setConfirmRemove(false);
     setCertificateBusy(false);
+    setOutreachEnabled(false);
+    setOutreachDirty(false);
   }, [user]);
 
   const profile = roleAccessProfile(role);
   const isSelf = Boolean(user && currentUserId === user.id);
   const busy = update.isPending || remove.isPending || resend.isPending || reset.isPending
-    || revokeSessions.isPending || setStatus.isPending;
+    || revokeSessions.isPending || setStatus.isPending || updateOutreachAccess.isPending;
   const partnerCompanyRequired = roleRequiresPartnerCompany(role);
   const houseProfileRequired = roleUsesHouseProfile(role);
   const hasConsoleAccess = Boolean((INHERITED_CONSOLES[role] ?? []).length || (GRANTABLE_CONSOLES[role] ?? []).length);
@@ -89,6 +123,33 @@ export function TeamMemberDrawer({
     () => companies.filter((company) => partnerCompanyRequired ? company.kind !== "house" : houseProfileRequired ? company.kind === "house" : true),
     [companies, houseProfileRequired, partnerCompanyRequired],
   );
+  const outreachRow = useMemo(
+    () => outreachAccess.data?.items.find((item) => item.user_id === user?.id) ?? null,
+    [outreachAccess.data?.items, user?.id],
+  );
+  // The access list intentionally excludes unsupported roles, but /users keeps
+  // the persisted flag so a stale assignment can still be seen and revoked.
+  const storedOutreachEnabled = outreachRow?.enabled ?? Boolean(user?.dealer_prospect_pipeline_enabled);
+  const selectedOutreachEnabled = outreachDirty ? outreachEnabled : storedOutreachEnabled;
+  const pendingFieldDeskAccess = (INHERITED_CONSOLES[role] ?? []).includes("field_desk")
+    || accountTypes.includes("field_desk");
+  const pendingOutreachEligible = Boolean(
+    user
+    && user.account_status !== "suspended"
+    && pendingFieldDeskAccess
+    && OUTREACH_ELIGIBLE_ROLES.has(role),
+  );
+  const outreachStatus = outreachAccess.isLoading
+    ? { label: "Checking access", tone: "mut" as const }
+    : outreachAccess.isError
+      ? { label: "Unavailable", tone: "bad" as const }
+      : selectedOutreachEnabled && !pendingOutreachEligible
+        ? { label: "Assigned · not eligible", tone: "warn" as const }
+        : selectedOutreachEnabled && !outreachAccess.data?.global_enabled
+          ? { label: "Ready · master off", tone: "warn" as const }
+          : selectedOutreachEnabled
+            ? { label: "Enabled", tone: "ok" as const }
+            : { label: "Off", tone: "mut" as const };
 
   if (!user) return null;
 
@@ -130,6 +191,7 @@ export function TeamMemberDrawer({
       return;
     }
     setError("");
+    let memberAccessSaved = false;
     try {
       await update.mutateAsync({
         userId: user.id,
@@ -144,11 +206,24 @@ export function TeamMemberDrawer({
           : houseProfileRequired
             ? {}
             : { referral_partner_company_id: null },
-        account_types: accountTypes,
+        account_types: editableConsoleAccess(role, accountTypes),
       });
-      setNotice("Member access updated.");
+      memberAccessSaved = true;
+      if (outreachDirty) {
+        await updateOutreachAccess.mutateAsync({
+          userId: user.id,
+          enabled: selectedOutreachEnabled,
+          reason: reason.trim() || "Dealer outreach package changed from Team member access.",
+        });
+        setOutreachEnabled(selectedOutreachEnabled);
+        setOutreachDirty(false);
+      }
+      setNotice(outreachDirty ? "Member access and dealer outreach package updated." : "Member access updated.");
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Member access could not be updated.");
+      const message = reason instanceof Error ? reason.message : "Member access could not be updated.";
+      setError(memberAccessSaved
+        ? `The member profile was saved, but the dealer outreach package could not be updated. ${message}`
+        : message);
     }
   };
 
@@ -231,6 +306,38 @@ export function TeamMemberDrawer({
             >{CONSOLE_LABELS[console]}{inherited ? " · included" : ""}</button>;
           })}
         </div> : <Callout tone="mut">Role portal only · this role does not sign in to Funding, Field Desk, or Audit.</Callout>}
+        <div className={`team-outreach-package${selectedOutreachEnabled ? " on" : ""}`}>
+          <div className="team-outreach-copy">
+            <div className="row team-outreach-title">
+              <b>Dealer outreach package</b>
+              <CellChip tone={outreachStatus.tone}>{outreachStatus.label}</CellChip>
+              {outreachAccess.data ? <CellChip tone={outreachAccess.data.global_enabled ? "acc" : "warn"}>{outreachAccess.data.global_enabled ? "System live" : "System off"}</CellChip> : null}
+            </div>
+            <span className="sub">Dealer prospect table and Kanban, AI-assisted email drafts, approved PDF collateral, internal notes, follow-ups, and AI Intake conversion.</span>
+            <span className="team-outreach-path"><b>Where they open it:</b> Field Desk → Contacts → Pipeline</span>
+            {!pendingOutreachEligible && !selectedOutreachEnabled ? <span className="sub">This package requires an active Field Representative, Loan Executive, Super Admin, or a Broker with Field Desk console access.</span> : null}
+            {selectedOutreachEnabled && !pendingOutreachEligible ? <span className="sub">The assignment is stored but not active. Turn it off, or restore an eligible role and Field Desk access.</span> : null}
+            {outreachAccess.isError ? <span className="sub">The outreach access service could not be loaded. Other member settings can still be saved.</span> : null}
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={selectedOutreachEnabled}
+            aria-label={`Dealer outreach package for ${user.name}`}
+            className={`team-outreach-switch${selectedOutreachEnabled ? " on" : ""}`}
+            disabled={busy || outreachAccess.isLoading || outreachAccess.isError || (!pendingOutreachEligible && !selectedOutreachEnabled)}
+            title={!pendingOutreachEligible && !selectedOutreachEnabled ? "Give this user an eligible role and Field Desk access first" : `${selectedOutreachEnabled ? "Disable" : "Enable"} the dealer outreach package`}
+            onClick={() => {
+              setOutreachEnabled(!selectedOutreachEnabled);
+              setOutreachDirty(true);
+              setNotice("");
+              setError("");
+            }}
+          >
+            <span className="team-outreach-switch-track" aria-hidden="true"><i /></span>
+            <strong>{selectedOutreachEnabled ? "Enabled" : "Off"}</strong>
+          </button>
+        </div>
       </Panel>
 
       <Panel title="Account actions" sub="Passwords remain private. Reset uses the account owner’s Clerk verification code.">

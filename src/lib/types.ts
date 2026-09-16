@@ -1547,6 +1547,27 @@ export interface UserRow {
   last_invited_at?: string | null;
   last_invite_status?: string | null;
   last_invite_error?: string | null;
+  /** Persisted assignment; effective outreach access also requires the live master switch and eligibility. */
+  dealer_prospect_pipeline_enabled?: boolean;
+}
+
+/** Per-user access to the Field Desk dealer prospect/outreach package. */
+export interface DealerProspectUserAccess {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  account_status: string;
+  field_desk_access: boolean;
+  eligible: boolean;
+  enabled: boolean;
+  effective_enabled: boolean;
+  updated_at?: string | null;
+}
+
+export interface DealerProspectUserAccessList {
+  global_enabled: boolean;
+  items: DealerProspectUserAccess[];
 }
 
 export interface TeamAccessActionResult {
