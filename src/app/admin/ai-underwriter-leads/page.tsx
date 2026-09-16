@@ -54,6 +54,28 @@ function apiErrorMessage(error: unknown, fallback: string): string {
   }
   return error instanceof Error ? error.message : fallback;
 }
+
+const PRODUCTION_REPAYMENT_LABELS: Record<string, string> = {
+  fully_amortizing: "Principal + interest",
+  interest_only: "Interest only",
+  interest_only_then_amortizing: "IO, then principal + interest",
+  balloon: "Amortizing + balloon",
+  revolving_interest_only: "Revolving interest only",
+  fixed_payment: "Fixed lender payment",
+  custom: "Custom schedule",
+};
+const PRODUCTION_CADENCE_LABELS: Record<string, string> = {
+  daily: "Daily",
+  weekly: "Weekly",
+  biweekly: "Every two weeks",
+  monthly: "Monthly",
+  custom: "Custom cadence",
+};
+
+function productionTermLabel(value: unknown, labels: Record<string, string>, fallback: string): string {
+  const key = typeof value === "string" ? value : "";
+  return labels[key] ?? (key ? key.replace(/_/g, " ") : fallback);
+}
 import { Role } from "@/lib/enums.generated";
 import { useCurrentUser, useBookingLink, useDriveFiles, useUnifiedOperatorFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
@@ -1300,11 +1322,15 @@ function LeadDetailPanel({
   const productionTermSelection = useMemo<OfferSelection | null>(() => {
     const current = termSheet?.current;
     if (!current || current.status !== "current") return null;
+    const repayment = current.repayment_structure ?? current.extra?.repayment_structure;
+    const cadence = current.payment_frequency ?? current.extra?.payment_frequency;
+    const repaymentLabel = productionTermLabel(repayment, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded");
+    const cadenceLabel = productionTermLabel(cadence, PRODUCTION_CADENCE_LABELS, "Monthly");
     return {
       key: `production_term_sheet:${current.id}:${current.version}`,
       ref: { kind: "production_term_sheet", term_sheet_id: current.id, expected_version: current.version },
       label: "Loan terms",
-      description: `${formatMoney(current.approved_amount)} at ${current.rate_pct}% for ${current.term_months} months · version ${current.version}`,
+      description: `${current.facility_type} · ${formatMoney(current.approved_amount)} · ${repaymentLabel} · ${cadenceLabel} · version ${current.version}`,
       fileName: `loan-terms-v${current.version}.pdf`,
     };
   }, [termSheet]);
@@ -2184,12 +2210,12 @@ function LeadDetailPanel({
                             <span className="lbl">Loan terms</span>
                             <b>
                               {termSheet?.current
-                                ? `Term sheet v${termSheet.current.version} · ${formatMoney(termSheet.current.approved_amount)} at ${termSheet.current.rate_pct}% for ${termSheet.current.term_months} mo · ${termSheet.current.entered_by_name || "Recorded"} ${formatDateTime(termSheet.current.entered_at)}`
+                                ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}`
                                 : "No loan terms recorded"}
                             </b>
                             <span className="sub">
                               {termSheet?.current
-                                ? `${termSheet.current.facility_type} · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · ${termSheet.history.length} version${termSheet.history.length === 1 ? "" : "s"}. The final package is drafted from the current sheet.`
+                                ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · recorded ${formatDateTime(termSheet.current.entered_at)}.`
                                 : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
                             </span>
                           </div>

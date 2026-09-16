@@ -237,6 +237,108 @@ export type DeliveryEntry = {
 
 export type FundingPartyKind = "Sponsor" | "Qualified Commercial LLC" | "Lender";
 
+/**
+ * Structured facility terms are promoted top-level by the API and mirrored in
+ * `ProductionTermSheet.extra` for forward-compatible metadata. The legacy
+ * `facility_type`, `rate_pct`, `term_months` and `monthly_debt_service` fields
+ * remain the printable compatibility snapshot.
+ */
+export type FacilityKind = "term_loan" | "revolving_loc" | "heloc" | "hybrid" | "other";
+export type RepaymentStructure =
+  | "fully_amortizing"
+  | "interest_only"
+  | "interest_only_then_amortizing"
+  | "balloon"
+  | "revolving_interest_only"
+  | "fixed_payment"
+  | "custom";
+export type PaymentFrequency = "daily" | "weekly" | "biweekly" | "monthly" | "custom";
+export type RateStructure = "fixed" | "variable" | "custom";
+export type DebtServiceTreatment = "additive" | "refinance";
+export type FunderType =
+  | "bank"
+  | "credit_union"
+  | "private_credit"
+  | "nonbank_lender"
+  | "balance_sheet"
+  | "family_office"
+  | "sponsor"
+  | "other";
+export type ProgramCoverageBasis =
+  | "monthly_equivalent"
+  | "post_io_payment"
+  | "full_limit_interest"
+  | "initial_draw_interest"
+  | "underwriting_budget"
+  | "manual";
+
+export type TermSheetPaymentSummary = {
+  periodic_payment: number | null;
+  monthly_equivalent_payment: number | null;
+  post_io_payment: number | null;
+  post_io_monthly_equivalent: number | null;
+  balloon_amount: number | null;
+  payment_basis_amount: number | null;
+  payments_per_year: number | null;
+  lines: string[];
+  assumptions: string[];
+};
+
+export type TermSheetStructuredFields = {
+  structure_version?: number;
+  facility_kind?: FacilityKind;
+  facility_catalog_key?: string | null;
+  funder_type?: FunderType | null;
+  repayment_structure?: RepaymentStructure;
+  payment_frequency?: PaymentFrequency;
+  payments_per_year?: number | null;
+  custom_payment_frequency?: string | null;
+  rate_structure?: RateStructure;
+  apr_pct?: number | null;
+  rate_index?: string | null;
+  rate_index_rate_pct?: number | null;
+  rate_margin_pct?: number | null;
+  rate_floor_pct?: number | null;
+  rate_cap_pct?: number | null;
+  rate_as_of?: string | null;
+  custom_rate_description?: string | null;
+  initial_draw_amount?: number | null;
+  payment_basis_amount?: number | null;
+  draw_period_months?: number | null;
+  interest_only_months?: number | null;
+  amortization_months?: number | null;
+  balloon_amount?: number | null;
+  periodic_payment?: number | null;
+  post_io_payment?: number | null;
+  post_io_monthly_equivalent?: number | null;
+  monthly_equivalent_payment?: number | null;
+  monthly_program_coverage_amount?: number | null;
+  monthly_program_coverage_basis?: ProgramCoverageBasis | null;
+  lender_payment_override?: boolean;
+  custom_payment_description?: string | null;
+  first_payment_date?: string | null;
+  expiration_days?: number | null;
+  expires_on?: string | null;
+  closing_estimate_days?: number | null;
+  payment_count?: number | null;
+  annual_debt_service?: number | null;
+  total_repayment?: number | null;
+  financing_cost?: number | null;
+  debt_service_treatment?: DebtServiceTreatment;
+  retained_annual_debt_service?: number | null;
+  dscr_before?: number | null;
+  dscr_after?: number | null;
+  dscr_status?: string | null;
+  dscr_explanation?: string | null;
+  dscr_source?: string | null;
+};
+
+export type TermSheetExtra = TermSheetStructuredFields & {
+  payment_summary?: TermSheetPaymentSummary | null;
+  /** Preserve server-authored metadata (for example DSCR snapshots). */
+  [key: string]: unknown;
+};
+
 export type TermSheetUseOfFunds = Partial<Record<UseOfFundsKey, number | null>> & { other_label?: string | null };
 
 export type TermSheetBody = {
@@ -257,8 +359,8 @@ export type TermSheetBody = {
   use_of_funds: TermSheetUseOfFunds | null;
   conditions: string | null;
   notes: string | null;
-  extra?: Record<string, unknown>;
-};
+  extra?: TermSheetExtra;
+} & TermSheetStructuredFields;
 
 export type TermSheet = {
   id: string; version: number; status: "current" | "superseded" | "withdrawn" | string;
@@ -267,9 +369,10 @@ export type TermSheet = {
   monthly_debt_service: number; debt_service_is_level_payment: boolean;
   expected_funding_date: string | null; activation_date: string | null; commencement_date: string | null; maturity_date: string | null;
   use_of_funds: TermSheetUseOfFunds | null; conditions: string | null; notes: string | null;
+  extra?: TermSheetExtra | null;
   entered_at: string; entered_by_name: string | null; superseded_at: string | null; withdrawn_at: string | null;
   consumed_by_package_id: string | null; level_payment: number | null;
-};
+} & TermSheetStructuredFields;
 
 export type Lender = { id: string; name: string };
 
@@ -282,6 +385,11 @@ export type TermSheetState = {
   can_edit: boolean;
   facility_types: string[];
   funding_party_kinds: string[];
+  facility_kinds?: FacilityKind[];
+  repayment_structures?: RepaymentStructure[];
+  payment_frequencies?: PaymentFrequency[];
+  rate_structures?: RateStructure[];
+  funder_types?: FunderType[];
 };
 
 export type TermSheetResult = { state: TermSheetState; final: ProductionPackage | null };

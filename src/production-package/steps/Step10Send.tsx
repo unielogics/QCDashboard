@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { ManualSignatureBody, PackageClient } from "../client";
 import { dateLabel, errorDetail, errorMessage, money, openSignedUrl, pct, toNumber, whenLabel } from "../format";
 import { IconLock } from "../icons";
+import { PAYMENT_FREQUENCIES, REPAYMENT_STRUCTURES } from "../options";
 import { Callout, KV, PBtn, PChip, PPanel, SigOnFileChip, type StepCtx } from "../ui";
 import type { HistoryEvent, ProductionPackage, SendRequest, Signature, SignatureParty, SignaturesOnFile, StepKey } from "../types";
 
@@ -156,6 +157,16 @@ export function Step10Send({ ctx, client, onPackage, onPresentation }: { ctx: St
   const statusChip = <PChip tone={pkg.status === "executed" ? "ok" : pkg.status === "out_for_signature" ? "warn" : pkg.status === "void" ? "mut" : "acc"}>{pkg.status === "executed" ? "Fully executed" : pkg.status === "out_for_signature" ? (pkg.execution_pending ? "Signed · bundle pending" : "Out for signature") : pkg.status === "void" ? "Voided" : "Not sent"}</PChip>;
   const missingOnFile = (["qc", "sponsor", "rm"] as PlacedParty[]).filter((p) => sof[p] && !sof[p]?.present);
   const ts = pkg.term_sheet;
+  const termRepayment = ts?.repayment_structure ?? ts?.extra?.repayment_structure;
+  const termFrequency = ts?.payment_frequency ?? ts?.extra?.payment_frequency ?? "monthly";
+  const termRepaymentLabel = REPAYMENT_STRUCTURES.find((option) => option.value === termRepayment)?.label ?? String(termRepayment ?? "Payment structure not recorded").replace(/_/g, " ");
+  const termFrequencyLabel = PAYMENT_FREQUENCIES.find((option) => option.value === termFrequency)?.label ?? String(termFrequency).replace(/_/g, " ");
+  const termPeriodicPayment = ts?.periodic_payment ?? ts?.extra?.periodic_payment ?? ts?.monthly_debt_service;
+  const termMonthlyEquivalent = ts?.monthly_equivalent_payment ?? ts?.extra?.monthly_equivalent_payment ?? ts?.monthly_debt_service;
+  const termPostIoPayment = ts?.post_io_payment ?? ts?.extra?.post_io_payment;
+  const termPostIoMonthlyEquivalent = ts?.post_io_monthly_equivalent ?? ts?.extra?.post_io_monthly_equivalent;
+  const termInitialDraw = ts?.initial_draw_amount ?? ts?.extra?.initial_draw_amount;
+  const termBalloon = ts?.balloon_amount ?? ts?.extra?.balloon_amount;
   const draftReason = caps.can_draft_final ? null
     : pkg.final_package_id ? `A final already exists (${pkg.final_status === "out_for_signature" ? "out for signature" : pkg.final_status ?? "draft"}).`
       : !ts ? "Record the term sheet first — the final is drafted from it."
@@ -331,10 +342,17 @@ export function Step10Send({ ctx, client, onPackage, onPresentation }: { ctx: St
               <KV label="Term sheet" value={`v${ts.version} · ${ts.entered_by_name ?? "the desk"} · ${whenLabel(ts.entered_at)}`} />
               <KV label="Funding party" value={`${ts.funding_party_kind} · ${ts.funding_party_name}`} />
               <KV label="Facility" value={ts.facility_type} />
-              <KV label="Approved amount" value={money(ts.approved_amount)} />
+              <KV label={["revolving_loc", "heloc", "hybrid"].includes(ts.facility_kind ?? ts.extra?.facility_kind ?? "") ? "Credit limit" : "Approved amount"} value={money(ts.approved_amount)} />
+              {termInitialDraw != null ? <KV label="Initial draw" value={money(Number(termInitialDraw))} /> : null}
               <KV label="Minimum activation" value={money(ts.min_activation_amount)} />
               <KV label="Rate · term" value={`${pct(ts.rate_pct, 2)} · ${ts.term_months} months`} />
-              <KV label="Monthly debt service" value={`${money(ts.monthly_debt_service, 2)}${ts.debt_service_is_level_payment ? " · level" : ""}`} />
+              {(ts.apr_pct ?? ts.extra?.apr_pct) != null ? <KV label="Lender-disclosed APR" value={pct(Number(ts.apr_pct ?? ts.extra?.apr_pct), 2)} /> : null}
+              <KV label="Repayment" value={`${termRepaymentLabel} · ${termFrequencyLabel}`} />
+              <KV label={`${termFrequencyLabel} payment`} value={money(Number(termPeriodicPayment), 2)} />
+              <KV label="Monthly equivalent" value={money(Number(termMonthlyEquivalent), 2)} />
+              {Number(termPostIoPayment ?? 0) > 0 ? <KV label={`After interest-only · ${termFrequencyLabel.toLowerCase()}`} value={money(Number(termPostIoPayment), 2)} /> : null}
+              {Number(termPostIoMonthlyEquivalent ?? 0) > 0 ? <KV label="After interest-only · monthly equivalent" value={money(Number(termPostIoMonthlyEquivalent), 2)} /> : null}
+              {Number(termBalloon ?? 0) > 0 ? <KV label="Due at maturity" value={money(Number(termBalloon), 2)} /> : null}
               <KV label="Expected funding" value={dateLabel(ts.expected_funding_date)} />
               <KV label="Maturity" value={dateLabel(ts.maturity_date)} />
             </div>
