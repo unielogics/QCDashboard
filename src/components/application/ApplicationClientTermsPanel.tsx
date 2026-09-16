@@ -2,8 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Btn, Callout, CellChip, Field, Input, Row, Select, Textarea } from "@/components/ds";
-import { Drawer } from "@/components/ds/Drawer";
+import { Btn, Callout, CellChip, Field, IconBtn, Input, Row, Select, Textarea, cx } from "@/components/ds";
+import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { apiBase } from "@/lib/api";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
@@ -15,6 +15,7 @@ import type {
   ClientTermsRepaymentFrequency,
 } from "@/lib/applicationProfile";
 import { useActiveProfile } from "@/store/role";
+import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
 type Draft = {
   loan_type: string;
@@ -175,7 +176,21 @@ function payloadFromDraft(draft: Draft, expectedVersion: number): ApplicationCli
   };
 }
 
-export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId: string; onSaved?: () => void }) {
+export function ApplicationClientTermsPanel({
+  profileId,
+  onSaved,
+  selected = false,
+  onSelectedChange,
+  onOfferReady,
+  onCompose,
+}: {
+  profileId: string;
+  onSaved?: () => void;
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
+  onOfferReady?: (selection: OfferSelection | null) => void;
+  onCompose?: () => void;
+}) {
   const api = useAuthedApi();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = visualQaUser(useActiveProfile().email);
@@ -186,15 +201,8 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
   const [draftVersion, setDraftVersion] = useState(0);
   const draftVersionRef = useRef(0);
   const [error, setError] = useState("");
-  const [emailError, setEmailError] = useState("");
-  const [deliveryKey, setDeliveryKey] = useState("");
   const [notice, setNotice] = useState("");
   const [downloading, setDownloading] = useState(false);
-  const [emailOpen, setEmailOpen] = useState(false);
-  const [emailTo, setEmailTo] = useState("");
-  const [emailCc, setEmailCc] = useState("");
-  const [emailSubject, setEmailSubject] = useState("Your financing terms from Qualified Commercial");
-  const [emailBody, setEmailBody] = useState("We have prepared the attached financing terms for your review. Please reply with any questions or requested changes.");
   const query = useQuery({
     queryKey: ["application-client-terms", profileId],
     queryFn: () => api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`),
@@ -218,9 +226,6 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
     setDraft(next);
     setSavedFingerprint(fingerprint);
     setDraftVersion(query.data.version);
-    setDeliveryKey("");
-    setEmailError("");
-    setEmailTo(query.data.direct_client_contact_suppressed ? "" : query.data.client_email ?? "");
   }, [query.data]);
 
   const preview = useMemo(() => paymentPreview(draft), [draft]);
@@ -249,6 +254,22 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
   }, [draft.debt_service_treatment, draft.retained_annual_debt_service, preview, query.data?.calculation]);
 
   const dirty = savedFingerprint !== JSON.stringify(draft);
+  const offerSelection = useMemo<OfferSelection | null>(() => {
+    const terms = query.data;
+    if (!terms?.term_sheet_id || !terms.version || dirty) return null;
+    return {
+      key: `application_term_sheet:${terms.term_sheet_id}:${terms.version}`,
+      ref: { kind: "application_term_sheet", term_sheet_id: terms.term_sheet_id, expected_version: terms.version },
+      label: "Financing terms",
+      description: `${money(terms.amount, 0)} at ${terms.apr_pct == null ? "—" : `${terms.apr_pct}% APR`} for ${terms.term_months || "—"} months · version ${terms.version}`,
+      fileName: `financing-terms-v${terms.version}.pdf`,
+    };
+  }, [dirty, query.data]);
+
+  useEffect(() => {
+    onOfferReady?.(offerSelection);
+  }, [offerSelection, onOfferReady]);
+
   const save = useMutation({
     mutationFn: async () => api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`, { method: "PUT", body: JSON.stringify(payloadFromDraft(draft, draftVersion)) }),
     onSuccess: (data) => {
@@ -260,8 +281,6 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
       setDraft(next);
       setSavedFingerprint(fingerprint);
       setDraftVersion(data.version);
-      setDeliveryKey("");
-      setEmailError("");
       setError("");
       setNotice(`Client terms v${data.version} saved. Payment and DSCR were recalculated from the stored evidence.`);
       query.refetch();
@@ -271,30 +290,6 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
       setNotice("");
       setError(reason instanceof Error ? reason.message : "The client terms could not be saved.");
     },
-  });
-
-  const send = useMutation({
-    mutationFn: () => api<{ sent: boolean; filename: string }>(`/application-profiles/${profileId}/client-terms/email`, {
-      method: "POST",
-      body: JSON.stringify({
-        expected_version: draftVersion,
-        delivery_key: deliveryKey,
-        to_emails: emailTo.split(/[;,]/).map((value) => value.trim()).filter(Boolean),
-        cc_emails: emailCc.split(/[;,]/).map((value) => value.trim()).filter(Boolean),
-        subject: emailSubject.trim(),
-        body: emailBody.trim(),
-      }),
-    }),
-    onSuccess: async ({ filename }) => {
-      setEmailOpen(false);
-      setEmailError("");
-      setDeliveryKey("");
-      setError("");
-      setNotice(`${filename} was emailed successfully.`);
-      await query.refetch();
-      onSaved?.();
-    },
-    onError: (reason) => setEmailError(reason instanceof Error ? reason.message : "The terms email could not be sent."),
   });
 
   async function downloadPdf() {
@@ -357,8 +352,18 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
       </div>
       <div className="client-terms-heading-actions">
         <CellChip tone={terms.status === "issued" ? "ok" : terms.version ? "warn" : "mut"}>{terms.version ? `${terms.status === "issued" ? "Issued" : "Draft"} · v${terms.version}` : "Not started"}</CellChip>
+        {onSelectedChange ? <button
+          type="button"
+          className={cx("offer-row-select", selected && "on")}
+          role="checkbox"
+          aria-checked={selected}
+          aria-label={`${selected ? "Remove" : "Select"} financing terms for client email`}
+          title={offerSelection ? `${selected ? "Remove" : "Select"} financing terms` : dirty ? "Save your changes before selecting these terms" : "Save financing terms before selecting them"}
+          disabled={!offerSelection}
+          onClick={() => onSelectedChange(!selected)}
+        ><span aria-hidden="true">{selected ? <Icon name="check" size={13} /> : null}</span><span>Financing terms</span></button> : null}
         <Btn onClick={downloadPdf} disabled={!terms.version || dirty || downloading}>{downloading ? "Building PDF..." : terms.status === "issued" ? "Download issued PDF" : "Issue & download"}</Btn>
-        <Btn variant="pri" onClick={() => { setError(""); setEmailError(""); if (!deliveryKey) setDeliveryKey(crypto.randomUUID()); setEmailOpen(true); }} disabled={!terms.version || dirty || terms.direct_client_contact_suppressed}>Email to client</Btn>
+        <IconBtn className="pri" onClick={() => { setError(""); onSelectedChange?.(true); onCompose?.(); }} aria-label="Compose client email with financing terms" title="Add to client offer email" disabled={!offerSelection || terms.direct_client_contact_suppressed}><Icon name="mail" size={15} /></IconBtn>
       </div>
     </header>
     {terms.direct_client_contact_suppressed ? <Callout tone="warn">Direct client contact is suppressed on this referral-managed file. Download the PDF and route it through the referring professional.</Callout> : null}
@@ -411,15 +416,5 @@ export function ApplicationClientTermsPanel({ profileId, onSaved }: { profileId:
         <p className="terms-preview-disclaimer">Indicative terms only. Subject to final underwriting, documentation, and funding-source approval.</p>
       </aside>
     </div>
-    <Drawer open={emailOpen} onClose={() => !send.isPending && setEmailOpen(false)} title="Email financing terms" sub="The exact saved PDF version will be attached to this message." width="md" closeOnBackdrop={!send.isPending} footer={<><Btn onClick={() => setEmailOpen(false)} disabled={send.isPending}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={() => send.mutate()} disabled={send.isPending || !deliveryKey || !emailTo.trim() || !emailSubject.trim() || !emailBody.trim()}>{send.isPending ? "Sending..." : "Send PDF"}</Btn></>}>
-      <div className="grid g12">
-        <Callout tone="warn">Sending marks version {terms.version} as issued and moves the file to “Term sheet provided.”</Callout>
-        {emailError ? <Callout tone="bad"><span role="alert">{emailError}</span></Callout> : null}
-        <Field label="To"><Input aria-label="Email recipients" type="email" value={emailTo} onChange={(event) => setEmailTo(event.target.value)} placeholder="client@example.com" /></Field>
-        <Field label="Cc"><Input aria-label="Cc recipients" value={emailCc} onChange={(event) => setEmailCc(event.target.value)} placeholder="Optional; separate addresses with commas" /></Field>
-        <Field label="Subject"><Input aria-label="Email subject" value={emailSubject} onChange={(event) => setEmailSubject(event.target.value)} /></Field>
-        <Field label="Message"><Textarea aria-label="Email message" rows={7} value={emailBody} onChange={(event) => setEmailBody(event.target.value)} /></Field>
-      </div>
-    </Drawer>
   </section>;
 }

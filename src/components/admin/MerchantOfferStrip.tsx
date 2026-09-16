@@ -17,6 +17,7 @@ import { Btn, CellChip, cx, Field, IconBtn, Input, Row, Select, Textarea, WarnLi
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage } from "@/lib/documentUpload";
+import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
 type OfferOption = { label: string | null; effective_rate_pct: number | null; monthly_fees: number | null; monthly_savings: number | null };
 type OfferTerms = Record<string, string | number | null | OfferOption[] | undefined> & { options?: OfferOption[] };
@@ -128,12 +129,20 @@ export function MerchantOfferStrip({
   profileId,
   onStatus,
   onTargetDscr,
+  selected = false,
+  onSelectedChange,
+  onOfferReady,
+  onCompose,
 }: {
   profileId?: string | null;
   /** The page shows a chip in its header from this. */
   onStatus?: (status: string | null) => void;
   /** Stages the target in Reviewer controls; the human presses Save. */
   onTargetDscr?: (value: number) => void;
+  selected?: boolean;
+  onSelectedChange?: (selected: boolean) => void;
+  onOfferReady?: (selection: OfferSelection | null) => void;
+  onCompose?: () => void;
 }) {
   const api = useAuthedApi();
   const [panel, setPanel] = useState<OfferPanel | null>(null);
@@ -145,10 +154,7 @@ export function MerchantOfferStrip({
   const [draft, setDraft] = useState<Record<string, string>>(() => draftFromOffer(null));
   const [dirty, setDirty] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [sendAnyway, setSendAnyway] = useState(false);
-  const [sendNoPartner, setSendNoPartner] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [notifyResult, setNotifyResult] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const base = profileId ? `/application-profiles/${profileId}/merchant-offer` : null;
@@ -178,6 +184,21 @@ export function MerchantOfferStrip({
     const timer = window.setInterval(() => void load(), 2500);
     return () => window.clearInterval(timer);
   }, [offer?.status, load]);
+
+  const offerSelection: OfferSelection | null = offer && offer.status !== "uploaded" && offer.status !== "unreadable" && !offer.client_response && offer.estimated_annual_savings !== null ? {
+    key: `merchant_offer:${offer.id}:${offer.terms_version}`,
+    ref: { kind: "merchant_offer", offer_id: offer.id, expected_version: offer.terms_version },
+    label: "Merchant processing offer",
+    description: `${money(offer.estimated_annual_savings)} estimated annual savings · version ${offer.terms_version}`,
+    fileName: `merchant-processing-offer-v${offer.terms_version}.pdf`,
+  } : null;
+
+  useEffect(() => {
+    onOfferReady?.(offerSelection);
+    // Primitive offer fields above define readiness; avoid publishing a new
+    // object simply because the parent rerendered.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [offer?.id, offer?.terms_version, offer?.status, offer?.client_response, offer?.estimated_annual_savings, onOfferReady]);
 
   if (!base) return null;
 
@@ -253,16 +274,9 @@ export function MerchantOfferStrip({
       }),
     );
 
-  const send = () => run("send", () => post("/send", { confirm_no_saving: sendAnyway, confirm_no_partner: sendNoPartner }));
   const withdraw = () => run("withdraw", () => post("/withdraw"));
   const reread = () => run("reread", () => post("/reanalyze"));
   const resend = () => run("resend", () => post("/partner-email/resend"));
-  const notifyClient = () =>
-    run("notify", async () => {
-      const result = await post<{ overall_status: string; room_url: string }>("/notify-client", {});
-      setNotifyResult(result.overall_status === "success" ? "Room link emailed to the client." : `Room link email ${result.overall_status}.`);
-    });
-
   const copyRoomLink = async () => {
     if (!panel?.room_url) return;
     try {
@@ -329,10 +343,28 @@ export function MerchantOfferStrip({
     ) : null
   ) : null;
 
+  const composeOffer = () => {
+    if (!offerSelection) return;
+    onSelectedChange?.(true);
+    onCompose?.();
+  };
+
   return (
     <div className="underwriting-merchant-strip" role="region" aria-label="Merchant processing offer">
       <div className="underwriting-merchant-summary">
-        <span className="lbl">Merchant processing offer</span>
+        <div className="underwriting-merchant-summary-head">
+          <span className="lbl">Merchant processing offer</span>
+          {onSelectedChange && offer ? <button
+            type="button"
+            className={cx("offer-row-select", selected && "on")}
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={`${selected ? "Remove" : "Select"} merchant processing offer for client email`}
+            title={offerSelection ? `${selected ? "Remove" : "Select"} merchant processing offer` : "Finish the current merchant offer before selecting it"}
+            disabled={!offerSelection || editing}
+            onClick={() => onSelectedChange(!selected)}
+          ><span aria-hidden="true">{selected ? <Icon name="check" size={13} /> : null}</span><span>Merchant offer</span></button> : null}
+        </div>
         {!panel ? (
           <b>Loading the processing offer…</b>
         ) : !panel.available ? (
@@ -375,7 +407,6 @@ export function MerchantOfferStrip({
 
       {error ? <WarnLine>{error}</WarnLine> : null}
       {offer?.savings_warning && !offer.client_response ? <WarnLine>{offer.savings_warning}</WarnLine> : null}
-      {notifyResult ? <div className="statusline">{notifyResult}</div> : null}
 
       {panel?.available && (!offer || offer.status === "uploaded" || offer.status === "extracted" || offer.status === "unreadable") ? dropzone : null}
 
@@ -471,13 +502,7 @@ export function MerchantOfferStrip({
           {offer.status !== "sent" ? (
             <div className="row merchant-offer-actions">
               {!editing && offer.status !== "unreadable" ? <IconBtn onClick={() => setEditing(true)} disabled={busy !== ""} aria-label="Correct processing figures" title="Correct figures"><Icon name="pencil" size={15} /></IconBtn> : null}
-              <IconBtn className="pri" onClick={send} disabled={busy !== "" || editing || offer.estimated_annual_savings === null} aria-label="Send merchant offer" title={busy === "send" ? "Sending merchant offer" : "Send merchant offer"}><Icon name={busy === "send" ? "refresh" : "send"} size={15} /></IconBtn>
-              {offer.estimated_annual_savings !== null && offer.estimated_annual_savings <= 0 ? (
-                <label className="sub" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={sendAnyway} onChange={(event) => setSendAnyway(event.target.checked)} /> send anyway (no saving)</label>
-              ) : null}
-              {!offer.lender_id ? (
-                <label className="sub" style={{ display: "inline-flex", gap: 6, alignItems: "center" }}><input type="checkbox" checked={sendNoPartner} onChange={(event) => setSendNoPartner(event.target.checked)} /> send without a partner</label>
-              ) : null}
+              <IconBtn className="pri" onClick={composeOffer} disabled={busy !== "" || editing || !offerSelection} aria-label="Compose client email with merchant offer" title="Add to client offer email"><Icon name="mail" size={15} /></IconBtn>
               {offer.source_file_id ? <IconBtn onClick={reread} disabled={busy !== ""} aria-label="Re-read source processing PDF" title={busy === "reread" ? "Reading PDF" : "Re-read source PDF"}><Icon name="refresh" size={15} /></IconBtn> : null}
               {offer.source_file_url ? <a className="btn sm iconbtn" href={offer.source_file_url} target="_blank" rel="noreferrer" aria-label="Open source processing PDF" title="Open source processing PDF"><Icon name="eye" size={15} /></a> : null}
               <IconBtn className="danger" onClick={withdraw} disabled={busy !== ""} aria-label="Withdraw processing offer" title="Withdraw offer"><Icon name="trash" size={15} /></IconBtn>
@@ -485,7 +510,7 @@ export function MerchantOfferStrip({
           ) : (
             <div className="row merchant-offer-actions">
               {panel?.room_url ? <IconBtn onClick={() => void copyRoomLink()} aria-label={copied ? "Room link copied" : "Copy room link"} title={copied ? "Link copied" : "Copy room link"}><Icon name={copied ? "check" : "copy"} size={15} /></IconBtn> : null}
-              <IconBtn onClick={notifyClient} disabled={busy !== ""} aria-label="Email the room link" title={busy === "notify" ? "Emailing room link" : "Email room link"}><Icon name="mail" size={15} /></IconBtn>
+              <IconBtn onClick={composeOffer} disabled={busy !== "" || !offerSelection} aria-label="Reissue merchant offer in a client email" title="Reissue in client offer email"><Icon name="mail" size={15} /></IconBtn>
               {offer.source_file_url ? <a className="btn sm iconbtn" href={offer.source_file_url} target="_blank" rel="noreferrer" aria-label="Open source processing PDF" title="Open source processing PDF"><Icon name="eye" size={15} /></a> : null}
               <IconBtn className="danger" onClick={withdraw} disabled={busy !== ""} aria-label="Withdraw processing offer" title="Withdraw offer"><Icon name="trash" size={15} /></IconBtn>
             </div>

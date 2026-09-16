@@ -19,6 +19,7 @@ import type { AIChatThread, Loan } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { UnifiedMessagesInbox } from "@/components/communications/UnifiedMessagesInbox";
+import { ClientOfferInbox } from "@/components/client/ClientOfferInbox";
 
 // Per-role attribution for outbound messages. Architecture decision #6 —
 // Agent-side messages should be labeled from the Agent (the Borrower sees
@@ -73,6 +74,7 @@ function BorrowerMessagesView() {
   const { data: threads = [], isLoading: threadsLoading } = useAIChatThreads();
   const findOrCreate = useFindOrCreateChatThread();
   const [activeThreadId, setActiveThreadId] = useState<string | null>(null);
+  const [offerInboxOpen, setOfferInboxOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Build the unified thread list: account thread first, then one
@@ -92,6 +94,7 @@ function BorrowerMessagesView() {
 
   const openAccountThread = async () => {
     setError(null);
+    setOfferInboxOpen(false);
     if (accountThread) {
       setActiveThreadId(accountThread.id);
       return;
@@ -106,6 +109,7 @@ function BorrowerMessagesView() {
 
   const openLoanThread = async (loan: Loan) => {
     setError(null);
+    setOfferInboxOpen(false);
     const existing = loanThreadMap.get(loan.id);
     if (existing) {
       setActiveThreadId(existing.id);
@@ -127,6 +131,16 @@ function BorrowerMessagesView() {
         noPad
       >
         <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
+          <ThreadRow
+            title="Offers & documents"
+            subtitle="Review delivered loan terms, processing offers, and exact PDF copies."
+            timestamp={null}
+            active={offerInboxOpen}
+            onClick={() => { setActiveThreadId(null); setOfferInboxOpen(true); setError(null); }}
+            accent="brand"
+            empty={false}
+          />
+
           {/* Account / general thread row */}
           <ThreadRow
             title="Account questions"
@@ -165,7 +179,9 @@ function BorrowerMessagesView() {
       </Panel>
 
       <div className="panel" style={{ minHeight: 0 }}>
-        {activeThreadId ? (
+        {offerInboxOpen ? (
+          <ClientOfferInbox mode="account" embedded />
+        ) : activeThreadId ? (
           <ThreadChatView
             threadId={activeThreadId}
             starterPrompts={STARTER_PROMPTS}

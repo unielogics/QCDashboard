@@ -342,6 +342,7 @@ export type ClientTermsCalculation = {
 
 export type ApplicationClientTerms = {
   profile_id: string;
+  term_sheet_id: string | null;
   version: number;
   status: "not_started" | "draft" | "issued";
   loan_type: string | null;

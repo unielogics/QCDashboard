@@ -512,10 +512,14 @@ export function AIIntakeEmailWorkspace({
   profileId,
   clientName,
   contactSuppressed = false,
+  offerSelectionCount = 0,
+  onComposeOffer,
 }: {
   profileId: string;
   clientName?: string | null;
   contactSuppressed?: boolean;
+  offerSelectionCount?: number;
+  onComposeOffer?: () => void;
 }) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
@@ -558,6 +562,14 @@ export function AIIntakeEmailWorkspace({
   });
 
   const availableContacts = useMemo(() => contacts.data ?? [], [contacts.data]);
+  // Offer PDFs must go through the immutable offer-delivery workflow so the
+  // 48-hour deadline, secure inbox copy, exact snapshot hash, and decisions
+  // cannot be bypassed from an ordinary email or reply. The legacy email API
+  // remains compatible, but this live picker is intentionally evidence-only.
+  const evidenceAttachmentOptions = useMemo(
+    () => (attachmentOptions.data?.options ?? []).filter((option) => option.kind === "evidence_file"),
+    [attachmentOptions.data?.options],
+  );
   const directContactSuppressed = contactSuppressed || Boolean(attachmentOptions.data?.direct_client_contact_suppressed);
   const suppressionReason = attachmentOptions.data?.suppression_reason || "Direct client email is suppressed on this referral-managed file. Route communication through the referring professional.";
   useEffect(() => {
@@ -650,7 +662,7 @@ export function AIIntakeEmailWorkspace({
   return <section className={cx("ai-intake-email-workspace", directContactSuppressed && "contact-suppressed")}>
     {directContactSuppressed ? <div className="email-contact-suppression"><Callout tone="warn" icon={<Icon name="alert" size={15} />}><b>Client email is disabled.</b> {suppressionReason}</Callout></div> : null}
     <aside className="ai-intake-email-list">
-      <div className="ai-intake-email-list-head"><div><Lbl>Email</Lbl><Sub>{clientName || "Client"} and verified file owners</Sub></div><Btn size="sm" variant="pri" disabled={directContactSuppressed} title={directContactSuppressed ? suppressionReason : undefined} onClick={() => setComposing(true)}><Icon name="plus" size={13} />New email</Btn></div>
+      <div className="ai-intake-email-list-head"><div><Lbl>Email</Lbl><Sub>{clientName || "Client"} and verified file owners</Sub></div><div className="ai-intake-email-list-actions">{onComposeOffer ? <Btn size="sm" disabled={directContactSuppressed || offerSelectionCount === 0} title={directContactSuppressed ? suppressionReason : offerSelectionCount ? "Draft one email with the current client offers" : "Record a sendable offer in Underwriting first"} onClick={onComposeOffer}><Icon name="spark" size={13} />Offer email{offerSelectionCount > 1 ? ` (${offerSelectionCount})` : ""}</Btn> : null}<Btn size="sm" variant="pri" disabled={directContactSuppressed} title={directContactSuppressed ? suppressionReason : undefined} onClick={() => setComposing(true)}><Icon name="plus" size={13} />New email</Btn></div></div>
       {threads.isLoading ? <div className="empty"><span className="spinner solo" />Loading email…</div> : null}
       {!threads.isLoading && !threads.data?.length ? <div className="empty">No email conversations yet.</div> : null}
       {(threads.data ?? []).map((thread) => <button key={thread.id} type="button" className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); setReply(""); setReplyAttachments([]); }}>
@@ -680,7 +692,7 @@ export function AIIntakeEmailWorkspace({
         </Field>
         <EmailAttachmentPicker
           context="email"
-          options={attachmentOptions.data?.options ?? []}
+          options={evidenceAttachmentOptions}
           selected={composeAttachments}
           onChange={setComposeAttachments}
           disabled={directContactSuppressed}
@@ -713,7 +725,7 @@ export function AIIntakeEmailWorkspace({
           </div>
           {detail.data.thread.can_reply ? <div className="ai-intake-email-reply">
             <Textarea rows={4} value={reply} disabled={directContactSuppressed} onChange={(event) => setReply(event.target.value)} placeholder="Reply by email…" aria-label="Email reply" />
-            <EmailAttachmentPicker context="reply" options={attachmentOptions.data?.options ?? []} selected={replyAttachments} onChange={setReplyAttachments} disabled={directContactSuppressed} loading={attachmentOptions.isLoading} error={attachmentOptions.isError} />
+            <EmailAttachmentPicker context="reply" options={evidenceAttachmentOptions} selected={replyAttachments} onChange={setReplyAttachments} disabled={directContactSuppressed} loading={attachmentOptions.isLoading} error={attachmentOptions.isError} />
             {sendReply.isError ? <Callout tone="bad">{sendReply.error instanceof Error ? sendReply.error.message : "Reply failed."}</Callout> : null}
             <div className="row"><span className="sub">Replies sync here when the connected mailbox receives them.</span><span className="sp" /><Btn variant="pri" disabled={directContactSuppressed || sendReply.isPending || !reply.trim()} onClick={() => sendReply.mutate()}><Icon name="send" size={14} />{sendReply.isPending ? "Sending…" : "Send reply"}</Btn></div>
           </div> : <Callout tone="mut">This thread belongs to {detail.data.thread.owner_name || detail.data.thread.owner_email || "another mailbox"}. Start a new email to reply from your mailbox.</Callout>}

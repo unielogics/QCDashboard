@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { LockedEvidenceBadge } from "@/components/application/LockedEvidenceStatus";
+import { ClientOfferInbox } from "@/components/client/ClientOfferInbox";
 import { QCMark } from "@/components/QCMark";
 import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
@@ -43,10 +44,11 @@ type ClientEvidenceBankingSummary = {
 };
 type ClientRoomKind = RoomKind | "basic";
 type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
-type RoomTab = "precall" | "offer" | "updates" | "todo" | "documents" | "banking" | "agreements";
+type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "banking" | "agreements";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
-const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" }> = [
+const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" | "mail" }> = [
+  { id: "inbox", label: "Inbox", icon: "mail" },
   { id: "precall", label: "Before your call", icon: "cal" },
   // Shown only while a processing offer is waiting on (or answered from) this room.
   { id: "offer", label: "Your offer", icon: "dollar" },
@@ -62,6 +64,8 @@ export default function BucketRequestPage() {
   const params = useParams<{ token: string }>();
   const searchParams = useSearchParams();
   const token = params.token;
+  const linkedOfferDeliveryId = searchParams.get("delivery") || "";
+  const isOfferDeepLink = searchParams.get("tab") === "inbox" && Boolean(linkedOfferDeliveryId);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const submitInFlightRef = useRef(false);
   const [info, setInfo] = useState<RequestInfo | null>(null);
@@ -91,6 +95,7 @@ export default function BucketRequestPage() {
   // The client tier of the file's timeline; null while the room has no file record (the call 404s).
   const [updates, setUpdates] = useState<RoomTimelineEvent[] | null>(null);
   const [theme, setTheme] = useState<"light" | "obsidian">("light");
+  const [offerOnlyAccess, setOfferOnlyAccess] = useState(false);
 
   useEffect(() => {
     const saved = window.localStorage.getItem("qc-application-room-theme");
@@ -110,8 +115,19 @@ export default function BucketRequestPage() {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("This application room is unavailable.")))
       .then((data: RequestInfo) => { setInfo(data); setStatus(""); })
-      .catch((error: Error) => setStatus(error.message));
-  }, [token]);
+      .catch((error: Error) => {
+        if (isOfferDeepLink) {
+          // Sent packages retain a delivery-scoped token/PIN snapshot even if
+          // the mutable document room is later rotated or closed. Expose only
+          // the PIN gate here; the backend limits this credential to the exact
+          // historical delivery and never reopens uploads or live room data.
+          setInfo({ bucket: { name: "Offer package" }, recipient_name: "", requires_passcode: true, status: "offer_only" });
+          setStatus("");
+          return;
+        }
+        setStatus(error.message);
+      });
+  }, [isOfferDeepLink, token]);
 
   const uploadedFiles = useMemo(() => session?.files ?? [], [session?.files]);
   const uploadedDocIds = useMemo(() => new Set(uploadedFiles.map((file) => file.requested_document_id).filter(Boolean) as string[]), [uploadedFiles]);
@@ -185,6 +201,21 @@ export default function BucketRequestPage() {
     if (!response.ok) throw await responseError(response, "The room PIN did not work.");
     const data = await response.json() as UploadSession;
     return { ...data, room_kind: data.room_kind ?? "basic" };
+  }
+  async function fetchOfferOnlySession(code: string): Promise<UploadSession> {
+    const response = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/offer-deliveries`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
+    if (!response.ok) throw await responseError(response, "The room PIN did not work.");
+    const payload = await response.json() as { deliveries?: Array<{ id: string; subject?: string | null }> };
+    const delivery = (payload.deliveries ?? []).find((item) => item.id === linkedOfferDeliveryId);
+    if (!delivery) throw new Error("This offer package is unavailable for this secure link.");
+    return {
+      room_kind: "basic",
+      bucket: { name: delivery.subject || "Your offer package", purpose: "Secure offer review" },
+      recipient_name: "",
+      allow_notes: false,
+      requested_documents: [],
+      files: [],
+    };
   }
   async function fetchRoomContext(code: string, roomKind: ClientRoomKind): Promise<{
     precall: RoomPrecall | null;
@@ -302,13 +333,27 @@ export default function BucketRequestPage() {
     if (!isValidRoomPin(passcode.trim())) return;
     setIsAccessing(true); setStatus("");
     try {
-      const data = await fetchAccessSession();
+      let data: UploadSession;
+      let historicalOfferOnly = false;
+      try {
+        data = await fetchAccessSession();
+      } catch (roomError) {
+        if (!isOfferDeepLink) throw roomError;
+        data = await fetchOfferOnlySession(passcode.trim());
+        historicalOfferOnly = true;
+      }
+      if (historicalOfferOnly) {
+        setSession(data); setName(""); setEmail(""); setStatus("");
+        setPrecall(null); setPrecallLoaded(true); setOffer(null); setUpdates(null);
+        setOfferOnlyAccess(true); setActiveTab("inbox");
+        return;
+      }
       const context = await fetchRoomContext(passcode.trim(), data.room_kind);
       const [waitingOffer, fileUpdates] = await Promise.all([
         context.hasMerchantOffer ? fetchOffer(passcode.trim()) : Promise.resolve(null),
         context.hasTimeline ? fetchUpdates(passcode.trim()) : Promise.resolve(null),
       ]);
-      setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus("");
+      setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus(""); setOfferOnlyAccess(false);
       setPrecall(context.precall); setPrecallRoomKind(context.roomKind ?? "dealer"); setPrecallLoaded(true);
       setOffer(waitingOffer); setUpdates(fileUpdates);
       // A booked call lands on its checklist until it is done; the URL still wins.
@@ -316,7 +361,7 @@ export default function BucketRequestPage() {
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [precall, offer, updates]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [offerOnlyAccess, precall, offer, updates]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -400,6 +445,8 @@ export default function BucketRequestPage() {
     </section> : <section className="application-room-shell">
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${missingDocs.length ? "attention" : ""}`}>{missingDocs.length ? `${missingDocs.length} action${missingDocs.length === 1 ? "" : "s"} needed` : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && missingDocs.length ? <span>{missingDocs.length}</span> : null}</button>)}</nav>
+
+      {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}
 
       {activeTab === "precall" && precall ? <PrecallChecklist token={token} passcode={passcode.trim()} precall={precall} roomKind={precallRoomKind} onChanged={refreshPrecall} onGoToDocuments={() => setActiveTab("documents")} /> : null}
       {activeTab === "precall" && !precall && precallLoaded ? <section className="application-room-section"><p>This room has no call to prepare for.</p></section> : null}

@@ -76,6 +76,8 @@ import { ApplicationClientTermsPanel } from "@/components/application/Applicatio
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
+import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
+import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import type { IntakeResponse } from "@/lib/intake";
@@ -1221,6 +1223,11 @@ function LeadDetailPanel({
   const [underwritingSaving, setUnderwritingSaving] = useState(false);
   const [underwritingError, setUnderwritingError] = useState<string | null>(null);
   const [merchantOfferStatus, setMerchantOfferStatus] = useState<string | null>(null);
+  const [merchantOfferSelection, setMerchantOfferSelection] = useState<OfferSelection | null>(null);
+  const [applicationTermSelection, setApplicationTermSelection] = useState<OfferSelection | null>(null);
+  const [selectedOfferKeys, setSelectedOfferKeys] = useState<string[]>([]);
+  const [offerComposerOpen, setOfferComposerOpen] = useState(false);
+  const [offerDeliveryReceipt, setOfferDeliveryReceipt] = useState<OfferDeliveryReceipt | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
@@ -1289,6 +1296,77 @@ function LeadDetailPanel({
   // gates on. A second legacy value here would have let a package be sent to a
   // client the signing gate then refused to show, so there is exactly one.
   const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
+
+  const productionTermSelection = useMemo<OfferSelection | null>(() => {
+    const current = termSheet?.current;
+    if (!current || current.status !== "current") return null;
+    return {
+      key: `production_term_sheet:${current.id}:${current.version}`,
+      ref: { kind: "production_term_sheet", term_sheet_id: current.id, expected_version: current.version },
+      label: "Loan terms",
+      description: `${formatMoney(current.approved_amount)} at ${current.rate_pct}% for ${current.term_months} months · version ${current.version}`,
+      fileName: `loan-terms-v${current.version}.pdf`,
+    };
+  }, [termSheet]);
+
+  const availableOfferSelections = useMemo(
+    () => [productionTermSelection, applicationTermSelection, merchantOfferSelection].filter((item): item is OfferSelection => Boolean(item)),
+    [applicationTermSelection, merchantOfferSelection, productionTermSelection],
+  );
+  const selectedOfferSelections = useMemo(
+    () => availableOfferSelections.filter((item) => selectedOfferKeys.includes(item.key)),
+    [availableOfferSelections, selectedOfferKeys],
+  );
+
+  const handleMerchantOfferReady = useCallback((next: OfferSelection | null) => {
+    setMerchantOfferSelection((current) => {
+      if (!current && !next) return current;
+      if (current && next && current.key === next.key && current.description === next.description) return current;
+      return next;
+    });
+  }, []);
+
+  const handleApplicationTermReady = useCallback((next: OfferSelection | null) => {
+    setApplicationTermSelection((current) => {
+      if (!current && !next) return current;
+      if (current && next && current.key === next.key && current.description === next.description) return current;
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    if (isDealerFile) setApplicationTermSelection(null);
+  }, [isDealerFile, profileId]);
+
+  useEffect(() => {
+    const available = new Set(availableOfferSelections.map((item) => item.key));
+    setSelectedOfferKeys((current) => {
+      const next = current.filter((key) => available.has(key));
+      return next.length === current.length && next.every((key, index) => key === current[index]) ? current : next;
+    });
+  }, [availableOfferSelections]);
+
+  const setOfferSelected = useCallback((selection: OfferSelection | null, selected: boolean) => {
+    if (!selection) return;
+    setSelectedOfferKeys((current) => selected
+      ? current.includes(selection.key) ? current : [...current, selection.key]
+      : current.filter((key) => key !== selection.key));
+    setOfferDeliveryReceipt(null);
+  }, []);
+
+  const openOfferComposer = useCallback((selection?: OfferSelection | null) => {
+    if (selection) {
+      setSelectedOfferKeys((current) => current.includes(selection.key) ? current : [...current, selection.key]);
+    }
+    setOfferDeliveryReceipt(null);
+    setOfferComposerOpen(true);
+  }, []);
+
+  const openCurrentOffersComposer = useCallback(() => {
+    setSelectedOfferKeys(availableOfferSelections.map((item) => item.key));
+    setOfferDeliveryReceipt(null);
+    setOfferComposerOpen(true);
+  }, [availableOfferSelections]);
 
   // The term sheet is keyed on the profile and exists only on dealer files; a
   // 404 (not a dealer file / no package visibility) simply means "none".
@@ -2120,9 +2198,11 @@ function LeadDetailPanel({
                               <DealerTermSheetDocumentActions
                                 profileId={underwriting.profile_id}
                                 terms={termSheet.current}
-                                defaultRecipient={detail.intake.email}
                                 contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
                                 onEdit={openTermSheet}
+                                selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
+                                onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
+                                onCompose={() => openOfferComposer(productionTermSelection)}
                               />
                             ) : (
                               <Btn variant="pri" size="sm" onClick={openTermSheet}>
@@ -2136,12 +2216,36 @@ function LeadDetailPanel({
                       <MerchantOfferStrip
                         profileId={underwriting?.profile_id}
                         onStatus={setMerchantOfferStatus}
+                        selected={Boolean(merchantOfferSelection && selectedOfferKeys.includes(merchantOfferSelection.key))}
+                        onSelectedChange={(selected) => setOfferSelected(merchantOfferSelection, selected)}
+                        onOfferReady={handleMerchantOfferReady}
+                        onCompose={() => openOfferComposer(merchantOfferSelection)}
                         onTargetDscr={(value) => {
                           setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }));
                           setPrototypeView("reviewer");
                         }}
                       />
-                      {!isDealerFile && underwriting?.profile_id ? <ApplicationClientTermsPanel key={underwriting.profile_id} profileId={underwriting.profile_id} onSaved={refreshUnderwritingFromTerms} /> : null}
+                      {selectedOfferSelections.length ? <div className="offer-delivery-bar" role="region" aria-label="Selected client offers" aria-live="polite">
+                        <div className="offer-delivery-bar-copy">
+                          <span className="offer-delivery-bar-icon"><Icon name="mail" size={16} /></span>
+                          <div><b>{selectedOfferSelections.length === 2 ? "Loan terms + merchant offer" : selectedOfferSelections[0].label}</b><small>Ready for one customized email with client PDFs and a 48-hour response window.</small></div>
+                        </div>
+                        <div className="offer-delivery-bar-actions">
+                          <IconBtn onClick={() => setSelectedOfferKeys([])} aria-label="Clear selected offers" title="Clear selection"><Icon name="close" size={14} /></IconBtn>
+                          <Btn variant="pri" onClick={() => openOfferComposer()} disabled={Boolean(detail.intake.client_contact_suppressed)} title={detail.intake.client_contact_suppressed ? "Direct client contact is suppressed on this file" : undefined}><Icon name="spark" size={14} />Draft client email</Btn>
+                        </div>
+                      </div> : null}
+                      {offerDeliveryReceipt ? <Callout tone="ok"><b>Offer package sent.</b> The exact PDFs are in the client inbox until and after the {formatDateTime(offerDeliveryReceipt.expires_at)} response deadline.</Callout> : null}
+                      {underwriting?.profile_id ? <OfferDeliveryHistory profileId={underwriting.profile_id} refreshKey={offerDeliveryReceipt?.id} /> : null}
+                      {!isDealerFile && underwriting?.profile_id ? <ApplicationClientTermsPanel
+                        key={underwriting.profile_id}
+                        profileId={underwriting.profile_id}
+                        onSaved={refreshUnderwritingFromTerms}
+                        selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
+                        onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
+                        onOfferReady={handleApplicationTermReady}
+                        onCompose={() => openOfferComposer(applicationTermSelection)}
+                      /> : null}
                     </div>
                   )}
                 </Panel>
@@ -2193,7 +2297,7 @@ function LeadDetailPanel({
                   {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
                   {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={handleCockpitResponse} onRequestRerun={onRerun} programReadiness={programReadiness} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
                   {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} /> : null}
-                  {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace key={underwriting.profile_id} profileId={underwriting.profile_id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} /> : null}
+                  {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace key={underwriting.profile_id} profileId={underwriting.profile_id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} offerSelectionCount={availableOfferSelections.length} onComposeOffer={openCurrentOffersComposer} /> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
                   {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
                 </div>
@@ -2251,6 +2355,18 @@ function LeadDetailPanel({
         </>
       )}
 
+      {detail && underwriting?.profile_id ? <OfferDeliveryComposer
+        profileId={underwriting.profile_id}
+        clientName={detail.intake.full_name}
+        open={offerComposerOpen && selectedOfferSelections.length > 0}
+        selections={selectedOfferSelections}
+        contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
+        onClose={() => setOfferComposerOpen(false)}
+        onSent={(receipt) => {
+          setOfferDeliveryReceipt(receipt);
+          setMerchantOfferStatus((current) => receipt.items.some((item) => item.kind === "merchant_offer") ? "sent" : current);
+        }}
+      /> : null}
       <Toast msg={toast.msg} />
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
       {detail && canDelete ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
