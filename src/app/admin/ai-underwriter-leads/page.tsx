@@ -85,6 +85,7 @@ import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { LeadDscrPanel } from "@/components/admin/LeadDscrPanel";
 import { WhatsNewButton, WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
+import { IntakeNotificationRoutingDrawer } from "@/components/admin/IntakeNotificationRoutingDrawer";
 import { useAIReview } from "@/components/admin/AIReviewProvider";
 import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
 import { ApplicationEvidenceWorkspace } from "@/components/application/ApplicationEvidenceWorkspace";
@@ -1317,6 +1318,7 @@ function LeadDetailPanel({
   const [offerComposerOpen, setOfferComposerOpen] = useState(false);
   const [offerDeliveryReceipt, setOfferDeliveryReceipt] = useState<OfferDeliveryReceipt | null>(null);
   const [sendReviewOpen, setSendReviewOpen] = useState(false);
+  const [notificationRoutingOpen, setNotificationRoutingOpen] = useState(false);
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
   const [requestResult, setRequestResult] = useState<RoomRequestResult | null>(null);
@@ -2150,6 +2152,7 @@ function LeadDetailPanel({
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
         {detail ? <Btn disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()}><Icon name="upload" size={14} />{headerUploading ? "Uploading..." : "Upload"}</Btn> : null}
         {detail ? <Btn onClick={openDocumentRequest}><Icon name="send" size={14} />Request</Btn> : null}
+        {detail && canUnderwrite ? <Btn onClick={() => setNotificationRoutingOpen(true)}><Icon name="bell" size={14} />Notifications</Btn> : null}
         {detail && canUnderwrite ? (
           <Select
             value={underwritingDraft.underwriting_status}
@@ -2524,6 +2527,12 @@ function LeadDetailPanel({
           setOfferDeliveryReceipt(receipt);
           setMerchantOfferStatus((current) => receipt.items.some((item) => item.kind === "merchant_offer") ? "sent" : current);
         }}
+      /> : null}
+      {detail ? <IntakeNotificationRoutingDrawer
+        open={notificationRoutingOpen}
+        onClose={() => setNotificationRoutingOpen(false)}
+        intakeId={detail.intake.id}
+        fileLabel={detail.intake.business_name || detail.intake.full_name || "AI Intake file"}
       /> : null}
       <Toast msg={toast.msg} />
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />

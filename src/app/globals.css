@@ -595,6 +595,57 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .consent.on { border-color: var(--accent-400); background: var(--accent-100); }
 .consent label { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; margin: 0; }
 .consent input[type="checkbox"] { accent-color: var(--accent); width: 20px; height: 20px; margin: 1px 0 0; flex: 0 0 auto; cursor: pointer; }
+
+/* Per-file AI Intake notification routing. The matrix uses large, named
+   recipient targets so it remains usable on a tablet without exposing an
+   arbitrary external-address field. */
+.intake-notification-stack { display: grid; gap: 14px; margin-top: 14px; }
+.intake-notification-event { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); overflow: hidden; opacity: .72; }
+.intake-notification-event.is-enabled { opacity: 1; border-color: var(--accent-200); box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 8%, transparent); }
+.intake-notification-event > header { min-height: 72px; padding: 14px 16px; display: flex; gap: 16px; align-items: center; border-bottom: 1px solid var(--line); background: var(--sunken); }
+.intake-notification-event > header > div { min-width: 0; flex: 1; }
+.intake-notification-event > header h3 { margin: 0 0 3px; font-size: 15px; }
+.intake-notification-event > header p { margin: 0; color: var(--muted); font-size: 12px; }
+.intake-notification-summary { display: inline-block; margin-top: 6px; color: var(--accent); font-size: 11px; font-weight: 800; }
+.intake-notification-enable { min-width: 82px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); font-weight: 760; cursor: pointer; }
+.intake-notification-enable input { width: 19px; height: 19px; accent-color: var(--accent); }
+.intake-notification-channels { padding: 12px 16px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+.intake-notification-channels label { cursor: pointer; }
+.intake-notification-channels input { position: absolute; opacity: 0; pointer-events: none; }
+.intake-notification-channels label > span { min-height: 44px; min-width: 108px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); font-weight: 700; }
+.intake-notification-channels input:checked + span { border-color: var(--accent); background: var(--accent-100); color: var(--accent); box-shadow: 0 0 0 2px var(--accent-100); }
+.intake-notification-channels input:focus-visible + span { outline: 3px solid var(--accent-200); outline-offset: 2px; }
+.intake-notification-channels input:disabled + span { opacity: .5; cursor: not-allowed; }
+.intake-notification-recipient-heading { padding: 14px 16px 8px; display: flex; gap: 10px; align-items: baseline; }
+.intake-notification-recipient-heading b { font-size: 13px; }
+.intake-notification-recipient-heading span { color: var(--muted); font-size: 11px; }
+.intake-notification-recipient-grid { padding: 0 16px 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
+.intake-notification-recipient-grid > button { min-height: 68px; padding: 9px 11px; display: grid; grid-template-columns: 36px minmax(0, 1fr) 20px; gap: 9px; align-items: center; text-align: left; border: 1px solid var(--line); border-radius: 11px; background: var(--surface); color: var(--ink); cursor: pointer; }
+.intake-notification-recipient-grid > button:hover:not(:disabled) { border-color: var(--accent-400); }
+.intake-notification-recipient-grid > button.selected { border-color: var(--accent); background: var(--accent-100); color: var(--accent-700); box-shadow: 0 0 0 2px var(--accent-100); }
+.intake-notification-recipient-grid > button:disabled { opacity: .48; cursor: not-allowed; }
+.intake-notification-recipient-grid > button > span:nth-child(2) { min-width: 0; display: grid; gap: 1px; }
+.intake-notification-recipient-grid b, .intake-notification-recipient-grid small, .intake-notification-recipient-grid em { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.intake-notification-recipient-grid small { color: var(--muted); font-size: 10px; text-transform: capitalize; }
+.intake-notification-recipient-grid em { color: var(--muted); font-size: 10px; font-style: normal; }
+.intake-notification-avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: var(--sunken2); color: var(--accent); font-size: 11px; font-weight: 850; }
+.intake-notification-cc { padding: 14px 16px 16px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--sunken) 55%, var(--surface)); display: grid; gap: 9px; }
+.intake-notification-cc > div:first-child { display: flex; gap: 8px; align-items: baseline; }
+.intake-notification-cc > div:first-child b { font-size: 13px; }
+.intake-notification-cc > div:first-child span { color: var(--muted); font-size: 11px; }
+.intake-notification-cc-chips { min-height: 28px; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.intake-notification-cc-chips .cellchip { gap: 6px; }
+.intake-notification-cc-chips button { width: 24px; height: 24px; border: 0; border-radius: 50%; background: transparent; color: inherit; cursor: pointer; font-size: 17px; line-height: 1; }
+.intake-notification-cc-chips button:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+.intake-notification-cc-add { display: grid; grid-template-columns: minmax(220px, 1fr) auto; gap: 8px; }
+.intake-notification-field-error { color: var(--bad); font-weight: 650; }
+@media (max-width: 760px) {
+  .intake-notification-event > header { align-items: flex-start; }
+  .intake-notification-recipient-heading, .intake-notification-cc > div:first-child { align-items: flex-start; flex-direction: column; gap: 3px; }
+  .intake-notification-recipient-grid { grid-template-columns: 1fr; }
+  .intake-notification-cc-add { grid-template-columns: 1fr; }
+  .intake-notification-cc-add .btn { min-height: 44px; }
+}
 .consent .ctext { font-size: 14px; line-height: 1.55; color: var(--ink2); }
 .consent .ctitle { display: block; font-weight: 600; color: var(--ink); margin-bottom: 3px; }
 .consent a { color: var(--accent); text-decoration: underline; }
