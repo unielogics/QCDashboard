@@ -1721,7 +1721,9 @@ export default function BucketsAdminPage() {
       return;
     }
     const res = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${file.id}/url?download=${download}`);
-    openSignedUrl(res.url);
+    if (!openSignedUrl(res.url)) {
+      setNotice("Download is not available for this file. Refresh the bucket and try again.");
+    }
   }
 
   async function deleteFile(file: BucketFile) {
