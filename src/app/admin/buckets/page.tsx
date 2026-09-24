@@ -421,6 +421,7 @@ export default function BucketsAdminPage() {
   const [detail, setDetail] = useState<BucketDetail | null>(null);
   const [detailFocus, setDetailFocus] = useState<DetailFocus>(null);
   const [bucketDetailMinimized, setBucketDetailMinimized] = useState(false);
+  const [bucketUtilityRailCollapsed, setBucketUtilityRailCollapsed] = useState(true);
   const [editBucketOpen, setEditBucketOpen] = useState(false);
   const [editBucketForm, setEditBucketForm] = useState<BucketEditForm>(() => emptyBucketEditForm());
   const [editBucketSaving, setEditBucketSaving] = useState(false);
@@ -577,6 +578,7 @@ export default function BucketsAdminPage() {
   async function openBucket(bucketId: string, focus: DetailFocus = null) {
     setDetailFocus(focus);
     setBucketDetailMinimized(false);
+    setBucketUtilityRailCollapsed(focus !== "vendors");
     await loadBucket(bucketId);
     if (focus === "vendors") {
       setBucketSectionsOpen((current) => ({ ...current, vendors: true }));
@@ -688,6 +690,7 @@ export default function BucketsAdminPage() {
 
   function showVendorSettings() {
     setDetailFocus("vendors");
+    setBucketUtilityRailCollapsed(false);
     setSharePopupOpen(false);
     setBucketSectionsOpen((current) => ({ ...current, vendors: true }));
     window.setTimeout(() => {
@@ -2777,9 +2780,9 @@ export default function BucketsAdminPage() {
             </div>
           }
         >
-          {/* Two working columns. Grid rather than flex, so a `.panel` inside
-              either column cannot shrink below its own content. */}
-          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1.35fr) minmax(320px, .65fr)", gap: 12, alignItems: "start" }}>
+          {/* File review owns the workspace. The secondary controls start as a
+              narrow rail and expand only when the operator asks for them. */}
+          <div className={cx("bucket-detail-review-layout", bucketUtilityRailCollapsed && "utility-collapsed")}>
             <div className="grid">
               <Panel
                 title="Uploaded documents"
@@ -2844,15 +2847,28 @@ export default function BucketsAdminPage() {
                     <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more bucket files." />
                   ) : filteredBucketFiles.map((file) => (
                     <div key={file.id} className={`itemrow bucket-file-row ${semanticStatusClass(file.status)}`}>
-                      <label className="row grow" style={{ cursor: "pointer" }}>
-                        <input type="checkbox" checked={!!shareFiles[file.id]} onChange={(e) => setShareFiles({ ...shareFiles, [file.id]: e.target.checked })} />
+                      <label className="bucket-file-share-toggle" title={`Select ${file.file_name} for sharing`}>
+                        <input
+                          type="checkbox"
+                          checked={!!shareFiles[file.id]}
+                          onChange={(event) => setShareFiles((current) => ({ ...current, [file.id]: event.target.checked }))}
+                          aria-label={`Select ${file.file_name} for sharing`}
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="bucket-file-open grow"
+                        onClick={() => openFile(file, false)}
+                        aria-label={`Preview ${file.file_name}`}
+                        title={`Preview ${file.file_name}`}
+                      >
                         <span className="grow">
                           <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
                           <span className="sub">
                             {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | Uploaded {formatDateTime(file.created_at)}
                           </span>
                         </span>
-                      </label>
+                      </button>
                       <CellChip tone={file.requested_document_id ? "acc" : "mut"}>{file.requested_document_id ? "task" : "general"}</CellChip>
                       <div className="row">
                         <Btn size="sm" onClick={() => openFile(file, false)}>
@@ -3007,7 +3023,33 @@ export default function BucketsAdminPage() {
               </Panel>
             </div>
 
-            <div className="grid">
+            {bucketUtilityRailCollapsed ? (
+              <aside className="bucket-utility-rail-collapsed" aria-label="Bucket review tools">
+                <button
+                  type="button"
+                  className="bucket-utility-rail-toggle"
+                  onClick={() => setBucketUtilityRailCollapsed(false)}
+                  aria-expanded="false"
+                >
+                  <Icon name="chevL" size={15} aria-hidden="true" />
+                  <span>Review tools</span>
+                </button>
+              </aside>
+            ) : (
+            <aside className="grid bucket-utility-rail" aria-label="Bucket review tools">
+              <div className="bucket-utility-rail-head">
+                <div className="grow">
+                  <b>Review tools</b>
+                  <Sub>Notes, access, sharing, and activity</Sub>
+                </div>
+                <IconBtn
+                  onClick={() => setBucketUtilityRailCollapsed(true)}
+                  aria-label="Minimize bucket review tools"
+                  title="Minimize review tools"
+                >
+                  <Icon name="chevR" size={15} />
+                </IconBtn>
+              </div>
               <Panel
                 className={cx(!bucketSectionsOpen.notes && "bucket-panel-collapsed")}
                 title="Notes"
@@ -3557,7 +3599,8 @@ export default function BucketsAdminPage() {
                   </IconBtn>
                 </div>
               </Panel>
-            </div>
+            </aside>
+            )}
           </div>
         </ModalFrame>
       ) : null}
@@ -3667,6 +3710,9 @@ export default function BucketsAdminPage() {
           title="Admin file review"
           minimized={reviewMinimized}
           onMinimize={() => setReviewMinimized(true)}
+          onDownload={() => {
+            openFile(reviewFile, true).catch((error) => setNotice(readableError(error)));
+          }}
           reviewKey={reviewFile.id}
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}

@@ -2336,7 +2336,9 @@ test("bucket files open in a full-screen navigable review workspace", async ({ p
   test.skip(!bucketId, "A bucket fixture is required.");
   await openConsolePage(page, `/admin/buckets?bucket=${bucketId}`);
   const bucketRoom = page.getByRole("dialog");
-  await bucketRoom.getByRole("button", { name: "Preview" }).first().click();
+  await expect(bucketRoom.getByRole("button", { name: "Review tools" })).toBeVisible();
+  await expect(bucketRoom.getByRole("heading", { name: "Notes", exact: true })).toHaveCount(0);
+  await bucketRoom.locator(".bucket-file-open").first().click();
   const reviewer = page.locator(".bucket-review-shell");
   await expect(reviewer).toBeVisible();
   const bounds = await reviewer.boundingBox();
@@ -2345,9 +2347,111 @@ test("bucket files open in a full-screen navigable review workspace", async ({ p
   expect(bounds?.width).toBe(1600);
   expect(bounds?.height).toBe(1000);
   await expect(reviewer.locator(".bucket-review-file")).toHaveCount(2);
+  await expect(reviewer.getByRole("button", { name: "Download" })).toBeVisible();
   await captureReviewImage(page, "bucket-file-review", testInfo);
   await reviewer.getByRole("button", { name: "Close" }).click();
   await expect(reviewer).toBeHidden();
+  await bucketRoom.getByRole("button", { name: "Review tools" }).click();
+  await expect(bucketRoom.getByRole("heading", { name: "Notes", exact: true })).toBeVisible();
+  await expect(bucketRoom.getByRole("button", { name: "Minimize bucket review tools" })).toBeVisible();
+});
+
+test("bucket detail prioritizes files and keeps review tools reversible", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "The dominant file workspace is checked once at the canonical viewport.");
+  const bucketId = "30000000-0000-0000-0000-000000000001";
+  const fileId = "30000000-0000-0000-0000-000000000002";
+  const bucket = {
+    id: bucketId,
+    name: "Venture Auto Sales",
+    client_name: "Venture Auto Sales",
+    purpose: "Dealer financing AI intake",
+    bucket_type: "Dealer AI intake",
+    description: null,
+    status: "collecting",
+    created_at: "2026-09-23T14:00:00Z",
+    updated_at: "2026-09-23T15:00:00Z",
+    file_count: 1,
+    uploaded_file_count: 1,
+    vendor_access_count: 0,
+    linked_files: [],
+  };
+  const file = {
+    id: fileId,
+    requested_document_id: null,
+    file_name: "Revenue statements.txt",
+    content_type: "text/plain",
+    size_bytes: 128,
+    uploaded_by_name: "Fixture Agent",
+    uploaded_by_email: "agent@example.com",
+    status: "uploaded",
+    created_at: "2026-09-23T14:30:00Z",
+  };
+
+  await mockEmptyOperatorPipeline(page);
+  await page.route(/\/api\/v1\/operator-files\/bucket-intake-links(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(/\/api\/v1\/buckets$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([bucket]) });
+  });
+  await page.route(/\/api\/v1\/buckets\/templates$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(/\/api\/v1\/buckets\/admin\/vendors$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}/activity(?:\\?.*)?$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ items: [], total: 0, limit: 12, offset: 0 }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}/files/${fileId}/review$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ file, preview_url: `${BASE_URL}/mock-bucket-review.txt`, annotations: [] }),
+    });
+  });
+  await page.route(/\/mock-bucket-review\.txt$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "text/plain", body: "Revenue review fixture" });
+  });
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...bucket,
+        requested_documents: [],
+        files: [file],
+        upload_links: [],
+        shares: [],
+        vendor_access: [],
+        public_shares: [],
+        notes: [],
+        activity: [],
+      }),
+    });
+  });
+
+  await openConsolePage(page, `/admin/buckets?bucket=${bucketId}`);
+  const bucketRoom = page.getByRole("dialog");
+  const collapsedRail = bucketRoom.getByRole("button", { name: "Review tools" });
+  await expect(collapsedRail).toBeVisible();
+  const railBounds = await collapsedRail.boundingBox();
+  expect(railBounds?.width).toBeGreaterThanOrEqual(44);
+
+  await bucketRoom.getByRole("button", { name: "Preview Revenue statements.txt" }).click();
+  const reviewer = page.locator(".bucket-review-shell");
+  await expect(reviewer).toBeVisible();
+  await expect(reviewer.getByRole("button", { name: "Download" })).toBeVisible();
+  await expect(reviewer).toContainText("Revenue review fixture");
+  await reviewer.getByRole("button", { name: "Close review" }).click();
+
+  await collapsedRail.click();
+  await expect(bucketRoom.getByRole("button", { name: "Minimize bucket review tools" })).toBeVisible();
+  await expect(bucketRoom.getByRole("heading", { name: "Notes", exact: true })).toBeVisible();
 });
 
 test("operator AI intake exposes private underwriting chat and the client transcript", async ({ page }, testInfo) => {
