@@ -459,6 +459,46 @@
 
 .dashboard-head { margin: 0 0 14px; }
 .dashboard-greeting { font-size: 26px !important; margin-top: 2px; }
+.pipeline-economics { border: 1px solid var(--line); border-radius: 13px; background: var(--surface); padding: 15px; box-shadow: var(--sh1); }
+.pipeline-economics-head { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.pipeline-economics-head h2 { margin: 3px 0 0; font-size: 17px; }
+.pipeline-economics-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+.pipeline-economics-card { position: relative; display: flex; min-width: 0; flex-direction: column; gap: 5px; padding: 13px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunken2); color: inherit; text-decoration: none; overflow: hidden; }
+.pipeline-economics-card::before { content: ""; position: absolute; inset: 0 auto 0 0; width: 3px; background: var(--muted); }
+.pipeline-economics-card.is-underwriting::before { background: var(--petrol); }
+.pipeline-economics-card.is-approved::before { background: var(--gold); }
+.pipeline-economics-card.is-funded::before { background: var(--ok); }
+.pipeline-economics-card:hover { border-color: var(--accent-400); box-shadow: var(--sh1); }
+.pipeline-economics-label { font-size: 12px; font-weight: 720; color: var(--ink2); }
+.pipeline-economics-value { margin-top: 2px; font-family: var(--fh); font-size: 25px; line-height: 1.1; }
+.pipeline-economics-earnings { display: grid; grid-template-columns: 1fr auto; gap: 10px; margin-top: 7px; padding-top: 8px; border-top: 1px solid var(--line); }
+.pipeline-economics-earnings span { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
+.pipeline-economics-earnings small { font-size: 9.5px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.pipeline-economics-earnings b { font-size: 12px; }
+.dashboard-primary-workspaces { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.dashboard-workspace-card { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; align-items: end; min-width: 0; padding: 17px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); color: inherit; text-decoration: none; box-shadow: var(--sh1); }
+.dashboard-workspace-card:hover { border-color: var(--accent-400); box-shadow: var(--sh2); }
+.dashboard-workspace-card > .row, .dashboard-workspace-card > .dashboard-workspace-metrics, .dashboard-workspace-card > em { grid-column: 1 / -1; }
+.dashboard-workspace-card > strong { font-family: var(--fh); font-size: 34px; line-height: 1; color: var(--accent); }
+.dashboard-workspace-card > span:not(.row) { color: var(--muted); font-size: 12px; align-self: center; }
+.dashboard-workspace-card.is-field-desk > strong { color: var(--petrol); }
+.dashboard-workspace-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 10px; }
+.dashboard-workspace-metrics span { display: flex; flex-direction: column; gap: 2px; padding: 9px 10px; border-radius: 8px; background: var(--sunken2); }
+.dashboard-workspace-metrics small { color: var(--muted); font-size: 10px; text-transform: uppercase; }
+.dashboard-workspace-metrics b { font-size: 14px; }
+.dashboard-workspace-card > em { margin-top: 7px; color: var(--accent); font-size: 12px; font-style: normal; font-weight: 700; }
+.dashboard-secondary-heading { display: flex; align-items: center; gap: 10px; padding: 2px 1px 0; }
+.file-forecast-cell { display: grid; gap: 2px; min-width: 130px; }
+.file-forecast-card { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); }
+.file-forecast-card span { display: flex; min-width: 0; flex-direction: column; gap: 1px; }
+.file-forecast-card small { color: var(--muted); font-size: 8.8px; text-transform: uppercase; letter-spacing: .04em; }
+.file-forecast-card b { overflow: hidden; color: var(--ink2); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
+.file-economics-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.file-economics-summary > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; padding: 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--sunken2); }
+.file-economics-summary small { color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .04em; }
+.file-economics-summary b { font-family: var(--fh); font-size: 22px; }
+.file-economics-summary em { color: var(--muted); font-size: 11px; font-style: normal; }
+.file-economics-points input { min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; flex: 1; }
 .vertical-summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .vertical-summary { display: flex; flex-direction: column; gap: 9px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); color: inherit; text-decoration: none; }
 .vertical-summary:hover { border-color: var(--accent-400); }
@@ -479,12 +519,16 @@
 .daily-split { display: grid; grid-template-columns: minmax(340px, 5fr) minmax(0, 7fr); gap: 14px; }
 .calendar-split { grid-template-columns: minmax(0, 7fr) minmax(320px, 5fr); }
 @media (max-width: 1100px) {
+  .pipeline-economics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .vertical-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .funding-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .rates-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .daily-split { grid-template-columns: minmax(300px, 4fr) minmax(0, 6fr); }
 }
 @media (max-width: 640px) {
+  .pipeline-economics-head { align-items: flex-start; flex-direction: column; }
+  .pipeline-economics-grid, .dashboard-primary-workspaces { grid-template-columns: 1fr; }
+  .file-economics-summary { grid-template-columns: 1fr; }
   .vertical-summary-grid, .rates-summary-grid { grid-template-columns: 1fr; }
   .funding-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .dashboard-head .ckrow > .sub { width: 100%; }
@@ -1938,7 +1982,7 @@ button.pick { width: 100%; text-align: left; }
   .underwriter-digest > header { align-items: flex-start; flex-direction: column; }
 }
 .underwriting-workspace { display: grid; gap: 14px; min-width: 0; }
-.underwriting-status-strip { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--sunken2); }
+.underwriting-status-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--sunken2); }
 .underwriting-status-strip > div { min-width: 0; display: grid; gap: 3px; padding: 12px 14px; border-right: 1px solid var(--line); }
 .underwriting-status-strip > div:last-child { border-right: 0; }
 .underwriting-status-strip b { overflow-wrap: anywhere; }
@@ -3615,7 +3659,11 @@ a.pick { color: inherit; text-decoration: none; }
 .calendar-v2-event-green { --calendar-event-color: var(--calendar-green); }
 .calendar-v2-event-red { --calendar-event-color: var(--calendar-red); }
 .calendar-v2-event-gray { --calendar-event-color: var(--calendar-gray); }
+.calendar-v2-event-teal { --calendar-event-color: var(--calendar-teal); }
 .calendar-v2-event-internal .calendar-v2-event-content { border-left-style: dashed; background: var(--sunken2); }
+.calendar-v2-event-estimated-closing .calendar-v2-event-content { border-left-width: 4px; background: color-mix(in srgb, var(--calendar-teal) 12%, var(--surface)); }
+.calendar-v2-event-estimated-closing .calendar-v2-event-time { text-transform: uppercase; letter-spacing: .035em; }
+.calendar-v2-fullcalendar .fc-daygrid-block-event.calendar-v2-event-estimated-closing { margin-inline: 1px; }
 .calendar-v2-event-complete .calendar-v2-event-content { opacity: .82; }
 .calendar-v2-fullcalendar .fc-timegrid-event .calendar-v2-event-content { height: 100%; align-content: start; padding: 6px 7px; }
 .calendar-v2-fullcalendar .fc-timegrid-slot { height: 2.8em; }

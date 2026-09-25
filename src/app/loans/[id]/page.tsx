@@ -5,7 +5,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Pill, StageBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, Chip, IconBtn, Kpi, KpiRow, Seg, type ChipTone } from "@/components/ds";
-import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useSendClientEmail, useStageTransition, useUpdateLoan } from "@/hooks/useApi";
+import { useClient, useCurrentUser, useDocuments, useLoan, useLoanActivity, useRecalc, useSendClientEmail, useStageTransition, useUnifiedOperatorFile, useUpdateLoan } from "@/hooks/useApi";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { FileBlockersPopup } from "@/components/FileBlockersPopup";
@@ -39,6 +39,8 @@ import { ClientTodoTab } from "./tabs/ClientTodoTab";
 import { LoanChatTab } from "./components/LoanChatTab";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
+import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
+import { formatUnifiedAmount } from "@/lib/unifiedOperator";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -87,6 +89,7 @@ const CLIENT_TABS = [
 export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const profile = useActiveProfile();
+  const hasForecastAccess = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
   // Needed for the inline Loan-chat tab (passed through to DealChatInput).
   const { data: currentUser } = useCurrentUser();
   const setAiOpen = useUI((s) => s.setAiOpen);
@@ -97,6 +100,7 @@ export default function LoanDetailPage() {
   const { data: client } = useClient(loan?.client_id ?? null);
   const { data: docs = [] } = useDocuments(params.id);
   const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
+  const { data: unifiedLoanFile } = useUnifiedOperatorFile(hasForecastAccess ? "loan" : null, hasForecastAccess ? params.id : null);
   const stageMut = useStageTransition();
   const recalc = useRecalc();
   // Post-creation redirects (SmartIntakeModal, prequal accept) can deep-
@@ -115,6 +119,7 @@ export default function LoanDetailPage() {
   const [agentPickerOpen, setAgentPickerOpen] = useState(false);
   // Email-the-client composer (operator/broker only).
   const [emailClientOpen, setEmailClientOpen] = useState(false);
+  const [economicsOpen, setEconomicsOpen] = useState(false);
   const sendClientEmail = useSendClientEmail();
   const canEmailClient = !!client?.email && (profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC || profile.role === Role.BROKER);
 
@@ -190,6 +195,8 @@ export default function LoanDetailPage() {
           <CellChip tone="mut" className="num">{loan.deal_id}</CellChip>
           <CellChip tone="acc">{FILE_STAGE_LABELS[stageIndex] ?? loan.stage}</CellChip>
           <CellChip tone={completion.score >= 80 ? "ok" : completion.score >= 60 ? "warn" : "bad"}>{completion.label}</CellChip>
+          {isInternal && unifiedLoanFile?.file.forecast_earnings != null ? <CellChip tone="ok">{formatUnifiedAmount(unifiedLoanFile.file.forecast_earnings)} forecast earnings</CellChip> : null}
+          {isInternal && unifiedLoanFile?.file.estimated_close_date ? <CellChip tone="acc">Est. close {new Date(`${unifiedLoanFile.file.estimated_close_date}T12:00:00`).toLocaleDateString()}</CellChip> : null}
           <span className="sp" />
           <span className="sub">{loan.entity_name || client?.name || loan.client_name} · {loan.type.replaceAll("_", " ")} · {QC_FMT.short(Number(loan.amount))}</span>
           <Btn variant="pri" size="sm" onClick={() => setShowBlockers(true)}>
@@ -200,6 +207,7 @@ export default function LoanDetailPage() {
             items={[
               { label: "Email client", onSelect: () => setEmailClientOpen(true), hidden: !canEmailClient },
               { label: loan.broker_id ? "Reassign desk" : "Assign desk", onSelect: () => setAgentPickerOpen(true), hidden: !isInternal },
+              { label: "Edit earnings forecast", onSelect: () => setEconomicsOpen(true), hidden: !isInternal || !unifiedLoanFile?.file },
               { label: "Open Elara", onSelect: () => setAiOpen(true) },
               { label: "Open lender chat", onSelect: () => setTab("thread"), hidden: !isInternal },
             ]}
@@ -248,6 +256,12 @@ export default function LoanDetailPage() {
       {activeTab === "workflow" && <WorkflowTab loan={loan} canEdit={canRequestDoc} />}
       {/* "uw" tab removed — Underwriting content lives in Funding File. */}
       {/* Property tab removed — content now embedded in FundingFileTab. */}
+
+      <FileEconomicsDrawer
+        open={economicsOpen}
+        row={unifiedLoanFile?.file ?? null}
+        onClose={() => setEconomicsOpen(false)}
+      />
       {activeTab === "wire" && <WireClosingTab loan={loan} />}
       {activeTab === "prequal" && <PrequalTab loan={loan} />}
       {activeTab === "workspace" && <DealWorkspaceTab loanId={loan.id} onOpenTab={openLoanArea} />}

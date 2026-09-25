@@ -167,10 +167,12 @@ export function UnifiedFilesTable({
   rows,
   empty = "No files match these filters.",
   onLinkBucketIntake,
+  onEditEconomics,
 }: {
   rows: UnifiedFileRow[];
   empty?: string;
   onLinkBucketIntake?: (row: UnifiedFileRow) => void;
+  onEditEconomics?: (row: UnifiedFileRow) => void;
 }) {
   const { data: currentUser } = useCurrentUser();
   const { rows: orderedRows, isPinned, togglePin } = usePinnedRows({
@@ -186,6 +188,7 @@ export function UnifiedFilesTable({
         { label: "Vertical", width: 120 },
         { label: "Source", width: 120 },
         { label: "Stage", width: "15%" },
+        { label: "Forecast", width: 180 },
         { label: "Program" },
         { label: "Agent", width: 140 },
         { label: "Underwriter", width: 150 },
@@ -202,30 +205,36 @@ export function UnifiedFilesTable({
           <Td><CellChip tone={verticalTone(row.vertical)}>{row.vertical_label}</CellChip></Td>
           <Td><CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip></Td>
           <Td><UnifiedStageMeter row={row} /></Td>
+          <Td>
+            <div className="file-forecast-cell">
+              <b className="num">{row.forecast_earnings == null ? "Not forecast" : formatUnifiedAmount(row.forecast_earnings)}</b>
+              <span className="sub">{row.forecast_fee_points == null ? "No points" : `${row.forecast_fee_points} pts`} · {formatEstimatedClose(row.estimated_close_date)}</span>
+            </div>
+          </Td>
           <Td><span className="sub">{row.program_tags.slice(0, 2).join(" · ") || "Unassigned"}</span></Td>
           {/* The file's team (services/file_team): who owns it, who is underwriting it. */}
           <Td><span className={row.agent_names?.length || row.agent_name ? undefined : "sub"}>{row.agent_names?.length ? row.agent_names.join(", ") : row.agent_name ?? "—"}</span></Td>
           <Td><span className={row.underwriter_names?.length ? undefined : "sub"}>{row.underwriter_names?.length ? row.underwriter_names.join(", ") : "—"}</span></Td>
           <Td><UnifiedDocumentPack row={row} /></Td>
           <Td><CellChip tone={row.health_tone}>{row.health}</CellChip></Td>
-          <Td align="r"><span className="row" style={{ gap: 4, flexWrap: "nowrap", justifyContent: "flex-end" }}><PinRowButton pinned={pinned} onToggle={() => togglePin(row.id)} label={row.title || row.label} /><UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} /></span></Td>
+          <Td align="r"><span className="row" style={{ gap: 4, flexWrap: "nowrap", justifyContent: "flex-end" }}><PinRowButton pinned={pinned} onToggle={() => togglePin(row.id)} label={row.title || row.label} /><UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} onEditEconomics={onEditEconomics} /></span></Td>
         </Tr>
         );
       }) : (
-        <Tr><Td colSpan={10}><div className="empty">{empty}</div></Td></Tr>
+        <Tr><Td colSpan={11}><div className="empty">{empty}</div></Td></Tr>
       )}
     </Table>
   );
 }
 
-export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+export function UnifiedFileSummaryCard({ row, onLinkBucketIntake, onEditEconomics }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void; onEditEconomics?: (row: UnifiedFileRow) => void }) {
   const status = lifecycleStatus(row);
   return (
     <div className={`kcard ${semanticStatusClass(status)}`} style={{ cursor: row.can_move_pipeline ? "grab" : "default" }}>
       <div className="row" style={{ gap: 5, marginBottom: 4 }}>
         <UnifiedFileTags row={row} compact />
         <span className="sp" />
-        <UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} />
+        <UnifiedActionMenu row={row} onLinkBucketIntake={onLinkBucketIntake} onEditEconomics={onEditEconomics} />
       </div>
       <Link href={operatorFileHref(row)} className="linkreset">
         <div className="trunc" style={{ fontSize: 12.8, fontWeight: 640 }}>{row.title || row.label}</div>
@@ -233,6 +242,10 @@ export function UnifiedFileSummaryCard({ row, onLinkBucketIntake }: { row: Unifi
         <div className="row split" style={{ marginTop: 8 }}>
           <b className="num" style={{ fontSize: 12.5 }}>{formatUnifiedAmount(row.amount)}</b>
           <CellChip tone={row.health_tone}>{row.health}</CellChip>
+        </div>
+        <div className="file-forecast-card">
+          <span><small>Forecast</small><b className="num">{row.forecast_earnings == null ? "Not set" : formatUnifiedAmount(row.forecast_earnings)}</b></span>
+          <span><small>Closing</small><b>{formatEstimatedClose(row.estimated_close_date, true)}</b></span>
         </div>
       </Link>
     </div>
@@ -243,11 +256,13 @@ export function UnifiedKanbanBoard({
   rows,
   vertical,
   onLinkBucketIntake,
+  onEditEconomics,
   onMove,
 }: {
   rows: UnifiedFileRow[];
   vertical: UnifiedVertical | "all";
   onLinkBucketIntake?: (row: UnifiedFileRow) => void;
+  onEditEconomics?: (row: UnifiedFileRow) => void;
   onMove?: (row: UnifiedFileRow, targetStatus: UnderwritingLifecycleStatus) => void;
 }) {
   const [activeRow, setActiveRow] = useState<UnifiedFileRow | null>(null);
@@ -283,36 +298,39 @@ export function UnifiedKanbanBoard({
               key={column.key}
               id={column.key}
               label={column.label}
-              sub={column.rows.length ? formatUnifiedAmount(column.rows.reduce((sum, row) => sum + Number(row.amount || 0), 0)) : column.sub}
+              sub={column.rows.length
+                ? `${formatUnifiedAmount(column.rows.reduce((sum, row) => sum + Number(row.forecast_amount ?? row.amount ?? 0), 0))} value · ${formatUnifiedAmount(column.rows.reduce((sum, row) => sum + Number(row.forecast_earnings || 0), 0))} earnings`
+                : column.sub}
               rows={column.rows}
               onLinkBucketIntake={onLinkBucketIntake}
+              onEditEconomics={onEditEconomics}
             />
           ))}
         </div>
       </div>
       </div>
       <DragOverlay>
-        {activeRow ? <div style={{ width: 220 }}><UnifiedFileSummaryCard row={activeRow} onLinkBucketIntake={onLinkBucketIntake} /></div> : null}
+        {activeRow ? <div style={{ width: 220 }}><UnifiedFileSummaryCard row={activeRow} onLinkBucketIntake={onLinkBucketIntake} onEditEconomics={onEditEconomics} /></div> : null}
       </DragOverlay>
     </DndContext>
   );
 }
 
-function BoardColumn({ id, label, sub, rows, onLinkBucketIntake }: { id: UnderwritingLifecycleStatus; label: string; sub: string; rows: UnifiedFileRow[]; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+function BoardColumn({ id, label, sub, rows, onLinkBucketIntake, onEditEconomics }: { id: UnderwritingLifecycleStatus; label: string; sub: string; rows: UnifiedFileRow[]; onLinkBucketIntake?: (row: UnifiedFileRow) => void; onEditEconomics?: (row: UnifiedFileRow) => void }) {
   const { isOver, setNodeRef } = useDroppable({ id });
   return (
     <div ref={setNodeRef} className={`kcol${isOver ? " drop-over" : ""}`}>
       <div className="row split" style={{ marginBottom: 4 }}><span className="lbl" style={{ fontSize: 9.6 }}>{label}</span><span className="tag num">{rows.length}</span></div>
       <div className="sub trunc" style={{ fontSize: 10.5, marginBottom: 9 }}>{sub}</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {rows.map((row) => <DraggableFileSummaryCard key={row.id} row={row} onLinkBucketIntake={onLinkBucketIntake} />)}
+        {rows.map((row) => <DraggableFileSummaryCard key={row.id} row={row} onLinkBucketIntake={onLinkBucketIntake} onEditEconomics={onEditEconomics} />)}
         {!rows.length ? <div className="sub" style={{ fontSize: 11, padding: "10px 2px", textAlign: "center", opacity: 0.7 }}>Nothing here</div> : null}
       </div>
     </div>
   );
 }
 
-function DraggableFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+function DraggableFileSummaryCard({ row, onLinkBucketIntake, onEditEconomics }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void; onEditEconomics?: (row: UnifiedFileRow) => void }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: row.id,
     data: { row },
@@ -327,18 +345,23 @@ function DraggableFileSummaryCard({ row, onLinkBucketIntake }: { row: UnifiedFil
       {...attributes}
       {...listeners}
     >
-      <UnifiedFileSummaryCard row={row} onLinkBucketIntake={onLinkBucketIntake} />
+      <UnifiedFileSummaryCard row={row} onLinkBucketIntake={onLinkBucketIntake} onEditEconomics={onEditEconomics} />
     </div>
   );
 }
 
-export function UnifiedActionMenu({ row, onLinkBucketIntake }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void }) {
+export function UnifiedActionMenu({ row, onLinkBucketIntake, onEditEconomics }: { row: UnifiedFileRow; onLinkBucketIntake?: (row: UnifiedFileRow) => void; onEditEconomics?: (row: UnifiedFileRow) => void }) {
   return (
     <span onClick={(event) => event.stopPropagation()}>
       <PageActionMenu
         label={`Actions for ${row.title || row.label}`}
         items={[
           { label: "Open file", onSelect: () => { window.location.href = operatorFileHref(row); } },
+          {
+            label: "Edit earnings forecast",
+            hidden: !onEditEconomics,
+            onSelect: () => onEditEconomics?.(row),
+          },
           {
             label: "Manage linked evidence",
             hidden: !(row.bucket_id || row.intake_id) || !onLinkBucketIntake,
@@ -348,6 +371,16 @@ export function UnifiedActionMenu({ row, onLinkBucketIntake }: { row: UnifiedFil
       />
     </span>
   );
+}
+
+function formatEstimatedClose(value: string | null | undefined, compact = false): string {
+  if (!value) return compact ? "Not set" : "No closing date";
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00` : value;
+  const date = new Date(normalized);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString("en-US", compact
+    ? { month: "short", day: "numeric" }
+    : { month: "short", day: "numeric", year: "numeric" });
 }
 
 export function BucketIntakeLinkDrawer({

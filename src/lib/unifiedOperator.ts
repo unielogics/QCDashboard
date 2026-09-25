@@ -51,6 +51,15 @@ export type UnifiedFileRow = {
   source_label?: string;
   stage: UnifiedStage;
   amount: number | null;
+  /** Canonical application-profile forecast fields. These are internal only. */
+  profile_id?: string | null;
+  requested_amount?: number | null;
+  funded_amount?: number | null;
+  forecast_fee_points?: number | null;
+  forecast_amount?: number | null;
+  forecast_amount_basis?: "requested" | "approved" | "funded" | string | null;
+  forecast_earnings?: number | null;
+  estimated_close_date?: string | null;
   health: string;
   health_tone: UnifiedTone;
   coverage: string;
@@ -99,6 +108,37 @@ export type UnifiedRollup = {
   main_street: number;
   dealer: number;
   mca: number;
+  pipeline_economics?: PipelineEconomicsRollup;
+};
+
+export type PipelineEconomicsStage = {
+  count: number;
+  value: number;
+  forecast_earnings: number;
+  forecasted_count: number;
+  forecast_coverage_pct: number;
+};
+
+export type PipelineEconomicsRollup = {
+  requested: PipelineEconomicsStage;
+  underwriting: PipelineEconomicsStage;
+  approved: PipelineEconomicsStage;
+  funded: PipelineEconomicsStage;
+};
+
+export type OperatorFileForecastPatch = {
+  forecast_fee_points: number | null;
+  estimated_close_date: string | null;
+  funded_amount?: number | null;
+};
+
+export type OperatorFileForecastResult = OperatorFileForecastPatch & {
+  source_kind: UnifiedSourceKind;
+  source_id: string;
+  profile_id: string;
+  forecast_amount: number | null;
+  forecast_amount_basis: string | null;
+  forecast_earnings: number | null;
 };
 
 export type UnifiedFilePage = {
@@ -451,6 +491,78 @@ export function formatUnifiedAmount(amount: number | null): string {
   if (Math.abs(amount) >= 1_000_000) return `$${(amount / 1_000_000).toFixed(amount >= 10_000_000 ? 0 : 1)}M`;
   if (Math.abs(amount) >= 1_000) return `$${Math.round(amount / 1_000)}K`;
   return `$${amount.toLocaleString("en-US")}`;
+}
+
+export function emptyPipelineEconomics(): PipelineEconomicsRollup {
+  const stage = (): PipelineEconomicsStage => ({
+    count: 0,
+    value: 0,
+    forecast_earnings: 0,
+    forecasted_count: 0,
+    forecast_coverage_pct: 0,
+  });
+  return { requested: stage(), underwriting: stage(), approved: stage(), funded: stage() };
+}
+
+/**
+ * Client-side fallback used for filtered subsets. The API rollup remains the
+ * authoritative aggregate for the full book.
+ */
+export function derivePipelineEconomics(rows: UnifiedFileRow[]): PipelineEconomicsRollup {
+  const result = emptyPipelineEconomics();
+  const seen = new Set<string>();
+  for (const row of rows) {
+    // The unified feed may project one logical profile through its intake,
+    // promoted loan, bucket, and dealer rows. Count the economics once.
+    const identity = row.profile_id
+      ? `profile:${row.profile_id}`
+      : row.loan_id
+        ? `loan:${row.loan_id}`
+        : row.intake_id
+          ? `intake:${row.intake_id}`
+          : row.deal_id
+            ? `deal:${row.deal_id}`
+            : row.dealer_id
+              ? `dealer:${row.dealer_id}`
+              : `${row.source_kind}:${row.source_id}`;
+    if (seen.has(identity)) continue;
+    seen.add(identity);
+    const status = row.pipeline_status ?? row.underwriting_status ?? "submitted";
+    const key = status === "submitted" || status === "collecting_docs"
+      ? "requested"
+      : status === "in_underwriting" || status === "term_sheet_provided"
+        ? "underwriting"
+        : status === "approved"
+          ? "approved"
+          : status === "closed_won"
+            ? "funded"
+            : null;
+    if (!key) continue;
+    const stage = result[key];
+    const amount = row.forecast_amount ?? (
+      key === "funded"
+        ? row.funded_amount ?? row.approved_amount ?? row.requested_amount ?? row.amount
+        : key === "approved"
+          ? row.approved_amount ?? row.requested_amount ?? row.amount
+          : row.requested_amount ?? row.amount
+    );
+    stage.count += 1;
+    stage.value += Number(amount || 0);
+    if (row.forecast_fee_points != null && amount != null) {
+      stage.forecasted_count += 1;
+      stage.forecast_earnings += Number(row.forecast_earnings ?? (Number(amount) * Number(row.forecast_fee_points)) / 100);
+    }
+  }
+  for (const stage of Object.values(result)) {
+    stage.forecast_coverage_pct = stage.count ? Math.round((stage.forecasted_count / stage.count) * 100) : 0;
+  }
+  return result;
+}
+
+export function forecastAmountBasisLabel(basis: string | null | undefined): string {
+  if (basis === "approved") return "approved amount";
+  if (basis === "funded") return "funded amount";
+  return "requested amount";
 }
 
 export function operatorFileHref(row: UnifiedFileRow): string {

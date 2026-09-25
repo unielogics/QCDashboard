@@ -175,6 +175,8 @@ import type {
   BucketIntakeLinkRead,
   BucketIntakeLinkResult,
   OperatorBucketFile,
+  OperatorFileForecastPatch,
+  OperatorFileForecastResult,
   PipelineMoveRequest,
   PipelineMoveResult,
   UnifiedActionDefinition,
@@ -7436,6 +7438,34 @@ export function useMoveOperatorPipelineFile() {
       qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
       qc.invalidateQueries({ queryKey: ["lead-funnel"] });
       qc.invalidateQueries({ queryKey: ["loans"] });
+      if (vars.sourceKind === "intake") {
+        qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.sourceId] });
+      }
+    },
+  });
+}
+
+export function useUpdateOperatorFileEconomics() {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sourceKind, sourceId, body }: {
+      sourceKind: UnifiedSourceKind;
+      sourceId: string;
+      body: OperatorFileForecastPatch;
+    }) => apiCall<OperatorFileForecastResult>(`/operator-files/${sourceKind}/${sourceId}/economics`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+    onSuccess: (_, vars) => {
+      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
+      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
+      qc.invalidateQueries({ queryKey: ["application-profile"] });
+      qc.invalidateQueries({ queryKey: ["dashboard-report"] });
+      qc.invalidateQueries({ queryKey: ["calendar-v2-workspace"] });
+      qc.invalidateQueries({ queryKey: ["loans"] });
+      qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
       if (vars.sourceKind === "intake") {
         qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.sourceId] });
       }

@@ -51,6 +51,12 @@ export type ApplicationProfile = {
   underwriting_notes: string | null;
   underwriting_updated_by_user_id: string | null;
   underwriting_updated_at: string | null;
+  /** Internal gross-revenue forecast. One point equals one percent of the effective file amount. */
+  forecast_fee_points: number | null;
+  /** Operator-estimated closing day. This is not the actual funded/closed timestamp. */
+  estimated_close_date: string | null;
+  /** Actual gross amount funded when the lifecycle reaches closed_won. */
+  underwriting_funded_amount: number | null;
   program_selection_mode: "auto" | "manual";
   program_selection_locked_at: string | null;
   program_selection_locked_by_user_id: string | null;
@@ -301,6 +307,9 @@ export type ApplicationUnderwritingState = {
   approved_dscr: number | null;
   close_outcome: string | null;
   reviewer_notes: string | null;
+  forecast_fee_points: number | null;
+  estimated_close_date: string | null;
+  funded_amount: number | null;
   updated_by_user_id: string | null;
   updated_at: string | null;
 };
@@ -314,6 +323,9 @@ export type ApplicationUnderwritingPatch = Partial<{
   approved_dscr: number | null;
   close_outcome: string | null;
   reviewer_notes: string | null;
+  forecast_fee_points: number | null;
+  estimated_close_date: string | null;
+  funded_amount: number | null;
 }>;
 
 export type ClientTermsFunderType = "bank" | "credit_union" | "private_fund" | "private_capital" | "family_office" | "balance_sheet" | "warehouse" | "table_funder" | "other";

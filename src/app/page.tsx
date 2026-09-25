@@ -59,6 +59,7 @@ import {
   type Col,
 } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { PipelineEconomicsStrip } from "@/components/operator/PipelineEconomicsStrip";
 import { PinRowButton } from "@/components/ds/TableWorkspace";
 import { FUNDING_LADDER, VERTICAL_OPTIONS, formatUnifiedAmount, operatorFileHref, verticalTone, type UnifiedFileRow, type UnifiedVertical } from "@/lib/unifiedOperator";
 import { usePinnedRows } from "@/lib/tablePinning";
@@ -425,8 +426,8 @@ function OperatorDashboard({
   const todayEvents = events.filter((event) => isSameDay(new Date(event.starts_at), now) && event.status !== "cancelled");
   const pendingTasks = tasks.filter((task) => task.status === "pending");
   const attention = rows.filter((row) => row.health_tone === "bad" || row.health_tone === "warn").slice(0, 4);
-  const totalValue = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-  const gateBlocked = rows.filter((row) => !row.funding_stage && row.health_tone !== "ok").length;
+  const aiIntakeRows = rows.filter((row) => row.origin === "ai_intake" || Boolean(row.intake_id));
+  const fieldDeskRows = rows.filter((row) => row.origin === "rep" || row.origin === "agent" || row.origin === "dealer");
   const dateline = now.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
   const time = now.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true });
 
@@ -440,42 +441,47 @@ function OperatorDashboard({
           </div>
           <span className="sp" />
           <span className="sub">{pendingTasks.filter((task) => task.priority === "high").length} high-priority · {todayEvents.length} events · {rollup?.total ?? 0} files in flight</span>
-          <BtnLink href="/pipeline?new=1" size="sm" className="pri"><Icon name="plus" size={13} /> New file</BtnLink>
+          <BtnLink href="/admin/ai-underwriter-leads" size="sm" className="pri"><Icon name="spark" size={13} /> AI Intake</BtnLink>
           <PageActionMenu label="Dashboard actions" items={[
             { label: "Open pipeline", href: "/pipeline" },
-            { label: "Open client book", href: "/clients" },
-            { label: "Open AI approval queue", href: "/ai-inbox" },
+            { label: "Open Marketing", href: "/marketing" },
+            { label: "Create a new file", href: "/pipeline?new=1" },
+            { label: "Open Elara approval queue", href: "/ai-inbox" },
           ]} />
         </div>
-        <div className="pagebar" style={{ paddingTop: 2 }}><span className="sub">One operating view across pipeline, evidence, intake, funding, and every originating channel.</span></div>
+        <div className="pagebar" style={{ paddingTop: 2 }}><span className="sub">AI Intake and Field Desk activity first, with pipeline value, closings, and earnings in one operating view.</span></div>
       </div>
 
-      <KpiRow>
-        <Kpi label="Files in flight" value={isLoading ? "..." : rollup?.total ?? 0} sub={`${rollup?.working ?? 0} still in the working band`} />
-        <Kpi label="Pipeline value" value={formatUnifiedAmount(totalValue)} sub="across four verticals" />
-        <Kpi label="Held at the gate" value={gateBlocked} sub="missing evidence or authorization" tone={gateBlocked ? "warn" : "ok"} />
-        <Kpi label="Funded YTD · all closed files" value={report ? QC_FMT.short(report.funded_ytd) : "—"} sub={report?.funded_ytd_delta != null ? `${report.funded_ytd_delta >= 0 ? "+" : ""}${report.funded_ytd_delta}% vs prior year` : "No comparison yet"} tone="ok" />
-      </KpiRow>
+      <PipelineEconomicsStrip
+        economics={rollup?.pipeline_economics}
+        rows={rows}
+        loading={isLoading}
+      />
 
-      <Panel className="mt" title="By vertical" actions={<><CellChip tone="gold">{rows.filter((row) => row.origin === "rep").length} from the rep desk</CellChip><span className="sub">Same spine, four evidence packs.</span></>}>
-        <div className="vertical-summary-grid">
-          {VERTICAL_OPTIONS.filter((item): item is { value: UnifiedVertical; label: string } => item.value !== "all").map((item) => {
-            const verticalRows = rows.filter((row) => row.vertical === item.value);
-            const value = verticalRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
-            const blocked = verticalRows.filter((row) => row.health_tone === "bad" || row.health_tone === "warn").length;
-            const promoted = verticalRows.filter((row) => row.funding_stage).length;
-            return (
-              <Link key={item.value} href={`/pipeline?vertical=${item.value}`} className="vertical-summary">
-                <span className="row"><CellChip tone={verticalTone(item.value)}>{item.label}</CellChip><span className="sp" /><span className="sub num">{verticalRows.length} files</span></span>
-                <b className="vertical-summary-value num">{formatUnifiedAmount(value)}</b>
-                <span className="track"><span className="fill" style={{ width: `${verticalRows.length ? Math.round((promoted / verticalRows.length) * 100) : 0}%` }} /></span>
-                <span className="sub">{verticalRows.length - promoted} working · {promoted} in funding</span>
-                <CellChip tone={blocked ? "warn" : "ok"}>{blocked ? `${blocked} held` : "Clear"}</CellChip>
-              </Link>
-            );
-          })}
-        </div>
-      </Panel>
+      <section className="dashboard-primary-workspaces mt" aria-label="Primary workspaces">
+        <Link href="/admin/ai-underwriter-leads" className="dashboard-workspace-card is-ai-intake">
+          <span className="row split"><span className="lbl">Primary workspace</span><CellChip tone="acc">AI Intake</CellChip></span>
+          <strong>{isLoading ? "…" : aiIntakeRows.length}</strong>
+          <span>active intake files</span>
+          <div className="dashboard-workspace-metrics">
+            <span><small>File value</small><b>{formatUnifiedAmount(aiIntakeRows.reduce((sum, row) => sum + Number(row.forecast_amount ?? row.amount ?? 0), 0))}</b></span>
+            <span><small>Needs attention</small><b>{aiIntakeRows.filter((row) => row.health_tone === "bad" || row.health_tone === "warn").length}</b></span>
+          </div>
+          <em>Review intake files →</em>
+        </Link>
+        <Link href="/marketing" className="dashboard-workspace-card is-field-desk">
+          <span className="row split"><span className="lbl">Primary workspace</span><CellChip tone="pet">Field Desk</CellChip></span>
+          <strong>{isLoading ? "…" : fieldDeskRows.length}</strong>
+          <span>agent and dealer-originated files</span>
+          <div className="dashboard-workspace-metrics">
+            <span><small>File value</small><b>{formatUnifiedAmount(fieldDeskRows.reduce((sum, row) => sum + Number(row.forecast_amount ?? row.amount ?? 0), 0))}</b></span>
+            <span><small>Funded YTD</small><b>{report ? QC_FMT.short(report.funded_ytd) : "—"}</b></span>
+          </div>
+          <em>Open Field Desk Marketing →</em>
+        </Link>
+      </section>
+
+      <div className="dashboard-secondary-heading mt"><span className="lbl">Secondary monitoring</span><span className="sub">Exceptions, approvals, market context, and supporting operational views.</span></div>
 
       <div className="cg mt">
         <div className="s8">
@@ -514,6 +520,26 @@ function OperatorDashboard({
           </Panel>
         </div>
       </div>
+
+      <Panel className="mt" title="By vertical" actions={<><CellChip tone="gold">{rows.filter((row) => row.origin === "rep").length} from the rep desk</CellChip><span className="sub">A secondary view of the same file spine.</span></>}>
+        <div className="vertical-summary-grid">
+          {VERTICAL_OPTIONS.filter((item): item is { value: UnifiedVertical; label: string } => item.value !== "all").map((item) => {
+            const verticalRows = rows.filter((row) => row.vertical === item.value);
+            const value = verticalRows.reduce((sum, row) => sum + Number(row.forecast_amount ?? row.amount ?? 0), 0);
+            const blocked = verticalRows.filter((row) => row.health_tone === "bad" || row.health_tone === "warn").length;
+            const promoted = verticalRows.filter((row) => row.funding_stage).length;
+            return (
+              <Link key={item.value} href={`/pipeline?vertical=${item.value}`} className="vertical-summary">
+                <span className="row"><CellChip tone={verticalTone(item.value)}>{item.label}</CellChip><span className="sp" /><span className="sub num">{verticalRows.length} files</span></span>
+                <b className="vertical-summary-value num">{formatUnifiedAmount(value)}</b>
+                <span className="track"><span className="fill" style={{ width: `${verticalRows.length ? Math.round((promoted / verticalRows.length) * 100) : 0}%` }} /></span>
+                <span className="sub">{verticalRows.length - promoted} working · {promoted} in funding</span>
+                <CellChip tone={blocked ? "warn" : "ok"}>{blocked ? `${blocked} held` : "Clear"}</CellChip>
+              </Link>
+            );
+          })}
+        </div>
+      </Panel>
     </div>
   );
 }

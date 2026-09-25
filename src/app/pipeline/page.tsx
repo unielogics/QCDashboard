@@ -7,6 +7,8 @@ import { Btn, CellChip, Field, Panel, Seg, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
+import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
+import { PipelineEconomicsStrip } from "@/components/operator/PipelineEconomicsStrip";
 import {
   BucketIntakeLinkDrawer,
   UnifiedFilesTable,
@@ -40,12 +42,13 @@ function OperatorPipeline() {
   const [view, setView] = useState<"board" | "table">("board");
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [linkRow, setLinkRow] = useState<UnifiedFileRow | null>(null);
+  const [economicsRow, setEconomicsRow] = useState<UnifiedFileRow | null>(null);
   const [pendingMove, setPendingMove] = useState<{ row: UnifiedFileRow; targetStatus: UnderwritingLifecycleStatus } | null>(null);
   const [moveDetails, setMoveDetails] = useState<PipelineApprovalDraft>(() => pipelineApprovalDraft());
   const [moveError, setMoveError] = useState<string | null>(null);
   const files = useUnifiedOperatorFiles({ limit: 500 });
   const movePipeline = useMoveOperatorPipelineFile();
-  const allRows = files.data?.items ?? [];
+  const allRows = useMemo(() => files.data?.items ?? [], [files.data?.items]);
 
   useEffect(() => {
     if (searchParams?.get("new") === "1") setIntakeOpen(true);
@@ -72,6 +75,7 @@ function OperatorPipeline() {
 
   const rollup = files.data?.rollup;
   const visibleAmount = rows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+  const isFiltered = filters.vertical !== "all" || filters.origin !== "all" || Boolean(filters.q.trim());
 
   return (
     <div className="grid">
@@ -104,6 +108,13 @@ function OperatorPipeline() {
         <UnifiedOperatorFilters value={filters} onChange={setFilters} rows={allRows} />
       </div>
 
+      <PipelineEconomicsStrip
+        economics={isFiltered ? null : rollup?.pipeline_economics}
+        rows={rows}
+        loading={files.isLoading}
+        title={isFiltered ? "Visible pipeline value and forecast" : undefined}
+      />
+
       {files.isError ? (
         <Panel>
           <div className="empty">
@@ -118,6 +129,7 @@ function OperatorPipeline() {
             rows={rows}
             vertical={filters.vertical}
             onLinkBucketIntake={setLinkRow}
+            onEditEconomics={setEconomicsRow}
             onMove={(row, targetStatus) => {
               setMoveError(null);
               setMoveDetails(pipelineApprovalDraft({
@@ -134,6 +146,7 @@ function OperatorPipeline() {
             rows={rows}
             empty={files.isLoading ? "Loading logical files..." : "No files match these filters."}
             onLinkBucketIntake={setLinkRow}
+            onEditEconomics={setEconomicsRow}
           />
         </Panel>
       )}
@@ -144,6 +157,11 @@ function OperatorPipeline() {
         onClose={() => setLinkRow(null)}
         initialBucketId={linkRow?.bucket_id}
         initialIntakeId={linkRow?.intake_id}
+      />
+      <FileEconomicsDrawer
+        open={economicsRow != null}
+        row={economicsRow}
+        onClose={() => setEconomicsRow(null)}
       />
       <Drawer
         open={pendingMove != null}

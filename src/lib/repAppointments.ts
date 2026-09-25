@@ -221,7 +221,7 @@ export interface AppointmentWorkspace {
   };
 }
 
-export type CalendarWorkspaceEventType = "appointment" | "internal";
+export type CalendarWorkspaceEventType = "appointment" | "internal" | "estimated_closing";
 export type CalendarAppointmentKind =
   | "intro_call"
   | "underwriting_review"
@@ -235,10 +235,15 @@ export interface CalendarWorkspaceEvent {
   appointment_id: string | null;
   calendar_event_id: string | null;
   loan_id: string | null;
+  profile_id: string | null;
+  source_kind: "loan" | "deal" | "intake" | "dealer" | null;
+  source_id: string | null;
+  source_url: string | null;
   title: string;
   kind: string;
   starts_at: string;
   ends_at: string;
+  all_day: boolean;
   status: string;
   crm_status: AppointmentCrmStatus | null;
   invitee_name: string | null;
@@ -248,6 +253,10 @@ export interface CalendarWorkspaceEvent {
   has_outcome: boolean;
   color: string;
   can_edit: boolean;
+  forecast_amount: number | null;
+  forecast_amount_basis: string | null;
+  forecast_fee_points: number | null;
+  forecast_earnings: number | null;
 }
 
 export interface CalendarWorkspace {
@@ -257,6 +266,7 @@ export interface CalendarWorkspace {
   events: CalendarWorkspaceEvent[];
   metrics: {
     appointments: number;
+    estimated_closings: number;
     outcome_logged: number;
     awaiting_outcome: number;
     files_created: number;

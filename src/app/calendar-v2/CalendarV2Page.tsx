@@ -74,12 +74,23 @@ function formatEventTime(value: Date): string {
   return value.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
 }
 
+function formatForecastMoney(value: number | null): string | null {
+  if (value == null || Number.isNaN(value)) return null;
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
 function classNamesForEvent(event: CalendarWorkspaceEvent): string[] {
-  const semanticTone = semanticStatusTone(event.crm_status || event.status);
+  const semanticTone = event.event_type === "estimated_closing"
+    ? null
+    : semanticStatusTone(event.crm_status || event.status);
   return [
     "calendar-v2-event",
     `calendar-v2-event-${event.color || TYPE_COLORS[event.kind] || "blue"}`,
-    event.event_type === "internal" ? "calendar-v2-event-internal" : "calendar-v2-event-appointment",
+    `calendar-v2-event-${event.event_type.replaceAll("_", "-")}`,
     event.has_outcome ? "calendar-v2-event-complete" : "",
     semanticTone ? `semantic-status-${semanticTone}` : "semantic-status-neutral",
   ].filter(Boolean);
@@ -94,7 +105,9 @@ export default function CalendarV2Page() {
   const pushedAppointmentRef = useRef(false);
   const { data: user, isLoading: userLoading } = useCurrentUser();
   const appointmentId = searchParams.get("appointment");
-  const allowed = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
+  const allowed = user?.role === Role.SUPER_ADMIN
+    || user?.role === Role.LOAN_EXEC
+    || user?.role === Role.FIELD_REP;
 
   const [view, setView] = useState<CalendarView>("dayGridMonth");
   const [title, setTitle] = useState("");
@@ -107,6 +120,7 @@ export default function CalendarV2Page() {
   const [focusDate, setFocusDate] = useState(() => new Date());
   const [enabledTypes, setEnabledTypes] = useState<Set<string>>(() => new Set(Object.keys(TYPE_LABELS)));
   const [includeInternal, setIncludeInternal] = useState(false);
+  const [showEstimatedClosings, setShowEstimatedClosings] = useState(true);
   const [includeCancelled, setIncludeCancelled] = useState(false);
   const [newAppointmentOpen, setNewAppointmentOpen] = useState(false);
   const [newAppointmentDate, setNewAppointmentDate] = useState(() => defaultCreateTime());
@@ -153,9 +167,11 @@ export default function CalendarV2Page() {
 
   const visibleEvents = useMemo(
     () => (workspace.data?.events ?? []).filter((event) => (
-      event.event_type === "internal" || enabledTypes.has(event.kind)
+      event.event_type === "estimated_closing"
+        ? showEstimatedClosings
+        : event.event_type === "internal" || enabledTypes.has(event.kind)
     )),
-    [enabledTypes, workspace.data?.events],
+    [enabledTypes, showEstimatedClosings, workspace.data?.events],
   );
 
   const calendarEvents = useMemo<EventInput[]>(() => visibleEvents.map((event) => ({
@@ -163,6 +179,7 @@ export default function CalendarV2Page() {
     title: event.title,
     start: event.starts_at,
     end: event.ends_at,
+    allDay: event.all_day,
     editable: event.event_type === "appointment" && event.can_edit && Boolean(workspace.data?.capabilities.can_drag),
     startEditable: event.event_type === "appointment" && event.can_edit,
     durationEditable: event.event_type === "appointment" && event.can_edit,
@@ -215,6 +232,7 @@ export default function CalendarV2Page() {
   const onEventClick = (info: EventClickArg) => {
     const event = info.event.extendedProps as CalendarWorkspaceEvent;
     if (event.event_type === "appointment" && event.appointment_id) openAppointment(event.appointment_id);
+    else if (event.event_type === "estimated_closing" && event.source_url) router.push(event.source_url);
   };
 
   const patchEventTime = async (
@@ -274,7 +292,7 @@ export default function CalendarV2Page() {
       <div className="calendar-v2-state">
         <Icon name="lock" size={24} />
         <h1>Operator calendar access required</h1>
-        <p>Appointment CRM is available to super admins and underwriters.</p>
+        <p>Appointment CRM is available to authorized Field Desk and funding team members.</p>
       </div>
     );
   }
@@ -285,7 +303,7 @@ export default function CalendarV2Page() {
         <div>
           <div className="calendar-v2-eyebrow">Appointment CRM</div>
           <h1>Calendar</h1>
-          <p>Meetings, decisions, notes, and file actions in one working surface.</p>
+          <p>Meetings, estimated closings, decisions, notes, and file actions in one working surface.</p>
         </div>
         <div className="calendar-v2-header-actions">
           <Btn onClick={() => setSettingsOpen(true)}><Icon name="gear" size={14} /> Settings</Btn>
@@ -327,6 +345,10 @@ export default function CalendarV2Page() {
           <section className="calendar-v2-rail-section">
             <div className="calendar-v2-rail-heading"><span>Display</span></div>
             <label className="calendar-v2-switch-row">
+              <span><Icon name="cal" size={14} /> Estimated closings</span>
+              <input type="checkbox" checked={showEstimatedClosings} onChange={(event) => setShowEstimatedClosings(event.target.checked)} />
+            </label>
+            <label className="calendar-v2-switch-row">
               <span><Icon name="layers" size={14} /> Internal events</span>
               <input type="checkbox" checked={includeInternal} onChange={(event) => setIncludeInternal(event.target.checked)} />
             </label>
@@ -337,6 +359,7 @@ export default function CalendarV2Page() {
           </section>
           <section className="calendar-v2-metrics" aria-label="Calendar metrics">
             <div><span>Appointments</span><strong>{monthlyWorkspace.data?.metrics.appointments ?? 0}</strong></div>
+            <div><span>Est. closings</span><strong>{monthlyWorkspace.data?.metrics.estimated_closings ?? 0}</strong></div>
             <div><span>Awaiting outcome</span><strong className={(monthlyWorkspace.data?.metrics.awaiting_outcome ?? 0) > 0 ? "warn" : ""}>{monthlyWorkspace.data?.metrics.awaiting_outcome ?? 0}</strong></div>
             <div><span>Files created</span><strong>{monthlyWorkspace.data?.metrics.files_created ?? 0}</strong></div>
             <div><span>Outcomes logged</span><strong>{monthlyWorkspace.data?.metrics.outcome_logged ?? 0}</strong></div>
@@ -353,6 +376,7 @@ export default function CalendarV2Page() {
             </div>
             <div className="calendar-v2-toolbar-summary">
               <CellChip tone="mut">{workspace.data?.metrics.appointments ?? 0} appointments</CellChip>
+              {showEstimatedClosings && (workspace.data?.metrics.estimated_closings ?? 0) > 0 ? <CellChip tone="acc">{workspace.data?.metrics.estimated_closings} estimated closings</CellChip> : null}
               {(workspace.data?.metrics.awaiting_outcome ?? 0) > 0 ? <CellChip tone="warn">{workspace.data?.metrics.awaiting_outcome} awaiting outcome</CellChip> : null}
             </div>
             <div className="calendar-v2-view-switch" role="group" aria-label="Calendar view">
@@ -384,7 +408,7 @@ export default function CalendarV2Page() {
               slotMaxTime="20:00:00"
               slotDuration="00:30:00"
               snapDuration="00:15:00"
-              allDaySlot={false}
+              allDaySlot
               height="100%"
               events={calendarEvents}
               datesSet={onDatesSet}
@@ -398,7 +422,7 @@ export default function CalendarV2Page() {
                 const record = draggedEvent.extendedProps as CalendarWorkspaceEvent;
                 return record.event_type === "appointment" && record.can_edit;
               }}
-              noEventsContent="No appointments match these filters."
+              noEventsContent="No calendar items match these filters."
               views={{
                 dayGridMonth: { dayHeaderFormat: { weekday: "short" } },
                 timeGridWeek: { dayHeaderFormat: { weekday: "short", month: "short", day: "numeric" } },
@@ -433,6 +457,25 @@ export default function CalendarV2Page() {
 
 function renderEventContent(info: EventContentArg) {
   const record = info.event.extendedProps as CalendarWorkspaceEvent;
+  if (record.event_type === "estimated_closing") {
+    const amount = formatForecastMoney(record.forecast_amount);
+    const earnings = formatForecastMoney(record.forecast_earnings);
+    const details = [
+      amount,
+      record.forecast_fee_points != null ? `${record.forecast_fee_points.toLocaleString()} pts` : null,
+      earnings ? `${earnings} earnings` : null,
+    ].filter(Boolean).join(" · ");
+    return (
+      <div className="calendar-v2-event-content">
+        <div className="calendar-v2-event-time">
+          <span>Estimated closing</span>
+          <Icon name="cal" size={11} />
+        </div>
+        <strong>{record.title}</strong>
+        <small>{details || "Forecast date set · Open file"}</small>
+      </div>
+    );
+  }
   return (
     <div className="calendar-v2-event-content">
       <div className="calendar-v2-event-time">
