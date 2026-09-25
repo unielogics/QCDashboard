@@ -86,6 +86,9 @@ type BucketFile = {
   uploaded_by_name?: string | null;
   uploaded_by_email?: string | null;
   status: string;
+  deleted_at?: string | null;
+  deleted_by_user_id?: string | null;
+  delete_storage_status?: string | null;
   created_at: string;
 };
 type AdminQueuedFile = {
@@ -438,6 +441,9 @@ export default function BucketsAdminPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteReviewBucket, setDeleteReviewBucket] = useState<Bucket | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
+  const [restoringFileId, setRestoringFileId] = useState<string | null>(null);
+  const [deletedFiles, setDeletedFiles] = useState<BucketFile[]>([]);
+  const [showDeletedFiles, setShowDeletedFiles] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [createResult, setCreateResult] = useState<{ links: UploadInviteLink[] } | null>(null);
@@ -531,8 +537,12 @@ export default function BucketsAdminPage() {
   }
 
   async function loadBucket(bucketId: string) {
-    const row = await call<BucketDetail>(`/buckets/admin/${bucketId}`);
+    const [row, removedFiles] = await Promise.all([
+      call<BucketDetail>(`/buckets/admin/${bucketId}`),
+      call<BucketFile[]>(`/buckets/admin/${bucketId}/deleted-files`),
+    ]);
     setDetail(row);
+    setDeletedFiles(removedFiles);
     setActivityRows(row.activity ?? []);
     setActivityTotal(row.activity?.length ?? 0);
     const filters = emptyActivityFilters();
@@ -572,6 +582,7 @@ export default function BucketsAdminPage() {
     setBucketFileAssignment("all");
     setBucketFileStatus("all");
     setBucketFileSort("newest");
+    setShowDeletedFiles(false);
     await loadBucketActivity(bucketId, 0, filters);
   }
 
@@ -1729,11 +1740,11 @@ export default function BucketsAdminPage() {
   async function deleteFile(file: BucketFile) {
     if (!detail || deletingFileId) return;
     const confirmed = await confirmAction({
-      title: `Delete ${file.file_name}`,
-      body: "This removes the file from the bucket, revokes share access, and stops preview and download immediately.",
-      confirmLabel: "Delete file",
+      title: `Move ${file.file_name} to deleted files`,
+      body: "This removes the file from active evidence and revokes share access. The stored document is retained and can be restored.",
+      confirmLabel: "Move to deleted files",
       tone: "danger",
-      reversible: false,
+      reversible: true,
     });
     if (!confirmed) return;
     setDeletingFileId(file.id);
@@ -1744,7 +1755,7 @@ export default function BucketsAdminPage() {
         delete next[file.id];
         return next;
       });
-      setNotice("File deleted.");
+      setNotice("File moved to Deleted files. Its stored document was retained.");
       if (reviewFile?.id === file.id) {
         setReviewMinimized(false);
         setReviewFile(null);
@@ -1755,6 +1766,21 @@ export default function BucketsAdminPage() {
       setNotice(error instanceof Error ? error.message : "Could not delete file.");
     } finally {
       setDeletingFileId(null);
+    }
+  }
+
+  async function restoreFile(file: BucketFile) {
+    if (!detail || restoringFileId) return;
+    setRestoringFileId(file.id);
+    try {
+      await call<BucketFile>(`/buckets/admin/${detail.id}/files/${file.id}/restore`, { method: "POST" });
+      setNotice(`${file.file_name} restored to active evidence.`);
+      await loadBucket(detail.id);
+      await loadBuckets();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "This historical file could not be restored.");
+    } finally {
+      setRestoringFileId(null);
     }
   }
 
@@ -2801,6 +2827,13 @@ export default function BucketsAdminPage() {
                     </Select>
                     <Btn
                       size="sm"
+                      onClick={() => setShowDeletedFiles((current) => !current)}
+                      aria-expanded={showDeletedFiles}
+                    >
+                      {showDeletedFiles ? "Hide deleted" : `Deleted (${deletedFiles.length})`}
+                    </Btn>
+                    <Btn
+                      size="sm"
                       onClick={() => {
                         setBucketSectionsOpen((current) => ({ ...current, upload: true }));
                         window.setTimeout(() => adminFileInputRef.current?.click(), 0);
@@ -2894,6 +2927,41 @@ export default function BucketsAdminPage() {
                     </div>
                   ))}
                 </div>
+                {showDeletedFiles ? (
+                  <div className="grid g8 mt" aria-label="Deleted bucket files">
+                    <div className="row">
+                      <div>
+                        <strong>Deleted files</strong>
+                        <div className="sub">Recoverable documents retain their stored bytes and can be returned to active evidence.</div>
+                      </div>
+                      <span className="sp" />
+                      <CellChip tone="mut">{deletedFiles.length}</CellChip>
+                    </div>
+                    {deletedFiles.length ? deletedFiles.map((file) => {
+                      const recoverable = ["retained_soft_delete", "retained_package_artifact"].includes(file.delete_storage_status || "");
+                      return (
+                        <div key={file.id} className="itemrow bucket-file-row">
+                          <span className="grow">
+                            <strong className="trunc" style={{ display: "block" }}>{file.file_name}</strong>
+                            <span className="sub">
+                              {formatSize(file.size_bytes)} | Removed {file.deleted_at ? formatDateTime(file.deleted_at) : "previously"}
+                            </span>
+                          </span>
+                          <CellChip tone={recoverable ? "ok" : "warn"}>{recoverable ? "retained" : "historical"}</CellChip>
+                          <Btn
+                            size="sm"
+                            variant="pri"
+                            disabled={!recoverable || restoringFileId === file.id}
+                            title={recoverable ? "Restore this file to active evidence" : "The stored bytes were removed before recovery retention was enabled"}
+                            onClick={() => restoreFile(file).catch(() => undefined)}
+                          >
+                            {restoringFileId === file.id ? "Restoring..." : "Restore"}
+                          </Btn>
+                        </div>
+                      );
+                    }) : <EmptyInline icon="file" title="No deleted files" body="Files removed after recovery retention is enabled will appear here." />}
+                  </div>
+                ) : null}
               </Panel>
 
               <Panel
@@ -4318,7 +4386,8 @@ function activityLabel(action: string) {
     file_upload_started: "Upload started",
     file_uploaded: "File uploaded",
     file_upload_failed: "Upload failed",
-    file_deleted: "File deleted",
+    file_deleted: "File moved to deleted files",
+    file_restored: "File restored",
     admin_file_upload_started: "Admin upload started",
     admin_file_uploaded: "Admin file uploaded",
     admin_file_upload_failed: "Admin upload failed",
