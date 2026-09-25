@@ -6,6 +6,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, Field, Panel, Seg, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import {
   BucketIntakeLinkDrawer,
   UnifiedFilesTable,
@@ -14,6 +15,11 @@ import {
   type UnifiedFilterState,
 } from "@/components/operator/UnifiedOperator";
 import { useCurrentUser, useMoveOperatorPipelineFile, useUnifiedOperatorFiles } from "@/hooks/useApi";
+import {
+  pipelineApprovalDraft,
+  validatePipelineApprovalDraft,
+  type PipelineApprovalDraft,
+} from "@/lib/pipelineApproval";
 import { underwritingStatusLabel, type UnderwritingLifecycleStatus, type UnifiedFileRow } from "@/lib/unifiedOperator";
 import { ClientFilePipeline } from "./components/ClientFilePipeline";
 import { SmartIntakeModal } from "./components/SmartIntakeModal";
@@ -35,7 +41,7 @@ function OperatorPipeline() {
   const [intakeOpen, setIntakeOpen] = useState(false);
   const [linkRow, setLinkRow] = useState<UnifiedFileRow | null>(null);
   const [pendingMove, setPendingMove] = useState<{ row: UnifiedFileRow; targetStatus: UnderwritingLifecycleStatus } | null>(null);
-  const [moveNote, setMoveNote] = useState("");
+  const [moveDetails, setMoveDetails] = useState<PipelineApprovalDraft>(() => pipelineApprovalDraft());
   const [moveError, setMoveError] = useState<string | null>(null);
   const files = useUnifiedOperatorFiles({ limit: 500 });
   const movePipeline = useMoveOperatorPipelineFile();
@@ -114,7 +120,10 @@ function OperatorPipeline() {
             onLinkBucketIntake={setLinkRow}
             onMove={(row, targetStatus) => {
               setMoveError(null);
-              setMoveNote("");
+              setMoveDetails(pipelineApprovalDraft({
+                approvedAmount: row.approved_amount,
+                approvedDscr: row.approved_dscr,
+              }));
               setPendingMove({ row, targetStatus });
             }}
           />
@@ -143,13 +152,14 @@ function OperatorPipeline() {
           setPendingMove(null);
           setMoveError(null);
         }}
-        title="Review pipeline move"
+        title={pendingMove?.targetStatus === "approved" ? "Record approval" : "Review pipeline move"}
         sub={pendingMove ? `${pendingMove.row.title || pendingMove.row.label} will move from ${underwritingStatusLabel(pendingMove.row.pipeline_status)} to ${underwritingStatusLabel(pendingMove.targetStatus)}.` : undefined}
         width="md"
         closeOnBackdrop={!movePipeline.isPending}
         footer={(
           <>
             <Btn
+              style={{ minHeight: 44 }}
               onClick={() => {
                 setPendingMove(null);
                 setMoveError(null);
@@ -161,10 +171,18 @@ function OperatorPipeline() {
             <span className="sp" />
             <Btn
               variant="pri"
+              style={{ minHeight: 44 }}
               disabled={!pendingMove || movePipeline.isPending}
               onClick={async () => {
                 if (!pendingMove) return;
                 setMoveError(null);
+                const approval = pendingMove.targetStatus === "approved"
+                  ? validatePipelineApprovalDraft(moveDetails)
+                  : null;
+                if (approval?.error) {
+                  setMoveError(approval.error);
+                  return;
+                }
                 try {
                   await movePipeline.mutateAsync({
                     sourceKind: pendingMove.row.source_kind,
@@ -172,18 +190,18 @@ function OperatorPipeline() {
                     body: {
                       target_status: pendingMove.targetStatus,
                       expected_status: pendingMove.row.pipeline_status ?? pendingMove.row.underwriting_status ?? "collecting_docs",
-                      note: moveNote.trim() || undefined,
+                      ...(approval?.value ?? { note: moveDetails.note.trim() || undefined }),
                     },
                   });
                   setPendingMove(null);
-                  setMoveNote("");
+                  setMoveDetails(pipelineApprovalDraft());
                   void files.refetch();
                 } catch (cause) {
                   setMoveError(cause instanceof Error ? cause.message : "Unable to move this file.");
                 }
               }}
             >
-              {movePipeline.isPending ? "Moving..." : "Confirm move"}
+              {movePipeline.isPending ? "Moving..." : pendingMove?.targetStatus === "approved" ? "Confirm approval" : "Confirm move"}
             </Btn>
           </>
         )}
@@ -195,14 +213,28 @@ function OperatorPipeline() {
           <div className="sub">If this AI intake has no funding file and moves into underwriting or later, the backend creates or reuses the linked loan.</div>
           <div className="sub">Linked promoted loans keep their existing funding ladder and receive the compatible stage sync.</div>
         </div>
-        <Field label="Reviewer note" className="mt">
-          <Textarea
-            value={moveNote}
-            onChange={(event) => setMoveNote(event.target.value)}
-            placeholder="Optional reason for this lifecycle move"
-            style={{ minHeight: 96 }}
-          />
-        </Field>
+        {pendingMove?.targetStatus === "approved" ? (
+          <div className="mt">
+            <PipelineApprovalFields
+              value={moveDetails}
+              onChange={(value) => {
+                setMoveDetails(value);
+                setMoveError(null);
+              }}
+              error={moveError}
+              autoFocus
+            />
+          </div>
+        ) : (
+          <Field label="Reviewer note" className="mt">
+            <Textarea
+              value={moveDetails.note}
+              onChange={(event) => setMoveDetails({ ...moveDetails, note: event.target.value })}
+              placeholder="Optional reason for this lifecycle move"
+              style={{ minHeight: 96 }}
+            />
+          </Field>
+        )}
       </Drawer>
     </div>
   );

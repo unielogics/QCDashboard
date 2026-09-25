@@ -236,7 +236,9 @@ export type BucketIntakeLinkOptions = {
 export type PipelineMoveRequest = {
   target_status: UnderwritingLifecycleStatus;
   expected_status?: UnderwritingLifecycleStatus | null;
-  note?: string;
+  approved_amount?: number | null;
+  approved_dscr?: number | null;
+  note?: string | null;
 };
 
 export type PipelineMoveResult = {

@@ -103,6 +103,7 @@ import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection }
 import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
+import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import type { IntakeResponse } from "@/lib/intake";
 import {
   leadCockpitNonDocumentMissingRows,
@@ -110,8 +111,20 @@ import {
   preferredIntakeReviewResult,
 } from "@/lib/leadCockpitDocuments";
 import { validPhone } from "@/lib/formCoerce";
-import { PIPELINE_LIFECYCLE, originTone, underwritingStatusLabel, verticalTone, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
+import {
+  PIPELINE_LIFECYCLE,
+  originTone,
+  underwritingStatusLabel,
+  verticalTone,
+  type PipelineMoveRequest,
+  type UnderwritingLifecycleStatus,
+} from "@/lib/unifiedOperator";
 import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
+import {
+  pipelineApprovalDraft,
+  validatePipelineApprovalDraft,
+  type PipelineApprovalDraft,
+} from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { useConsoleAuth } from "@/lib/consoleAuth";
@@ -145,6 +158,7 @@ type LeadRow = {
   created_at: string;
   updated_at: string;
   last_message_at?: string | null;
+  archived_at?: string | null;
   client_contact_suppressed?: boolean;
   delete_requested_at?: string | null;
   unseen_activity_count?: number;
@@ -363,6 +377,7 @@ const STATUS_FILTERS = [
   { value: "all", label: "All status" },
   { value: "collecting", label: "Collecting" },
   { value: "reviewing", label: "Reviewing" },
+  { value: "reviewed", label: "Reviewed" },
   { value: "completed", label: "Completed" },
 ];
 
@@ -430,6 +445,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [archivedFilter, setArchivedFilter] = useState<"active" | "archived" | "all">("all");
   const [variantFilter, setVariantFilter] = useState(searchParams.get("variant") || "all");
   const [probabilityFilter, setProbabilityFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -462,6 +478,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         status_filter: statusFilter,
         probability_status: probabilityFilter,
         variant_filter: variantFilter,
+        archived_filter: archivedFilter,
       });
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
       if (partnerUserId) params.set("partner_user_id", partnerUserId);
@@ -657,16 +674,24 @@ export default function AdminAIUnderwriterLeadsPage() {
     await loadLeads();
   }
 
+  async function restoreLead(id: string) {
+    setNotice("");
+    try {
+      await call<LeadRow>(`/admin/ai-underwriter-leads/${id}/restore`, { method: "POST" });
+      setNotice("AI Intake file restored with its existing documents and history.");
+      await loadLeads(offset);
+    } catch (error) {
+      setNotice(apiErrorMessage(error, "This AI Intake file could not be restored."));
+    }
+  }
+
   async function deleteLead(id: string, confirmName: string) {
     await call(`/admin/ai-underwriter-leads/${id}/confirm-deletion`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm_name: confirmName }),
     });
-    // The lead no longer exists — splice it out of the local list immediately
-    // rather than waiting on a full reload.
-    setRows((current) => current.filter((row) => row.id !== id));
-    setTotal((current) => Math.max(0, current - 1));
+    await loadLeads(offset);
   }
 
   async function confirmLeadDeletion(id: string, confirmName: string) {
@@ -674,7 +699,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     closeLead();
   }
 
-  // From the table row: the same irreversible delete, the same confirm dialog.
+  // From the table row: the same reversible archive and confirmation dialog.
   async function deleteFromRow(row: LeadRow, confirmName: string) {
     await deleteLead(row.id, confirmName);
     if (selectedId === row.id) closeLead();
@@ -877,7 +902,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   useEffect(() => {
     if (isIntakeOperator) loadLeads(0).catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isIntakeOperator, statusFilter, variantFilter, probabilityFilter, submittedQuery, partnerUserId, pageSize]);
+  }, [isIntakeOperator, statusFilter, archivedFilter, variantFilter, probabilityFilter, submittedQuery, partnerUserId, pageSize]);
 
   useEffect(() => {
     if (isIntakeOperator && leadParam && leadParam !== selectedId) {
@@ -1014,7 +1039,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           <h1>AI intake</h1>
           <CellChip tone="mut">{counts.total} files</CellChip>
           <span className="sp" />
-          <span className="sub">Every file on the board, seen from Elara&apos;s side. Same records, same refs.</span>
+          <span className="sub">Every active and archived file, seen from Elara&apos;s side. Same records, same refs.</span>
           {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create intake</Btn> : null}
           <PageActionMenu label="AI intake actions" items={[
             { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
@@ -1034,7 +1059,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       </div>
 
       <div className="panel" style={{ flexShrink: 0 }}>
-        <form className="panel-h" onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) 210px 250px auto", gap: 10, alignItems: "center" }}>
+        <form className="panel-h" onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) repeat(3, minmax(160px, 220px)) auto", gap: 10, alignItems: "center" }}>
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -1046,6 +1071,18 @@ export default function AdminAIUnderwriterLeadsPage() {
           </Select>
           <Select value={probabilityFilter} onChange={(event) => { setOffset(0); setProbabilityFilter(event.target.value); }} aria-label="Probability">
             {PROBABILITY_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+          </Select>
+          <Select
+            value={archivedFilter}
+            onChange={(event) => {
+              setOffset(0);
+              setArchivedFilter(event.target.value as "active" | "archived" | "all");
+            }}
+            aria-label="Record visibility"
+          >
+            <option value="all">Active + archived</option>
+            <option value="active">Active only</option>
+            <option value="archived">Archived only</option>
           </Select>
           <Btn type="submit" variant="pri">Search</Btn>
         </form>
@@ -1091,14 +1128,15 @@ export default function AdminAIUnderwriterLeadsPage() {
                 return (
                   <tr
                     key={row.id}
-                    onClick={() => openLead(row.id)}
+                    onClick={() => { if (!row.archived_at) void openLead(row.id); }}
                     className={cx(semanticStatusClass(row.status), selectedId === row.id && "tone-acc", pinned && "table-row-pinned")}
                     data-pinned={pinned || undefined}
                   >
                     <td className="lead-file-cell">
-                      <button type="button" className="linky" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>{row.business_name || row.full_name}</button>
+                      <button type="button" className="linky" disabled={Boolean(row.archived_at)} onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>{row.business_name || row.full_name}</button>
                       <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
                       {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
+                      {row.archived_at ? <CellChip tone="mut">Archived {new Date(row.archived_at).toLocaleDateString()}</CellChip> : null}
                     </td>
                     <td className="lead-contact-cell">
                       <div className="lead-contact-line">{presentContact(row.email)}</div>
@@ -1108,14 +1146,20 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
                     <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
                     <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
-                    <td><CellChip tone={row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.status}</CellChip></td>
-                    <td><button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button></td>
+                    <td><CellChip tone={row.archived_at ? "mut" : row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.archived_at ? "archived" : row.status}</CellChip></td>
+                    <td>{row.archived_at ? <span className="cellchip c-mut">{row.file_count} retained files</span> : <button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button>}</td>
                     <td className="num">{row.missing_required_count}</td>
                     <td className="r">
                       <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
                         <PinRowButton pinned={pinned} onToggle={() => togglePin(row.id)} label={row.business_name || row.full_name} />
-                        <Btn size="sm" onClick={(event) => { event.stopPropagation(); openLead(row.id); }}>Open</Btn>
-                        {canDelete ? <Btn size="sm" className="danger" title="Delete this intake — irreversible" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Delete</Btn> : null}
+                        {row.archived_at ? (
+                          <Btn size="sm" variant="pri" onClick={(event) => { event.stopPropagation(); void restoreLead(row.id); }}>Restore</Btn>
+                        ) : (
+                          <>
+                            <Btn size="sm" onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>Open</Btn>
+                            {canDelete ? <Btn size="sm" title="Archive this intake and retain its files" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Archive</Btn> : null}
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1311,6 +1355,9 @@ function LeadDetailPanel({
   const [underwritingLoading, setUnderwritingLoading] = useState(false);
   const [underwritingSaving, setUnderwritingSaving] = useState(false);
   const [underwritingError, setUnderwritingError] = useState<string | null>(null);
+  const [pendingApprovalPatch, setPendingApprovalPatch] = useState<ApplicationUnderwritingPatch | null>(null);
+  const [approvalDraft, setApprovalDraft] = useState<PipelineApprovalDraft>(() => pipelineApprovalDraft());
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [merchantOfferStatus, setMerchantOfferStatus] = useState<string | null>(null);
   const [merchantOfferSelection, setMerchantOfferSelection] = useState<OfferSelection | null>(null);
   const [applicationTermSelection, setApplicationTermSelection] = useState<OfferSelection | null>(null);
@@ -1613,8 +1660,8 @@ function LeadDetailPanel({
     void loadTermSheet(underwriting?.profile_id);
   }
 
-  async function saveUnderwritingPatch(patch: ApplicationUnderwritingPatch) {
-    if (!detail || !canUnderwrite) return;
+  async function saveUnderwritingPatch(patch: ApplicationUnderwritingPatch): Promise<boolean> {
+    if (!detail || !canUnderwrite) return false;
     setUnderwritingSaving(true);
     setUnderwritingError(null);
     try {
@@ -1628,21 +1675,44 @@ function LeadDetailPanel({
         });
         profileId = profile.id;
       }
-      const statusChanged = patch.underwriting_status && patch.underwriting_status !== underwriting?.underwriting_status;
+      const statusChanged = Boolean(patch.underwriting_status && patch.underwriting_status !== underwriting?.underwriting_status);
+      const isApprovalMove = statusChanged && patch.underwriting_status === "approved";
+      const remainingPatch = { ...patch };
+      if (statusChanged) delete remainingPatch.underwriting_status;
+      if (isApprovalMove) {
+        // Approval details belong to the lifecycle transaction below. Keep
+        // unrelated reviewer fields (for example, policy target DSCR) out of
+        // that contract, but save them before moving so a later write cannot
+        // make a successful approval look failed in the UI.
+        delete remainingPatch.approved_amount;
+        delete remainingPatch.approved_dscr;
+        delete remainingPatch.reviewer_notes;
+        if (Object.keys(remainingPatch).length) {
+          await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
+            method: "PATCH",
+            authToken: authToken ?? undefined,
+            body: JSON.stringify(remainingPatch),
+          });
+        }
+      }
       if (statusChanged) {
+        const moveBody: PipelineMoveRequest = {
+          target_status: patch.underwriting_status!,
+          expected_status: underwriting?.underwriting_status ?? "collecting_docs",
+          note: patch.reviewer_notes || undefined,
+        };
+        if (patch.underwriting_status === "approved") {
+          moveBody.approved_amount = patch.approved_amount ?? null;
+          moveBody.approved_dscr = patch.approved_dscr ?? null;
+          moveBody.note = patch.reviewer_notes ?? null;
+        }
         await api(`/operator-files/intake/${detail.intake.id}/pipeline-move`, {
           method: "POST",
           authToken: authToken ?? undefined,
-          body: JSON.stringify({
-            target_status: patch.underwriting_status,
-            expected_status: underwriting?.underwriting_status ?? "collecting_docs",
-            note: patch.reviewer_notes || undefined,
-          }),
+          body: JSON.stringify(moveBody),
         });
       }
-      const remainingPatch = { ...patch };
-      if (statusChanged) delete remainingPatch.underwriting_status;
-      const updated = Object.keys(remainingPatch).length
+      const updated = !isApprovalMove && Object.keys(remainingPatch).length
         ? await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
             method: "PATCH",
             authToken: authToken ?? undefined,
@@ -1654,25 +1724,78 @@ function LeadDetailPanel({
       setUnderwriting(updated);
       setUnderwritingDraft(underwritingDraftFromState(updated));
       toast.show(statusChanged ? "Pipeline status updated." : "Underwriting fields saved.");
+      return true;
     } catch (reason) {
       setUnderwritingError(apiErrorMessage(reason, "Underwriting could not be saved."));
       toast.show(apiErrorMessage(reason, "Underwriting could not be saved."));
+      return false;
     } finally {
       setUnderwritingSaving(false);
     }
   }
 
   function saveUnderwritingDraft() {
-    void saveUnderwritingPatch({
+    const patch: ApplicationUnderwritingPatch = {
       underwriting_status: underwritingDraft.underwriting_status,
       target_dscr: numberOrNull(underwritingDraft.target_dscr),
       reviewer_notes: underwritingDraft.reviewer_notes.trim() || null,
-    });
+    };
+    if (patch.underwriting_status === "approved" && underwriting?.underwriting_status !== "approved") {
+      openApproval(patch);
+      return;
+    }
+    void saveUnderwritingPatch(patch);
   }
 
   function changeUnderwritingStatus(statusValue: UnderwritingLifecycleStatus) {
+    if (statusValue === "approved" && underwriting?.underwriting_status !== "approved") {
+      openApproval({ underwriting_status: statusValue, reviewer_notes: underwritingDraft.reviewer_notes.trim() || null });
+      return;
+    }
     setUnderwritingDraft((current) => ({ ...current, underwriting_status: statusValue }));
     void saveUnderwritingPatch({ underwriting_status: statusValue, reviewer_notes: underwritingDraft.reviewer_notes.trim() || null });
+  }
+
+  function openApproval(patch: ApplicationUnderwritingPatch) {
+    setUnderwritingError(null);
+    setApprovalError(null);
+    setApprovalDraft(pipelineApprovalDraft({
+      approvedAmount: underwriting?.approved_amount ?? termSheet?.current?.approved_amount ?? underwriting?.term_sheet_amount,
+      approvedDscr: underwriting?.approved_dscr,
+      note: patch.reviewer_notes ?? "",
+    }));
+    setPendingApprovalPatch(patch);
+  }
+
+  function cancelApproval() {
+    if (underwritingSaving) return;
+    setPendingApprovalPatch(null);
+    setApprovalError(null);
+    setUnderwritingError(null);
+    setUnderwritingDraft((current) => ({
+      ...current,
+      underwriting_status: underwriting?.underwriting_status ?? "collecting_docs",
+    }));
+  }
+
+  async function confirmApproval() {
+    if (!pendingApprovalPatch) return;
+    const approval = validatePipelineApprovalDraft(approvalDraft);
+    if (!approval.value) {
+      setApprovalError(approval.error);
+      return;
+    }
+    setApprovalError(null);
+    const saved = await saveUnderwritingPatch({
+      ...pendingApprovalPatch,
+      underwriting_status: "approved",
+      approved_amount: approval.value.approved_amount,
+      approved_dscr: approval.value.approved_dscr,
+      reviewer_notes: approval.value.note,
+    });
+    if (!saved) return;
+    setPendingApprovalPatch(null);
+    setApprovalDraft(pipelineApprovalDraft());
   }
 
   useEffect(() => {
@@ -2179,7 +2302,7 @@ function LeadDetailPanel({
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
-          { label: "Delete lead", onSelect: () => setConfirmDeleteOpen(true), tone: "danger", hidden: !detail || !canGovern },
+          { label: "Archive lead", onSelect: () => setConfirmDeleteOpen(true), hidden: !detail || !canGovern },
         ]} />
         <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
           <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
@@ -2330,7 +2453,7 @@ function LeadDetailPanel({
                       <div className="underwriting-status-strip">
                         <div>
                           <span className="lbl">Current lifecycle</span>
-                          <b>{underwritingStatusLabel(underwritingDraft.underwriting_status)}</b>
+                          <b>{underwritingStatusLabel(underwriting?.underwriting_status ?? underwritingDraft.underwriting_status)}</b>
                           <span className="sub">{underwriting?.loan_id ? "Linked to a funding loan." : "No funding loan has been created yet."}</span>
                         </div>
                         <div>
@@ -2534,6 +2657,40 @@ function LeadDetailPanel({
         intakeId={detail.intake.id}
         fileLabel={detail.intake.business_name || detail.intake.full_name || "AI Intake file"}
       /> : null}
+      <Drawer
+        open={pendingApprovalPatch != null}
+        onClose={cancelApproval}
+        title="Record approval"
+        sub={detail ? `${detail.intake.business_name || detail.intake.full_name || "This AI intake"} will move from ${underwritingStatusLabel(underwriting?.underwriting_status)} to Approved.` : undefined}
+        width="md"
+        closeOnBackdrop={!underwritingSaving}
+        footer={(
+          <>
+            <Btn style={{ minHeight: 44 }} onClick={cancelApproval} disabled={underwritingSaving}>Cancel</Btn>
+            <span className="sp" />
+            <Btn style={{ minHeight: 44 }} variant="pri" onClick={() => void confirmApproval()} disabled={underwritingSaving}>
+              {underwritingSaving ? "Approving..." : "Confirm approval"}
+            </Btn>
+          </>
+        )}
+      >
+        {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
+        <div className="review-list" style={{ marginBottom: 16 }}>
+          <div><b>Approval record</b></div>
+          <div className="sub">The amount, optional DSCR, notes, and lifecycle change are saved together in one pipeline move.</div>
+          <div className="sub">If this intake has no funding file, the move creates or reuses its linked funding loan.</div>
+        </div>
+        <PipelineApprovalFields
+          value={approvalDraft}
+          onChange={(value) => {
+            setApprovalDraft(value);
+            setApprovalError(null);
+            setUnderwritingError(null);
+          }}
+          error={approvalError}
+          autoFocus
+        />
+      </Drawer>
       <Toast msg={toast.msg} />
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
       {detail && canDelete ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
@@ -2650,7 +2807,7 @@ function LeadDetailPanel({
             Partner requested delete
           </CellChip>
         ) : null}
-        {canDelete ? <Btn className="danger" disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Delete lead</Btn> : null}
+        {canDelete ? <Btn disabled={deletionBusy} onClick={() => setConfirmDeleteOpen(true)}>Archive lead</Btn> : null}
         {canDelete && detail?.intake.delete_requested_at ? (
           <Btn disabled={deletionBusy} onClick={handleCancelDeletionRequest}>Keep</Btn>
         ) : null}
@@ -3158,12 +3315,19 @@ function ConfirmDeleteLeadModal({
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [confirmationName, setConfirmationName] = useState("");
+  const normalizedExpectedName = expectedName.trim().split(/\s+/).join(" ").toLocaleLowerCase();
+  const confirmationMatches = confirmationName.trim().split(/\s+/).join(" ").toLocaleLowerCase() === normalizedExpectedName;
+
+  useEffect(() => {
+    if (open) setConfirmationName("");
+  }, [open, expectedName]);
 
   async function handleConfirm() {
-    if (busy) return;
+    if (busy || !confirmationMatches) return;
     setBusy(true);
     try {
-      await onConfirm(expectedName);
+      await onConfirm(confirmationName);
     } catch (error) {
       toast.show(error instanceof Error ? error.message : "Could not delete this lead.");
     } finally {
@@ -3176,23 +3340,34 @@ function ConfirmDeleteLeadModal({
       open={open}
       onClose={onClose}
       width="md"
-      title="Review before running"
-      sub="Permanently delete AI intake"
+      title="Archive AI Intake file"
+      sub="Remove it from active work without deleting documents or history"
       footer={
         <>
           <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
           <span className="sp" />
-          <Btn className="danger" disabled={busy} onClick={handleConfirm}>
-            {busy ? <><Spinner /> Deleting…</> : "Delete permanently"}
+          <Btn variant="pri" disabled={busy || !confirmationMatches} onClick={handleConfirm}>
+            {busy ? <><Spinner /> Archiving…</> : "Archive file"}
           </Btn>
         </>
       }
     >
       <div className="grid">
-        <div className="warnline">This permanently erases <strong>{expectedName}</strong>, including uploaded documents, generated artifacts, conversations, and related records.</div>
+        <div className="warnline"><strong>{expectedName}</strong> will leave the active workspace. Uploaded documents, generated artifacts, conversations, and history remain retained and can be restored.</div>
+        <Field label={`Type “${expectedName}” to confirm`} req>
+          <Input
+            autoFocus
+            value={confirmationName}
+            onChange={(event) => setConfirmationName(event.target.value)}
+            autoComplete="off"
+            aria-describedby="delete-confirmation-help"
+            style={{ minHeight: 44 }}
+          />
+        </Field>
+        <span id="delete-confirmation-help" className="sub">The name is verified again by the server to prevent archiving the wrong file.</span>
         <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
         <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
-        <div className="kv"><span>Reversible</span><b>No</b></div>
+        <div className="kv"><span>Reversible</span><b>Yes — use the Archived filter and Restore</b></div>
       </div>
     </Drawer>
   );
