@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Callout, Field, Input, Select } from "@/components/ds";
+import { useEffect, useState, type InputHTMLAttributes } from "react";
+import { Callout, Input, Select } from "@/components/ds";
+import { ValidatedField as Field, ValidationTarget } from "./FundingProgramValidation";
 import { Icon } from "@/components/design-system/Icon";
 import type { FundingProgramScope } from "@/lib/fundingPrograms";
 import type { TaxonomyEntry, TaxonomySearch } from "@/lib/applicationProfile";
@@ -16,11 +17,11 @@ const INDUSTRY_LABELS: Record<string, string> = { trucking_logistics: "Trucking 
 const splitList = (value: string) => [...new Set(value.split(/[,;\n]/).map((item) => item.trim()).filter(Boolean))];
 type Call = <T>(path: string) => Promise<T>;
 
-function ListInput({ values, label, onChange }: { values: string[]; label: string; onChange: (values: string[]) => void }) {
+function ListInput({ values, label, onChange, ...validation }: { values: string[]; label: string; onChange: (values: string[]) => void } & Pick<InputHTMLAttributes<HTMLInputElement>, "aria-invalid" | "aria-describedby">) {
   const serialized = values.join(", ");
   const [text, setText] = useState(serialized);
   useEffect(() => setText(serialized), [serialized]);
-  return <Input aria-label={label} value={text} onChange={(event) => setText(event.target.value)} onBlur={() => onChange(splitList(text))} />;
+  return <Input {...validation} aria-label={label} value={text} onChange={(event) => setText(event.target.value)} onBlur={() => onChange(splitList(text))} />;
 }
 
 function IndustryPicker({ codes, label, onChange, call }: { codes: string[]; label: string; onChange: (codes: string[]) => void; call: Call }) {
@@ -60,10 +61,11 @@ function IndustryPicker({ codes, label, onChange, call }: { codes: string[]; lab
   </div>;
 }
 
-type Props = { scopes: FundingProgramScope[]; onScopeChange: (index: number, patch: Partial<FundingProgramScope>) => void; onExclusionsChange: (codes: string[]) => void; call: Call };
+type Props = { scopes: FundingProgramScope[]; onScopeChange: (index: number, patch: Partial<FundingProgramScope>) => void; onExclusionsChange: (codes: string[]) => void; call: Call; requestedRoute?: { index: number; sequence: number } | null };
 
-export function FundingProgramScopeEditor({ scopes, onScopeChange, onExclusionsChange, call }: Props) {
+export function FundingProgramScopeEditor({ scopes, onScopeChange, onExclusionsChange, call, requestedRoute }: Props) {
   const [routeIndex, setRouteIndex] = useState(0);
+  useEffect(() => { if (requestedRoute) setRouteIndex(requestedRoute.index); }, [requestedRoute]);
   const index = Math.min(routeIndex, Math.max(0, scopes.length - 1));
   const scope = scopes[index];
   const exclusions = sharedIndustryExclusions(scopes);
@@ -73,11 +75,11 @@ export function FundingProgramScopeEditor({ scopes, onScopeChange, onExclusionsC
   const label = WORKSPACES[scope.vertical];
   function update(patch: Partial<FundingProgramScope>) { onScopeChange(index, patch); }
   return <div className={styles.stack}>
-    <div className={styles.scope}><h4>Prohibited industries</h4><p className={styles.muted}>Add industries this program must not serve. This list applies to every selected workspace. All other industries can be considered, subject to any specialized routing and eligibility checks.</p>
+    <ValidationTarget target="Prohibited industries"><div className={styles.scope}><h4>Prohibited industries</h4><p className={styles.muted}>Add industries this program must not serve. This list applies to every selected workspace. All other industries can be considered, subject to any specialized routing and eligibility checks.</p>
       {!exclusions.codes.length ? <p className={styles.muted}>No industries are excluded. Nothing is preselected.</p> : null}
       {exclusions.differs ? <Callout tone="warn">Some workspaces have different saved exclusions. They remain unchanged until you edit this list. Editing it applies the list shown here to every selected workspace.</Callout> : null}
       <IndustryPicker codes={exclusions.codes} label="Prohibited industries" onChange={onExclusionsChange} call={call} />
-    </div>
+    </div></ValidationTarget>
     <details className={styles.details}><summary>Advanced routing{specialized ? ` · ${specialized} specialized ${specialized === 1 ? "route" : "routes"}` : " · optional"}</summary><div className={styles.stack}>
       <p className={styles.muted}>Routing controls where the program appears before financial eligibility is checked. Most programs need only workspace choices and prohibited industries above. Use these options for a specialized product—for example, equipment financing only when equipment is being purchased, or a transportation program only for trucking.</p>
       <Field label="Workspace route"><Select aria-label="Workspace routing configuration" value={String(index)} onChange={(event) => setRouteIndex(Number(event.target.value))}>{scopes.map((row, i) => <option key={`${row.vertical}:${i}`} value={i}>{WORKSPACES[row.vertical]}{scopes.filter((other) => other.vertical === row.vertical).length > 1 ? ` · route ${i + 1}` : ""}</option>)}</Select></Field>
@@ -89,10 +91,10 @@ export function FundingProgramScopeEditor({ scopes, onScopeChange, onExclusionsC
         <Field label="Required business circumstances"><div className={styles.checks}>{FACTS.map(([key, text]) => <label key={key}><input type="checkbox" checked={scope.required_fact_keys.includes(key)} onChange={(event) => update({ required_fact_keys: toggle(scope.required_fact_keys, key, event.target.checked) })} />{text}</label>)}</div><p className={styles.muted}>Checked means the circumstance must be present—not prohibited. Leave all unchecked when the program has no such restriction. To prohibit MCA balances, use “No outstanding MCA” under eligibility checks.</p></Field>
         <details className={styles.details}><summary>Technical references for this route</summary><div className={styles.stack}><p className={styles.muted}>Existing identifiers are preserved. Separate multiple entries with commas. These references are optional implementation settings; program requirements are edited in the next section.</p><div className="fldgrid two">
           <Field label="Route reference"><Input aria-label={`${label} route reference`} value={scope.scope_key} onChange={(event) => update({ scope_key: event.target.value })} /></Field>
-          <Field label="Intake variants"><ListInput label={`${label} intake variants`} values={scope.intake_variants} onChange={(values) => update({ intake_variants: values })} /></Field>
+          <Field label="Intake variants" target={`${label} intake variants`}><ListInput label={`${label} intake variants`} values={scope.intake_variants} onChange={(values) => update({ intake_variants: values })} /></Field>
           <Field label="Funding intent references"><ListInput label={`${label} funding intent references`} values={scope.intent_keys} onChange={(values) => update({ intent_keys: values })} /></Field>
           <Field label="Allowed industry references"><ListInput label={`${label} allowed industry references`} values={scope.industry_keys} onChange={(values) => update({ industry_keys: values })} /></Field>
-          <Field label="Allowed NAICS prefixes"><ListInput label={`${label} allowed NAICS prefixes`} values={scope.naics_prefixes} onChange={(values) => update({ naics_prefixes: values })} /></Field>
+          <Field label="Allowed NAICS prefixes" target={`${label} allowed NAICS prefixes`}><ListInput label={`${label} allowed NAICS prefixes`} values={scope.naics_prefixes} onChange={(values) => update({ naics_prefixes: values })} /></Field>
           <Field label="Business circumstance references"><ListInput label={`${label} business circumstance references`} values={scope.required_fact_keys} onChange={(values) => update({ required_fact_keys: values })} /></Field>
         </div></div></details>
       </div>

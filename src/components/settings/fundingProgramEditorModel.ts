@@ -163,6 +163,7 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
     const rules: unknown = JSON.parse(rulesText);
     const requirements: unknown = JSON.parse(requirementsText);
     if (!objectValue(rules)) return "Eligibility rules must be an object. Open advanced settings to repair the imported rules.";
+    if ("fit" in rules && (rules.priority !== undefined && (!Number.isInteger(rules.priority) || Number(rules.priority) < -10000 || Number(rules.priority) > 10000))) return "Program priority must be a whole number from -10,000 to 10,000.";
     let count = 0;
     function validateNode(node: unknown, depth = 0): string | null {
       if (++count > 100 || depth > 8) return "The eligibility rules exceed the supported number or nesting depth of checks.";
@@ -178,11 +179,15 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
       }
       if (Object.keys(node).some((key) => !["field", "op", "value"].includes(key)) || typeof node.field !== "string" || !node.field || node.field.length > 120) return "An eligibility check contains an invalid field. Review advanced settings.";
       if (!["present", "eq", "in", "gte", "lte", "gt", "lt", "evidence_available"].includes(String(node.op))) return "An eligibility check uses an unsupported condition.";
+      const supportedFields = new Set(["vertical", "intake_variant", "intent", "intent_kind", "funding_category", "entity_type", "industry", "subindustry", "industry_key", "naics_code", "loan_purpose", "requested_amount", "business_age_years", "revenue", "annual_revenue", "annualized_deposits", "deposits", "bank_statement_months", "tax_return_years", "nsf_or_overdraft_count", "credit_score", "estimated_credit_score", "dscr", "cash_flow", "debt_burden", "liquid_assets", "tax_returns_available", "bank_statements_available", "evidence_count", "declared_collateral", "mca_obligations_present", "floorplan_inventory_present", "equipment_financing_intent"]);
+      if (node.op !== "evidence_available" && !supportedFields.has(node.field)) return `Unsupported eligibility field: ${node.field}. Review Advanced settings.`;
+      if (node.op === "present" && "value" in node) return "A 'must be provided' check must not contain a value. Remove its value in Advanced settings.";
+      if (node.op === "evidence_available" && node.value != null && (typeof node.value !== "string" || !node.value.trim())) return "An evidence availability check needs a nonblank document classification, or no value.";
       const field = FIT_FIELDS.find((row) => row.key === node.field);
       if (["gte", "lte", "gt", "lt"].includes(String(node.op)) || (node.op === "eq" && field?.type === "number")) {
         if (typeof node.value !== "number" || !Number.isFinite(node.value)) return `Enter a numeric threshold for ${field?.label || node.field}.`;
       }
-      if (node.op === "in" && (!Array.isArray(node.value) || node.value.length > 100)) return "A list condition requires a list of up to 100 values.";
+      if (node.op === "in" && (!Array.isArray(node.value) || !node.value.length || node.value.length > 100)) return "A list condition requires between 1 and 100 values.";
       if (["eq", "in"].includes(String(node.op)) && (node.value == null || node.value === "")) return `Choose a value for ${field?.label || node.field}.`;
       return null;
     }

@@ -1,4 +1,22 @@
 .root { font-size: 14px; }
+.root [data-validation-target] { min-width: 0; scroll-margin-top: 110px; }
+.root [aria-invalid="true"] { border-color: var(--danger); }
+.root [aria-invalid="true"]:focus { outline: 2px solid var(--danger); outline-offset: 2px; }
+.invalidField :global(.lbl) { color: var(--danger); }
+.fieldError { color: var(--danger); font-size: 13px; line-height: 1.5; margin: 0; }
+.invalidSection { border: 1px solid var(--danger); border-radius: 8px; padding: 12px; }
+.invalidSection > .fieldError { margin-top: 10px; }
+.validationSummary { border: 1px solid var(--danger); border-left-width: 4px; background: var(--danger-tint); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; }
+.validationSummary strong { color: var(--danger); }
+.validationSummary p { font-size: 13px; line-height: 1.5; }
+.validationSummary ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
+.validationSummary button { border: 0; padding: 8px 0; text-align: left; background: none; color: var(--danger); text-decoration: underline; cursor: pointer; font-weight: 600; }
+.actionRow button[aria-disabled="true"] { opacity: .8; border-style: dashed; cursor: pointer; }
+.unresolved { border: 1px solid var(--danger); border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
+.unresolved h4 { color: var(--danger); margin: 0; }
+.unresolved ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 10px; }
+.unresolved li { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding-top: 10px; border-top: 1px solid var(--line); }
+.unresolved li span { flex: 1 1 200px; line-height: 1.5; }
 .root fieldset { min-width: 0; margin: 0; padding: 0; }
 .root input:not([type="checkbox"]), .root select, .root button { min-height: 44px; }
 .root :global(.funding-program-section-head) p, .root > header p { font-size: 13px; line-height: 1.5; }
@@ -6,6 +24,8 @@
 .root :global(.funding-program-editor) > section { padding: 20px; gap: 16px; }
 .root :global(.funding-program-list) strong { font-size: 13px; }
 .root :global(.funding-program-list) small { font-size: 11px; }
+.catalogState { display: grid; justify-items: end; gap: 5px; text-align: right; min-width: 0; }
+.catalogState small { color: var(--muted); white-space: normal; }
 .root :global(.funding-program-verticals) label { min-height: 44px; font-size: 13px; padding: 8px 12px; cursor: pointer; }
 .stack { display: grid; gap: 14px; min-width: 0; }
 .muted { color: var(--muted); font-size: 13px; line-height: 1.5; }
