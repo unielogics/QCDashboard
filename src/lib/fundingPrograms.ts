@@ -7,6 +7,7 @@ export type FundingProgramScope = {
   intake_variants: string[];
   intent_keys: string[];
   naics_prefixes: string[];
+  excluded_naics_prefixes?: string[];
   industry_keys: string[];
   required_fact_keys: string[];
   is_active?: boolean;
@@ -19,6 +20,25 @@ export type FundingProgramVersion = {
   rules: Record<string, unknown>;
   requirements: Array<Record<string, unknown>>;
   published_at: string | null;
+};
+
+export type FundingProgramReviewCheck = {
+  key: "net_income_nonnegative" | "net_income_not_declining" | "revenue_not_declining" | "no_mca_debits" | "no_nsf" | "positive_ending_balance" | "custom" | `custom_${string}`;
+  label: string;
+  instructions: string;
+  severity: "review" | "block";
+};
+
+export type FundingProgramBaseline = {
+  program_key: string;
+  name: string;
+  version: string;
+  source_urls: string[];
+  source_notes: string[];
+  rules: Record<string, unknown>;
+  requirements: Array<Record<string, unknown>>;
+  scopes: FundingProgramScope[];
+  needs_review: boolean;
 };
 
 export type FundingProgramCatalogItem = {

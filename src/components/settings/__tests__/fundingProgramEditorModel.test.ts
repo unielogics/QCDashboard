@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { EVIDENCE_TEMPLATES, jsonEquivalent, newRequirement, readSimpleFit, setRequirementCompletionMode, validateEditorContent, writeSimpleFit } from "../fundingProgramEditorModel";
+import type { FundingProgramScope } from "@/lib/fundingPrograms";
+import { applySharedIndustryExclusions, baselineNoteGroups, baselineReferenceFromRules, DOCUMENT_REVIEW_PRESETS, EVIDENCE_TEMPLATES, industryPrefixes, jsonEquivalent, newCustomDocumentReviewCheck, newRequirement, readDocumentReviewChecks, readSimpleFit, setRequirementCompletionMode, sharedIndustryExclusions, validateEditorContent, withDocumentReviewChecks, writeSimpleFit } from "../fundingProgramEditorModel";
 
 describe("funding program guided editor", () => {
   it("round-trips workspace, numeric, and boolean checks while preserving unrelated metadata", () => {
@@ -59,5 +60,60 @@ describe("funding program guided editor", () => {
     expect(requirement.verification_required).toBe(false);
     expect(setRequirementCompletionMode(staffReview, "ai_can_complete").verification_required).toBe(true);
     expect(setRequirementCompletionMode(staffReview, "borrower_self_attest").verification_required).toBe(true);
+  });
+  it("keeps document pattern review mandatory and preserves the existing evidence instructions", () => {
+    const requirement = { ...newRequirement("Two years tax returns", []), completion_criteria: "All pages for both years", objective_text: "Confirm business results" };
+    const checked = withDocumentReviewChecks(requirement, DOCUMENT_REVIEW_PRESETS.slice(0, 2));
+    expect(checked.completion_mode).toBe("requires_human_verify");
+    expect(checked.verification_required).toBe(true);
+    expect(checked.completion_criteria).toBe(requirement.completion_criteria);
+    expect(checked.objective_text).toBe(requirement.objective_text);
+    expect(setRequirementCompletionMode(checked, "ai_can_complete").completion_mode).toBe("requires_human_verify");
+    expect(withDocumentReviewChecks(checked, []).verification_required).toBe(true);
+    expect(validateEditorContent("{}", JSON.stringify([checked]))).toBeNull();
+  });
+  it("allows multiple custom checks with stable unique references and validates incomplete instructions", () => {
+    const first = { ...newCustomDocumentReviewCheck([]), label: "Owner transfers", instructions: "Explain material transfers to owners." };
+    const second = { ...newCustomDocumentReviewCheck([first]), label: "Unusual activity", instructions: "Flag unusual transfers for staff review." };
+    expect(first.key).not.toEqual(second.key);
+    expect(newCustomDocumentReviewCheck([first, second]).key).toBe("custom_3");
+    const requirement = withDocumentReviewChecks(newRequirement("Bank review", []), [first, second]);
+    expect(readDocumentReviewChecks(requirement)).toEqual([first, second]);
+    expect(validateEditorContent("{}", JSON.stringify([requirement]))).toBeNull();
+    expect(validateEditorContent("{}", JSON.stringify([{ ...requirement, review_checks: [first, first] }]))).toContain("unique");
+    expect(validateEditorContent("{}", JSON.stringify([{ ...requirement, review_checks: [{ ...first, instructions: " " }] }]))).toContain("Describe");
+    expect(readDocumentReviewChecks({ review_checks: [{ ...first, unsupported: true }] })).toBeNull();
+  });
+  it("preserves specialization while applying shared industry exclusions only after an explicit edit", () => {
+    const scopes: FundingProgramScope[] = [
+      { vertical: "dealer", scope_key: "dealer", intake_variants: ["dealer_ai_intake"], intent_keys: [], naics_prefixes: ["441"], excluded_naics_prefixes: ["5221"], industry_keys: ["auto_dealer"], required_fact_keys: ["declared_collateral"] },
+      { vertical: "main_street", scope_key: "main", intake_variants: [], intent_keys: ["equipment"], naics_prefixes: [], excluded_naics_prefixes: ["524"], industry_keys: [], required_fact_keys: [] },
+    ];
+    expect(sharedIndustryExclusions(scopes)).toEqual({ codes: ["5221", "524"], differs: true });
+    expect(scopes[0].excluded_naics_prefixes).toEqual(["5221"]);
+    const updated = applySharedIndustryExclusions(scopes, ["5221", "524", "522110-522115"]);
+    expect(updated[0]).toEqual({ ...scopes[0], excluded_naics_prefixes: ["5221", "524", "522110-522115"] });
+    expect(updated[1]).toEqual({ ...scopes[1], excluded_naics_prefixes: ["5221", "524", "522110-522115"] });
+    expect(sharedIndustryExclusions(updated).differs).toBe(false);
+    expect(applySharedIndustryExclusions(scopes, [])[0].naics_prefixes).toEqual(["441"]);
+  });
+  it("recognizes sector and bounded activity ranges without accepting malformed codes", () => {
+    expect(industryPrefixes("31-33")).toEqual(["31", "32", "33"]);
+    expect(industryPrefixes("522110-522112")).toEqual(["522110", "522111", "522112"]);
+    expect(industryPrefixes("31-330")).toEqual([]);
+    expect(industryPrefixes("33-31")).toEqual([]);
+    expect(industryPrefixes("01-99")).toEqual([]);
+    expect(industryPrefixes("auto dealers")).toEqual([]);
+  });
+  it("separates cited website facts from editable QC proposals and unresolved baseline notes", () => {
+    expect(baselineNoteGroups(["Website: Advertised term range.", "Proposed QC policy: Consider a bank industry exclusion.", "Review: Confirm the underwriting minimum.", "Unclassified note."])).toEqual({ website: ["Advertised term range."], proposed: ["Consider a bank industry exclusion."], review: ["Confirm the underwriting minimum.", "Unclassified note."] });
+  });
+  it("reads saved baseline references without changing rules and tolerates invalid metadata", () => {
+    const reference = { version: "2026-09-27", source_urls: ["https://qualifiedcommercial.com/programs"], source_notes: ["Website: Advertised term range."] };
+    const rules = JSON.stringify({ baseline: reference, fit: { field: "mca_obligations_present", op: "eq", value: false } });
+    expect(baselineReferenceFromRules(rules)).toEqual(reference);
+    expect(JSON.parse(rules).fit.value).toBe(false);
+    expect(baselineReferenceFromRules(JSON.stringify({ baseline: { version: "v1", source_urls: [null, "https://example.com"], source_notes: false } }))).toEqual({ version: "v1", source_urls: ["https://example.com"], source_notes: [] });
+    for (const malformed of ["{broken", "[]", "{}", '{"baseline":null}', '{"baseline":{"version":5}}', '{"baseline":{"version":" "}}']) expect(baselineReferenceFromRules(malformed)).toBeNull();
   });
 });

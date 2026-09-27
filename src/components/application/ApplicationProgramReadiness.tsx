@@ -5,6 +5,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { FundingProgramPicker } from "./FundingProgramPicker";
+import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import pickerStyles from "./FundingProgramPicker.module.css";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
@@ -465,7 +466,9 @@ export function ApplicationProgramReadiness({
     };
     const confirmed = await confirmAction({
       title: `${labels[action]}?`,
-      body: `${requirement.label} will be recalculated and recorded in the audit trail. Unlinked evidence stays in its bucket.`,
+      body: action === "verify" && requirement.review_checks?.length
+        ? `Confirm you reviewed the source evidence against these criteria: ${requirement.review_checks.map((check) => check.label).join("; ")}. File readability alone is not enough. Your verification is recorded in the audit trail.`
+        : `${requirement.label} will be recalculated and recorded in the audit trail. Unlinked evidence stays in its bucket.`,
       confirmLabel: labels[action],
     });
     if (!confirmed) return;
@@ -724,6 +727,7 @@ export function ApplicationProgramReadiness({
               {expanded ? <div className="requirement-expanded-body">
                 <div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><Btn disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")}>Propose assignment</Btn>{requirement.can_waive ? <Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] })}>Waive</Btn> : null}<Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] })}>N/A</Btn>{hasOverrides ? <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "restore")}>Restore</Btn> : null}</div>
                 <p className="requirement-state-reason">{requirement.state_reason || "AI is waiting for qualifying evidence."}</p>
+                <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} />
                 {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;
                   const coverageContribution = evidenceCoverageLabel(file.coverage_contribution);

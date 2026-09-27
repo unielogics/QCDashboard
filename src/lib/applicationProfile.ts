@@ -222,6 +222,7 @@ export type ApplicationRequirement = {
   verified_coverage_complete: boolean;
   allow_multiple_files: boolean;
   verification_required: boolean;
+  review_checks?: { key: string; label: string; instructions: string; severity: "review" | "block" }[];
   source_program_keys: string[];
   source_policy_keys: string[];
   program_overrides: Record<string, string>;

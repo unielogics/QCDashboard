@@ -1,3 +1,5 @@
+import type { FundingProgramReviewCheck, FundingProgramScope } from "@/lib/fundingPrograms";
+
 export type FitCondition = { field: string; op: string; value?: unknown };
 export type SimpleFit = { mode: "all" | "any"; conditions: FitCondition[] };
 
@@ -88,7 +90,72 @@ export function newRequirement(label: string, existing: Array<Record<string, unk
 }
 
 export function setRequirementCompletionMode(requirement: Record<string, unknown>, mode: string): Record<string, unknown> {
+  if (Array.isArray(requirement.review_checks) && requirement.review_checks.length) return { ...requirement, completion_mode: "requires_human_verify", verification_required: true };
   return { ...requirement, completion_mode: mode, ...(mode === "requires_human_verify" ? { verification_required: true } : {}) };
+}
+
+export const DOCUMENT_REVIEW_PRESETS: FundingProgramReviewCheck[] = [
+  { key: "net_income_nonnegative", label: "No negative earnings", instructions: "Check that reported net income is zero or positive in each covered period. Record the figures and periods; flag missing or unclear amounts for staff review.", severity: "review" },
+  { key: "net_income_not_declining", label: "Earnings are not declining", instructions: "Compare net income across consecutive, comparable periods. Identify any year-over-year decline and cite the figures. Missing or incomparable periods require staff review.", severity: "review" },
+  { key: "revenue_not_declining", label: "Revenue is not declining", instructions: "Compare revenue across comparable covered periods. Flag a downward trend and cite the figures and periods. Do not infer a trend when data is missing.", severity: "review" },
+  { key: "no_mca_debits", label: "No MCA debit patterns", instructions: "Review bank transactions for suspected merchant cash advance payments, including recurring daily or weekly debits. Flag possible matches and uncertainty for staff verification; do not treat an unclear debit as a confirmed MCA.", severity: "review" },
+  { key: "no_nsf", label: "No NSF / overdraft activity", instructions: "Check all covered statements for NSF fees, returned payments, and overdraft activity. Identify dates, counts, and amounts for staff verification.", severity: "review" },
+  { key: "positive_ending_balance", label: "Positive ending balances", instructions: "Check that each covered statement has an ending balance above zero. Record each period and balance; missing pages or balances require staff review.", severity: "review" },
+];
+
+export function withDocumentReviewChecks(requirement: Record<string, unknown>, checks: FundingProgramReviewCheck[]): Record<string, unknown> {
+  return { ...requirement, review_checks: checks, ...(checks.length ? { completion_mode: "requires_human_verify", verification_required: true } : {}) };
+}
+
+export function newCustomDocumentReviewCheck(existing: FundingProgramReviewCheck[]): FundingProgramReviewCheck {
+  let suffix = 1;
+  while (existing.some((row) => row.key === `custom_${suffix}`)) suffix++;
+  return { key: `custom_${suffix}`, label: "", instructions: "", severity: "review" };
+}
+
+export function readDocumentReviewChecks(requirement: Record<string, unknown>): FundingProgramReviewCheck[] | null {
+  if (requirement.review_checks == null) return [];
+  if (!Array.isArray(requirement.review_checks)) return null;
+  const keys = new Set<string>([...DOCUMENT_REVIEW_PRESETS.map((row) => row.key), "custom"]);
+  if (!requirement.review_checks.every((row) => objectValue(row) && (keys.has(String(row.key)) || /^custom_[a-z0-9_]{1,64}$/.test(String(row.key))) && typeof row.label === "string" && typeof row.instructions === "string" && ["review", "block"].includes(String(row.severity)) && Object.keys(row).every((key) => ["key", "label", "instructions", "severity"].includes(key)))) return null;
+  return requirement.review_checks as FundingProgramReviewCheck[];
+}
+
+export function industryPrefixes(code: string | null | undefined): string[] {
+  if (!code) return [];
+  if (/^\d{2,6}$/.test(code)) return [code];
+  const range = /^(\d{2,6})-(\d{2,6})$/.exec(code);
+  if (!range || range[1].length !== range[2].length || Number(range[2]) < Number(range[1]) || Number(range[2]) - Number(range[1]) > 20) return [];
+  return Array.from({ length: Number(range[2]) - Number(range[1]) + 1 }, (_, index) => String(Number(range[1]) + index).padStart(range[1].length, "0"));
+}
+
+export function sharedIndustryExclusions(scopes: FundingProgramScope[]): { codes: string[]; differs: boolean } {
+  const normalized = scopes.map((scope) => [...new Set(scope.excluded_naics_prefixes ?? [])].sort());
+  return { codes: [...new Set(normalized.flat())].sort(), differs: normalized.some((codes) => JSON.stringify(codes) !== JSON.stringify(normalized[0])) };
+}
+
+export function applySharedIndustryExclusions(scopes: FundingProgramScope[], codes: string[]): FundingProgramScope[] {
+  const excluded = [...new Set(codes)];
+  return scopes.map((scope) => ({ ...scope, excluded_naics_prefixes: [...excluded] }));
+}
+
+export function baselineReferenceFromRules(rulesText: string): { version: string; source_urls: string[]; source_notes: string[] } | null {
+  try {
+    const rules: unknown = JSON.parse(rulesText);
+    if (!objectValue(rules) || !objectValue(rules.baseline) || typeof rules.baseline.version !== "string" || !rules.baseline.version.trim()) return null;
+    const strings = (value: unknown): string[] => Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+    return { version: rules.baseline.version, source_urls: strings(rules.baseline.source_urls), source_notes: strings(rules.baseline.source_notes) };
+  } catch { return null; }
+}
+
+export function baselineNoteGroups(notes: string[]): { website: string[]; proposed: string[]; review: string[] } {
+  const groups = { website: [] as string[], proposed: [] as string[], review: [] as string[] };
+  for (const note of notes) {
+    if (/^website:/i.test(note)) groups.website.push(note.replace(/^website:\s*/i, ""));
+    else if (/^proposed qc policy:/i.test(note)) groups.proposed.push(note.replace(/^proposed qc policy:\s*/i, ""));
+    else groups.review.push(note.replace(/^review:\s*/i, ""));
+  }
+  return groups;
 }
 
 export function validateEditorContent(rulesText: string, requirementsText: string): string | null {
@@ -129,6 +196,17 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
       keys.add(key);
       if (String(row.label ?? "").trim().length < 2) return "Give every document requirement a name before saving.";
       if (Array.isArray(row.visibility) && !row.visibility.length) return "Choose at least one audience for each document requirement.";
+      if (row.review_checks != null) {
+        const checks = readDocumentReviewChecks(row);
+        if (!checks || checks.length > 20) return "Document checks need a supported type, instructions, and review level (up to 20 checks per document).";
+        const checkKeys = new Set<string>();
+        for (const check of checks) {
+          if (checkKeys.has(check.key)) return "Document check references must be unique. Each preset can be added once; add a separate custom check for other conditions.";
+          checkKeys.add(check.key);
+          if (check.label.trim().length < 2 || check.label.trim().length > 160) return "Give each document check a name between 2 and 160 characters.";
+          if (!check.instructions.trim() || check.instructions.trim().length > 2000) return "Describe what to look for in each document check (up to 2,000 characters).";
+        }
+      }
     }
     return null;
   } catch { return "Advanced rules contain invalid JSON. Correct them before saving."; }

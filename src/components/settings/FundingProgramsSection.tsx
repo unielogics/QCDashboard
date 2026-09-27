@@ -6,10 +6,10 @@ import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { Btn, Callout, CellChip, Field, Input, Select, Textarea, cx } from "@/components/ds";
 import { api, ApiError } from "@/lib/api";
-import type { FundingProgramCatalogItem, FundingProgramScope, FundingProgramVertical, FundingProgramVersion } from "@/lib/fundingPrograms";
+import type { FundingProgramBaseline, FundingProgramCatalogItem, FundingProgramScope, FundingProgramVertical, FundingProgramVersion } from "@/lib/fundingPrograms";
 import { FundingProgramCriteriaEditor } from "./FundingProgramCriteriaEditor";
 import { FundingProgramScopeEditor } from "./FundingProgramScopeEditor";
-import { jsonEquivalent, validateEditorContent } from "./fundingProgramEditorModel";
+import { applySharedIndustryExclusions, baselineNoteGroups, baselineReferenceFromRules, industryPrefixes, jsonEquivalent, sharedIndustryExclusions, validateEditorContent } from "./fundingProgramEditorModel";
 import styles from "./FundingProgramEditor.module.css";
 
 const VERTICALS: Array<{ key: FundingProgramVertical; label: string }> = [
@@ -21,8 +21,9 @@ const VERTICALS: Array<{ key: FundingProgramVertical; label: string }> = [
 type CatalogDraft = { name: string; description: string; order: string; scopes: FundingProgramScope[] };
 type VersionDraft = { rules: string; requirements: string };
 function message(error: unknown): string { return error instanceof ApiError || error instanceof Error ? error.message : "Funding program settings could not be updated."; }
+function copyScope(scope: FundingProgramScope): FundingProgramScope { return { ...scope, scope_key: scope.scope_key || "default", intake_variants: [...(scope.intake_variants ?? [])], intent_keys: [...(scope.intent_keys ?? [])], naics_prefixes: [...(scope.naics_prefixes ?? [])], excluded_naics_prefixes: [...(scope.excluded_naics_prefixes ?? [])], industry_keys: [...(scope.industry_keys ?? [])], required_fact_keys: [...(scope.required_fact_keys ?? [])] }; }
 function catalogDraft(program: FundingProgramCatalogItem): CatalogDraft {
-  return { name: program.name, description: program.short_description || "", order: String(program.display_order), scopes: program.scopes.map((scope) => ({ ...scope, intake_variants: [...scope.intake_variants], intent_keys: [...scope.intent_keys], naics_prefixes: [...scope.naics_prefixes], industry_keys: [...scope.industry_keys], required_fact_keys: [...scope.required_fact_keys] })) };
+  return { name: program.name, description: program.short_description || "", order: String(program.display_order), scopes: program.scopes.map(copyScope) };
 }
 function versionDraft(version?: FundingProgramVersion | null): VersionDraft {
   return { rules: JSON.stringify(version?.rules || {}, null, 2), requirements: JSON.stringify(version?.requirements || [], null, 2) };
@@ -43,6 +44,7 @@ export function FundingProgramsSection() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
+  const [suggestedBaseline, setSuggestedBaseline] = useState<FundingProgramBaseline | null>(null);
 
   const call = useCallback(async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -63,7 +65,7 @@ export function FundingProgramsSection() {
     hydratedKey.current = selected.program_key;
     setCatalog(catalogDraft(selected));
     const current = selected.draft_versions[0] || selected.published_version;
-    setSelectedVersionId(current?.playbook_id || ""); setVersion(versionDraft(current)); setReason(""); setSuccess(""); setError(null);
+    setSelectedVersionId(current?.playbook_id || ""); setVersion(versionDraft(current)); setReason(""); setSuccess(""); setError(null); setSuggestedBaseline(null);
   }, [selected]);
 
   const savedVersion = selected?.draft_versions.find((item) => item.playbook_id === selectedVersionId)
@@ -73,7 +75,7 @@ export function FundingProgramsSection() {
   const catalogDirty = Boolean(selected && catalog && !jsonEquivalent(JSON.stringify(catalog), JSON.stringify(catalogDraft(selected))));
   const dirty = criteriaDirty || catalogDirty;
   const contentError = validateEditorContent(version.rules, version.requirements);
-  const catalogError = catalog && (catalog.name.trim().length < 2 ? "Give the program a name." : !catalog.scopes.length ? "Choose at least one workspace." : !Number.isInteger(Number(catalog.order)) || Number(catalog.order) < 0 || Number(catalog.order) > 10000 ? "Display order must be a whole number from 0 to 10,000." : catalog.scopes.some((scope) => !scope.scope_key.trim() || scope.naics_prefixes.some((code) => !/^\d{2,6}$/.test(code))) ? "Review the routing reference and industry codes in advanced routing settings." : null);
+  const catalogError = catalog && (catalog.name.trim().length < 2 ? "Give the program a name." : !catalog.scopes.length ? "Choose at least one workspace." : !Number.isInteger(Number(catalog.order)) || Number(catalog.order) < 0 || Number(catalog.order) > 10000 ? "Display order must be a whole number from 0 to 10,000." : catalog.scopes.some((scope) => !scope.scope_key.trim() || [...scope.naics_prefixes, ...(scope.excluded_naics_prefixes ?? [])].some((code) => !industryPrefixes(code).length) || (scope.excluded_naics_prefixes ?? []).length > 30) ? "Review the routing reference and industry codes. Each list supports up to 30 valid industry codes." : null);
   const reviewReady = reason.trim().length >= 8;
   useEffect(() => { if (!dirty) return; const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [dirty]);
   const filtered = useMemo(() => {
@@ -90,15 +92,30 @@ export function FundingProgramsSection() {
     if (!selected || busy) return;
     if (criteriaDirty && !await confirmAction({ title: "Discard unsaved criteria changes?", body: "The current eligibility checks and document edits have not been saved.", confirmLabel: "Discard and switch" })) return;
     const next = selected.draft_versions.find((item) => item.playbook_id === playbookId) || (selected.published_version?.playbook_id === playbookId ? selected.published_version : null);
-    setSelectedVersionId(playbookId); setVersion(versionDraft(next)); setSuccess(""); setError(null);
+    setSelectedVersionId(playbookId); setVersion(versionDraft(next)); setSuccess(""); setError(null); setSuggestedBaseline(null);
   }
   function updateScope(index: number, patch: Partial<FundingProgramScope>) { setCatalog((current) => current ? { ...current, scopes: current.scopes.map((scope, i) => i === index ? { ...scope, ...patch } : scope) } : current); }
   function toggleVertical(next: FundingProgramVertical, enabled: boolean) {
     setCatalog((current) => {
       if (!current) return current;
-      if (enabled) return current.scopes.some((scope) => scope.vertical === next) ? current : { ...current, scopes: [...current.scopes, { vertical: next, scope_key: "default", intake_variants: [], intent_keys: [], naics_prefixes: [], industry_keys: [], required_fact_keys: [] }] };
+      if (enabled) return current.scopes.some((scope) => scope.vertical === next) ? current : { ...current, scopes: [...current.scopes, { vertical: next, scope_key: "default", intake_variants: [], intent_keys: [], naics_prefixes: [], excluded_naics_prefixes: sharedIndustryExclusions(current.scopes).codes, industry_keys: [], required_fact_keys: [] }] };
       return { ...current, scopes: current.scopes.filter((scope) => scope.vertical !== next) };
     });
+  }
+  async function loadSuggestedBaseline() {
+    if (!selected || !catalog || busy) return;
+    setBusy("baseline"); setError(null); setSuccess("");
+    try {
+      const next = await call<FundingProgramBaseline>(`/admin/funding-programs/${selected.program_key}/baseline`);
+      if (next.program_key !== selected.program_key || !Array.isArray(next.scopes) || !next.scopes.length) throw new Error("The suggested baseline does not include valid availability for this program.");
+      const validation = validateEditorContent(JSON.stringify(next.rules), JSON.stringify(next.requirements));
+      if (validation) throw new Error(`The suggested baseline needs correction: ${validation}`);
+      const sourceSummary = next.source_notes.slice(0, 4).join("\n");
+      if (!await confirmAction({ title: `Load suggested baseline for ${selected.name}?`, body: `This replaces the eligibility checks, document requirements, and workspace routing currently shown with an editable suggestion. Your program name and description are preserved. Nothing is saved or published. Review website facts and proposed QC policies before saving.\n\n${sourceSummary}`, confirmLabel: "Load editable suggestion" })) return;
+      setCatalog((current) => current ? { ...current, scopes: next.scopes.map(copyScope) } : current);
+      setSelectedVersionId(""); setVersion({ rules: JSON.stringify(next.rules, null, 2), requirements: JSON.stringify(next.requirements, null, 2) }); setSuggestedBaseline(next);
+      setSuccess("Suggested baseline loaded as unsaved edits. Review the source notes, adjust the checks, then save and publish when ready.");
+    } catch (cause) { setError(message(cause)); } finally { setBusy(""); }
   }
   async function saveCatalog() {
     if (!selected || !catalog || !reviewReady || catalogError || !catalogDirty || busy) return;
@@ -119,7 +136,7 @@ export function FundingProgramsSection() {
     } catch (cause) { setError(message(cause)); } finally { setBusy(""); }
   }
   async function publishDraft() {
-    if (!selected || savedVersion?.status !== "draft" || !reviewReady || dirty || contentError || busy) return;
+    if (!selected || savedVersion?.status !== "draft" || !savedVersion.rules.fit || !reviewReady || dirty || contentError || busy) return;
     if (!await confirmAction({ title: `Publish criteria v${savedVersion.version}?`, body: "New program selections will use these saved eligibility checks and document requirements. Existing files keep their pinned criteria version.", confirmLabel: "Publish criteria" })) return;
     setBusy("publish"); setError(null); setSuccess("");
     try {
@@ -136,6 +153,8 @@ export function FundingProgramsSection() {
   }
 
   const publishedHasFit = Boolean(selected?.published_version?.rules.fit);
+  const baselineReference = suggestedBaseline ?? baselineReferenceFromRules(version.rules);
+  const baselineNotes = baselineNoteGroups(baselineReference?.source_notes ?? []);
   return <div className={cx("funding-program-settings", styles.root)}>
     <header><div><h2>Funding programs</h2><p>Choose a program, set its eligibility checks, and define the documents your team needs.</p></div><CellChip tone="acc">{rows.filter((item) => item.status === "active").length} active</CellChip></header>
     {error ? <Callout tone="bad">{error}</Callout> : null}
@@ -148,9 +167,22 @@ export function FundingProgramsSection() {
           <div className={styles.status}><Icon name="spark" size={18} /><div><strong>{selected.status === "retired" ? "Retired from new selections" : publishedHasFit ? `Published v${selected.published_version?.version} · eligibility checks in use` : selected.published_version ? `Published v${selected.published_version.version} · eligibility checks still needed` : "No published criteria yet"}</strong><p>{selected.status === "retired" ? "Existing selections remain available in file history." : publishedHasFit ? "Program matching applies the published eligibility checks. Document instructions guide AI review. Existing files retain their selected version." : "The program can be listed, but its description and document list alone do not establish eligibility. Configure checks, save a draft, then publish it."}</p></div></div>
           <div className="fldgrid two"><Field label="Program name"><Input value={catalog.name} maxLength={160} onChange={(event) => setCatalog({ ...catalog, name: event.target.value })} /></Field><Field label="Display order"><Input type="number" min={0} max={10000} value={catalog.order} onChange={(event) => setCatalog({ ...catalog, order: event.target.value })} /></Field></div><Field label="Short description"><Textarea rows={2} maxLength={1000} value={catalog.description} onChange={(event) => setCatalog({ ...catalog, description: event.target.value })} placeholder="Describe the program in plain language. Eligibility is configured below." /></Field>
         </section>
-        <section><div className="funding-program-section-head"><div><span className="lbl">2 · Availability</span><h3>Which businesses can see this program?</h3><p>Choose the workspaces, then optionally limit the industries or business circumstances.</p></div></div><div className="funding-program-verticals">{VERTICALS.map((item) => <label key={item.key}><input type="checkbox" checked={catalog.scopes.some((scope) => scope.vertical === item.key)} onChange={(event) => toggleVertical(item.key, event.target.checked)} />{item.label}</label>)}</div>{catalog.scopes.map((scope, index) => <FundingProgramScopeEditor key={`${scope.vertical}:${index}`} scope={scope} label={VERTICALS.find((item) => item.key === scope.vertical)?.label || scope.vertical} onChange={(patch) => updateScope(index, patch)} call={call} />)}</section>
-        <section><div className="funding-program-section-head"><div><span className="lbl">3 · Eligibility and documents</span><h3>What does the client need to qualify?</h3><p>{criteriaDirty ? "Unsaved changes · save a new draft to preserve these edits." : savedVersion?.status === "draft" ? `Saved draft v${savedVersion.version} · not published` : savedVersion?.status === "published" ? `Viewing published v${savedVersion.version} · edits create a new draft` : "New criteria · not saved"}</p></div><Select aria-label="Criteria version" value={selectedVersionId} onChange={(event) => void chooseVersion(event.target.value)}><option value="">Start with blank criteria</option>{selected.draft_versions.map((item) => <option key={item.playbook_id} value={item.playbook_id}>Draft v{item.version}</option>)}{selected.published_version ? <option value={selected.published_version.playbook_id}>Published v{selected.published_version.version}</option> : null}</Select></div><FundingProgramCriteriaEditor rules={version.rules} requirements={version.requirements} onRules={(rules) => setVersion((current) => ({ ...current, rules }))} onRequirements={(requirements) => setVersion((current) => ({ ...current, requirements }))} /></section>
-        <section className={styles.actions}><Field label="Review note"><Textarea rows={2} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Briefly explain what changed and why (at least 8 characters)." /></Field>{catalogError || contentError ? <Callout tone="warn">{catalogError || contentError}</Callout> : null}<p className={styles.muted}>{!reviewReady ? "Add a short review note to save or publish." : dirty ? "Save program details and your criteria draft before publishing. Publishing only uses the saved version." : savedVersion?.status === "draft" ? "Your selected draft is saved. Publish when the criteria are ready." : "Program details save immediately. Criteria changes must be saved as a draft and then published."}</p><div className={styles.actionRow}><Btn onClick={() => void saveCatalog()} disabled={!reviewReady || !catalogDirty || Boolean(catalogError)}><Icon name="check" size={14} />{busy === "catalog" ? "Saving…" : "Save details & availability"}</Btn><Btn onClick={() => void createVersion()} disabled={!reviewReady || Boolean(contentError)}><Icon name="plus" size={14} />{busy === "version" ? "Saving…" : "Save criteria as draft"}</Btn>{savedVersion?.status === "draft" ? <Btn variant="pri" onClick={() => void publishDraft()} disabled={!reviewReady || dirty || Boolean(contentError)}>{busy === "publish" ? "Publishing…" : `Publish draft v${savedVersion.version}`}</Btn> : null}<Btn className={selected.status === "active" ? "danger" : undefined} onClick={() => void setRetired(selected.status === "active")} disabled={!reviewReady}>{selected.status === "active" ? "Retire program" : "Restore program"}</Btn></div></section>
+        <section><div className="funding-program-section-head"><div><span className="lbl">2 · Availability</span><h3>Which businesses can see this program?</h3><p>Choose the workspaces, then add any prohibited industries. Specialized routing is optional.</p></div></div><div className="funding-program-verticals">{VERTICALS.map((item) => <label key={item.key}><input type="checkbox" checked={catalog.scopes.some((scope) => scope.vertical === item.key)} onChange={(event) => toggleVertical(item.key, event.target.checked)} />{item.label}</label>)}</div><FundingProgramScopeEditor key={selected.program_key} scopes={catalog.scopes} onScopeChange={updateScope} onExclusionsChange={(codes) => setCatalog((current) => current ? { ...current, scopes: applySharedIndustryExclusions(current.scopes, codes) } : current)} call={call} /></section>
+        <section><div className="funding-program-section-head"><div><span className="lbl">3 · Eligibility and documents</span><h3>What does the client need to qualify?</h3><p>{criteriaDirty ? "Unsaved changes · save a new draft to preserve these edits." : savedVersion?.status === "draft" ? `Saved draft v${savedVersion.version} · not published` : savedVersion?.status === "published" ? `Viewing published v${savedVersion.version} · edits create a new draft` : "New criteria · not saved"}</p></div><Select aria-label="Criteria version" value={selectedVersionId} onChange={(event) => void chooseVersion(event.target.value)}><option value="">Start with blank criteria</option>{selected.draft_versions.map((item) => <option key={item.playbook_id} value={item.playbook_id}>Draft v{item.version}</option>)}{selected.published_version ? <option value={selected.published_version.playbook_id}>Published v{selected.published_version.version}</option> : null}</Select></div>
+          <div className={styles.row}><Btn onClick={() => void loadSuggestedBaseline()}><Icon name="spark" size={15} />{busy === "baseline" ? "Loading suggestion…" : "Load suggested baseline"}</Btn><span className={styles.muted}>Editable starting point from website references and proposed QC policy. Never published automatically.</span></div>
+          {baselineReference ? <details className={styles.details}><summary className={styles.baselineSummary}><span>Baseline reference · {baselineReference.version}</span><CellChip tone="warn">Review before publishing</CellChip></summary><div className={styles.baseline}>{baselineNotes.website.length ? <><strong>Website facts</strong><ul>{baselineNotes.website.map((note, index) => <li key={index}>{note}</li>)}</ul></> : null}{baselineNotes.proposed.length ? <><strong>Proposed QC policy · editable</strong><ul>{baselineNotes.proposed.map((note, index) => <li key={index}>{note}</li>)}</ul></> : null}{baselineNotes.review.length ? <><strong>Items needing review</strong><ul>{baselineNotes.review.map((note, index) => <li key={index}>{note}</li>)}</ul></> : null}<div className={styles.row}>{baselineReference.source_urls.filter((url) => /^https?:\/\//i.test(url)).map((url, index) => <a key={url} href={url} target="_blank" rel="noopener noreferrer">Website reference {index + 1}</a>)}</div></div></details> : null}
+          <FundingProgramCriteriaEditor rules={version.rules} requirements={version.requirements} onRules={(rules) => setVersion((current) => ({ ...current, rules }))} onRequirements={(requirements) => setVersion((current) => ({ ...current, requirements }))} /></section>
+        <section className={styles.actions}>
+          <Field label="Review note"><Textarea aria-label="Program review note" rows={2} maxLength={2000} value={reason} onChange={(event) => setReason(event.target.value)} placeholder="Briefly explain what changed and why (at least 8 characters)." /></Field>
+          {catalogError || contentError ? <Callout tone="warn">{catalogError || contentError}</Callout> : null}
+          <p className={styles.muted}>{!reviewReady ? "Add a short review note to save or publish." : dirty ? "Save program details and your criteria draft before publishing. Publishing only uses the saved version." : savedVersion?.status === "draft" ? savedVersion.rules.fit ? "Your selected draft is saved. Publish when the criteria are ready." : "Add at least one approved eligibility check before publishing this draft." : "Program details save immediately. Criteria changes must be saved as a draft and then published."}</p>
+          <div className={styles.actionRow}>
+            <Btn onClick={() => void saveCatalog()} disabled={!reviewReady || !catalogDirty || Boolean(catalogError)}><Icon name="check" size={14} />{busy === "catalog" ? "Saving…" : "Save details & availability"}</Btn>
+            <Btn onClick={() => void createVersion()} disabled={!reviewReady || Boolean(contentError)}><Icon name="plus" size={14} />{busy === "version" ? "Saving…" : "Save criteria as draft"}</Btn>
+            {savedVersion?.status === "draft" ? <Btn variant="pri" onClick={() => void publishDraft()} disabled={!reviewReady || dirty || !savedVersion.rules.fit || Boolean(contentError)}>{busy === "publish" ? "Publishing…" : `Publish draft v${savedVersion.version}`}</Btn> : null}
+            <Btn className={selected.status === "active" ? "danger" : undefined} onClick={() => void setRetired(selected.status === "active")} disabled={!reviewReady}>{selected.status === "active" ? "Retire program" : "Restore program"}</Btn>
+          </div>
+        </section>
       </> : <div className="empty">Select a funding program to get started.</div>}</fieldset>
     </div>
   </div>;
