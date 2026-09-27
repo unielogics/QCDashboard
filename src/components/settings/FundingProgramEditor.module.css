@@ -10,7 +10,20 @@
 .validationSummary strong { color: var(--danger); }
 .validationSummary p { font-size: 13px; line-height: 1.5; }
 .validationSummary ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; }
-.validationSummary button { border: 0; padding: 8px 0; text-align: left; background: none; color: var(--danger); text-decoration: underline; cursor: pointer; font-weight: 600; }
+.validationSummary button { border: 1px solid color-mix(in srgb, var(--danger) 30%, transparent); border-radius: 7px; width: 100%; padding: 10px 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; text-align: left; background: var(--surface); color: var(--ink); cursor: pointer; }
+.validationSummary button > span:first-child { display: grid; gap: 3px; min-width: 0; }
+.validationSummary button small { color: var(--muted); font-size: 11px; }
+.validationSummary button strong { color: var(--danger); }
+.validationSummary button span { overflow-wrap: anywhere; }
+.jumpLabel { color: var(--danger); font-size: 12px; font-weight: 600; flex-shrink: 0; }
+.validationSummary ul { max-height: 310px; overflow: auto; gap: 7px; }
+.sectionAttention { color: var(--danger); background: var(--danger-tint); border: 1px solid var(--danger); border-radius: 6px; padding: 6px 10px; cursor: pointer; font-size: 12px; font-weight: 600; }
+.sectionInvalid { box-shadow: inset 3px 0 var(--danger); }
+.root [data-guided-focus="true"] { outline: 3px solid var(--danger); outline-offset: 5px; border-radius: 6px; background-color: var(--danger-tint); }
+.workspaceActions { position: sticky; top: 0; z-index: 4; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--surface); box-shadow: 0 3px 8px #00000008; }
+.workspaceActions > div:first-child { display: grid; gap: 3px; min-width: 0; flex: 1 1 200px; }
+.workspaceActions strong { font-size: 14px; }
+.workspaceActions p { margin: 0; }
 .actionRow button[aria-disabled="true"] { opacity: .8; border-style: dashed; cursor: pointer; }
 .unresolved { border: 1px solid var(--danger); border-radius: 8px; padding: 14px; display: grid; gap: 10px; }
 .unresolved h4 { color: var(--danger); margin: 0; }
@@ -73,6 +86,10 @@
 .baseline h4 { margin: 0; font-size: 14px; }
 .baseline a { overflow-wrap: anywhere; }
 @media (max-width: 700px) {
+  .workspaceActions { padding: 12px 14px; }
+  .workspaceActions .actionRow { flex: 1 1 100%; }
+  .workspaceActions .actionRow button { flex: 1 1 0; }
+  .jumpLabel { display: none; }
   .root :global(.funding-program-editor) > section { padding: 14px; }
   .condition { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }
   .condition > :first-child { grid-column: 1 / -1; }

@@ -1,19 +1,108 @@
 import type { FundingProgramCatalogItem, FundingProgramScope } from "@/lib/fundingPrograms";
-import { FIT_FIELDS, industryPrefixes, objectValue, readDocumentReviewChecks, readSimpleFit, validateEditorContent } from "./fundingProgramEditorModel";
+import { FIT_FIELDS, industryPrefixes, jsonEquivalent, objectValue, readDocumentReviewChecks, readSimpleFit, validateEditorContent } from "./fundingProgramEditorModel";
 
-export type ProgramValidationIssue = { target: string; message: string; area: "criteria" | "catalog" | "review" | "publish"; routeIndex?: number; step?: boolean };
-export type ProgramValidationAction = "catalog" | "draft" | "publish" | "status";
+export type ProgramValidationIssue = { target: string; message: string; area: "criteria" | "catalog" | "review" | "publish"; routeIndex?: number; section?: "details" | "availability" | "criteria" | "review"; fieldLabel?: string };
+export type ProgramValidationAction = "save" | "publish" | "status";
 export const WORKSPACE_LABELS: Record<string, string> = { dealer: "Auto dealerships", main_street: "Main Street businesses", real_estate: "Real estate", mca: "MCA refinance" };
+
+/** Return only the newest unpublished work that advances the live criteria. */
+export function currentProgramDraft(program: FundingProgramCatalogItem): FundingProgramCatalogItem["draft_versions"][number] | null {
+  const publishedVersion = program.published_version?.version ?? 0;
+  return program.draft_versions.reduce<FundingProgramCatalogItem["draft_versions"][number] | null>((latest, draft) => {
+    if (draft.version <= publishedVersion) return latest;
+    return !latest || draft.version > latest.version ? draft : latest;
+  }, null);
+}
+
+const REQUIREMENT_CATEGORIES = new Set(["borrower_info", "property_data", "financials", "credit", "agreements", "insurance", "title_and_escrow", "appraisal_and_inspection", "scheduling", "compliance", "communication", "ai_internal"]);
+const REQUIREMENT_LEVELS = new Set(["required", "recommended", "optional"]);
+const REQUIREMENT_STAGES = new Set(["prequalification", "term_sheet", "underwriting", "closing", "showings", "listed"]);
+const REQUIREMENT_AUDIENCES = new Set(["agent", "borrower", "underwriter"]);
+const REQUIREMENT_COMPLETION_MODES = new Set(["ai_can_complete", "requires_human_verify", "borrower_self_attest"]);
+
+/** Mirror the API's requirement defaults/materialization for interrupted-save recovery. */
+function canonicalRequirementsForRecovery(text: string): Array<Record<string, unknown>> | null {
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); } catch { return null; }
+  if (!Array.isArray(parsed) || parsed.length > 100 || !parsed.every(objectValue)) return null;
+  const keys = new Set<string>();
+  const canonical: Array<Record<string, unknown>> = [];
+  for (const row of parsed) {
+    const key = row.requirement_key;
+    const label = row.label;
+    if (typeof key !== "string" || !/^[a-z0-9_]{2,120}$/.test(key) || keys.has(key) || typeof label !== "string") return null;
+    keys.add(key);
+    const trimmedLabel = label.trim();
+    if (trimmedLabel.length < 2 || trimmedLabel.length > 200) return null;
+    const category = row.category === undefined ? "financials" : row.category;
+    const requiredLevel = row.required_level === undefined ? "required" : row.required_level;
+    const blocksStage = row.blocks_stage === undefined ? "underwriting" : row.blocks_stage;
+    const visibility = row.visibility === undefined ? ["borrower", "underwriter"] : row.visibility;
+    const canWaive = row.can_underwriter_waive === undefined ? true : row.can_underwriter_waive;
+    const verificationRequired = row.verification_required === undefined ? false : row.verification_required;
+    const expirationDays = row.expiration_days === undefined ? null : row.expiration_days;
+    const requestTemplate = row.ai_request_message_template === undefined ? null : row.ai_request_message_template;
+    const displayOrder = row.display_order === undefined ? 0 : row.display_order;
+    const objectiveText = row.objective_text === undefined ? "" : row.objective_text;
+    const completionCriteria = row.completion_criteria === undefined ? "" : row.completion_criteria;
+    const completionMode = row.completion_mode === undefined ? "ai_can_complete" : row.completion_mode;
+    const appliesWhen = row.applies_when === undefined ? null : row.applies_when;
+    if (!REQUIREMENT_CATEGORIES.has(String(category)) || !REQUIREMENT_LEVELS.has(String(requiredLevel))) return null;
+    if (blocksStage !== null && !REQUIREMENT_STAGES.has(String(blocksStage))) return null;
+    if (!Array.isArray(visibility) || visibility.length < 1 || visibility.length > 3 || visibility.some((value) => !REQUIREMENT_AUDIENCES.has(String(value)))) return null;
+    if (typeof canWaive !== "boolean" || typeof verificationRequired !== "boolean" || !REQUIREMENT_COMPLETION_MODES.has(String(completionMode))) return null;
+    if (expirationDays !== null && (!Number.isInteger(expirationDays) || Number(expirationDays) < 1 || Number(expirationDays) > 3650)) return null;
+    if (requestTemplate !== null && (typeof requestTemplate !== "string" || requestTemplate.length > 4000)) return null;
+    if (!Number.isInteger(displayOrder) || Number(displayOrder) < 0 || Number(displayOrder) > 10000) return null;
+    if (typeof objectiveText !== "string" || objectiveText.length > 2000 || typeof completionCriteria !== "string" || completionCriteria.length > 4000) return null;
+    if (appliesWhen !== null && !objectValue(appliesWhen)) return null;
+    const rawChecks = row.review_checks === undefined ? [] : row.review_checks;
+    if (!Array.isArray(rawChecks) || rawChecks.length > 20 || !rawChecks.every(objectValue)) return null;
+    const checks = rawChecks.map((check) => ({
+      key: check.key,
+      label: typeof check.label === "string" ? check.label.trim() : check.label,
+      instructions: typeof check.instructions === "string" ? check.instructions.trim() : check.instructions,
+      severity: check.severity === undefined ? "review" : check.severity,
+    }));
+    if (!readDocumentReviewChecks({ review_checks: checks }) || new Set(checks.map((check) => check.key)).size !== checks.length) return null;
+    if (checks.some((check) => typeof check.label !== "string" || check.label.length < 2 || check.label.length > 160 || typeof check.instructions !== "string" || !check.instructions.length || check.instructions.length > 2000)) return null;
+    canonical.push({
+      requirement_key: key,
+      label: trimmedLabel,
+      category,
+      required_level: requiredLevel,
+      applies_when: appliesWhen,
+      blocks_stage: blocksStage,
+      visibility,
+      can_underwriter_waive: canWaive,
+      verification_required: Boolean(verificationRequired || checks.length),
+      expiration_days: expirationDays,
+      ai_request_message_template: requestTemplate,
+      display_order: displayOrder,
+      objective_text: objectiveText,
+      completion_criteria: completionCriteria,
+      completion_mode: checks.length ? "requires_human_verify" : completionMode,
+      review_checks: checks,
+    });
+  }
+  return canonical.sort((left, right) => String(left.requirement_key).localeCompare(String(right.requirement_key)));
+}
+
+export function requirementsEquivalentForRecovery(leftText: string, rightText: string): boolean {
+  const left = canonicalRequirementsForRecovery(leftText);
+  const right = canonicalRequirementsForRecovery(rightText);
+  return left !== null && right !== null && jsonEquivalent(JSON.stringify(left), JSON.stringify(right));
+}
 
 export function programLifecycleLabel(program: FundingProgramCatalogItem): string {
   if (program.status === "retired") return "Retired";
-  const draft = program.draft_versions[0];
+  const draft = currentProgramDraft(program);
   if (draft) return `Draft v${draft.version} saved`;
   return program.published_version?.rules.fit ? `Published v${program.published_version.version}` : "Criteria not live";
 }
 
 export function programLifecycleDetail(program: FundingProgramCatalogItem): string | null {
-  if (program.status === "retired" || !program.draft_versions.length) return null;
+  if (program.status === "retired" || !currentProgramDraft(program)) return null;
   return program.published_version?.rules.fit ? `Published v${program.published_version.version} remains live` : "Criteria not live";
 }
 
@@ -120,7 +209,8 @@ export function catalogValidationIssues(catalog: { name: string; description: st
   return issues;
 }
 
-export function publishValidationIssues({ rules, savedDraft, criteriaDirty, catalogDirty }: { rules: string; savedDraft: boolean; criteriaDirty: boolean; catalogDirty: boolean }): ProgramValidationIssue[] {
+/** Publication errors describe content to fix. Saving is handled by the action itself. */
+export function publishValidationIssues({ rules }: { rules: string }): ProgramValidationIssue[] {
   const issues: ProgramValidationIssue[] = [];
   try { if (!objectValue(JSON.parse(rules)) || !JSON.parse(rules).fit) issues.push({ target: "Eligibility checks", message: "Add at least one approved eligibility check before publishing. A document list alone cannot establish fit.", area: "publish" }); } catch { /* The precise JSON error is reported by criteria validation. */ }
   try {
@@ -132,7 +222,60 @@ export function publishValidationIssues({ rules, savedDraft, criteriaDirty, cata
       issues.push({ target: Array.isArray(unresolved) ? "Imported items to resolve" : "Eligibility rules JSON", message: Array.isArray(unresolved) ? `Review and resolve ${count} imported ${count === 1 ? "item" : "items"} before publishing.` : "Imported review items must be a list and must be resolved before publishing.", area: "publish" });
     }
   } catch { /* Already reported by criteria validation. */ }
-  if (catalogDirty) issues.push({ target: "Save details & availability", message: "Save the program details and availability before publishing.", area: "publish", step: true });
-  if (criteriaDirty || !savedDraft) issues.push({ target: "Save criteria as draft", message: "Save the criteria as a draft before publishing.", area: "publish", step: true });
   return issues;
+}
+
+const REQUIREMENT_FIELD_LABELS: Record<string, string> = {
+  name: "Document name", importance: "Required or optional", audience: "Who can see this document", category: "Document category",
+  "completion criteria": "What the AI should look for", "completion permission": "Who can accept it", "expiration days": "Expiration",
+  "review objective": "Review objective", "client request wording": "Client request", "required stage": "Required before",
+};
+
+/** Give each issue a visible section and the document's name instead of a row number alone. */
+export function describeValidationIssue(issue: ProgramValidationIssue, requirementsText: string): ProgramValidationIssue {
+  let requirements: Array<Record<string, unknown>> = [];
+  try { const value = JSON.parse(requirementsText); if (Array.isArray(value)) requirements = value.filter(objectValue); } catch { /* The JSON editor has its own error. */ }
+  const match = /^Requirement (\d+)(?: check (\d+))? (.+)$/.exec(issue.target);
+  let fieldLabel = issue.target;
+  if (match) {
+    const row = requirements[Number(match[1]) - 1];
+    const document = String(row?.label || `Document ${match[1]}`);
+    fieldLabel = match[2]
+      ? `${document} · condition ${match[2]} · ${match[3] === "instructions" ? "what to check" : match[3] === "name" ? "condition name" : match[3]}`
+      : `${document} · ${REQUIREMENT_FIELD_LABELS[match[3]] || match[3]}`;
+  }
+  const section = issue.area === "review" ? "review" : issue.area === "catalog"
+    ? ["Program name", "Display order", "Short description", "Program details"].includes(issue.target) ? "details" : "availability"
+    : "criteria";
+  return { ...issue, fieldLabel, section };
+}
+
+/** Connect FastAPI validation locations to the same on-screen controls as local checks. */
+export function serverValidationIssues(body: unknown, scopes: FundingProgramScope[]): ProgramValidationIssue[] {
+  if (!objectValue(body) || !Array.isArray(body.detail)) return [];
+  return body.detail.filter(objectValue).flatMap((item): ProgramValidationIssue[] => {
+    if (!Array.isArray(item.loc) || typeof item.msg !== "string") return [];
+    const loc = item.loc.filter((value) => value !== "body");
+    const message = item.msg.replace(/^Value error,\s*/, "");
+    if (loc[0] === "reason") return [{ target: "Program review note", message, area: "review" }];
+    if (loc[0] === "rules") return [{ target: loc[1] === "unresolved_review_items" && Array.isArray(item.input) ? "Imported items to resolve" : "Eligibility rules JSON", message, area: "criteria" }];
+    if (loc[0] === "requirements") {
+      const index = typeof loc[1] === "number" ? loc[1] : null;
+      const suffix: Record<string, string> = { label: "name", category: "category", required_level: "importance", blocks_stage: "required stage", visibility: "audience", completion_mode: "completion permission", expiration_days: "expiration days", objective_text: "review objective", completion_criteria: "completion criteria", ai_request_message_template: "client request wording" };
+      let target = index !== null && suffix[String(loc[2])] ? `Requirement ${index + 1} ${suffix[String(loc[2])]}` : "Document requirements JSON";
+      if (index !== null && loc[2] === "review_checks" && typeof loc[3] === "number" && ["label", "instructions", "severity"].includes(String(loc[4]))) target = `Requirement ${index + 1} check ${loc[3] + 1} ${loc[4] === "label" ? "name" : loc[4]}`;
+      return [{ target, message, area: "criteria" }];
+    }
+    if (loc[0] === "scopes") {
+      const index = typeof loc[1] === "number" ? loc[1] : null;
+      if (index !== null && scopes[index]) {
+        const label = WORKSPACE_LABELS[scopes[index].vertical];
+        const suffix: Record<string, string> = { scope_key: "route reference", intake_variants: "intake variants", intent_keys: "funding intent references", industry_keys: "allowed industry references", required_fact_keys: "business circumstance references", naics_prefixes: "allowed NAICS prefixes" };
+        return [{ target: loc[2] === "excluded_naics_prefixes" ? "Prohibited industries" : suffix[String(loc[2])] ? `${label} ${suffix[String(loc[2])]}` : "Program workspaces", message, area: "catalog", routeIndex: index }];
+      }
+      return [{ target: "Program workspaces", message, area: "catalog" }];
+    }
+    const target = ({ name: "Program name", short_description: "Short description", display_order: "Display order" } as Record<string, string>)[String(loc[0])];
+    return target ? [{ target, message, area: "catalog" }] : [];
+  });
 }
