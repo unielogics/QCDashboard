@@ -5,6 +5,10 @@ export type SimpleFit = { mode: "all" | "any"; conditions: FitCondition[] };
 
 export const FIT_FIELDS: Array<{ key: string; label: string; type: "number" | "boolean" | "text"; hint?: string }> = [
   { key: "requested_amount", label: "Requested funding ($)", type: "number" },
+  { key: "use_of_funds_total", label: "Total planned funding uses ($)", type: "number" },
+  { key: "real_estate_equipment_amount", label: "Real estate and equipment uses ($)", type: "number" },
+  { key: "real_estate_equipment_pct", label: "Real estate and equipment share (%)", type: "number" },
+  { key: "use_of_funds_complete", label: "Funding-use breakdown complete", type: "boolean" },
   { key: "annual_revenue", label: "Annual revenue ($)", type: "number" },
   { key: "annualized_deposits", label: "Annualized bank deposits ($)", type: "number" },
   { key: "business_age_years", label: "Time in business (years)", type: "number" },
@@ -180,7 +184,7 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
       if (Object.keys(node).some((key) => !["field", "op", "value"].includes(key)) || typeof node.field !== "string" || !node.field || node.field.length > 120) return "An eligibility check contains an invalid field. Review advanced settings.";
       if (!["present", "eq", "in", "gte", "lte", "gt", "lt", "evidence_available"].includes(String(node.op))) return "An eligibility check uses an unsupported condition.";
       const supportedFields = new Set(["vertical", "intake_variant", "intent", "intent_kind", "funding_category", "entity_type", "industry", "subindustry", "industry_key", "naics_code", "loan_purpose", "requested_amount", "business_age_years", "revenue", "annual_revenue", "annualized_deposits", "deposits", "bank_statement_months", "tax_return_years", "nsf_or_overdraft_count", "credit_score", "estimated_credit_score", "dscr", "cash_flow", "debt_burden", "liquid_assets", "tax_returns_available", "bank_statements_available", "evidence_count", "declared_collateral", "mca_obligations_present", "floorplan_inventory_present", "equipment_financing_intent"]);
-      if (node.op !== "evidence_available" && !supportedFields.has(node.field)) return `Unsupported eligibility field: ${node.field}. Review Advanced settings.`;
+      if (node.op !== "evidence_available" && !supportedFields.has(node.field) && !["use_of_funds_total", "real_estate_equipment_amount", "real_estate_equipment_pct", "use_of_funds_complete"].includes(node.field)) return `Unsupported eligibility field: ${node.field}. Review Advanced settings.`;
       if (node.op === "present" && "value" in node) return "A 'must be provided' check must not contain a value. Remove its value in Advanced settings.";
       if (node.op === "evidence_available" && node.value != null && (typeof node.value !== "string" || !node.value.trim())) return "An evidence availability check needs a nonblank document classification, or no value.";
       const field = FIT_FIELDS.find((row) => row.key === node.field);

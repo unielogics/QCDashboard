@@ -17,7 +17,9 @@ export function filterProgramCandidates(candidates: ProgramFitCandidate[], query
   }).sort((a, b) => {
     const order = { recommended: 0, needs_information: 1, criteria_unavailable: 2, not_eligible: 3 };
     return order[a.recommendation_status] - order[b.recommendation_status]
+      || (b.preference_score ?? 0) - (a.preference_score ?? 0)
       || b.fit_score - a.fit_score
+      || b.priority - a.priority
       || a.program_name.localeCompare(b.program_name);
   });
 }
@@ -91,6 +93,7 @@ export function FundingProgramPicker({
               <span className={styles.candidateTitle}><strong>{candidate.program_name}</strong><CellChip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</CellChip></span>
               <small>{candidate.playbook_version ? `Criteria v${candidate.playbook_version}${candidate.recommendation_status === "recommended" ? ` · ${Math.round(candidate.fit_score)}% fit` : ""}` : "Publish criteria in Funding programs settings before selecting this program."}</small>
               {candidate.reasons[0] ? <small>{candidate.reasons[0]}</small> : null}
+              {candidate.preference_reasons?.length ? <small>QC preference: {candidate.preference_reasons.join(" · ")} — recommendation only, not approval.</small> : null}
             </span>
           </label>
           {candidate.reasons.length > 1 ? <details className={styles.reasons}><summary>View all fit reasons ({candidate.reasons.length})</summary><ul>{candidate.reasons.map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}

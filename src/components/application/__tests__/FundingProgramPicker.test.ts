@@ -20,6 +20,11 @@ const props = {
 };
 
 describe("funding program selection", () => {
+  it("ranks preferences within fit states without promoting an ineligible program", () => {
+    const programs = [candidate(), candidate({ program_key: "sba_504", preference_score: 50, fit_score: 80, preference_reasons: ["Fixed assets are at least 51%"] }), candidate({ program_key: "ineligible", eligible: false, recommendation_status: "not_eligible", preference_score: 100 })];
+    expect(filterProgramCandidates(programs, "", "all", []).map((item) => item.program_key)).toEqual(["sba_504", "dealer_capital", "ineligible"]);
+    expect(renderToStaticMarkup(createElement(FundingProgramPicker, { ...props, candidates: programs }))).toContain("QC preference: Fixed assets are at least 51%");
+  });
   it("searches all words across names and fit reasons and filters selected programs", () => {
     const programs = [candidate(), candidate({ program_key: "equipment", program_name: "Equipment Financing", reasons: ["Equipment purchase"] })];
     expect(filterProgramCandidates(programs, "  DEALER verified  ", "all", ["equipment"]).map((item) => item.program_key)).toEqual(["dealer_capital"]);

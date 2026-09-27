@@ -9,6 +9,7 @@ import type { FundingProgramReviewCheck } from "@/lib/fundingPrograms";
 import { DOCUMENT_REVIEW_PRESETS, EVIDENCE_TEMPLATES, FIT_FIELDS, newCustomDocumentReviewCheck, newRequirement, objectValue, readDocumentReviewChecks, readSimpleFit, setRequirementCompletionMode, withDocumentReviewChecks, writeSimpleFit, type FitCondition } from "./fundingProgramEditorModel";
 import styles from "./FundingProgramEditor.module.css";
 import documentStyles from "./FundingProgramDocuments.module.css";
+import { FundingProgramPreferencesEditor } from "./FundingProgramPreferencesEditor";
 
 type Props = { rules: string; requirements: string; onRules: (value: string) => void; onRequirements: (value: string) => void };
 const pretty = (value: unknown) => JSON.stringify(value, null, 2);
@@ -149,6 +150,7 @@ export function FundingProgramCriteriaEditor({ rules, requirements, onRules, onR
   return <div className={styles.stack}>
     {unresolved.length ? <ValidationTarget target="Imported items to resolve"><div className={styles.unresolved}><h4>Imported items to resolve · {unresolved.length}</h4><p className={styles.muted}>Publishing is blocked until staff review these imported items. Update the relevant checks or document instructions first, mark each item resolved, then save a new criteria draft.</p><ul>{unresolved.map((item, index) => <li key={index}><span>{String(item)}</span><Btn aria-label={`Mark imported item ${index + 1} resolved`} onClick={() => void resolveImportedItem(index)}>Mark resolved</Btn></li>)}</ul></div></ValidationTarget> : null}
     {parsedRules ? <EligibilityBuilder rules={parsedRules} onChange={(value) => onRules(pretty(value))} /> : <ValidationTarget target="Eligibility checks"><Callout tone="bad">The eligibility rules need correction in Advanced settings.</Callout></ValidationTarget>}
+    {parsedRules ? <FundingProgramPreferencesEditor rules={parsedRules} onChange={(value) => onRules(pretty(value))} /> : null}
     {parsedRequirements ? <EvidenceBuilder requirements={parsedRequirements} onChange={(value) => onRequirements(pretty(value))} /> : <Callout tone="bad">The document requirements need correction in Advanced settings.</Callout>}
     <details className={styles.details}><summary>Advanced settings · full rules and document configuration</summary><div className={styles.stack}><p className={styles.muted}>Existing nested rules and additional settings are preserved. Use this section only for configurations that need technical editing.</p><Field label="Eligibility rules JSON"><Textarea aria-label="Eligibility rules JSON" className="funding-program-json" rows={10} value={rules} onChange={(event) => onRules(event.target.value)} spellCheck={false} /></Field><Field label="Document requirements JSON"><Textarea aria-label="Document requirements JSON" className="funding-program-json" rows={10} value={requirements} onChange={(event) => onRequirements(event.target.value)} spellCheck={false} /></Field></div></details>
   </div>;

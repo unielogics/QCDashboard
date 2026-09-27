@@ -103,6 +103,8 @@ export type ProgramFitCandidate = {
   fit_score: number;
   confidence: number;
   priority: number;
+  preference_score?: number;
+  preference_reasons?: string[];
   reasons: string[];
 };
 

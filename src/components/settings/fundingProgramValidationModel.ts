@@ -1,4 +1,5 @@
 import type { FundingProgramCatalogItem, FundingProgramScope } from "@/lib/fundingPrograms";
+import { recommendationPreferenceIssues } from "./fundingProgramPreferenceModel";
 import { FIT_FIELDS, industryPrefixes, jsonEquivalent, objectValue, readDocumentReviewChecks, readSimpleFit, validateEditorContent } from "./fundingProgramEditorModel";
 
 export type ProgramValidationIssue = { target: string; message: string; area: "criteria" | "catalog" | "review" | "publish"; routeIndex?: number; section?: "details" | "availability" | "criteria" | "review"; fieldLabel?: string };
@@ -124,6 +125,7 @@ export function criteriaValidationIssues(rulesText: string, requirementsText: st
       });
       const error = validateEditorContent(rulesText, "[]");
       if (error && !issues.length) add("Eligibility rules JSON", error);
+      issues.push(...recommendationPreferenceIssues(rules));
     }
   }
   try { requirements = JSON.parse(requirementsText); } catch { add("Document requirements JSON", "Document requirements contain invalid JSON. Correct the highlighted editor before saving."); }

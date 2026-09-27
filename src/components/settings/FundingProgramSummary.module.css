@@ -1,0 +1,43 @@
+.summary { margin: 12px 20px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); color: var(--ink); font-size: 13px; min-width: 0; }
+.summary summary { min-height: 44px; cursor: pointer; display: flex; align-items: center; gap: 12px; justify-content: space-between; padding: 10px 12px; list-style: none; }
+.summary summary::-webkit-details-marker { display: none; }
+.summary summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 6px; }
+.summary summary > span:first-child { min-width: 0; display: grid; gap: 3px; }
+.summary summary strong { font-size: 13px; line-height: 1.5; }
+.summary summary small { color: var(--muted); font-size: 12px; }
+.summary summary::before { content: "+"; font-size: 18px; flex-shrink: 0; }
+.summary[open] > summary::before, .document[open] > summary::before { content: "−"; }
+.summary summary > span:first-of-type { flex: 1 1 auto; }
+.toggle { color: var(--accent); font-size: 12px; flex-shrink: 0; }
+.content { padding: 0 14px 14px; display: grid; gap: 16px; min-width: 0; }
+.content section { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 7px; }
+.content h4 { margin: 0; font-size: 13px; }
+.content p, .content ul { margin: 0; line-height: 1.55; }
+.content strong, .content p, .content li { overflow-wrap: anywhere; }
+.content ul { padding-left: 19px; }
+.content ul ul { margin-top: 4px; }
+.content li + li { margin-top: 5px; }
+.note, .binding { color: var(--muted); }
+.note { padding-top: 8px; }
+.muted, .metadata { color: var(--muted); font-size: 12px; }
+.warnings { color: var(--danger); }
+.routes { display: grid; gap: 7px; }
+.routes p { margin-top: 3px; }
+.rules { display: grid; gap: 4px; }
+.documents { display: grid; gap: 8px; }
+.document { border: 1px solid var(--line); border-radius: 7px; min-width: 0; }
+.documentBody { padding: 0 12px 12px; display: grid; gap: 10px; min-width: 0; }
+.prose { white-space: pre-wrap; }
+.checks { display: grid; gap: 6px; }
+.checks li > div { display: flex; gap: 6px; align-items: flex-start; flex-wrap: wrap; }
+.checks :global(.cellchip) { white-space: normal; }
+.checks p { margin-top: 3px; }
+.content footer { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 6px; font-size: 12px; color: var(--muted); }
+.confirmation { display: grid; gap: 10px; min-width: 0; }
+.confirmation > p { margin: 0; line-height: 1.55; }
+.confirmation > .summary { margin: 0; }
+.badges { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.badges :global(.cellchip) { white-space: normal; }
+.sidebarBadges { display: grid; justify-items: end; gap: 5px; text-align: right; }
+.sidebarBadges :global(.cellchip) { white-space: normal; }
+@media (max-width: 700px) { .summary { margin: 10px 14px; } .content { padding: 0 11px 12px; } .toggle { display: none; } }

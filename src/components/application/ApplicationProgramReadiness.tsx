@@ -5,6 +5,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { FundingProgramPicker } from "./FundingProgramPicker";
+import { UseOfFundsEditor } from "./UseOfFundsEditor";
 import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import pickerStyles from "./FundingProgramPicker.module.css";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -654,6 +655,8 @@ export function ApplicationProgramReadiness({
   if (!readiness) return <Callout tone="warn">{error || "Program readiness is unavailable."}</Callout>;
 
   const programsChanged = selectedPrograms.length !== readiness.selections.length || readiness.selections.some((item) => !selectedSet.has(item.program_key));
+  const topRecommended = readiness.candidates.find((candidate) => candidate.recommendation_status === "recommended");
+  const preferredAlternative = topRecommended && (topRecommended.preference_score ?? 0) > 0 && !readiness.selections.some((selection) => selection.program_key === topRecommended.program_key) ? topRecommended : null;
   const selectedRequestSet = new Set(selectedRequestKeys);
   const allRequestableSelected = requestableRequirements.length > 0 && requestableRequirements.every((item) => selectedRequestSet.has(item.requirement_key));
   const openProgramPicker = () => {
@@ -673,6 +676,7 @@ export function ApplicationProgramReadiness({
 
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
+    {readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} /> : null}
     <details className="program-readiness-programs" open>
       <summary>
         <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "Choose a catalog program or add one manually"}</small></span>
@@ -681,6 +685,7 @@ export function ApplicationProgramReadiness({
     <section className="program-readiness-band" aria-labelledby="program-selection-heading">
       <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Program selection</h3><p>{readiness.selections.length ? `${readiness.selections.length} selected. Review fit and compare other programs when needed.` : "Choose a funding program to build this file’s evidence checklist."}</p></div><div className="program-readiness-actions">{canCreatePrograms ? <Btn onClick={() => setCustomProgramOpen(true)} disabled={Boolean(busy)}><Icon name="plus" size={14} />Add program</Btn> : null}{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={openProgramPicker} disabled={Boolean(busy)} aria-haspopup="dialog"><Icon name="search" size={14} />{readiness.selections.length ? "Manage programs" : "Choose programs"}</Btn></div></div>
       {readiness.selections.length ? <div className={pickerStyles.summary} aria-label="Selected funding programs">{readiness.selections.map((selection) => <span key={selection.id} className={pickerStyles.selection}><strong>{selection.program_name}</strong><small>v{selection.playbook_version} · {selection.source === "ai_auto" ? "AI selected" : "Staff selected"}</small></span>)}</div> : null}
+      {preferredAlternative ? <Callout tone="acc"><strong>Consider {preferredAlternative.program_name}</strong><p>{preferredAlternative.preference_reasons?.join(" · ") || "Matches a published program preference."} Your existing selection has not changed. Review the fit before switching; this is not an approval.</p><Btn onClick={openProgramPicker} disabled={Boolean(busy)}>Review suggested program</Btn></Callout> : null}
       {readiness.selections.some((selection) => selection.needs_scope_review) ? <Callout tone="warn">A staff-selected program is outside the AI fit or file scope. The manual override is active and remains flagged for underwriting review.</Callout> : null}
       {!readiness.candidates.length ? <div className="empty">{readiness.lending_applicable ? canCreatePrograms ? "No published program matches this file yet. Add a program manually or update the file classification." : "No in-scope program has published criteria yet. Ask a super admin to add one, or update the file classification." : "This enquiry is not a lending request, so lending programs do not apply."}</div> : null}
     </section>
