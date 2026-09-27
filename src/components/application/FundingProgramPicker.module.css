@@ -1,0 +1,152 @@
+.summary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selection {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 9px 12px;
+  background: var(--sunken);
+}
+
+.selection small,
+.hint,
+.candidateCopy small {
+  color: var(--muted);
+}
+
+.layout {
+  display: grid;
+  gap: 16px;
+}
+
+.toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(170px, .4fr);
+  gap: 12px;
+}
+
+.toolbar input,
+.toolbar select,
+.footer button {
+  min-height: 44px;
+}
+
+.hint {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.results {
+  display: grid;
+  gap: 8px;
+}
+
+.candidate {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface);
+}
+
+.selected {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--sunken));
+}
+
+.choice {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  min-height: 64px;
+  padding: 14px;
+  cursor: pointer;
+}
+
+.choice:has(input:disabled) {
+  cursor: default;
+}
+
+.choice:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.choice input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  margin: 2px 0 0;
+  accent-color: var(--accent);
+}
+
+.candidateCopy {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+  flex: 1;
+}
+
+.candidateCopy small {
+  line-height: 1.5;
+}
+
+.candidateTitle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.reasons {
+  border-top: 1px solid var(--line);
+  padding: 0 14px;
+  font-size: 13px;
+}
+
+.reasons summary {
+  cursor: pointer;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+.reasons ul {
+  margin: 0 0 14px;
+  padding-left: 20px;
+  line-height: 1.6;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 10px;
+  width: 100%;
+}
+
+.footerCount {
+  margin-right: auto;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+@media (max-width: 600px) {
+  .toolbar {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .footerCount {
+    flex-basis: 100%;
+  }
+}

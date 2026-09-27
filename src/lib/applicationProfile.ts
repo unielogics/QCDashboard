@@ -683,6 +683,7 @@ export type TaxonomyEntry = {
   aliases: string[];
   originating_profile_id: string | null;
   canonical_entry_id: string | null;
+  path?: Array<{ id: string; level: 2 | 3 | 6; code: string | null; label: string; parent_id: string | null }>;
 };
 
 export type TaxonomySearch = { items: TaxonomyEntry[]; total: number; page: number; page_size: number };

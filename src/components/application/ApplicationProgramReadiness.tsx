@@ -4,6 +4,8 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "rea
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { FundingProgramPicker } from "./FundingProgramPicker";
+import pickerStyles from "./FundingProgramPicker.module.css";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -16,7 +18,6 @@ import type {
   ApplicationRequirement,
   ApplicationRequirementEvidence,
   EvidenceDecisionStatus,
-  ProgramFitCandidate,
   RoomDeliveryReceipt,
   UnlockedCopyRequestState,
 } from "@/lib/applicationProfile";
@@ -93,20 +94,6 @@ function decisionTone(decision: EvidenceDecisionStatus): "ok" | "acc" | "warn" |
   return "acc";
 }
 
-function candidateLabel(candidate: ProgramFitCandidate): string {
-  if (candidate.recommendation_status === "recommended") return "Recommended";
-  if (candidate.recommendation_status === "needs_information") return "Needs information";
-  if (candidate.recommendation_status === "criteria_unavailable") return "Criteria unavailable";
-  return "Not eligible";
-}
-
-function candidateTone(candidate: ProgramFitCandidate): "ok" | "acc" | "warn" | "bad" | "mut" {
-  if (candidate.recommendation_status === "recommended") return "ok";
-  if (candidate.recommendation_status === "needs_information") return "warn";
-  if (candidate.recommendation_status === "not_eligible") return "bad";
-  return "mut";
-}
-
 function programKey(value: string): string {
   return value.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 64);
 }
@@ -165,6 +152,8 @@ export function ApplicationProgramReadiness({
   const [readiness, setReadiness] = useState<Readiness | null>(value ?? null);
   const [selectedPrograms, setSelectedPrograms] = useState<string[]>([]);
   const [programReason, setProgramReason] = useState("");
+  const [programPickerOpen, setProgramPickerOpen] = useState(false);
+  const programPickerOpenRef = useRef(false);
   const [evidenceSelections, setEvidenceSelections] = useState<Record<string, string>>({});
   const [selectedRequestKeys, setSelectedRequestKeys] = useState<string[]>([]);
   const [expandedRequirements, setExpandedRequirements] = useState<string[]>([]);
@@ -197,7 +186,7 @@ export function ApplicationProgramReadiness({
       }
       const next = await authenticated<Readiness>(`/application-profiles/${profileId}/program-readiness`);
       storeReadiness(next);
-      setSelectedPrograms(next.selections.map((selection) => selection.program_key));
+      if (!programPickerOpenRef.current) setSelectedPrograms(next.selections.map((selection) => selection.program_key));
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -209,7 +198,7 @@ export function ApplicationProgramReadiness({
   useEffect(() => {
     if (!controlled) return;
     setReadiness(value ?? null);
-    if (value) setSelectedPrograms(value.selections.map((selection) => selection.program_key));
+    if (value && !programPickerOpenRef.current) setSelectedPrograms(value.selections.map((selection) => selection.program_key));
   }, [controlled, value]);
   useEffect(() => {
     if (!customProgramOpen) setCustomProgram((current) => ({ ...current, vertical: programVertical }));
@@ -279,20 +268,19 @@ export function ApplicationProgramReadiness({
 
   async function savePrograms(returnToAi = false) {
     if (!readiness) return;
-    const changed = selectedPrograms.join("|") !== readiness.selections.map((item) => item.program_key).join("|");
+    const changed = selectedPrograms.length !== readiness.selections.length || readiness.selections.some((item) => !selectedSet.has(item.program_key));
     if (!returnToAi && !changed) return;
     if (!returnToAi && ineligibleSelected.length && programReason.trim().length < 8) {
       setError("Explain why the reviewed file should use an AI-ineligible program.");
       return;
     }
-    const confirmed = await confirmAction({
-      title: returnToAi ? "Return program selection to AI?" : "Apply selected funding programs?",
-      body: returnToAi
-        ? "The highest-confidence eligible published program will be selected once. Future AI suggestions remain advisory."
-        : `Requirements will be recalculated from pinned published versions.${ineligibleSelected.length ? ` Override reason: ${programReason.trim()}` : ""}`,
-      confirmLabel: returnToAi ? "Return to AI selection" : "Apply programs",
-    });
-    if (!confirmed) return;
+    // Applying the reviewed picker is the confirmation for a manual selection.
+    // Avoid stacking a second focus-trapping dialog over the program picker.
+    if (returnToAi && !await confirmAction({
+      title: "Return program selection to AI?",
+      body: "The highest-confidence eligible published program will be selected once. Future AI suggestions remain advisory.",
+      confirmLabel: "Return to AI selection",
+    })) return;
     setBusy("programs");
     setError(null);
     try {
@@ -308,6 +296,8 @@ export function ApplicationProgramReadiness({
       storeReadiness(next);
       setSelectedPrograms(next.selections.map((selection) => selection.program_key));
       setProgramReason("");
+      programPickerOpenRef.current = false;
+      setProgramPickerOpen(false);
       onNotice?.(returnToAi ? "Program selection returned to AI criteria." : "Funding programs updated.");
     } catch (reason) {
       setError(errorMessage(reason));
@@ -660,22 +650,23 @@ export function ApplicationProgramReadiness({
   if (!readiness && busy === "load") return <div className="empty">Loading program readiness...</div>;
   if (!readiness) return <Callout tone="warn">{error || "Program readiness is unavailable."}</Callout>;
 
-  const originalPrograms = readiness.selections.map((item) => item.program_key).join("|");
-  const programsChanged = selectedPrograms.join("|") !== originalPrograms;
+  const programsChanged = selectedPrograms.length !== readiness.selections.length || readiness.selections.some((item) => !selectedSet.has(item.program_key));
   const selectedRequestSet = new Set(selectedRequestKeys);
   const allRequestableSelected = requestableRequirements.length > 0 && requestableRequirements.every((item) => selectedRequestSet.has(item.requirement_key));
-  const primaryKey = readiness.selections.find((item) => item.source === "ai_auto")?.program_key || readiness.candidates.find((item) => item.recommendation_status === "recommended")?.program_key;
-  const recommended = readiness.candidates.filter((item) => item.recommendation_status === "recommended");
-  const alternatives = readiness.candidates.filter((item) => item.recommendation_status === "needs_information" || item.recommendation_status === "criteria_unavailable");
-  const notEligible = readiness.candidates.filter((item) => item.recommendation_status === "not_eligible");
-
-  const candidateCard = (candidate: ProgramFitCandidate) => (
-    <label key={candidate.program_key} className={cx("program-candidate", selectedSet.has(candidate.program_key) && "selected")}>
-      <input type="checkbox" checked={selectedSet.has(candidate.program_key)} disabled={!candidate.playbook_id} onChange={() => setSelectedPrograms((current) => current.includes(candidate.program_key) ? current.filter((key) => key !== candidate.program_key) : [...current, candidate.program_key])} />
-      <span><strong>{candidate.program_name}</strong><small>{candidate.playbook_version ? `v${candidate.playbook_version}` : "No published criteria"}{candidate.recommendation_status === "recommended" ? ` · ${Math.round(candidate.fit_score)}% fit` : candidate.reasons[0] ? ` · ${candidate.reasons[0]}` : ""}</small></span>
-      <CellChip tone={candidateTone(candidate)}>{candidate.program_key === primaryKey && candidate.recommendation_status === "recommended" ? "Primary" : candidateLabel(candidate)}</CellChip>
-    </label>
-  );
+  const openProgramPicker = () => {
+    setSelectedPrograms(readiness.selections.map((selection) => selection.program_key));
+    setProgramReason("");
+    setError(null);
+    programPickerOpenRef.current = true;
+    setProgramPickerOpen(true);
+  };
+  const closeProgramPicker = () => {
+    if (busy === "programs") return;
+    setSelectedPrograms(readiness.selections.map((selection) => selection.program_key));
+    setProgramReason("");
+    programPickerOpenRef.current = false;
+    setProgramPickerOpen(false);
+  };
 
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
@@ -685,15 +676,14 @@ export function ApplicationProgramReadiness({
         <CellChip tone={readiness.selection_mode === "manual" ? "warn" : "acc"}>{readiness.selection_mode === "manual" ? "Manual selection" : "AI selection"}</CellChip>
       </summary>
     <section className="program-readiness-band" aria-labelledby="program-selection-heading">
-      <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Program selection</h3><p>Select any published program below. AI fit is advisory: staff may override an ineligible recommendation with an audited reason.</p></div><div className="program-readiness-actions">{canCreatePrograms ? <Btn onClick={() => setCustomProgramOpen(true)} disabled={Boolean(busy)}><Icon name="plus" size={14} />Add program</Btn> : null}{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={() => void savePrograms(false)} disabled={!programsChanged || Boolean(busy)}>{busy === "programs" ? "Applying..." : "Apply manual selection"}</Btn></div></div>
-      {recommended.length ? <div className="program-candidate-group"><span className="lbl">Recommended</span><div className="program-candidate-grid">{recommended.map(candidateCard)}</div></div> : null}
-      {alternatives.length ? <div className="program-candidate-group"><span className="lbl">Alternatives</span><div className="program-candidate-grid">{alternatives.map(candidateCard)}</div></div> : null}
-      {notEligible.length ? <details className="program-candidate-collapsed"><summary>Not eligible ({notEligible.length})</summary><div className="program-candidate-grid">{notEligible.map(candidateCard)}</div></details> : null}
+      <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Program selection</h3><p>{readiness.selections.length ? `${readiness.selections.length} selected. Review fit and compare other programs when needed.` : "Choose a funding program to build this file’s evidence checklist."}</p></div><div className="program-readiness-actions">{canCreatePrograms ? <Btn onClick={() => setCustomProgramOpen(true)} disabled={Boolean(busy)}><Icon name="plus" size={14} />Add program</Btn> : null}{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={openProgramPicker} disabled={Boolean(busy)} aria-haspopup="dialog"><Icon name="search" size={14} />{readiness.selections.length ? "Manage programs" : "Choose programs"}</Btn></div></div>
+      {readiness.selections.length ? <div className={pickerStyles.summary} aria-label="Selected funding programs">{readiness.selections.map((selection) => <span key={selection.id} className={pickerStyles.selection}><strong>{selection.program_name}</strong><small>v{selection.playbook_version} · {selection.source === "ai_auto" ? "AI selected" : "Staff selected"}</small></span>)}</div> : null}
       {readiness.selections.some((selection) => selection.needs_scope_review) ? <Callout tone="warn">A staff-selected program is outside the AI fit or file scope. The manual override is active and remains flagged for underwriting review.</Callout> : null}
-      {ineligibleSelected.length ? <Field label="Required program-override reason"><Textarea rows={2} value={programReason} onChange={(event) => setProgramReason(event.target.value)} placeholder="Explain why these reviewed facts support the selected program" /></Field> : null}
       {!readiness.candidates.length ? <div className="empty">{readiness.lending_applicable ? canCreatePrograms ? "No published program matches this file yet. Add a program manually or update the file classification." : "No in-scope program has published criteria yet. Ask a super admin to add one, or update the file classification." : "This enquiry is not a lending request, so lending programs do not apply."}</div> : null}
     </section>
     </details>
+
+    {programPickerOpen ? <FundingProgramPicker candidates={readiness.candidates} selections={readiness.selections} selectedKeys={selectedPrograms} onSelectionChange={setSelectedPrograms} reason={programReason} onReasonChange={setProgramReason} requiresOverride={ineligibleSelected.length > 0} changed={programsChanged} busy={busy === "programs"} error={error} onClose={closeProgramPicker} onApply={() => void savePrograms(false)} /> : null}
 
     <Drawer open={customProgramOpen} onClose={() => { if (busy !== "create-program") setCustomProgramOpen(false); }} title="Add a funding program" sub="Create a reviewed catalog program, publish its first criteria version, and select it on this file." width="md" closeOnBackdrop={busy !== "create-program"} footer={<><Btn onClick={() => setCustomProgramOpen(false)} disabled={busy === "create-program"}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={() => void createAndSelectProgram()} disabled={busy === "create-program" || customProgram.name.trim().length < 2 || programKey(customProgram.programKey || customProgram.name).length < 2 || customProgram.reason.trim().length < 8}>{busy === "create-program" ? "Creating and selecting..." : "Create and select"}</Btn></>}>
       <div className="grid g12">

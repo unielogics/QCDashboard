@@ -1,0 +1,49 @@
+.root { font-size: 14px; }
+.root fieldset { min-width: 0; margin: 0; padding: 0; }
+.root input:not([type="checkbox"]), .root select, .root button { min-height: 44px; }
+.root :global(.funding-program-section-head) p, .root > header p { font-size: 13px; line-height: 1.5; }
+.root :global(.funding-program-section-head) h3 { font-size: 17px; }
+.root :global(.funding-program-editor) > section { padding: 20px; gap: 16px; }
+.root :global(.funding-program-list) strong { font-size: 13px; }
+.root :global(.funding-program-list) small { font-size: 11px; }
+.root :global(.funding-program-verticals) label { min-height: 44px; font-size: 13px; padding: 8px 12px; cursor: pointer; }
+.stack { display: grid; gap: 14px; min-width: 0; }
+.muted { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.status { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; background: var(--surface-2, var(--surface)); border: 1px solid var(--line); border-radius: 8px; }
+.status strong { display: block; margin-bottom: 3px; }
+.status p { color: var(--muted); line-height: 1.5; }
+.row { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; min-width: 0; }
+.row > select { width: auto; max-width: 100%; }
+.row > h4 { margin: 0; flex: 1; }
+.condition { display: grid; grid-template-columns: minmax(150px, 1.5fr) minmax(130px, 1fr) minmax(110px, 1fr) 44px; gap: 8px; align-items: end; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.condition > * { min-width: 0; }
+.condition button { width: 44px; }
+.evidence { display: grid; gap: 12px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; }
+.evidenceHeader { display: grid; grid-template-columns: minmax(160px, 1fr) 160px 44px; gap: 8px; align-items: end; }
+.evidenceHeader > * { min-width: 0; }
+.details { border-top: 1px solid var(--line); padding-top: 6px; }
+.details > summary { min-height: 44px; display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.details > summary::before { content: "+"; font-size: 17px; }
+.details[open] > summary::before { content: "−"; }
+.details > div { padding-top: 10px; }
+.checks { display: flex; flex-wrap: wrap; gap: 8px; }
+.checks label { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.scope { padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 12px; }
+.scope h4 { margin: 0; font-size: 14px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips button { display: inline-flex; align-items: center; gap: 8px; border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; background: var(--surface); color: var(--ink); text-align: left; }
+.search { display: grid; grid-template-columns: 160px minmax(0, 1fr); gap: 8px; }
+.results { display: grid; max-height: 260px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.results button { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 10px; text-align: left; border: 0; border-bottom: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.results button:hover { background: var(--surface-2); }
+.results small { display: block; color: var(--muted); }
+.actions { display: grid; gap: 12px; }
+.actionRow { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 700px) {
+  .root :global(.funding-program-editor) > section { padding: 14px; }
+  .condition { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px; }
+  .condition > :first-child { grid-column: 1 / -1; }
+  .evidenceHeader { grid-template-columns: minmax(0, 1fr) 44px; }
+  .evidenceHeader > :first-child { grid-column: 1 / -1; }
+  .search { grid-template-columns: 1fr; }
+}
