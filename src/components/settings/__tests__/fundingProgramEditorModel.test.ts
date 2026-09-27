@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { EVIDENCE_TEMPLATES, jsonEquivalent, newRequirement, readSimpleFit, validateEditorContent, writeSimpleFit } from "../fundingProgramEditorModel";
+import { EVIDENCE_TEMPLATES, jsonEquivalent, newRequirement, readSimpleFit, setRequirementCompletionMode, validateEditorContent, writeSimpleFit } from "../fundingProgramEditorModel";
 
 describe("funding program guided editor", () => {
   it("round-trips workspace, numeric, and boolean checks while preserving unrelated metadata", () => {
@@ -49,5 +49,15 @@ describe("funding program guided editor", () => {
     expect(validateEditorContent("{}", JSON.stringify([{ ...newRequirement("Bank statements", []), visibility: [] }]))).toContain("audience");
     expect(validateEditorContent("{", "[]")).toContain("invalid JSON");
     expect(validateEditorContent("{}", "{}")).toContain("list");
+  });
+  it("requires verification when staff approval is selected and never silently removes it on a mode change", () => {
+    const requirement: Record<string, unknown> = { ...newRequirement("Bank statements", []), completion_criteria: "Confirm all pages" };
+    const staffReview = setRequirementCompletionMode(requirement, "requires_human_verify");
+    expect(staffReview.verification_required).toBe(true);
+    expect(staffReview.completion_mode).toBe("requires_human_verify");
+    expect(staffReview.completion_criteria).toBe("Confirm all pages");
+    expect(requirement.verification_required).toBe(false);
+    expect(setRequirementCompletionMode(staffReview, "ai_can_complete").verification_required).toBe(true);
+    expect(setRequirementCompletionMode(staffReview, "borrower_self_attest").verification_required).toBe(true);
   });
 });

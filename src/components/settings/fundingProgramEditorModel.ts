@@ -87,6 +87,10 @@ export function newRequirement(label: string, existing: Array<Record<string, unk
   return { requirement_key: unique, label, category, required_level: "required", blocks_stage: "underwriting", visibility: ["agent", "borrower", "underwriter"], can_underwriter_waive: true, verification_required: false, completion_mode: "ai_can_complete", display_order: existing.length, objective_text: "", completion_criteria: "" };
 }
 
+export function setRequirementCompletionMode(requirement: Record<string, unknown>, mode: string): Record<string, unknown> {
+  return { ...requirement, completion_mode: mode, ...(mode === "requires_human_verify" ? { verification_required: true } : {}) };
+}
+
 export function validateEditorContent(rulesText: string, requirementsText: string): string | null {
   try {
     const rules: unknown = JSON.parse(rulesText);
