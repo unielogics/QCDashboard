@@ -135,7 +135,7 @@ export function summarizeProgramEffects(scopes: FundingProgramScope[], rulesText
   });
   const documents = requirements.map((row): SummaryDocument => {
     const checks = Array.isArray(row.review_checks) ? row.review_checks.filter(objectValue).map((check) => ({ label: text(check.label) || "Unnamed condition", instructions: text(check.instructions), policy: check.severity === "block" ? "Must resolve before staff approval" : "Flag for staff review" })) : [];
-    const staffVerification = row.verification_required === true || row.completion_mode === "requires_human_verify" || checks.length > 0;
+    const staffVerification = row.verification_required === true || row.completion_mode === "requires_human_verify";
     const details: string[] = [];
     if (row.required_level === "required" && row.blocks_stage) details.push(`Required before: ${STAGES[String(row.blocks_stage)] || row.blocks_stage}`);
     if (Array.isArray(row.visibility) && row.visibility.length) details.push(`Visible to: ${values(row.visibility).map((value) => AUDIENCES[value] || value).join(", ")}`);
@@ -144,7 +144,7 @@ export function summarizeProgramEffects(scopes: FundingProgramScope[], rulesText
     return {
       name: text(row.label) || "Unnamed document", importance: row.required_level === "optional" ? "Optional" : row.required_level === "recommended" ? "Recommended" : "Required",
       instructions: text(row.completion_criteria), objective: text(row.objective_text), checks, staffVerification,
-      completion: staffVerification ? "Staff verification required" : row.completion_mode === "borrower_self_attest" ? "Client may self-attest" : "AI may complete this requirement when evidence satisfies the checks",
+      completion: staffVerification ? "Staff verification required" : row.completion_mode === "borrower_self_attest" ? "Client may self-attest" : "AI may complete only evidence-backed passes; missing, uncertain, or adverse findings require staff review",
       details, appliesWhen: summarizeCondition(row.applies_when),
     };
   });

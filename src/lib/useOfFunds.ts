@@ -59,3 +59,10 @@ export function budgetPreview(rows: UseOfFundsRow[], requestedAmount: number | s
 export function budgetRows(items: UseOfFundsItem[]): UseOfFundsRow[] {
   return items.map((item) => ({ ...item, amount: String(item.amount) }));
 }
+
+/** Display is rounded down: 50.999999% must never look like it meets 51%. */
+export function budgetShareLabel(preview: Pick<ReturnType<typeof budgetPreview>, "complete" | "fixedAssets" | "total">): string {
+  if (!preview.complete || preview.total <= 0) return "Complete budget first";
+  const basisPoints = BigInt(preview.fixedAssets) * BigInt(10000) / BigInt(preview.total);
+  return `${Number(basisPoints) / 100}%`;
+}

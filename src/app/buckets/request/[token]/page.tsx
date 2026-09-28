@@ -11,6 +11,7 @@ import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
+import { RoomUseOfFunds } from "@/components/room/RoomUseOfFunds";
 import { apiBase } from "@/lib/api";
 import { clientActionNeeded, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
@@ -44,7 +45,7 @@ type ClientEvidenceBankingSummary = {
 };
 type ClientRoomKind = RoomKind | "basic";
 type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
-type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "banking" | "agreements";
+type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" | "mail" }> = [
@@ -56,6 +57,7 @@ const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "b
   { id: "updates", label: "Updates", icon: "note" },
   { id: "todo", label: "To-do", icon: "check" },
   { id: "documents", label: "Documents", icon: "file" },
+  { id: "budget", label: "Use of funds", icon: "dollar" },
   { id: "banking", label: "Business banking", icon: "building" },
   { id: "agreements", label: "Agreements", icon: "edit" },
 ];
@@ -361,7 +363,7 @@ export default function BucketRequestPage() {
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [offerOnlyAccess, precall, offer, updates]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [offerOnlyAccess, precall, offer, updates, session]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -447,6 +449,9 @@ export default function BucketRequestPage() {
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && missingDocs.length ? <span>{missingDocs.length}</span> : null}</button>)}</nav>
 
       {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}
+
+      {!offerOnlyAccess && session.room_kind !== "basic" ? <div hidden={activeTab !== "budget"}><RoomUseOfFunds token={token} passcode={passcode.trim()} /></div> : null}
+      {!offerOnlyAccess && session.room_kind !== "basic" && (activeTab === "documents" || activeTab === "todo") ? <section className="application-room-section"><div className="application-room-section-head"><div><h2>How will you use the funds?</h2><p>Add a category and amount for each planned use so your team can review financing options.</p></div><button className="application-room-secondary" onClick={() => setActiveTab("budget")}><Icon name="dollar" size={14} />Review use of funds</button></div></section> : null}
 
       {activeTab === "precall" && precall ? <PrecallChecklist token={token} passcode={passcode.trim()} precall={precall} roomKind={precallRoomKind} onChanged={refreshPrecall} onGoToDocuments={() => setActiveTab("documents")} /> : null}
       {activeTab === "precall" && !precall && precallLoaded ? <section className="application-room-section"><p>This room has no call to prepare for.</p></section> : null}

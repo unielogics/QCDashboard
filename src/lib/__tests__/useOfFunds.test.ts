@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { budgetPreview, moneyCents, type UseOfFundsRow } from "../useOfFunds";
+import { budgetPreview, budgetShareLabel, moneyCents, type UseOfFundsRow } from "../useOfFunds";
 
 const row = (id: string, category: UseOfFundsRow["category"], amount: string): UseOfFundsRow => ({ id, category, amount, label: "" });
 
@@ -20,6 +20,11 @@ describe("use-of-funds budget", () => {
   });
   it("keeps refinance and closing costs out of the simple fixed-asset heuristic", () => {
     expect(budgetPreview([row("a", "debt_refinance", "600"), row("b", "closing_fees", "400")], 1000).percent).toBe(0);
+  });
+  it("never displays a rounded-up share at the 51 percent boundary", () => {
+    expect(budgetShareLabel(budgetPreview([row("a", "equipment", "509999.99"), row("b", "inventory", "490000.01")], 1000000))).toBe("50.99%");
+    expect(budgetShareLabel(budgetPreview([row("a", "equipment", "510000"), row("b", "inventory", "490000")], 1000000))).toBe("51%");
+    expect(budgetShareLabel(budgetPreview([row("a", "equipment", "510000")], 1000000))).toBe("Complete budget first");
   });
   it("blocks overallocated and invalid rows", () => {
     expect(budgetPreview([row("a", "equipment", "1001")], 1000).errors.total).toContain("exceeds");

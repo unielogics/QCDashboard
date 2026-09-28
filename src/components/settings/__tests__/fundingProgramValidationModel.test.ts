@@ -132,7 +132,7 @@ describe("funding editor actionable validation", () => {
     }));
     expect(requirementsEquivalentForRecovery(JSON.stringify([first, second]), JSON.stringify(hydrated))).toBe(true);
   });
-  it("matches backend-trimmed document checks and their forced staff-review gate", () => {
+  it("matches backend-trimmed checks without changing explicit review authority", () => {
     const pending = [{
       ...newRequirement("  Tax returns  ", []),
       verification_required: false,
@@ -144,11 +144,13 @@ describe("funding editor actionable validation", () => {
       applies_when: null,
       expiration_days: null,
       ai_request_message_template: null,
-      verification_required: true,
-      completion_mode: "requires_human_verify",
+      verification_required: false,
+      completion_mode: "ai_can_complete",
       review_checks: [{ key: "custom_1", label: "Stable earnings", instructions: "Compare both years.", severity: "review" }],
     }];
     expect(requirementsEquivalentForRecovery(JSON.stringify(pending), JSON.stringify(hydrated))).toBe(true);
+    expect(requirementsEquivalentForRecovery(JSON.stringify(pending), JSON.stringify([{ ...hydrated[0], verification_required: true }]))).toBe(false);
+    expect(criteriaValidationIssues("{}", JSON.stringify([{ ...hydrated[0], completion_mode: "borrower_self_attest" }])).map((issue) => issue.target)).toContain("Requirement 1 completion permission");
     expect(requirementsEquivalentForRecovery("not json", "not json")).toBe(false);
     expect(requirementsEquivalentForRecovery(JSON.stringify([{ ...pending[0], category: null }]), JSON.stringify(hydrated))).toBe(false);
     expect(requirementsEquivalentForRecovery(JSON.stringify(pending), JSON.stringify([{ ...hydrated[0], label: "Different document" }]))).toBe(false);

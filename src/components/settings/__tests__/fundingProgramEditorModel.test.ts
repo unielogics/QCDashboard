@@ -51,26 +51,35 @@ describe("funding program guided editor", () => {
     expect(validateEditorContent("{", "[]")).toContain("invalid JSON");
     expect(validateEditorContent("{}", "{}")).toContain("list");
   });
-  it("requires verification when staff approval is selected and never silently removes it on a mode change", () => {
+  it("uses explicit completion choices to enable grounded AI review or require staff", () => {
     const requirement: Record<string, unknown> = { ...newRequirement("Bank statements", []), completion_criteria: "Confirm all pages" };
     const staffReview = setRequirementCompletionMode(requirement, "requires_human_verify");
     expect(staffReview.verification_required).toBe(true);
     expect(staffReview.completion_mode).toBe("requires_human_verify");
     expect(staffReview.completion_criteria).toBe("Confirm all pages");
     expect(requirement.verification_required).toBe(false);
-    expect(setRequirementCompletionMode(staffReview, "ai_can_complete").verification_required).toBe(true);
-    expect(setRequirementCompletionMode(staffReview, "borrower_self_attest").verification_required).toBe(true);
+    expect(setRequirementCompletionMode(staffReview, "ai_can_complete").verification_required).toBe(false);
+    expect(setRequirementCompletionMode(staffReview, "borrower_self_attest").verification_required).toBe(false);
   });
-  it("keeps document pattern review mandatory and preserves the existing evidence instructions", () => {
+  it("keeps document checks without forcing staff-only review or changing instructions", () => {
     const requirement = { ...newRequirement("Two years tax returns", []), completion_criteria: "All pages for both years", objective_text: "Confirm business results" };
     const checked = withDocumentReviewChecks(requirement, DOCUMENT_REVIEW_PRESETS.slice(0, 2));
-    expect(checked.completion_mode).toBe("requires_human_verify");
-    expect(checked.verification_required).toBe(true);
+    expect(checked.completion_mode).toBe("ai_can_complete");
+    expect(checked.verification_required).toBe(false);
     expect(checked.completion_criteria).toBe(requirement.completion_criteria);
     expect(checked.objective_text).toBe(requirement.objective_text);
-    expect(setRequirementCompletionMode(checked, "ai_can_complete").completion_mode).toBe("requires_human_verify");
-    expect(withDocumentReviewChecks(checked, []).verification_required).toBe(true);
+    expect(setRequirementCompletionMode(checked, "requires_human_verify").completion_mode).toBe("requires_human_verify");
+    expect(withDocumentReviewChecks(checked, []).verification_required).toBe(false);
     expect(validateEditorContent("{}", JSON.stringify([checked]))).toBeNull();
+  });
+  it("preserves existing staff gates while preventing self-attestation of document checks", () => {
+    const legacy = { ...newRequirement("Tax returns", []), verification_required: true, completion_mode: "ai_can_complete" };
+    expect(withDocumentReviewChecks(legacy, [DOCUMENT_REVIEW_PRESETS[0]])).toMatchObject({ verification_required: true, completion_mode: "ai_can_complete" });
+    const client = setRequirementCompletionMode(newRequirement("Tax returns", []), "borrower_self_attest");
+    const checked = withDocumentReviewChecks(client, [DOCUMENT_REVIEW_PRESETS[0]]);
+    expect(checked).toMatchObject({ verification_required: true, completion_mode: "requires_human_verify" });
+    expect(setRequirementCompletionMode(checked, "borrower_self_attest").completion_mode).toBe("requires_human_verify");
+    expect(validateEditorContent("{}", JSON.stringify([{ ...checked, completion_mode: "borrower_self_attest" }]))).toContain("cannot be self-attested");
   });
   it("allows multiple custom checks with stable unique references and validates incomplete instructions", () => {
     const first = { ...newCustomDocumentReviewCheck([]), label: "Owner transfers", instructions: "Explain material transfers to owners." };

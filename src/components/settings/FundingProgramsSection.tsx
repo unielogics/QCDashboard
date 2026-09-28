@@ -12,6 +12,8 @@ import type { FundingProgramBaseline, FundingProgramCatalogItem, FundingProgramS
 import { FundingProgramCriteriaEditor } from "./FundingProgramCriteriaEditor";
 import { FundingProgramScopeEditor } from "./FundingProgramScopeEditor";
 import { FundingProgramEffectSummary } from "./FundingProgramEffectSummary";
+import { FundingProgramLogicWarnings } from "./FundingProgramLogicWarnings";
+import { programLogicWarnings, type ProgramLogicAction } from "./fundingProgramConsistencyModel";
 import { fundingProgramStatusBadges, programSaveEffect, summarizeProgramEffects } from "./fundingProgramSummaryModel";
 import { applySharedIndustryExclusions, baselineNoteGroups, baselineReferenceFromRules, industryPrefixes, jsonEquivalent, sharedIndustryExclusions, validateEditorContent } from "./fundingProgramEditorModel";
 import styles from "./FundingProgramEditor.module.css";
@@ -102,6 +104,7 @@ export function FundingProgramsSection() {
   const catalogDirty = Boolean(selected && catalog && !jsonEquivalent(JSON.stringify(catalog), JSON.stringify(catalogDraft(selected))));
   const dirty = criteriaDirty || catalogDirty;
   const effectSummary = useMemo(() => summarizeProgramEffects(catalog?.scopes || [], version.rules, version.requirements), [catalog?.scopes, version.rules, version.requirements]);
+  const logicWarnings = useMemo(() => programLogicWarnings({ programKey: selectedKey, rulesText: version.rules, requirementsText: version.requirements, scopes: catalog?.scopes || [], catalog: rows }), [selectedKey, version.rules, version.requirements, catalog?.scopes, rows]);
   const publishedHasFit = Boolean(selected?.published_version?.rules.fit);
   const criteriaIssues = criteriaValidationIssues(version.rules, version.requirements);
   const catalogIssues = catalog ? catalogValidationIssues(catalog) : [];
@@ -130,6 +133,9 @@ export function FundingProgramsSection() {
       const target = Array.from(editorRef.current?.querySelectorAll<HTMLElement>("[data-validation-target]") ?? []).find((element) => element.dataset.validationTarget === issue.target);
       if (!target) return;
       for (let parent = target.parentElement; parent; parent = parent.parentElement) if (parent instanceof HTMLDetailsElement) parent.open = true;
+      if (target instanceof HTMLDetailsElement) target.open = true;
+      const nestedSection = target.querySelector("details");
+      if (nestedSection) nestedSection.open = true;
       editorRef.current?.querySelectorAll<HTMLElement>("[data-guided-focus]").forEach((element) => delete element.dataset.guidedFocus);
       target.dataset.guidedFocus = "true";
       const control = target.matches("button,input,select,textarea,[tabindex]") ? target : target.querySelector<HTMLElement>("input:not(:disabled),select:not(:disabled),textarea:not(:disabled),button:not(:disabled),[tabindex]") || target;
@@ -139,7 +145,7 @@ export function FundingProgramsSection() {
   }, []);
   useEffect(() => {
     if (!busy && pendingFocus.current) { const issue = pendingFocus.current; pendingFocus.current = null; focusIssue(issue); }
-  }, [busy, serverValidation, focusIssue]);
+  }, [busy, serverValidation, selectedKey, version.rules, version.requirements, focusIssue]);
   function checkAction(action: ProgramValidationAction): boolean {
     setSuccess(""); setError(null); setServerValidation(null);
     setValidationAction(action);
@@ -153,9 +159,10 @@ export function FundingProgramsSection() {
     return rows.filter((item) => (vertical === "all" || item.scopes.some((scope) => scope.vertical === vertical && scope.is_active !== false)) && (!needle || [item.name, item.program_key, item.public_slug, ...item.aliases].join(" ").toLowerCase().includes(needle)));
   }, [query, rows, vertical]);
 
-  async function chooseProgram(key: string) {
+  async function chooseProgram(key: string, focusTarget?: string) {
     if (busy || saveUncertain || key === selectedKey) return;
     if (dirty && !await confirmAction({ title: "Discard unsaved program changes?", body: "The changes on this screen have not been saved. Switching programs will discard them.", confirmLabel: "Discard and switch" })) return;
+    if (focusTarget) pendingFocus.current = { target: focusTarget, message: "", area: "criteria" };
     setSelectedKey(key);
   }
   async function chooseVersion(playbookId: string) {
@@ -222,7 +229,7 @@ export function FundingProgramsSection() {
         return;
       }
       const olderDraftWarning = savedVersion?.status === "draft" && selected.published_version && savedVersion.version < selected.published_version.version && !criteriaDirty ? ` You selected older draft v${savedVersion.version}. Publishing it will replace live v${selected.published_version.version} with these older criteria.` : "";
-      if (enable && !await confirmAction({ title: `Save and enable ${catalog.name}?`, body: <div className={summaryStyles.confirmation}><p>{programSaveEffect("enable", selected.status === "retired")}</p>{olderDraftWarning ? <Callout tone="warn">{olderDraftWarning.trim()}</Callout> : null}<FundingProgramEffectSummary title="Review what becomes live" effects={effectSummary} expanded /></div>, confirmLabel: "Save & enable" })) return;
+      if (enable && !await confirmAction({ title: `Save and enable ${catalog.name}?`, body: <div className={summaryStyles.confirmation}><p>{programSaveEffect("enable", selected.status === "retired")}</p>{olderDraftWarning ? <Callout tone="warn">{olderDraftWarning.trim()}</Callout> : null}<FundingProgramLogicWarnings warnings={logicWarnings} /><FundingProgramEffectSummary title="Review what becomes live" effects={effectSummary} expanded /></div>, confirmLabel: "Save & enable" })) return;
       setBusy(enable ? "enable" : "save"); setError(null); setSuccess("");
       const path = `/admin/funding-programs/${selected.program_key}`;
       if (catalogDirty) {
@@ -283,6 +290,10 @@ export function FundingProgramsSection() {
   }
 
   const baselineReference = suggestedBaseline ?? baselineReferenceFromRules(version.rules);
+  function selectLogicAction(action: ProgramLogicAction) {
+    if (action.programKey && action.programKey !== selectedKey) { void chooseProgram(action.programKey, action.target); return; }
+    focusIssue({ target: action.target, message: "", area: "criteria" });
+  }
   const baselineNotes = baselineNoteGroups(baselineReference?.source_notes ?? []);
   const actionGuidance = `${programSaveEffect("save", selected?.status === "retired")} Choose Save & enable to publish changed criteria. A review note is optional.`;
   const sectionClass = (section: ProgramValidationIssue["section"]) => visibleIssues.some((issue) => issue.section === section) ? styles.sectionInvalid : undefined;
@@ -298,6 +309,7 @@ export function FundingProgramsSection() {
       <fieldset className="funding-program-editor" disabled={Boolean(busy) || saveUncertain} aria-label="Edit funding program">{selected && catalog ? <>
         <div className={styles.workspaceActions}><div><div className={summaryStyles.badges}>{fundingProgramStatusBadges(selected, dirty).map((badge) => <CellChip key={badge.label} tone={badge.tone}>{badge.label}</CellChip>)}</div><p>{dirty ? "Save changes keeps changed criteria in draft. Save & enable makes them live." : savedVersion?.status === "draft" ? "Review the saved draft, then enable when ready." : "Changes to published criteria are saved in a new version."}</p></div><div className={styles.actionRow}><Btn onClick={() => void saveProgram(false)}>{busy === "save" ? "Saving…" : "Save changes"}</Btn><Btn variant="pri" onClick={() => void saveProgram(true)}>{busy === "enable" ? "Enabling…" : "Save & enable"}</Btn></div></div>
         <FundingProgramEffectSummary title="What these settings do" effects={effectSummary} note={actionGuidance} />
+        <FundingProgramLogicWarnings warnings={logicWarnings} onSelect={selectLogicAction} />
         <section className={sectionClass("details")}><div className="funding-program-section-head"><div><span className="lbl">1 · Program details</span><h3>{selected.name}</h3><SectionAttention section="details" onSelect={focusIssue} /></div><CellChip tone={selected.status === "active" ? "ok" : "mut"}>{selected.status === "active" ? "Catalog active" : "Retired"}</CellChip></div>
           <div className={styles.status}><Icon name="spark" size={18} /><div><strong>{selected.status === "retired" ? "Retired from new selections" : publishedHasFit ? `Published v${selected.published_version?.version} · eligibility checks in use` : "Criteria are not live yet"}</strong><p>{selected.status === "retired" ? "Existing selections remain available in file history. Save & enable restores this program with the criteria shown." : publishedHasFit ? "Program matching applies the published eligibility checks. Document instructions guide AI review. Existing files retain their selected version." : "Review eligibility checks and each document’s instructions below, then choose Save & enable. Saving alone keeps a draft; it does not make new criteria live."}</p></div></div>
           <div className="fldgrid two"><Field label="Program name"><Input aria-label="Program name" value={catalog.name} maxLength={160} onChange={(event) => setCatalog({ ...catalog, name: event.target.value })} /></Field><Field label="Display order"><Input aria-label="Display order" type="number" min={0} max={10000} value={catalog.order} onChange={(event) => setCatalog({ ...catalog, order: event.target.value })} /></Field></div><Field label="Short description"><Textarea aria-label="Short description" rows={2} maxLength={1000} value={catalog.description} onChange={(event) => setCatalog({ ...catalog, description: event.target.value })} placeholder="Describe the program in plain language. Eligibility is configured below." /></Field>

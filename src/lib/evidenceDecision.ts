@@ -10,7 +10,7 @@ const REASON_LABELS: Record<string, string> = {
   unreadable: "Unreadable document",
   duplicate: "Duplicate document",
   analysis_pending: "Analysis pending",
-  document_review_pending: "Document criteria need staff review",
+  document_review_pending: "Document criteria need review",
   ai_override: "Staff accepted",
   manual_override: "Staff override",
   other: "Needs staff review",

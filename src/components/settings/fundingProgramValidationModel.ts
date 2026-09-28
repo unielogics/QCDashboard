@@ -66,6 +66,7 @@ function canonicalRequirementsForRecovery(text: string): Array<Record<string, un
       severity: check.severity === undefined ? "review" : check.severity,
     }));
     if (!readDocumentReviewChecks({ review_checks: checks }) || new Set(checks.map((check) => check.key)).size !== checks.length) return null;
+    if (checks.length && completionMode === "borrower_self_attest") return null;
     if (checks.some((check) => typeof check.label !== "string" || check.label.length < 2 || check.label.length > 160 || typeof check.instructions !== "string" || !check.instructions.length || check.instructions.length > 2000)) return null;
     canonical.push({
       requirement_key: key,
@@ -76,13 +77,13 @@ function canonicalRequirementsForRecovery(text: string): Array<Record<string, un
       blocks_stage: blocksStage,
       visibility,
       can_underwriter_waive: canWaive,
-      verification_required: Boolean(verificationRequired || checks.length),
+      verification_required: verificationRequired,
       expiration_days: expirationDays,
       ai_request_message_template: requestTemplate,
       display_order: displayOrder,
       objective_text: objectiveText,
       completion_criteria: completionCriteria,
-      completion_mode: checks.length ? "requires_human_verify" : completionMode,
+      completion_mode: completionMode,
       review_checks: checks,
     });
   }
@@ -165,6 +166,7 @@ export function criteriaValidationIssues(rulesText: string, requirementsText: st
         const checks = readDocumentReviewChecks(row);
         if (!checks || checks.length > 20) add("Document requirements JSON", `${prefix}: use up to 20 supported document checks in Advanced settings.`);
         else {
+          if (checks.length && row.completion_mode === "borrower_self_attest") add(`${prefix} completion permission`, `${prefix}: document checks need AI evidence review or staff verification, not client self-attestation.`);
           const checkKeys = new Set<string>();
           checks.forEach((check, checkIndex) => {
             const checkPrefix = `${prefix} check ${checkIndex + 1}`;

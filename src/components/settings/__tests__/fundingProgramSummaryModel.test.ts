@@ -93,7 +93,7 @@ describe("funding program effect summary", () => {
     expect(effects.routes[1].restrictions).toContain("Funding purpose: Equipment or vehicle");
   });
 
-  it("keeps review checks staff-gated while allowing optional blank guidance", () => {
+  it("explains explicit AI authority without implying missing checks can pass", () => {
     const effects = summarizeProgramEffects(
       [route()],
       JSON.stringify({ fit: { field: "requested_amount", op: "gte", value: 1 } }),
@@ -116,8 +116,8 @@ describe("funding program effect summary", () => {
     expect(effects.documents[0]).toMatchObject({
       importance: "Optional",
       instructions: "",
-      staffVerification: true,
-      completion: "Staff verification required",
+      staffVerification: false,
+      completion: "AI may complete only evidence-backed passes; missing, uncertain, or adverse findings require staff review",
       checks: [{ label: "Stable earnings", instructions: "", policy: "Flag for staff review" }],
     });
   });

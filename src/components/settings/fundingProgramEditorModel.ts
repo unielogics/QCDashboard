@@ -94,8 +94,9 @@ export function newRequirement(label: string, existing: Array<Record<string, unk
 }
 
 export function setRequirementCompletionMode(requirement: Record<string, unknown>, mode: string): Record<string, unknown> {
-  if (Array.isArray(requirement.review_checks) && requirement.review_checks.length) return { ...requirement, completion_mode: "requires_human_verify", verification_required: true };
-  return { ...requirement, completion_mode: mode, ...(mode === "requires_human_verify" ? { verification_required: true } : {}) };
+  const effectiveMode = mode === "borrower_self_attest" && Array.isArray(requirement.review_checks) && requirement.review_checks.length ? "requires_human_verify" : mode;
+  // Called only for an explicit completion-policy choice, not unrelated field edits.
+  return { ...requirement, completion_mode: effectiveMode, verification_required: effectiveMode === "requires_human_verify" };
 }
 
 export const DOCUMENT_REVIEW_PRESETS: FundingProgramReviewCheck[] = [
@@ -108,7 +109,8 @@ export const DOCUMENT_REVIEW_PRESETS: FundingProgramReviewCheck[] = [
 ];
 
 export function withDocumentReviewChecks(requirement: Record<string, unknown>, checks: FundingProgramReviewCheck[]): Record<string, unknown> {
-  return { ...requirement, review_checks: checks, ...(checks.length ? { completion_mode: "requires_human_verify", verification_required: true } : {}) };
+  const next = { ...requirement, review_checks: checks };
+  return checks.length && requirement.completion_mode === "borrower_self_attest" ? setRequirementCompletionMode(next, "requires_human_verify") : next;
 }
 
 export function newCustomDocumentReviewCheck(existing: FundingProgramReviewCheck[]): FundingProgramReviewCheck {
@@ -208,6 +210,7 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
       if (row.review_checks != null) {
         const checks = readDocumentReviewChecks(row);
         if (!checks || checks.length > 20) return "Document checks need a supported type, instructions, and review level (up to 20 checks per document).";
+        if (checks.length && row.completion_mode === "borrower_self_attest") return "Document review checks cannot be self-attested. Choose AI evidence review or staff verification.";
         const checkKeys = new Set<string>();
         for (const check of checks) {
           if (checkKeys.has(check.key)) return "Document check references must be unique. Each preset can be added once; add a separate custom check for other conditions.";
