@@ -10,5 +10,16 @@ export const APP_ORIGIN =
     "",
   );
 
+// Field Desk is deployed separately from Funding. Use an absolute handoff for
+// Marketing so Next never prefetches `/marketing` from the Funding deployment,
+// which does not own that route and correctly returns 404.
+export const FIELD_DESK_ORIGIN =
+  (process.env.NEXT_PUBLIC_FIELD_DESK_URL || "https://rep.qualifiedcommercial.com").replace(
+    /\/+$/,
+    "",
+  );
+
+export const MARKETING_URL = `${FIELD_DESK_ORIGIN}/marketing`;
+
 export const SIGN_IN_URL = `${APP_ORIGIN}/sign-in`;
 export const SIGN_UP_URL = `${APP_ORIGIN}/sign-up`;

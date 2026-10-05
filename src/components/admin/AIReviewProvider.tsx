@@ -17,6 +17,7 @@ import { Btn, Callout, CellChip, cx, IconBtn, Sub } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import { aiReviewInvalidationKeys } from "@/lib/aiReviewInvalidation";
+import { restoreReviewAnnouncements, shouldAnnounceReviewCompletion } from "@/lib/aiReviewJobs";
 
 export type ReviewProgress = {
   review_id: string;
@@ -38,6 +39,7 @@ export type AIReviewRequest = {
 type AIReviewJob = ReviewProgress & AIReviewRequest & {
   startedAt: string;
   completedAt?: string | null;
+  announcedAt?: string | null;
 };
 
 type DialogState = {
@@ -77,14 +79,13 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
   const [hydrated, setHydrated] = useState(false);
   const pollBusy = useRef(false);
   const jobsRef = useRef<AIReviewJob[]>([]);
-  const announcedCompleted = useRef(new Set<string>());
   jobsRef.current = jobs;
 
   useEffect(() => {
     try {
       const saved = window.localStorage.getItem(STORAGE_KEY);
       const parsed = saved ? JSON.parse(saved) : [];
-      if (Array.isArray(parsed)) setJobs(parsed.slice(0, 8));
+      setJobs(restoreReviewAnnouncements<AIReviewJob>(parsed));
     } catch {
       window.localStorage.removeItem(STORAGE_KEY);
     } finally {
@@ -138,14 +139,14 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     for (const job of jobs) {
-      if (job.status !== "completed" || announcedCompleted.current.has(job.review_id)) continue;
-      announcedCompleted.current.add(job.review_id);
+      if (!shouldAnnounceReviewCompletion(job)) continue;
       for (const queryKey of aiReviewInvalidationKeys(job.intakeId)) {
         void queryClient.invalidateQueries({ queryKey });
       }
       window.dispatchEvent(new CustomEvent("qc-ai-review-completed", { detail: { intakeId: job.intakeId } }));
+      updateJob(job.intakeId, { announcedAt: new Date().toISOString() });
     }
-  }, [jobs, queryClient]);
+  }, [jobs, queryClient, updateJob]);
 
   const requestReview = useCallback((request: AIReviewRequest) => {
     const active = jobs.find((job) => job.intakeId === request.intakeId && ACTIVE_STATUSES.has(job.status));
@@ -222,7 +223,6 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
   function viewResults(job: AIReviewJob) {
     setDialog(null);
     router.push(`/admin/ai-underwriter-leads?lead=${job.intakeId}`);
-    window.dispatchEvent(new CustomEvent("qc-ai-review-completed", { detail: { intakeId: job.intakeId } }));
   }
 
   function removeJob(intakeId: string) {

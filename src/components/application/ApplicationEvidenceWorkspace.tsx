@@ -169,19 +169,6 @@ export function ApplicationEvidenceWorkspace({
     await workspace.refetch();
   }, [workspace]);
 
-  // AI review completion updates evidence decisions and canonical readiness
-  // without changing this component's query key. Refetch the mounted evidence
-  // workspace so accepted uploads disappear from Still needed immediately.
-  useEffect(() => {
-    const refreshAfterReview = (event: Event) => {
-      const completedIntakeId = (event as CustomEvent<{ intakeId?: string }>).detail?.intakeId;
-      if (completedIntakeId !== intakeId) return;
-      void refresh();
-    };
-    window.addEventListener("qc-ai-review-completed", refreshAfterReview);
-    return () => window.removeEventListener("qc-ai-review-completed", refreshAfterReview);
-  }, [intakeId, refresh]);
-
   const upload = useCallback(async (files: File[], requestedDocumentId?: string) => {
     if (!files.length || uploadBusy) return;
     setError("");

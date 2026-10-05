@@ -143,6 +143,7 @@ export function BucketFileReviewPanel({
     [displayFileName, passwordProtected],
   );
   const activeAnnotation = review?.annotations.find((annotation) => annotation.id === activeAnnotationId) ?? null;
+  const previewUrl = review?.preview_url ?? null;
 
   useEffect(() => {
     const node = viewerRef.current;
@@ -156,27 +157,40 @@ export function BucketFileReviewPanel({
 
   useEffect(() => {
     let cancelled = false;
-    if (!review?.preview_url || fileType !== "pdf" || lockedPresentation) {
+    let loadingTask: any = null;
+    let loadedDocument: any = null;
+    if (!previewUrl || fileType !== "pdf" || lockedPresentation) {
       setPdfDoc(null);
       return;
     }
+    const activePreviewUrl = previewUrl;
     async function loadPdf() {
       setStatus("Loading PDF...");
+      setPdfDoc(null);
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
       // All pdf.js runtime assets are staged version-locked into /pdfjs/ by
       // scripts/copy-pdfjs-assets.mjs (postinstall). The wasm decoders and
       // font/cmap data are fetched lazily at render time — without these URLs
       // the fetches 404 and scanned documents paint as blank white pages.
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
-      const doc = await pdfjs.getDocument({
-        url: review!.preview_url!,
+      loadingTask = pdfjs.getDocument({
+        url: activePreviewUrl,
+        // Missing proprietary fonts and malformed optional TrueType hinting
+        // instructions are recoverable. Keep actual errors visible without
+        // flooding the operator console with font-substitution warnings.
+        verbosity: pdfjs.VerbosityLevel.ERRORS,
         wasmUrl: "/pdfjs/wasm/",
         standardFontDataUrl: "/pdfjs/standard_fonts/",
         cMapUrl: "/pdfjs/cmaps/",
         cMapPacked: true,
         iccUrl: "/pdfjs/iccs/",
-      }).promise;
-      if (cancelled) return;
+      });
+      const doc = await loadingTask.promise;
+      if (cancelled) {
+        await doc.destroy().catch(() => undefined);
+        return;
+      }
+      loadedDocument = doc;
       setPdfDoc(doc);
       setPageCount(doc.numPages);
       setStatus("");
@@ -192,18 +206,21 @@ export function BucketFileReviewPanel({
     });
     return () => {
       cancelled = true;
+      if (loadedDocument) void loadedDocument.destroy().catch(() => undefined);
+      else if (loadingTask) void loadingTask.destroy().catch(() => undefined);
     };
-  }, [fileType, lockedPresentation, review]);
+  }, [fileType, lockedPresentation, previewUrl]);
 
   useEffect(() => {
     let cancelled = false;
-    if (!review?.preview_url || (fileType !== "csv" && fileType !== "text")) {
+    if (!previewUrl || (fileType !== "csv" && fileType !== "text")) {
       setTextPreview("");
       return;
     }
+    const activePreviewUrl = previewUrl;
     async function loadTextPreview() {
       setStatus(fileType === "csv" ? "Loading CSV preview..." : "Loading text preview...");
-      const res = await fetch(review!.preview_url!);
+      const res = await fetch(activePreviewUrl);
       if (!res.ok) throw new Error("Could not load text preview.");
       const body = await res.text();
       if (cancelled) return;
@@ -216,7 +233,7 @@ export function BucketFileReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [fileType, review]);
+  }, [fileType, previewUrl]);
 
   function stagePoint(event: MouseEvent<HTMLDivElement>, stage: HTMLDivElement | null) {
     const rect = stage?.getBoundingClientRect();

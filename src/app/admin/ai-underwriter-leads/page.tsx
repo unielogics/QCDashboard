@@ -104,7 +104,6 @@ import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryH
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
-import { PipelineEconomicsStrip } from "@/components/operator/PipelineEconomicsStrip";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import type { IntakeResponse } from "@/lib/intake";
 import {
@@ -457,7 +456,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [archivedFilter, setArchivedFilter] = useState<"active" | "archived" | "all">("all");
+  const [archivedFilter, setArchivedFilter] = useState<"active" | "archived" | "all">("active");
   const [variantFilter, setVariantFilter] = useState(searchParams.get("variant") || "all");
   const [probabilityFilter, setProbabilityFilter] = useState("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -475,15 +474,23 @@ export default function AdminAIUnderwriterLeadsPage() {
   const detailShellRef = useRef<HTMLDivElement | null>(null);
   const minimizedResumeRef = useRef<HTMLButtonElement | null>(null);
   const detailReturnFocusRef = useRef<HTMLElement | null>(null);
+  const leadListRequestRef = useRef(0);
+  const leadDetailRequestRef = useRef(0);
+  const leadListLoadingRequestRef = useRef(0);
+  const leadDetailLoadingRequestRef = useRef(0);
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
     return api<T>(path, { ...init, authToken: token ?? undefined });
   }
 
-  async function loadLeads(nextOffset = offset) {
-    setLoading(true);
-    setNotice("");
+  async function loadLeads(nextOffset = offset, options: { background?: boolean } = {}) {
+    const requestId = ++leadListRequestRef.current;
+    if (!options.background) {
+      leadListLoadingRequestRef.current = requestId;
+      setLoading(true);
+      setNotice("");
+    }
     try {
       const params = new URLSearchParams({
         limit: String(pageSize),
@@ -496,31 +503,41 @@ export default function AdminAIUnderwriterLeadsPage() {
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
       if (partnerUserId) params.set("partner_user_id", partnerUserId);
       const data = await call<LeadPage>(`/admin/ai-underwriter-leads?${params.toString()}`);
+      if (requestId !== leadListRequestRef.current) return;
       setRows(data.items);
       setTotal(data.total);
       setOffset(data.offset);
       if (!data.items.length) setNotice("No dealer leads match these filters.");
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Dealer leads are unavailable.");
+      if (requestId === leadListRequestRef.current) {
+        setNotice(error instanceof Error ? error.message : "Dealer leads are unavailable.");
+      }
     } finally {
-      setLoading(false);
+      if (!options.background && requestId === leadListLoadingRequestRef.current) setLoading(false);
     }
   }
 
-  async function openLead(id: string) {
-    const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    if (active?.closest(".ai-intake-list-shell")) detailReturnFocusRef.current = active;
-    setSelectedId(id);
-    setLeadDetailMinimized(false);
-    setDetailLoading(true);
-    setNotice("");
+  async function openLead(id: string, options: { background?: boolean } = {}) {
+    const requestId = ++leadDetailRequestRef.current;
+    if (!options.background) {
+      leadDetailLoadingRequestRef.current = requestId;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      if (active?.closest(".ai-intake-list-shell")) detailReturnFocusRef.current = active;
+      setSelectedId(id);
+      setLeadDetailMinimized(false);
+      setDetailLoading(true);
+      setNotice("");
+    }
     try {
       const data = await call<LeadDetail>(`/admin/ai-underwriter-leads/${id}`);
+      if (requestId !== leadDetailRequestRef.current) return;
       setDetail(data);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Lead detail is unavailable.");
+      if (requestId === leadDetailRequestRef.current) {
+        setNotice(error instanceof Error ? error.message : "Lead detail is unavailable.");
+      }
     } finally {
-      setDetailLoading(false);
+      if (!options.background && requestId === leadDetailLoadingRequestRef.current) setDetailLoading(false);
     }
   }
 
@@ -626,7 +643,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   }
 
   async function refreshSelectedLead() {
-    if (selectedId) await openLead(selectedId);
+    if (selectedId) await openLead(selectedId, { background: true });
   }
 
   useEffect(() => {
@@ -634,7 +651,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       const intakeId = (event as CustomEvent<{ intakeId?: string }>).detail?.intakeId;
       if (!intakeId || intakeId !== selectedId) return;
       void refreshSelectedLead();
-      void loadLeads();
+      void loadLeads(offset, { background: true });
       setNotice("AI review complete - showing the latest breakdown.");
     };
     window.addEventListener("qc-ai-review-completed", onReviewCompleted);
@@ -720,6 +737,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   }
 
   function closeLead() {
+    leadDetailRequestRef.current += 1;
     setSelectedId(null);
     setDetail(null);
     setLeadDetailMinimized(false);
@@ -933,10 +951,6 @@ export default function AdminAIUnderwriterLeadsPage() {
   const unifiedByIntake = useMemo(() => new Map(
     (unifiedFiles?.items ?? []).filter((file) => file.intake_id).map((file) => [file.intake_id as string, file]),
   ), [unifiedFiles]);
-  const intakeEconomicsRows = useMemo(() => {
-    const visibleIntakes = new Set(rows.map((row) => row.id));
-    return (unifiedFiles?.items ?? []).filter((file) => file.intake_id && visibleIntakes.has(file.intake_id));
-  }, [rows, unifiedFiles]);
   const aiIntakeTableStorageKey = me?.id ? `ai-intake:${me.id}` : null;
   const {
     rows: orderedRows,
@@ -1074,18 +1088,16 @@ export default function AdminAIUnderwriterLeadsPage() {
         </div>
       </div>
 
-      <PipelineEconomicsStrip
-        title="AI Intake pipeline forecast"
-        rows={intakeEconomicsRows}
-        loading={!unifiedFiles}
-        className="ai-intake-economics"
-      />
-
-      <div className="kpis" style={{ flexShrink: 0 }}>
-        <Stat title="Total leads" value={String(counts.total)} sub="all matching filters" />
-        <Stat title="Good probability" value={String(counts.good)} sub="visible page" good />
-        <Stat title="Booked calls" value={String(counts.booked)} sub="visible page" />
-        <Stat title="Missing items" value={String(counts.missing)} sub="visible page" warn />
+      <div className="kpis ai-intake-stats" style={{ flexShrink: 0 }} aria-label="AI intake overview">
+        <Stat
+          title={archivedFilter === "active" ? "Active files" : archivedFilter === "archived" ? "Archived files" : "All files"}
+          value={String(counts.total)}
+          sub="matching the current filters"
+          tone="accent"
+        />
+        <Stat title="Good probability" value={String(counts.good)} sub="ready for the next action" tone="good" />
+        <Stat title="Booked calls" value={String(counts.booked)} sub="appointments on this page" tone="neutral" />
+        <Stat title="Missing items" value={String(counts.missing)} sub="requirements still unresolved" tone="warn" />
       </div>
 
       <div className="panel" style={{ flexShrink: 0 }}>
@@ -3934,13 +3946,27 @@ function CreateLeadModal({
   );
 }
 
-function Stat({ title, value, sub, good, warn }: { title: string; value: string; sub: string; good?: boolean; warn?: boolean }) {
+function Stat({
+  title,
+  value,
+  sub,
+  tone = "neutral",
+}: {
+  title: string;
+  value: string;
+  sub: string;
+  tone?: "neutral" | "accent" | "good" | "warn";
+}) {
+  const toneColor = tone === "accent" ? "var(--accent)" : tone === "good" ? "var(--ok)" : tone === "warn" ? "var(--warn)" : "var(--line)";
   return (
-    <div className="kpi">
+    <div
+      className="kpi ai-intake-stat"
+      data-tone={tone}
+      style={{ minHeight: 104, padding: "16px 18px", borderLeft: `4px solid ${toneColor}` }}
+    >
       <div className="lbl">{title}</div>
-      {/* Tone is data-derived (good / warn), so it stays an inline value. */}
-      <div className="knum num" style={good ? { color: "var(--ok)" } : warn ? { color: "var(--warn)" } : undefined}>{value}</div>
-      <div className="sub">{sub}</div>
+      <div className="knum num" style={tone === "neutral" ? undefined : { color: toneColor }}>{value}</div>
+      <div className="sub" style={{ marginTop: 4 }}>{sub}</div>
     </div>
   );
 }

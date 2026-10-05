@@ -63,6 +63,7 @@ import { PipelineEconomicsStrip } from "@/components/operator/PipelineEconomicsS
 import { PinRowButton } from "@/components/ds/TableWorkspace";
 import { FUNDING_LADDER, VERTICAL_OPTIONS, formatUnifiedAmount, operatorFileHref, verticalTone, type UnifiedFileRow, type UnifiedVertical } from "@/lib/unifiedOperator";
 import { usePinnedRows } from "@/lib/tablePinning";
+import { MARKETING_URL } from "@/lib/appUrl";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -444,7 +445,7 @@ function OperatorDashboard({
           <BtnLink href="/admin/ai-underwriter-leads" size="sm" className="pri"><Icon name="spark" size={13} /> AI Intake</BtnLink>
           <PageActionMenu label="Dashboard actions" items={[
             { label: "Open pipeline", href: "/pipeline" },
-            { label: "Open Marketing", href: "/marketing" },
+            { label: "Open Marketing", href: MARKETING_URL },
             { label: "Create a new file", href: "/pipeline?new=1" },
             { label: "Open Elara approval queue", href: "/ai-inbox" },
           ]} />
@@ -469,7 +470,7 @@ function OperatorDashboard({
           </div>
           <em>Review intake files →</em>
         </Link>
-        <Link href="/marketing" className="dashboard-workspace-card is-field-desk">
+        <a href={MARKETING_URL} className="dashboard-workspace-card is-field-desk">
           <span className="row split"><span className="lbl">Primary workspace</span><CellChip tone="pet">Field Desk</CellChip></span>
           <strong>{isLoading ? "…" : fieldDeskRows.length}</strong>
           <span>agent and dealer-originated files</span>
@@ -478,7 +479,7 @@ function OperatorDashboard({
             <span><small>Funded YTD</small><b>{report ? QC_FMT.short(report.funded_ytd) : "—"}</b></span>
           </div>
           <em>Open Field Desk Marketing →</em>
-        </Link>
+        </a>
       </section>
 
       <div className="dashboard-secondary-heading mt"><span className="lbl">Secondary monitoring</span><span className="sub">Exceptions, approvals, market context, and supporting operational views.</span></div>

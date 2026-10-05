@@ -34,6 +34,7 @@ import {
 } from "@/lib/evidenceDecision";
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
+import { validateOwnerField, type EditableOwnerField } from "@/lib/ownerFieldValidation";
 
 type OwnerDraft = {
   key: string;
@@ -258,20 +259,32 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
 
   function saveDraft(draft: OwnerDraft) {
     if (draft.state === "saving") return;
-    const pct = Number(draft.ownership_pct);
-    const valid = Boolean(draft.first_name.trim() && draft.last_name.trim() && draft.ownership_pct.trim() && Number.isFinite(pct) && pct >= 0 && pct <= 100);
-    if (!valid) {
+    const checks = (["first_name", "last_name", "ownership_pct", "email"] as const)
+      .map((field) => validateOwnerField(field, draft[field]));
+    const invalid = checks.find((check) => check.error);
+    if (invalid?.error) {
       setDrafts((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "invalid" } : row));
+      setError(invalid.error);
       return;
     }
     setDrafts((rows) => rows.map((row) => row.key === draft.key ? { ...row, state: "saving" } : row));
     createOwner.mutate({ ...draft, state: "saving" });
   }
 
-  function save(owner: FileOwner, field: string, raw: string) {
-    const value = field === "ownership_pct" ? (raw.trim() === "" ? null : Number(raw)) : raw.trim() || null;
+  function save(owner: FileOwner, field: EditableOwnerField, raw: string) {
+    const validation = validateOwnerField(field, raw);
+    if (validation.error) {
+      setSaveStates((current) => ({ ...current, [owner.id]: "invalid" }));
+      setError(validation.error);
+      return;
+    }
+    const value = validation.value;
     const previous = field === "ownership_pct" ? owner.ownership_pct : owner[field as keyof FileOwner];
-    if (value === previous) return;
+    if (value === previous) {
+      setSaveStates((current) => ({ ...current, [owner.id]: "saved" }));
+      return;
+    }
+    setError("");
     patchOwner.mutate({ ownerId: owner.id, body: { [field]: value } });
   }
 

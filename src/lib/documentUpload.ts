@@ -53,6 +53,7 @@ async function pdfJsPasswordProbe(bytes: Uint8Array): Promise<void> {
   const task = pdfjs.getDocument({
     data: bytes,
     password: "",
+    verbosity: pdfjs.VerbosityLevel.ERRORS,
     wasmUrl: "/pdfjs/wasm/",
     standardFontDataUrl: "/pdfjs/standard_fonts/",
     cMapUrl: "/pdfjs/cmaps/",

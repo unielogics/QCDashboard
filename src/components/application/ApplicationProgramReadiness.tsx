@@ -206,10 +206,11 @@ export function ApplicationProgramReadiness({
     if (!customProgramOpen) setCustomProgram((current) => ({ ...current, vertical: programVertical }));
   }, [customProgramOpen, programVertical]);
   useEffect(() => {
+    if (controlled) return;
     const refreshAfterAnalysis = () => void load();
     window.addEventListener("qc-ai-review-completed", refreshAfterAnalysis);
     return () => window.removeEventListener("qc-ai-review-completed", refreshAfterAnalysis);
-  }, [load]);
+  }, [controlled, load]);
 
   const selectedSet = useMemo(() => new Set(selectedPrograms), [selectedPrograms]);
   const requirementByKey = useMemo(
