@@ -43,24 +43,31 @@ describe("derivePipelineEconomics", () => {
     const result = derivePipelineEconomics([
       row({ id: "request", profile_id: "p1", pipeline_status: "submitted", forecast_amount: 100_000, forecast_fee_points: 2, forecast_earnings: 2_000 }),
       row({ id: "underwriting", profile_id: "p2", pipeline_status: "in_underwriting", forecast_amount: 50_000 }),
-      row({ id: "approved", profile_id: "p3", pipeline_status: "approved", forecast_amount: 300_000, forecast_fee_points: 1 }),
-      row({ id: "funded", profile_id: "p4", pipeline_status: "closed_won", funded_amount: 400_000, forecast_fee_points: 2.5 }),
+      row({ id: "approved", profile_id: "p3", pipeline_status: "approved", forecast_amount: 300_000, accepted_amount: 200_000, forecast_fee_points: 1 }),
+      row({ id: "funded", profile_id: "p4", pipeline_status: "closed_won", funded_amount: 400_000, accepted_amount: 250_000, forecast_fee_points: 2.5 }),
       row({ id: "denied", profile_id: "p5", pipeline_status: "denied", forecast_amount: 900_000, forecast_fee_points: 10 }),
     ]);
 
     expect(result.requested).toMatchObject({ count: 1, value: 100_000, forecasted_count: 1, forecast_coverage_pct: 100, forecast_earnings: 2_000 });
     expect(result.underwriting).toMatchObject({ count: 1, value: 50_000, forecasted_count: 0, forecast_coverage_pct: 0, forecast_earnings: 0 });
-    expect(result.approved).toMatchObject({ count: 1, value: 300_000, forecasted_count: 1, forecast_earnings: 3_000 });
-    expect(result.funded).toMatchObject({ count: 1, value: 400_000, forecasted_count: 1, forecast_earnings: 10_000 });
+    expect(result.approved).toMatchObject({ count: 1, value: 300_000, forecasted_count: 1, forecast_earnings: 2_000 });
+    expect(result.funded).toMatchObject({ count: 1, value: 400_000, forecasted_count: 1, forecast_earnings: 6_250 });
   });
 
   it("counts linked projections only once by application profile", () => {
     const result = derivePipelineEconomics([
-      row({ id: "intake-row", profile_id: "same-profile", pipeline_status: "submitted", forecast_amount: 125_000, forecast_fee_points: 2 }),
-      row({ id: "loan-row", source_kind: "loan", profile_id: "same-profile", pipeline_status: "submitted", forecast_amount: 125_000, forecast_fee_points: 2 }),
+      row({ id: "intake-row", profile_id: "same-profile", pipeline_status: "submitted", forecast_amount: 125_000, accepted_amount: 125_000, forecast_fee_points: 2 }),
+      row({ id: "loan-row", source_kind: "loan", profile_id: "same-profile", pipeline_status: "submitted", forecast_amount: 125_000, accepted_amount: 125_000, forecast_fee_points: 2 }),
     ]);
 
     expect(result.requested).toMatchObject({ count: 1, value: 125_000, forecast_earnings: 2_500 });
   });
-});
 
+  it("counts consulting-only economics without inventing an accepted amount", () => {
+    const result = derivePipelineEconomics([
+      row({ id: "consulting", profile_id: "consulting-profile", pipeline_status: "in_underwriting", forecast_amount: 300_000, forecast_consulting_fee: 4_500 }),
+    ]);
+
+    expect(result.underwriting).toMatchObject({ count: 1, value: 300_000, forecasted_count: 1, forecast_earnings: 4_500 });
+  });
+});

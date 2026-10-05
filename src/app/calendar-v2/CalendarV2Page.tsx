@@ -458,12 +458,13 @@ export default function CalendarV2Page() {
 function renderEventContent(info: EventContentArg) {
   const record = info.event.extendedProps as CalendarWorkspaceEvent;
   if (record.event_type === "estimated_closing") {
-    const amount = formatForecastMoney(record.forecast_amount);
+    const accepted = formatForecastMoney(record.accepted_amount);
     const earnings = formatForecastMoney(record.forecast_earnings);
     const details = [
-      amount,
-      record.forecast_fee_points != null ? `${record.forecast_fee_points.toLocaleString()} pts` : null,
-      earnings ? `${earnings} earnings` : null,
+      accepted ? `${accepted} accepted` : "Accepted amount not recorded",
+      (record.origination_fee_points ?? record.forecast_fee_points) != null ? `${(record.origination_fee_points ?? record.forecast_fee_points)?.toLocaleString()}% origination` : null,
+      record.forecast_consulting_fee != null ? `${formatForecastMoney(record.forecast_consulting_fee)} consulting` : null,
+      earnings ? `${earnings} expected earnings` : null,
     ].filter(Boolean).join(" · ");
     return (
       <div className="calendar-v2-event-content">
@@ -472,7 +473,7 @@ function renderEventContent(info: EventContentArg) {
           <Icon name="cal" size={11} />
         </div>
         <strong>{record.title}</strong>
-        <small>{details || "Forecast date set · Open file"}</small>
+        <small>{details || "Expected closing set · Open file"}</small>
       </div>
     );
   }

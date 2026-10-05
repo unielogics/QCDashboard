@@ -27,7 +27,7 @@ export function PipelineEconomicsStrip({
   economics,
   rows = [],
   loading = false,
-  title = "Pipeline value and forecast earnings",
+  title = "Pipeline value and expected earnings",
   className,
 }: PipelineEconomicsStripProps) {
   const values = economics ?? derivePipelineEconomics(rows);
@@ -35,10 +35,10 @@ export function PipelineEconomicsStrip({
     <section className={["pipeline-economics", className].filter(Boolean).join(" ")} aria-label={title}>
       <div className="pipeline-economics-head">
         <div>
-          <span className="lbl">Internal forecast</span>
+          <span className="lbl">Deal economics</span>
           <h2>{title}</h2>
         </div>
-        <span className="sub">Earnings use the QC revenue points saved on each file.</span>
+        <span className="sub">Expected earnings combine accepted amount, origination percentage, and consulting fee.</span>
       </div>
       <div className="pipeline-economics-grid">
         {STAGES.map((definition) => {
@@ -48,7 +48,7 @@ export function PipelineEconomicsStrip({
               className={`pipeline-economics-card is-${definition.key}`}
               href="/pipeline"
               key={definition.key}
-              aria-label={`${definition.label}: ${stage.count} files, ${formatUnifiedAmount(stage.value)} value, ${formatUnifiedAmount(stage.forecast_earnings)} forecast earnings`}
+              aria-label={`${definition.label}: ${stage.count} files, ${formatUnifiedAmount(stage.value)} value, ${formatUnifiedAmount(stage.forecast_earnings)} expected earnings`}
             >
               <span className="row split">
                 <span className="pipeline-economics-label">{definition.label}</span>
@@ -57,8 +57,8 @@ export function PipelineEconomicsStrip({
               <strong className="pipeline-economics-value num">{loading ? "—" : formatUnifiedAmount(stage.value)}</strong>
               <span className="sub">{definition.sub}</span>
               <span className="pipeline-economics-earnings">
-                <span><small>Forecast earnings</small><b className="num">{loading ? "—" : formatUnifiedAmount(stage.forecast_earnings)}</b></span>
-                <span title={`${stage.forecasted_count} of ${stage.count} files have revenue points`}><small>Coverage</small><b className="num">{loading ? "—" : `${stage.forecast_coverage_pct}%`}</b></span>
+                <span><small>Expected earnings</small><b className="num">{loading ? "—" : formatUnifiedAmount(stage.forecast_earnings)}</b></span>
+                <span title={`${stage.forecasted_count} of ${stage.count} files have deal economics configured`}><small>Coverage</small><b className="num">{loading ? "—" : `${stage.forecast_coverage_pct}%`}</b></span>
               </span>
             </Link>
           );
@@ -67,4 +67,3 @@ export function PipelineEconomicsStrip({
     </section>
   );
 }
-

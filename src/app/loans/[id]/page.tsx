@@ -195,7 +195,7 @@ export default function LoanDetailPage() {
           <CellChip tone="mut" className="num">{loan.deal_id}</CellChip>
           <CellChip tone="acc">{FILE_STAGE_LABELS[stageIndex] ?? loan.stage}</CellChip>
           <CellChip tone={completion.score >= 80 ? "ok" : completion.score >= 60 ? "warn" : "bad"}>{completion.label}</CellChip>
-          {isInternal && unifiedLoanFile?.file.forecast_earnings != null ? <CellChip tone="ok">{formatUnifiedAmount(unifiedLoanFile.file.forecast_earnings)} forecast earnings</CellChip> : null}
+          {isInternal && unifiedLoanFile?.file.forecast_earnings != null ? <CellChip tone="ok">{formatUnifiedAmount(unifiedLoanFile.file.forecast_earnings)} expected earnings</CellChip> : null}
           {isInternal && unifiedLoanFile?.file.estimated_close_date ? <CellChip tone="acc">Est. close {new Date(`${unifiedLoanFile.file.estimated_close_date}T12:00:00`).toLocaleDateString()}</CellChip> : null}
           <span className="sp" />
           <span className="sub">{loan.entity_name || client?.name || loan.client_name} · {loan.type.replaceAll("_", " ")} · {QC_FMT.short(Number(loan.amount))}</span>
@@ -207,7 +207,7 @@ export default function LoanDetailPage() {
             items={[
               { label: "Email client", onSelect: () => setEmailClientOpen(true), hidden: !canEmailClient },
               { label: loan.broker_id ? "Reassign desk" : "Assign desk", onSelect: () => setAgentPickerOpen(true), hidden: !isInternal },
-              { label: "Edit earnings forecast", onSelect: () => setEconomicsOpen(true), hidden: !isInternal || !unifiedLoanFile?.file },
+              { label: "Set deal economics", onSelect: () => setEconomicsOpen(true), hidden: !isInternal || !unifiedLoanFile?.file },
               { label: "Open Elara", onSelect: () => setAiOpen(true) },
               { label: "Open lender chat", onSelect: () => setTab("thread"), hidden: !isInternal },
             ]}

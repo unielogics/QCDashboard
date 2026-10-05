@@ -112,7 +112,7 @@ function OperatorPipeline() {
         economics={isFiltered ? null : rollup?.pipeline_economics}
         rows={rows}
         loading={files.isLoading}
-        title={isFiltered ? "Visible pipeline value and forecast" : undefined}
+        title={isFiltered ? "Visible pipeline value and expected earnings" : undefined}
       />
 
       {files.isError ? (

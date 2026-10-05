@@ -255,7 +255,11 @@ export interface CalendarWorkspaceEvent {
   can_edit: boolean;
   forecast_amount: number | null;
   forecast_amount_basis: string | null;
+  accepted_amount: number | null;
   forecast_fee_points: number | null;
+  origination_fee_points: number | null;
+  forecast_consulting_fee: number | null;
+  forecast_origination_earnings: number | null;
   forecast_earnings: number | null;
 }
 

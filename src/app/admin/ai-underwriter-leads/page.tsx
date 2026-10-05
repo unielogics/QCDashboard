@@ -104,6 +104,7 @@ import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryH
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
+import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import type { IntakeResponse } from "@/lib/intake";
 import {
@@ -128,6 +129,7 @@ import {
   type PipelineApprovalDraft,
 } from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
+import { calculateDealEarnings, parseDealEconomicsDraft } from "@/lib/dealEconomics";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 
@@ -235,6 +237,8 @@ type UnderwritingDraft = {
   target_dscr: string;
   reviewer_notes: string;
   forecast_fee_points: string;
+  accepted_amount: string;
+  forecast_consulting_fee: string;
   estimated_close_date: string;
   funded_amount: string;
 };
@@ -408,6 +412,8 @@ function emptyUnderwritingDraft(): UnderwritingDraft {
     target_dscr: "",
     reviewer_notes: "",
     forecast_fee_points: "",
+    accepted_amount: "",
+    forecast_consulting_fee: "",
     estimated_close_date: "",
     funded_amount: "",
   };
@@ -420,6 +426,8 @@ function underwritingDraftFromState(state: ApplicationUnderwritingState | null):
     target_dscr: state.target_dscr == null ? "" : String(state.target_dscr),
     reviewer_notes: state.reviewer_notes || "",
     forecast_fee_points: state.forecast_fee_points == null ? "" : String(state.forecast_fee_points),
+    accepted_amount: state.accepted_amount == null ? "" : String(state.accepted_amount),
+    forecast_consulting_fee: state.forecast_consulting_fee == null ? "" : String(state.forecast_consulting_fee),
     estimated_close_date: state.estimated_close_date || "",
     funded_amount: state.funded_amount == null ? "" : String(state.funded_amount),
   };
@@ -1162,11 +1170,17 @@ export default function AdminAIUnderwriterLeadsPage() {
         <div className="tblwrap">
           <table className="tbl">
             <caption className="sr-only">AI intake files</caption>
-            <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Forecast</th><th>Evidence</th><th>Missing</th><th className="r">Actions</th></tr></thead>
+            <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Deal economics</th><th>Evidence</th><th>Missing</th><th className="r">Actions</th></tr></thead>
             <tbody>
               {loading ? <tr><td colSpan={11}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
                 const unified = unifiedByIntake.get(row.id);
                 const pinned = isPinned(row.id);
+                const hasEconomics = Boolean(unified && (
+                  unified.accepted_amount != null
+                  || unified.forecast_fee_points != null
+                  || unified.forecast_consulting_fee != null
+                  || unified.estimated_close_date
+                ));
                 return (
                   <tr
                     key={row.id}
@@ -1190,12 +1204,13 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
                     <td><CellChip tone={row.archived_at ? "mut" : row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.archived_at ? "archived" : row.status}</CellChip></td>
                     <td>
-                      {unified?.forecast_fee_points != null ? (
+                      {unified && hasEconomics ? (
                         <button type="button" className="linky" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>
-                          <b>{unified.forecast_fee_points.toFixed(2)} pts · {formatMoney(unified.forecast_earnings)}</b>
+                          <b>{unified.accepted_amount == null ? "Accepted not recorded" : `${formatMoney(unified.accepted_amount)} accepted`}</b>
+                          <span className="sub" style={{ display: "block" }}>{unified.forecast_earnings == null ? "Earnings not configured" : `${formatMoney(unified.forecast_earnings)} expected earnings`}</span>
                           <span className="sub" style={{ display: "block" }}>{unified.estimated_close_date ? `Est. ${new Date(`${unified.estimated_close_date}T12:00:00`).toLocaleDateString()}` : "Add closing date"}</span>
                         </button>
-                      ) : unified ? <Btn size="sm" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>Add forecast</Btn> : <span className="sub">Not forecast</span>}
+                      ) : unified ? <Btn size="sm" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>Set deal economics</Btn> : <span className="sub">Not configured</span>}
                     </td>
                     <td>{row.archived_at ? <span className="cellchip c-mut">{row.file_count} retained files</span> : <button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); setLinkLead(row); }}>{row.file_count} files · {row.bucket_name || "Bucket"}</button>}</td>
                     <td className="num">{row.missing_required_count}</td>
@@ -1447,14 +1462,16 @@ function LeadDetailPanel({
     referral_source: "",
   });
   const result = detail ? preferredIntakeReviewResult(detail) : null;
-  const forecastBasisAmount = underwriting?.underwriting_status === "closed_won"
-    ? underwriting.funded_amount ?? underwriting.approved_amount ?? detail?.intake.requested_loan_amount ?? null
-    : underwriting?.underwriting_status === "approved"
-      ? underwriting.approved_amount ?? detail?.intake.requested_loan_amount ?? null
-      : detail?.intake.requested_loan_amount ?? null;
-  const forecastEarnings = underwriting?.forecast_fee_points != null && forecastBasisAmount != null
-    ? Number(forecastBasisAmount) * Number(underwriting.forecast_fee_points) / 100
-    : null;
+  const forecastEarnings = underwriting?.forecast_earnings ?? calculateDealEarnings(
+    underwriting?.accepted_amount,
+    underwriting?.forecast_fee_points,
+    underwriting?.forecast_consulting_fee,
+  );
+  const draftEconomics = parseDealEconomicsDraft({
+    acceptedAmount: underwritingDraft.accepted_amount,
+    originationFeePoints: underwritingDraft.forecast_fee_points,
+    consultingFee: underwritingDraft.forecast_consulting_fee,
+  });
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
   const canonicalMissingDocuments = useMemo(
@@ -1798,6 +1815,8 @@ function LeadDetailPanel({
       target_dscr: numberOrNull(underwritingDraft.target_dscr),
       reviewer_notes: underwritingDraft.reviewer_notes.trim() || null,
       forecast_fee_points: numberOrNull(underwritingDraft.forecast_fee_points),
+      accepted_amount: numberOrNull(underwritingDraft.accepted_amount),
+      forecast_consulting_fee: numberOrNull(underwritingDraft.forecast_consulting_fee),
       estimated_close_date: underwritingDraft.estimated_close_date || null,
       funded_amount: numberOrNull(underwritingDraft.funded_amount),
     };
@@ -1808,9 +1827,24 @@ function LeadDetailPanel({
     void saveUnderwritingPatch(patch);
   }
 
+  function saveDealEconomics() {
+    if (!draftEconomics.valid) {
+      setUnderwritingError("Correct the highlighted deal economics fields before saving.");
+      return;
+    }
+    void saveUnderwritingPatch({
+      accepted_amount: draftEconomics.acceptedAmount,
+      forecast_fee_points: draftEconomics.originationFeePoints,
+      forecast_consulting_fee: draftEconomics.consultingFee,
+      estimated_close_date: underwritingDraft.estimated_close_date || null,
+    });
+  }
+
   function changeUnderwritingStatus(statusValue: UnderwritingLifecycleStatus) {
-    const forecastPatch: Pick<ApplicationUnderwritingPatch, "forecast_fee_points" | "estimated_close_date" | "funded_amount"> = {
+    const forecastPatch: Pick<ApplicationUnderwritingPatch, "forecast_fee_points" | "accepted_amount" | "forecast_consulting_fee" | "estimated_close_date" | "funded_amount"> = {
       forecast_fee_points: numberOrNull(underwritingDraft.forecast_fee_points),
+      accepted_amount: numberOrNull(underwritingDraft.accepted_amount),
+      forecast_consulting_fee: numberOrNull(underwritingDraft.forecast_consulting_fee),
       estimated_close_date: underwritingDraft.estimated_close_date || null,
       funded_amount: numberOrNull(underwritingDraft.funded_amount),
     };
@@ -2327,7 +2361,7 @@ function LeadDetailPanel({
             <h3>{detail?.intake.business_name || detail?.intake.full_name || "AI intake file"}</h3>
             {detail ? <CellChip tone={probabilityTone(String(result?.probability_status || ""))}>{String(result?.probability_status || "Awaiting review")}</CellChip> : null}
             {detail ? <CellChip tone={detail.intake.status === "completed" ? "ok" : detail.intake.status === "reviewing" || detail.intake.status === "reviewed" ? "acc" : "warn"}>{detail.intake.status}</CellChip> : null}
-            {forecastEarnings != null ? <CellChip tone="ok">{formatMoney(forecastEarnings)} forecast earnings</CellChip> : null}
+            {forecastEarnings != null ? <CellChip tone="ok">{formatMoney(forecastEarnings)} expected earnings</CellChip> : null}
             {underwriting?.estimated_close_date ? <CellChip tone="acc">Est. close {new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString()}</CellChip> : null}
           </Row>
           <div className="sub">
@@ -2530,14 +2564,39 @@ function LeadDetailPanel({
                           <span className="sub">Actor and effects are recorded in audit.</span>
                         </div>
                         <div>
-                          <span className="lbl">Forecast economics</span>
-                          <b>{forecastEarnings != null ? `${formatMoney(forecastEarnings)} earnings` : "Not forecast"}</b>
+                          <span className="lbl">Deal economics</span>
+                          <b>{forecastEarnings != null ? `${formatMoney(forecastEarnings)} expected earnings` : "Not configured"}</b>
                           <span className="sub">
-                            {underwriting?.forecast_fee_points != null ? `${underwriting.forecast_fee_points.toFixed(2)} points` : "Add QC revenue points"}
+                            {underwriting?.accepted_amount != null ? `${formatMoney(underwriting.accepted_amount)} accepted` : "Accepted amount not recorded"}
+                            {underwriting?.forecast_fee_points != null ? ` / ${underwriting.forecast_fee_points.toFixed(2)}% origination` : ""}
+                            {underwriting?.forecast_consulting_fee != null ? ` / ${formatMoney(underwriting.forecast_consulting_fee)} consulting` : ""}
                             {underwriting?.estimated_close_date ? ` · closing ${new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString()}` : " · no closing date"}
                           </span>
                         </div>
                       </div>
+                      <section className="deal-economics-panel" aria-labelledby="underwriting-deal-economics-title">
+                        <div className="deal-economics-panel-head">
+                          <div>
+                            <span className="lbl">Internal earnings</span>
+                            <h3 id="underwriting-deal-economics-title">Deal economics</h3>
+                            <p className="sub">Compare the lender-approved amount with what the client accepted, then record QC revenue.</p>
+                          </div>
+                          <Btn variant="pri" onClick={saveDealEconomics} disabled={underwritingSaving || !draftEconomics.valid}>
+                            {underwritingSaving ? "Saving..." : "Save deal economics"}
+                          </Btn>
+                        </div>
+                        <DealEconomicsFields
+                          approvedAmount={underwriting?.approved_amount}
+                          acceptedAmount={underwritingDraft.accepted_amount}
+                          originationFeePoints={underwritingDraft.forecast_fee_points}
+                          consultingFee={underwritingDraft.forecast_consulting_fee}
+                          estimatedCloseDate={underwritingDraft.estimated_close_date}
+                          onAcceptedAmountChange={(value) => setUnderwritingDraft((current) => ({ ...current, accepted_amount: value }))}
+                          onOriginationFeePointsChange={(value) => setUnderwritingDraft((current) => ({ ...current, forecast_fee_points: value }))}
+                          onConsultingFeeChange={(value) => setUnderwritingDraft((current) => ({ ...current, forecast_consulting_fee: value }))}
+                          onEstimatedCloseDateChange={(value) => setUnderwritingDraft((current) => ({ ...current, estimated_close_date: value }))}
+                        />
+                      </section>
                       {isDealerFile ? (
                         <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
                           <div>
@@ -2615,7 +2674,7 @@ function LeadDetailPanel({
               {prototypeView === "reviewer" && canUnderwrite ? (
                 <Panel
                   title="Reviewer controls"
-                  sub="Set the policy target, record internal notes, and make the desk's lifecycle decision away from client-facing terms."
+                  sub="Set the policy target, record internal notes, and make the desk's lifecycle decision. Deal economics are managed in Underwriting."
                   actions={<Btn variant="pri" onClick={saveUnderwritingDraft} disabled={underwritingLoading || underwritingSaving}>{underwritingSaving ? "Saving..." : "Save review"}</Btn>}
                 >
                   {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
@@ -2630,12 +2689,6 @@ function LeadDetailPanel({
                           </Field>
                           <Field label="Policy target DSCR">
                             <Input aria-label="Policy target DSCR" inputMode="decimal" value={underwritingDraft.target_dscr} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, target_dscr: event.target.value })} placeholder="1.25" />
-                          </Field>
-                          <Field label="QC revenue points" hint="Internal forecast only. One point equals 1% of the effective file amount.">
-                            <Input aria-label="QC revenue points" type="number" inputMode="decimal" min="0" max="100" step="0.01" value={underwritingDraft.forecast_fee_points} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, forecast_fee_points: event.target.value })} placeholder="2.00" />
-                          </Field>
-                          <Field label="Estimated closing" hint="Appears as an internal milestone on the Field Desk calendar.">
-                            <Input aria-label="Estimated closing" type="date" value={underwritingDraft.estimated_close_date} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, estimated_close_date: event.target.value })} />
                           </Field>
                           <Field label="Funded amount" hint="Record the actual gross amount once the file is funded.">
                             <Input aria-label="Funded amount" type="number" inputMode="decimal" min="0" step="0.01" value={underwritingDraft.funded_amount} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, funded_amount: event.target.value })} placeholder="0.00" />
@@ -2703,8 +2756,11 @@ function LeadDetailPanel({
                   <Line label="Email" value={detail.intake.email} />
                   <Line label="Mobile" value={detail.intake.phone || "-"} />
                   <Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} />
-                  <Line label="QC revenue points" value={underwriting?.forecast_fee_points == null ? "Not forecast" : `${underwriting.forecast_fee_points.toFixed(2)} points`} />
-                  <Line label="Forecast earnings" value={formatMoney(forecastEarnings)} />
+                  <Line label="Approved" value={underwriting?.approved_amount == null ? "Not approved" : formatMoney(underwriting.approved_amount)} />
+                  <Line label="Accepted" value={underwriting?.accepted_amount == null ? "Not recorded" : formatMoney(underwriting.accepted_amount)} />
+                  <Line label="Origination fee" value={underwriting?.forecast_fee_points == null ? "Not configured" : `${underwriting.forecast_fee_points.toFixed(2)}%`} />
+                  <Line label="Consulting fee" value={underwriting?.forecast_consulting_fee == null ? "None" : formatMoney(underwriting.forecast_consulting_fee)} />
+                  <Line label="Expected earnings" value={formatMoney(forecastEarnings)} />
                   <Line label="Estimated closing" value={underwriting?.estimated_close_date ? new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString() : "Not scheduled"} />
                   <Line label="Purpose" value={detail.intake.loan_purpose || "-"} />
                   <Line label="Credit" value={detail.intake.estimated_credit_score ? String(detail.intake.estimated_credit_score) : "-"} />

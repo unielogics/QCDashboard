@@ -51,8 +51,15 @@ export type ApplicationProfile = {
   underwriting_notes: string | null;
   underwriting_updated_by_user_id: string | null;
   underwriting_updated_at: string | null;
-  /** Internal gross-revenue forecast. One point equals one percent of the effective file amount. */
+  /** Internal origination forecast. One point equals one percent of the client-accepted amount. */
   forecast_fee_points: number | null;
+  origination_fee_points: number | null;
+  /** Client-accepted amount; the only basis used for percentage earnings. */
+  underwriting_accepted_amount: number | null;
+  /** Fixed consulting revenue added to percentage-based origination revenue. */
+  forecast_consulting_fee: number | null;
+  forecast_origination_earnings: number | null;
+  forecast_earnings: number | null;
   /** Operator-estimated closing day. This is not the actual funded/closed timestamp. */
   estimated_close_date: string | null;
   /** Actual gross amount funded when the lifecycle reaches closed_won. */
@@ -311,6 +318,11 @@ export type ApplicationUnderwritingState = {
   close_outcome: string | null;
   reviewer_notes: string | null;
   forecast_fee_points: number | null;
+  origination_fee_points: number | null;
+  accepted_amount: number | null;
+  forecast_consulting_fee: number | null;
+  forecast_origination_earnings: number | null;
+  forecast_earnings: number | null;
   estimated_close_date: string | null;
   funded_amount: number | null;
   updated_by_user_id: string | null;
@@ -327,6 +339,9 @@ export type ApplicationUnderwritingPatch = Partial<{
   close_outcome: string | null;
   reviewer_notes: string | null;
   forecast_fee_points: number | null;
+  origination_fee_points: number | null;
+  accepted_amount: number | null;
+  forecast_consulting_fee: number | null;
   estimated_close_date: string | null;
   funded_amount: number | null;
 }>;

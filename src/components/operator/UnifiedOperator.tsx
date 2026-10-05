@@ -188,7 +188,7 @@ export function UnifiedFilesTable({
         { label: "Vertical", width: 120 },
         { label: "Source", width: 120 },
         { label: "Stage", width: "15%" },
-        { label: "Forecast", width: 180 },
+        { label: "Deal economics", width: 200 },
         { label: "Program" },
         { label: "Agent", width: 140 },
         { label: "Underwriter", width: 150 },
@@ -207,8 +207,8 @@ export function UnifiedFilesTable({
           <Td><UnifiedStageMeter row={row} /></Td>
           <Td>
             <div className="file-forecast-cell">
-              <b className="num">{row.forecast_earnings == null ? "Not forecast" : formatUnifiedAmount(row.forecast_earnings)}</b>
-              <span className="sub">{row.forecast_fee_points == null ? "No points" : `${row.forecast_fee_points} pts`} · {formatEstimatedClose(row.estimated_close_date)}</span>
+              <b className="num">{row.forecast_earnings == null ? "Not configured" : `${formatUnifiedAmount(row.forecast_earnings)} earnings`}</b>
+              <span className="sub">{row.accepted_amount == null ? "Accepted not recorded" : `${formatUnifiedAmount(row.accepted_amount)} accepted`} · {formatEstimatedClose(row.estimated_close_date)}</span>
             </div>
           </Td>
           <Td><span className="sub">{row.program_tags.slice(0, 2).join(" · ") || "Unassigned"}</span></Td>
@@ -244,7 +244,7 @@ export function UnifiedFileSummaryCard({ row, onLinkBucketIntake, onEditEconomic
           <CellChip tone={row.health_tone}>{row.health}</CellChip>
         </div>
         <div className="file-forecast-card">
-          <span><small>Forecast</small><b className="num">{row.forecast_earnings == null ? "Not set" : formatUnifiedAmount(row.forecast_earnings)}</b></span>
+          <span><small>Expected earnings</small><b className="num">{row.forecast_earnings == null ? "Not set" : formatUnifiedAmount(row.forecast_earnings)}</b></span>
           <span><small>Closing</small><b>{formatEstimatedClose(row.estimated_close_date, true)}</b></span>
         </div>
       </Link>
@@ -358,7 +358,7 @@ export function UnifiedActionMenu({ row, onLinkBucketIntake, onEditEconomics }: 
         items={[
           { label: "Open file", onSelect: () => { window.location.href = operatorFileHref(row); } },
           {
-            label: "Edit earnings forecast",
+            label: "Set deal economics",
             hidden: !onEditEconomics,
             onSelect: () => onEditEconomics?.(row),
           },

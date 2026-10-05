@@ -1,4 +1,5 @@
 import type { ChipTone } from "@/components/ds";
+import { calculateDealEarnings } from "@/lib/dealEconomics";
 
 export type UnifiedVertical = "real_estate" | "main_street" | "dealer" | "mca";
 export type UnifiedOrigin = "console" | "agent" | "rep" | "dealer" | "ai_intake";
@@ -55,7 +56,11 @@ export type UnifiedFileRow = {
   profile_id?: string | null;
   requested_amount?: number | null;
   funded_amount?: number | null;
+  accepted_amount?: number | null;
   forecast_fee_points?: number | null;
+  origination_fee_points?: number | null;
+  forecast_consulting_fee?: number | null;
+  forecast_origination_earnings?: number | null;
   forecast_amount?: number | null;
   forecast_amount_basis?: "requested" | "approved" | "funded" | string | null;
   forecast_earnings?: number | null;
@@ -128,6 +133,8 @@ export type PipelineEconomicsRollup = {
 
 export type OperatorFileForecastPatch = {
   forecast_fee_points: number | null;
+  accepted_amount: number | null;
+  forecast_consulting_fee: number | null;
   estimated_close_date: string | null;
   funded_amount?: number | null;
 };
@@ -136,6 +143,11 @@ export type OperatorFileForecastResult = OperatorFileForecastPatch & {
   source_kind: UnifiedSourceKind;
   source_id: string;
   profile_id: string;
+  pipeline_status: UnderwritingLifecycleStatus;
+  requested_amount: number | null;
+  approved_amount: number | null;
+  origination_fee_points: number | null;
+  forecast_origination_earnings: number | null;
   forecast_amount: number | null;
   forecast_amount_basis: string | null;
   forecast_earnings: number | null;
@@ -548,9 +560,14 @@ export function derivePipelineEconomics(rows: UnifiedFileRow[]): PipelineEconomi
     );
     stage.count += 1;
     stage.value += Number(amount || 0);
-    if (row.forecast_fee_points != null && amount != null) {
+    const earnings = row.forecast_earnings ?? calculateDealEarnings(
+      row.accepted_amount,
+      row.forecast_fee_points,
+      row.forecast_consulting_fee,
+    );
+    if (earnings != null) {
       stage.forecasted_count += 1;
-      stage.forecast_earnings += Number(row.forecast_earnings ?? (Number(amount) * Number(row.forecast_fee_points)) / 100);
+      stage.forecast_earnings += Number(earnings);
     }
   }
   for (const stage of Object.values(result)) {
@@ -560,6 +577,7 @@ export function derivePipelineEconomics(rows: UnifiedFileRow[]): PipelineEconomi
 }
 
 export function forecastAmountBasisLabel(basis: string | null | undefined): string {
+  if (basis === "accepted") return "accepted amount";
   if (basis === "approved") return "approved amount";
   if (basis === "funded") return "funded amount";
   return "requested amount";
