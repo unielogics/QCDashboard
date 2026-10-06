@@ -96,7 +96,7 @@ import { ApplicationAuditTimeline } from "@/components/application/ApplicationAu
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
 import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
-import { semanticStatusClass } from "@/lib/semanticStatus";
+import { semanticChipTone, semanticStatusClass } from "@/lib/semanticStatus";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
@@ -388,7 +388,10 @@ const STATUS_FILTERS = [
   { value: "collecting", label: "Collecting" },
   { value: "reviewing", label: "Reviewing" },
   { value: "reviewed", label: "Reviewed" },
-  { value: "completed", label: "Completed" },
+  { value: "approved", label: "Approved" },
+  { value: "completed", label: "Completed / funded" },
+  { value: "closed_lost", label: "Closed lost" },
+  { value: "denied", label: "Denied" },
 ];
 
 const VARIANT_FILTERS = [
@@ -402,6 +405,30 @@ const VARIANT_FILTERS = [
 
 const DEFAULT_PAGE_SIZE = 50;
 const PAGE_SIZES = [25, 50, 100] as const;
+
+type IntakeStatusPresentation = {
+  effectiveStatus: string;
+  label: string;
+  tone: "mut" | "warn" | "acc" | "ok" | "bad";
+};
+
+function intakeStatusPresentation(
+  intakeStatus: string | null | undefined,
+  pipelineStatus?: UnderwritingLifecycleStatus | null,
+): IntakeStatusPresentation {
+  const effectiveStatus = String(pipelineStatus || intakeStatus || "submitted").trim().toLowerCase();
+  const lifecycle = PIPELINE_LIFECYCLE.find((item) => item.key === effectiveStatus);
+  const label = lifecycle?.label
+    ?? (effectiveStatus === "completed" ? "Completed / funded" : effectiveStatus.replace(/_/g, " "));
+  const tone = effectiveStatus === "closed_lost" || effectiveStatus === "closed" || effectiveStatus === "denied"
+    ? "bad"
+    : effectiveStatus === "closed_won" || effectiveStatus === "completed" || effectiveStatus === "funded" || effectiveStatus === "approved"
+      ? "ok"
+      : effectiveStatus === "reviewing" || effectiveStatus === "reviewed" || effectiveStatus === "in_underwriting" || effectiveStatus === "term_sheet_provided"
+        ? "acc"
+        : semanticChipTone(effectiveStatus) === "mut" ? "warn" : semanticChipTone(effectiveStatus);
+  return { effectiveStatus, label, tone };
+}
 
 function presentContact(value?: string | null): string {
   return value?.trim() || "Not provided";
@@ -1175,6 +1202,7 @@ export default function AdminAIUnderwriterLeadsPage() {
             <tbody>
               {loading ? <tr><td colSpan={11}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
                 const unified = unifiedByIntake.get(row.id);
+                const statusPresentation = intakeStatusPresentation(row.status, unified?.pipeline_status);
                 const pinned = isPinned(row.id);
                 const hasEconomics = Boolean(unified && (
                   unified.accepted_amount != null
@@ -1186,7 +1214,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                   <tr
                     key={row.id}
                     onClick={() => { if (!row.archived_at) void openLead(row.id); }}
-                    className={cx(semanticStatusClass(row.status), selectedId === row.id && "tone-acc", pinned && "table-row-pinned")}
+                    className={cx(semanticStatusClass(statusPresentation.effectiveStatus), selectedId === row.id && "tone-acc", pinned && "table-row-pinned")}
                     data-pinned={pinned || undefined}
                   >
                     <td className="lead-file-cell">
@@ -1203,7 +1231,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
                     <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
                     <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
-                    <td><CellChip tone={row.archived_at ? "mut" : row.status === "completed" ? "ok" : row.status === "reviewing" ? "acc" : "warn"}>{row.archived_at ? "archived" : row.status}</CellChip></td>
+                    <td><CellChip tone={row.archived_at ? "mut" : statusPresentation.tone}>{row.archived_at ? "Archived" : statusPresentation.label}</CellChip></td>
                     <td>
                       {unified && hasEconomics ? (
                         <button type="button" className="linky" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>
@@ -2363,6 +2391,9 @@ function LeadDetailPanel({
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
+  const headerStatus = detail
+    ? intakeStatusPresentation(detail.intake.status, underwriting?.underwriting_status)
+    : null;
   if (prototypeDetailEnabled) return (
     <div className="intake-file">
       <div className="intake-file-head">
@@ -2370,7 +2401,7 @@ function LeadDetailPanel({
           <Row>
             <h3>{detail?.intake.business_name || detail?.intake.full_name || "AI intake file"}</h3>
             {detail ? <CellChip tone={probabilityTone(String(result?.probability_status || ""))}>{String(result?.probability_status || "Awaiting review")}</CellChip> : null}
-            {detail ? <CellChip tone={detail.intake.status === "completed" ? "ok" : detail.intake.status === "reviewing" || detail.intake.status === "reviewed" ? "acc" : "warn"}>{detail.intake.status}</CellChip> : null}
+            {headerStatus ? <CellChip tone={headerStatus.tone}>{headerStatus.label}</CellChip> : null}
             {forecastEarnings != null ? <CellChip tone="ok">{formatMoney(forecastEarnings)} expected earnings</CellChip> : null}
             {underwriting?.estimated_close_date ? <CellChip tone="acc">Est. close {new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString()}</CellChip> : null}
           </Row>
