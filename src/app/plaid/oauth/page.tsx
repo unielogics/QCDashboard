@@ -35,6 +35,7 @@ export default function RoomPlaidOAuthReturn() {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [room, setRoom] = useState<
     | { kind: "dealer_room" | "application_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null; isPrimaryOperating: boolean }
+    | { kind: "payment_room"; token: string; passcode: string; mode: "initial"; itemId: null; isPrimaryOperating: boolean; paymentPurpose: "fee" | "private_schedule"; paymentOwnerType: "business" | "consumer"; paymentExchangeRequired: boolean; paymentTransferId: string | null }
     | { kind: "application_verification"; token: string; mode: "initial" | "update"; itemId: string | null; isPrimaryOperating: boolean }
     | null
   >(null);
@@ -55,6 +56,8 @@ export default function RoomPlaidOAuthReturn() {
     setRoom(
       h.kind === "application_verification"
         ? { kind: h.kind, token: h.token, mode: h.mode, itemId: h.itemId, isPrimaryOperating: h.isPrimaryOperating }
+        : h.kind === "payment_room"
+          ? { kind: h.kind, token: h.token, passcode: h.passcode, mode: "initial", itemId: null, isPrimaryOperating: true, paymentPurpose: h.paymentPurpose, paymentOwnerType: h.paymentOwnerType, paymentExchangeRequired: h.paymentExchangeRequired, paymentTransferId: h.paymentTransferId }
         : { kind: h.kind, token: h.token, passcode: h.passcode, mode: h.mode, itemId: h.itemId, isPrimaryOperating: h.isPrimaryOperating },
     );
     setReturnTo(h.returnTo);
@@ -78,16 +81,50 @@ export default function RoomPlaidOAuthReturn() {
     // bank interrupted.
     receivedRedirectUri: typeof window === "undefined" ? undefined : window.location.href,
     onSuccess: async (publicToken, metadata) => {
-      if (!room || (room.mode === "initial" && !publicToken) || (room.mode === "update" && !room.itemId)) {
+      if (!room) {
+        finish("The bank returned an incomplete response. Please try connecting again.", false);
+        return;
+      }
+      const publicTokenRequired = room.kind === "payment_room"
+        ? room.paymentExchangeRequired
+        : room.mode === "initial";
+      if ((publicTokenRequired && !publicToken) || (room.mode === "update" && !room.itemId)) {
         finish("The bank returned an incomplete response. Please try connecting again.", false);
         return;
       }
       setPhase("exchanging");
       try {
+        if (room.kind === "payment_room" && !room.paymentExchangeRequired) {
+          if (!room.paymentTransferId) {
+            throw new Error("The transfer repair session is incomplete. Please start again from your payment request.");
+          }
+          const repairResponse = await fetch(
+            `${apiBase}/api/v1/application-profiles/public/room/${encodeURIComponent(room.token)}/payments/repair-complete`,
+            {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ passcode: room.passcode, transfer_id: room.paymentTransferId }),
+            },
+          );
+          if (!repairResponse.ok) {
+            throw new Error("Bank verification was updated, but the payment could not be resumed safely.");
+          }
+          finish("Bank verification updated. Returning you to your payment request…", true);
+          return;
+        }
+        if (room.kind === "payment_room" && room.paymentExchangeRequired && metadata.accounts.length !== 1) {
+          throw new Error("Choose exactly one dedicated payment account in Plaid Link.");
+        }
+        const paymentAccountId = room.kind === "payment_room" ? metadata.accounts[0]?.id : null;
+        if (room.kind === "payment_room" && room.paymentExchangeRequired && !paymentAccountId) {
+          throw new Error("Plaid did not return the selected payment account.");
+        }
         const endpoint = room.kind === "application_verification"
           ? room.mode === "update"
             ? `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/banks/${room.itemId}/update-complete`
             : `${apiBase}/api/v1/application-profiles/public/bank-verification/${encodeURIComponent(room.token)}/exchange`
+          : room.kind === "payment_room"
+            ? `${apiBase}/api/v1/application-profiles/public/room/${room.token}/payments/exchange`
           : room.kind === "application_room"
             ? room.mode === "update"
               ? `${apiBase}/api/v1/application-profiles/public/room/${room.token}/plaid/${room.itemId}/update-complete`
@@ -101,7 +138,15 @@ export default function RoomPlaidOAuthReturn() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(
-              room.mode === "update"
+              room.kind === "payment_room"
+                ? {
+                    passcode: room.passcode,
+                    public_token: publicToken,
+                    plaid_account_id: paymentAccountId,
+                    owner_type: room.paymentOwnerType,
+                    purpose: room.paymentPurpose,
+                  }
+                : room.mode === "update"
                 ? room.kind === "application_verification" ? {} : { passcode: room.passcode }
                 : {
                     ...(room.kind === "application_verification" ? {} : { passcode: room.passcode }),

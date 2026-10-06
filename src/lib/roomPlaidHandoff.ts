@@ -22,6 +22,10 @@ export const ROOM_KIND_KEY = "qc.room.plaid.kind";
 export const ROOM_MODE_KEY = "qc.room.plaid.mode";
 export const ROOM_ITEM_KEY = "qc.room.plaid.item";
 export const ROOM_PRIMARY_KEY = "qc.room.plaid.primary";
+export const ROOM_PAYMENT_PURPOSE_KEY = "qc.room.plaid.payment_purpose";
+export const ROOM_PAYMENT_OWNER_KEY = "qc.room.plaid.payment_owner";
+export const ROOM_PAYMENT_EXCHANGE_KEY = "qc.room.plaid.payment_exchange_required";
+export const ROOM_PAYMENT_TRANSFER_KEY = "qc.room.plaid.payment_transfer";
 
 type HandoffArgs = {
   linkToken: string;
@@ -67,6 +71,28 @@ export function stashApplicationVerificationHandoff(args: HandoffArgs) {
   stashMode(args);
 }
 
+export function stashPaymentRoomHandoff(
+  args: HandoffArgs & {
+    passcode: string;
+    purpose: "fee" | "private_schedule";
+    ownerType: "business" | "consumer";
+    exchangeRequired?: boolean;
+    transferId?: string;
+  },
+) {
+  sessionStorage.setItem(ROOM_KIND_KEY, "payment_room");
+  sessionStorage.setItem(ROOM_LINK_TOKEN_KEY, args.linkToken);
+  sessionStorage.setItem(ROOM_TOKEN_KEY, args.token);
+  sessionStorage.setItem(ROOM_PASSCODE_KEY, args.passcode);
+  sessionStorage.setItem(ROOM_RETURN_KEY, args.returnTo);
+  sessionStorage.setItem(ROOM_PAYMENT_PURPOSE_KEY, args.purpose);
+  sessionStorage.setItem(ROOM_PAYMENT_OWNER_KEY, args.ownerType);
+  sessionStorage.setItem(ROOM_PAYMENT_EXCHANGE_KEY, String(args.exchangeRequired !== false));
+  if (args.transferId) sessionStorage.setItem(ROOM_PAYMENT_TRANSFER_KEY, args.transferId);
+  else sessionStorage.removeItem(ROOM_PAYMENT_TRANSFER_KEY);
+  stashMode(args);
+}
+
 export function readPlaidHandoff() {
   const linkToken = sessionStorage.getItem(ROOM_LINK_TOKEN_KEY);
   const token = sessionStorage.getItem(ROOM_TOKEN_KEY);
@@ -76,12 +102,32 @@ export function readPlaidHandoff() {
   const mode: "initial" | "update" = sessionStorage.getItem(ROOM_MODE_KEY) === "update" ? "update" : "initial";
   const itemId = sessionStorage.getItem(ROOM_ITEM_KEY);
   const isPrimaryOperating = sessionStorage.getItem(ROOM_PRIMARY_KEY) !== "false";
+  const paymentPurpose = sessionStorage.getItem(ROOM_PAYMENT_PURPOSE_KEY) === "private_schedule" ? "private_schedule" : "fee";
+  const paymentOwnerType = sessionStorage.getItem(ROOM_PAYMENT_OWNER_KEY) === "consumer" ? "consumer" : "business";
+  const paymentExchangeRequired = sessionStorage.getItem(ROOM_PAYMENT_EXCHANGE_KEY) !== "false";
+  const paymentTransferId = sessionStorage.getItem(ROOM_PAYMENT_TRANSFER_KEY);
   if (!linkToken || !token) return null;
   if (kind === "application_verification") {
     return { kind, linkToken, token, returnTo, mode, itemId, isPrimaryOperating } as const;
   }
   if (kind === "application_room" && passcode) {
     return { kind, linkToken, token, passcode, returnTo, mode, itemId, isPrimaryOperating } as const;
+  }
+  if (kind === "payment_room" && passcode) {
+    return {
+      kind,
+      linkToken,
+      token,
+      passcode,
+      returnTo,
+      mode,
+      itemId,
+      isPrimaryOperating,
+      paymentPurpose,
+      paymentOwnerType,
+      paymentExchangeRequired,
+      paymentTransferId,
+    } as const;
   }
   if (!passcode) return null;
   return { kind: "dealer_room" as const, linkToken, token, passcode, returnTo, mode, itemId, isPrimaryOperating };
@@ -95,7 +141,7 @@ export function readRoomHandoff() {
 
 /** Clear the handoff, including the passcode. Call on every terminal outcome. */
 export function clearRoomHandoff() {
-  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY, ROOM_MODE_KEY, ROOM_ITEM_KEY, ROOM_PRIMARY_KEY].forEach((k) =>
+  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY, ROOM_MODE_KEY, ROOM_ITEM_KEY, ROOM_PRIMARY_KEY, ROOM_PAYMENT_PURPOSE_KEY, ROOM_PAYMENT_OWNER_KEY, ROOM_PAYMENT_EXCHANGE_KEY, ROOM_PAYMENT_TRANSFER_KEY].forEach((k) =>
     sessionStorage.removeItem(k),
   );
 }

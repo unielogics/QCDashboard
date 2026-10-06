@@ -100,6 +100,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
           { label: "Pipeline", href: "/pipeline", icon: "layers" },
           { label: "Elara inbox", href: "/ai-inbox", icon: "bolt", badge: "elaraTasks" },
           { label: "Clients", href: "/clients", icon: "clients" },
+          { label: "Payments", href: "/payments", icon: "dollar" },
         ],
       },
       {
@@ -153,6 +154,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
           { label: "Pipeline", href: "/pipeline", icon: "layers" },
           { label: "Elara inbox", href: "/ai-inbox", icon: "bolt", badge: "elaraTasks" },
           { label: "Clients", href: "/clients", icon: "clients" },
+          { label: "Payments", href: "/payments", icon: "dollar" },
         ],
       },
       {

@@ -6,6 +6,7 @@ import { useParams, useSearchParams } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { LockedEvidenceBadge } from "@/components/application/LockedEvidenceStatus";
 import { ClientOfferInbox } from "@/components/client/ClientOfferInbox";
+import { ClientPaymentsPanel } from "@/components/client/ClientPaymentsPanel";
 import { QCMark } from "@/components/QCMark";
 import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
@@ -45,7 +46,7 @@ type ClientEvidenceBankingSummary = {
 };
 type ClientRoomKind = RoomKind | "basic";
 type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
-type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements";
+type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" | "mail" }> = [
@@ -60,6 +61,7 @@ const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "b
   { id: "budget", label: "Use of funds", icon: "dollar" },
   { id: "banking", label: "Business banking", icon: "building" },
   { id: "agreements", label: "Agreements", icon: "edit" },
+  { id: "payments", label: "Payments", icon: "dollar" },
 ];
 
 export default function BucketRequestPage() {
@@ -363,7 +365,7 @@ export default function BucketRequestPage() {
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [offerOnlyAccess, precall, offer, updates, session]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [offerOnlyAccess, precall, offer, updates, session]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -469,6 +471,7 @@ export default function BucketRequestPage() {
 
       {activeTab === "banking" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">LLC accounts only</span><h2>Business banking</h2><p>Connect the company&apos;s operating accounts or provide six months of business bank statements.</p></div></div>{bankEvidence?.banking_access_complete ? <div className="application-room-alert good"><b>Banking evidence complete.</b> {bankEvidence.statement_coverage_complete ? `${bankEvidence.accepted_statement_months.length} of ${bankEvidence.required_statement_months} statement months accepted.` : `${bankEvidence.connected_institutions} institution${bankEvidence.connected_institutions === 1 ? "" : "s"} connected.`}</div> : null}{session.room_kind !== "basic" && (!bankEvidence?.statement_coverage_complete || Boolean(bankEvidence.connected_institutions)) ? <RoomActions token={token} passcode={passcode.trim()} roomKind={session.room_kind} view="banking" onChanged={() => { void refreshRoom(); }} /> : null}<button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />{bankEvidence?.statement_coverage_complete ? "View uploaded statements" : "Upload bank statements instead"}</button></section> : null}
       {activeTab === "agreements" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Electronic signatures</span><h2>Agreements</h2><p>Review and sign only the documents assigned to this application room.</p></div></div>{session.room_kind !== "basic" ? <RoomActions token={token} passcode={passcode.trim()} roomKind={session.room_kind} view="agreements" onChanged={() => { void refreshRoom(); }} /> : null}</section> : null}
+      {activeTab === "payments" && session.room_kind !== "basic" ? <ClientPaymentsPanel token={token} passcode={passcode.trim()} defaultPayerName={name || session.recipient_name} /> : null}
       <footer className="application-room-footer"><span><Icon name="lock" size={14} />Encrypted in transit and at rest</span><span>Qualified Commercial</span></footer>
     </section>}
   </main>;

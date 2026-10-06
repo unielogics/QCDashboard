@@ -106,6 +106,7 @@ import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
 import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
+import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
 import type { IntakeResponse } from "@/lib/intake";
 import {
   leadCockpitNonDocumentMissingRows,
@@ -243,7 +244,7 @@ type UnderwritingDraft = {
   funded_amount: string;
 };
 
-type LeadDetailView = "workspace" | "underwriting" | "reviewer" | "production" | "communications" | "audit";
+type LeadDetailView = "workspace" | "underwriting" | "payments" | "reviewer" | "production" | "communications" | "audit";
 
 type Artifact = {
   id: string;
@@ -987,7 +988,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       detail={detail}
       loading={detailLoading}
       initialNotesOpen={searchParams.get("notes") === "1"}
-      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "reviewer" ? "reviewer" : searchParams.get("view") === "production" ? "production" : searchParams.get("view") === "communications" ? "communications" : searchParams.get("view") === "audit" ? "audit" : "workspace"}
+      initialView={searchParams.get("view") === "underwriting" ? "underwriting" : searchParams.get("view") === "payments" ? "payments" : searchParams.get("view") === "reviewer" ? "reviewer" : searchParams.get("view") === "production" ? "production" : searchParams.get("view") === "communications" ? "communications" : searchParams.get("view") === "audit" ? "audit" : "workspace"}
       initialCommunicationChannel={searchParams.get("channel") === "client" ? "client" : searchParams.get("channel") === "email" ? "email" : "underwriter"}
       initialSubmissionStep={initialSubmissionStep}
       initialEvidenceTab={initialEvidenceTab}
@@ -1361,6 +1362,13 @@ function LeadDetailPanel({
   const bookingLink = useBookingLink();
   const { data: currentUser } = useCurrentUser();
   const canUnderwrite = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.LOAN_EXEC;
+  const canViewPayments = Boolean(
+    currentUser &&
+      (currentUser.role === Role.SUPER_ADMIN ||
+        currentUser.role === Role.LOAN_EXEC ||
+        currentUser.role === Role.FIELD_REP ||
+        currentUser.role === Role.BROKER),
+  );
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
   const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "credit" | "contracts" | "package">("overview");
   const [subject, setSubject] = useState("");
@@ -1928,7 +1936,9 @@ function LeadDetailPanel({
     setEvidenceTab(initialEvidenceTab);
     setEvidenceFocus(null);
     setPrototypeView(
-      (initialView === "underwriting" || initialView === "reviewer" || initialView === "production") && canUnderwrite
+      initialView === "payments" && canViewPayments
+        ? "payments"
+        : (initialView === "underwriting" || initialView === "reviewer" || initialView === "production") && canUnderwrite
         ? initialView
         : initialView === "communications"
           ? "communications"
@@ -1949,7 +1959,7 @@ function LeadDetailPanel({
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
     });
-  }, [detail, initialCommunicationChannel, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite]);
+  }, [detail, initialCommunicationChannel, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite, canViewPayments]);
 
   async function saveContact() {
     if (!contactDraft.full_name.trim() || !contactDraft.email.trim()) {
@@ -2420,6 +2430,7 @@ function LeadDetailPanel({
             {[
               ["workspace", "File workspace"],
               ...(canUnderwrite ? [["underwriting", "Underwriting"] as const] : []),
+              ...(canViewPayments ? [["payments", "Payments"] as const] : []),
               ...(canUnderwrite ? [["reviewer", "Reviewer controls"] as const] : []),
               ...(canUnderwrite && isDealerFile ? [["production", "Production Package"] as const] : []),
               ["communications", "Communications"],
@@ -2586,6 +2597,7 @@ function LeadDetailPanel({
                           </Btn>
                         </div>
                         <DealEconomicsFields
+                          profileId={profileId}
                           approvedAmount={underwriting?.approved_amount}
                           acceptedAmount={underwritingDraft.accepted_amount}
                           originationFeePoints={underwritingDraft.forecast_fee_points}
@@ -2669,6 +2681,13 @@ function LeadDetailPanel({
                   )}
                 </Panel>
                 </div>
+              ) : null}
+
+              {prototypeView === "payments" && canViewPayments ? (
+                <PaymentsWorkspace
+                  profileId={profileId}
+                  sourceLabel={detail.intake.business_name || detail.intake.full_name}
+                />
               ) : null}
 
               {prototypeView === "reviewer" && canUnderwrite ? (

@@ -62,7 +62,6 @@ export function FileEconomicsDrawer({ open, row, onClose, onSaved }: FileEconomi
         },
       });
       onSaved?.(result);
-      onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Unable to save these deal economics.");
     }
@@ -89,6 +88,7 @@ export function FileEconomicsDrawer({ open, row, onClose, onSaved }: FileEconomi
     >
       {error ? <div className="warnline" style={{ marginBottom: 14 }}>{error}</div> : null}
       <DealEconomicsFields
+        profileId={row?.profile_id}
         approvedAmount={row?.approved_amount}
         acceptedAmount={acceptedAmount}
         originationFeePoints={originationFeePoints}

@@ -1,6 +1,7 @@
 "use client";
 
 import { CellChip, Field } from "@/components/ds";
+import { FeeAllocationEditor } from "@/components/payments/FeeAllocationEditor";
 import { parseDealEconomicsDraft } from "@/lib/dealEconomics";
 import { formatUnifiedAmount } from "@/lib/unifiedOperator";
 
@@ -14,6 +15,8 @@ export type DealEconomicsFieldsProps = {
   onOriginationFeePointsChange: (value: string) => void;
   onConsultingFeeChange: (value: string) => void;
   onEstimatedCloseDateChange: (value: string) => void;
+  /** Canonical application profile. Enables the shared, audited fee allocation. */
+  profileId?: string | null;
   autoFocus?: boolean;
 };
 
@@ -27,6 +30,7 @@ export function DealEconomicsFields({
   onOriginationFeePointsChange,
   onConsultingFeeChange,
   onEstimatedCloseDateChange,
+  profileId,
   autoFocus = false,
 }: DealEconomicsFieldsProps) {
   const parsed = parseDealEconomicsDraft({ acceptedAmount, originationFeePoints, consultingFee });
@@ -120,6 +124,14 @@ export function DealEconomicsFields({
         <b>Expected earnings = accepted amount x origination fee + consulting fee</b>
         <div className="sub">The approved amount remains visible for comparison, but it never replaces the accepted amount in this calculation.</div>
       </div>
+      {profileId ? (
+        <FeeAllocationEditor
+          profileId={profileId}
+          originationFee={percentageEarnings ?? 0}
+          consultingFee={parsed.consultingFee ?? 0}
+          compact
+        />
+      ) : null}
     </>
   );
 }

@@ -7458,7 +7458,7 @@ export function useUpdateOperatorFileEconomics() {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
-    onSuccess: (_, vars) => {
+    onSuccess: (result, vars) => {
       qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
       qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
       qc.invalidateQueries({ queryKey: ["application-profile"] });
@@ -7466,6 +7466,8 @@ export function useUpdateOperatorFileEconomics() {
       qc.invalidateQueries({ queryKey: ["calendar-v2-workspace"] });
       qc.invalidateQueries({ queryKey: ["loans"] });
       qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
+      qc.invalidateQueries({ queryKey: ["payments", "summary", result.profile_id] });
+      qc.invalidateQueries({ queryKey: ["payments", "queue"] });
       if (vars.sourceKind === "intake") {
         qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.sourceId] });
       }

@@ -41,6 +41,7 @@ import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
 import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
 import { formatUnifiedAmount } from "@/lib/unifiedOperator";
+import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
 
 const INTERNAL_TABS = [
   // Property tab merged into Funding File — property details now sit
@@ -48,6 +49,7 @@ const INTERNAL_TABS = [
   // Underwriting tab also folded into Funding File since the UW
   // sizing + warnings panel is already part of the file-readiness view.
   { id: "file", label: "Funding File", icon: "file" as const },
+  { id: "payments", label: "Payments", icon: "dollar" as const },
   { id: "verification", label: "Verification", icon: "shieldChk" as const },
   { id: "terms", label: "Criteria", icon: "sliders" as const },
   { id: "docs", label: "Documents", icon: "doc" as const },
@@ -62,6 +64,7 @@ const INTERNAL_TABS = [
 
 const AGENT_TABS = [
   { id: "agent", label: "Client Status", icon: "clients" as const },
+  { id: "payments", label: "Payments", icon: "dollar" as const },
   { id: "verification", label: "Verification", icon: "shieldChk" as const },
   // Broker access to the 4-mode loan chat (Live Chat / Ask Elara /
   // Suggest / Instruct) — same surface super_admin gets, rendered
@@ -90,6 +93,7 @@ export default function LoanDetailPage() {
   const params = useParams<{ id: string }>();
   const profile = useActiveProfile();
   const hasForecastAccess = profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC;
+  const hasPaymentsAccess = hasForecastAccess || profile.role === Role.BROKER;
   // Needed for the inline Loan-chat tab (passed through to DealChatInput).
   const { data: currentUser } = useCurrentUser();
   const setAiOpen = useUI((s) => s.setAiOpen);
@@ -100,7 +104,7 @@ export default function LoanDetailPage() {
   const { data: client } = useClient(loan?.client_id ?? null);
   const { data: docs = [] } = useDocuments(params.id);
   const { data: activity = [], isLoading: activityLoading } = useLoanActivity(params.id);
-  const { data: unifiedLoanFile } = useUnifiedOperatorFile(hasForecastAccess ? "loan" : null, hasForecastAccess ? params.id : null);
+  const { data: unifiedLoanFile } = useUnifiedOperatorFile(hasPaymentsAccess ? "loan" : null, hasPaymentsAccess ? params.id : null);
   const stageMut = useStageTransition();
   const recalc = useRecalc();
   // Post-creation redirects (SmartIntakeModal, prequal accept) can deep-
@@ -244,6 +248,7 @@ export default function LoanDetailPage() {
         <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} onOpenTab={openLoanArea} />
       )}
       {activeTab === "verification" && <ApplicationVerificationWorkspace sourceKind="loan" sourceId={loan.id} />}
+      {activeTab === "payments" && <PaymentsWorkspace profileId={unifiedLoanFile?.file.profile_id} sourceLabel={loan.entity_name || client?.name || loan.client_name || undefined} />}
       {activeTab === "agent" && <AgentLoanMirror loan={loan} docs={docs} activity={activity} />}
       {activeTab === "messages" && currentUser && (
         <ClientLoanChatTab loanId={loan.id} user={currentUser} />
