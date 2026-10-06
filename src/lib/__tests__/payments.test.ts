@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizePaymentSummary, normalizePaymentsQueue, type PaymentSummaryWire } from "@/lib/payments";
+import { isAchMandateActive, isAchMandateSigned, normalizePaymentSummary, normalizePaymentsQueue, type PaymentSummaryWire } from "@/lib/payments";
 
 function rawSummary(): PaymentSummaryWire {
   return {
@@ -53,7 +53,8 @@ function rawSummary(): PaymentSummaryWire {
     },
     mandate: {
       id: "mandate-1",
-      status: "signed",
+      status: "active",
+      current: true,
       ach_class: "CCD",
       authorized_amount_cents: 800_000,
       typed_name: "Alex Owner",
@@ -93,6 +94,84 @@ describe("payment API normalization", () => {
     });
     expect(summary.readiness.ready_for_release).toBe(true);
     expect(summary.readiness.client_authorized).toBe(true);
+    expect(summary.mandate).toMatchObject({ status: "active", current: true, sec_code: "CCD" });
+  });
+
+  it("does not confuse retained signed proof with a current debit authority", () => {
+    const raw = rawSummary();
+    raw.mandate = { ...raw.mandate!, status: "signed", current: false };
+    const summary = normalizePaymentSummary(raw);
+
+    expect(isAchMandateSigned(raw.mandate)).toBe(true);
+    expect(isAchMandateActive(raw.mandate)).toBe(false);
+    expect(summary.mandate?.current).toBe(false);
+    expect(summary.readiness.client_authorized).toBe(false);
+  });
+
+  it("requires the server-confirmed current Success Fee Agreement", () => {
+    const raw = rawSummary();
+    raw.agreement_documents = [{
+      id: "other-document",
+      name: "Other signed document",
+      artifact_type: "bucket_file",
+      sha256: "abc123",
+      system_signed: true,
+      signed_at: "2026-10-01T12:00:00Z",
+      signature_kind: "credit_authorization",
+      requires_staff_attestation: false,
+      eligible_components: ["origination"],
+    }];
+
+    expect(normalizePaymentSummary(raw).readiness.fee_agreement_signed).toBe(false);
+    raw.agreement_documents[0].signature_kind = "success_fee_agreement";
+    expect(normalizePaymentSummary(raw).readiness.fee_agreement_signed).toBe(false);
+    raw.fee_agreement = {
+      id: "prepared-agreement",
+      status: "signed",
+      current: false,
+    };
+    expect(normalizePaymentSummary(raw).readiness.fee_agreement_signed).toBe(false);
+    raw.fee_agreement.current = true;
+    expect(normalizePaymentSummary(raw).readiness.fee_agreement_signed).toBe(true);
+  });
+
+  it("keeps the signing invitation distinct from the exact debit notice", () => {
+    const raw = rawSummary();
+    raw.authorization_request_delivery = {
+      status: "delivered",
+      sent_at: "2026-10-01T15:40:00Z",
+      delivered_at: "2026-10-01T15:41:00Z",
+    };
+    raw.debit_notice = {
+      id: "notice-1",
+      status: "sent",
+      amount_cents: 800_000,
+      scheduled_debit_at: "2026-10-06T14:00:00Z",
+      submission_window: "business_day_et",
+      notice_business_days: 2,
+      revocation_cutoff_at: "2026-10-05T21:00:00Z",
+      sent_at: "2026-10-01T16:01:00Z",
+    };
+    const summary = normalizePaymentSummary(raw);
+
+    expect(summary.authorization_request_delivery?.status).toBe("delivered");
+    expect(summary.debit_notice).toMatchObject({ status: "sent", amount: 8_000, advance_notice_business_days: 2 });
+    expect(summary.readiness.debit_notice_delivered).toBe(false);
+    expect(summary.timeline.map((item) => item.kind)).toEqual(expect.arrayContaining(["authorization_request", "debit_notice"]));
+  });
+
+  it("fails account eligibility closed unless the source is business CCD", () => {
+    const raw = rawSummary();
+    raw.funding_source = { ...raw.funding_source!, ach_class: "WEB" };
+    let summary = normalizePaymentSummary(raw);
+
+    expect(summary.funding_source?.ach_class).toBe("WEB");
+    expect(summary.readiness.account_eligible).toBe(false);
+
+    delete raw.funding_source.ach_class;
+    summary = normalizePaymentSummary(raw);
+    expect(summary.funding_source?.ach_class).toBe("UNKNOWN");
+    expect(summary.readiness.account_eligible).toBe(false);
   });
 
   it("never counts a submitted transfer as collected", () => {

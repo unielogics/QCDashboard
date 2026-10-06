@@ -145,6 +145,16 @@
    the former authorizes money movement, while the latter is read-only
    underwriting evidence. */
 .client-payments { display: grid; gap: 16px; }
+.client-fee-agreement, .client-mandate-complete { display: grid; gap: 12px; padding: 18px; border: 1px solid var(--room-line); border-radius: 12px; background: var(--room-surface); }
+.client-payment-stage-heading { display: flex; align-items: flex-start; gap: 11px; }
+.client-payment-stage-heading > span { flex: 0 0 30px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--room-accent-soft); color: var(--room-accent); font-weight: 850; }
+.client-payment-stage-heading h3, .client-payment-stage-heading p { margin: 0; }
+.client-payment-stage-heading p { margin-top: 4px; color: var(--room-muted); line-height: 1.45; }
+.client-fee-agreement-record { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--room-line); border-radius: 10px; }
+.client-fee-agreement-record > div { min-width: 0; display: grid; gap: 4px; padding: 12px; border-right: 1px solid var(--room-line); }
+.client-fee-agreement-record > div:last-child { border-right: 0; }
+.client-fee-agreement-record span { color: var(--room-muted); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.client-fee-agreement-record strong { overflow-wrap: anywhere; font-size: 12px; }
 .client-payments-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .client-payments-summary > div { display: grid; gap: 4px; min-height: 112px; padding: 16px; border: 1px solid var(--room-line); border-radius: 12px; background: var(--room-surface); }
 .client-payments-summary span { color: var(--room-muted); font-size: 11px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
@@ -168,18 +178,63 @@
 .client-payment-owner button { min-height: 64px; display: grid; justify-items: start; gap: 3px; padding: 12px 14px; border: 1px solid var(--room-line); border-radius: 10px; background: var(--room-surface); color: var(--room-ink); text-align: left; cursor: pointer; }
 .client-payment-owner button.on { border-color: var(--room-accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--room-accent) 16%, transparent); }
 .client-payment-owner span { color: var(--room-muted); font-size: 12px; }
+.client-payment-owner-single { grid-template-columns: 1fr; }
+.client-payment-owner-single > div { min-height: 64px; display: grid; align-content: center; gap: 3px; padding: 12px 14px; border: 2px solid var(--room-accent); border-radius: 10px; background: var(--room-accent-soft); color: var(--room-ink); }
 .client-payment-account { min-height: 64px; display: flex; align-items: center; gap: 12px; padding: 12px 15px; border: 1px solid var(--room-line); border-radius: 12px; background: var(--room-surface); }
+.client-payment-account.ineligible { border-color: #c94335; background: #fff4f2; }
 .client-payment-account > div { flex: 1; display: grid; gap: 3px; }
 .client-payment-account span { color: var(--room-muted); font-size: 12px; }
 .client-payment-confirm { min-height: 48px; display: flex; align-items: start; gap: 10px; padding: 12px; border: 1px solid var(--room-line); border-radius: 10px; cursor: pointer; }
 .client-payment-confirm input { width: 20px; height: 20px; flex: 0 0 auto; }
+.client-business-account-attestation { margin: 12px 0; border-width: 2px; }
+.client-business-account-attestation b { color: var(--room-ink); }
 .client-private-plan-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
 .client-private-plan-meta span { display: grid; gap: 3px; min-height: 58px; padding: 10px 12px; border-radius: 9px; background: var(--room-sunken); color: var(--room-muted); font-size: 11px; text-transform: uppercase; }
 .client-private-plan-meta b { color: var(--room-ink); font-size: 13px; }
+.client-ach-authorization { border: 2px solid var(--room-accent); }
+.client-ach-disclosure { display: grid; gap: 12px; overflow: hidden; border: 1px solid var(--room-line); border-radius: 12px; background: var(--room-surface-2); }
+.client-ach-disclosure > header { padding: 16px 16px 0; }
+.client-ach-disclosure > header span { color: var(--room-accent); font-size: 10px; font-weight: 850; letter-spacing: .06em; text-transform: uppercase; }
+.client-ach-disclosure > header h4 { margin: 4px 0; font-size: 18px; }
+.client-ach-disclosure > header p { margin: 0; }
+.client-ach-disclosure-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0 16px; gap: 8px; }
+.client-ach-disclosure-grid > div { min-width: 0; min-height: 82px; display: grid; align-content: center; gap: 4px; padding: 11px 12px; border: 1px solid var(--room-line); border-radius: 9px; background: var(--room-surface); }
+.client-ach-disclosure-grid span { color: var(--room-muted); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.client-ach-disclosure-grid strong { overflow-wrap: anywhere; font-size: 13px; }
+.client-ach-disclosure-grid small { color: var(--room-muted); line-height: 1.35; }
+.client-ach-authorization-text { margin: 0 16px; padding: 11px 12px; border: 1px solid var(--room-line); border-radius: 9px; background: var(--room-surface); }
+.client-ach-authorization-text > span { display: block; margin-bottom: 5px; color: var(--room-muted); font-size: 10px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.client-ach-authorization-text > p { margin: 0; white-space: pre-wrap; line-height: 1.5; }
+.client-ach-revocation, .client-ach-funding-gate, .client-protected-record { display: flex; align-items: flex-start; gap: 11px; padding: 13px 16px; }
+.client-ach-revocation { border-top: 1px solid #e1b35c; background: #fff8e8; color: #6e4510; }
+.client-ach-funding-gate { border-top: 1px solid var(--room-line); background: var(--room-accent-soft); }
+.client-ach-revocation p, .client-ach-funding-gate p { margin: 3px 0 0; line-height: 1.5; }
+.client-ach-revocation a { color: inherit; font-weight: 800; }
+.client-ach-funding-gate small { display: block; margin-top: 5px; }
+.client-protected-record { align-items: center; border: 1px solid var(--room-line); border-radius: 10px; background: var(--room-sunken); }
+.client-protected-record > div { display: grid; gap: 2px; }
+.client-protected-record span, .client-protected-record small { color: var(--room-muted); font-size: 11px; }
+.client-payment-proof-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.client-payments .application-room-secondary { min-height: 44px; }
+.client-ach-delivery-states { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+.client-ach-delivery-states > section { min-width: 0; display: grid; align-content: start; gap: 6px; padding: 12px 14px; border: 1px solid var(--room-line); border-radius: 10px; background: var(--room-surface); }
+.client-ach-delivery-states > section > span { color: var(--room-accent); font-size: 10px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
+.client-ach-delivery-states > section > div { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.client-ach-delivery-states strong { color: var(--room-muted); font-size: 11px; text-transform: uppercase; }
+.client-ach-delivery-states p, .client-ach-delivery-states small { margin: 0; color: var(--room-muted); line-height: 1.4; }
+.client-ach-delivery-states small { font-size: 11px; }
+.client-ach-delivery-states > section > .client-ach-delivery-facts { display: grid; align-items: start; justify-content: stretch; gap: 3px; padding: 7px 8px; border-radius: 7px; background: var(--room-sunken); color: var(--room-muted); font-size: 11px; }
+.client-ach-delivery-facts span { overflow-wrap: anywhere; }
+.client-ach-delivery-facts b { color: var(--room-ink); text-transform: none; }
 
 @media (max-width: 760px) {
   .client-payments-summary, .client-private-plan-meta { grid-template-columns: 1fr; }
   .client-payment-owner { grid-template-columns: 1fr; }
+  .client-fee-agreement-record, .client-ach-disclosure-grid, .client-ach-delivery-states { grid-template-columns: 1fr; }
+  .client-fee-agreement-record > div { border-right: 0; border-bottom: 1px solid var(--room-line); }
+  .client-fee-agreement-record > div:last-child { border-bottom: 0; }
+  .client-payment-proof-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .client-payment-proof-actions > * { width: 100%; }
 }
 .application-room-section { min-height: 560px; padding: 26px 0; }
 .application-room-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
@@ -1295,6 +1350,19 @@ button.pick { width: 100%; text-align: left; }
    kept so the branch in the component is not a lie. */
 .sigpad { width: 100%; border-radius: 12px; border: 1px solid var(--line); background: var(--sunken2); touch-action: none; }
 .sigpad.dark { background: #080a10; }
+.requested-document-signature .field, .requested-document-signature .btn { min-height: 44px; }
+.requested-signature-methods { min-width: 0; margin: 0; padding: 0; border: 0; }
+.requested-signature-methods > legend { margin-bottom: 7px; }
+.requested-signature-methods > div { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.requested-signature-methods button { min-height: 58px; display: grid; align-content: center; gap: 3px; padding: 8px 11px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.requested-signature-methods button.on { border-color: var(--accent); background: var(--accent-100); box-shadow: inset 0 0 0 1px var(--accent); }
+.requested-signature-methods button:disabled { cursor: not-allowed; opacity: .55; }
+.requested-signature-methods small, .requested-typed-signature-note span { color: var(--muted); font-size: 11px; line-height: 1.4; }
+.requested-typed-signature-note { min-height: 64px; display: grid; align-content: center; gap: 4px; padding: 10px 12px; border: 1px solid var(--accent-200); border-radius: var(--r); background: var(--accent-100); }
+.requested-typed-signature-note b { overflow-wrap: anywhere; font-size: 16px; font-style: italic; }
+@media (max-width: 560px) {
+  .requested-signature-methods > div { grid-template-columns: 1fr; }
+}
 
 /* ---------- topbar ---------- */
 
@@ -5638,6 +5706,33 @@ a.pick { color: inherit; text-decoration: none; }
 .payment-step-heading > span { flex: 0 0 28px; width: 28px; height: 28px; display: grid; place-items: center; border-radius: 50%; background: var(--sunken); color: var(--muted); font-size: 11px; font-weight: 850; }
 .payment-step-heading > span.done { background: #e8f5ee; color: var(--ok); }
 .payment-step-heading h4 { font-size: 13px; }
+.payment-agreement-step { border-color: color-mix(in srgb, var(--accent) 45%, var(--line)); }
+.payment-agreement-summary, .payment-agreement-record, .payment-debit-notice { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); overflow: hidden; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunken2); }
+.payment-agreement-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.payment-agreement-summary > div, .payment-agreement-record > div, .payment-debit-notice > div { min-width: 0; display: grid; align-content: center; gap: 4px; min-height: 66px; padding: 10px 11px; border-right: 1px solid var(--line); }
+.payment-agreement-summary > div:last-child, .payment-agreement-record > div:last-child, .payment-debit-notice > div:last-child { border-right: 0; }
+.payment-agreement-summary span, .payment-agreement-record span, .payment-debit-notice span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.payment-agreement-summary strong, .payment-agreement-record strong, .payment-debit-notice strong { overflow-wrap: anywhere; font-size: 12px; }
+.payment-agreement-summary small, .payment-debit-notice small { color: var(--muted); font-size: 10px; }
+.payment-protected-artifact, .payment-mandate-proof { min-height: 62px; display: flex; align-items: center; gap: 11px; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunken2); }
+.payment-protected-artifact > div, .payment-mandate-proof > div:first-child { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.payment-protected-artifact span, .payment-protected-artifact small, .payment-mandate-proof span, .payment-mandate-proof small { color: var(--muted); font-size: 10px; }
+.payment-protected-artifact .btn { margin-left: auto; min-height: 44px; }
+.payment-delivery-states { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.payment-delivery-states > section { min-width: 0; display: grid; align-content: start; gap: 7px; padding: 11px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--sunken2); }
+.payment-delivery-states header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.payment-delivery-states header > div { min-width: 0; display: grid; gap: 2px; }
+.payment-delivery-states header span { color: var(--muted); font-size: 9px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.payment-delivery-states p, .payment-delivery-states small { margin: 0; color: var(--muted); font-size: 10px; line-height: 1.4; }
+.payment-delivery-facts { display: grid; gap: 4px; }
+.payment-delivery-facts > span { min-width: 0; display: grid; gap: 2px; }
+.payment-delivery-facts b { overflow-wrap: anywhere; font-size: 11px; }
+.payment-authorization-request { display: grid; grid-template-columns: minmax(170px, .5fr) minmax(190px, .55fr) minmax(300px, 1fr) auto; gap: 9px; align-items: end; }
+.payment-authorization-request .field { min-height: 44px; }
+.payment-authorization-request > .btn { min-height: 52px; }
+.payment-disclosure-compact { min-height: 72px; display: grid; align-content: center; gap: 3px; padding: 9px 11px; border: 1px solid #ddb963; border-radius: var(--r); background: #fff9e9; color: #63420e; }
+.payment-disclosure-compact b, .payment-disclosure-compact span { display: block; }
+.payment-disclosure-compact span { font-size: 10px; line-height: 1.35; }
 .payment-inline-form { display: grid; grid-template-columns: minmax(220px, 1fr) auto; align-items: end; gap: 10px; }
 .payment-inline-form .payment-check { grid-column: 1 / -1; }
 .payment-check { min-height: 52px; display: flex; align-items: center; gap: 11px; padding: 9px 11px; border: 1px solid var(--line); border-radius: var(--r); cursor: pointer; }
@@ -5735,6 +5830,8 @@ a.pick { color: inherit; text-decoration: none; }
   .payment-primary-grid { grid-template-columns: minmax(0, 1fr); }
   .payment-primary-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .payment-primary-rail > :first-child { grid-column: 1 / -1; }
+  .payment-authorization-request { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .payment-authorization-request .payment-disclosure-compact, .payment-authorization-request > .btn { grid-column: 1 / -1; }
   .payment-operations-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .payments-operations-head { display: none; }
   .payments-operations-table { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 8px; background: var(--sunken2); }
@@ -5747,7 +5844,7 @@ a.pick { color: inherit; text-decoration: none; }
   .payment-fee-lines, .payment-metrics, .payment-operations-metrics { grid-template-columns: 1fr 1fr; }
   .payment-fee-lines > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .payment-fee-lines > div:last-child { grid-column: 1 / -1; border-bottom: 0; }
-  .payment-mode-grid, .payment-line-allocations, .payment-allocation-fields, .payment-status-row, .payment-funding-form, .payment-confirmation, .payment-readiness, .payment-private-plan, .payment-term-preview, .payment-receipt-type, .payments-queue-tabs, .payments-operations-table { grid-template-columns: 1fr; }
+  .payment-mode-grid, .payment-line-allocations, .payment-allocation-fields, .payment-status-row, .payment-funding-form, .payment-confirmation, .payment-readiness, .payment-private-plan, .payment-term-preview, .payment-receipt-type, .payments-queue-tabs, .payments-operations-table, .payment-agreement-summary, .payment-agreement-record, .payment-debit-notice, .payment-authorization-request, .payment-delivery-states { grid-template-columns: 1fr; }
   .payment-confirmation > div { border-right: 0; border-bottom: 1px solid var(--line); }
   .payment-confirmation > div:last-child { border-bottom: 0; }
   .payment-primary-rail { grid-template-columns: 1fr; }
@@ -5759,5 +5856,11 @@ a.pick { color: inherit; text-decoration: none; }
   .payment-ach-presets { align-items: stretch; flex-direction: column; }
   .payment-ach-presets > div { display: grid; grid-template-columns: repeat(3, 1fr); }
   .payment-private-plan-header, .payment-installment-heading { align-items: stretch; flex-direction: column; }
+  .payment-agreement-summary > div, .payment-agreement-record > div, .payment-debit-notice > div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .payment-agreement-summary > div:last-child, .payment-agreement-record > div:last-child, .payment-debit-notice > div:last-child { border-bottom: 0; }
+  .payment-protected-artifact, .payment-mandate-proof { align-items: stretch; flex-direction: column; }
+  .payment-authorization-request .payment-disclosure-compact, .payment-authorization-request > .btn { grid-column: auto; }
+  .payment-mandate-proof .payment-private-actions { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .payment-mandate-proof .payment-private-actions > * { width: 100%; justify-content: center; }
   .payment-private-actions .btn { flex: 1 1 100%; }
 }

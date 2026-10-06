@@ -26,6 +26,7 @@ export const ROOM_PAYMENT_PURPOSE_KEY = "qc.room.plaid.payment_purpose";
 export const ROOM_PAYMENT_OWNER_KEY = "qc.room.plaid.payment_owner";
 export const ROOM_PAYMENT_EXCHANGE_KEY = "qc.room.plaid.payment_exchange_required";
 export const ROOM_PAYMENT_TRANSFER_KEY = "qc.room.plaid.payment_transfer";
+export const ROOM_PAYMENT_BUSINESS_ATTESTATION_KEY = "qc.room.plaid.business_attestation";
 
 type HandoffArgs = {
   linkToken: string;
@@ -76,6 +77,7 @@ export function stashPaymentRoomHandoff(
     passcode: string;
     purpose: "fee" | "private_schedule";
     ownerType: "business" | "consumer";
+    businessAccountAttested: true;
     exchangeRequired?: boolean;
     transferId?: string;
   },
@@ -87,6 +89,7 @@ export function stashPaymentRoomHandoff(
   sessionStorage.setItem(ROOM_RETURN_KEY, args.returnTo);
   sessionStorage.setItem(ROOM_PAYMENT_PURPOSE_KEY, args.purpose);
   sessionStorage.setItem(ROOM_PAYMENT_OWNER_KEY, args.ownerType);
+  sessionStorage.setItem(ROOM_PAYMENT_BUSINESS_ATTESTATION_KEY, String(args.businessAccountAttested));
   sessionStorage.setItem(ROOM_PAYMENT_EXCHANGE_KEY, String(args.exchangeRequired !== false));
   if (args.transferId) sessionStorage.setItem(ROOM_PAYMENT_TRANSFER_KEY, args.transferId);
   else sessionStorage.removeItem(ROOM_PAYMENT_TRANSFER_KEY);
@@ -106,6 +109,7 @@ export function readPlaidHandoff() {
   const paymentOwnerType = sessionStorage.getItem(ROOM_PAYMENT_OWNER_KEY) === "consumer" ? "consumer" : "business";
   const paymentExchangeRequired = sessionStorage.getItem(ROOM_PAYMENT_EXCHANGE_KEY) !== "false";
   const paymentTransferId = sessionStorage.getItem(ROOM_PAYMENT_TRANSFER_KEY);
+  const paymentBusinessAccountAttested = sessionStorage.getItem(ROOM_PAYMENT_BUSINESS_ATTESTATION_KEY) === "true";
   if (!linkToken || !token) return null;
   if (kind === "application_verification") {
     return { kind, linkToken, token, returnTo, mode, itemId, isPrimaryOperating } as const;
@@ -127,6 +131,7 @@ export function readPlaidHandoff() {
       paymentOwnerType,
       paymentExchangeRequired,
       paymentTransferId,
+      paymentBusinessAccountAttested,
     } as const;
   }
   if (!passcode) return null;
@@ -141,7 +146,7 @@ export function readRoomHandoff() {
 
 /** Clear the handoff, including the passcode. Call on every terminal outcome. */
 export function clearRoomHandoff() {
-  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY, ROOM_MODE_KEY, ROOM_ITEM_KEY, ROOM_PRIMARY_KEY, ROOM_PAYMENT_PURPOSE_KEY, ROOM_PAYMENT_OWNER_KEY, ROOM_PAYMENT_EXCHANGE_KEY, ROOM_PAYMENT_TRANSFER_KEY].forEach((k) =>
+  [ROOM_KIND_KEY, ROOM_LINK_TOKEN_KEY, ROOM_TOKEN_KEY, ROOM_PASSCODE_KEY, ROOM_RETURN_KEY, ROOM_MODE_KEY, ROOM_ITEM_KEY, ROOM_PRIMARY_KEY, ROOM_PAYMENT_PURPOSE_KEY, ROOM_PAYMENT_OWNER_KEY, ROOM_PAYMENT_EXCHANGE_KEY, ROOM_PAYMENT_TRANSFER_KEY, ROOM_PAYMENT_BUSINESS_ATTESTATION_KEY].forEach((k) =>
     sessionStorage.removeItem(k),
   );
 }

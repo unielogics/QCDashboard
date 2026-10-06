@@ -20,7 +20,7 @@
 // and <Panel> hard-codes <h3>. Dropping a level here would leave a public page
 // with a broken heading outline. `.panel-h h2` in app-extras carries the size.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePlaidLink } from "react-plaid-link";
 import { stashApplicationRoomHandoff, stashRoomHandoff } from "@/lib/roomPlaidHandoff";
 import { apiBase } from "@/lib/api";
@@ -33,7 +33,7 @@ import {
 import { ContractSigner, type RoomContract } from "@/components/room/ContractSigner";
 import { EnvelopeSigner, type RoomEnvelope } from "@/components/room/EnvelopeSigner";
 
-type Signable = {
+export type Signable = {
   id: string;
   name: string;
   kind: string | null;
@@ -41,6 +41,11 @@ type Signable = {
   signable: boolean;
   document_text: string;
 };
+
+export function pendingSignableForRequest(signable: Signable[], requestId?: string | null): Signable | null {
+  if (!requestId) return null;
+  return signable.find((document) => document.id === requestId && document.signable && !document.signed) ?? null;
+}
 
 type BankConnection = {
   id: string;
@@ -481,6 +486,7 @@ export function RoomActions({
   roomKind,
   onChanged,
   view = "all",
+  focusRequestId,
 }: {
   token: string;
   passcode: string;
@@ -488,6 +494,8 @@ export function RoomActions({
   /** Called after a connection or signature lands so the page can refresh its checklist. */
   onChanged: () => void;
   view?: "all" | "banking" | "agreements";
+  /** Deep-links or in-room payment actions can open one pending request directly. */
+  focusRequestId?: string | null;
 }) {
   const [features, setFeatures] = useState<Features | null>(null);
   const [signing, setSigning] = useState<Signable | null>(null);
@@ -495,6 +503,7 @@ export function RoomActions({
   const [signingEnvelope, setSigningEnvelope] = useState<RoomEnvelope | null>(null);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
+  const autoOpenedRequestRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -550,6 +559,19 @@ export function RoomActions({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!focusRequestId) {
+      autoOpenedRequestRef.current = null;
+      return;
+    }
+    if (!features || autoOpenedRequestRef.current === focusRequestId) return;
+    const target = pendingSignableForRequest(features.signable, focusRequestId);
+    if (!target) return;
+    autoOpenedRequestRef.current = focusRequestId;
+    setSignError(null);
+    setSigning(target);
+  }, [features, focusRequestId]);
 
   async function sign(payload: SignRequestedDocumentPayload) {
     setSignBusy(true);

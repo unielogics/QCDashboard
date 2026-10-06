@@ -35,7 +35,7 @@ export default function RoomPlaidOAuthReturn() {
   const [linkToken, setLinkToken] = useState<string | null>(null);
   const [room, setRoom] = useState<
     | { kind: "dealer_room" | "application_room"; token: string; passcode: string; mode: "initial" | "update"; itemId: string | null; isPrimaryOperating: boolean }
-    | { kind: "payment_room"; token: string; passcode: string; mode: "initial"; itemId: null; isPrimaryOperating: boolean; paymentPurpose: "fee" | "private_schedule"; paymentOwnerType: "business" | "consumer"; paymentExchangeRequired: boolean; paymentTransferId: string | null }
+    | { kind: "payment_room"; token: string; passcode: string; mode: "initial"; itemId: null; isPrimaryOperating: boolean; paymentPurpose: "fee" | "private_schedule"; paymentOwnerType: "business" | "consumer"; paymentExchangeRequired: boolean; paymentTransferId: string | null; paymentBusinessAccountAttested: boolean }
     | { kind: "application_verification"; token: string; mode: "initial" | "update"; itemId: string | null; isPrimaryOperating: boolean }
     | null
   >(null);
@@ -57,7 +57,7 @@ export default function RoomPlaidOAuthReturn() {
       h.kind === "application_verification"
         ? { kind: h.kind, token: h.token, mode: h.mode, itemId: h.itemId, isPrimaryOperating: h.isPrimaryOperating }
         : h.kind === "payment_room"
-          ? { kind: h.kind, token: h.token, passcode: h.passcode, mode: "initial", itemId: null, isPrimaryOperating: true, paymentPurpose: h.paymentPurpose, paymentOwnerType: h.paymentOwnerType, paymentExchangeRequired: h.paymentExchangeRequired, paymentTransferId: h.paymentTransferId }
+          ? { kind: h.kind, token: h.token, passcode: h.passcode, mode: "initial", itemId: null, isPrimaryOperating: true, paymentPurpose: h.paymentPurpose, paymentOwnerType: h.paymentOwnerType, paymentExchangeRequired: h.paymentExchangeRequired, paymentTransferId: h.paymentTransferId, paymentBusinessAccountAttested: h.paymentBusinessAccountAttested }
         : { kind: h.kind, token: h.token, passcode: h.passcode, mode: h.mode, itemId: h.itemId, isPrimaryOperating: h.isPrimaryOperating },
     );
     setReturnTo(h.returnTo);
@@ -145,6 +145,7 @@ export default function RoomPlaidOAuthReturn() {
                     plaid_account_id: paymentAccountId,
                     owner_type: room.paymentOwnerType,
                     purpose: room.paymentPurpose,
+                    business_account_attested: room.paymentBusinessAccountAttested,
                   }
                 : room.mode === "update"
                 ? room.kind === "application_verification" ? {} : { passcode: room.passcode }

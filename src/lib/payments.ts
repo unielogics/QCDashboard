@@ -64,6 +64,57 @@ export type FeeObligationLine = {
   agreement_reference: string | null;
   agreement_verified: boolean;
   earned: boolean;
+  governing_agreement_id?: string | null;
+  governing_agreement_sha256?: string | null;
+};
+
+export type ProtectedPaymentArtifact = {
+  bucket_file_id: string | null;
+  name: string;
+  download_url: string | null;
+  sha256: string | null;
+  retention_class: "ach_poa" | "payment_agreement" | string;
+  protected_until: string | null;
+  legal_hold: boolean;
+};
+
+export type FeeAgreement = {
+  id: string;
+  status: "draft" | "awaiting_signature" | "signed" | "superseded" | "voided";
+  signature_kind: "success_fee_agreement";
+  template_version: string | null;
+  agreement_reference: string | null;
+  document_sha256: string | null;
+  prepared_at: string | null;
+  sent_at: string | null;
+  signed_at: string | null;
+  countersigned_at: string | null;
+  sign_url: string | null;
+  proof_email_status: string | null;
+  current: boolean;
+  artifact: ProtectedPaymentArtifact | null;
+};
+
+export type AuthorizationRequestDelivery = {
+  status: "pending" | "sent" | "delivered" | "failed" | "cancelled" | string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  failed_reason: string | null;
+};
+
+export type DebitNotice = {
+  id: string;
+  status: "draft" | "queued" | "pending" | "sent" | "delivered" | "delivery_failed" | "failed" | "bounced" | "complained" | "cancelled";
+  amount: number;
+  scheduled_debit_at: string;
+  submission_window: string;
+  debit_window_start_at: string | null;
+  debit_window_end_at: string | null;
+  advance_notice_business_days: number;
+  revocation_cutoff_at: string;
+  sent_at: string | null;
+  delivered_at: string | null;
+  failed_reason: string | null;
 };
 
 export type FeeObligation = {
@@ -97,23 +148,39 @@ export type ActualFundingConfirmation = {
 export type PaymentFundingSource = {
   id: string;
   ownership_type: "business" | "consumer";
+  ach_class: "CCD" | "WEB" | "UNKNOWN";
   institution_name: string | null;
   account_name: string | null;
   account_mask: string | null;
   account_subtype: string | null;
-  status: "pending" | "connected" | "action_required" | "revoked" | "blocked";
+  status: "pending" | "connected" | "verified" | "action_required" | "revoked" | "blocked";
   connected_at: string | null;
+  business_account_attested?: boolean;
 };
 
 export type AchMandate = {
   id: string;
-  status: "pending" | "signed" | "revoked" | "expired" | "superseded";
+  status: "pending" | "signed" | "active" | "revoked" | "expired" | "superseded";
+  current: boolean;
   authorized_amount: number;
   sec_code: "CCD" | "WEB";
   payer_name: string;
   signed_at: string | null;
   revoked_at: string | null;
   certificate_available: boolean;
+  authorization_type?: "one_time_business_ccd" | "one_time";
+  scheduled_debit_at?: string | null;
+  submission_window?: string | null;
+  advance_notice_business_days?: number;
+  revocation_cutoff_at?: string | null;
+  revocation_email?: string | null;
+  agreement_reference?: string | null;
+  agreement_sha256?: string | null;
+  proof_email_status?: string | null;
+  proof_delivered_at?: string | null;
+  can_revoke?: boolean;
+  can_resend_proof?: boolean;
+  artifact?: ProtectedPaymentArtifact | null;
 };
 
 export type PaymentTransfer = {
@@ -192,6 +259,7 @@ export type PaymentTimelineItem = {
 export type PaymentPermissions = {
   can_view: boolean;
   can_edit_allocation: boolean;
+  can_prepare_fee_agreement: boolean;
   can_waive: boolean;
   can_prepare_obligation: boolean;
   can_confirm_funding: boolean;
@@ -203,6 +271,8 @@ export type PaymentPermissions = {
   can_manage_private_schedule: boolean;
   can_manage_servicing_authority: boolean;
   can_request_review: boolean;
+  can_manage_mandate_proof: boolean;
+  can_revoke_mandate: boolean;
 };
 
 export type AgreementDocumentCandidate = {
@@ -223,6 +293,8 @@ export type PaymentSummary = {
   client_id: string | null;
   loan_id: string | null;
   display_name: string | null;
+  ach_authorization_enabled: boolean;
+  legal_approval_required: boolean;
   approved_amount: number | null;
   accepted_amount: number | null;
   funded_amount: number | null;
@@ -232,6 +304,9 @@ export type PaymentSummary = {
   gross_expected_fee: number;
   allocation: FeeAllocation | null;
   obligation: FeeObligation | null;
+  fee_agreement: FeeAgreement | null;
+  authorization_request_delivery: AuthorizationRequestDelivery | null;
+  debit_notice: DebitNotice | null;
   funding_confirmation: ActualFundingConfirmation | null;
   funding_source: PaymentFundingSource | null;
   mandate: AchMandate | null;
@@ -256,12 +331,15 @@ export type PaymentSummary = {
   };
   readiness: {
     fee_obligation_current: boolean;
+    fee_agreement_signed: boolean;
     agreement_signed: boolean;
     consulting_fee_earned: boolean;
     client_authorized: boolean;
     funding_confirmed: boolean;
     amount_covered: boolean;
     account_eligible: boolean;
+    authorization_proof_delivered: boolean;
+    debit_notice_delivered: boolean;
     no_existing_claim: boolean;
     ready_for_release: boolean;
     blockers: string[];
@@ -333,26 +411,49 @@ export type PaymentSummaryWire = {
     gross_fee_cents?: number;
     estimated_close_date?: string | null;
   };
+  fee_agreement?: {
+    id: string; status: string; signature_kind?: string; template_version?: string | null;
+    agreement_reference?: string | null; document_sha256?: string | null; prepared_at?: string | null;
+    sent_at?: string | null; signed_at?: string | null; countersigned_at?: string | null;
+    sign_url?: string | null; proof_email_status?: string | null; current?: boolean;
+    artifact?: { bucket_file_id?: string | null; name?: string | null; download_url?: string | null; sha256?: string | null; retention_class?: string | null; protected_until?: string | null; legal_hold?: boolean } | null;
+  } | null;
+  authorization_request_delivery?: {
+    status: string; sent_at?: string | null; delivered_at?: string | null; failed_reason?: string | null;
+  } | null;
+  debit_notice?: {
+    id: string; status: string; amount_cents: number; scheduled_debit_at: string; submission_window?: string;
+    debit_window_start_at?: string | null; debit_window_end_at?: string | null;
+    notice_business_days?: number; advance_notice_business_days?: number; revocation_cutoff_at: string; sent_at?: string | null; delivered_at?: string | null;
+    last_error?: string | null; failed_reason?: string | null;
+  } | null;
   current_obligation?: {
     id: string; version: number; record_version: number; status: string;
     accepted_amount?: number | string | null; funded_amount?: number | string | null;
     origination_points?: number | string | null; origination_fee_cents: number; consulting_fee_cents: number; gross_fee_cents: number;
     client_ach_cents: number; origination_client_ach_cents?: number; consulting_client_ach_cents?: number; bank_direct_cents: number; external_cents: number; deferred_cents: number; waived_cents: number;
     agreement_reference?: string | null; agreement_sha256?: string | null; consulting_milestone_confirmed_at?: string | null;
-    created_at: string; updated_at: string;
+    authorization_sent_at?: string | null; created_at: string; updated_at: string;
   } | null;
   funding_confirmation?: {
     id: string; actual_funding_date: string; actual_funded_amount: number | string; funding_party_name: string;
     funding_reference?: string | null; note?: string | null; source: "manual" | "production_attestation"; confirmed_at: string;
   } | null;
   funding_source?: {
-    id: string; status: string; owner_type: "business" | "consumer"; ach_class: "CCD" | "WEB";
+    id: string; status: string; owner_type: "business" | "consumer"; ach_class?: "CCD" | "WEB" | string | null;
     account_name?: string | null; account_mask?: string | null; account_subtype?: string | null; institution_name?: string | null;
-    verified_at?: string | null; revoked_at?: string | null; created_at: string;
+    verified_at?: string | null; revoked_at?: string | null; created_at: string; business_account_attested?: boolean;
   } | null;
   mandate?: {
     id: string; status: string; ach_class: "CCD" | "WEB"; authorized_amount_cents: number; typed_name: string; payer_name: string;
-    signed_at?: string | null; revoked_at?: string | null; expires_at?: string | null;
+    current?: boolean | null; is_current?: boolean | null; signed_at?: string | null; revoked_at?: string | null; expires_at?: string | null;
+    authorization_type?: "one_time_business_ccd" | "one_time"; scheduled_debit_at?: string | null; submission_window?: string | null;
+    notice_business_days?: number; advance_notice_business_days?: number; revocation_cutoff_at?: string | null; revocation_email?: string | null;
+    agreement_reference?: string | null; agreement_sha256?: string | null; proof_email_status?: string | null;
+    proof_copy_delivery_status?: string | null; proof_copy_delivered_at?: string | null;
+    proof_delivered_at?: string | null; can_revoke?: boolean; can_resend_proof?: boolean;
+    certificate_available?: boolean;
+    artifact?: { bucket_file_id?: string | null; name?: string | null; download_url?: string | null; sha256?: string | null; retention_class?: string | null; protected_until?: string | null; legal_hold?: boolean } | null;
   } | null;
   transfers?: Array<{
     id: string; status: string; amount_cents: number; plaid_transfer_id?: string | null; provider_status?: string | null;
@@ -375,8 +476,10 @@ export type PaymentSummaryWire = {
   capabilities: {
     can_read?: boolean; can_prepare?: boolean; can_waive?: boolean; can_confirm_funding?: boolean; can_release?: boolean; can_refund?: boolean;
     can_manage_private_schedules?: boolean; payments_enabled?: boolean; private_funding_payments_enabled?: boolean;
+    can_prepare_fee_agreement?: boolean; can_send_authorization?: boolean; can_manage_mandate_proof?: boolean; can_revoke_mandate?: boolean;
+    ach_authorization_enabled?: boolean; legal_approval_required?: boolean;
   };
-  readiness: { ready_to_release?: boolean; blockers?: string[] };
+  readiness: { ready_to_release?: boolean; fee_agreement_signed?: boolean; authorization_proof_delivered?: boolean; debit_notice_delivered?: boolean; blockers?: string[] };
 };
 
 export type PaymentsQueueResponseWire = {
@@ -400,6 +503,35 @@ function numberOrNull(value: number | string | null | undefined): number | null 
 }
 function transferStatus(value: string): PaymentTransferStatus { return value as PaymentTransferStatus; }
 function obligationStatus(value: string): FeeObligation["status"] { return value as FeeObligation["status"]; }
+function normalizeAchClass(value: string | null | undefined): PaymentFundingSource["ach_class"] {
+  const normalized = value?.toUpperCase();
+  return normalized === "CCD" || normalized === "WEB" ? normalized : "UNKNOWN";
+}
+
+type MandateLifecycle = {
+  status?: string | null;
+  current?: boolean | null;
+  is_current?: boolean | null;
+  signed_at?: string | null;
+};
+
+/** An executed mandate remains signed evidence even after it is revoked or superseded. */
+export function isAchMandateSigned(mandate: MandateLifecycle | null | undefined): boolean {
+  if (!mandate) return false;
+  return Boolean(mandate.signed_at) || ["signed", "active", "revoked", "expired", "superseded"].includes(mandate.status ?? "");
+}
+
+/**
+ * `active` is the canonical usable state. `signed` is accepted for older API
+ * responses, but an explicit current=false always wins so retained proof is
+ * never mistaken for authority to debit.
+ */
+export function isAchMandateActive(mandate: MandateLifecycle | null | undefined): boolean {
+  if (!mandate) return false;
+  const current = mandate.is_current ?? mandate.current;
+  if (current === false) return false;
+  return mandate.status === "active" || mandate.status === "signed";
+}
 
 export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummary {
   const economics = wire.economics ?? {};
@@ -430,11 +562,20 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
   const funding = wire.funding_confirmation;
   const source = wire.funding_source;
   const mandate = wire.mandate;
+  const agreement = wire.fee_agreement ?? null;
+  const authorizationRequest = wire.authorization_request_delivery ?? null;
+  const notice = wire.debit_notice ?? null;
   const plans = [...(wire.private_plans ?? [])].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const plan = plans[0] ?? null;
   const planInstallments = plan ? (wire.installments ?? []).filter((item) => item.plan_id === plan.id) : [];
+  const feeAgreementSigned = wire.readiness?.fee_agreement_signed ?? Boolean(
+    agreement?.status === "signed" && agreement.current,
+  );
   const blockers = wire.readiness?.blockers ?? [];
   const timeline: PaymentTimelineItem[] = [
+    ...(agreement ? [{ id: `fee-agreement:${agreement.id}:${agreement.status}`, kind: "fee_agreement", title: `Success fee agreement ${agreement.status.replaceAll("_", " ")}`, detail: agreement.agreement_reference ?? null, amount: null, tone: agreement.status === "signed" ? "success" as const : agreement.status === "voided" || agreement.status === "superseded" ? "danger" as const : "info" as const, actor_name: null, occurred_at: agreement.signed_at ?? agreement.sent_at ?? agreement.prepared_at ?? new Date(0).toISOString() }] : []),
+    ...(authorizationRequest ? [{ id: `authorization-request:${authorizationRequest.status}:${authorizationRequest.sent_at ?? "pending"}`, kind: "authorization_request", title: `ACH authorization request ${authorizationRequest.status.replaceAll("_", " ")}`, detail: authorizationRequest.failed_reason ?? "Invitation to review and sign; this is not the exact debit notice.", amount: raw ? dollars(raw.client_ach_cents) : null, tone: authorizationRequest.status === "delivered" ? "success" as const : authorizationRequest.status === "failed" ? "danger" as const : "warning" as const, actor_name: null, occurred_at: authorizationRequest.delivered_at ?? authorizationRequest.sent_at ?? raw?.updated_at ?? new Date(0).toISOString() }] : []),
+    ...(notice ? [{ id: `debit-notice:${notice.id}:${notice.status}`, kind: "debit_notice", title: `ACH debit notice ${notice.status.replaceAll("_", " ")}`, detail: `${new Date(notice.scheduled_debit_at).toLocaleString()} · revocation cutoff ${new Date(notice.revocation_cutoff_at).toLocaleString()}`, amount: dollars(notice.amount_cents), tone: notice.status === "delivered" ? "success" as const : notice.status === "failed" ? "danger" as const : "warning" as const, actor_name: null, occurred_at: notice.delivered_at ?? notice.sent_at ?? notice.scheduled_debit_at }] : []),
     ...(raw ? [{ id: `obligation:${raw.id}`, kind: "fee_obligation", title: `Fee obligation ${raw.status.replaceAll("_", " ")}`, detail: raw.agreement_reference ? `Agreement ${raw.agreement_reference}` : null, amount: dollars(raw.client_ach_cents), tone: raw.status === "returned" ? "danger" as const : "info" as const, actor_name: null, occurred_at: raw.updated_at }] : []),
     ...(funding ? [{ id: `funding:${funding.id}`, kind: "funding_confirmation", title: "Actual funding confirmed", detail: `${funding.funding_party_name}${funding.funding_reference ? ` · ${funding.funding_reference}` : ""}`, amount: numberOrNull(funding.actual_funded_amount), tone: "success" as const, actor_name: null, occurred_at: funding.confirmed_at }] : []),
     ...transfers.map((item) => ({ id: `transfer:${item.id}:${item.status}`, kind: "transfer", title: `ACH ${item.status.replaceAll("_", " ")}`, detail: item.provider_failure_message ?? item.provider_failure_code ?? null, amount: dollars(item.amount_cents), tone: ["failed", "returned"].includes(item.status) ? "danger" as const : item.status === "funds_available" ? "success" as const : "warning" as const, actor_name: null, occurred_at: item.funds_available_at ?? item.returned_at ?? item.submitted_at ?? item.created_at })),
@@ -443,10 +584,11 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
   const permissions: PaymentPermissions = {
     can_view: wire.capabilities?.can_read ?? true,
     can_edit_allocation: Boolean(wire.capabilities?.can_prepare),
+    can_prepare_fee_agreement: Boolean(wire.capabilities?.can_prepare_fee_agreement ?? wire.capabilities?.can_prepare),
     can_waive: Boolean(wire.capabilities?.can_waive),
     can_prepare_obligation: Boolean(wire.capabilities?.can_prepare),
     can_confirm_funding: Boolean(wire.capabilities?.can_confirm_funding),
-    can_send_authorization: Boolean(wire.capabilities?.can_prepare),
+    can_send_authorization: Boolean(wire.capabilities?.can_send_authorization),
     can_release_ach: Boolean(wire.capabilities?.can_release),
     can_retry: Boolean(wire.capabilities?.can_release),
     can_refund: Boolean(wire.capabilities?.can_refund),
@@ -454,6 +596,8 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
     can_manage_private_schedule: Boolean(wire.capabilities?.can_manage_private_schedules),
     can_manage_servicing_authority: false,
     can_request_review: true,
+    can_manage_mandate_proof: Boolean(wire.capabilities?.can_manage_mandate_proof),
+    can_revoke_mandate: Boolean(wire.capabilities?.can_revoke_mandate),
   };
   const feeObligation: FeeObligation | null = raw ? {
     id: raw.id,
@@ -470,7 +614,7 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
     ],
     agreement_ready: Boolean(raw.agreement_reference || raw.agreement_sha256),
     prepared_at: raw.created_at,
-    authorization_sent_at: null,
+    authorization_sent_at: raw.authorization_sent_at ?? authorizationRequest?.sent_at ?? null,
     released_at: latestTransfer?.submitted_at ?? null,
   } : null;
   return {
@@ -479,6 +623,8 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
     client_id: wire.client_id ?? null,
     loan_id: wire.loan_id ?? null,
     display_name: null,
+    ach_authorization_enabled: Boolean(wire.capabilities?.ach_authorization_enabled),
+    legal_approval_required: Boolean(wire.capabilities?.legal_approval_required ?? !wire.capabilities?.ach_authorization_enabled),
     approved_amount: numberOrNull(economics.approved_amount),
     accepted_amount: numberOrNull(economics.accepted_amount),
     funded_amount: numberOrNull(economics.funded_amount),
@@ -488,9 +634,82 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
     gross_expected_fee: dollars(economics.gross_fee_cents ?? grossCents),
     allocation,
     obligation: feeObligation,
+    fee_agreement: agreement ? {
+      id: agreement.id,
+      status: agreement.status as FeeAgreement["status"],
+      signature_kind: "success_fee_agreement",
+      template_version: agreement.template_version ?? null,
+      agreement_reference: agreement.agreement_reference ?? null,
+      document_sha256: agreement.document_sha256 ?? agreement.artifact?.sha256 ?? null,
+      prepared_at: agreement.prepared_at ?? null,
+      sent_at: agreement.sent_at ?? null,
+      signed_at: agreement.signed_at ?? null,
+      countersigned_at: agreement.countersigned_at ?? null,
+      sign_url: agreement.sign_url ?? null,
+      proof_email_status: agreement.proof_email_status ?? null,
+      current: Boolean(agreement.current),
+      artifact: agreement.artifact ? {
+        bucket_file_id: agreement.artifact.bucket_file_id ?? null,
+        name: agreement.artifact.name ?? "Executed Success Fee Agreement",
+        download_url: agreement.artifact.download_url ?? null,
+        sha256: agreement.artifact.sha256 ?? null,
+        retention_class: agreement.artifact.retention_class ?? "payment_agreement",
+        protected_until: agreement.artifact.protected_until ?? null,
+        legal_hold: Boolean(agreement.artifact.legal_hold),
+      } : null,
+    } : null,
+    authorization_request_delivery: authorizationRequest ? {
+      status: authorizationRequest.status,
+      sent_at: authorizationRequest.sent_at ?? null,
+      delivered_at: authorizationRequest.delivered_at ?? null,
+      failed_reason: authorizationRequest.failed_reason ?? null,
+    } : raw?.authorization_sent_at ? {
+      status: "sent",
+      sent_at: raw.authorization_sent_at,
+      delivered_at: null,
+      failed_reason: null,
+    } : null,
+    debit_notice: notice ? {
+      id: notice.id,
+      status: notice.status as DebitNotice["status"],
+      amount: dollars(notice.amount_cents),
+      scheduled_debit_at: notice.scheduled_debit_at,
+      submission_window: notice.submission_window ?? "business_day_et",
+      debit_window_start_at: notice.debit_window_start_at ?? null,
+      debit_window_end_at: notice.debit_window_end_at ?? null,
+      advance_notice_business_days: notice.notice_business_days ?? notice.advance_notice_business_days ?? 0,
+      revocation_cutoff_at: notice.revocation_cutoff_at,
+      sent_at: notice.sent_at ?? null,
+      delivered_at: notice.delivered_at ?? null,
+      failed_reason: notice.last_error ?? notice.failed_reason ?? null,
+    } : null,
     funding_confirmation: funding ? { id: funding.id, funded_at: funding.actual_funding_date, funded_amount: numberOrNull(funding.actual_funded_amount) ?? 0, funding_party: funding.funding_party_name, transaction_reference: funding.funding_reference ?? null, source: funding.source, note: funding.note ?? null, confirmed_by_name: null, confirmed_at: funding.confirmed_at } : null,
-    funding_source: source ? { id: source.id, ownership_type: source.owner_type, institution_name: source.institution_name ?? null, account_name: source.account_name ?? null, account_mask: source.account_mask ?? null, account_subtype: source.account_subtype ?? null, status: source.status as PaymentFundingSource["status"], connected_at: source.verified_at ?? source.created_at } : null,
-    mandate: mandate ? { id: mandate.id, status: mandate.status as AchMandate["status"], authorized_amount: dollars(mandate.authorized_amount_cents), sec_code: mandate.ach_class, payer_name: mandate.payer_name, signed_at: mandate.signed_at ?? null, revoked_at: mandate.revoked_at ?? null, certificate_available: false } : null,
+    funding_source: source ? { id: source.id, ownership_type: source.owner_type, ach_class: normalizeAchClass(source.ach_class), institution_name: source.institution_name ?? null, account_name: source.account_name ?? null, account_mask: source.account_mask ?? null, account_subtype: source.account_subtype ?? null, status: source.status as PaymentFundingSource["status"], connected_at: source.verified_at ?? source.created_at, business_account_attested: source.business_account_attested } : null,
+    mandate: mandate ? {
+      id: mandate.id, status: mandate.status as AchMandate["status"], authorized_amount: dollars(mandate.authorized_amount_cents),
+      current: isAchMandateActive(mandate),
+      sec_code: mandate.ach_class.toUpperCase() as AchMandate["sec_code"], payer_name: mandate.payer_name,
+      signed_at: mandate.signed_at ?? null, revoked_at: mandate.revoked_at ?? null, certificate_available: Boolean(mandate.certificate_available || mandate.artifact),
+      authorization_type: mandate.authorization_type ?? "one_time_business_ccd", scheduled_debit_at: mandate.scheduled_debit_at ?? notice?.scheduled_debit_at ?? null,
+      submission_window: mandate.submission_window ?? notice?.submission_window ?? null,
+      advance_notice_business_days: mandate.notice_business_days ?? mandate.advance_notice_business_days ?? notice?.notice_business_days ?? notice?.advance_notice_business_days ?? 2,
+      revocation_cutoff_at: mandate.revocation_cutoff_at ?? notice?.revocation_cutoff_at ?? null,
+      revocation_email: mandate.revocation_email ?? "support@qualifiedcommercial.com",
+      agreement_reference: mandate.agreement_reference ?? agreement?.agreement_reference ?? null,
+      agreement_sha256: mandate.agreement_sha256 ?? agreement?.document_sha256 ?? null,
+      proof_email_status: mandate.proof_copy_delivery_status ?? mandate.proof_email_status ?? null,
+      proof_delivered_at: mandate.proof_copy_delivered_at ?? mandate.proof_delivered_at ?? null,
+      can_revoke: mandate.can_revoke, can_resend_proof: mandate.can_resend_proof,
+      artifact: mandate.artifact ? {
+        bucket_file_id: mandate.artifact.bucket_file_id ?? null,
+        name: mandate.artifact.name ?? "Executed ACH Authorization",
+        download_url: mandate.artifact.download_url ?? null,
+        sha256: mandate.artifact.sha256 ?? null,
+        retention_class: mandate.artifact.retention_class ?? "ach_poa",
+        protected_until: mandate.artifact.protected_until ?? null,
+        legal_hold: Boolean(mandate.artifact.legal_hold),
+      } : null,
+    } : null,
     transfer: latestTransfer ? { id: latestTransfer.id, amount: dollars(latestTransfer.amount_cents), status: transferStatus(latestTransfer.status), provider_transfer_id: latestTransfer.plaid_transfer_id ?? null, submitted_at: latestTransfer.submitted_at ?? null, funds_available_at: latestTransfer.funds_available_at ?? null, failed_at: latestTransfer.provider_failure_code ? latestTransfer.returned_at ?? latestTransfer.submitted_at ?? null : null, return_code: latestTransfer.provider_failure_code ?? null, return_reason: latestTransfer.provider_failure_message ?? null, retry_eligible: ["R01", "R09"].includes(latestTransfer.provider_failure_code ?? "") && latestTransfer.attempt_no <= 2, resume_eligible: Boolean(latestTransfer.resume_eligible), retry_count: Math.max(0, latestTransfer.attempt_no - 1), refundable_amount: latestTransfer.status === "funds_available" ? Math.max(0, dollars(latestTransfer.amount_cents) - dollars(wire.totals?.refunded_cents)) : 0 } : null,
     private_funding_eligible: Boolean(wire.capabilities?.private_funding_payments_enabled && (plan || wire.capabilities?.can_manage_private_schedules)),
     private_funding_reason: wire.capabilities?.private_funding_payments_enabled ? null : "Private-funding payments are not enabled for this file.",
@@ -524,7 +743,24 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
     servicing_authorities: [],
     timeline,
     totals: { bank_direct_expected: dollars(wire.totals?.bank_direct_expected_cents), bank_direct_received: dollars(wire.totals?.bank_direct_received_cents), external_received: dollars(wire.totals?.external_cents), client_ach_target: dollars(wire.totals?.client_ach_cents), scheduled: plan ? dollars(plan.total_amount_cents) : 0, processing: dollars(wire.totals?.processing_cents), collected: dollars(wire.totals?.collected_cents), refunded: dollars(wire.totals?.refunded_cents), waived: dollars(wire.totals?.waived_cents), outstanding: dollars(wire.totals?.outstanding_cents) },
-    readiness: { fee_obligation_current: Boolean(raw && allocation?.is_current), agreement_signed: Boolean(raw?.agreement_reference || raw?.agreement_sha256), consulting_fee_earned: !raw?.consulting_fee_cents || Boolean(raw.consulting_milestone_confirmed_at), client_authorized: mandate?.status === "signed", funding_confirmed: Boolean(funding), amount_covered: Boolean(raw && mandate && mandate.authorized_amount_cents >= raw.client_ach_cents), account_eligible: source?.status === "verified" || source?.status === "connected", no_existing_claim: !latestTransfer || ["failed", "returned", "cancelled"].includes(latestTransfer.status), ready_for_release: Boolean(wire.readiness?.ready_to_release), blockers },
+    readiness: {
+      fee_obligation_current: Boolean(raw && allocation?.is_current),
+      fee_agreement_signed: feeAgreementSigned,
+      agreement_signed: feeAgreementSigned,
+      consulting_fee_earned: !raw?.consulting_fee_cents || Boolean(raw.consulting_milestone_confirmed_at),
+      client_authorized: isAchMandateActive(mandate),
+      funding_confirmed: Boolean(funding),
+      amount_covered: Boolean(raw && mandate && mandate.authorized_amount_cents >= raw.client_ach_cents),
+      account_eligible: Boolean(source && source.owner_type === "business" && normalizeAchClass(source.ach_class) === "CCD" && (source.status === "verified" || source.status === "connected")),
+      authorization_proof_delivered: Boolean(
+        wire.readiness?.authorization_proof_delivered
+        ?? ["sent", "delivered"].includes(mandate?.proof_email_status ?? ""),
+      ),
+      debit_notice_delivered: Boolean(wire.readiness?.debit_notice_delivered ?? notice?.status === "delivered"),
+      no_existing_claim: !latestTransfer || ["failed", "returned", "cancelled"].includes(latestTransfer.status),
+      ready_for_release: Boolean(wire.readiness?.ready_to_release),
+      blockers,
+    },
     permissions,
     server_now: new Date().toISOString(),
   };
@@ -575,9 +811,13 @@ export function normalizePaymentsQueue(wire: PaymentsQueueResponseWire): Payment
 export const paymentPaths = {
   summary: (profileId: string) => `/application-profiles/${profileId}/payments/summary`,
   allocation: (profileId: string) => `/application-profiles/${profileId}/payments/fee-allocation`,
+  prepareFeeAgreement: (profileId: string) => `/application-profiles/${profileId}/payments/fee-agreements/prepare`,
   obligations: (profileId: string) => `/application-profiles/${profileId}/payments/fee-obligations`,
   confirmFunding: (profileId: string) => `/application-profiles/${profileId}/payments/funding-confirmations`,
   sendAuthorization: (obligationId: string) => `/fee-obligations/${obligationId}/send-authorization`,
+  resendMandateProof: (mandateId: string) => `/ach-mandates/${mandateId}/resend-proof`,
+  resendDebitNotice: (mandateId: string) => `/ach-mandates/${mandateId}/resend-debit-notice`,
+  revokeMandate: (mandateId: string) => `/ach-mandates/${mandateId}/revoke`,
   release: (obligationId: string) => `/fee-obligations/${obligationId}/release`,
   retryTransfer: (transferId: string) => `/payment-transfers/${transferId}/retry`,
   resumeTransfer: (transferId: string) => `/payment-transfers/${transferId}/resume`,

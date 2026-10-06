@@ -17,7 +17,7 @@ export type SignRequestedDocumentPayload = {
   requested_document_id: string;
   typed_name: string;
   esign_consent: boolean;
-  signature_data_url: string;
+  signature_data_url: string | null;
   applicant_legal_first_name?: string;
   applicant_legal_last_name?: string;
   applicant_dob?: string;
@@ -62,6 +62,11 @@ const SIGN_COPY: Record<Lang, {
   state: string;
   zip: string;
   typedName: string;
+  signatureMethod: string;
+  typedSignature: string;
+  typedSignatureHelp: string;
+  drawnSignature: string;
+  drawnSignatureHelp: string;
   esignConsent: string;
   drawSignature: string;
   clearSignature: string;
@@ -82,6 +87,11 @@ const SIGN_COPY: Record<Lang, {
     state: "State",
     zip: "ZIP",
     typedName: "Type your full legal name",
+    signatureMethod: "Choose how to sign",
+    typedSignature: "Type my signature",
+    typedSignatureHelp: "Your typed legal name will be adopted as your electronic signature.",
+    drawnSignature: "Draw my signature",
+    drawnSignatureHelp: "Add a handwritten signature with your mouse, finger, or stylus.",
     esignConsent: "I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA.",
     drawSignature: "Draw your signature",
     clearSignature: "Clear signature",
@@ -102,6 +112,11 @@ const SIGN_COPY: Record<Lang, {
     state: "Estado",
     zip: "Código postal",
     typedName: "Escribe tu nombre legal completo",
+    signatureMethod: "Elige cómo firmar",
+    typedSignature: "Escribir mi firma",
+    typedSignatureHelp: "Tu nombre legal escrito se adoptará como tu firma electrónica.",
+    drawnSignature: "Dibujar mi firma",
+    drawnSignatureHelp: "Agrega una firma manuscrita con el mouse, el dedo o un lápiz óptico.",
     esignConsent: "Consiento el uso de registros y firmas electrónicas bajo la Ley E-SIGN de EE. UU. y UETA.",
     drawSignature: "Dibuja tu firma",
     clearSignature: "Borrar firma",
@@ -114,6 +129,19 @@ const SIGN_COPY: Record<Lang, {
     errIdentity: "Todos los campos de identidad son obligatorios para firmar este formulario.",
   },
 };
+
+export type RequestedDocumentSignatureMethod = "typed" | "drawn";
+
+export function requestedDocumentAllowsTypedSignature(signatureKind?: string | null): boolean {
+  return signatureKind === "success_fee_agreement";
+}
+
+export function requestedDocumentNeedsDrawing(
+  signatureKind: string | null | undefined,
+  method: RequestedDocumentSignatureMethod,
+): boolean {
+  return !requestedDocumentAllowsTypedSignature(signatureKind) || method === "drawn";
+}
 
 export function SignRequestedDocument({
   doc,
@@ -132,9 +160,11 @@ export function SignRequestedDocument({
 }) {
   const s = SIGN_COPY[language];
   const isCreditAuth = doc.signature_kind === "credit_authorization";
+  const allowsTypedSignature = requestedDocumentAllowsTypedSignature(doc.signature_kind);
   const documentText = doc.signature_document_text || (isCreditAuth ? DEFAULT_CREDIT_AUTH_TEXT[language] : "");
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
   const [typedName, setTypedName] = useState("");
+  const [signatureMethod, setSignatureMethod] = useState<RequestedDocumentSignatureMethod>("typed");
   const [esignConsent, setEsignConsent] = useState(false);
   const [firstName, setFirstName] = useState("");
   const [lastName, setLastName] = useState("");
@@ -149,7 +179,8 @@ export function SignRequestedDocument({
     if (!typedName.trim()) { setFormError(s.errTypedName); return; }
     if (!esignConsent) { setFormError(s.errConsent); return; }
     const sigPad = sigPadRef.current;
-    if (!sigPad?.hasSignature()) { setFormError(s.errSignature); return; }
+    const needsDrawing = requestedDocumentNeedsDrawing(doc.signature_kind, signatureMethod);
+    if (needsDrawing && !sigPad?.hasSignature()) { setFormError(s.errSignature); return; }
     if (isCreditAuth) {
       if (!firstName.trim() || !lastName.trim() || !dob.trim() || !street.trim() || !city.trim() || !state.trim() || !zip.trim()) {
         setFormError(s.errIdentity);
@@ -161,7 +192,7 @@ export function SignRequestedDocument({
       requested_document_id: doc.id,
       typed_name: typedName.trim(),
       esign_consent: true,
-      signature_data_url: sigPad.getDataUrl(),
+      signature_data_url: needsDrawing ? sigPad?.getDataUrl() || null : null,
       ...(isCreditAuth
         ? {
             applicant_legal_first_name: firstName.trim(),
@@ -177,7 +208,7 @@ export function SignRequestedDocument({
   }
 
   return (
-    <div className="grid g10">
+    <div className="grid g10 requested-document-signature">
       <div>
         <b>{doc.name}</b>
         {doc.description ? <div className="sub">{doc.description}</div> : null}
@@ -208,6 +239,36 @@ export function SignRequestedDocument({
 
       <SignField label={s.typedName} value={typedName} onChange={setTypedName} />
 
+      {allowsTypedSignature ? (
+        <fieldset className="requested-signature-methods">
+          <legend className="lbl">{s.signatureMethod}</legend>
+          <div role="radiogroup" aria-label={s.signatureMethod}>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={signatureMethod === "typed"}
+              className={signatureMethod === "typed" ? "on" : undefined}
+              onClick={() => { setSignatureMethod("typed"); setFormError(""); }}
+              disabled={busy}
+            >
+              <b>{s.typedSignature}</b>
+              <small>{s.typedSignatureHelp}</small>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={signatureMethod === "drawn"}
+              className={signatureMethod === "drawn" ? "on" : undefined}
+              onClick={() => { setSignatureMethod("drawn"); setFormError(""); }}
+              disabled={busy}
+            >
+              <b>{s.drawnSignature}</b>
+              <small>{s.drawnSignatureHelp}</small>
+            </button>
+          </div>
+        </fieldset>
+      ) : null}
+
       {/* `.consent` — the sheet's disclosure block, at body size on purpose. */}
       <div className={esignConsent ? "consent on" : "consent"}>
         <label>
@@ -216,13 +277,13 @@ export function SignRequestedDocument({
         </label>
       </div>
 
-      <div className="fldsec">
+      {requestedDocumentNeedsDrawing(doc.signature_kind, signatureMethod) ? <div className="fldsec">
         <div className="lbl">{s.drawSignature}</div>
         <SignaturePad ref={sigPadRef} />
         <button type="button" onClick={() => sigPadRef.current?.clear()} className="btn sm mt">
           {s.clearSignature}
         </button>
-      </div>
+      </div> : <div className="requested-typed-signature-note"><b>/s/ {typedName.trim() || s.typedName}</b><span>{s.typedSignatureHelp}</span></div>}
 
       {(formError || error) ? <div className="statusline c-bad">{formError || error}</div> : null}
 
