@@ -1,9 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
+import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvidence";
+import { destroyPdfResource } from "@/lib/pdfLifecycle";
 
 export type BucketReviewFile = {
   id: string;
@@ -157,8 +159,16 @@ export function BucketFileReviewPanel({
 
   useEffect(() => {
     let cancelled = false;
-    let loadingTask: any = null;
-    let loadedDocument: any = null;
+    let loadingTask: PDFDocumentLoadingTask | null = null;
+    let disposalStarted = false;
+    const disposePdfSession = () => {
+      if (disposalStarted || !loadingTask) return;
+      // In pdf.js 6 the loading task—not PDFDocumentProxy—owns teardown of
+      // the transport, network requests, and worker. Keep that distinction
+      // explicit so TypeScript prevents the original proxy.destroy() crash.
+      disposalStarted = true;
+      void destroyPdfResource(loadingTask);
+    };
     if (!previewUrl || fileType !== "pdf" || lockedPresentation) {
       setPdfDoc(null);
       return;
@@ -168,6 +178,7 @@ export function BucketFileReviewPanel({
       setStatus("Loading PDF...");
       setPdfDoc(null);
       const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      if (cancelled) return;
       // All pdf.js runtime assets are staged version-locked into /pdfjs/ by
       // scripts/copy-pdfjs-assets.mjs (postinstall). The wasm decoders and
       // font/cmap data are fetched lazily at render time — without these URLs
@@ -187,10 +198,9 @@ export function BucketFileReviewPanel({
       });
       const doc = await loadingTask.promise;
       if (cancelled) {
-        await doc.destroy().catch(() => undefined);
+        disposePdfSession();
         return;
       }
-      loadedDocument = doc;
       setPdfDoc(doc);
       setPageCount(doc.numPages);
       setStatus("");
@@ -206,8 +216,7 @@ export function BucketFileReviewPanel({
     });
     return () => {
       cancelled = true;
-      if (loadedDocument) void loadedDocument.destroy().catch(() => undefined);
-      else if (loadingTask) void loadingTask.destroy().catch(() => undefined);
+      disposePdfSession();
     };
   }, [fileType, lockedPresentation, previewUrl]);
 
