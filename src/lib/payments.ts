@@ -299,6 +299,10 @@ export type PaymentSummary = {
   accepted_amount: number | null;
   funded_amount: number | null;
   origination_fee_points: number | null;
+  qc_fee_cap_percent: number | null;
+  qc_fee_review_required: boolean;
+  qc_fee_review_reason: string | null;
+  fee_label: string;
   origination_fee: number;
   consulting_fee: number;
   gross_expected_fee: number;
@@ -406,6 +410,10 @@ export type PaymentSummaryWire = {
     accepted_amount?: number | string | null;
     funded_amount?: number | string | null;
     origination_points?: number | string | null;
+    qc_fee_cap_percent?: number | string | null;
+    qc_fee_review_required?: boolean;
+    qc_fee_review_reason?: string | null;
+    fee_label?: string;
     consulting_fee?: number | string | null;
     origination_fee_cents?: number;
     gross_fee_cents?: number;
@@ -629,6 +637,10 @@ export function normalizePaymentSummary(wire: PaymentSummaryWire): PaymentSummar
     accepted_amount: numberOrNull(economics.accepted_amount),
     funded_amount: numberOrNull(economics.funded_amount),
     origination_fee_points: numberOrNull(economics.origination_points),
+    qc_fee_cap_percent: numberOrNull(economics.qc_fee_cap_percent),
+    qc_fee_review_required: Boolean(economics.qc_fee_review_required),
+    qc_fee_review_reason: economics.qc_fee_review_reason ?? null,
+    fee_label: economics.fee_label || "QC origination/success fee",
     origination_fee: dollars(economics.origination_fee_cents),
     consulting_fee: numberOrNull(economics.consulting_fee) ?? dollars(raw?.consulting_fee_cents),
     gross_expected_fee: dollars(economics.gross_fee_cents ?? grossCents),

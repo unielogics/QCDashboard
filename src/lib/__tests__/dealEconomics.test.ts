@@ -35,6 +35,14 @@ describe("deal economics", () => {
 
     expect(parseDealEconomicsDraft({ acceptedAmount: "-1", originationFeePoints: "2", consultingFee: "0" }).valid).toBe(false);
     expect(parseDealEconomicsDraft({ acceptedAmount: "1", originationFeePoints: "101", consultingFee: "0" }).valid).toBe(false);
+    expect(parseDealEconomicsDraft(
+      { acceptedAmount: "1", originationFeePoints: "3.01", consultingFee: "0" },
+      { maxOriginationFeePoints: 3 },
+    ).valid).toBe(false);
+    expect(parseDealEconomicsDraft(
+      { acceptedAmount: "1", originationFeePoints: "3", consultingFee: "0" },
+      { maxOriginationFeePoints: 3 },
+    ).valid).toBe(true);
     expect(parseDealEconomicsDraft({ acceptedAmount: "1", originationFeePoints: "2", consultingFee: "-50" }).valid).toBe(false);
   });
 });

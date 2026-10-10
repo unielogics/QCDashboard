@@ -55,6 +55,7 @@ const VALUES: Record<string, string> = {
   automotive: "Automotive", auto_dealer: "Auto dealerships", car_dealer: "Auto dealerships",
 };
 const MONEY_FIELDS = new Set(["requested_amount", "use_of_funds_total", "real_estate_equipment_amount", "annual_revenue", "annualized_deposits", "cash_flow", "debt_burden", "liquid_assets", "revenue", "deposits"]);
+const PERCENT_FIELDS = new Set(["real_estate_equipment_pct", "gross_margin_pct", "net_margin_pct"]);
 const FACTS: Record<string, string> = {
   declared_collateral: "Real estate collateral", mca_obligations_present: "Existing merchant cash advances",
   floorplan_inventory_present: "Floorplan / inventory", equipment_financing_intent: "Equipment financing need",
@@ -67,7 +68,7 @@ function fieldLabel(field: string): string { return FIT_FIELDS.find((item) => it
 function knownValue(value: string): string { return VALUES[value] || value; }
 function valueLabel(value: unknown, field: string): string {
   if (typeof value === "boolean") return value ? "Yes" : "No";
-  if (typeof value === "number" && Number.isFinite(value)) return `${MONEY_FIELDS.has(field) ? "$" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 20 })}${field === "real_estate_equipment_pct" ? "%" : ""}`;
+  if (typeof value === "number" && Number.isFinite(value)) return `${MONEY_FIELDS.has(field) ? "$" : ""}${value.toLocaleString("en-US", { maximumFractionDigits: 20 })}${PERCENT_FIELDS.has(field) ? "%" : ""}`;
   if (typeof value === "string") return value ? `“${knownValue(value)}”` : "[choose a value]";
   return value == null ? "[choose a value]" : "[unsupported value — review Advanced settings]";
 }

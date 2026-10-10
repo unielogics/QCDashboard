@@ -91,6 +91,7 @@ import { ApplicationVerificationWorkspace } from "@/components/application/Appli
 import { ApplicationEvidenceWorkspace } from "@/components/application/ApplicationEvidenceWorkspace";
 import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
 import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
+import { CapitalReadinessPanel } from "@/components/application/CapitalReadinessPanel";
 import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
 import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
@@ -131,6 +132,7 @@ import {
 } from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
 import { calculateDealEarnings, parseDealEconomicsDraft } from "@/lib/dealEconomics";
+import { capitalReadinessBandLabel, capitalReadinessBandTone, listReadinessSummary } from "@/lib/capitalReadiness";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 
@@ -978,15 +980,20 @@ export default function AdminAIUnderwriterLeadsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isIntakeOperator, leadParam]);
 
-  const counts = useMemo(() => ({
-    total,
-    good: rows.filter((row) => row.probability_status === "Good probability - book call").length,
-    booked: rows.filter((row) => row.call_booked).length,
-    missing: rows.reduce((sum, row) => sum + row.missing_required_count, 0),
-  }), [rows, total]);
   const unifiedByIntake = useMemo(() => new Map(
     (unifiedFiles?.items ?? []).filter((file) => file.intake_id).map((file) => [file.intake_id as string, file]),
   ), [unifiedFiles]);
+  const counts = useMemo(() => {
+    const readiness = rows.map((row) => listReadinessSummary(unifiedByIntake.get(row.id))).filter((item) => item !== null);
+    return {
+      total,
+      good: rows.filter((row) => row.probability_status === "Good probability - book call").length,
+      booked: rows.filter((row) => row.call_booked).length,
+      missing: rows.reduce((sum, row) => sum + row.missing_required_count, 0),
+      readinessScored: readiness.length,
+      readySoon: readiness.filter((item) => item.band === "ready_soon").length,
+    };
+  }, [rows, total, unifiedByIntake]);
   const aiIntakeTableStorageKey = me?.id ? `ai-intake:${me.id}` : null;
   const {
     rows: orderedRows,
@@ -1131,7 +1138,12 @@ export default function AdminAIUnderwriterLeadsPage() {
           sub="matching the current filters"
           tone="accent"
         />
-        <Stat title="Good probability" value={String(counts.good)} sub="ready for the next action" tone="good" />
+        <Stat
+          title={counts.readinessScored ? "Capital ready" : "Good probability"}
+          value={String(counts.readinessScored ? counts.readySoon : counts.good)}
+          sub={counts.readinessScored ? `${counts.readinessScored} scored · advisory` : "ready for the next action"}
+          tone="good"
+        />
         <Stat title="Booked calls" value={String(counts.booked)} sub="appointments on this page" tone="neutral" />
         <Stat title="Missing items" value={String(counts.missing)} sub="requirements still unresolved" tone="warn" />
       </div>
@@ -1198,10 +1210,11 @@ export default function AdminAIUnderwriterLeadsPage() {
         <div className="tblwrap">
           <table className="tbl">
             <caption className="sr-only">AI intake files</caption>
-            <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Probability</th><th>Status</th><th>Deal economics</th><th>Evidence</th><th>Missing</th><th className="r">Actions</th></tr></thead>
+            <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Capital readiness</th><th>Probability</th><th>Status</th><th>Deal economics</th><th>Evidence</th><th>Missing</th><th className="r">Actions</th></tr></thead>
             <tbody>
-              {loading ? <tr><td colSpan={11}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
+              {loading ? <tr><td colSpan={12}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
                 const unified = unifiedByIntake.get(row.id);
+                const readiness = listReadinessSummary(unified);
                 const statusPresentation = intakeStatusPresentation(row.status, unified?.pipeline_status);
                 const pinned = isPinned(row.id);
                 const hasEconomics = Boolean(unified && (
@@ -1230,6 +1243,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || unified?.case_ref || "Internal"}</div></td>
                     <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
                     <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
+                    <td>{readiness ? <div className="capital-readiness-list-summary"><div><b>{readiness.score == null ? "—" : Math.round(readiness.score)}</b><CellChip tone={capitalReadinessBandTone(readiness.band)}>{capitalReadinessBandLabel(readiness.band)}</CellChip></div><small>{readiness.evidence_coverage_pct == null ? "Coverage unavailable" : `${Math.round(readiness.evidence_coverage_pct)}% evidence coverage`}</small></div> : <span className="sub">Not calculated</span>}</td>
                     <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
                     <td><CellChip tone={row.archived_at ? "mut" : statusPresentation.tone}>{row.archived_at ? "Archived" : statusPresentation.label}</CellChip></td>
                     <td>
@@ -1259,7 +1273,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                   </tr>
                 );
               })}
-              {!loading && !orderedRows.length ? <tr><td colSpan={11}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
+              {!loading && !orderedRows.length ? <tr><td colSpan={12}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
             </tbody>
           </table>
         </div>
@@ -1503,11 +1517,16 @@ function LeadDetailPanel({
     underwriting?.forecast_fee_points,
     underwriting?.forecast_consulting_fee,
   );
-  const draftEconomics = parseDealEconomicsDraft({
-    acceptedAmount: underwritingDraft.accepted_amount,
-    originationFeePoints: underwritingDraft.forecast_fee_points,
-    consultingFee: underwritingDraft.forecast_consulting_fee,
-  });
+  const dealEconomicsVertical = programVerticalForVariant(detail?.intake.variant);
+  const dealEconomicsFeeCap = dealEconomicsVertical === "mca" ? 3 : underwriting?.qc_fee_cap_percent ?? 100;
+  const draftEconomics = parseDealEconomicsDraft(
+    {
+      acceptedAmount: underwritingDraft.accepted_amount,
+      originationFeePoints: underwritingDraft.forecast_fee_points,
+      consultingFee: underwritingDraft.forecast_consulting_fee,
+    },
+    { maxOriginationFeePoints: dealEconomicsFeeCap },
+  );
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
   const canonicalMissingDocuments = useMemo(
@@ -2548,6 +2567,7 @@ function LeadDetailPanel({
                       : canonicalMissingDocuments.length
                         ? `Collect ${canonicalMissingDocuments.map((document) => document.name).join(", ")}.`
                         : String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
+                    {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
                     <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
                   </section>
                   <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
@@ -2594,6 +2614,7 @@ function LeadDetailPanel({
                   {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
                   {underwritingLoading ? <div className="empty">Loading underwriting controls...</div> : (
                     <div className="underwriting-workspace">
+                      {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
                       <div className="underwriting-status-strip">
                         <div>
                           <span className="lbl">Current lifecycle</span>
@@ -2629,6 +2650,11 @@ function LeadDetailPanel({
                         </div>
                         <DealEconomicsFields
                           profileId={profileId}
+                          vertical={dealEconomicsVertical}
+                          qcFeeCapPercent={underwriting?.qc_fee_cap_percent}
+                          qcFeeReviewRequired={underwriting?.qc_fee_review_required}
+                          qcFeeReviewReason={underwriting?.qc_fee_review_reason}
+                          feeLabel={underwriting?.fee_label}
                           approvedAmount={underwriting?.approved_amount}
                           acceptedAmount={underwritingDraft.accepted_amount}
                           originationFeePoints={underwritingDraft.forecast_fee_points}

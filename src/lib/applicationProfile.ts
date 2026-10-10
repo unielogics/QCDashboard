@@ -60,6 +60,10 @@ export type ApplicationProfile = {
   forecast_consulting_fee: number | null;
   forecast_origination_earnings: number | null;
   forecast_earnings: number | null;
+  qc_fee_cap_percent: number | null;
+  qc_fee_review_required: boolean;
+  qc_fee_review_reason: string | null;
+  fee_label: string;
   /** Operator-estimated closing day. This is not the actual funded/closed timestamp. */
   estimated_close_date: string | null;
   /** Actual gross amount funded when the lifecycle reaches closed_won. */
@@ -73,6 +77,9 @@ export type ApplicationProfile = {
   missing_item_email_attempts: number;
   missing_item_email_requirement_key: string | null;
   owner_storage: "application" | "dealer";
+  /** Client/file language. It is independent from the signed-in employee's UI locale. */
+  communication_locale?: "en" | "es";
+  communication_locale_source?: string | null;
 };
 
 export type RequirementStateStatus =
@@ -323,6 +330,10 @@ export type ApplicationUnderwritingState = {
   forecast_consulting_fee: number | null;
   forecast_origination_earnings: number | null;
   forecast_earnings: number | null;
+  qc_fee_cap_percent: number | null;
+  qc_fee_review_required: boolean;
+  qc_fee_review_reason: string | null;
+  fee_label: string;
   estimated_close_date: string | null;
   funded_amount: number | null;
   updated_by_user_id: string | null;

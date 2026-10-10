@@ -32,6 +32,8 @@ export interface User {
   // Dead: dropped by migration 0102 and never returned by /auth/me. Kept only
   // so older call sites type-check; do not read it.
   nda_signed_at?: string | null;
+  /** Signed-in employee interface preference; never controls client communications. */
+  ui_locale?: "en" | "es";
 }
 
 export interface ConsoleLink {

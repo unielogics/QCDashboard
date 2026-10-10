@@ -42,7 +42,11 @@ export function FileEconomicsDrawer({ open, row, onClose, onSaved }: FileEconomi
 
   const isFunded = (row?.pipeline_status ?? row?.underwriting_status) === "closed_won";
   const parsedFundedAmount = fundedAmount.trim() === "" ? null : Number(fundedAmount);
-  const parsed = parseDealEconomicsDraft({ acceptedAmount, originationFeePoints, consultingFee });
+  const effectiveFeeCap = row?.vertical === "mca" ? 3 : row?.qc_fee_cap_percent ?? 100;
+  const parsed = parseDealEconomicsDraft(
+    { acceptedAmount, originationFeePoints, consultingFee },
+    { maxOriginationFeePoints: effectiveFeeCap },
+  );
   const fundedAmountValid = !isFunded || parsedFundedAmount == null || (Number.isFinite(parsedFundedAmount) && parsedFundedAmount >= 0);
   const canSave = Boolean(row) && !update.isPending && parsed.valid && fundedAmountValid;
 
@@ -89,6 +93,11 @@ export function FileEconomicsDrawer({ open, row, onClose, onSaved }: FileEconomi
       {error ? <div className="warnline" style={{ marginBottom: 14 }}>{error}</div> : null}
       <DealEconomicsFields
         profileId={row?.profile_id}
+        vertical={row?.vertical}
+        qcFeeCapPercent={row?.qc_fee_cap_percent}
+        qcFeeReviewRequired={row?.qc_fee_review_required}
+        qcFeeReviewReason={row?.qc_fee_review_reason}
+        feeLabel={row?.fee_label}
         approvedAmount={row?.approved_amount}
         acceptedAmount={acceptedAmount}
         originationFeePoints={originationFeePoints}

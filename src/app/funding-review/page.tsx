@@ -13,12 +13,15 @@ import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/comp
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
 import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
-import { realEstateCopy, getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
+import { realEstateCopy, getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { readCapitalReadinessHandoffFragment, readinessFundingPurposeLabel, toCapitalReadinessIntakePrefill, type CapitalReadinessDiagnosticHandoff } from "@/lib/capitalReadinessHandoff";
 import { validPhone } from "@/lib/formCoerce";
 import { metricProvenance } from "@/lib/intake";
 import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
+import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import type { IntakeChatAction, IntakeChatActionResult } from "@/lib/intake";
+import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
 
 type RequestedDoc = {
   id: string;
@@ -72,6 +75,7 @@ type Intake = {
   intake_state?: Record<string, unknown> | null;
   result_snapshot?: Record<string, unknown> | null;
   preferred_language?: string;
+  communication_locale?: "en" | "es" | null;
 };
 
 type BookingSlot = {
@@ -132,6 +136,9 @@ type IntakeResponse = {
     author_name?: string | null;
   }>;
   chat_actions?: IntakeChatAction[];
+  /** Client-safe, server-reviewed projection. Absent on older deployments. */
+  capital_readiness?: ApplicationCapitalReadinessSnapshot | null;
+  communication_locale?: "en" | "es" | null;
 };
 
 type AssetRow = {
@@ -256,6 +263,7 @@ export default function DealerAIUnderwriterPage() {
   const messagesEndRef = useRef<HTMLDivElement | null>(null);
   const progressTimersRef = useRef<number[]>([]);
   const completionTimerRef = useRef<number | null>(null);
+  const capitalReadinessHandoffRef = useRef<CapitalReadinessDiagnosticHandoff | null>(null);
   const [token, setToken] = useState<string>("");
   const [dealerSessionToken, setDealerSessionToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
@@ -296,7 +304,7 @@ export default function DealerAIUnderwriterPage() {
   const c = useMemo(() => realEstateCopy(language ?? "en"), [language]);
 
   useEffect(() => {
-    setLanguage(getStoredLanguage());
+    setLanguage(getStoredLanguage("real_estate"));
   }, []);
 
   useEffect(() => {
@@ -308,6 +316,7 @@ export default function DealerAIUnderwriterPage() {
   }, []);
 
   useEffect(() => {
+    const readinessHandoff = readCapitalReadinessHandoffFragment();
     const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
     const urlToken = params?.get("token") ?? null;
     const continueRequested = params?.get("continue") === "1";
@@ -341,13 +350,22 @@ export default function DealerAIUnderwriterPage() {
         .finally(() => setCheckingResume(false));
       return;
     }
+    if (readinessHandoff) {
+      capitalReadinessHandoffRef.current = readinessHandoff;
+      setLanguage(readinessHandoff.locale);
+      const purpose = readinessFundingPurposeLabel(readinessHandoff.answers.fundingPurpose, readinessHandoff.locale);
+      if (purpose) setDeal((current) => ({ ...current, loan_purpose: purpose }));
+    }
     setCheckingResume(false);
   }, []);
 
   useEffect(() => {
     if (!response) return;
+    const prefilledPurpose = capitalReadinessHandoffRef.current
+      ? readinessFundingPurposeLabel(capitalReadinessHandoffRef.current.answers.fundingPurpose, capitalReadinessHandoffRef.current.locale)
+      : "";
     setDeal({
-      loan_purpose: response.intake.loan_purpose ?? "",
+      loan_purpose: response.intake.loan_purpose ?? prefilledPurpose,
       requested_loan_amount: response.intake.requested_loan_amount ? String(Math.round(response.intake.requested_loan_amount)) : "",
       estimated_credit_score: response.intake.estimated_credit_score ? String(response.intake.estimated_credit_score) : "",
     });
@@ -499,6 +517,9 @@ export default function DealerAIUnderwriterPage() {
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
           preferred_language: language ?? "en",
+          ...(capitalReadinessHandoffRef.current ? {
+            capital_readiness_diagnostic: toCapitalReadinessIntakePrefill(capitalReadinessHandoffRef.current),
+          } : {}),
           ...readPublicIntakeAttribution(),
         }),
       });
@@ -989,10 +1010,9 @@ export default function DealerAIUnderwriterPage() {
     // Sticky per-lead language, sourced from the server response -- overrides
     // the local picker/sessionStorage pick with whatever the lead's row
     // actually holds (self-picked at start, or admin/broker-assigned).
-    const serverLanguage = payload.intake.preferred_language;
-    if (serverLanguage === "en" || serverLanguage === "es") {
+    const serverLanguage = resolveCommunicationLanguage(payload.communication_locale, payload.intake.communication_locale, payload.intake.preferred_language);
+    if (serverLanguage) {
       setLanguage(serverLanguage);
-      setStoredLanguage(serverLanguage);
     }
     if (persist) persistDealerSession({ token: activeToken || payload.token, session_token: payload.session_token });
     setContact((current) => ({
@@ -1090,7 +1110,7 @@ export default function DealerAIUnderwriterPage() {
           <LanguagePickerScreen
             onPick={(lang) => {
               setLanguage(lang);
-              setStoredLanguage(lang);
+              setStoredLanguage(lang, "real_estate");
             }}
           />
         ) : !response ? (
@@ -2507,6 +2527,10 @@ function IntelligencePanel({
           <span>Upload files or ask the underwriter to screen the package. Metrics will populate as evidence is extracted.</span>
         </div>
       )}
+
+      {response.capital_readiness ? (
+        <CapitalReadinessSnapshotView snapshot={response.capital_readiness} locale={language} clientSafe />
+      ) : null}
 
       <div style={kpiGrid}>
         <IntelligenceKpi metric={model.requestedAmount} />

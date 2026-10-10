@@ -122,13 +122,15 @@ export function YourContactDetails() {
   const update = useUpdateProfile();
   const [phone, setPhone] = useState("");
   const [title, setTitle] = useState("");
+  const [uiLocale, setUiLocale] = useState<"en" | "es">("en");
   const [touched, setTouched] = useState(false);
   useEffect(() => {
     if (touched || !user) return;
     setPhone(user.phone ?? "");
     setTitle(user.title ?? "");
+    setUiLocale(user.ui_locale === "es" ? "es" : "en");
   }, [user, touched]);
-  const dirty = touched && (phone !== (user?.phone ?? "") || title !== (user?.title ?? ""));
+  const dirty = touched && (phone !== (user?.phone ?? "") || title !== (user?.title ?? "") || uiLocale !== (user?.ui_locale ?? "en"));
   const missingPhone = Boolean(user) && !(user?.phone ?? "").trim();
 
   return (
@@ -151,9 +153,16 @@ export function YourContactDetails() {
               onChange={(e) => { setTouched(true); setTitle(e.target.value); }} />
           </Field>
         </div>
+        <Field label="Your interface language">
+          <Select value={uiLocale} onChange={(event) => { setTouched(true); setUiLocale(event.target.value === "es" ? "es" : "en"); }}>
+            <option value="en">English</option>
+            <option value="es">Español</option>
+          </Select>
+          <span className="sub">Used for your interface. Each client's saved communication language stays with their file.</span>
+        </Field>
         <Row>
           <Btn disabled={!dirty || update.isPending}
-            onClick={() => update.mutate({ phone: phone.trim() || null, title: title.trim() || null },
+            onClick={() => update.mutate({ phone: phone.trim() || null, title: title.trim() || null, ui_locale: uiLocale },
               { onSuccess: () => setTouched(false) })}>
             {update.isPending ? "Saving…" : "Save"}
           </Btn>

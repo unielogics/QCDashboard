@@ -22,6 +22,7 @@ import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
 import { PhoneRequiredGate, phoneGateSkipped } from "@/components/shell/PhoneRequiredGate";
 import { AcknowledgmentGate } from "@/components/shell/AcknowledgmentGate";
 import { ConsoleAccessNotice } from "@/components/shell/ConsoleAccessNotice";
+import { CapitalReadinessClaimGate } from "@/components/application/CapitalReadinessClaimGate";
 import { OPERATOR_CONSOLE_ROLES } from "@/lib/consoles";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 
@@ -267,6 +268,7 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
     // viewport instead so <main> below can be the only scroller. That
     // correction lives in app-extras.css, not here.
     <div className={sidebarCollapsed ? "app app--collapsed" : "app"} data-dark={theme === "dark" ? "1" : undefined}>
+      {user.role === Role.CLIENT && !isAccountRoute ? <CapitalReadinessClaimGate user={user} /> : null}
       <Sidebar />
       {/* min-height:0 + minWidth:0 are REQUIRED on the flex column so the
           inner <main> can actually shrink and scroll instead of pushing the

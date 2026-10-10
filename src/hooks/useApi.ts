@@ -736,8 +736,8 @@ export function useUpdateProfile() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { phone?: string | null; title?: string | null }) =>
-      apiCall<{ name: string; email: string; phone: string | null; title: string | null }>("/me/profile", {
+    mutationFn: (data: { phone?: string | null; title?: string | null; ui_locale?: "en" | "es" }) =>
+      apiCall<{ name: string; email: string; phone: string | null; title: string | null; ui_locale: "en" | "es" }>("/me/profile", {
         method: "PATCH",
         body: JSON.stringify(data),
       }),

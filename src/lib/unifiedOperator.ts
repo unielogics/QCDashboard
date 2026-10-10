@@ -1,5 +1,6 @@
 import type { ChipTone } from "@/components/ds";
 import { calculateDealEarnings } from "@/lib/dealEconomics";
+import type { CapitalReadinessBand, CapitalReadinessListSummary, CapitalReadinessReviewStatus } from "@/lib/capitalReadiness";
 
 export type UnifiedVertical = "real_estate" | "main_street" | "dealer" | "mca";
 export type UnifiedOrigin = "console" | "agent" | "rep" | "dealer" | "ai_intake";
@@ -64,7 +65,22 @@ export type UnifiedFileRow = {
   forecast_amount?: number | null;
   forecast_amount_basis?: "requested" | "approved" | "funded" | string | null;
   forecast_earnings?: number | null;
+  qc_fee_cap_percent?: number | null;
+  qc_fee_review_required?: boolean;
+  qc_fee_review_reason?: string | null;
+  fee_label?: string;
   estimated_close_date?: string | null;
+  /** Advisory financial preparedness. This is distinct from evidence and program readiness. */
+  capital_readiness?: CapitalReadinessListSummary | null;
+  capital_readiness_score?: number | null;
+  capital_readiness_band?: CapitalReadinessBand | null;
+  capital_readiness_review_status?: CapitalReadinessReviewStatus | null;
+  capital_readiness_evidence_coverage_pct?: number | null;
+  capital_readiness_confidence_pct?: number | null;
+  capital_readiness_top_blocker?: string | null;
+  capital_readiness_critical_blocker_count?: number;
+  capital_readiness_overdue_milestone_count?: number;
+  capital_readiness_as_of?: string | null;
   health: string;
   health_tone: UnifiedTone;
   coverage: string;
@@ -151,6 +167,10 @@ export type OperatorFileForecastResult = OperatorFileForecastPatch & {
   forecast_amount: number | null;
   forecast_amount_basis: string | null;
   forecast_earnings: number | null;
+  qc_fee_cap_percent: number | null;
+  qc_fee_review_required: boolean;
+  qc_fee_review_reason: string | null;
+  fee_label: string;
 };
 
 export type UnifiedFilePage = {

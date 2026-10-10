@@ -1,6 +1,6 @@
 "use client";
 
-import { CellChip, Field } from "@/components/ds";
+import { CellChip, Field, StatusLine } from "@/components/ds";
 import { FeeAllocationEditor } from "@/components/payments/FeeAllocationEditor";
 import { parseDealEconomicsDraft } from "@/lib/dealEconomics";
 import { formatUnifiedAmount } from "@/lib/unifiedOperator";
@@ -17,6 +17,11 @@ export type DealEconomicsFieldsProps = {
   onEstimatedCloseDateChange: (value: string) => void;
   /** Canonical application profile. Enables the shared, audited fee allocation. */
   profileId?: string | null;
+  vertical?: "real_estate" | "main_street" | "dealer" | "mca";
+  qcFeeCapPercent?: number | null;
+  qcFeeReviewRequired?: boolean;
+  qcFeeReviewReason?: string | null;
+  feeLabel?: string | null;
   autoFocus?: boolean;
 };
 
@@ -31,13 +36,24 @@ export function DealEconomicsFields({
   onConsultingFeeChange,
   onEstimatedCloseDateChange,
   profileId,
+  vertical,
+  qcFeeCapPercent,
+  qcFeeReviewRequired = false,
+  qcFeeReviewReason,
+  feeLabel,
   autoFocus = false,
 }: DealEconomicsFieldsProps) {
-  const parsed = parseDealEconomicsDraft({ acceptedAmount, originationFeePoints, consultingFee });
+  const effectiveFeeCap = vertical === "mca" ? 3 : qcFeeCapPercent ?? 100;
+  const parsed = parseDealEconomicsDraft(
+    { acceptedAmount, originationFeePoints, consultingFee },
+    { maxOriginationFeePoints: effectiveFeeCap },
+  );
   const percentageEarnings = parsed.acceptedAmount != null && parsed.originationFeePoints != null
     ? parsed.acceptedAmount * parsed.originationFeePoints / 100
     : null;
   const pointsNeedAcceptedAmount = parsed.originationFeePoints != null && parsed.acceptedAmount == null;
+  const savedFeeValue = Number(originationFeePoints);
+  const historicalMcaReview = vertical === "mca" && originationFeePoints.trim() !== "" && Number.isFinite(savedFeeValue) && savedFeeValue > 3;
 
   return (
     <>
@@ -71,15 +87,15 @@ export function DealEconomicsFields({
         </Field>
         <Field
           className="s6"
-          label="Origination fee"
-          hint="Percentage charged on the accepted amount. One point equals 1%."
-          error={originationFeePoints.trim() !== "" && !parsed.originationFeePointsValid ? "Enter a percentage from 0 to 100." : pointsNeedAcceptedAmount ? "Add the accepted amount to calculate percentage earnings." : undefined}
+          label={feeLabel || "QC origination/success fee"}
+          hint={`Percentage charged on the accepted amount. Current file cap: ${effectiveFeeCap.toFixed(2)}%.`}
+          error={originationFeePoints.trim() !== "" && !parsed.originationFeePointsValid ? `Enter a percentage from 0 to ${effectiveFeeCap.toFixed(2)}.` : pointsNeedAcceptedAmount ? "Add the accepted amount to calculate percentage earnings." : undefined}
         >
           <div className="field box file-economics-points">
             <input
               type="number"
               min="0"
-              max="100"
+              max={vertical === "mca" ? 3 : effectiveFeeCap}
               step="0.01"
               inputMode="decimal"
               value={originationFeePoints}
@@ -124,6 +140,11 @@ export function DealEconomicsFields({
         <b>Expected earnings = accepted amount x origination fee + consulting fee</b>
         <div className="sub">The approved amount remains visible for comparison, but it never replaces the accepted amount in this calculation.</div>
       </div>
+      {qcFeeReviewRequired || historicalMcaReview ? (
+        <StatusLine tone="bad">
+          {qcFeeReviewReason || `This saved fee requires review against the ${effectiveFeeCap.toFixed(2)}% file cap.`}
+        </StatusLine>
+      ) : null}
       {profileId ? (
         <FeeAllocationEditor
           profileId={profileId}

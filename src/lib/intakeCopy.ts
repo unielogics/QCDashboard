@@ -14,18 +14,46 @@
 // consent-bearing content that IS flagged per-string for compliance review.
 
 export type Lang = "en" | "es";
+export type IntakeLanguageScope = "dealer" | "real_estate" | "mca_refinance" | "default";
 
-const LANGUAGE_STORAGE_KEY = "qc_intake_language";
+const LANGUAGE_STORAGE_PREFIX = "qc_intake_language";
 
-export function getStoredLanguage(): Lang | null {
-  if (typeof window === "undefined") return null;
-  const value = window.sessionStorage.getItem(LANGUAGE_STORAGE_KEY);
-  return value === "en" || value === "es" ? value : null;
+function languageStorageKey(scope: IntakeLanguageScope): string {
+  return `${LANGUAGE_STORAGE_PREFIX}:${scope}`;
 }
 
-export function setStoredLanguage(lang: Lang): void {
+/**
+ * Resolve a new entry's explicit link locale. Saved file language is loaded
+ * from the server on resume. A previous intake's browser storage is never a
+ * language source for another file, even within the same intake flow.
+ */
+export function getStoredLanguage(_scope: IntakeLanguageScope = "default"): Lang | null {
+  if (typeof window === "undefined") return null;
+  const value = new URLSearchParams(window.location?.search ?? "").get("locale");
+  if (value === "en" || value === "es") return value;
+  return window.location?.pathname?.match(/^\/es(?:\/|$)/) ? "es" : null;
+}
+
+export function setStoredLanguage(_lang: Lang, scope: IntakeLanguageScope = "default"): void {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem(LANGUAGE_STORAGE_KEY, lang);
+  // Compatibility cleanup: the React entry state holds the current choice;
+  // the eventual file stores it authoritatively on the server.
+  try {
+    window.sessionStorage.removeItem(languageStorageKey(scope));
+    window.sessionStorage.removeItem(LANGUAGE_STORAGE_PREFIX);
+  } catch { /* Storage can be unavailable in private browsing. */ }
+}
+
+/**
+ * Resolve server-owned client/file language without letting browser or employee
+ * preferences override it. Pass canonical `communication_locale` first and
+ * legacy `preferred_language` last during the compatibility rollout.
+ */
+export function resolveCommunicationLanguage(...values: unknown[]): Lang | null {
+  for (const value of values) {
+    if (value === "en" || value === "es") return value;
+  }
+  return null;
 }
 
 type CommonCopy = {

@@ -4,10 +4,14 @@ import type { CSSProperties } from "react";
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
+import { useSearchParams } from "next/navigation";
 import { api, apiBase } from "@/lib/api";
 import { clientQueuedUploadCanSubmit, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
+import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
+import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
+import { useCurrentUser } from "@/hooks/useApi";
 
 type Intake = {
   id: string;
@@ -18,6 +22,8 @@ type Intake = {
   loan_purpose?: string | null;
   result_snapshot?: Record<string, unknown> | null;
   updated_at: string;
+  preferred_language?: "en" | "es";
+  communication_locale?: "en" | "es" | null;
 };
 
 type RequestedDoc = { id: string; name: string; category?: string | null; required: boolean; status: string; request_kind?: string | null; source_file_id?: string | null; replacement_review_state?: string | null };
@@ -33,11 +39,13 @@ type ChatAction = {
   status: string;
 };
 type ChatActionResult = { action_id: string; status: "executed" | "failed"; detail: string; download_url?: string | null; room_url?: string | null; delivery?: { recipient_masked?: string; provider_accepted?: boolean; status?: string } | null };
-type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null };
+type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null; capital_readiness?: ApplicationCapitalReadinessSnapshot | null; communication_locale?: "en" | "es" | null };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 export default function ClientDealerIntakesPage() {
   const { getToken } = useAuth();
+  const { data: currentUser } = useCurrentUser();
+  const searchParams = useSearchParams();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<Intake[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -65,7 +73,9 @@ export default function ClientDealerIntakesPage() {
     const data = await authed<Intake[]>("/buckets/client/intakes");
     setRows(data);
     setNotice(data.length ? "" : "No dealer AI intakes are linked to this account yet.");
-    if (data[0] && !selectedId) await openIntake(data[0].id);
+    const requestedId = searchParams?.get("intake");
+    const first = (requestedId ? data.find((row) => row.id === requestedId) : null) ?? data[0];
+    if (first && !selectedId) await openIntake(first.id);
   }
 
   async function openIntake(id: string) {
@@ -284,6 +294,7 @@ export default function ClientDealerIntakesPage() {
                 </div>
                 <span style={statusPill()}>{detail.intake.status}</span>
               </div>
+              {detail.capital_readiness ? <CapitalReadinessSnapshotView snapshot={detail.capital_readiness} locale={(detail.communication_locale ?? detail.intake.communication_locale ?? detail.intake.preferred_language ?? currentUser?.ui_locale) === "es" ? "es" : "en"} clientSafe /> : null}
               <div style={twoCol}>
                 <div style={box()}>
                   <h3 style={smallTitle}>Required documents</h3>

@@ -25,7 +25,7 @@ import {
   SignRequestedDocument,
   type SignRequestedDocumentPayload,
 } from "@/components/intake/SignRequestedDocument";
-import { getStoredLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
+import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
@@ -71,7 +71,8 @@ type McaIntakeResponse = Omit<
   IntakeResponse,
   "requested_documents" | "assistant_message" | "messages" | "intake"
 > & {
-  intake: Intake & { preferred_language?: string | null };
+  intake: Intake & { preferred_language?: string | null; communication_locale?: "en" | "es" | null };
+  communication_locale?: "en" | "es" | null;
   // Non-null while the desk has taken the conversation over: a person is
   // answering and the assistant is standing down until this time.
   ai_paused_until?: string | null;
@@ -684,7 +685,7 @@ export default function McaRefinanceIntakePage() {
     const freq = (FREQS as readonly string[]).includes(freqParam) ? (freqParam as Freq) : null;
     if (payback !== null || months !== null || freq) setSeed({ payback, months, freq });
 
-    const storedLang = getStoredLanguage();
+    const storedLang = getStoredLanguage("mca_refinance");
     if (storedLang) setLanguage(storedLang);
 
     const storedToken = window.sessionStorage.getItem(TOKEN_KEY);
@@ -743,9 +744,9 @@ export default function McaRefinanceIntakePage() {
           : [...current, { id: cryptoId(), role: "assistant", content: text }],
       );
     }
-    const lang = payload.intake.preferred_language;
-    if (lang === "en" || lang === "es") {
-      setLanguage((current) => current ?? lang);
+    const lang = resolveCommunicationLanguage(payload.communication_locale, payload.intake.communication_locale, payload.intake.preferred_language);
+    if (lang) {
+      setLanguage(lang);
     }
     if (String(payload.intake.status ?? "").toLowerCase().includes("book")) setBooked(true);
   }
@@ -772,7 +773,7 @@ export default function McaRefinanceIntakePage() {
 
   // --- start / login --------------------------------------------------------
   function pickLanguage(lang: Lang) {
-    setStoredLanguage(lang);
+    setStoredLanguage(lang, "mca_refinance");
     setLanguage(lang);
     setPhase("start");
   }

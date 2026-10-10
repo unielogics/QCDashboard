@@ -39,13 +39,17 @@ export function calculateDealEarnings(
   return percentageEarnings + Number(consultingFee ?? 0);
 }
 
-export function parseDealEconomicsDraft(values: DealEconomicsDraftValues): ParsedDealEconomics {
+export function parseDealEconomicsDraft(
+  values: DealEconomicsDraftValues,
+  options: { maxOriginationFeePoints?: number | null } = {},
+): ParsedDealEconomics {
   const acceptedAmount = parseOptionalNumber(values.acceptedAmount);
   const originationFeePoints = parseOptionalNumber(values.originationFeePoints);
   const consultingFee = parseOptionalNumber(values.consultingFee);
   const acceptedAmountValid = values.acceptedAmount.trim() === "" || (acceptedAmount != null && acceptedAmount >= 0);
+  const maxOriginationFeePoints = options.maxOriginationFeePoints ?? 100;
   const originationFeePointsValid = values.originationFeePoints.trim() === ""
-    || (originationFeePoints != null && originationFeePoints >= 0 && originationFeePoints <= 100);
+    || (originationFeePoints != null && originationFeePoints >= 0 && originationFeePoints <= maxOriginationFeePoints);
   const consultingFeeValid = values.consultingFee.trim() === "" || (consultingFee != null && consultingFee >= 0);
   return {
     acceptedAmount,

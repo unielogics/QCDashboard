@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import type { FundingProgramScope } from "@/lib/fundingPrograms";
-import { applySharedIndustryExclusions, baselineNoteGroups, baselineReferenceFromRules, DOCUMENT_REVIEW_PRESETS, EVIDENCE_TEMPLATES, industryPrefixes, jsonEquivalent, newCustomDocumentReviewCheck, newRequirement, readDocumentReviewChecks, readSimpleFit, setRequirementCompletionMode, sharedIndustryExclusions, validateEditorContent, withDocumentReviewChecks, writeSimpleFit } from "../fundingProgramEditorModel";
+import { applySharedIndustryExclusions, baselineNoteGroups, baselineReferenceFromRules, DOCUMENT_REVIEW_PRESETS, EVIDENCE_TEMPLATES, FIT_FIELDS, industryPrefixes, jsonEquivalent, newCustomDocumentReviewCheck, newRequirement, readDocumentReviewChecks, readSimpleFit, setRequirementCompletionMode, sharedIndustryExclusions, validateEditorContent, withDocumentReviewChecks, writeSimpleFit } from "../fundingProgramEditorModel";
 
 describe("funding program guided editor", () => {
+  it("offers confirmed-source gross and net margin fields without adding thresholds", () => {
+    expect(FIT_FIELDS).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: "gross_margin_pct", label: "Gross margin (%)", type: "number" }),
+      expect.objectContaining({ key: "net_margin_pct", label: "Net margin (%)", type: "number" }),
+    ]));
+    expect(validateEditorContent(JSON.stringify({ fit: { field: "gross_margin_pct", op: "gte", value: 30 } }), "[]")).toBeNull();
+  });
   it("round-trips workspace, numeric, and boolean checks while preserving unrelated metadata", () => {
     const rules = { priority: 17, provenance: { source: "reviewed" }, fit: { any: [{ field: "vertical", op: "eq", value: "dealer" }, { field: "annual_revenue", op: "gte", value: 125000 }, { field: "declared_collateral", op: "eq", value: true }] } };
     const fit = readSimpleFit(rules);

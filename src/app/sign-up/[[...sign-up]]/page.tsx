@@ -13,6 +13,7 @@ import {
   TERMS_VERSION,
 } from "@/lib/legal";
 import { PENDING_SIGNUP_ATTRIBUTION_KEY } from "@/hooks/useRecordPendingSignupAttribution";
+import { readCapitalReadinessHandoffFragment, storePendingCapitalReadinessHandoff } from "@/lib/capitalReadinessHandoff";
 
 // localStorage key used to bridge "user accepted at signup time" → the
 // post-signup auto-record effect (in app/providers.tsx via
@@ -24,6 +25,17 @@ export default function SignUpPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [accepted, setAccepted] = useState(false);
+
+  useEffect(() => {
+    const handoff = readCapitalReadinessHandoffFragment();
+    if (handoff) {
+      // Main Street currently enters through account creation. Retain the
+      // consented diagnostic only for this browser tab until the authenticated
+      // application workflow claims it; never move these financial answers to
+      // query parameters or shared localStorage.
+      storePendingCapitalReadinessHandoff(handoff);
+    }
+  }, []);
 
   useEffect(() => {
     if (isLoaded && isSignedIn) {
