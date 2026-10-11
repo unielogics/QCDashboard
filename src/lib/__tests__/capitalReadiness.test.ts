@@ -3,6 +3,8 @@ import {
   capitalReadinessBandLabel,
   capitalReadinessMetricLabel,
   formatReadinessMetric,
+  formatCapitalReadinessMoney,
+  capitalReadinessWarningText,
   listReadinessSummary,
   type CapitalReadinessMetric,
 } from "@/lib/capitalReadiness";
@@ -34,6 +36,22 @@ describe("capital readiness presentation", () => {
       status: "healthy",
       source: { currency: "CAD" },
     })).toContain("CA$");
+  });
+
+  it("does not invent USD for an unknown document currency", () => {
+    expect(formatCapitalReadinessMoney(150000, "XXX")).toBe("150,000 (currency unconfirmed)");
+    expect(formatCapitalReadinessMoney(150000, null, "es")).toBe("150,000 (moneda por confirmar)");
+    expect(formatReadinessMetric({ key: "revenue", label: "Revenue", value: 150000, unit: "currency", status: "healthy", source: { currency: "XXX" } })).not.toContain("$");
+  });
+
+  it("renders structured reconciliation warnings without stringifying objects", () => {
+    expect(capitalReadinessWarningText({ code: "gross_profit_reconciliation", severity: "requires_review" })).toContain("Printed gross profit differs");
+    expect(capitalReadinessWarningText({ code: "financial_entity_unidentified", detail: "Document name missing" }, "es")).toContain("no identifica al negocio");
+    expect(capitalReadinessWarningText({ code: "financial_accounting_basis_unknown" }, "es")).toContain("base contable");
+    expect(capitalReadinessWarningText({ code: "financial_currency_unknown" }, "es")).toContain("moneda");
+    expect(capitalReadinessWarningText({ code: "financial_period_unknown" }, "es")).toContain("período financiero");
+    expect(capitalReadinessWarningText("Legacy warning")).toBe("Legacy warning");
+    expect(capitalReadinessWarningText({ code: "new_code" })).toBe("Source data requires review. Check the linked document.");
   });
 
   it("localizes known bands from their stable key", () => {

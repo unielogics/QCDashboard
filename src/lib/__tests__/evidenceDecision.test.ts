@@ -7,6 +7,7 @@ import {
   evidenceDecisionLabel,
   evidenceDecisionTone,
   evidenceReasonLabel,
+  evidenceIdentityWarningLabel,
 } from "@/lib/evidenceDecision";
 
 describe("evidence decision presentation", () => {
@@ -24,6 +25,15 @@ describe("evidence decision presentation", () => {
     expect(evidenceDecisionTone("accepted")).toBe("ok");
     expect(evidenceDecisionTone("rejected")).toBe("bad");
     expect(evidenceActorLabel("staff")).toBe("Staff decision");
+  });
+
+  it("keeps accepted identity warnings separate from acceptance and rejection", () => {
+    expect(evidenceReasonLabel("entity_mismatch_warning", "accepted")).toBe("Accepted with an entity-name warning");
+    expect(evidenceReasonLabel("entity_unconfirmed_warning", "accepted")).toBe("Accepted with an unconfirmed-identity warning");
+    expect(evidenceIdentityWarningLabel("entity_mismatch_warning")).toBe("Entity name needs review");
+    expect(evidenceIdentityWarningLabel("entity_unconfirmed_warning", "es")).toBe("Identidad por confirmar");
+    expect(evidenceIdentityWarningLabel("wrong_entity")).toBeNull();
+    expect(evidenceDecisionTone("accepted")).toBe("ok");
   });
 
   it("shows the periods contributed by a file", () => {

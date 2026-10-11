@@ -15,10 +15,13 @@ import {
   capitalReadinessReviewLabel,
   capitalReadinessReviewTone,
   formatReadinessMetric,
+  formatCapitalReadinessMoney,
+  capitalReadinessWarningText,
   type ApplicationCapitalReadinessSnapshot,
   type CapitalReadinessMetric,
   type CapitalReadinessAction,
   type CapitalReadinessFinancialPeriod,
+  type CapitalReadinessWarning,
 } from "@/lib/capitalReadiness";
 
 type Locale = "en" | "es";
@@ -650,6 +653,7 @@ export function CapitalReadinessSnapshotView({
         {metrics.map((metric) => <MetricCard key={metric.key} metric={metric} locale={displayLocale} sourcePeriodLabel={c.sourcePeriod} />)}
         {!metrics.length ? <Empty text={c.empty} /> : null}
       </ReadinessSection>
+      <MarginTierGuide locale={displayLocale} />
 
       <ReadinessSection title={c.pillars} className="capital-readiness-pillars">
         {snapshot.pillars.map((pillar) => (
@@ -898,16 +902,17 @@ function FinancialPeriodsDisclosure({ profileId, locale, onRecalculate }: { prof
       {error ? <div className="capital-readiness-inline-error">{error}</div> : null}
       {!loading && periods?.map((period) => <article key={period.id} className="capital-readiness-source-period">
         <div className="capital-readiness-source-period-head">
-          <span><b>{period.entity_name}</b><small>{formatDate(period.period_start)} – {formatDate(period.period_end)} · {period.accounting_basis}</small></span>
+          <span><b>{period.entity_name}</b><small>{formatDate(period.period_start, locale)} – {formatDate(period.period_end, locale)} · {period.accounting_basis}</small></span>
           <CellChip tone={period.review_status === "confirmed" ? "ok" : period.review_status === "rejected" || period.review_status === "superseded" ? "mut" : "warn"}>{financialPeriodStatusLabel(period.review_status, locale)}</CellChip>
         </div>
         <div className="capital-readiness-source-period-values">
-          <span><small>{locale === "es" ? "Ingresos" : "Revenue"}</small><b>{formatFinancialValue(period.revenue, period.currency)}</b></span>
-          <span><small>{locale === "es" ? "Ganancia bruta" : "Gross profit"}</small><b>{formatFinancialValue(period.gross_profit ?? period.derived_gross_profit, period.currency)}</b></span>
-          <span><small>{locale === "es" ? "Ingreso neto" : "Net income"}</small><b>{formatFinancialValue(period.net_income, period.currency)}</b></span>
-          <span><small>EBITDA</small><b>{formatFinancialValue(period.adjusted_ebitda ?? period.ebitda, period.currency)}</b></span>
+          <span><small>{locale === "es" ? "Ingresos" : "Revenue"}</small><b>{period.revenue == null ? "—" : formatCapitalReadinessMoney(period.revenue, period.currency, locale)}</b></span>
+          <span><small>{locale === "es" ? "Ganancia bruta" : "Gross profit"}</small><b>{period.gross_profit == null && period.derived_gross_profit == null ? "—" : formatCapitalReadinessMoney(period.gross_profit ?? period.derived_gross_profit!, period.currency, locale)}</b></span>
+          <span><small>{locale === "es" ? "Ingreso neto" : "Net income"}</small><b>{period.net_income == null ? "—" : formatCapitalReadinessMoney(period.net_income, period.currency, locale)}</b></span>
+          <span><small>EBITDA</small><b>{period.adjusted_ebitda == null && period.ebitda == null ? "—" : formatCapitalReadinessMoney(period.adjusted_ebitda ?? period.ebitda!, period.currency, locale)}</b></span>
         </div>
-        {period.reconciliation_warnings.length ? <p className="capital-readiness-inline-error">{period.reconciliation_warnings.join(" · ")}</p> : null}
+        <CapitalReadinessWarnings warnings={period.reconciliation_warnings} locale={locale} />
+        {period.source_file_id ? <small>{c.evidenceSource}: {period.source_file_id}{period.content_hash ? ` · ${c.hash} ${period.content_hash.slice(0, 10)}…` : ""}</small> : null}
         <div className="row" style={{ gap: 7 }}>
           {period.review_status !== "confirmed" && period.review_status !== "superseded" ? <Btn size="sm" onClick={() => void reviewPeriod(period, "confirmed")} disabled={Boolean(busy)}>{c.confirmPeriod}</Btn> : null}
           {period.review_status !== "rejected" && period.review_status !== "superseded" ? <Btn size="sm" onClick={() => void reviewPeriod(period, "rejected")} disabled={Boolean(busy)}>{c.rejectPeriod}</Btn> : null}
@@ -943,19 +948,42 @@ function ReadinessSection({ title, className, children }: { title: string; class
   return <section className={`capital-readiness-section ${className}`}><h4>{title}</h4><div>{children}</div></section>;
 }
 
-function MetricCard({ metric, locale, sourcePeriodLabel }: { metric: CapitalReadinessMetric; locale: Locale; sourcePeriodLabel: string }) {
+export function MetricCard({ metric, locale, sourcePeriodLabel }: { metric: CapitalReadinessMetric; locale: Locale; sourcePeriodLabel: string }) {
   const c = COPY[locale];
   const label = localizedKnownLabel(metric.key, locale, METRIC_LABELS_EN, METRIC_LABELS_ES, metric.label);
   return (
     <article className={`capital-readiness-metric metric-${metric.status}`}>
       <div><span>{label}</span><CellChip tone={capitalReadinessMetricTone(metric.status)}>{locale === "es" ? METRIC_STATUS_ES[metric.status] : capitalReadinessMetricLabel(metric.status)}</CellChip></div>
-      <strong>{formatReadinessMetric(metric)}</strong>
-      {metric.numerator != null && metric.denominator != null ? <p>{formatPart(metric.numerator, metric.source?.currency)} ÷ {formatPart(metric.denominator, metric.source?.currency)}</p> : null}
+      <strong>{formatReadinessMetric(metric, locale)}</strong>
+      {metric.source?.provisional || metric.source?.identity_warning ? <div className="capital-readiness-metric-review"><CellChip tone="warn">{locale === "es" ? "Cifras provisionales" : "Provisional figures"}</CellChip>{metric.source?.identity_warning ? <CellChip tone="warn">{locale === "es" ? "Identidad por revisar" : "Identity needs review"}</CellChip> : null}</div> : null}
+      {metric.numerator != null && metric.denominator != null ? <p>{formatPart(metric.numerator, metric.source?.currency, locale)} ÷ {formatPart(metric.denominator, metric.source?.currency, locale)}{metric.unit === "percent" || metric.unit === "%" || metric.key.endsWith("_pct") ? " × 100" : ""}</p> : null}
       {metric.source?.trend_percentage_points != null ? <small>{metric.source.trend_percentage_points > 0 ? "+" : ""}{metric.source.trend_percentage_points.toFixed(1)} pp {c.trend}</small> : null}
-      {metric.source_period_id ? <small>{sourcePeriodLabel}: {metricSourceLabel(metric)}</small> : null}
+      {metric.source_period_id || metric.source?.period_start || metric.source?.source_period_ids?.length ? <small>{sourcePeriodLabel}: {metricSourceLabel(metric, locale)}</small> : null}
+      <CapitalReadinessWarnings warnings={metric.source?.context_warnings} locale={locale} />
+      {metric.source?.identity_warning ? <small className="capital-readiness-association-note">{locale === "es" ? "Las cifras siguen disponibles. Revise la vinculación; no combine negocios distintos." : "Figures remain available. Review the association; do not combine different businesses."}</small> : null}
       {metric.confidence_pct != null ? <small>{Math.round(metric.confidence_pct)}% {c.confidenceLower}</small> : null}
     </article>
   );
+}
+
+export function CapitalReadinessWarnings({ warnings, locale = "en" }: { warnings?: Array<CapitalReadinessWarning | string> | null; locale?: Locale }) {
+  if (!Array.isArray(warnings) || !warnings.length) return null;
+  return <ul className="capital-readiness-warnings" aria-label={locale === "es" ? "Advertencias de evidencia" : "Evidence warnings"}>{warnings.map((warning, index) => {
+    if (!warning || (typeof warning !== "string" && typeof warning !== "object")) return null;
+    const severe = typeof warning !== "string" && ["block", "blocking", "requires_review"].includes(warning.severity || "");
+    return <li key={index} className={severe ? "requires-review" : undefined}>{capitalReadinessWarningText(warning, locale)}</li>;
+  })}</ul>;
+}
+
+export function MarginTierGuide({ locale }: { locale: Locale }) {
+  const es = locale === "es";
+  const rows = [
+    [es ? "Preocupante" : "Concerning", "< 10%", "< 2%"],
+    [es ? "Aceptable" : "Acceptable", "10% – < 13%", "2% – < 3%"],
+    [es ? "Saludable" : "Healthy", "13% – < 18%", "3% – < 5%"],
+    [es ? "Muy sólido" : "Very strong", "≥ 18%", "≥ 5%"],
+  ];
+  return <details className="capital-readiness-margin-guide"><summary>{es ? "Cómo interpretar los márgenes" : "How to read the margin tiers"}</summary><p>{es ? "Línea base predeterminada de QC (qc_lending_margin_v1). Una política sectorial publicada puede sustituir estos umbrales; las tarjetas utilizan la política y el nivel calculados por el servidor en esta versión." : "QC default baseline (qc_lending_margin_v1). A published industry policy may override these thresholds; metric cards use the snapshot policy and server-calculated tier."}</p><p>{es ? "Margen bruto = ganancia bruta ÷ ingresos × 100. Margen neto = ingreso neto ÷ ingresos × 100. Se clasifican las cifras sin redondear del mismo período y fuente." : "Gross margin = gross profit ÷ revenue × 100. Net margin = net income ÷ revenue × 100. Classification uses unrounded figures from the same period and source."}</p><table><thead><tr><th>{es ? "Nivel" : "Tier"}</th><th>{es ? "Margen bruto" : "Gross margin"}</th><th>{es ? "Margen neto" : "Net margin"}</th></tr></thead><tbody>{rows.map(([tier, gross, net]) => <tr key={tier}><th scope="row">{tier}</th><td>{gross}</td><td>{net}</td></tr>)}</tbody></table><small>{es ? "Ingresos de cero o negativos: no disponible. Estos niveles son diagnósticos de QC, no decisiones de aprobación. Las propiedades utilizan NOI y DSCR." : "Revenue of zero or less: unavailable. These tiers are QC diagnostics, not approval decisions. Property-only files use NOI and DSCR."}</small></details>;
 }
 
 function NarrativeRow({ item, index, locale, preferStable, kind }: { item: Parameters<typeof capitalReadinessItemTitle>[0]; index?: number; locale: Locale; preferStable: boolean; kind: "blocker" | "strength" }) {
@@ -993,30 +1021,21 @@ function Empty({ text }: { text: string }) {
   return <p className="capital-readiness-section-empty">{text}</p>;
 }
 
-function formatPart(value: number, currency: unknown): string {
-  return value.toLocaleString("en-US", { style: "currency", currency: validCurrency(currency), maximumFractionDigits: 0 });
+function formatPart(value: number, currency: unknown, locale: Locale): string {
+  return formatCapitalReadinessMoney(value, currency, locale);
 }
 
-function metricSourceLabel(metric: CapitalReadinessMetric): string {
+function metricSourceLabel(metric: CapitalReadinessMetric, locale: Locale): string {
   const source = metric.source;
   if (!source) return metric.source_period_id || "—";
-  const period = source.period_start && source.period_end ? `${formatDate(source.period_start)} – ${formatDate(source.period_end)}` : null;
-  return [source.entity_name, source.accounting_basis, period].filter(Boolean).join(" · ") || metric.source_period_id || "—";
+  const period = source.period_start && source.period_end ? `${formatDate(source.period_start, locale)} – ${formatDate(source.period_end, locale)}` : null;
+  const combined = source.aggregation === "ratio_of_sums" && source.source_period_ids?.length ? (locale === "es" ? `${source.source_period_ids.length} períodos compatibles · ratio de sumas` : `${source.source_period_ids.length} compatible periods · ratio of sums`) : null;
+  return [source.entity_name, source.accounting_basis, period, combined].filter(Boolean).join(" · ") || metric.source_period_id || "—";
 }
 
-function validCurrency(value: unknown): string {
-  if (typeof value !== "string" || !/^[A-Z]{3}$/.test(value)) return "USD";
-  try {
-    new Intl.NumberFormat("en-US", { style: "currency", currency: value }).format(0);
-    return value;
-  } catch {
-    return "USD";
-  }
-}
-
-function formatDate(value: string): string {
+function formatDate(value: string, locale: Locale = "en"): string {
   const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  return Number.isNaN(parsed.getTime()) ? value : parsed.toLocaleDateString(locale === "es" ? "es-US" : "en-US", { month: "short", day: "numeric", year: "numeric", ...(/^\d{4}-\d{2}-\d{2}$/.test(value) ? { timeZone: "UTC" } : {}) });
 }
 
 function formatDelta(value: number | null, suffix = ""): string {
@@ -1037,10 +1056,6 @@ function optionalFiniteNumberValid(value: string): boolean {
 
 function toggleValue(values: string[], value: string): string[] {
   return values.includes(value) ? values.filter((item) => item !== value) : [...values, value];
-}
-
-function formatFinancialValue(value: number | null, currency: unknown): string {
-  return value == null ? "—" : value.toLocaleString("en-US", { style: "currency", currency: validCurrency(currency), maximumFractionDigits: 0 });
 }
 
 function financialPeriodStatusLabel(status: string, locale: Locale): string {

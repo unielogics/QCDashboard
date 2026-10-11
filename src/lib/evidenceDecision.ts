@@ -4,6 +4,8 @@ const REASON_LABELS: Record<string, string> = {
   validated: "Validated",
   wrong_entity: "Entity mismatch",
   entity_unconfirmed: "Entity not confirmed",
+  entity_mismatch_warning: "Accepted with an entity-name warning",
+  entity_unconfirmed_warning: "Accepted with an unconfirmed-identity warning",
   wrong_document: "Wrong document type",
   wrong_period: "Period does not qualify",
   incomplete: "Incomplete document",
@@ -21,6 +23,13 @@ const REASON_LABELS: Record<string, string> = {
   zip_parse_failed: "ZIP could not be opened",
   fetch_failed: "File retrieval failed",
 };
+
+export function evidenceIdentityWarningLabel(reasonCode?: string | null, locale: "en" | "es" = "en"): string | null {
+  const code = reasonCode?.trim().toLowerCase();
+  if (code === "entity_mismatch_warning") return locale === "es" ? "Nombre del negocio por revisar" : "Entity name needs review";
+  if (code === "entity_unconfirmed_warning") return locale === "es" ? "Identidad por confirmar" : "Identity needs confirmation";
+  return null;
+}
 
 const DECISION_SEVERITY: Record<EvidenceDecisionStatus, number> = {
   accepted: 1,

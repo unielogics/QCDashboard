@@ -438,6 +438,15 @@
 .capital-readiness-metric > div > span:first-child { color: var(--muted); font-size: 12px; font-weight: 700; }
 .capital-readiness-metric > strong { font-size: 24px; line-height: 1.1; }
 .capital-readiness-metric p, .capital-readiness-metric small { color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+.capital-readiness-metric > .capital-readiness-metric-review { justify-content: flex-start; flex-wrap: wrap; }
+.capital-readiness-warnings { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.capital-readiness-warnings > li { padding: 8px 10px; border-left: 3px solid var(--warn); background: var(--warn-50, #fff8e6); color: var(--warn); font-size: 12px; overflow-wrap: anywhere; }
+.capital-readiness-warnings > .requires-review { border-left-color: var(--bad); background: var(--bad-50, #fff1f0); color: var(--bad); }
+.capital-readiness-margin-guide { padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; }
+.capital-readiness-margin-guide summary { min-height: 44px; display: list-item; align-content: center; cursor: pointer; font-weight: 700; }
+.capital-readiness-margin-guide p, .capital-readiness-margin-guide small { color: var(--muted); font-size: 12px; }
+.capital-readiness-margin-guide table { width: 100%; margin: 10px 0; border-collapse: collapse; font-size: 12px; }
+.capital-readiness-margin-guide th, .capital-readiness-margin-guide td { padding: 7px 5px; border-bottom: 1px solid var(--line); text-align: left; }
 .capital-readiness-pillars > div { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .capital-readiness-pillar { min-width: 0; padding: 13px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px; border: 1px solid var(--line); border-radius: 9px; }
 .capital-readiness-pillar > div { display: grid; gap: 2px; }

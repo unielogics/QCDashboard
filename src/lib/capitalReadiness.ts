@@ -9,6 +9,18 @@ export type CapitalReadinessBand =
   | "insufficient_evidence";
 export type CapitalReadinessMetricStatus = "concerning" | "acceptable" | "healthy" | "very_strong" | "unavailable";
 
+export type CapitalReadinessWarning = {
+  code?: string;
+  severity?: string;
+  detail?: string;
+  message?: string;
+  detail_es?: string;
+  stated?: number | null;
+  derived?: number | null;
+  difference?: number | null;
+  [key: string]: unknown;
+};
+
 export type CapitalReadinessPillar = {
   key: string;
   label: string;
@@ -38,6 +50,11 @@ export type CapitalReadinessMetric = {
     currency?: string | null;
     period_start?: string | null;
     period_end?: string | null;
+    source_period_ids?: string[];
+    aggregation?: string;
+    identity_warning?: boolean;
+    provisional?: boolean;
+    context_warnings?: CapitalReadinessWarning[];
     [key: string]: unknown;
   } | null;
 };
@@ -180,7 +197,7 @@ export type CapitalReadinessFinancialPeriod = {
   source_analysis_id: string | null;
   extractor_version: string | null;
   content_hash: string | null;
-  reconciliation_warnings: string[];
+  reconciliation_warnings: CapitalReadinessWarning[];
   created_at: string;
   reviewed_at: string | null;
   reviewed_by_user_id: string | null;
@@ -282,25 +299,58 @@ export function capitalReadinessItemDetail(item: CapitalReadinessNarrativeItem):
   return item.detail && item.detail !== title ? item.detail : null;
 }
 
-export function formatReadinessMetric(metric: CapitalReadinessMetric): string {
+export function formatReadinessMetric(metric: CapitalReadinessMetric, locale: "en" | "es" = "en"): string {
   if (metric.value == null || metric.status === "unavailable") return "—";
   if (typeof metric.value === "string") return metric.value;
   if (metric.unit === "percent" || metric.unit === "%" || metric.key.endsWith("_pct")) return `${metric.value.toFixed(1)}%`;
   if (metric.unit === "currency" || metric.unit === "usd") {
-    return metric.value.toLocaleString("en-US", { style: "currency", currency: safeCurrency(metric.source?.currency), maximumFractionDigits: 0 });
+    return formatCapitalReadinessMoney(metric.value, metric.source?.currency ?? (metric.unit === "usd" ? "USD" : null), locale);
   }
   if (metric.unit === "ratio" || metric.key.includes("dscr")) return `${metric.value.toFixed(2)}x`;
   return metric.value.toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
-function safeCurrency(value: unknown): string {
-  if (typeof value !== "string" || !/^[A-Z]{3}$/.test(value)) return "USD";
+function safeCurrency(value: unknown): string | null {
+  if (typeof value !== "string" || !/^[A-Z]{3}$/.test(value) || value === "XXX") return null;
   try {
     new Intl.NumberFormat("en-US", { style: "currency", currency: value }).format(0);
     return value;
   } catch {
-    return "USD";
+    return null;
   }
+}
+
+export function formatCapitalReadinessMoney(value: number, currency: unknown, locale: "en" | "es" = "en"): string {
+  const code = safeCurrency(currency);
+  const number = value.toLocaleString("en-US", { maximumFractionDigits: 0 });
+  return code ? value.toLocaleString("en-US", { style: "currency", currency: code, maximumFractionDigits: 0 })
+    : `${number} (${locale === "es" ? "moneda por confirmar" : "currency unconfirmed"})`;
+}
+
+const WARNING_LABELS: Record<string, [string, string]> = {
+  gross_profit_reconciliation: ["Printed gross profit differs from revenue minus cost of goods sold. Review the source figures.", "La ganancia bruta indicada difiere de los ingresos menos el costo de ventas. Revise las cifras de origen."],
+  nonpositive_revenue: ["Revenue is zero or negative; profitability ratios are unavailable.", "Los ingresos son cero o negativos; los ratios de rentabilidad no están disponibles."],
+  cogs_applicability_unknown: ["Confirm whether cost of goods sold applies to this business.", "Confirme si el costo de ventas corresponde a este negocio."],
+  entity_mismatch_warning: ["The document name differs from the file identity. Figures remain usable provisionally; review the association.", "El nombre del documento difiere de la identidad del expediente. Las cifras siguen utilizables de forma provisional; revise la vinculación."],
+  entity_unconfirmed_warning: ["The document identity is unconfirmed. Figures remain usable provisionally; review the association.", "La identidad del documento no está confirmada. Las cifras siguen utilizables de forma provisional; revise la vinculación."],
+  entity_identity_warning: ["Review the document's business identity. This warning does not reject the document or discard its figures.", "Revise la identidad del negocio en el documento. Esta advertencia no rechaza el documento ni descarta sus cifras."],
+  entity_mismatch: ["Review the document's business identity. This warning does not reject the document or discard its figures.", "Revise la identidad del negocio en el documento. Esta advertencia no rechaza el documento ni descarta sus cifras."],
+  entity_unconfirmed: ["The document identity needs review; its figures remain provisional.", "La identidad del documento requiere revisión; sus cifras siguen siendo provisionales."],
+  accounting_basis_unknown: ["The accounting basis needs confirmation.", "La base contable requiere confirmación."],
+  currency_unknown: ["The document currency needs confirmation.", "La moneda del documento requiere confirmación."],
+  financial_entity_unidentified: ["The document does not identify the business. Its figures remain provisional pending association review.", "El documento no identifica al negocio. Sus cifras siguen siendo provisionales hasta revisar la vinculación."],
+  financial_accounting_basis_unknown: ["The accounting basis needs confirmation before combining sources.", "La base contable requiere confirmación antes de combinar fuentes."],
+  financial_currency_unknown: ["The document currency needs confirmation before combining sources.", "La moneda del documento requiere confirmación antes de combinar fuentes."],
+  financial_period_unknown: ["The financial period needs confirmation before combining or comparing sources.", "El período financiero requiere confirmación antes de combinar o comparar fuentes."],
+};
+
+/** Historical string warnings remain readable during the compatible rollout. */
+export function capitalReadinessWarningText(warning: CapitalReadinessWarning | string, locale: "en" | "es" = "en"): string {
+  if (typeof warning === "string") return warning;
+  const code = typeof warning.code === "string" ? warning.code.toLowerCase() : "";
+  const known = WARNING_LABELS[code];
+  if (locale === "es") return warning.detail_es || known?.[1] || "Los datos de origen requieren revisión. Consulte el documento vinculado.";
+  return warning.detail || warning.message || known?.[0] || "Source data requires review. Check the linked document.";
 }
 
 export function listReadinessSummary(value: unknown): CapitalReadinessListSummary | null {
