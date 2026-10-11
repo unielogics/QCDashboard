@@ -138,7 +138,7 @@ export function ApplicationProgramReadiness({
   onValueChange?: (readiness: Readiness) => void;
   onRefresh?: () => Promise<unknown> | void;
   showUploader?: boolean;
-  onPreviewEvidence?: (fileId: string, requirementKey: string) => void;
+  onPreviewEvidence?: (fileId: string, requirementKey: string, page?: number, expectedContentHash?: string) => void;
   onRequestUnlockedCopy?: (fileId: string, requirementKey: string, fileName: string, retryFailed?: boolean, copyRoomLink?: boolean) => Promise<void> | void;
   unlockedCopyRequestingFileId?: string | null;
   focusRequirementQuery?: string | null;
@@ -734,7 +734,7 @@ export function ApplicationProgramReadiness({
               {expanded ? <div className="requirement-expanded-body">
                 <div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><Btn disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")}>Propose assignment</Btn>{requirement.can_waive ? <Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] })}>Waive</Btn> : null}<Btn disabled={isBusy} onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] })}>N/A</Btn>{hasOverrides ? <Btn disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "restore")}>Restore</Btn> : null}</div>
                 <p className="requirement-state-reason">{requirement.state_reason || "AI is waiting for qualifying evidence."}</p>
-                <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId) => onPreviewEvidence(fileId, requirement.requirement_key) : undefined} />
+                <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />
                 {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;
                   const coverageContribution = evidenceCoverageLabel(file.coverage_contribution);

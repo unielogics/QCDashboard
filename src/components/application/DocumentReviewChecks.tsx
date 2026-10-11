@@ -1,5 +1,6 @@
 import React from "react";
 import type { ApplicationRequirement } from "@/lib/applicationProfile";
+import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import styles from "./DocumentReviewChecks.module.css";
 
 export function DocumentReviewChecks({ checks, verified = false, staffRequired = true, assessment, onPreview }: {
@@ -7,7 +8,7 @@ export function DocumentReviewChecks({ checks, verified = false, staffRequired =
   verified?: boolean;
   staffRequired?: boolean;
   assessment?: unknown;
-  onPreview?: (fileId: string) => void;
+  onPreview?: (fileId: string, page?: number, expectedContentHash?: string) => void;
 }) {
   if (!checks?.length) return null;
   const review = assessment && typeof assessment === "object" ? assessment as Record<string, unknown> : null;
@@ -28,8 +29,10 @@ export function DocumentReviewChecks({ checks, verified = false, staffRequired =
         {Array.isArray(finding.citations) ? finding.citations.slice(0, 30).map((value, citationIndex) => {
           if (!value || typeof value !== "object") return null;
           const citation = value as Record<string, unknown>;
-          if (typeof citation.file_id !== "string" || typeof citation.page !== "number" || typeof citation.quote !== "string") return null;
-          return <div key={citationIndex}><blockquote>{citation.quote}</blockquote>{onPreview ? <button type="button" className={styles.source} onClick={() => onPreview(citation.file_id as string)}>Open source · page {citation.page}</button> : <small>Source page {citation.page}</small>}</div>;
+          const page = validPdfSourcePage(citation.page);
+          if (typeof citation.file_id !== "string" || !citation.file_id || page === null || typeof citation.quote !== "string") return null;
+          const expectedHash = typeof citation.content_hash === "string" && /^[a-f0-9]{64}$/i.test(citation.content_hash) ? citation.content_hash : undefined;
+          return <div key={citationIndex}><blockquote>{citation.quote}</blockquote>{onPreview ? <button type="button" className={styles.source} onClick={() => onPreview(citation.file_id as string, page, expectedHash)}>Open source · page {page}</button> : <small>Source page {page}</small>}</div>;
         }) : null}
       </li>)}</ul></details> : null}
     </div>

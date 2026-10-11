@@ -40,6 +40,8 @@ import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvi
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { useProductionCall } from "@/lib/productionTrainingCall";
 import type { FundingProgramVertical } from "@/lib/fundingPrograms";
+import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
+import { ApiError } from "@/lib/api";
 
 type WorkspaceTab = "requirements" | "banking" | "files";
 type RequirementFocus = { query: string; requestId: number };
@@ -137,6 +139,9 @@ export function ApplicationEvidenceWorkspace({
   const [dragging, setDragging] = useState(false);
   const [formsOpen, setFormsOpen] = useState(false);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
+  const [selectedPreviewPage, setSelectedPreviewPage] = useState<number | undefined>();
+  const [selectedPreviewHash, setSelectedPreviewHash] = useState<string | undefined>();
+  const [previewRequestId, setPreviewRequestId] = useState(0);
   const [selectedRequirementKey, setSelectedRequirementKey] = useState<string | null>(null);
   const [action, setAction] = useState<ReviewAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
@@ -291,9 +296,12 @@ export function ApplicationEvidenceWorkspace({
     await setReadinessAndRefresh(next);
   }, [apiCall, profileId, setReadinessAndRefresh]);
 
-  const openEvidenceFile = useCallback((fileId: string, requirementKey?: string) => {
+  const openEvidenceFile = useCallback((fileId: string, requirementKey?: string, page?: number, expectedContentHash?: string) => {
     setSelectedFileId(fileId);
     setSelectedRequirementKey(requirementKey ?? null);
+    setSelectedPreviewPage(validPdfSourcePage(page) ?? undefined);
+    setSelectedPreviewHash(expectedContentHash);
+    setPreviewRequestId((current) => current + 1);
     setAction(null);
   }, []);
 
@@ -428,13 +436,20 @@ export function ApplicationEvidenceWorkspace({
 
   const loadSelectedReview = useCallback(async (): Promise<BucketFileReview> => {
     if (!selectedReviewFile) throw new Error("Evidence file is no longer available.");
-    const signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url`);
+    const expectedHash = selectedPreviewHash ? `?expected_content_hash=${encodeURIComponent(selectedPreviewHash)}` : "";
+    let signed: { url: string; expires_in: number };
+    try {
+      signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url${expectedHash}`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) throw new Error("Source file changed. Review its current version and refresh the analysis before using this reference.");
+      throw error;
+    }
     return {
       file: selectedReviewFile,
       preview_url: signed.url,
       annotations: [],
     };
-  }, [apiCall, profileId, selectedReviewFile]);
+  }, [apiCall, profileId, selectedReviewFile, selectedPreviewHash]);
 
   const actionValid = Boolean(action && (
     action.kind === "reassign"
@@ -515,7 +530,7 @@ export function ApplicationEvidenceWorkspace({
       aiReviewRunning={aiReviewRunning}
       onUploadFiles={upload}
       uploadBusy={uploadBusy}
-      onPreviewEvidence={(fileId, requirementKey) => openEvidenceFile(fileId, requirementKey)}
+      onPreviewEvidence={(fileId, requirementKey, page, expectedContentHash) => openEvidenceFile(fileId, requirementKey, page, expectedContentHash)}
       onRequestUnlockedCopy={(fileId, requirementKey, fileName, retryFailed, copyRoomLink) => requestUnlockedCopy(fileId, fileName, retryFailed, copyRoomLink, requirementKey)}
       unlockedCopyRequestingFileId={requestingUnlockedCopyFileId}
       focusRequirementQuery={focusRequirement?.query}
@@ -579,11 +594,13 @@ export function ApplicationEvidenceWorkspace({
       title="Evidence review"
       files={reviewFiles}
       activeFileId={selectedFile.id}
+      initialPage={selectedPreviewPage}
+      pageRequestId={previewRequestId}
       onSelectFile={(fileId) => openEvidenceFile(fileId)}
-      reviewKey={selectedFile.id}
+      reviewKey={`${selectedFile.id}:${selectedPreviewHash || ""}`}
       loadReview={loadSelectedReview}
       annotationsEnabled={false}
-      onClose={() => { setSelectedFileId(null); setSelectedRequirementKey(null); setAction(null); }}
+      onClose={() => { setSelectedFileId(null); setSelectedRequirementKey(null); setSelectedPreviewPage(undefined); setSelectedPreviewHash(undefined); setAction(null); }}
       reviewContext={<>
         {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} detail /> : null}
         <div><b>{currentAssignment?.label || "Supporting / Other"}</b>{assignments.length > 1 ? <Select aria-label="Evidence requirement decision" value={currentAssignment?.requirement_key || ""} onChange={(event) => { setSelectedRequirementKey(event.target.value); setAction(null); }}>{assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}{decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}</option>; })}</Select> : null}<Sub>{currentDecision ? `${evidenceActorLabel(currentDecision.decision_actor)}${currentDecision.ai_confidence ? ` · ${currentDecision.ai_confidence} confidence` : ""}${currentDecision.verified ? " · Human verified" : ""}` : `${evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)} · This file is not assigned to a requirement.`}</Sub></div>

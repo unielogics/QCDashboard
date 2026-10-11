@@ -1,9 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { Btn, Callout, CellChip, Field, Input, Select, Textarea } from "@/components/ds";
 import { ApiError } from "@/lib/api";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
+import { FinancialFactCitations } from "./FinancialFactCitations";
+import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } from "@/components/buckets/BucketFileReviewPanel";
+import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
+import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/financialSourcePreview";
+import { programCriterionLabel, programEvidenceGaps, programObservedValue, programRequiredValue, programRuleCitations } from "@/lib/programOpportunityPresentation";
 import {
   CAPITAL_READINESS_PHASES,
   capitalReadinessBandLabel,
@@ -22,6 +27,7 @@ import {
   type CapitalReadinessAction,
   type CapitalReadinessFinancialPeriod,
   type CapitalReadinessWarning,
+  type FinancialSourcePreviewAction,
 } from "@/lib/capitalReadiness";
 
 type Locale = "en" | "es";
@@ -322,7 +328,37 @@ export function CapitalReadinessPanel({
   const [history, setHistory] = useState<ApplicationCapitalReadinessSnapshot[] | null>(null);
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState<string | null>(null);
+  const [sourcePreview, setSourcePreview] = useState<{ profileId: string; fileId: string; page?: number; expectedContentHash?: string; requestId: number } | null>(null);
+  const [sourceFiles, setSourceFiles] = useState<BucketReviewFile[]>([]);
+  const sourceFocusRef = useRef<HTMLElement | null>(null);
+  const activeProfileRef = useRef(profileId);
   const c = COPY[locale];
+
+  useEffect(() => {
+    activeProfileRef.current = profileId;
+    setSourcePreview(null);
+    setSourceFiles([]);
+  }, [profileId]);
+
+  const openSourcePreview = useCallback((fileId: string, page?: number, expectedContentHash?: string) => {
+    if (!profileId || clientSafe) return;
+    sourceFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSourcePreview((current) => ({ profileId, fileId, page: validPdfSourcePage(page) ?? undefined, expectedContentHash, requestId: (current?.requestId ?? 0) + 1 }));
+  }, [profileId, clientSafe]);
+
+  const loadSourceReview = useCallback(async (): Promise<BucketFileReview> => {
+    const request = sourcePreview;
+    if (!request || request.profileId !== profileId || clientSafe) throw new Error("Source reference needs review.");
+    const loaded = await loadFinancialSourcePreview(request, api, () => activeProfileRef.current);
+    setSourceFiles(loaded.files);
+    return loaded.review;
+  }, [api, profileId, sourcePreview, clientSafe]);
+
+  const closeSourcePreview = useCallback(() => {
+    setSourcePreview(null);
+    const sourceButton = sourceFocusRef.current;
+    requestAnimationFrame(() => restoreFinancialSourceFocus(sourceButton));
+  }, []);
 
   const publish = useCallback((next: ApplicationCapitalReadinessSnapshot | null) => {
     setSnapshot(next);
@@ -511,11 +547,12 @@ export function CapitalReadinessPanel({
     );
   }
 
-  return (
+  return (<>
     <CapitalReadinessSnapshotView
       snapshot={snapshot}
       locale={locale}
       clientSafe={clientSafe}
+      onPreviewSource={!clientSafe && profileId ? openSourcePreview : undefined}
       title={title}
       error={error}
       actions={!clientSafe ? (
@@ -542,8 +579,21 @@ export function CapitalReadinessPanel({
       historyLoading={historyLoading}
       historyError={historyError}
       onToggleHistory={profileId ? toggleHistory : undefined}
-      sourcePeriods={canReview && profileId ? <FinancialPeriodsDisclosure profileId={profileId} locale={locale} onRecalculate={recalculate} /> : undefined}
+      sourcePeriods={canReview && profileId ? <FinancialPeriodsDisclosure profileId={profileId} locale={locale} onRecalculate={recalculate} onPreviewSource={openSourcePreview} /> : undefined}
     />
+    {!clientSafe && sourcePreview && sourcePreview.profileId === profileId ? <BucketFileReviewPanel
+      title={locale === "es" ? "Revisión de evidencia" : "Evidence review"}
+      files={sourceFiles}
+      activeFileId={sourcePreview.fileId}
+      initialPage={sourcePreview.page}
+      pageRequestId={sourcePreview.requestId}
+      reviewKey={`${sourcePreview.profileId}:${sourcePreview.fileId}:${sourcePreview.expectedContentHash || ""}`}
+      loadReview={loadSourceReview}
+      annotationsEnabled={false}
+      onSelectFile={(fileId) => setSourcePreview((current) => current ? { ...current, fileId, page: undefined, expectedContentHash: undefined, requestId: current.requestId + 1 } : null)}
+      onClose={closeSourcePreview}
+    /> : null}
+  </>
   );
 }
 
@@ -568,6 +618,7 @@ export function CapitalReadinessSnapshotView({
   historyError,
   onToggleHistory,
   sourcePeriods,
+  onPreviewSource,
 }: {
   snapshot: ApplicationCapitalReadinessSnapshot;
   locale?: Locale;
@@ -589,6 +640,7 @@ export function CapitalReadinessSnapshotView({
   historyError?: string | null;
   onToggleHistory?: () => void;
   sourcePeriods?: React.ReactNode;
+  onPreviewSource?: FinancialSourcePreviewAction;
 }) {
   // Client-safe surfaces preserve the file's communication language. Staff
   // surfaces use the signed-in operator's UI language and regenerate known
@@ -650,7 +702,7 @@ export function CapitalReadinessSnapshotView({
       </div>
 
       <ReadinessSection title={c.baseline} className="capital-readiness-metrics">
-        {metrics.map((metric) => <MetricCard key={metric.key} metric={metric} locale={displayLocale} sourcePeriodLabel={c.sourcePeriod} />)}
+        {metrics.map((metric) => <MetricCard key={metric.key} metric={metric} locale={displayLocale} sourcePeriodLabel={c.sourcePeriod} clientSafe={clientSafe} onPreviewSource={!clientSafe ? onPreviewSource : undefined} />)}
         {!metrics.length ? <Empty text={c.empty} /> : null}
       </ReadinessSection>
       <MarginTierGuide locale={displayLocale} />
@@ -719,14 +771,15 @@ export function CapitalReadinessSnapshotView({
         })}
       </ReadinessSection>
 
-      {snapshot.program_opportunities.length ? (
+      {snapshot.program_opportunities.length || (!clientSafe && snapshot.funding_path?.status) ? (
         <ReadinessSection title={c.programs} className="capital-readiness-programs">
-          {snapshot.program_opportunities.slice(0, 4).map((program, index) => <ProgramOpportunityCard key={program.key || program.program_key || index} program={program} locale={displayLocale} needsReview={c.needsReview} />)}
-          {snapshot.program_opportunities.length > 4 ? <details className="capital-readiness-program-more"><summary>{displayLocale === "es" ? `Ver ${snapshot.program_opportunities.length - 4} oportunidades adicionales` : `Show ${snapshot.program_opportunities.length - 4} more opportunities`}</summary><div>{snapshot.program_opportunities.slice(4).map((program, index) => <ProgramOpportunityCard key={program.key || program.program_key || index + 4} program={program} locale={displayLocale} needsReview={c.needsReview} />)}</div></details> : null}
+          {!clientSafe && snapshot.funding_path?.status ? <FundingPathSummary path={snapshot.funding_path} locale={displayLocale} /> : null}
+          {snapshot.program_opportunities.slice(0, 4).map((program, index) => <ProgramOpportunityCard key={program.key || program.program_key || index} program={program} locale={displayLocale} needsReview={c.needsReview} clientSafe={clientSafe} onPreviewSource={!clientSafe ? onPreviewSource : undefined} />)}
+          {snapshot.program_opportunities.length > 4 ? <details className="capital-readiness-program-more"><summary>{displayLocale === "es" ? `Ver ${snapshot.program_opportunities.length - 4} oportunidades adicionales` : `Show ${snapshot.program_opportunities.length - 4} more opportunities`}</summary><div>{snapshot.program_opportunities.slice(4).map((program, index) => <ProgramOpportunityCard key={program.key || program.program_key || index + 4} program={program} locale={displayLocale} needsReview={c.needsReview} clientSafe={clientSafe} onPreviewSource={!clientSafe ? onPreviewSource : undefined} />)}</div></details> : null}
         </ReadinessSection>
       ) : null}
 
-      {snapshot.source_manifest.length ? (
+      {!clientSafe && snapshot.source_manifest.length ? (
         <details className="capital-readiness-sources">
           <summary>{c.sources} ({snapshot.source_manifest.length})</summary>
           <div>
@@ -798,7 +851,7 @@ const FINANCIAL_VALUE_FIELDS = [
 type FinancialValueField = typeof FINANCIAL_VALUE_FIELDS[number];
 type PeriodCorrectionDraft = { period: CapitalReadinessFinancialPeriod; values: Record<FinancialValueField, string>; idempotencyKey: string };
 
-function FinancialPeriodsDisclosure({ profileId, locale, onRecalculate }: { profileId: string; locale: Locale; onRecalculate: () => Promise<void> }) {
+function FinancialPeriodsDisclosure({ profileId, locale, onRecalculate, onPreviewSource }: { profileId: string; locale: Locale; onRecalculate: () => Promise<void>; onPreviewSource?: FinancialSourcePreviewAction }) {
   const api = useAuthedApi();
   const c = COPY[locale];
   const [open, setOpen] = useState(false);
@@ -912,7 +965,8 @@ function FinancialPeriodsDisclosure({ profileId, locale, onRecalculate }: { prof
           <span><small>EBITDA</small><b>{period.adjusted_ebitda == null && period.ebitda == null ? "—" : formatCapitalReadinessMoney(period.adjusted_ebitda ?? period.ebitda!, period.currency, locale)}</b></span>
         </div>
         <CapitalReadinessWarnings warnings={period.reconciliation_warnings} locale={locale} />
-        {period.source_file_id ? <small>{c.evidenceSource}: {period.source_file_id}{period.content_hash ? ` · ${c.hash} ${period.content_hash.slice(0, 10)}…` : ""}</small> : null}
+        {period.source_file_id ? <small>{c.evidenceSource}: {Object.values(period.fact_citations || {}).flat().find((citation) => citation.file_name)?.file_name || (locale === "es" ? "Documento vinculado" : "Linked document")}{period.content_hash ? ` · ${c.hash} ${period.content_hash.slice(0, 10)}…` : ""}</small> : null}
+        <FinancialFactCitations citations={Object.values(period.fact_citations || {}).flat()} status={Object.values(period.fact_citation_status || {}).length && Object.values(period.fact_citation_status || {}).every((status) => status.status === "verified") ? "verified" : "partial"} reason={Object.values(period.fact_citation_status || {}).filter((status) => status.status !== "verified").map((status) => status.reason).filter(Boolean).join(" ")} locale={locale} onPreviewSource={onPreviewSource} />
         <div className="row" style={{ gap: 7 }}>
           {period.review_status !== "confirmed" && period.review_status !== "superseded" ? <Btn size="sm" onClick={() => void reviewPeriod(period, "confirmed")} disabled={Boolean(busy)}>{c.confirmPeriod}</Btn> : null}
           {period.review_status !== "rejected" && period.review_status !== "superseded" ? <Btn size="sm" onClick={() => void reviewPeriod(period, "rejected")} disabled={Boolean(busy)}>{c.rejectPeriod}</Btn> : null}
@@ -935,20 +989,58 @@ function ReadinessGauge({ label, value }: { label: string; value: number }) {
   return <div className="capital-readiness-gauge"><span className="lbl">{label}</span><b>{Math.round(value)}%</b><span className="capital-readiness-track"><span style={{ width: `${clamp(value)}%` }} /></span></div>;
 }
 
-function ProgramOpportunityCard({ program, locale, needsReview }: { program: ApplicationCapitalReadinessSnapshot["program_opportunities"][number]; locale: Locale; needsReview: string }) {
+export function ProgramOpportunityCard({ program, locale, needsReview, clientSafe = false, onPreviewSource }: { program: ApplicationCapitalReadinessSnapshot["program_opportunities"][number]; locale: Locale; needsReview: string; clientSafe?: boolean; onPreviewSource?: FinancialSourcePreviewAction }) {
+  const es = locale === "es";
+  const gaps = !clientSafe ? programEvidenceGaps(program, locale) : program.gaps || [];
+  const rules = !clientSafe && Array.isArray(program.rule_results) ? program.rule_results.filter((rule) => rule && typeof rule.field === "string" && typeof rule.operator === "string").slice(0, 40) : [];
+  const reasons = !clientSafe ? (program.reasons || []).filter((reason) => !/\b(?:gte|lte|gt|lt|eq|in|present|evidence_available)\s+(?:matched|did not match|needs information)\b/.test(reason)) : [];
+  const supported = program.eligible === true && program.status === "recommended" || program.eligible !== false && (program.status === "ready" || program.status === "eligible");
   return <div>
     <b>{program.program_name || program.title || program.label || program.program_key || "Program"}</b>
-    <CellChip tone={program.status === "ready" || program.status === "eligible" ? "ok" : "warn"}>{program.status ? programStatusLabel(program.status, locale) : needsReview}</CellChip>
+    <CellChip tone={supported ? "ok" : "warn"}>{program.status === "recommended" && program.eligible !== true ? needsReview : program.status ? programStatusLabel(program.status, locale) : needsReview}</CellChip>
     {program.detail || program.note ? <p>{program.detail || program.note}</p> : null}
-    {program.gaps?.length ? <small>{program.gaps.join(" · ")}</small> : null}
+    {reasons.length ? <p>{reasons.join(" ")}</p> : null}
+    {gaps.length ? <small>{es ? "Evidencia pendiente" : "Next evidence"}: {gaps.join(" · ")}</small> : null}
+    {rules.length ? <details style={{ gridColumn: "1 / -1" }}><summary>{es ? "Criterios evaluados" : "Evaluated criteria"} ({rules.length})</summary>{rules.map((rule, index) => {
+      const citations = programRuleCitations(rule);
+      const state = rule.status === "pass" ? es ? "Cumple el criterio" : "Pass" : rule.status === "fail" ? es ? "No cumple el criterio" : "Fail" : es ? "Por confirmar" : "Unknown";
+      const verification: Record<string, [string, string]> = { verified: ["Verified evidence", "Evidencia verificada"], provisional: ["Provisional figure", "Cifra provisional"], unknown: ["Evidence needs review", "La evidencia requiere revisión"], conflicting: ["Conflicting source facts", "Datos de origen contradictorios"], profile_input: ["Application input", "Dato de la solicitud"] };
+      return <div key={`${rule.field}:${index}`}>
+        <p><b>{programCriterionLabel(rule.field, locale)}</b> · {state}</p>
+        <small>{es ? "Observado" : "Observed"}: {programObservedValue(rule.observed, rule.field, locale)} · {es ? "Requerido" : "Required"}: {programRequiredValue(rule, locale)} · {verification[rule.verification_status || "unknown"]?.[es ? 1 : 0] || (es ? "La evidencia requiere revisión" : "Evidence needs review")}</small>
+        {citations.length ? <FinancialFactCitations citations={citations} status="verified" locale={locale} onPreviewSource={onPreviewSource} /> : null}
+      </div>;
+    })}</details> : null}
   </div>;
+}
+
+export function FundingPathSummary({ path, locale }: { path: NonNullable<ApplicationCapitalReadinessSnapshot["funding_path"]>; locale: Locale }) {
+  if (!path.status) return null;
+  const es = locale === "es";
+  const labels = {
+    potential_program_fit: ["Potential program fit", "Posible encaje con programas"],
+    needs_evidence: ["More evidence needed", "Se necesita más evidencia"],
+    capital_readiness_recommended: ["Capital readiness recommended", "Se recomienda preparación financiera"],
+    needs_review: ["Underwriter review needed", "Se necesita revisión del analista"],
+    criteria_unavailable: ["Program criteria unavailable", "Criterios de programas no disponibles"],
+  };
+  const label = labels[path.status]?.[es ? 1 : 0];
+  if (!label) return null;
+  return <p>
+    <strong>{label}</strong>
+    {path.status === "potential_program_fit" && path.eligible_programs?.length ? <> · <span>{path.eligible_programs.map((program) => program.name).join(" · ")}</span></> : null}
+    {path.reasons?.length ? <>. {path.reasons.join(" ")}</> : null}
+    {path.evidence_gaps?.length ? <><br /><small>{es ? "Evidencia pendiente" : "Evidence gaps"}: {path.evidence_gaps.join(" · ")}</small></> : null}
+    {path.next_actions?.length ? <><br /><small>{es ? "Próximo paso" : "Next action"}: {path.next_actions.join(" · ")}</small></> : null}
+    <br /><small>{es ? "La evaluación es preliminar. El analista debe confirmar los criterios y las condiciones antes de una decisión de financiamiento." : "This assessment is preliminary. An underwriter must confirm criteria and conditions before a funding decision."}</small>
+  </p>;
 }
 
 function ReadinessSection({ title, className, children }: { title: string; className: string; children: React.ReactNode }) {
   return <section className={`capital-readiness-section ${className}`}><h4>{title}</h4><div>{children}</div></section>;
 }
 
-export function MetricCard({ metric, locale, sourcePeriodLabel }: { metric: CapitalReadinessMetric; locale: Locale; sourcePeriodLabel: string }) {
+export function MetricCard({ metric, locale, sourcePeriodLabel, clientSafe = false, onPreviewSource }: { metric: CapitalReadinessMetric; locale: Locale; sourcePeriodLabel: string; clientSafe?: boolean; onPreviewSource?: FinancialSourcePreviewAction }) {
   const c = COPY[locale];
   const label = localizedKnownLabel(metric.key, locale, METRIC_LABELS_EN, METRIC_LABELS_ES, metric.label);
   return (
@@ -962,6 +1054,7 @@ export function MetricCard({ metric, locale, sourcePeriodLabel }: { metric: Capi
       <CapitalReadinessWarnings warnings={metric.source?.context_warnings} locale={locale} />
       {metric.source?.identity_warning ? <small className="capital-readiness-association-note">{locale === "es" ? "Las cifras siguen disponibles. Revise la vinculación; no combine negocios distintos." : "Figures remain available. Review the association; do not combine different businesses."}</small> : null}
       {metric.confidence_pct != null ? <small>{Math.round(metric.confidence_pct)}% {c.confidenceLower}</small> : null}
+      {!clientSafe ? <FinancialFactCitations citations={metric.source?.fact_citations} status={metric.source?.citation_status} reason={metric.source?.citation_reason} locale={locale} onPreviewSource={onPreviewSource} /> : null}
     </article>
   );
 }
@@ -1083,6 +1176,7 @@ function clamp(value: number): number {
 }
 
 function programStatusLabel(status: string, locale: Locale): string {
+  if (status === "recommended") return locale === "es" ? "Posible encaje" : "Potential fit";
   if (locale === "en") return status.replaceAll("_", " ");
   const labels: Record<string, string> = { ready: "Listo", eligible: "Elegible", needs_information: "Falta información", not_eligible: "No elegible", criteria_unavailable: "Criterios no disponibles" };
   return labels[status] || status.replaceAll("_", " ");

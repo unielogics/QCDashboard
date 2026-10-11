@@ -9,6 +9,39 @@ export type CapitalReadinessBand =
   | "insufficient_evidence";
 export type CapitalReadinessMetricStatus = "concerning" | "acceptable" | "healthy" | "very_strong" | "unavailable";
 
+export type FinancialFactCitation = {
+  file_id: string;
+  file_name?: string | null;
+  page: number;
+  quote: string;
+  field: string;
+  line_label: string;
+  value: string | number;
+  verified: boolean;
+  status?: string;
+  tax_form?: string | null;
+  tax_line?: string | null;
+  content_hash: string;
+  analysis_id: string;
+  statement_index?: number | null;
+  basis?: string | null;
+  period_start?: string | null;
+  period_end?: string | null;
+  currency?: string | null;
+};
+export type FinancialCitationStatus = "verified" | "partial" | "unverified";
+export type FinancialSourcePreviewAction = (fileId: string, page?: number, expectedContentHash?: string) => void;
+export type CapitalReadinessFundingPath = {
+  version?: string | number;
+  status?: "potential_program_fit" | "needs_evidence" | "capital_readiness_recommended" | "needs_review" | "criteria_unavailable";
+  advisory_only?: boolean;
+  eligible_programs?: Array<{ program_key: string; name: string }>;
+  reasons?: string[];
+  next_actions?: string[];
+  evidence_gaps?: string[];
+  program_results?: unknown[];
+};
+
 export type CapitalReadinessWarning = {
   code?: string;
   severity?: string;
@@ -42,6 +75,9 @@ export type CapitalReadinessMetric = {
   confidence_pct?: number | null;
   target_value?: number | null;
   source?: {
+    fact_citations?: FinancialFactCitation[];
+    citation_status?: FinancialCitationStatus;
+    citation_reason?: string | null;
     trend_percentage_points?: number | null;
     not_applicable?: boolean;
     property_policy?: string | null;
@@ -110,6 +146,20 @@ export type CapitalReadinessProgramOpportunity = {
   detail?: string;
   note?: string | null;
   gaps?: string[];
+  eligible?: boolean;
+  reasons?: string[];
+  evidence_gaps?: string[];
+  verified_gaps?: Array<{ requirement_key: string; label?: string; status: string }>;
+  rule_results?: Array<{
+    field: string;
+    operator: string;
+    required: unknown;
+    observed: unknown;
+    status: "pass" | "fail" | "unknown" | string;
+    negated?: boolean;
+    verification_status?: "verified" | "provisional" | "unknown" | "conflicting" | "profile_input" | string;
+    source_refs?: Array<{ fact_citations?: FinancialFactCitation[]; [key: string]: unknown }>;
+  }>;
 };
 
 export type CapitalReadinessSource = {
@@ -164,6 +214,7 @@ export type ApplicationCapitalReadinessSnapshot = {
   blockers: CapitalReadinessNarrativeItem[];
   phases: CapitalReadinessPhase[];
   program_opportunities: CapitalReadinessProgramOpportunity[];
+  funding_path?: CapitalReadinessFundingPath;
   source_manifest: CapitalReadinessSource[];
   material_change?: CapitalReadinessMaterialChange | null;
   created_at: string;
@@ -197,6 +248,8 @@ export type CapitalReadinessFinancialPeriod = {
   source_analysis_id: string | null;
   extractor_version: string | null;
   content_hash: string | null;
+  fact_citations?: Record<string, FinancialFactCitation[]>;
+  fact_citation_status?: Record<string, { status: "verified" | "unverified"; reason: string }>;
   reconciliation_warnings: CapitalReadinessWarning[];
   created_at: string;
   reviewed_at: string | null;

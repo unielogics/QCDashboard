@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { destroyPdfResource } from "@/lib/pdfLifecycle";
+import { scrollToPdfSourcePage, validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 
 export type BucketReviewFile = {
   id: string;
@@ -60,6 +61,8 @@ export function BucketFileReviewPanel({
   lockedFileGuidance,
   lockedFileActions,
   annotationsEnabled = true,
+  initialPage,
+  pageRequestId = 0,
 }: {
   title?: string;
   downloadUrl?: string | null;
@@ -79,6 +82,8 @@ export function BucketFileReviewPanel({
   lockedFileGuidance?: ReactNode;
   lockedFileActions?: ReactNode;
   annotationsEnabled?: boolean;
+  initialPage?: number;
+  pageRequestId?: number;
 }) {
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
@@ -88,6 +93,8 @@ export function BucketFileReviewPanel({
   const [review, setReview] = useState<BucketFileReview | null>(null);
   const [status, setStatus] = useState("Loading file...");
   const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [renderedPages, setRenderedPages] = useState<Set<number>>(() => new Set());
+  const lastSourceJumpRef = useRef<string | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pdfZoom, setPdfZoom] = useState(1);
   const [viewerWidth, setViewerWidth] = useState(900);
@@ -100,6 +107,23 @@ export function BucketFileReviewPanel({
   const [reloadKey, setReloadKey] = useState(0);
   const [runtimePasswordProtected, setRuntimePasswordProtected] = useState(false);
   const loadReviewRef = useRef(loadReview);
+
+  const pageRendered = useCallback((page: number) => {
+    setRenderedPages((current) => current.has(page) ? current : new Set([...current, page]));
+  }, []);
+  useEffect(() => {
+    setRenderedPages(new Set());
+    lastSourceJumpRef.current = null;
+  }, [pdfDoc]);
+  useEffect(() => {
+    if (!pdfDoc || minimized) return;
+    const page = validPdfSourcePage(initialPage, pageCount);
+    const requestKey = `${reviewKey}:${pageRequestId}:${page}`;
+    if (page === null || lastSourceJumpRef.current === requestKey) return;
+    const stage = pageStageRefs.current[page];
+    if (!scrollToPdfSourcePage(page, pageCount, renderedPages, stage)) return;
+    lastSourceJumpRef.current = requestKey;
+  }, [initialPage, pageCount, pageRequestId, pdfDoc, renderedPages, reviewKey, minimized]);
 
   // Callers may close over live query data, so callback identity is not a file
   // identity. Keep the newest loader without blanking and reloading the viewer.
@@ -449,6 +473,7 @@ export function BucketFileReviewPanel({
                         key={pageNumber}
                         pdfDoc={pdfDoc}
                         pageNumber={pageNumber}
+                        onRendered={pageRendered}
                         zoom={pdfZoom}
                         viewerWidth={viewerWidth}
                         annotations={(review.annotations ?? []).filter((annotation) => annotation.page_number === pageNumber)}
@@ -560,6 +585,7 @@ function PdfPage({
   onMouseDown,
   onMouseMove,
   onMouseUp,
+  onRendered,
 }: {
   pdfDoc: any;
   pageNumber: number;
@@ -573,6 +599,7 @@ function PdfPage({
   onMouseDown: (event: MouseEvent<HTMLDivElement>, stage: HTMLDivElement | null) => void;
   onMouseMove: (event: MouseEvent<HTMLDivElement>, stage: HTMLDivElement | null) => void;
   onMouseUp: () => void;
+  onRendered: (page: number) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const localStageRef = useRef<HTMLDivElement | null>(null);
@@ -612,6 +639,7 @@ function PdfPage({
       if (!cancelled) {
         renderTaskRef.current = null;
         setRenderStatus("");
+        onRendered(pageNumber);
       }
     }
     renderPage().catch((error) => {
@@ -622,7 +650,7 @@ function PdfPage({
       cancelled = true;
       renderTaskRef.current?.cancel();
     };
-  }, [pageNumber, pdfDoc, viewerWidth, zoom]);
+  }, [pageNumber, pdfDoc, viewerWidth, zoom, onRendered]);
 
   return (
     // Bespoke: one rendered page, centred with its label above it.
