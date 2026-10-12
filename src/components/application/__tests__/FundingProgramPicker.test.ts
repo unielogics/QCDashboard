@@ -1,9 +1,21 @@
 import * as React from "react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { FundingProgramPicker, filterProgramCandidates } from "@/components/application/FundingProgramPicker";
 import type { ApplicationProgramSelection, ProgramFitCandidate } from "@/lib/applicationProfile";
+
+// These tests inspect picker content, not the client-only portal lifecycle.
+// Keyboard/stack behavior is covered by dialogStack and browser tests.
+vi.mock("@/components/ds/Drawer", async (importOriginal) => {
+  const original = await importOriginal<typeof import("@/components/ds/Drawer")>();
+  return { ...original, Drawer: ({ open, title, sub, headerActions, footer, children, ariaLabel }: React.ComponentProps<typeof original.Drawer>) => open
+    ? createElement("section", { role: "dialog", "aria-label": ariaLabel },
+      title ? createElement("h2", null, title) : null,
+      sub ? createElement("p", null, sub) : null,
+      headerActions, children, footer)
+    : null };
+});
 
 (globalThis as unknown as { React: typeof React }).React = React;
 

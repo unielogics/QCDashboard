@@ -12,7 +12,9 @@
 // closes unless suppressed, body scroll is locked while open, and focus moves
 // into the dialog on open and returns to whatever opened it on close.
 
-import { useCallback, useEffect, useId, useRef, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+import { dialogPortalHost, registerDialog, type DialogRegistration } from "@/lib/dialogStack";
 import { cx } from "./index";
 
 export type DrawerWidth = "md" | "lg" | "xl";
@@ -62,76 +64,55 @@ export function Drawer({
 }) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement | null>(null);
-  const restoreTo = useRef<HTMLElement | null>(null);
+  const markerRef = useRef<HTMLSpanElement | null>(null);
+  const registrationRef = useRef<DialogRegistration | null>(null);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  const [layer, setLayer] = useState({ zIndex: 61, topmost: false });
   const onCloseRef = useRef(onClose);
   // Parent forms commonly pass an inline close handler. Keep the focus-lock
   // effect stable while still invoking the latest handler.
   onCloseRef.current = onClose;
 
-  const close = useCallback(() => onCloseRef.current(), []);
+  const close = useCallback(() => {
+    if (registrationRef.current?.isTopmost()) onCloseRef.current();
+  }, []);
 
   useEffect(() => {
-    if (!open) return;
-
-    // Remember what opened this so focus can go home. Without it, closing a
-    // dialog dumps focus on <body> and a keyboard user restarts from the top
-    // of the page.
-    restoreTo.current = document.activeElement as HTMLElement | null;
-    panelRef.current?.focus();
-
-    const prevOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        e.stopPropagation();
-        close();
-        return;
-      }
-      if (e.key !== "Tab" || !panelRef.current) return;
-      const focusable = Array.from(panelRef.current.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      )).filter((element) => element.getClientRects().length > 0);
-      if (!focusable.length) {
-        e.preventDefault();
-        panelRef.current.focus({ preventScroll: true });
-        return;
-      }
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      const active = document.activeElement;
-      if (e.shiftKey && (active === first || active === panelRef.current || !panelRef.current.contains(active))) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && (active === last || !panelRef.current.contains(active))) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-
+    if (open && markerRef.current) setPortalHost(dialogPortalHost(markerRef.current));
+  }, [open]);
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!open || !portalHost || !panel?.isConnected) return;
+    const registration = registerDialog(panel, () => onCloseRef.current(), {
+      onTopmostChange: (topmost) => {
+        panel.inert = !topmost;
+        setLayer((current) => ({ ...current, topmost }));
+      },
+    });
+    registrationRef.current = registration;
+    setLayer({ zIndex: registration.zIndex, topmost: registration.isTopmost() });
     return () => {
-      document.removeEventListener("keydown", onKey);
-      document.body.style.overflow = prevOverflow;
-      restoreTo.current?.focus?.();
+      registrationRef.current = null;
+      registration.unregister();
     };
-  }, [open, close]);
+  }, [open, portalHost]);
 
   if (!open) return null;
 
-  return (
+  return <><span ref={markerRef} hidden />{portalHost ? createPortal(
     <>
       <div
         className="drawer-scrim"
+        style={{ zIndex: layer.zIndex - 1 }}
         onClick={closeOnBackdrop ? close : undefined}
         aria-hidden="true"
       />
       <div
         className={cx("drawer", fullscreen && "drawer--fullscreen")}
-        style={fullscreen ? undefined : { width: WIDTHS[width] }}
+        style={{ ...(fullscreen ? {} : { width: WIDTHS[width] }), zIndex: layer.zIndex }}
         role="dialog"
-        aria-modal="true"
+        aria-modal={layer.topmost ? true : undefined}
+        aria-hidden={!layer.topmost || undefined}
         // Prefer pointing at the rendered heading: it stays correct when the
         // title is an element rather than a string, and it survives the title
         // changing. `ariaLabel` wins when the visible title is not the name.
@@ -157,8 +138,7 @@ export function Drawer({
         <div className={cx("drawer-b", bodyClass)} style={bodyStyle}>{children}</div>
         {footer && <div className="drawer-f">{footer}</div>}
       </div>
-    </>
-  );
+    </>, portalHost) : null}</>;
 }
 
 /**

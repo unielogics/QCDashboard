@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
@@ -8,6 +7,7 @@ import { BankingPanel } from "@/components/application/ApplicationVerificationWo
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
+import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
 import {
   BucketFileReviewPanel,
   type BucketFileReview,
@@ -138,6 +138,7 @@ export function ApplicationEvidenceWorkspace({
   const [tab, setTab] = useState<WorkspaceTab>(initialTab);
   const [dragging, setDragging] = useState(false);
   const [formsOpen, setFormsOpen] = useState(false);
+  const [openBucketId, setOpenBucketId] = useState<string | null>(null);
   const [selectedFileId, setSelectedFileId] = useState<string | null>(null);
   const [selectedPreviewPage, setSelectedPreviewPage] = useState<number | undefined>();
   const [selectedPreviewHash, setSelectedPreviewHash] = useState<string | undefined>();
@@ -157,6 +158,7 @@ export function ApplicationEvidenceWorkspace({
   const data = workspace.data;
 
   useEffect(() => setTab(initialTab), [initialTab]);
+  useEffect(() => setOpenBucketId(null), [profileId, data?.primary_bucket_id]);
   useEffect(() => {
     if (focusRequirement?.requestId) setTab("requirements");
   }, [focusRequirement?.requestId]);
@@ -472,7 +474,7 @@ export function ApplicationEvidenceWorkspace({
       <div className="evidence-workspace-actions">
         {onAddFromDrive ? <Btn onClick={onAddFromDrive}><Icon name="upload" size={14} />Add from Drive</Btn> : null}
         {onAttachBucket ? <Btn onClick={onAttachBucket}><Icon name="link" size={14} />Attach bucket</Btn> : null}
-        {data.primary_bucket_id ? <Link className="btn" href={`/admin/buckets?bucket=${data.primary_bucket_id}`}><Icon name="vault" size={14} />Open bucket</Link> : null}
+        {data.primary_bucket_id ? <Btn onClick={() => setOpenBucketId(data.primary_bucket_id)}><Icon name="vault" size={14} />Open bucket</Btn> : null}
         <Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn>
       </div>
     </header>
@@ -637,5 +639,6 @@ export function ApplicationEvidenceWorkspace({
         <Callout tone={action.kind === "reject" ? "warn" : "mut"}>{action.kind === "unlink" || action.kind === "reassign" ? "The source file stays in its bucket. Only its requirement assignment changes." : action.kind === "reject" || action.kind === "override" ? "The original AI decision remains in immutable history." : "This control appears only because the published requirement requires human verification."}</Callout>
       </div> : null}
     </Drawer>
+    <BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => { setOpenBucketId(null); void refresh(); }} />
   </section>;
 }

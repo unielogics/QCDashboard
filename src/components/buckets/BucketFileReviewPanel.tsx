@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from "react";
+import { createPortal } from "react-dom";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
 import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { destroyPdfResource } from "@/lib/pdfLifecycle";
 import { scrollToPdfSourcePage, validPdfSourcePage } from "@/lib/pdfSourceNavigation";
+import { dialogPortalHost, registerDialog } from "@/lib/dialogStack";
 
 export type BucketReviewFile = {
   id: string;
@@ -85,6 +87,28 @@ export function BucketFileReviewPanel({
   initialPage?: number;
   pageRequestId?: number;
 }) {
+  const markerRef = useRef<HTMLSpanElement | null>(null);
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  const [dialogLayer, setDialogLayer] = useState({ zIndex: 500, topmost: false });
+  useEffect(() => {
+    if (markerRef.current) setPortalHost(dialogPortalHost(markerRef.current));
+  }, []);
+  useEffect(() => {
+    const panel = dialogRef.current;
+    if (minimized || !portalHost || !panel?.isConnected) return;
+    const registration = registerDialog(panel, () => onCloseRef.current(), {
+      baseZIndex: 500,
+      onTopmostChange: (topmost) => {
+        panel.inert = !topmost;
+        setDialogLayer((current) => ({ ...current, topmost }));
+      },
+    });
+    setDialogLayer({ zIndex: registration.zIndex, topmost: registration.isTopmost() });
+    return () => registration.unregister();
+  }, [minimized, portalHost]);
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const pageStageRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -179,7 +203,7 @@ export function BucketFileReviewPanel({
     const observer = new ResizeObserver(update);
     observer.observe(node);
     return () => observer.disconnect();
-  }, []);
+  }, [portalHost]);
 
   useEffect(() => {
     let cancelled = false;
@@ -353,8 +377,14 @@ export function BucketFileReviewPanel({
     fileRowRefs.current[currentFileId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [currentFileId, filteredFiles]);
 
-  return (
-    <div className={cx("bucket-review-shell", minimized && "workspace-minimized")} aria-hidden={minimized}>
+  return <><span ref={markerRef} hidden />{portalHost ? createPortal(
+    <div ref={dialogRef} className={cx("bucket-review-shell", minimized && "workspace-minimized")}
+      style={{ zIndex: dialogLayer.zIndex }}
+      role={!minimized ? "dialog" : undefined}
+      aria-label={title}
+      aria-modal={!minimized && dialogLayer.topmost ? true : undefined}
+      aria-hidden={minimized || !dialogLayer.topmost || undefined}
+      tabIndex={-1}>
       <section className="bucket-review-workspace">
         {/* `.filehd-b` and not `.panel-h`: this is a file identity block —
             eyebrow, file name, meta on the left, actions on the right — and
@@ -568,8 +598,7 @@ export function BucketFileReviewPanel({
           </aside> : null}
         </div>
       </section>
-    </div>
-  );
+    </div>, portalHost) : null}</>;
 }
 
 function PdfPage({

@@ -947,6 +947,7 @@ test("All Tools uses the centered catalogue and closes with Escape", async ({ pa
 });
 
 test("Pipeline primary action opens the shared centered drawer", async ({ page }, testInfo) => {
+  await mockEmptyOperatorPipeline(page);
   await openConsolePage(page, "/pipeline");
   await page.getByRole("button", { name: /New file/i }).click();
   const dialog = page.getByRole("dialog");
@@ -966,6 +967,175 @@ test("shared drawer inputs retain focus through controlled rerenders", async ({ 
   await name.pressSequentially("Jonathan Franco");
   await expect(name).toHaveValue("Jonathan Franco");
   await expect(name).toBeFocused();
+});
+
+async function mockIntakeBucket(page: Page, status = 200) {
+  const bucketId = "20000000-0000-0000-0000-000000000003";
+  const fileId = "30000000-0000-0000-0000-000000000012";
+  const bucket = {
+    id: bucketId, name: "UnieLogics secure room", client_name: "UnieLogics",
+    purpose: "Business financing", bucket_type: "AI intake", status: "collecting",
+    created_at: "2026-10-12T14:00:00Z", updated_at: "2026-10-12T14:00:00Z",
+    linked_files: [], requested_documents: [], upload_links: [], shares: [],
+    vendor_access: [], public_shares: [], notes: [], activity: [],
+    files: [{ id: fileId, file_name: "Intake source.txt", content_type: "text/plain", size_bytes: 80, status: "uploaded", created_at: "2026-10-12T14:00:00Z" }],
+  };
+  let directoryRequests = 0;
+  let detailRequests = 0;
+  await page.route(/\/api\/v1\/buckets$/, async (route) => {
+    directoryRequests++;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([bucket]) });
+  });
+  await page.route(/\/api\/v1\/buckets\/(?:templates|admin\/vendors)$/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}/deleted-files$`), (route) => route.fulfill({ status: 200, contentType: "application/json", body: "[]" }));
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}/activity(?:\\?.*)?$`), (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: [], total: 0, limit: 12, offset: 0 }) }));
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}/files/${fileId}/review$`), (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ file: bucket.files[0], preview_url: `${BASE_URL}/intake-bucket-preview.txt`, annotations: [] }) }));
+  await page.route(/\/intake-bucket-preview\.txt$/, (route) => route.fulfill({ status: 200, contentType: "text/plain", body: "Same intake, exact linked bucket source." }));
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}$`), (route) => {
+    detailRequests++;
+    return route.fulfill({ status, contentType: "application/json", body: JSON.stringify(status === 200 ? bucket : { detail: "Bucket access is unavailable." }) });
+  });
+  return { bucketId, directoryRequests: () => directoryRequests, detailRequests: () => detailRequests };
+}
+
+test("intake bucket opens in place and preserves tabs, drafts, and scroll", async ({ page }, testInfo) => {
+  test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "Exercise desktop and touch-sized layouts.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  const bucket = await mockIntakeBucket(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Reviewer controls", exact: true }).click();
+  await page.getByLabel("Reviewer notes", { exact: true }).fill("Unsaved review: preserve this exact draft.");
+  await page.getByRole("tab", { name: "File workspace", exact: true }).click();
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  await page.getByRole("tab", { name: "Banking", exact: true }).click();
+  const workspace = page.locator(".application-evidence-workspace");
+  await workspace.evaluate((node) => { (node as HTMLElement).dataset.retained = "original-mounted-workspace"; });
+  const opener = workspace.getByRole("button", { name: "Open bucket", exact: true });
+  await opener.scrollIntoViewIfNeeded();
+  const originalUrl = page.url();
+  const originalScroll = await page.locator(".intake-file-body").evaluate((node) => node.scrollTop);
+  await opener.click();
+  const room = page.getByRole("dialog", { name: /^UnieLogics secure room/ });
+  await expect(room).toBeVisible();
+  expect(page.url()).toBe(originalUrl);
+  expect(bucket.directoryRequests()).toBe(0);
+  await room.getByRole("button", { name: "Preview Intake source.txt", exact: true }).click();
+  const preview = page.locator(".bucket-review-shell");
+  await expect(preview).toContainText("Same intake, exact linked bucket source.");
+  await expect(preview.getByRole("button", { name: "Download", exact: true })).toBeVisible();
+  await preview.getByRole("button", { name: "Minimize review", exact: true }).click();
+  await expect(preview).toBeHidden();
+  await expect(room).toBeVisible();
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(preview).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(preview).toBeHidden();
+  await expect(room).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(room).toBeHidden();
+  expect(page.url()).toBe(originalUrl);
+  await expect(workspace).toHaveAttribute("data-retained", "original-mounted-workspace");
+  await expect(page.getByRole("tab", { name: "Banking", exact: true })).toHaveAttribute("aria-selected", "true");
+  await expect(opener).toBeFocused();
+  expect(await page.locator(".intake-file-body").evaluate((node) => node.scrollTop)).toBe(originalScroll);
+  await page.getByRole("tab", { name: "Reviewer controls", exact: true }).click();
+  await expect(page.getByLabel("Reviewer notes", { exact: true })).toHaveValue("Unsaved review: preserve this exact draft.");
+});
+
+test("intake bucket failure stays scoped and does not navigate away", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "Exercise failure handling once.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  await mockIntakeBucket(page, 403);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  const originalUrl = page.url();
+  await page.getByRole("button", { name: "Open bucket", exact: true }).click();
+  await expect(page.getByRole("dialog")).toContainText(/unavailable|access/i);
+  expect(page.url()).toBe(originalUrl);
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".application-evidence-workspace")).toBeVisible();
+  expect(page.url()).toBe(originalUrl);
+});
+
+test("standalone bucket deep link still opens and closes normally", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "Exercise standalone compatibility once.");
+  await mockEmptyOperatorPipeline(page);
+  const { bucketId } = await mockIntakeBucket(page);
+  await page.goto(`/admin/buckets?bucket=${bucketId}`, { waitUntil: "domcontentloaded" });
+  const room = page.getByRole("dialog", { name: /^UnieLogics secure room/ });
+  await expect(room).toBeVisible();
+  await room.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page).toHaveURL(/\/admin\/buckets$/);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+});
+
+test("intake bucket permission failure preserves the intake without admin requests", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "Exercise role gating once.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  const bucket = await mockIntakeBucket(page);
+  await page.route(/\/api\/v1\/auth\/me$/, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ id: "10000000-0000-0000-0000-000000000001", email: "exec@example.com", name: "Fixture executive", role: "loan_exec" }) }));
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  const originalUrl = page.url();
+  await page.getByRole("button", { name: "Open bucket", exact: true }).click();
+  const error = page.getByRole("dialog");
+  await expect(error).toContainText("Your role does not have access");
+  expect(bucket.directoryRequests()).toBe(0);
+  expect(bucket.detailRequests()).toBe(0);
+  await error.getByRole("button", { name: "Close", exact: true }).click();
+  await expect(page.locator(".application-evidence-workspace")).toBeVisible();
+  expect(page.url()).toBe(originalUrl);
+});
+
+test("minimized intake bucket resumes its own filters without resetting the intake", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "Exercise minimize and resume once.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  await mockIntakeBucket(page);
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  await page.getByRole("tab", { name: "Banking", exact: true }).click();
+  const originalUrl = page.url();
+  await page.getByRole("button", { name: "Open bucket", exact: true }).click();
+  const room = page.getByRole("dialog", { name: /^UnieLogics secure room/ });
+  const search = room.getByPlaceholder("Search files, uploader, task...");
+  await search.fill("Intake source");
+  await room.getByRole("button", { name: "Minimize bucket workspace", exact: true }).click();
+  await expect(room).toBeHidden();
+  await expect(page.getByRole("tab", { name: "Banking", exact: true })).toHaveAttribute("aria-selected", "true");
+  await page.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(room).toBeVisible();
+  await expect(search).toHaveValue("Intake source");
+  await room.getByRole("button", { name: "Close", exact: true }).click();
+  expect(page.url()).toBe(originalUrl);
+  await expect(page.locator(".application-evidence-workspace")).toBeVisible();
+});
+
+test("closing a loading intake bucket prevents a late response from reopening it", async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== "desktop-1600", "Exercise cancelled-load handling once.");
+  const { intakeId } = await mockAiIntakeBankingWorkspace(page);
+  const { bucketId } = await mockIntakeBucket(page);
+  let release: () => void = () => undefined;
+  const released = new Promise<void>((resolve) => { release = resolve; });
+  let markStarted: () => void = () => undefined;
+  const started = new Promise<void>((resolve) => { markStarted = resolve; });
+  await page.route(new RegExp(`/api/v1/buckets/admin/${bucketId}$`), async (route) => {
+    markStarted();
+    await released;
+    await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ detail: "Late response must remain dismissed." }) }).catch(() => undefined);
+  });
+  await page.goto(`/admin/ai-underwriter-leads?lead=${intakeId}`, { waitUntil: "domcontentloaded" });
+  await page.getByRole("button", { name: /^Evidence & banking/ }).click();
+  const originalUrl = page.url();
+  await page.getByRole("button", { name: "Open bucket", exact: true }).click();
+  await started;
+  await page.getByRole("dialog").getByRole("button", { name: "Close", exact: true }).click();
+  release();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator(".application-evidence-workspace")).toBeVisible();
+  await page.waitForTimeout(300);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  expect(page.url()).toBe(originalUrl);
 });
 
 test("AI intake banking syncs accepted statements and persisted delivery status", async ({ page }, testInfo) => {

@@ -104,6 +104,7 @@ import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection }
 import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
 import { LeadNotesPanel, type LeadNote } from "@/components/broker/LeadNotesPanel";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
+import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
 import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
 import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
@@ -1413,6 +1414,8 @@ function LeadDetailPanel({
   );
   const [activeTab, setActiveTab] = useState<"conversation" | "workspace">("conversation");
   const [workspaceSub, setWorkspaceSub] = useState<"overview" | "documents" | "client" | "credit" | "contracts" | "package">("overview");
+  const [openBucketId, setOpenBucketId] = useState<string | null>(null);
+  useEffect(() => setOpenBucketId(null), [detail?.intake.id, detail?.intake.bucket_id]);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [busy, setBusy] = useState("");
@@ -2975,6 +2978,7 @@ function LeadDetailPanel({
       >
         {rotatePinDone ? <div className="grid g12"><Callout tone="ok" icon={<Icon name="check" size={16} />}>The new PIN is active. Share it separately from the room link.</Callout><div className="secure-room-created-grid"><div><span className="lbl">New room PIN</span><b className="secure-room-pin num">{rotatePin}</b><Btn onClick={() => void navigator.clipboard.writeText(rotatePin)}><Icon name="copy" size={14} />Copy PIN</Btn></div></div></div> : <div className="grid g12"><Callout tone="warn" icon={<Icon name="alert" size={16} />}>This immediately invalidates the current PIN. Existing room URLs remain valid, but the client must use the new PIN.</Callout><div className="fldgrid two"><Field label="New six-digit PIN"><Input value={rotatePin} onChange={(event) => setRotatePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" /></Field><Field label="Confirm PIN"><Input value={rotatePinConfirm} onChange={(event) => setRotatePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" /></Field></div><div className="review-effects"><div><span>Actor</span><b>Current operator</b></div><div><span>Execution</span><b>Immediately</b></div><div><span>Reversible</span><b>Rotate again</b></div></div></div>}
       </Drawer>
+      <BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => setOpenBucketId(null)} />
     </div>
   );
 
@@ -3158,7 +3162,7 @@ function LeadDetailPanel({
                     {rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
                   </Btn>
                   <Btn onClick={onExport}>Export intelligence PDF</Btn>
-                  <Link href={`/admin/buckets`} className="btn">Open Buckets</Link>
+                  <Btn onClick={() => setOpenBucketId(detail.intake.bucket_id)}>Open bucket</Btn>
                   <Btn onClick={onLinkBucketIntake}>
                     <Icon name="link" size={14} />
                     Link bucket
@@ -3518,6 +3522,7 @@ function LeadDetailPanel({
           }}
         />
       ) : null}
+      <BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => setOpenBucketId(null)} />
     </div>
   );
 }
