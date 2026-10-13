@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage } from "@/lib/intakeCopy";
+import {
+  equipmentCopy,
+  getStoredLanguage,
+  resolveCommunicationLanguage,
+  setStoredLanguage,
+} from "@/lib/intakeCopy";
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -36,5 +41,22 @@ describe("intake language ownership", () => {
     expect(resolveCommunicationLanguage("es", "en")).toBe("es");
     expect(resolveCommunicationLanguage(null, "en")).toBe("en");
     expect(resolveCommunicationLanguage("fr", undefined)).toBeNull();
+  });
+
+  it("keeps equipment resume language isolated and naturally localized", () => {
+    const values = new Map<string, string>();
+    vi.stubGlobal("window", {
+      location: { search: "?locale=es", pathname: "/equipment-financing-intake" },
+      sessionStorage: {
+        getItem: (key: string) => values.get(key) ?? null,
+        setItem: (key: string, value: string) => values.set(key, value),
+        removeItem: (key: string) => values.delete(key),
+      },
+    });
+
+    expect(getStoredLanguage("equipment")).toBe("es");
+    expect(equipmentCopy("en").heroTitle).toContain("equipment");
+    expect(equipmentCopy("es").heroTitle).toContain("equipo");
+    expect(equipmentCopy("es").resumeSub).not.toContain("concesionario");
   });
 });

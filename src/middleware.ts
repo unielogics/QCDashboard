@@ -20,6 +20,7 @@ const isPublicPage = createRouteMatcher([
   "/dealer-ai-underwriter(.*)",
   "/funding-review(.*)",
   "/mca-refinance-intake(.*)",
+  "/equipment-financing-intake(.*)",
   // The one-tap stop page for pre-call prep messages. It is reached from a
   // signed link in a client's email; that client has no account, so bouncing
   // them to sign-in would make the opt-out unusable. The signature in the URL

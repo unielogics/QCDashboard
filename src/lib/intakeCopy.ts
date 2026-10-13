@@ -14,7 +14,7 @@
 // consent-bearing content that IS flagged per-string for compliance review.
 
 export type Lang = "en" | "es";
-export type IntakeLanguageScope = "dealer" | "real_estate" | "mca_refinance" | "default";
+export type IntakeLanguageScope = "dealer" | "equipment" | "real_estate" | "mca_refinance" | "default";
 
 const LANGUAGE_STORAGE_PREFIX = "qc_intake_language";
 
@@ -284,6 +284,38 @@ const dealerEs: DealerCopy = {
   resumeSub: "Ingresa tu correo electrónico y te enviaremos un código de acceso breve para tu expediente de concesionario existente.",
 };
 
+const equipmentEn: DealerCopy = {
+  eyebrow: "Qualified Commercial - Equipment Financing Review",
+  heroTitle: "Start with the equipment you need and the business it will support.",
+  heroLead: "We will open a secure equipment financing file, collect the purchase details, and review the vendor quote alongside the business cash flow. Missing information stays open for follow-up instead of being treated as a decline.",
+  checklist: [
+    "Equipment Financing is selected before the file opens",
+    "Tell us about the asset, seller, price, delivery, and business use",
+    "Upload the vendor quote in the secure checklist after you start",
+    "Receive a preliminary review before the file is matched to a lender",
+  ],
+  fieldBusinessName: "Business name",
+  startCta: "Open my equipment financing file ->",
+  startCtaBusy: "Creating secure equipment file...",
+  resumeSub: "Enter your email and we will send a short access code for your existing equipment financing file.",
+};
+
+const equipmentEs: DealerCopy = {
+  eyebrow: "Qualified Commercial - Revisión de Financiamiento de Equipos",
+  heroTitle: "Comience con el equipo que necesita y el negocio que lo va a utilizar.",
+  heroLead: "Abriremos un expediente seguro de financiamiento de equipos, recopilaremos los datos de la compra y revisaremos la cotización junto con el flujo de caja del negocio. Si falta información, la pediremos sin tratar el expediente como una denegación.",
+  checklist: [
+    "Financiamiento de Equipos queda seleccionado antes de abrir el expediente",
+    "Indique el activo, vendedor, precio, entrega y uso dentro del negocio",
+    "Suba la cotización del vendedor en la lista segura después de comenzar",
+    "Reciba una evaluación preliminar antes de presentar el expediente a un prestamista",
+  ],
+  fieldBusinessName: "Nombre del negocio",
+  startCta: "Abrir mi expediente de equipos ->",
+  startCtaBusy: "Creando expediente seguro...",
+  resumeSub: "Ingresa tu correo electrónico y te enviaremos un código breve para tu expediente de financiamiento de equipos.",
+};
+
 const realEstateEn: RealEstateCopy = {
   eyebrow: "Qualified Commercial - Commercial Funding Review",
   heroTitle: "Tell us who you are - then the DSCR review runs in chat.",
@@ -317,12 +349,16 @@ const realEstateEs: RealEstateCopy = {
 };
 
 export const intakeCopy = {
-  en: { common: commonEn, dealer: dealerEn, realEstate: realEstateEn },
-  es: { common: commonEs, dealer: dealerEs, realEstate: realEstateEs },
+  en: { common: commonEn, dealer: dealerEn, equipment: equipmentEn, realEstate: realEstateEn },
+  es: { common: commonEs, dealer: dealerEs, equipment: equipmentEs, realEstate: realEstateEs },
 } as const;
 
 export function dealerCopy(lang: Lang): CommonCopy & DealerCopy {
   return { ...intakeCopy[lang].common, ...intakeCopy[lang].dealer };
+}
+
+export function equipmentCopy(lang: Lang): CommonCopy & DealerCopy {
+  return { ...intakeCopy[lang].common, ...intakeCopy[lang].equipment };
 }
 
 export function realEstateCopy(lang: Lang): CommonCopy & RealEstateCopy {

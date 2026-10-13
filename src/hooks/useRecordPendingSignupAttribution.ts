@@ -9,6 +9,7 @@ type PendingSignupAttribution = {
   source: string;
   page?: string;
   program?: string;
+  funding_intent?: string;
   vertical?: string;
   campaign?: string;
   cta?: string;

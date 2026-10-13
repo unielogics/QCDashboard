@@ -15,8 +15,8 @@
  *     review requires public legal URLs
  *   - book: public scheduling
  *   - programs: public dealer programs
- *   - dealer-ai-underwriter / funding-review / mca-refinance-intake: the three
- *     public intake apps
+ *   - dealer-ai-underwriter / funding-review / mca-refinance-intake /
+ *     equipment-financing-intake: public intake apps
  *   - buckets/request, buckets/share, buckets/public-share: token-authorised
  *     client and vendor document rooms
  *   - agreement: direct-path access to the signature portal (the real
@@ -41,6 +41,7 @@ export const BARE_ROUTE_PREFIXES = [
   "/dealer-ai-underwriter",
   "/funding-review",
   "/mca-refinance-intake",
+  "/equipment-financing-intake",
   "/buckets/request",
   "/forms",
   "/production-package/link",

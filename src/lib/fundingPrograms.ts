@@ -22,6 +22,25 @@ export type FundingProgramVersion = {
   published_at: string | null;
 };
 
+export type FundingProgramCommercialTerms = {
+  id: string;
+  version: number;
+  status: "draft" | "published" | "retired";
+  minimum_amount: number | null;
+  maximum_amount: number | null;
+  minimum_term_months: number | null;
+  maximum_term_months: number | null;
+  pricing_basis: "apr" | "interest_rate" | "factor_rate" | "file_specific" | null;
+  minimum_pricing: number | null;
+  maximum_pricing: number | null;
+  qc_fee_cap_percent: number | null;
+  qc_fee_default_percent: number | null;
+  disclosures: string[];
+  source_reference: string | null;
+  effective_date: string | null;
+  published_at: string | null;
+};
+
 export type FundingProgramReviewCheck = {
   key: "net_income_nonnegative" | "net_income_not_declining" | "revenue_not_declining" | "no_mca_debits" | "no_nsf" | "positive_ending_balance" | "custom" | `custom_${string}`;
   label: string;
@@ -53,12 +72,15 @@ export type FundingProgramCatalogItem = {
   scopes: FundingProgramScope[];
   published_version: FundingProgramVersion | null;
   draft_versions: FundingProgramVersion[];
+  published_commercial_terms?: FundingProgramCommercialTerms | null;
+  draft_commercial_terms?: FundingProgramCommercialTerms[];
   created_at: string;
   updated_at: string;
 };
 
 export type PublicFundingProgram = Pick<FundingProgramCatalogItem, "program_key" | "public_slug" | "name" | "short_description" | "display_order"> & {
   verticals: FundingProgramVertical[];
+  commercial_terms?: FundingProgramCommercialTerms | null;
 };
 
 /**

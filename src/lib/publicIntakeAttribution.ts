@@ -2,6 +2,7 @@ export type PublicIntakeAttribution = {
   source?: string;
   page?: string;
   program?: string;
+  funding_intent?: string;
   vertical?: string;
   campaign?: string;
   cta?: string;
@@ -15,6 +16,7 @@ export function readPublicIntakeAttribution(): PublicIntakeAttribution {
     source: value("source"),
     page: value("page"),
     program: value("program"),
+    funding_intent: value("funding_intent"),
     vertical: value("vertical"),
     campaign: value("campaign") ?? value("utm_campaign"),
     cta: value("cta"),

@@ -2,6 +2,7 @@
 
 import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 import { clientActionableRequestedDocumentUploadTarget, clientApiError, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
@@ -16,8 +17,13 @@ import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
-import { dealerCopy, getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
-import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { dealerCopy, equipmentCopy, getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
+import { readPublicIntakeAttribution, type PublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import {
+  canonicalEquipmentAttribution,
+  emitPublicIntakeConversion,
+  isQualifiedEquipmentReview,
+} from "@/lib/publicIntakeConversion";
 import { readCapitalReadinessHandoffFragment, toCapitalReadinessIntakePrefill, type CapitalReadinessDiagnosticHandoff } from "@/lib/capitalReadinessHandoff";
 import { validPhone } from "@/lib/formCoerce";
 import { metricProvenance } from "@/lib/intake";
@@ -183,6 +189,8 @@ type IntelligenceModel = {
 const DEALER_AI_UPLOAD_ACCEPT = ".pdf,.png,.jpg,.jpeg,.gif,.webp,.zip,.csv,.xlsx,.txt,text/plain,application/pdf,image/*,application/zip,application/x-zip-compressed,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 const DEALER_AI_SESSION_KEY = "qc_dealer_ai_session";
 const DEALER_AI_TOKEN_KEY = "qc_dealer_ai_token";
+const EQUIPMENT_AI_SESSION_KEY = "qc_equipment_ai_session";
+const EQUIPMENT_AI_TOKEN_KEY = "qc_equipment_ai_token";
 const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }> = [
   { key: "attaching", label: "Attaching files" },
   { key: "uploading", label: "Uploading securely" },
@@ -227,7 +235,99 @@ function useCompactViewport() {
 
 const initialContact = { full_name: "", email: "", phone: "", business_name: "" };
 
+type IntakeExperience = "dealer" | "equipment";
+type EquipmentDetailsForm = {
+  requested_amount: string;
+  description: string;
+  age_years: string;
+  condition: "" | "new" | "used" | "refurbished" | "unknown";
+  remaining_useful_life_years: string;
+  seller_name: string;
+  seller_contact: string;
+  purchase_price: string;
+  delivery_timing: string;
+  intended_business_use: string;
+};
+
+const initialEquipmentDetails: EquipmentDetailsForm = {
+  requested_amount: "",
+  description: "",
+  age_years: "",
+  condition: "",
+  remaining_useful_life_years: "",
+  seller_name: "",
+  seller_contact: "",
+  purchase_price: "",
+  delivery_timing: "",
+  intended_business_use: "",
+};
+
+const equipmentFormCopy = {
+  en: {
+    selected: "Equipment Financing selected",
+    sectionTitle: "Tell us about the purchase",
+    sectionSub: "Use the best information you have today. You can upload the vendor quote and fill any remaining gaps in the secure room.",
+    requestedAmount: "Requested financing amount",
+    description: "Equipment description",
+    descriptionPlaceholder: "Example: two CNC mills and installation",
+    condition: "Condition",
+    conditionPlaceholder: "Select condition",
+    conditionNew: "New",
+    conditionUsed: "Used",
+    conditionRefurbished: "Refurbished",
+    conditionUnknown: "Not sure yet",
+    age: "Equipment age (years)",
+    usefulLife: "Remaining useful life (years)",
+    sellerName: "Seller or vendor",
+    sellerContact: "Seller contact",
+    purchasePrice: "Purchase price",
+    delivery: "Expected delivery",
+    businessUse: "How will the business use this equipment?",
+    businessUsePlaceholder: "Describe the work, capacity, or revenue this purchase will support.",
+    required: "Add the business name, requested amount, purchase price, equipment description, condition, and intended business use to open the file.",
+    roomTitle: "Equipment Financing Review",
+    roomEyebrow: "Qualified Commercial equipment financing",
+    sidebar: "Equipment funding room",
+  },
+  es: {
+    selected: "Financiamiento de Equipos seleccionado",
+    sectionTitle: "Cuéntenos sobre la compra",
+    sectionSub: "Use la mejor información que tenga hoy. Podrá subir la cotización y completar los datos pendientes en la sala segura.",
+    requestedAmount: "Monto de financiamiento solicitado",
+    description: "Descripción del equipo",
+    descriptionPlaceholder: "Ejemplo: dos fresadoras CNC e instalación",
+    condition: "Condición",
+    conditionPlaceholder: "Seleccione una opción",
+    conditionNew: "Nuevo",
+    conditionUsed: "Usado",
+    conditionRefurbished: "Reacondicionado",
+    conditionUnknown: "Aún no lo sé",
+    age: "Antigüedad del equipo (años)",
+    usefulLife: "Vida útil restante (años)",
+    sellerName: "Vendedor o proveedor",
+    sellerContact: "Contacto del vendedor",
+    purchasePrice: "Precio de compra",
+    delivery: "Fecha estimada de entrega",
+    businessUse: "¿Cómo utilizará el negocio este equipo?",
+    businessUsePlaceholder: "Describa el trabajo, la capacidad o los ingresos que apoyará esta compra.",
+    required: "Agregue el nombre del negocio, monto solicitado, precio de compra, descripción, condición y uso comercial para abrir el expediente.",
+    roomTitle: "Revisión de Financiamiento de Equipos",
+    roomEyebrow: "Financiamiento de equipos de Qualified Commercial",
+    sidebar: "Sala de financiamiento de equipos",
+  },
+} as const;
+
 export default function DealerAIUnderwriterPage() {
+  const pathname = usePathname();
+  return <DealerAIUnderwriterExperience experience={pathname.startsWith("/equipment-financing-intake") ? "equipment" : "dealer"} />;
+}
+
+function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExperience }) {
+  const isEquipment = experience === "equipment";
+  const publicPath = isEquipment ? "/equipment-financing-intake" : "/dealer-ai-underwriter";
+  const sessionStorageKey = isEquipment ? EQUIPMENT_AI_SESSION_KEY : DEALER_AI_SESSION_KEY;
+  const tokenStorageKey = isEquipment ? EQUIPMENT_AI_TOKEN_KEY : DEALER_AI_TOKEN_KEY;
+  const languageScope = isEquipment ? "equipment" : "dealer";
   const compact = useCompactViewport();
   const [mounted, setMounted] = useState(false);
   const composerFileInputRef = useRef<HTMLInputElement | null>(null);
@@ -240,6 +340,7 @@ export default function DealerAIUnderwriterPage() {
   const [token, setToken] = useState<string>("");
   const [dealerSessionToken, setDealerSessionToken] = useState<string>("");
   const [contact, setContact] = useState(initialContact);
+  const [equipmentDetails, setEquipmentDetails] = useState<EquipmentDetailsForm>(initialEquipmentDetails);
   const [response, setResponse] = useState<IntakeResponse | null>(null);
   const [chat, setChat] = useState<ChatLine[]>([]);
   const [chatText, setChatText] = useState("");
@@ -273,11 +374,18 @@ export default function DealerAIUnderwriterPage() {
   // token) on first mount -- suppresses the language picker so a returning
   // client never flashes it before their existing session's response loads.
   const [checkingResume, setCheckingResume] = useState(true);
-  const c = useMemo(() => dealerCopy(language ?? "en"), [language]);
+  const c = useMemo(() => (isEquipment ? equipmentCopy(language ?? "en") : dealerCopy(language ?? "en")), [isEquipment, language]);
+  const equipmentC = equipmentFormCopy[language ?? "en"];
+  const conversionAttributionRef = useRef<PublicIntakeAttribution | null>(null);
+  const applicationCompleteTrackedRef = useRef(false);
+  const qualifiedTrackedRef = useRef(false);
 
   useEffect(() => {
-    setLanguage(getStoredLanguage("dealer"));
-  }, []);
+    setLanguage(getStoredLanguage(languageScope));
+    if (isEquipment) {
+      conversionAttributionRef.current = canonicalEquipmentAttribution(readPublicIntakeAttribution());
+    }
+  }, [isEquipment, languageScope]);
 
   useEffect(() => {
     setMounted(true);
@@ -303,22 +411,22 @@ export default function DealerAIUnderwriterPage() {
         .finally(() => setCheckingResume(false));
       return;
     }
-    const savedSession = typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_SESSION_KEY) : null;
+    const savedSession = typeof window !== "undefined" ? window.sessionStorage.getItem(sessionStorageKey) : null;
     if (savedSession) {
       setDealerSessionToken(savedSession);
       loadDealerSession(savedSession)
         .catch(() => {
-          window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
-          window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
+          window.sessionStorage.removeItem(sessionStorageKey);
+          window.sessionStorage.removeItem(tokenStorageKey);
         })
         .finally(() => setCheckingResume(false));
       return;
     }
-    const savedToken = typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_TOKEN_KEY) : null;
+    const savedToken = typeof window !== "undefined" ? window.sessionStorage.getItem(tokenStorageKey) : null;
     if (savedToken) {
       setToken(savedToken);
       loadIntake(savedToken, true)
-        .catch(() => window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY))
+        .catch(() => window.sessionStorage.removeItem(tokenStorageKey))
         .finally(() => setCheckingResume(false));
       return;
     }
@@ -327,7 +435,7 @@ export default function DealerAIUnderwriterPage() {
       setLanguage(readinessHandoff.locale);
     }
     setCheckingResume(false);
-  }, []);
+  }, [sessionStorageKey, tokenStorageKey]);
 
   const currentResult = response ? preferredIntakeReviewResult(response) : null;
   const missingDocs = useMemo(() => {
@@ -443,9 +551,26 @@ export default function DealerAIUnderwriterPage() {
       setStatus(c.errAcceptTerms);
       return;
     }
+    if (
+      isEquipment &&
+      (!contact.business_name.trim() ||
+        !numericOrNull(equipmentDetails.requested_amount) ||
+        !numericOrNull(equipmentDetails.purchase_price) ||
+        !equipmentDetails.description.trim() ||
+        !equipmentDetails.condition ||
+        !equipmentDetails.intended_business_use.trim())
+    ) {
+      setStatus(equipmentC.required);
+      return;
+    }
     setBusy(true);
     setStatus("");
     try {
+      const incomingAttribution = readPublicIntakeAttribution();
+      const attribution: PublicIntakeAttribution = isEquipment
+        ? canonicalEquipmentAttribution(incomingAttribution)
+        : incomingAttribution;
+      conversionAttributionRef.current = attribution;
       const payload = await call<IntakeResponse>("/public/dealer-ai-intake/start", {
         method: "POST",
         body: JSON.stringify({
@@ -458,16 +583,31 @@ export default function DealerAIUnderwriterPage() {
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
           preferred_language: language ?? "en",
+          ...(isEquipment ? {
+            requested_amount: numericOrNull(equipmentDetails.requested_amount),
+            equipment_details: {
+              description: equipmentDetails.description.trim(),
+              age_years: numericOrNull(equipmentDetails.age_years),
+              condition: equipmentDetails.condition,
+              remaining_useful_life_years: numericOrNull(equipmentDetails.remaining_useful_life_years),
+              seller_name: equipmentDetails.seller_name.trim() || null,
+              seller_contact: equipmentDetails.seller_contact.trim() || null,
+              purchase_price: numericOrNull(equipmentDetails.purchase_price),
+              delivery_timing: equipmentDetails.delivery_timing.trim() || null,
+              intended_business_use: equipmentDetails.intended_business_use.trim(),
+            },
+          } : {}),
           ...(capitalReadinessHandoffRef.current ? {
             capital_readiness_diagnostic: toCapitalReadinessIntakePrefill(capitalReadinessHandoffRef.current),
           } : {}),
-          ...readPublicIntakeAttribution(),
+          ...attribution,
         }),
       });
       applyResponse(payload, payload.token ?? "", true);
       pushAssistantFromPayload(payload);
+      if (isEquipment) emitPublicIntakeConversion("qc_application_start", attribution, language ?? "en");
       if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", "/dealer-ai-underwriter");
+        window.history.replaceState(null, "", publicPath);
       }
     } catch (error) {
       const message = errorMessage(error);
@@ -493,9 +633,12 @@ export default function DealerAIUnderwriterPage() {
     setBusy(true);
     setStatus("");
     try {
+      const attribution = isEquipment
+        ? conversionAttributionRef.current ?? canonicalEquipmentAttribution(readPublicIntakeAttribution())
+        : {};
       const payload = await call<{ ok: boolean; login_required?: boolean; message: string }>("/public/dealer-ai-intake/login/start", {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, ...attribution }),
       });
       setLoginCodeSent(Boolean(payload.login_required ?? true));
       setStatus(payload.message || "If a secure dealer file exists for this email, a code has been sent.");
@@ -511,9 +654,12 @@ export default function DealerAIUnderwriterPage() {
     if (!looksLikeEmail(email) || emailLookupBusy || response) return;
     setEmailLookupBusy(true);
     try {
+      const attribution = isEquipment
+        ? conversionAttributionRef.current ?? canonicalEquipmentAttribution(readPublicIntakeAttribution())
+        : {};
       const payload = await call<{ ok: boolean; login_required?: boolean; message: string }>("/public/dealer-ai-intake/login/start", {
         method: "POST",
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({ email, ...attribution }),
       });
       if (payload.login_required) {
         setResumeEmail(email);
@@ -548,7 +694,7 @@ export default function DealerAIUnderwriterPage() {
       setLoginCode("");
       setStatus("");
       if (typeof window !== "undefined") {
-        window.history.replaceState(null, "", "/dealer-ai-underwriter");
+        window.history.replaceState(null, "", publicPath);
       }
     } catch (error) {
       setStatus(errorMessage(error));
@@ -564,7 +710,7 @@ export default function DealerAIUnderwriterPage() {
     persistDealerSession({ ...payload, token: activeToken });
     if (fromResume && !payload.messages?.length) pushAssistantFromPayload(payload);
     if (typeof window !== "undefined" && fromResume) {
-      window.history.replaceState(null, "", "/dealer-ai-underwriter");
+      window.history.replaceState(null, "", publicPath);
     }
   }
 
@@ -611,7 +757,7 @@ export default function DealerAIUnderwriterPage() {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `dealer-intelligence-${response?.intake.business_name || response?.intake.full_name || "review"}.pdf`;
+    link.download = `${isEquipment ? "equipment-financing" : "dealer-intelligence"}-${response?.intake.business_name || response?.intake.full_name || "review"}.pdf`;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -756,6 +902,19 @@ export default function DealerAIUnderwriterPage() {
         beginReviewTimeline();
         const payload = await call<IntakeResponse>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/run-review`, { method: "POST" });
         applyResponse(payload, token);
+        if (isEquipment) {
+          const attribution = conversionAttributionRef.current
+            ?? canonicalEquipmentAttribution(readPublicIntakeAttribution());
+          if (!applicationCompleteTrackedRef.current) {
+            emitPublicIntakeConversion("qc_application_complete", attribution, language ?? "en");
+            applicationCompleteTrackedRef.current = true;
+          }
+          const authoritativeResult = payload.latest_review?.result ?? payload.intake.result_snapshot;
+          if (!qualifiedTrackedRef.current && isQualifiedEquipmentReview(authoritativeResult)) {
+            emitPublicIntakeConversion("qc_qualified_file", attribution, language ?? "en");
+            qualifiedTrackedRef.current = true;
+          }
+        }
         completeReviewProgress();
         pushAssistantFromPayload(payload);
         if (guidance) {
@@ -916,10 +1075,10 @@ export default function DealerAIUnderwriterPage() {
   function persistDealerSession(payload: Pick<IntakeResponse, "token" | "session_token">) {
     if (payload.session_token) {
       setDealerSessionToken(payload.session_token);
-      if (typeof window !== "undefined") window.sessionStorage.setItem(DEALER_AI_SESSION_KEY, payload.session_token);
+      if (typeof window !== "undefined") window.sessionStorage.setItem(sessionStorageKey, payload.session_token);
     }
     if (payload.token) {
-      if (typeof window !== "undefined") window.sessionStorage.setItem(DEALER_AI_TOKEN_KEY, payload.token);
+      if (typeof window !== "undefined") window.sessionStorage.setItem(tokenStorageKey, payload.token);
     }
   }
 
@@ -986,7 +1145,7 @@ export default function DealerAIUnderwriterPage() {
   }
 
   function logoutRoom() {
-    const currentSession = dealerSessionToken || (typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_SESSION_KEY) || "" : "");
+    const currentSession = dealerSessionToken || (typeof window !== "undefined" ? window.sessionStorage.getItem(sessionStorageKey) || "" : "");
     if (currentSession) {
       call("/public/dealer-ai-intake/logout", {
         method: "POST",
@@ -1004,9 +1163,9 @@ export default function DealerAIUnderwriterPage() {
     setShowContinuationLogin(false);
     setStatus(c.statusLoggedOut);
     if (typeof window !== "undefined") {
-      window.sessionStorage.removeItem(DEALER_AI_SESSION_KEY);
-      window.sessionStorage.removeItem(DEALER_AI_TOKEN_KEY);
-      window.history.replaceState(null, "", "/dealer-ai-underwriter");
+      window.sessionStorage.removeItem(sessionStorageKey);
+      window.sessionStorage.removeItem(tokenStorageKey);
+      window.history.replaceState(null, "", publicPath);
     }
   }
 
@@ -1038,7 +1197,7 @@ export default function DealerAIUnderwriterPage() {
           <LanguagePickerScreen
             onPick={(lang) => {
               setLanguage(lang);
-              setStoredLanguage(lang, "dealer");
+              setStoredLanguage(lang, languageScope);
             }}
           />
         ) : !response ? (
@@ -1103,6 +1262,9 @@ export default function DealerAIUnderwriterPage() {
                     language={language ?? "en"}
                     contact={contact}
                     setContact={setContact}
+                    equipmentDetails={isEquipment ? equipmentDetails : null}
+                    setEquipmentDetails={setEquipmentDetails}
+                    equipmentCopy={equipmentC}
                     busy={busy || emailLookupBusy}
                     emailLookupBusy={emailLookupBusy}
                     legalAccepted={legalAccepted}
@@ -1148,6 +1310,8 @@ export default function DealerAIUnderwriterPage() {
                 reviewStatus={reviewStatus}
                 activeTab={activeWorkspace}
                 c={c}
+                sidebarLabel={isEquipment ? equipmentC.sidebar : "Dealer funding room"}
+                roomAriaLabel={isEquipment ? equipmentC.roomTitle : "Dealer AI room"}
                 roomBusy={roomBusy}
                 roomNotice={roomNotice}
                 onTabChange={setActiveWorkspace}
@@ -1169,12 +1333,12 @@ export default function DealerAIUnderwriterPage() {
                   <div style={brandGroupMobile}>
                     <QCMark size={30} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={eyebrowMobile}>Qualified Commercial AI Funding Review</div>
-                      <h1 style={workspaceTitleMobile}>Dealer AI Underwriter</h1>
+                      <div style={eyebrowMobile}>{isEquipment ? equipmentC.roomEyebrow : "Qualified Commercial AI Funding Review"}</div>
+                      <h1 style={workspaceTitleMobile}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h1>
                     </div>
                   </div>
                   <button type="button" style={ghostButton} onClick={logoutRoom}>Logout</button>
-                  <div style={mobileTabs} aria-label="Dealer AI room sections">
+                  <div style={mobileTabs} aria-label={`${isEquipment ? equipmentC.roomTitle : "Dealer AI room"} sections`}>
                     {(["chat", "files", "intelligence"] as WorkspaceTab[]).map((tab) => (
                       <button
                         key={tab}
@@ -1219,7 +1383,7 @@ export default function DealerAIUnderwriterPage() {
                   ) : null}
                   <div style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
-                      <h2 style={sectionTitle}>Dealer AI Underwriter</h2>
+                      <h2 style={sectionTitle}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h2>
                       <p style={muted}>Ask questions and attach PDFs, images, ZIPs, spreadsheets, or statements directly in chat.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
@@ -1416,6 +1580,9 @@ function ContactWidget({
   language,
   contact,
   setContact,
+  equipmentDetails,
+  setEquipmentDetails,
+  equipmentCopy: equipmentFieldsCopy,
   busy,
   emailLookupBusy,
   legalAccepted,
@@ -1428,6 +1595,9 @@ function ContactWidget({
   language: Lang;
   contact: typeof initialContact;
   setContact: (value: typeof initialContact) => void;
+  equipmentDetails: EquipmentDetailsForm | null;
+  setEquipmentDetails: (value: EquipmentDetailsForm) => void;
+  equipmentCopy: (typeof equipmentFormCopy)[Lang];
   busy: boolean;
   emailLookupBusy: boolean;
   legalAccepted: boolean;
@@ -1447,8 +1617,92 @@ function ContactWidget({
       {emailLookupBusy ? <div style={fieldHint}>{c.emailLookupChecking}</div> : null}
       <div style={stepOneFormGrid}>
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
-        <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
+        <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} required={equipmentDetails !== null} />
       </div>
+      {equipmentDetails ? (
+        <section style={equipmentDetailsCard} aria-label={equipmentFieldsCopy.sectionTitle}>
+          <div style={equipmentSelectedPill}>{equipmentFieldsCopy.selected}</div>
+          <div>
+            <h3 style={equipmentDetailsTitle}>{equipmentFieldsCopy.sectionTitle}</h3>
+            <p style={stepOneFormCopy}>{equipmentFieldsCopy.sectionSub}</p>
+          </div>
+          <div style={stepOneFormGrid}>
+            <Field
+              label={equipmentFieldsCopy.requestedAmount}
+              value={equipmentDetails.requested_amount}
+              onChange={(value) => setEquipmentDetails({ ...equipmentDetails, requested_amount: value })}
+              inputMode="decimal"
+              required
+            />
+            <Field
+              label={equipmentFieldsCopy.purchasePrice}
+              value={equipmentDetails.purchase_price}
+              onChange={(value) => setEquipmentDetails({ ...equipmentDetails, purchase_price: value })}
+              inputMode="decimal"
+              required
+            />
+          </div>
+          <TextAreaField
+            label={equipmentFieldsCopy.description}
+            value={equipmentDetails.description}
+            onChange={(value) => setEquipmentDetails({ ...equipmentDetails, description: value })}
+            placeholder={equipmentFieldsCopy.descriptionPlaceholder}
+            required
+          />
+          <div style={stepOneFormGrid}>
+            <label style={fieldWrap}>
+              <span style={labelStyle}>{equipmentFieldsCopy.condition}<span style={requiredMark}>*</span></span>
+              <select
+                style={input}
+                value={equipmentDetails.condition}
+                onChange={(event) => setEquipmentDetails({ ...equipmentDetails, condition: event.target.value as EquipmentDetailsForm["condition"] })}
+              >
+                <option value="">{equipmentFieldsCopy.conditionPlaceholder}</option>
+                <option value="new">{equipmentFieldsCopy.conditionNew}</option>
+                <option value="used">{equipmentFieldsCopy.conditionUsed}</option>
+                <option value="refurbished">{equipmentFieldsCopy.conditionRefurbished}</option>
+                <option value="unknown">{equipmentFieldsCopy.conditionUnknown}</option>
+              </select>
+            </label>
+            <Field
+              label={equipmentFieldsCopy.age}
+              value={equipmentDetails.age_years}
+              onChange={(value) => setEquipmentDetails({ ...equipmentDetails, age_years: value })}
+              inputMode="decimal"
+            />
+            <Field
+              label={equipmentFieldsCopy.usefulLife}
+              value={equipmentDetails.remaining_useful_life_years}
+              onChange={(value) => setEquipmentDetails({ ...equipmentDetails, remaining_useful_life_years: value })}
+              inputMode="decimal"
+            />
+          </div>
+          <div style={stepOneFormGrid}>
+            <Field
+              label={equipmentFieldsCopy.sellerName}
+              value={equipmentDetails.seller_name}
+              onChange={(value) => setEquipmentDetails({ ...equipmentDetails, seller_name: value })}
+            />
+            <Field
+              label={equipmentFieldsCopy.sellerContact}
+              value={equipmentDetails.seller_contact}
+              onChange={(value) => setEquipmentDetails({ ...equipmentDetails, seller_contact: value })}
+            />
+          </div>
+          <Field
+            label={equipmentFieldsCopy.delivery}
+            value={equipmentDetails.delivery_timing}
+            onChange={(value) => setEquipmentDetails({ ...equipmentDetails, delivery_timing: value })}
+          />
+          <TextAreaField
+            label={equipmentFieldsCopy.businessUse}
+            value={equipmentDetails.intended_business_use}
+            onChange={(value) => setEquipmentDetails({ ...equipmentDetails, intended_business_use: value })}
+            placeholder={equipmentFieldsCopy.businessUsePlaceholder}
+            required
+          />
+        </section>
+      ) : null}
       <label style={legalCheckRow}>
         <input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)} />
         <span>
@@ -1595,6 +1849,8 @@ function DealerSidebar({
   reviewStatus,
   activeTab,
   c,
+  sidebarLabel,
+  roomAriaLabel,
   roomBusy,
   roomNotice,
   onTabChange,
@@ -1607,6 +1863,8 @@ function DealerSidebar({
   reviewStatus: string;
   activeTab: WorkspaceTab;
   c: ReturnType<typeof dealerCopy>;
+  sidebarLabel: string;
+  roomAriaLabel: string;
   roomBusy: boolean;
   roomNotice: string;
   onTabChange: (tab: WorkspaceTab) => void;
@@ -1625,11 +1883,11 @@ function DealerSidebar({
         <QCMark size={30} />
         <div>
           <strong>Qualified Commercial</strong>
-          <span>Dealer funding room</span>
+          <span>{sidebarLabel}</span>
         </div>
       </div>
 
-      <nav style={sidebarNav} aria-label="Dealer AI room">
+      <nav style={sidebarNav} aria-label={roomAriaLabel}>
         {tabs.map((tab) => {
           const isIntelligence = tab.key === "intelligence";
           const activeStyle = isIntelligence ? sidebarNavItemIntelActive : sidebarNavItemActive;
@@ -2411,19 +2669,19 @@ function WidgetBox({ title, description, children }: { title: string; descriptio
   );
 }
 
-function Field({ label, value, onChange, placeholder, onBlur, required }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void; required?: boolean }) {
+function Field({ label, value, onChange, placeholder, onBlur, required, inputMode }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void; required?: boolean; inputMode?: "decimal" | "email" | "numeric" | "search" | "tel" | "text" | "url" }) {
   return (
     <label style={fieldWrap}>
       <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
-      <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} />
+      <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} inputMode={inputMode} />
     </label>
   );
 }
 
-function TextAreaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+function TextAreaField({ label, value, onChange, placeholder, required }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; required?: boolean }) {
   return (
     <label style={fieldWrap}>
-      <span style={labelStyle}>{label}</span>
+      <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
       <textarea style={textarea} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </label>
   );
@@ -2962,6 +3220,28 @@ const stepOneFormCard: CSSProperties = {
 const stepOneFormTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, letterSpacing: 0 };
 const stepOneFormCopy: CSSProperties = { margin: "6px 0 0", color: "#9DABC0", fontSize: 13, lineHeight: 1.4 };
 const stepOneFormGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 10 };
+const equipmentDetailsCard: CSSProperties = {
+  border: "1px solid rgba(45,225,213,.25)",
+  borderRadius: 16,
+  padding: 16,
+  display: "grid",
+  gap: 13,
+  background: "rgba(45,225,213,.045)",
+};
+const equipmentSelectedPill: CSSProperties = {
+  justifySelf: "start",
+  minHeight: 32,
+  display: "inline-flex",
+  alignItems: "center",
+  borderRadius: 999,
+  padding: "0 12px",
+  color: "#8CF2E9",
+  background: "rgba(45,225,213,.12)",
+  border: "1px solid rgba(45,225,213,.32)",
+  fontSize: 12,
+  fontWeight: 900,
+};
+const equipmentDetailsTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontSize: 17 };
 const stepOneCta: CSSProperties = {
   border: 0,
   borderRadius: 999,

@@ -57,6 +57,7 @@ export default function SignUpPage() {
       source: searchParams.get("source") ?? "public_site",
       page,
       program: searchParams.get("program") ?? referrer?.searchParams.get("program") ?? undefined,
+      funding_intent: searchParams.get("funding_intent") ?? referrer?.searchParams.get("funding_intent") ?? undefined,
       vertical: searchParams.get("vertical") ?? referrer?.searchParams.get("vertical") ?? undefined,
       campaign: searchParams.get("campaign") ?? referrer?.searchParams.get("utm_campaign") ?? undefined,
       cta: searchParams.get("cta") ?? undefined,

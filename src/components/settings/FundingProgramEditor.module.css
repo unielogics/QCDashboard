@@ -85,6 +85,10 @@
 .baseline ul { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 13px; line-height: 1.5; }
 .baseline h4 { margin: 0; font-size: 14px; }
 .baseline a { overflow-wrap: anywhere; }
+.commercialTerms { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 16px; }
+.commercialTerms > div { min-height: 72px; padding: 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.commercialTerms strong { display: block; margin-top: 6px; font-size: 14px; }
+@media (max-width: 900px) { .commercialTerms { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 700px) {
   .workspaceActions { padding: 12px 14px; }
   .workspaceActions .actionRow { flex: 1 1 100%; }
@@ -99,4 +103,4 @@
   .patternHeader { grid-template-columns: minmax(0, 1fr) 44px; }
   .patternHeader > :first-child { grid-column: 1 / -1; }
 }
-@media (max-width: 440px) { .patternChoices { grid-template-columns: 1fr; } }
+@media (max-width: 440px) { .patternChoices, .commercialTerms { grid-template-columns: 1fr; } }
