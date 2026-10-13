@@ -2643,6 +2643,10 @@ export interface PrequalRequest {
   // Presigned 24h GET URL — minted fresh on every API read so it's never
   // stale. Only present when status === "approved" or "offer_accepted".
   pdf_url: string | null;
+  // Presigned attachment URL for a deterministic browser download. Older
+  // backends may omit it; callers must open pdf_url in a new tab rather than
+  // treating a cross-origin inline URL as a download.
+  pdf_download_url?: string | null;
   reviewed_by: string | null;
   reviewed_at: string | null;
   created_at: string;
@@ -2675,6 +2679,9 @@ export interface PrequalRequestCreate {
 export interface PrequalRequestApprove {
   approved_purchase_price: number;
   approved_loan_amount: number;
+  // Per-issuance authorization to apply the acting user's saved signature
+  // and account contact details to this exact prequalification letter.
+  signature_consent: boolean;
   admin_notes?: string | null;
   // Calculator snapshot from the review panel. Shape varies by product.
   approved_scenario?: Record<string, unknown> | null;

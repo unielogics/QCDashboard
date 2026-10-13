@@ -109,7 +109,7 @@ export default function AdminPrequalQueuePage() {
   // count chips show all-status counts at once.
   const { data: allRequests = [], isLoading } = useAdminPrequalQueue();
 
-  // Walk superseded_by → ... → head so "Print latest letter" always
+  // Walk superseded_by → ... → head so "Download latest letter" always
   // resolves to the most recent issued PDF in the chain, even when the
   // operator right-clicks an older version row.
   const requestById = useMemo(() => {
@@ -130,9 +130,19 @@ export default function AdminPrequalQueuePage() {
     return cur;
   };
 
-  const onPrintLatest = (req: PrequalRequest) => {
+  const onOpenOrDownloadLatest = (req: PrequalRequest) => {
     const head = findChainHead(req);
-    if (head.pdf_url) {
+    if (head.pdf_download_url) {
+      const anchor = document.createElement("a");
+      const reference = (head.quote_number || head.id.slice(0, 8)).replace(/[^A-Za-z0-9._-]+/g, "-");
+      anchor.href = head.pdf_download_url;
+      anchor.download = `QC-Prequalification-${reference}.pdf`;
+      anchor.rel = "noopener noreferrer";
+      anchor.style.display = "none";
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+    } else if (head.pdf_url) {
       window.open(head.pdf_url, "_blank", "noopener,noreferrer");
     } else {
       // Head has no PDF (pending revision still rendering, or a status
@@ -243,7 +253,7 @@ export default function AdminPrequalQueuePage() {
         title="Prequalifications"
         lede={
           canUnderwrite
-            ? "Click a row to open the review panel. Right-click for quick actions (open, print the latest letter). Headers sort the queue; pending always groups to the top."
+            ? "Click a row to open the review panel. Right-click for quick actions (open, or download the latest letter when available). Headers sort the queue; pending always groups to the top."
             : "Create and track pending prequalification requests for your clients. The funding team reviews and issues letters."
         }
         actions={
@@ -333,10 +343,14 @@ export default function AdminPrequalQueuePage() {
                 onSelect: () => setSelected(head),
               }] : []),
               {
-                label: head.pdf_url ? "Print latest letter" : "Print latest letter · no PDF yet",
+                label: head.pdf_download_url
+                  ? "Download latest letter"
+                  : head.pdf_url
+                    ? "Open latest letter (new tab)"
+                    : "Open latest letter · no PDF yet",
                 icon: "docCheck",
-                disabled: !head.pdf_url,
-                onSelect: () => onPrintLatest(req),
+                disabled: !(head.pdf_download_url || head.pdf_url),
+                onSelect: () => onOpenOrDownloadLatest(req),
               },
             ];
           }}

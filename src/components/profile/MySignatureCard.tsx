@@ -1,43 +1,26 @@
 "use client";
 
 // "My signature" — the one signature on file a signed-in person adopts for
-// use on their behalf on Qualified Commercial program agreements (the
-// relationship manager on a Production Package, a dealer partner on their
-// own paperwork). Backed by GET/POST/DELETE /me/signature; the consent text
+// use on their behalf on Qualified Commercial documents they issue, including
+// prequalification letters and program agreements (the relationship manager
+// on a Production Package, a dealer partner on their own paperwork). Backed by
+// GET/POST/DELETE /me/signature; the consent text
 // and version come from the backend so the page never carries wording of
 // its own. Adopting again retires the previous signature; revoking never
 // touches documents already sent.
 
 import { useEffect, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Btn, CellChip, Field, Input, Panel, WarnLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { SignaturePad, type SignaturePadHandle } from "@/components/design-system/SignaturePad";
 import { useAuthedApi } from "@/hooks/useApi";
+import {
+  useMySignature,
+  type StoredSignatureState,
+} from "@/hooks/useMySignature";
 import { ApiError } from "@/lib/api";
-
-export type StoredSignature = {
-  id: string;
-  subject_type: string;
-  subject_id: string | null;
-  typed_name: string;
-  title: string | null;
-  source: string;
-  adopted_at: string;
-  adopted_by_user_id: string | null;
-  consent_version: string | null;
-  revoked_at: string | null;
-  preview_url: string | null;
-};
-
-export type StoredSignatureState = {
-  signature: StoredSignature | null;
-  consent_text: string;
-  consent_version: string;
-};
-
-const QUERY_KEY = ["me", "signature"] as const;
 
 function errorText(error: unknown, fallback: string): string {
   if (error instanceof ApiError) {
@@ -58,12 +41,7 @@ function formatDate(value?: string | null): string {
 export function MySignatureCard({ defaultName }: { defaultName?: string | null }) {
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();
-  const state = useQuery({
-    queryKey: QUERY_KEY,
-    queryFn: () => apiCall<StoredSignatureState>("/me/signature"),
-    staleTime: 60 * 1000,
-    retry: false,
-  });
+  const state = useMySignature();
   const padRef = useRef<SignaturePadHandle | null>(null);
   const [editing, setEditing] = useState(false);
   const [typedName, setTypedName] = useState("");
@@ -94,9 +72,9 @@ export function MySignatureCard({ defaultName }: { defaultName?: string | null }
       });
     },
     onSuccess: (next) => {
-      queryClient.setQueryData(QUERY_KEY, next);
+      queryClient.setQueryData(state.queryKey, next);
       setEditing(false);
-      setMessage(current ? "Your signature was replaced. Agreements sent from now on carry the new one." : "Your signature is on file.");
+      setMessage(current ? "Your signature was replaced. Documents issued from now on carry the new one." : "Your signature is on file.");
     },
     onError: (error) => setMessage(errorText(error, "Your signature could not be adopted.")),
   });
@@ -104,9 +82,9 @@ export function MySignatureCard({ defaultName }: { defaultName?: string | null }
   const revoke = useMutation({
     mutationFn: () => apiCall<StoredSignatureState>("/me/signature", { method: "DELETE" }),
     onSuccess: (next) => {
-      queryClient.setQueryData(QUERY_KEY, next);
+      queryClient.setQueryData(state.queryKey, next);
       setRevokeOpen(false);
-      setMessage("Your signature on file was revoked. Agreements already sent are unchanged.");
+      setMessage("Your signature on file was revoked. Documents already issued are unchanged.");
     },
     onError: (error) => { setRevokeOpen(false); setMessage(errorText(error, "Your signature could not be revoked.")); },
   });
@@ -116,7 +94,7 @@ export function MySignatureCard({ defaultName }: { defaultName?: string | null }
   return (
     <Panel
       title="My signature"
-      sub="Placed on your behalf on program agreements where you are named — the relationship manager on a Production Package, or an acknowledging party."
+      sub="Used on documents you explicitly issue, including prequalification letters and program agreements where you are named."
       actions={
         !editing ? (
           <Btn variant={current ? undefined : "pri"} onClick={() => setEditing(true)} disabled={state.isLoading}>
@@ -143,7 +121,7 @@ export function MySignatureCard({ defaultName }: { defaultName?: string | null }
                 <span className="sub">Adopted {formatDate(current.adopted_at)}{current.consent_version ? ` · consent ${current.consent_version}` : ""}</span>
               </div>
               <div><strong>{current.typed_name}</strong>{current.title ? <span className="sub"> · {current.title}</span> : null}</div>
-              <div className="sub">Each placement is recorded with this adoption date and consent version. Revoking stops future placements; agreements already sent are unchanged.</div>
+              <div className="sub">Each placement is recorded with this adoption date and consent version. Revoking stops future placements; documents already issued are unchanged.</div>
               <div className="row">
                 <Btn className="c-bad" onClick={() => setRevokeOpen(true)} disabled={revoke.isPending}>Revoke</Btn>
               </div>
@@ -151,7 +129,7 @@ export function MySignatureCard({ defaultName }: { defaultName?: string | null }
           </div>
         ) : (
           <div className="sub">
-            {state.isLoading ? "Loading your signature on file…" : "No signature on file. Agreements that name you cannot be sent until you adopt one."}
+            {state.isLoading ? "Loading your signature on file…" : "No signature on file. Documents that name you will use a typed signature line until you adopt one."}
           </div>
         )
       ) : (
@@ -189,7 +167,7 @@ export function MySignatureCard({ defaultName }: { defaultName?: string | null }
         tone="danger"
         busy={revoke.isPending}
         title="Revoke your signature on file?"
-        body="Agreements that name you can no longer be sent until you adopt a new signature. Documents already sent keep the signature placed on them."
+        body="New documents will use a typed signature line until you adopt a new signature. Documents already issued keep the signature placed on them."
         confirmLabel="Revoke"
         cancelLabel="Keep it"
         onConfirm={() => revoke.mutate()}

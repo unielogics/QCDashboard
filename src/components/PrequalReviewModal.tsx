@@ -35,12 +35,16 @@ import { QC_FMT } from "@/lib/fmt";
 import { Btn, CellChip, CG, Field, IconBtn, Input, Linky, Note, Textarea, WarnLine, type ChipTone } from "@/components/ds";
 import {
   useApprovePrequalRequest,
+  useCurrentUser,
   useRejectPrequalRequest,
   useRevisePrequalRequest,
+  useSettings,
 } from "@/hooks/useApi";
+import { useMySignature } from "@/hooks/useMySignature";
 import {
   PREQUAL_LOAN_TYPE_LABELS,
   PREQUAL_LTV_CAPS,
+  type LetterheadSettings,
   type PrequalRequest,
   type PrequalSowLineItem,
 } from "@/lib/types";
@@ -66,6 +70,14 @@ interface Props {
   // Optional FICO context for the underwriter (most recent valid pull).
   borrowerFico?: number | null;
 }
+
+type LetterIssuer = {
+  name: string;
+  title: string;
+  email: string | null;
+  phone: string | null;
+  signatureUrl: string | null;
+};
 
 // ── Calculator math ─────────────────────────────────────────────────────
 //
@@ -105,7 +117,7 @@ function computeBridge(loan: number, i: BridgeInputs): BridgeOutputs {
   return { monthlyInterest, totalPoints, interestReserve };
 }
 
-export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Props) {
+export function PrequalReviewModal({ open, onClose, request: requestProp, borrowerFico }: Props) {
   // Read sidebar state so the panel can start just to the right of it
   // instead of covering the global nav (per #facelift — the modal is a
   // "full experience" but the operator should still see their context).
@@ -114,6 +126,9 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   const approve = useApprovePrequalRequest();
   const reject = useRejectPrequalRequest();
   const revise = useRevisePrequalRequest();
+  const currentUser = useCurrentUser();
+  const settings = useSettings();
+  const mySignature = useMySignature();
   const dialogRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
   const onCloseRef = useRef(onClose);
@@ -143,6 +158,13 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
 
   const [error, setError] = useState<string | null>(null);
   const [confirmReject, setConfirmReject] = useState(false);
+  const [signatureConsent, setSignatureConsent] = useState(false);
+  const [issuedRequest, setIssuedRequest] = useState<PrequalRequest | null>(null);
+  const request = issuedRequest ?? requestProp;
+
+  useEffect(() => {
+    setIssuedRequest(null);
+  }, [open, requestProp?.id]);
 
   // Re-seed every time we open the modal with a new request.
   useEffect(() => {
@@ -182,6 +204,7 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     );
     setError(null);
     setConfirmReject(false);
+    setSignatureConsent(false);
   }, [open, request]);
 
   // This bespoke full-height panel still behaves as a modal: it takes focus,
@@ -276,6 +299,37 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     };
   }, [request, loanNum, ltv, calcRate, calcTerm, calcRent, calcTaxes, calcInsurance, calcHoa, calcPoints]);
 
+  const letterhead = settings.data?.data.letterhead ?? null;
+  const savedSignature = mySignature.data?.signature ?? null;
+  const issuer: LetterIssuer = {
+    name:
+      savedSignature?.typed_name?.trim() ||
+      currentUser.data?.name?.trim() ||
+      letterhead?.officer_name?.trim() ||
+      "Authorized Officer",
+    title:
+      savedSignature?.title?.trim() ||
+      currentUser.data?.title?.trim() ||
+      letterhead?.officer_title?.trim() ||
+      "Qualified Commercial LLC",
+    email: currentUser.data?.email?.trim() || null,
+    phone: currentUser.data?.phone?.trim() || null,
+    signatureUrl: savedSignature?.preview_url ?? null,
+  };
+  const missingIssuerData = [
+    !mySignature.isLoading && !savedSignature ? "saved account signature" : null,
+    !currentUser.isLoading && !issuer.email ? "email" : null,
+    !currentUser.isLoading && !issuer.phone ? "phone" : null,
+    !settings.isLoading &&
+    ![
+      letterhead?.office_address_line_1,
+      letterhead?.office_address_line_2,
+      letterhead?.office_address_line_3,
+    ].some((line) => line?.trim())
+      ? "firm address"
+      : null,
+  ].filter((value): value is string => Boolean(value));
+
   if (!open || !request) return null;
 
   // Editable statuses:
@@ -301,39 +355,48 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
     request.status === "approved" &&
     !isSuperseded &&
     !revise.isPending &&
-    !approve.isPending;
+    !approve.isPending &&
+    signatureConsent;
   const canApprove =
     purchaseNum > 0 &&
     loanNum > 0 &&
     !ltvOverCap &&
     isEditableStatus &&
     !isSuperseded &&
-    !approve.isPending;
+    !approve.isPending &&
+    signatureConsent;
   const isReissue = request.status === "approved" || request.status === "offer_accepted";
+  const issuedPdfUrl = request.pdf_url || null;
+  const issuedPdfDownloadUrl = request.pdf_download_url || null;
   const nextVersionNum = (request.version_num ?? 1) + 1;
   const reviseLabel = revise.isPending
     ? "Saving updated version…"
-    : `Create updated version (v${nextVersionNum})`;
+    : `Create & download updated version (v${nextVersionNum})`;
   const approveLabel = (() => {
     if (approve.isPending) return isReissue ? "Regenerating PDF…" : "Generating PDF…";
-    if (request.status === "offer_accepted") return "Save changes & regenerate letter";
-    if (request.status === "approved") return "Save changes & regenerate PDF";
-    return "Approve & Generate PDF";
+    if (request.status === "offer_accepted") return "Save, sign & download letter";
+    if (request.status === "approved") return "Save, sign & download PDF";
+    return "Approve, sign & download PDF";
   })();
 
   const onApprove = async () => {
     setError(null);
+    if (!signatureConsent) {
+      setError("Confirm the signature authorization for this letter before issuing it.");
+      return;
+    }
     try {
       const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
       const totalConstruction = sowItems.reduce(
         (sum, item) => sum + (Number(item.total_usd) || 0),
         0,
       );
-      await approve.mutateAsync({
+      const updated = await approve.mutateAsync({
         requestId: request.id,
         payload: {
           approved_purchase_price: purchaseNum,
           approved_loan_amount: loanNum,
+          signature_consent: true,
           admin_notes: notes.trim() || null,
           approved_scenario: scenario,
           expiration_days: expirationNum,
@@ -344,7 +407,10 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           approved_total_construction: request.loan_type === "fix_flip" && totalConstruction > 0 ? totalConstruction : null,
         },
       });
-      onClose();
+      setIssuedRequest(updated);
+      if (updated.pdf_download_url) {
+        downloadPrequalPdf(updated);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Approval failed.");
     }
@@ -357,17 +423,22 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
   // on approved requests that haven't been superseded yet.
   const onRevise = async () => {
     setError(null);
+    if (!signatureConsent) {
+      setError("Confirm the signature authorization for this letter before issuing it.");
+      return;
+    }
     try {
       const arvNum = Number(arvText.replace(/[^0-9.]/g, "")) || 0;
       const totalConstruction = sowItems.reduce(
         (sum, item) => sum + (Number(item.total_usd) || 0),
         0,
       );
-      await revise.mutateAsync({
+      const updated = await revise.mutateAsync({
         requestId: request.id,
         payload: {
           approved_purchase_price: purchaseNum,
           approved_loan_amount: loanNum,
+          signature_consent: true,
           admin_notes: notes.trim() || null,
           approved_scenario: scenario,
           expiration_days: expirationNum,
@@ -377,7 +448,10 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           approved_total_construction: request.loan_type === "fix_flip" && totalConstruction > 0 ? totalConstruction : null,
         },
       });
-      onClose();
+      setIssuedRequest(updated);
+      if (updated.pdf_download_url) {
+        downloadPrequalPdf(updated);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not create updated version.");
     }
@@ -592,6 +666,31 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           {/* Letter terms — LLC, validity, underwriter notes. Renamed
               from "Letter details" per #facelift section grouping. */}
           <PrequalFormSection number={request.loan_type === "fix_flip" ? "04" : "03"} title="Letter terms">
+            {missingIssuerData.length > 0 ? (
+              <WarnLine>
+                Your letter profile is missing {missingIssuerData.join(", ")}. Add the missing details in
+                your Profile before issuing the final PDF. Missing signature art will use a typed signature line;
+                missing contact fields will be omitted.
+              </WarnLine>
+            ) : null}
+            {isEditableStatus && !isSuperseded ? (
+              <label
+                className="note row"
+                style={{ minHeight: 52, cursor: "pointer", alignItems: "flex-start", padding: "11px 12px" }}
+              >
+                <input
+                  type="checkbox"
+                  checked={signatureConsent}
+                  onChange={(event) => setSignatureConsent(event.target.checked)}
+                  aria-label="Authorize signature and contact information for this prequalification letter"
+                  style={{ width: 20, height: 20, marginTop: 1, accentColor: "var(--accent)", flex: "0 0 auto" }}
+                />
+                <span style={{ flex: "1 1 240px" }}>
+                  <strong>Authorize this letter.</strong> Apply my current saved signature, when present, and
+                  my account name, title, email, and phone to this specific prequalification letter for {request.target_property_address}.
+                </span>
+              </label>
+            ) : null}
             <div>
               <div className="row">
                 <span className="lbl">LLC / entity name</span>
@@ -699,9 +798,9 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           minWidth: 0,
         }}>
           <div className="row" style={{ marginBottom: 10 }}>
-            <span className="lbl">Live letter preview</span>
+            <span className="lbl">{issuedPdfUrl ? "Editable reissue preview" : "Live letter preview"}</span>
             <span className="sp" />
-            <span className="sub">Updates as you type</span>
+            <span className="sub">{issuedPdfUrl ? "The issued PDF is available below" : "Updates as you type"}</span>
           </div>
           <LetterPreview
             request={request}
@@ -715,6 +814,8 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
             expirationDays={expirationNum}
             borrowerFico={borrowerFico ?? null}
             arvOverride={Number(arvText.replace(/[^0-9.]/g, "")) || null}
+            issuer={issuer}
+            letterhead={letterhead}
           />
         </div>
       </div>
@@ -742,15 +843,32 @@ export function PrequalReviewModal({ open, onClose, request, borrowerFico }: Pro
           </WarnLine>
         ) : null}
 
-        {request.status === "approved" && request.pdf_url ? (
-          <div className="sub">
-            Letter already issued.{" "}
-            <a href={request.pdf_url} target="_blank" rel="noopener noreferrer">
-              Open the current PDF →
-            </a>
-            {"  "}Edit any field above and click <em>Save changes &amp; regenerate PDF</em>{" "}
-            to re-issue.
-          </div>
+        {(request.status === "approved" || request.status === "offer_accepted") && !issuedPdfDownloadUrl && !issuedPdfUrl ? (
+          <WarnLine>
+            The letter was issued, but its PDF is not available right now. Regenerate the PDF or reopen this request to retry.
+          </WarnLine>
+        ) : null}
+
+        {(request.status === "approved" || request.status === "offer_accepted") && (issuedPdfDownloadUrl || issuedPdfUrl) ? (
+          <Note>
+            <div className="row" style={{ width: "100%" }}>
+              <span>
+                <b>PDF ready.</b> This issued file is the canonical letter. Changes in the editable preview
+                appear in the PDF only after you regenerate it.
+              </span>
+              <span className="sp" />
+              {issuedPdfDownloadUrl ? (
+                <Btn variant="pri" onClick={() => downloadPrequalPdf(request)}>
+                  <Icon name="download" size={14} /> Download PDF
+                </Btn>
+              ) : null}
+              {issuedPdfUrl ? (
+                <a className="btn" href={issuedPdfUrl} target="_blank" rel="noopener noreferrer">
+                  {issuedPdfDownloadUrl ? "Open PDF" : "Open PDF (new tab)"}
+                </a>
+              ) : null}
+            </div>
+          </Note>
         ) : null}
         {request.status === "offer_accepted" ? (
           <Note>
@@ -1002,6 +1120,8 @@ function LetterPreview({
   expirationDays,
   borrowerFico,
   arvOverride,
+  issuer,
+  letterhead,
 }: {
   request: PrequalRequest;
   isFixFlip: boolean;
@@ -1014,6 +1134,8 @@ function LetterPreview({
   expirationDays: number;
   borrowerFico: number | null;
   arvOverride: number | null;
+  issuer: LetterIssuer;
+  letterhead: LetterheadSettings | null;
 }) {
   // Match the template's date rendering. Server formats as "Month D, YYYY".
   const today = new Date();
@@ -1072,6 +1194,13 @@ function LetterPreview({
           <div style={{ fontSize: 8, color: "#6B7891", textTransform: "uppercase", letterSpacing: 1.4, marginTop: 1 }}>
             Financing &amp; Capital Advisory
           </div>
+        </div>
+        <div style={{ marginLeft: "auto", textAlign: "right", fontSize: 7.5, lineHeight: 1.35, color: "#3C4A60" }}>
+          {[
+            letterhead?.office_address_line_1,
+            letterhead?.office_address_line_2,
+            letterhead?.office_address_line_3,
+          ].filter((line): line is string => Boolean(line)).map((line, index) => <div key={`${index}-${line}`}>{line}</div>)}
         </div>
       </div>
 
@@ -1175,10 +1304,21 @@ function LetterPreview({
       }}>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 10, marginBottom: 12 }}>Sincerely,</div>
-          <div style={{ width: 160, borderBottom: "1px solid #0B1629", marginBottom: 4 }} />
+          {issuer.signatureUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={issuer.signatureUrl}
+              alt={`Signature of ${issuer.name}`}
+              style={{ display: "block", width: 160, height: 42, objectFit: "contain", objectPosition: "left bottom", marginBottom: 2 }}
+            />
+          ) : (
+            <div style={{ width: 160, borderBottom: "1px solid #0B1629", marginBottom: 4 }} />
+          )}
           <div style={{ fontSize: 8, color: "#6B7891" }}>Signed: {fmtDate(today)}</div>
-          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 2 }}>Authorized Officer</div>
-          <div style={{ fontSize: 8.5, color: "#3C4A60" }}>Qualified Commercial LLC</div>
+          <div style={{ fontSize: 10, fontWeight: 700, marginTop: 2 }}>{issuer.name}</div>
+          <div style={{ fontSize: 8.5, color: "#3C4A60" }}>{issuer.title}</div>
+          {issuer.email ? <div style={{ fontSize: 8, color: "#3C4A60" }}>{issuer.email}</div> : null}
+          {issuer.phone ? <div style={{ fontSize: 8, color: "#3C4A60" }}>{issuer.phone}</div> : null}
         </div>
         <div style={{
           flex: 1,
@@ -1248,4 +1388,24 @@ function PreviewRow({ label, value }: { label: string; value: React.ReactNode })
 
 function fmtUsd(n: number): string {
   return n.toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+}
+
+function prequalPdfFilename(request: PrequalRequest): string {
+  const reference = (request.quote_number || request.id.slice(0, 8))
+    .replace(/[^A-Za-z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `QC-Prequalification-${reference || "letter"}.pdf`;
+}
+
+function downloadPrequalPdf(request: PrequalRequest): void {
+  const url = request.pdf_download_url;
+  if (!url) return;
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = prequalPdfFilename(request);
+  anchor.rel = "noopener noreferrer";
+  anchor.style.display = "none";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }

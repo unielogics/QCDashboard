@@ -2341,6 +2341,84 @@ test("prequalification review is one readable independently scrolling form", asy
     source_analysis_run_id: null,
     version_num: 1,
   };
+  let approvalPayload: Record<string, unknown> | null = null;
+  await page.route(/\/api\/v1\/auth\/me$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "10000000-0000-0000-0000-000000000001",
+        clerk_id: "visual-qa",
+        email: "franco@qualifiedcommercial.com",
+        name: "Jonathan Franco",
+        phone: "+1 973 555 0198",
+        title: "Managing Director",
+        role: "super_admin",
+        account_types: ["funding"],
+        account_status: "active",
+        can_access_funding: true,
+        can_access_audit: true,
+      }),
+    });
+  });
+  await page.route(/\/api\/v1\/settings$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        data: {
+          letterhead: {
+            officer_name: "QC Officer",
+            officer_title: "Qualified Commercial LLC",
+            office_address_line_1: "Qualified Commercial LLC",
+            office_address_line_2: "Garfield, NJ 07026",
+            office_address_line_3: "qualifiedcommercial.com",
+            signature_s3_key: "firm/signature.png",
+          },
+        },
+      }),
+    });
+  });
+  await page.route(/\/api\/v1\/me\/signature$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        signature: {
+          id: "20000000-0000-0000-0000-000000000001",
+          subject_type: "user",
+          subject_id: "10000000-0000-0000-0000-000000000001",
+          typed_name: "Jonathan Franco",
+          title: "Managing Director",
+          source: "self_adopted",
+          adopted_at: "2026-10-01T14:00:00Z",
+          adopted_by_user_id: "10000000-0000-0000-0000-000000000001",
+          consent_version: "v1",
+          revoked_at: null,
+          preview_url: "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='42'%3E%3Cpath d='M4 30 Q 55 2 150 25' stroke='black' fill='none'/%3E%3C/svg%3E",
+        },
+        consent_text: "I adopt this signature.",
+        consent_version: "v1",
+      }),
+    });
+  });
+  await page.route(new RegExp(`/api/v1/admin/prequal-requests/${request.id}/approve$`), async (route) => {
+    approvalPayload = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ...request,
+        status: "approved",
+        quote_number: "Q-6336",
+        pdf_url: `${BASE_URL}/test-prequal/Q-6336.pdf?disposition=inline`,
+        pdf_download_url: "data:application/pdf;base64,JVBERi0xLjQKJSVFT0YK",
+        reviewed_by: "10000000-0000-0000-0000-000000000001",
+        reviewed_at: "2026-10-13T18:30:00Z",
+        updated_at: "2026-10-13T18:30:00Z",
+      }),
+    });
+  });
   await page.route(/\/api\/v1\/admin\/prequal-requests(?:\?.*)?$/, async (route) => {
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([request]) });
   });
@@ -2353,6 +2431,12 @@ test("prequalification review is one readable independently scrolling form", asy
   await expect(dialog.locator(".prequal-review-form-scroll .panel")).toHaveCount(0);
   await expect(dialog.getByRole("heading", { name: "Offer numbers" })).toBeVisible();
   await expect(dialog.getByRole("heading", { name: "Calculator scenario" })).toBeVisible();
+  const letterPreview = dialog.locator(".prequal-review-body > :nth-child(2)");
+  await expect(letterPreview.getByAltText("Signature of Jonathan Franco")).toBeVisible();
+  await expect(letterPreview.getByText("franco@qualifiedcommercial.com", { exact: true })).toBeVisible();
+  await expect(letterPreview.getByText("+1 973 555 0198", { exact: true })).toBeVisible();
+  await expect(letterPreview.getByText("Garfield, NJ 07026", { exact: true })).toBeVisible();
+  await expect(dialog.getByText(/Your letter profile is missing/)).toHaveCount(0);
 
   const form = dialog.locator(".prequal-review-form-scroll");
   const before = await form.evaluate((element) => ({
@@ -2382,6 +2466,24 @@ test("prequalification review is one readable independently scrolling form", asy
   await expect(dialog.getByRole("heading", { name: "Borrower’s submission" })).toBeVisible();
   await assertStableGeometry(page);
   await captureReviewImage(page, "prequalification-continuous-form", testInfo);
+
+  const authorizeSignature = dialog.getByLabel("Authorize signature and contact information for this prequalification letter");
+  const approveButton = dialog.getByRole("button", { name: "Approve, sign & download PDF" });
+  await expect(authorizeSignature).toBeVisible();
+  await expect(approveButton).toBeDisabled();
+  await authorizeSignature.check();
+  await expect(approveButton).toBeEnabled();
+
+  const downloadStarted = page.waitForEvent("download");
+  await approveButton.click();
+  const download = await downloadStarted;
+  expect(download.suggestedFilename()).toBe("QC-Prequalification-Q-6336.pdf");
+  expect(await download.failure()).toBeNull();
+  expect(approvalPayload).toMatchObject({ signature_consent: true });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/PDF ready\./)).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Download PDF", exact: true })).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Open PDF" })).toBeVisible();
 });
 
 test("manual prequalification client results escape the client panel", async ({ page }, testInfo) => {
