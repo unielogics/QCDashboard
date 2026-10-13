@@ -5,7 +5,7 @@
 // near-duplicates differing only in label text and helper-line copy
 // (parameterized as props here so each call site keeps its exact UX).
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { Field } from "@/components/ds";
 import { useClients } from "@/hooks/useApi";
@@ -33,6 +33,7 @@ export function ClientSearchBlock({
   scope,
 }: Props) {
   const { data: clients = [] } = useClients(scope);
+  const listboxId = useId();
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   // Empty query → show the agent's whole book (capped) so clicking the
@@ -65,10 +66,15 @@ export function ClientSearchBlock({
             value={query}
             onChange={(e) => { setQuery(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
+            onKeyDown={(event) => {
+              if (event.key === "Escape") setOpen(false);
+            }}
             placeholder="Search by name or email…"
             role="combobox"
-            aria-expanded={open && matches.length > 0}
+            aria-label={label}
+            aria-expanded={open}
             aria-autocomplete="list"
+            aria-controls={listboxId}
           />
         </div>
 
@@ -89,7 +95,7 @@ export function ClientSearchBlock({
         ) : null}
 
         {open && matches.length > 0 ? (
-          <div className="popmenu csearch-pop scroll" role="listbox">
+          <div className="popmenu csearch-pop scroll" role="listbox" id={listboxId}>
             {!query.trim() ? <div className="lbl mhd">Your clients</div> : null}
             {matches.map((c) => (
               <button

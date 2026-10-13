@@ -371,7 +371,7 @@ export function AdminPrequalCreateModal({ open, onClose }: Props) {
             {step === 1 ? (
               <>
                 {/* ── Client linkage ─────────────────────────────────── */}
-                <Panel className="s12" title="Client (required)">
+                <Panel className="s12 prequal-client-panel" title="Client (required)">
                   {pickedClient ? (
                     <div className="pick on">
                       <Icon name="check" size={12} stroke={3} />

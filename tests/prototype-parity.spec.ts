@@ -2384,6 +2384,86 @@ test("prequalification review is one readable independently scrolling form", asy
   await captureReviewImage(page, "prequalification-continuous-form", testInfo);
 });
 
+test("manual prequalification client results escape the client panel", async ({ page }, testInfo) => {
+  test.skip(
+    !["compact-1280", "mobile-390"].includes(testInfo.project.name),
+    "The client picker overlap is checked at the shortest desktop and phone sizes.",
+  );
+  const clients = Array.from({ length: 8 }, (_, index) => ({
+    id: `40000000-0000-0000-0000-00000000000${index + 1}`,
+    user_id: null,
+    broker_id: null,
+    broker_name: "QC Funding Team",
+    name: `Client ${index + 1}`,
+    email: `client${index + 1}@example.com`,
+    phone: `+1973555010${index}`,
+    city: "Newark",
+    since: "2026-01-01",
+    tier: "standard",
+    fico: null,
+    avatar_color: null,
+    funded_total: 0,
+    funded_count: 0,
+    stage: "lead",
+    client_type: "buyer",
+  }));
+  await page.route(/\/api\/v1\/auth\/me$/, async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        id: "40000000-0000-0000-0000-000000000099",
+        email: "franco@qualifiedcommercial.com",
+        name: "Jonathan Franco",
+        role: "super_admin",
+        account_types: ["funding", "field_desk"],
+        account_status: "active",
+        can_access_funding: true,
+        can_access_audit: true,
+      }),
+    });
+  });
+  await page.route(/\/api\/v1\/admin\/prequal-requests(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: "[]" });
+  });
+  await page.route(/\/api\/v1\/clients(?:\?.*)?$/, async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(clients) });
+  });
+
+  await openConsolePage(page, "/admin/prequal-requests");
+  await page.getByRole("button", { name: "Create prequalification" }).click();
+  const dialog = page.getByRole("dialog", { name: "Create prequalification" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("combobox", { name: "Search by name or email" }).focus();
+  const listbox = dialog.getByRole("listbox");
+  await expect(listbox).toBeVisible();
+  await expect(listbox.getByRole("option")).toHaveCount(8);
+
+  const overlap = await dialog.evaluate((element) => {
+    const clientPanel = element.querySelector<HTMLElement>(".prequal-client-panel");
+    const results = element.querySelector<HTMLElement>("[role='listbox']");
+    if (!clientPanel || !results) return null;
+    const panelRect = clientPanel.getBoundingClientRect();
+    const resultsRect = results.getBoundingClientRect();
+    const testX = Math.min(resultsRect.right - 12, resultsRect.left + 32);
+    const testY = Math.min(resultsRect.bottom - 8, panelRect.bottom + 12);
+    const painted = document.elementFromPoint(testX, testY);
+    return {
+      panelOverflow: getComputedStyle(clientPanel).overflow,
+      resultsExtendPastPanel: resultsRect.bottom > panelRect.bottom + 20,
+      sampledBelowPanel: testY > panelRect.bottom,
+      resultsAreTopmost: !!painted?.closest("[role='listbox']"),
+    };
+  });
+  expect(overlap).toEqual({
+    panelOverflow: "visible",
+    resultsExtendPastPanel: true,
+    sampledBelowPanel: true,
+    resultsAreTopmost: true,
+  });
+  await captureReviewImage(page, "prequalification-client-picker", testInfo);
+});
+
 test("operator Vault groups bounded loan folders by borrower", async ({ page }, testInfo) => {
   test.skip(!["desktop-1600", "mobile-390"].includes(testInfo.project.name), "The Vault workspace is exercised at desktop and mobile widths.");
   const indexRequests: string[] = [];

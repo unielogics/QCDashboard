@@ -3394,9 +3394,16 @@ a.pick { color: inherit; text-decoration: none; }
 .csearch-pop { left: 0; right: 0; min-width: 0; }
 .csearch-pop.scroll { max-height: 280px; overflow-y: auto; }
 .csearch-note { margin: 0; padding: 6px 10px; }
-.csearch-hit { display: flex; align-items: center; gap: 10px; }
+.popmenu .mi.csearch-hit { display: flex; align-items: center; gap: 10px; min-height: 44px; white-space: normal; }
 .csearch-hit > .grow { display: grid; }
 .csearch-hit b { font-size: 12.5px; }
+
+/* The manual-prequalification client picker opens inside a `.panel`, whose
+   default `overflow: hidden` clips popovers at the panel edge. Lift only this
+   panel while the picker is present so the results can cover the following
+   form section without changing the scroll ownership of the drawer itself. */
+.prequal-client-panel { position: relative; z-index: 2; overflow: visible; }
+.prequal-client-panel .panel-b { position: relative; z-index: 1; }
 
 /* ---------- the last two tokens without a variable ----------
    `tokens.ts` is being retired: every `t.*` reference becomes a `var(--*)` so
