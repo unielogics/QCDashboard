@@ -1960,6 +1960,38 @@ test("dealer upload room lets the client add institutions and accounts", async (
   await captureReviewImage(page, "application-room-multiple-banks", testInfo);
 });
 
+test("secure room defaults to the public theme and keeps an explicit room choice", async ({ page }) => {
+  const roomToken = "room.theme-precedence";
+  await page.addInitScript(() => window.localStorage.setItem("qc-application-room-theme", "obsidian"));
+  await page.route(new RegExp(`/api/v1/buckets/request/${roomToken.replace(".", "\\.")}$`), async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        bucket: { name: "Equipment financing room" },
+        recipient_name: "Avery Morgan",
+        recipient_email: "avery@example.com",
+        requires_passcode: true,
+        status: "active",
+      }),
+    });
+  });
+
+  await page.goto(`/buckets/request/${roomToken}?tab=documents`, { waitUntil: "domcontentloaded" });
+  await expect(page.getByLabel("Room PIN")).toBeVisible();
+  const room = page.locator("main.application-room");
+  await expect(room).toHaveClass(/is-light/);
+  await expect(room).not.toHaveClass(/is-obsidian/);
+  await expect(room.getByRole("button", { name: "Use Obsidian" })).toBeVisible();
+  await expect(room).toHaveCSS("background-color", "rgb(244, 246, 249)");
+
+  await room.getByRole("button", { name: "Use Obsidian" }).click();
+  await expect(page).toHaveURL(/theme=obsidian/);
+  await expect(room).toHaveClass(/is-obsidian/);
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("main.application-room")).toHaveClass(/is-obsidian/);
+});
+
 test("application upload room uses only its declared capability endpoints", async ({ page }) => {
   const roomToken = "room.application-capabilities";
   const session = {
@@ -2720,12 +2752,21 @@ test("intake evidence, contact editing, and review controls share the file works
 
 test("public client intake entry points retain the language and secure-start gate", async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== "desktop-1600", "The public intake entry points are checked once at the canonical viewport.");
-  for (const route of ["/dealer-ai-underwriter", "/funding-review", "/mca-refinance-intake"]) {
+  for (const route of ["/dealer-ai-underwriter", "/funding-review", "/mca-refinance-intake", "/equipment-financing-intake"]) {
     await page.goto(route, { waitUntil: "domcontentloaded" });
     await expect(page).not.toHaveURL(/sign-in/);
     await expect(page.getByRole("heading", { name: "Choose your language / Elige tu idioma" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continue in English" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Continuar en Español" })).toBeVisible();
+    const gate = page.locator(".v-gate");
+    if (route === "/equipment-financing-intake") {
+      await expect(page.locator("main.qc-public-intake-theme--equipment")).toBeVisible();
+      await expect(gate).toHaveClass(/v-gate--institutional/);
+      await expect(gate).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      await expect(gate.locator(".v-gate-brand")).toBeVisible();
+    } else {
+      await expect(gate).not.toHaveClass(/v-gate--institutional/);
+    }
   }
 });
 

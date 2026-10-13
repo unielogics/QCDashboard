@@ -799,10 +799,14 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
         // No code to hand forward. Say so and hold for a beat, otherwise the
         // navigation swallows the sentence before it can be read.
         setRoomNotice(c.roomCardChosenPin);
-        window.setTimeout(() => window.location.assign(secureRoomHref(handoff)), 1200);
+        window.setTimeout(() => window.location.assign(secureRoomHref(handoff, {
+          theme: isEquipment ? "light" : undefined,
+        })), 1200);
         return;
       }
-      window.location.assign(secureRoomHref(handoff));
+      window.location.assign(secureRoomHref(handoff, {
+        theme: isEquipment ? "light" : undefined,
+      }));
     } catch (error) {
       // 409 (no room on this file) and 429 (a double tap on the button) both
       // arrive as the server's own sentence via responseMessage.
@@ -1187,14 +1191,21 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
   }
 
   if (!mounted) {
-    return <main style={page} />;
+    return <main className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--equipment" : undefined} style={page} />;
   }
 
   return (
-    <main style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}>
-      <section style={response ? (compact ? appShellMobile : appShell) : (compact ? shellMobile : shell)}>
+    <main
+      className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--equipment" : undefined}
+      style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}
+    >
+      <section
+        className={response ? "qc-public-intake-shell qc-public-intake-shell--workspace" : "qc-public-intake-shell qc-public-intake-shell--start"}
+        style={response ? (compact ? appShellMobile : appShell) : (compact ? shellMobile : shell)}
+      >
         {!response && !language && !checkingResume ? (
           <LanguagePickerScreen
+            variant={isEquipment ? "institutional" : "dark"}
             onPick={(lang) => {
               setLanguage(lang);
               setStoredLanguage(lang, languageScope);
@@ -1202,7 +1213,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
           />
         ) : !response ? (
           <>
-            <nav style={stepOneNav}>
+            <nav className="qc-public-intake-nav" style={stepOneNav}>
               <div style={stepOneBrand}>
                 <QCMark size={30} />
                 <strong>Qualified Commercial</strong>
@@ -1213,7 +1224,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
               </div>
             </nav>
 
-            <div style={stepOneHeading}>
+            <div className="qc-public-intake-heading" style={stepOneHeading}>
               <div>
                 <div style={tealEyebrow}>{c.eyebrow}</div>
                 <h1 style={stepOneTitle}>{c.aiUnderwriterPill}</h1>
@@ -1221,8 +1232,8 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
               <div style={stepOneSecurePill}><span style={greenDot} />{c.encryptedUploadsPill}</div>
             </div>
 
-            <section style={stepOneHero}>
-              <div style={stepOneCopy}>
+            <section className="qc-public-intake-hero" style={stepOneHero}>
+              <div className="qc-public-intake-hero-copy" style={stepOneCopy}>
                 <div style={stepBadge}>{c.stepOneBadge}</div>
                 <h2 style={stepOneHeroTitle}>{c.heroTitle}</h2>
                 <p style={stepOneLead}>{c.heroLead}</p>
@@ -1235,7 +1246,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                   ))}
                 </div>
               </div>
-              <div style={stepOneFormColumn}>
+              <div className="qc-public-intake-form-column" style={stepOneFormColumn}>
                 {showContinuationLogin ? (
                   <DealerContinuationWidget
                     c={c}
@@ -1277,11 +1288,11 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                     }}
                   />
                 )}
-                {status ? <div style={statusBoxNoMargin}>{status}</div> : null}
+                {status ? <div className="qc-public-intake-feedback" style={statusBoxNoMargin}>{status}</div> : null}
               </div>
             </section>
 
-            <section style={lockedPreview}>
+            <section className="qc-public-intake-preview" style={lockedPreview}>
               <div style={lockedChatGhost}>
                 <div style={ghostLineWide} />
                 <div style={ghostLineShort} />
@@ -1292,7 +1303,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
             </section>
           </>
         ) : response.signing_gate ? (
-          <section style={compact ? appMainMobile : appMain}>
+          <section className="qc-public-intake-main qc-public-intake-signing" style={compact ? appMainMobile : appMain}>
             <ProductionSigningGate
               gate={response.signing_gate}
               compact={compact}
@@ -1322,6 +1333,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
             ) : null}
 
             <section
+              className="qc-public-intake-main"
               style={compact ? appMainMobile : appMain}
               onDragOver={handleRoomDragOver}
               onDragEnter={handleRoomDragOver}
@@ -1329,7 +1341,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
               onDrop={handleRoomDrop}
             >
               {compact ? (
-                <header style={workspaceHeaderMobile}>
+                <header className="qc-public-intake-mobile-header" style={workspaceHeaderMobile}>
                   <div style={brandGroupMobile}>
                     <QCMark size={30} />
                     <div style={{ minWidth: 0 }}>
@@ -1343,6 +1355,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                       <button
                         key={tab}
                         type="button"
+                        className={`qc-public-intake-mobile-tab${activeWorkspace === tab ? " is-active" : ""}`}
                         style={activeWorkspace === tab ? mobileTabActive : mobileTab}
                         onClick={() => setActiveWorkspace(tab)}
                       >
@@ -1374,31 +1387,31 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
 
               <div style={compact ? workspaceGridMobile : activeWorkspace === "chat" ? workspaceGrid : workspaceGridSingle}>
                 {activeWorkspace === "chat" ? (
-                <section style={compact ? chatPanelModernMobile : chatPanelModern}>
+                <section className="qc-public-intake-chat" style={compact ? chatPanelModernMobile : chatPanelModern}>
                   {dragging ? (
                     <div style={dropHint}>
                       <strong>Drop files to attach</strong>
                       <span>PDF, images, ZIP, CSV, XLSX, and text files are supported.</span>
                     </div>
                   ) : null}
-                  <div style={compact ? chatTopBarMobile : chatTopBar}>
+                  <div className="qc-public-intake-chat-header" style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
                       <h2 style={sectionTitle}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h2>
                       <p style={muted}>Ask questions and attach PDFs, images, ZIPs, spreadsheets, or statements directly in chat.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
-                      <span style={statusPill}>{reviewStatus}</span>
+                      <span className="qc-public-intake-status" style={statusPill}>{reviewStatus}</span>
                     </div>
                   </div>
                   {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
-                  <div style={compact ? messagesModernMobile : messagesModern}>
+                  <div className="qc-public-intake-messages" style={compact ? messagesModernMobile : messagesModern}>
                     {fundability ? <FundabilityBanner banner={fundability} /> : null}
                     {chat.map((line) => {
                       if (line.role === "assistant") {
                         return (
                           <div key={line.id} style={assistantRow}>
-                            <div style={assistantAvatar} aria-hidden>QC</div>
-                            <div style={assistantBubble}>
+                            <div className="qc-public-intake-avatar qc-public-intake-avatar--assistant" style={assistantAvatar} aria-hidden>QC</div>
+                            <div className="qc-public-intake-bubble qc-public-intake-bubble--assistant" style={assistantBubble}>
                               {line.content}
                               <IntakeChatActions actions={response.chat_actions ?? []} sourceMessageId={line.id} busyActionId={chatActionBusy} onAction={(action) => void executeChatAction(action)} />
                             </div>
@@ -1409,8 +1422,8 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                         const who = line.authorName?.trim() || c.underwriterFallbackName;
                         return (
                           <div key={line.id} style={operatorRow}>
-                            <div style={operatorAvatar} aria-hidden>{deskInitials(line.authorName)}</div>
-                            <div style={operatorBubble}>
+                            <div className="qc-public-intake-avatar qc-public-intake-avatar--operator" style={operatorAvatar} aria-hidden>{deskInitials(line.authorName)}</div>
+                            <div className="qc-public-intake-bubble qc-public-intake-bubble--operator" style={operatorBubble}>
                               <span style={operatorName}>{who}</span>
                               {line.content}
                             </div>
@@ -1418,16 +1431,16 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                         );
                       }
                       return (
-                        <div key={line.id} style={userBubble}>
+                        <div key={line.id} className="qc-public-intake-bubble qc-public-intake-bubble--user" style={userBubble}>
                           {line.content}
                         </div>
                       );
                     })}
-                    {aiPaused ? <div style={systemNotice}>{c.takeoverNotice}</div> : null}
+                    {aiPaused ? <div className="qc-public-intake-system-notice" style={systemNotice}>{c.takeoverNotice}</div> : null}
                     {busy && !aiPaused ? (
                       <div style={assistantRow}>
-                        <div style={assistantAvatar} aria-hidden>QC</div>
-                        <div style={assistantBubble}><ChatTypingDots /></div>
+                        <div className="qc-public-intake-avatar qc-public-intake-avatar--assistant" style={assistantAvatar} aria-hidden>QC</div>
+                        <div className="qc-public-intake-bubble qc-public-intake-bubble--assistant" style={assistantBubble}><ChatTypingDots /></div>
                       </div>
                     ) : null}
                     {response.widget?.type === "book_call" ? (
@@ -1438,7 +1451,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                   {pendingFiles.length ? (
                     <AttachmentTray files={pendingFiles} compact={compact} onRemove={removeQueuedFile} />
                   ) : null}
-                  <div style={compact ? composerMobile : composer}>
+                  <div className="qc-public-intake-composer" style={compact ? composerMobile : composer}>
                     <label
                       style={!token ? disabledAttachButton : attachButton}
                       aria-label="Attach files"
@@ -1486,7 +1499,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                       {busy ? "Sending…" : hasQueuedUpload ? (chatText.trim() ? "Upload & send" : "Upload") : "Send"}
                     </button>
                   </div>
-                  {status ? <div style={statusBox}>{status}</div> : null}
+                  {status ? <div className="qc-public-intake-feedback" style={statusBox}>{status}</div> : null}
                 </section>
                 ) : null}
 
@@ -1607,7 +1620,7 @@ function ContactWidget({
   onShowLogin: () => void;
 }) {
   return (
-    <div style={stepOneFormCard}>
+    <div className="qc-public-intake-form" style={stepOneFormCard}>
       <div>
         <h2 style={stepOneFormTitle}>{c.startCardTitle}</h2>
         <p style={stepOneFormCopy}>{c.startCardSub}</p>
@@ -1620,7 +1633,7 @@ function ContactWidget({
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} required={equipmentDetails !== null} />
       </div>
       {equipmentDetails ? (
-        <section style={equipmentDetailsCard} aria-label={equipmentFieldsCopy.sectionTitle}>
+        <section className="qc-public-intake-equipment-details" style={equipmentDetailsCard} aria-label={equipmentFieldsCopy.sectionTitle}>
           <div style={equipmentSelectedPill}>{equipmentFieldsCopy.selected}</div>
           <div>
             <h3 style={equipmentDetailsTitle}>{equipmentFieldsCopy.sectionTitle}</h3>
@@ -1748,7 +1761,7 @@ function DealerContinuationWidget({
   onBack: () => void;
 }) {
   return (
-    <div style={resumeCard}>
+    <div className="qc-public-intake-resume" style={resumeCard}>
       <div>
         <strong>{c.alreadyStarted}</strong>
         <p style={stepOneFormCopy}>{c.resumeSub}</p>
@@ -1796,11 +1809,11 @@ function BookCallWidget({ widget, busy, onBook }: { widget: Widget | null; busy:
   const slots = widget?.slots ?? [];
   return (
     <WidgetBox title="Book underwriting call" description={widget?.description || "Choose a time to validate the preliminary screen with Qualified Commercial."}>
-      {widget?.disabled_reason ? <div style={emptyBox}>{widget.disabled_reason}</div> : null}
+      {widget?.disabled_reason ? <div className="qc-public-intake-empty" style={emptyBox}>{widget.disabled_reason}</div> : null}
       {slots.length ? (
         <div style={{ display: "grid", gap: 8 }}>
           {slots.map((slot) => (
-            <button key={slot.starts_at} style={slotButton} disabled={busy} onClick={() => onBook(slot.starts_at)}>
+            <button key={slot.starts_at} className="qc-public-intake-slot" style={slotButton} disabled={busy} onClick={() => onBook(slot.starts_at)}>
               <strong>{slot.date_label}</strong>
               <span>{slot.label} | {widget?.duration_min ?? 30} min</span>
             </button>
@@ -1838,7 +1851,7 @@ function SecureRoomCta({
       >
         {busy ? c.roomCardCtaBusy : c.roomCardCta}
       </button>
-      {notice ? <div style={statusBoxNoMargin}>{notice}</div> : null}
+      {notice ? <div className="qc-public-intake-feedback" style={statusBoxNoMargin}>{notice}</div> : null}
     </div>
   );
 }
@@ -1878,7 +1891,7 @@ function DealerSidebar({
     { key: "intelligence", label: "Intelligence", detail: !response.files.length ? "Upload first" : missingDocs.length ? `${missingDocs.length} open metrics` : "Cockpit ready" },
   ];
   return (
-    <aside style={dealerSidebar}>
+    <aside className="qc-public-intake-sidebar" style={dealerSidebar}>
       <div style={sidebarBrand}>
         <QCMark size={30} />
         <div>
@@ -1896,6 +1909,7 @@ function DealerSidebar({
             <button
               key={tab.key}
               type="button"
+              className={`qc-public-intake-sidebar-tab${activeTab === tab.key ? " is-active" : ""}${isIntelligence ? " is-intelligence" : ""}`}
               style={activeTab === tab.key ? activeStyle : idleStyle}
               onClick={() => onTabChange(tab.key)}
             >
@@ -1961,7 +1975,7 @@ function LogoutIcon() {
 
 function AttachmentTray({ files, compact, onRemove }: { files: QueuedFile[]; compact: boolean; onRemove: (id: string) => void }) {
   return (
-    <div style={compact ? attachmentTrayMobile : attachmentTray}>
+    <div className="qc-public-intake-attachments" style={compact ? attachmentTrayMobile : attachmentTray}>
       <div style={attachmentTrayHeader}>
         <strong>{files.length} pending</strong>
         <span>Encrypted on upload</span>
@@ -2059,14 +2073,14 @@ function FileDrawerPanel({
   }
   const topLevelFiles = response.files.filter((file) => !file.parent_zip_file_id);
   return (
-    <section style={compact ? fileDrawerPanelMobile : full ? fileDrawerPanelFull : fileDrawerPanel}>
+    <section className="qc-public-intake-files" style={compact ? fileDrawerPanelMobile : full ? fileDrawerPanelFull : fileDrawerPanel}>
       <div style={sideCardHeader}>
         <div>
-          <div style={sideEyebrow}>Files</div>
+          <div className="qc-public-intake-eyebrow" style={sideEyebrow}>Files</div>
           <h2 style={sideTitle}>Uploaded evidence</h2>
           {!showReviewProgress && reviewCompletedAt ? <span style={smallMuted}>Last review {formatDate(reviewCompletedAt)}</span> : null}
         </div>
-        <button type="button" style={miniButton} onClick={() => onAttachFiles()}>Attach</button>
+        <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={miniButton} onClick={() => onAttachFiles()}>Attach</button>
       </div>
 
       {fundability ? <FundabilityBanner banner={fundability} /> : null}
@@ -2081,13 +2095,13 @@ function FileDrawerPanel({
         <div style={sideSection}>
           <div style={sideSectionHeader}>
             <strong>Pending upload</strong>
-            <button type="button" style={miniButton} disabled={busy || readyCount === 0} onClick={onUpload}>
+            <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={miniButton} disabled={busy || readyCount === 0} onClick={onUpload}>
               Upload {readyCount || ""}
             </button>
           </div>
           <div style={sideList}>
             {pendingFiles.map((item) => (
-              <div key={item.id} style={pendingFileCard}>
+              <div key={item.id} className="qc-public-intake-file-card" style={pendingFileCard}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{item.file.name}</strong>
                   <span style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
@@ -2097,6 +2111,7 @@ function FileDrawerPanel({
                   {item.status !== "uploading" ? (
                     <button
                       type="button"
+                      className="qc-public-intake-button qc-public-intake-button--danger"
                       style={queueRemoveButton}
                       aria-label={`Remove ${item.file.name}`}
                       onClick={(event) => {
@@ -2133,7 +2148,7 @@ function FileDrawerPanel({
             });
             const unlockedCopy = locked ? unlockedCopyActionState(file.unlocked_copy_request) : null;
             return (
-              <div key={file.id} style={uploadedFileCard}>
+              <div key={file.id} className="qc-public-intake-file-card" style={uploadedFileCard}>
                 <div style={fileTypeBadge}>{locked ? <span aria-label="Password required" title={locked.explanation}>🔒</span> : fileLabel(file)}</div>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{file.file_name}</strong>
@@ -2151,7 +2166,7 @@ function FileDrawerPanel({
                           analysisReasonCode: child.analysis_reason_code,
                         });
                         return (
-                          <div key={child.id} style={zipChildRow}>
+                          <div key={child.id} className="qc-public-intake-file-card qc-public-intake-file-card--child" style={zipChildRow}>
                             <span style={fileTypeBadgeSmall}>{childLocked ? <span aria-label="Password required" title={childLocked.explanation}>🔒</span> : fileLabel(child)}</span>
                             <div style={{ minWidth: 0 }}>
                               <strong style={truncate}>{child.zip_entry_path || child.file_name}</strong>
@@ -2165,14 +2180,14 @@ function FileDrawerPanel({
                 </div>
               </div>
             );
-          }) : <div style={emptyBox}>No uploaded files yet. Attach files in chat and they will appear here after submission.</div>}
+          }) : <div className="qc-public-intake-empty" style={emptyBox}>No uploaded files yet. Attach files in chat and they will appear here after submission.</div>}
         </div>
       </div>
 
       <div style={sideSection}>
         <div style={sideSectionHeader}>
           <strong>Needs baseline</strong>
-          <span style={missingDocs.length ? warningText : smallMuted}>{missingDocs.length} open</span>
+          <span className={`qc-public-intake-open-count${missingDocs.length ? " is-warning" : ""}`} style={missingDocs.length ? warningText : smallMuted}>{missingDocs.length} open</span>
         </div>
         <div style={chipWrap}>
           {missingDocs.length ? missingDocs.map((doc) => {
@@ -2182,6 +2197,7 @@ function FileDrawerPanel({
               {doc.requires_signature && setSigningDocId ? (
                 <button
                   type="button"
+                  className="qc-public-intake-chip qc-public-intake-chip--warning qc-public-intake-chip-button"
                   onClick={() => setSigningDocId(doc.id)}
                   style={{ ...missingChip, cursor: "pointer", border: "none" }}
                 >
@@ -2190,6 +2206,7 @@ function FileDrawerPanel({
               ) : uploadTarget ? (
                 <button
                   type="button"
+                  className="qc-public-intake-chip qc-public-intake-chip--warning qc-public-intake-chip-button"
                   onClick={() => onAttachFiles(uploadTarget)}
                   style={{ ...missingChip, cursor: "pointer", border: "none" }}
                   aria-label={`Upload ${doc.name}`}
@@ -2198,16 +2215,17 @@ function FileDrawerPanel({
                   Upload: {doc.name}
                 </button>
               ) : (
-                <span style={missingChip}>{doc.name}</span>
+                <span className="qc-public-intake-chip qc-public-intake-chip--warning" style={missingChip}>{doc.name}</span>
               )}
               {doc.template_download_url ? (
-                <a href={doc.template_download_url} target="_blank" rel="noopener noreferrer" style={templateDownloadLink}>
+                <a className="qc-public-intake-link" href={doc.template_download_url} target="_blank" rel="noopener noreferrer" style={templateDownloadLink}>
                   Download blank form
                 </a>
               ) : null}
               {(doc.category === "Personal Financials" || doc.category === "Debts") && setDraftingDocKind ? (
                 <button
                   type="button"
+                  className="qc-public-intake-button qc-public-intake-button--link"
                   onClick={() => setDraftingDocKind(doc.category === "Personal Financials" ? "pfs" : "debt_schedule")}
                   style={{ ...templateDownloadLink, background: "none", border: "none", cursor: "pointer", padding: 0 }}
                 >
@@ -2216,7 +2234,7 @@ function FileDrawerPanel({
               ) : null}
             </span>
             );
-          }) : <span style={completeChip}>Baseline package uploaded</span>}
+          }) : <span className="qc-public-intake-chip qc-public-intake-chip--success" style={completeChip}>Baseline package uploaded</span>}
         </div>
         {onSubmitPfs ? (
           <PfsFormModal
@@ -2312,7 +2330,7 @@ function ReviewProgress({ stage, completedAt, compact }: { stage: ReviewProgress
   const nextStage = REVIEW_PROGRESS_STAGES.find((item) => reviewProgressPercent(item.key) > percent)?.label;
   const detail = isComplete && completedAt ? `Done ${formatDate(completedAt)}` : isError ? "Needs retry" : nextStage ? `Next: ${nextStage}` : `${percent}%`;
   return (
-    <div style={{ ...reviewProgressShell, ...(compact ? reviewProgressShellCompact : null), ...(isError ? reviewProgressShellError : null), ...(isComplete ? reviewProgressShellComplete : null) }}>
+    <div className={`qc-public-intake-review-progress${isError ? " is-error" : isComplete ? " is-complete" : ""}`} style={{ ...reviewProgressShell, ...(compact ? reviewProgressShellCompact : null), ...(isError ? reviewProgressShellError : null), ...(isComplete ? reviewProgressShellComplete : null) }}>
       <div style={reviewProgressTop}>
         <div style={reviewProgressLabelWrap}>
           <span style={isError ? reviewProgressBarDotError : isComplete ? reviewProgressBarDotComplete : reviewProgressBarDot} />
@@ -2330,7 +2348,7 @@ function ReviewProgress({ stage, completedAt, compact }: { stage: ReviewProgress
 function FundabilityBanner({ banner }: { banner: FundabilityBannerData }) {
   const style = banner.tone === "green" ? fundableGreen : banner.tone === "red" ? fundableRed : fundableAmber;
   return (
-    <div style={{ ...fundabilityBannerBase, ...style }}>
+    <div className={`qc-public-intake-fundability is-${banner.tone}`} style={{ ...fundabilityBannerBase, ...style }}>
       <div>
         <div style={fundabilityLabel}>{banner.label}</div>
         <strong>{banner.title}</strong>
@@ -2352,7 +2370,7 @@ function IntelligenceUnavailableCover({
   onAttachFiles: () => void;
 }) {
   return (
-    <section style={intelligenceCover}>
+    <section className="qc-public-intake-intelligence qc-public-intake-intelligence--empty" style={intelligenceCover}>
       <div style={intelligenceCoverGlow} />
       <div style={intelligenceCoverCard}>
         <div style={intelligenceCoverIcon}>
@@ -2360,7 +2378,7 @@ function IntelligenceUnavailableCover({
           <span style={{ ...intelligenceCoverIconBar, height: "78%" }} />
           <span style={{ ...intelligenceCoverIconBar, height: "62%" }} />
         </div>
-        <div style={sideEyebrow}>Intelligence cockpit</div>
+        <div className="qc-public-intake-eyebrow" style={sideEyebrow}>Intelligence cockpit</div>
         <h2 style={intelligenceCoverTitle}>Not enough evidence yet</h2>
         <p style={intelligenceCoverCopy}>
           Go back to the chat to upload documents and clarify your lending needs before accessing this page.
@@ -2378,8 +2396,8 @@ function IntelligenceUnavailableCover({
           </div>
         </div>
         <div style={intelligenceCoverActions}>
-          <button type="button" style={primaryButton} onClick={onGoChat}>Return to chat</button>
-          <button type="button" style={coverSecondaryButton} onClick={() => onAttachFiles()}>Attach evidence</button>
+          <button type="button" className="qc-public-intake-button qc-public-intake-button--primary" style={primaryButton} onClick={onGoChat}>Return to chat</button>
+          <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={coverSecondaryButton} onClick={() => onAttachFiles()}>Attach evidence</button>
         </div>
         <div style={intelligenceCoverNeeds}>
           <strong>Start with Stage 1 evidence</strong>
@@ -2405,14 +2423,14 @@ function IntelligencePanel({
 }) {
   const probability = String(result?.probability_status || model.status?.title || "Awaiting review");
   return (
-    <section style={intelligencePanel}>
+    <section className="qc-public-intake-intelligence" style={intelligencePanel}>
       <div style={intelligenceHeader}>
         <div>
-          <div style={sideEyebrow}>Underwriting intelligence</div>
+          <div className="qc-public-intake-eyebrow" style={sideEyebrow}>Underwriting intelligence</div>
           <h2 style={intelligenceTitle}>{response.intake.business_name || response.intake.full_name}</h2>
           <p style={muted}>Visual cockpit derived from uploaded evidence, chat answers, and the latest AI screen.</p>
         </div>
-        <button type="button" style={primaryButton} onClick={onExport}>Export PDF</button>
+        <button type="button" className="qc-public-intake-button qc-public-intake-button--primary" style={primaryButton} onClick={onExport}>Export PDF</button>
       </div>
 
       {model.status ? <FundabilityBanner banner={model.status} /> : (
@@ -2437,25 +2455,25 @@ function IntelligencePanel({
       </div>
 
       <div style={chartGrid}>
-        <div style={chartCard}>
+        <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Debt service coverage</strong>
-            <span style={metricSourcePill(model.dscr.source)}>{model.dscr.source}</span>
+            <span className={metricSourceClassName(model.dscr.source)} style={metricSourcePill(model.dscr.source)}>{model.dscr.source}</span>
           </div>
           <GaugeChart value={model.dscr.raw} language={language} />
           <p style={smallMuted}>{model.dscr.detail || "Coverage will populate when cash flow and debt service evidence is available."}</p>
         </div>
 
-        <div style={chartCard}>
+        <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Real estate equity / LTV</strong>
-            <span style={metricSourcePill(model.ltv.source)}>{model.ltv.source}</span>
+            <span className={metricSourceClassName(model.ltv.source)} style={metricSourcePill(model.ltv.source)}>{model.ltv.source}</span>
           </div>
           <EquityChart equity={model.equity.raw} ltv={model.ltv.raw} language={language} />
           <p style={smallMuted}>{model.equity.detail || "Collateral values and payoff balances are needed for equity and LTV."}</p>
         </div>
 
-        <div style={chartCardWide}>
+        <div className="qc-public-intake-chart-card qc-public-intake-chart-card--wide" style={chartCardWide}>
           <div style={chartHeader}>
             <strong>Cash flow stack</strong>
             <span style={smallMuted}>Revenue / cash flow / debt service</span>
@@ -2463,7 +2481,7 @@ function IntelligencePanel({
           <CashFlowBars bars={model.cashFlowBars} language={language} />
         </div>
 
-        <div style={chartCard}>
+        <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Month-to-month cash flow</strong>
             <span style={smallMuted}>Bank statement trend</span>
@@ -2471,7 +2489,7 @@ function IntelligencePanel({
           <MiniBarChart series={model.monthlySeries} emptyLabel="Awaiting six months of main operating bank statements." />
         </div>
 
-        <div style={chartCard}>
+        <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Year-to-year performance</strong>
             <span style={smallMuted}>Tax / P&L trend</span>
@@ -2481,14 +2499,14 @@ function IntelligencePanel({
       </div>
 
       <div style={intelligenceTables}>
-        <div style={chartCard}>
+        <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Evidence coverage</strong>
             <span style={smallMuted}>{response.files.length} files</span>
           </div>
           <EvidenceCoverageTable rows={model.coverage} language={language} />
         </div>
-        <div style={chartCard}>
+        <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Still needed</strong>
             <span style={smallMuted}>{model.missing.length} items</span>
@@ -2512,11 +2530,11 @@ function IntelligencePanel({
 
 function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValue; emphasis?: boolean }) {
   return (
-    <div style={emphasis ? kpiCardEmphasis : kpiCard}>
+    <div className={`qc-public-intake-kpi${emphasis ? " is-emphasis" : ""}`} style={emphasis ? kpiCardEmphasis : kpiCard}>
       <span>{metric.label}</span>
       <strong>{metric.value}</strong>
       <div style={kpiFooter}>
-        <span style={metricSourcePill(metric.source)}>{metric.source}</span>
+        <span className={metricSourceClassName(metric.source)} style={metricSourcePill(metric.source)}>{metric.source}</span>
         {metric.detail ? <small>{metric.detail}</small> : null}
       </div>
     </div>
@@ -2616,9 +2634,9 @@ function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceMo
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
-        <div key={row.category} style={intelligenceTableRow}>
+        <div key={row.category} className="qc-public-intake-intelligence-row" style={intelligenceTableRow}>
           <strong>{row.category}</strong>
-          <span style={coverageStatusStyle(row.status)}>{row.status}</span>
+          <span className={statusClassName(row.status)} style={coverageStatusStyle(row.status)}>{row.status}</span>
           <small>{row.evidence || row.gap || cc.noEvidenceListed}</small>
         </div>
       ))}
@@ -2632,9 +2650,9 @@ function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["miss
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
-        <div key={`${row.title}-${row.priority}`} style={intelligenceTableRow}>
+        <div key={`${row.title}-${row.priority}`} className="qc-public-intake-intelligence-row" style={intelligenceTableRow}>
           <strong>{row.title}</strong>
-          <span style={priorityPill(row.priority)}>{row.priority || "open"}</span>
+          <span className={priorityClassName(row.priority)} style={priorityPill(row.priority)}>{row.priority || "open"}</span>
           <small>{row.detail}</small>
         </div>
       ))}
@@ -2645,10 +2663,10 @@ function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["miss
 function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: string; rows: string[]; tone: "green" | "amber"; language?: Lang }) {
   const cc = CHART_COPY[language];
   return (
-    <div style={chartCard}>
+    <div className="qc-public-intake-chart-card" style={chartCard}>
       <div style={chartHeader}>
         <strong>{title}</strong>
-        <span style={tone === "green" ? completeChip : missingChip}>{rows.length || 0}</span>
+        <span className={`qc-public-intake-chip qc-public-intake-chip--${tone === "green" ? "success" : "warning"}`} style={tone === "green" ? completeChip : missingChip}>{rows.length || 0}</span>
       </div>
       <div style={riskList}>
         {rows.length ? rows.slice(0, 7).map((row, index) => (
@@ -2661,7 +2679,7 @@ function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: stri
 
 function WidgetBox({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
-    <section style={widgetBox}>
+    <section className="qc-public-intake-widget" style={widgetBox}>
       <h2 style={sectionTitle}>{title}</h2>
       <p style={muted}>{description}</p>
       <div style={{ display: "grid", gap: 12, marginTop: 14 }}>{children}</div>
@@ -2989,6 +3007,11 @@ function metricSourcePill(source: IntelligenceValue["source"]): CSSProperties {
   return unavailableSourcePill;
 }
 
+function metricSourceClassName(source: IntelligenceValue["source"]): string {
+  const tone = source === "verified" ? "success" : source === "extracted" ? "info" : source === "estimated" ? "warning" : "neutral";
+  return `qc-public-intake-chip qc-public-intake-chip--${tone}`;
+}
+
 function coverageStatusStyle(status: string): CSSProperties {
   const normalized = status.toLowerCase();
   if (normalized.includes("satisfied")) return completeChip;
@@ -2997,11 +3020,23 @@ function coverageStatusStyle(status: string): CSSProperties {
   return unavailableSourcePill;
 }
 
+function statusClassName(status: string): string {
+  const normalized = status.toLowerCase();
+  const tone = normalized.includes("satisfied") ? "success" : normalized.includes("partial") || normalized.includes("missing") ? "warning" : "neutral";
+  return `qc-public-intake-chip qc-public-intake-chip--${tone}`;
+}
+
 function priorityPill(priority: string): CSSProperties {
   const normalized = priority.toLowerCase();
   if (normalized.includes("high")) return missingChip;
   if (normalized.includes("low")) return completeChip;
   return estimatedSourcePill;
+}
+
+function priorityClassName(priority: string): string {
+  const normalized = priority.toLowerCase();
+  const tone = normalized.includes("low") ? "success" : normalized.includes("high") ? "danger" : "warning";
+  return `qc-public-intake-chip qc-public-intake-chip--${tone}`;
 }
 
 async function responseMessage(res: Response): Promise<string> {
@@ -3032,9 +3067,15 @@ function errorMessage(error: unknown): string {
 // rides in the fragment because a fragment is never sent to a server, never
 // written to an access log and never leaks through a referrer; the room reads
 // it, prefills its gate, and drops it from history.
-function secureRoomHref(handoff: SecureRoomHandoff): string {
-  const query = `?tab=${encodeURIComponent(handoff.tab)}`;
-  return `${handoff.room_url}${query}${handoff.room_code ? `#p=${handoff.room_code}` : ""}`;
+function secureRoomHref(
+  handoff: SecureRoomHandoff,
+  options: { theme?: "light" | "obsidian" } = {},
+): string {
+  const query = new URLSearchParams();
+  query.set("tab", handoff.tab);
+  if (options.theme) query.set("theme", options.theme);
+  const separator = handoff.room_url.includes("?") ? "&" : "?";
+  return `${handoff.room_url}${separator}${query.toString()}${handoff.room_code ? `#p=${handoff.room_code}` : ""}`;
 }
 
 function looksLikeEmail(value: string): boolean {

@@ -9,14 +9,30 @@
 // introducing a new look.
 
 import type { Lang } from "@/lib/intakeCopy";
+import { QCMark } from "@/components/QCMark";
 
-export function LanguagePickerScreen({ onPick }: { onPick: (lang: Lang) => void }) {
+export function LanguagePickerScreen({
+  onPick,
+  variant = "dark",
+}: {
+  onPick: (lang: Lang) => void;
+  variant?: "dark" | "institutional";
+}) {
   return (
     // `.v-gate` and not the console vocabulary: these rooms are dark-ground and
     // gold-accented, and `.card` / `.btn` both paint `var(--surface)` — a white
     // institutional surface — which would render console chrome on a near-black
     // public page.
-    <section className="v-gate">
+    <section className={`v-gate${variant === "institutional" ? " v-gate--institutional" : ""}`}>
+      {variant === "institutional" ? (
+        <div className="v-gate-brand" aria-hidden="true">
+          <span className="v-gate-brand-mark"><QCMark size={38} /></span>
+          <span>
+            <strong>Qualified Commercial</strong>
+            <small>Secure financing review</small>
+          </span>
+        </div>
+      ) : null}
       {/* h1, not h2. This is the FIRST thing a stranger arriving from a
           marketing link sees, and until they choose a language it is the whole
           page — so it was a document with no top-level heading at all. The

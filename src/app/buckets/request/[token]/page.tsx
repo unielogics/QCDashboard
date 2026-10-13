@@ -68,6 +68,7 @@ export default function BucketRequestPage() {
   const params = useParams<{ token: string }>();
   const searchParams = useSearchParams();
   const token = params.token;
+  const requestedTheme = searchParams.get("theme");
   const linkedOfferDeliveryId = searchParams.get("delivery") || "";
   const isOfferDeepLink = searchParams.get("tab") === "inbox" && Boolean(linkedOfferDeliveryId);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -103,9 +104,15 @@ export default function BucketRequestPage() {
   const [offerOnlyAccess, setOfferOnlyAccess] = useState(false);
 
   useEffect(() => {
-    const saved = window.localStorage.getItem("qc-application-room-theme");
-    if (saved === "obsidian" || saved === "light") setTheme(saved);
-  }, []);
+    // Theme is journey-local. A preference from another application on the
+    // same device must never restyle this room; links without an explicit
+    // choice therefore open in QC's public light theme.
+    if (requestedTheme === "light" || requestedTheme === "obsidian") {
+      setTheme(requestedTheme);
+      return;
+    }
+    setTheme("light");
+  }, [requestedTheme]);
   useEffect(() => {
     const requested = searchParams.get("tab");
     if (ROOM_TABS.some((tab) => tab.id === requested)) setActiveTab(requested as RoomTab);
@@ -199,7 +206,9 @@ export default function BucketRequestPage() {
 
   function chooseTheme(next: "light" | "obsidian") {
     setTheme(next);
-    window.localStorage.setItem("qc-application-room-theme", next);
+    const url = new URL(window.location.href);
+    url.searchParams.set("theme", next);
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   async function fetchAccessSession(): Promise<UploadSession> {
