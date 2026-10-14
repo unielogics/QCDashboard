@@ -6,8 +6,8 @@ const REASON_LABELS: Record<string, string> = {
   entity_unconfirmed: "Entity not confirmed",
   entity_mismatch_warning: "Accepted with an entity-name warning",
   entity_unconfirmed_warning: "Accepted with an unconfirmed-identity warning",
-  wrong_document: "Wrong document type",
-  wrong_period: "Period does not qualify",
+  wrong_document: "Possible different document",
+  wrong_period: "Period needs confirmation",
   incomplete: "Incomplete document",
   unreadable: "Unreadable document",
   duplicate: "Duplicate document",
@@ -22,6 +22,8 @@ const REASON_LABELS: Record<string, string> = {
   zip_entry_limit: "ZIP entry limit reached",
   zip_parse_failed: "ZIP could not be opened",
   fetch_failed: "File retrieval failed",
+  analysis_unavailable: "Automatic review unavailable; file retained",
+  low_confidence: "Document needs confirmation",
 };
 
 export function evidenceIdentityWarningLabel(reasonCode?: string | null, locale: "en" | "es" = "en"): string | null {
@@ -56,9 +58,9 @@ export function evidenceDecisionLabel(
 ): string {
   const suffix = actor === "ai" ? " by AI" : actor === "staff" ? " by staff" : actor === "system" ? " by system" : "";
   if (decision === "accepted") return `Accepted${suffix}`;
-  if (decision === "needs_more") return `Needs more${suffix}`;
-  if (decision === "rejected") return `Rejected${suffix}`;
-  if (decision === "failed") return "Analysis failed";
+  if (decision === "needs_more") return "Needs review";
+  if (decision === "rejected") return actor === "staff" ? "Staff requested another copy" : "Needs review";
+  if (decision === "failed") return "Automatic review unavailable";
   if (decision === "processing") return "Processing";
   return "Unassigned evidence";
 }
@@ -67,10 +69,18 @@ export function evidenceDecisionTone(
   decision?: EvidenceDecisionStatus | string | null,
 ): "ok" | "acc" | "warn" | "bad" | "mut" {
   if (decision === "accepted") return "ok";
-  if (decision === "rejected" || decision === "failed") return "bad";
+  if (decision === "rejected" || decision === "failed") return "warn";
   if (decision === "needs_more") return "warn";
   if (decision === "processing") return "acc";
   return "mut";
+}
+
+export function evidenceUsabilityLabel(status?: string | null): string {
+  const labels: Record<string, string> = {
+    processing: "Processing", usable: "Usable", usable_with_warning: "Usable with warning",
+    needs_review: "Needs review", needs_replacement: "Please provide a readable replacement", unsafe: "Security review required",
+  };
+  return labels[status ?? ""] ?? "Needs review";
 }
 
 export function evidenceReasonLabel(

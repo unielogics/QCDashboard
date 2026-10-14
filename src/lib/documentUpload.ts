@@ -68,11 +68,9 @@ async function pdfJsPasswordProbe(bytes: Uint8Array): Promise<void> {
 }
 
 /**
- * Reject a password-gated PDF before a presigned upload begins. Parsing errors
- * that are unrelated to a password deliberately fall through: the backend is
- * still the authoritative validator and returns the same coded rejection after
- * upload-complete. Empty-password and permissions-only PDFs load normally and
- * therefore remain uploadable.
+ * Readability never prevents ingestion. The server records locked or unreadable
+ * evidence and creates a replacement request after the original is retained.
+ * Keep the compatibility signature for existing upload surfaces.
  */
 export async function assertPdfUploadUnlocked(
   file: Pick<File, "name" | "type" | "arrayBuffer">,
@@ -82,7 +80,7 @@ export async function assertPdfUploadUnlocked(
   try {
     await probe(new Uint8Array(await file.arrayBuffer()));
   } catch (error) {
-    if (isPdfJsPasswordException(error)) throw new PasswordProtectedPdfUploadError(file.name);
+    if (isPdfJsPasswordException(error)) return;
     // Let malformed or otherwise unreadable PDFs reach the authoritative
     // server-side validator rather than guessing that they are password locked.
   }
@@ -110,5 +108,5 @@ export function passwordProtectedPdfUploadNotice(files: Iterable<Pick<File, "nam
   const names = Array.from(files, (file) => file.name);
   if (!names.length) return PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE;
   const label = names.length === 1 ? names[0] : `${names.length} selected PDFs`;
-  return `${label} ${names.length === 1 ? "was" : "were"} rejected. ${PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE}`;
+  return `${label} ${names.length === 1 ? "needs" : "need"} a readable replacement. ${PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE}`;
 }

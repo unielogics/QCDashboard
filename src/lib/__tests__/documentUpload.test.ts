@@ -24,15 +24,10 @@ describe("password-protected PDF upload guard", () => {
     expect(isPdfUpload(file("statement.csv", "text/csv"))).toBe(false);
   });
 
-  it("rejects a PDF when pdf.js requests a password", async () => {
+  it("retains a PDF when pdf.js requests a password", async () => {
     const passwordError = Object.assign(new Error("No password given"), { name: "PasswordException" });
     await expect(assertPdfUploadUnlocked(file("locked.pdf"), async () => { throw passwordError; }))
-      .rejects.toMatchObject({
-        name: "PasswordProtectedPdfUploadError",
-        code: "password_protected_pdf",
-        message: PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE,
-        fileName: "locked.pdf",
-      });
+      .resolves.toBeUndefined();
   });
 
   it("allows permissions-only or empty-password PDFs and defers unrelated parse failures", async () => {
@@ -57,7 +52,7 @@ describe("password-protected PDF upload guard", () => {
     expect(documentUploadErrorMessage(new Error("Network unavailable"))).toBe("Network unavailable");
   });
 
-  it("partitions a mixed selection without offering locked PDFs for upload", async () => {
+  it("keeps locked PDFs in a mixed upload selection for later replacement collection", async () => {
     const locked = file("locked.pdf");
     const open = file("open.pdf");
     const csv = file("bank.csv", "text/csv");
@@ -68,12 +63,12 @@ describe("password-protected PDF upload guard", () => {
         if ((calls += 1) === 1) throw Object.assign(new Error("Password required"), { name: "PasswordException" });
       }
     });
-    expect(result.rejected).toEqual([locked]);
-    expect(result.uploadable).toEqual([open, csv]);
+    expect(result.rejected).toEqual([]);
+    expect(result.uploadable).toEqual([locked, open, csv]);
   });
 
   it("builds a visible rejection notice with the filename", () => {
     expect(passwordProtectedPdfUploadNotice([file("locked.pdf")]))
-      .toBe(`locked.pdf was rejected. ${PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE}`);
+      .toBe(`locked.pdf needs a readable replacement. ${PASSWORD_PROTECTED_PDF_UPLOAD_MESSAGE}`);
   });
 });

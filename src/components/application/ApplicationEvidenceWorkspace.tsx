@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
+import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
@@ -35,6 +36,7 @@ import {
   evidenceDecisionLabel,
   evidenceDecisionTone,
   evidenceReasonLabel,
+  evidenceUsabilityLabel,
 } from "@/lib/evidenceDecision";
 import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
@@ -505,6 +507,8 @@ export function ApplicationEvidenceWorkspace({
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {data.processing.has_processing ? <Callout tone="acc"><span className="spinner" />AI is processing {data.processing.analyzing_files} file{data.processing.analyzing_files === 1 ? "" : "s"}. This workspace refreshes automatically.</Callout> : null}
 
+    <ApplicationLenderSubmissions key={profileId} profileId={profileId} />
+
     <div className="evidence-workspace-tabs" role="tablist" aria-label="Evidence workspace sections">
       {([[
         "requirements", "Requirements",
@@ -605,6 +609,7 @@ export function ApplicationEvidenceWorkspace({
       onClose={() => { setSelectedFileId(null); setSelectedRequirementKey(null); setSelectedPreviewPage(undefined); setSelectedPreviewHash(undefined); setAction(null); }}
       reviewContext={<>
         {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} detail /> : null}
+        {currentDecision?.usability_status ? <div className="row g8"><CellChip tone={currentDecision.usability_status === "usable" ? "ok" : "warn"}>{evidenceUsabilityLabel(currentDecision.usability_status)}</CellChip>{currentDecision.document_type_candidates?.length ? <Sub>{currentDecision.document_type_candidates.map((candidate) => candidate.classification.replaceAll("_", " ")).join(" · ")}</Sub> : null}</div> : null}
         <div><b>{currentAssignment?.label || "Supporting / Other"}</b>{assignments.length > 1 ? <Select aria-label="Evidence requirement decision" value={currentAssignment?.requirement_key || ""} onChange={(event) => { setSelectedRequirementKey(event.target.value); setAction(null); }}>{assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}{decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}</option>; })}</Select> : null}<Sub>{currentDecision ? `${evidenceActorLabel(currentDecision.decision_actor)}${currentDecision.ai_confidence ? ` · ${currentDecision.ai_confidence} confidence` : ""}${currentDecision.verified ? " · Human verified" : ""}` : `${evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)} · This file is not assigned to a requirement.`}</Sub></div>
         {selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot review its contents.</span><small>This file cannot satisfy {currentAssignment?.label || "an evidence requirement"} until an unlocked replacement is uploaded.</small></div></Callout> : currentDecision ? <Callout tone={evidenceDecisionTone(currentDecision.ai_decision)}><div className="grid g4"><b>{evidenceReasonLabel(currentDecision.ai_reason_code, currentDecision.ai_decision)}</b><span>{currentDecision.ai_explanation || "Decision explanation not available."}</span>{evidenceCoverageLabel(currentDecision.coverage_contribution) ? <small>Coverage: {evidenceCoverageLabel(currentDecision.coverage_contribution)}</small> : null}</div></Callout> : null}
         {!selectedLockedEvidence && !currentDecision ? <Callout tone={selectedFile.analysis_status === "failed" ? "bad" : selectedFile.analysis_status === "skipped" ? "warn" : "mut"}><div className="grid g4"><b>{evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)}</b><span>{selectedFile.analysis_detail || selectedFile.analysis_summary || "Analysis explanation not available."}</span>{selectedFile.analysis_classification ? <small>Classification: {selectedFile.analysis_classification.replaceAll("_", " ")}{selectedFile.analysis_confidence ? ` · ${selectedFile.analysis_confidence} confidence` : ""}</small> : null}</div></Callout> : null}

@@ -179,6 +179,9 @@ export type ApplicationRequirementEvidence = {
   decision_actor: "ai" | "staff" | "system" | null;
   analysis_id: string | null;
   coverage_contribution: Record<string, unknown>;
+  usability_status?: "processing" | "usable" | "usable_with_warning" | "needs_review" | "needs_replacement" | "unsafe";
+  document_type_candidates?: { classification: string; confidence: string; page_start?: number | null; page_end?: number | null }[];
+  evidence_claims?: { capability: string; confidence: string; page_start?: number | null; page_end?: number | null; period_start?: string | null; period_end?: string | null; entity?: string | null }[];
   is_password_protected?: boolean;
   unlocked_copy_request?: UnlockedCopyRequestState | null;
 };
@@ -203,6 +206,9 @@ export type ApplicationBankEvidenceFile = {
   size_bytes?: number;
   linked_to_requirement?: boolean;
   analysis_status?: string | null;
+  usability_status?: string;
+  document_type_candidates?: { classification: string; confidence: string }[];
+  evidence_claims?: Record<string, unknown>[];
   analysis_classification?: string | null;
   analysis_confidence?: string | null;
   analysis_summary?: string | null;
@@ -222,6 +228,10 @@ export type ApplicationEvidenceOption = {
 
 export type ApplicationRequirement = {
   requirement_key: string;
+  requirement_kind?: "field" | "document" | "form" | "consent" | "human_review";
+  canonical_key?: string | null;
+  collection_config?: Record<string, unknown>;
+  response?: Record<string, unknown> | null;
   label: string;
   category: string;
   required_level: "required" | "recommended" | "optional";
@@ -566,6 +576,9 @@ export type EvidenceWorkspaceFile = {
   included_in_review: boolean;
   preview_url: string | null;
   analysis_status?: string | null;
+  usability_status?: string;
+  document_type_candidates?: { classification: string; confidence: string }[];
+  evidence_claims?: Record<string, unknown>[];
   analysis_classification?: string | null;
   analysis_confidence?: string | null;
   analysis_summary?: string | null;

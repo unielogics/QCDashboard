@@ -20,10 +20,10 @@ describe("evidence decision presentation", () => {
 
   it("keeps decision labels and tones consistent across requirements and banking", () => {
     expect(evidenceDecisionLabel("accepted", "ai")).toBe("Accepted by AI");
-    expect(evidenceDecisionLabel("rejected", "ai")).toBe("Rejected by AI");
+    expect(evidenceDecisionLabel("rejected", "ai")).toBe("Needs review");
     expect(evidenceDecisionLabel("accepted", "staff")).toBe("Accepted by staff");
     expect(evidenceDecisionTone("accepted")).toBe("ok");
-    expect(evidenceDecisionTone("rejected")).toBe("bad");
+    expect(evidenceDecisionTone("rejected")).toBe("warn");
     expect(evidenceActorLabel("staff")).toBe("Staff decision");
   });
 

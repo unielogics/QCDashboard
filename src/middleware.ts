@@ -31,6 +31,7 @@ const isPublicPage = createRouteMatcher([
   // need to not bounce them off the edge.
   "/hud/share(.*)",
   "/buckets/request(.*)",
+  "/lender-submissions(.*)",
   "/forms(.*)",
   // A production package forwarded to someone with no account. The token
   // and a PIN are what the backend validates; the edge only has to let

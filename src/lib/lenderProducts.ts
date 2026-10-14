@@ -50,6 +50,10 @@ export const LENDER_PRODUCT_GROUPS: ReadonlyArray<{
       { value: "jumbo_dscr", label: "Jumbo DSCR" },
       { value: "reinsurance_backed", label: "Reinsurance-backed" },
       { value: "mca_refinance", label: "MCA Refinance" },
+      { value: "arf_bankroll", label: "ARF Bankroll" },
+      { value: "arf_io_bankroll", label: "ARF IO-Bankroll" },
+      { value: "arf_elevate_bankroll", label: "ARF Elevate Bankroll" },
+      { value: "arf_io_flex_pay", label: "ARF IO-Flex Pay" },
     ],
   },
   {

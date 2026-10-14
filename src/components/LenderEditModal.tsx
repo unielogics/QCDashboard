@@ -19,6 +19,7 @@
 
 import { useEffect, useState } from "react";
 import { LoanTypeChips } from "@/components/LoanTypeChips";
+import { LenderOfferingEditor } from "@/components/application/LenderOfferingEditor";
 import { Btn, Callout, Field, Input, Sub, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -233,6 +234,7 @@ export function LenderEditModal({ open, onClose, lender }: Props) {
         ) : null}
 
         {error ? <Callout tone="bad">{error}</Callout> : null}
+        {lender ? <LenderOfferingEditor key={lender.id} lenderId={lender.id} /> : null}
       </div>
     </Drawer>
   );
