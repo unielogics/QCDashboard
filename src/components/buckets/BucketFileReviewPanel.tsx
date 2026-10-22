@@ -49,6 +49,9 @@ export function BucketFileReviewPanel({
   downloadUrl,
   onDownload,
   onDelete,
+  deleteLabel = "Delete",
+  deleteDisabled = false,
+  deleteTitle,
   reviewKey,
   loadReview,
   saveAnnotation,
@@ -70,6 +73,9 @@ export function BucketFileReviewPanel({
   downloadUrl?: string | null;
   onDownload?: () => void;
   onDelete?: () => void;
+  deleteLabel?: string;
+  deleteDisabled?: boolean;
+  deleteTitle?: string;
   reviewKey: string;
   loadReview: () => Promise<BucketFileReview>;
   saveAnnotation?: (payload: DraftRect & { comment: string }) => Promise<BucketFileAnnotation>;
@@ -424,9 +430,9 @@ export function BucketFileReviewPanel({
           ) : null}
           {headerActions}
           {onDelete ? (
-            <Btn className="danger" onClick={onDelete}>
-              <Icon name="x" size={14} />
-              Delete
+            <Btn className="danger" onClick={onDelete} disabled={deleteDisabled} title={deleteTitle}>
+              <Icon name={deleteDisabled ? "lock" : "x"} size={14} />
+              {deleteLabel}
             </Btn>
           ) : null}
           {onMinimize ? (
