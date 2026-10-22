@@ -31,14 +31,15 @@ import type { UnifiedFilePage } from "@/lib/unifiedOperator";
 import { api, ApiError } from "@/lib/api";
 import { validPhone } from "@/lib/formCoerce";
 import { Role } from "@/lib/enums.generated";
-import { APP_ORIGIN } from "@/lib/appUrl";
+import { APP_ORIGIN, SIGN_IN_URL } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
+import { bucketUploadIssue, type BucketUploadIssue } from "@/lib/bucketUploadError";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { usePinnedRows } from "@/lib/tablePinning";
-import { useConsoleAuth } from "@/lib/consoleAuth";
+import { isVisualQa, useConsoleAuth } from "@/lib/consoleAuth";
 
 type BucketLinkedFile = {
   id: string;
@@ -99,6 +100,7 @@ type AdminQueuedFile = {
   status: "ready" | "uploading" | "uploaded" | "error";
   message?: string;
   requiresRetarget?: boolean;
+  errorKind?: BucketUploadIssue["kind"];
 };
 type Share = {
   id: string;
@@ -538,6 +540,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const [adminUploadForm, setAdminUploadForm] = useState({ uploader_name: "", uploader_email: "", note: "" });
   const [adminUploadDraftStatus, setAdminUploadDraftStatus] = useState<"saving" | "saved" | null>(null);
   const [adminUploadStatus, setAdminUploadStatus] = useState<{ kind: "working" | "success" | "error"; message: string } | null>(null);
+  const [adminUploadIssue, setAdminUploadIssue] = useState<BucketUploadIssue | null>(null);
+  const [adminUploadNeedsRefresh, setAdminUploadNeedsRefresh] = useState(false);
   const [adminUploading, setAdminUploading] = useState(false);
   const [isAdminUploadDragging, setIsAdminUploadDragging] = useState(false);
   const [adminNote, setAdminNote] = useState("");
@@ -574,9 +578,24 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       }
     };
     assertScope();
+    // A raw Clerk rejection (including its /client/sign_ins 400) is not
+    // repeated here. The upload caller turns it into a recoverable visual and
+    // keeps the in-memory File objects intact.
     const token = await getToken();
+    if (!token && !isVisualQa) throw bucketSessionUnavailableError();
     assertScope();
-    const result = await api<T>(path, { ...init, authToken: token ?? undefined });
+    let result: T;
+    try {
+      result = await api<T>(path, { ...init, authToken: token ?? undefined });
+    } catch (error) {
+      if (!(error instanceof ApiError) || error.status !== 401) throw error;
+      // A cached JWT may expire between Clerk and qcbackend. Refresh it once;
+      // a second 401 is authoritative and is surfaced to the upload queue.
+      const refreshedToken = await getToken({ skipCache: true });
+      if (!refreshedToken && !isVisualQa) throw bucketSessionUnavailableError();
+      assertScope();
+      result = await api<T>(path, { ...init, authToken: refreshedToken ?? undefined });
+    }
     assertScope();
     return result;
   }
@@ -1747,6 +1766,9 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   function removeAdminUploadFile(id: string) {
     setAdminUploadFiles((files) => files.filter((file) => file.id !== id));
+    if (!adminUploadNeedsRefresh && !adminUploadFiles.some((file) => file.id !== id && file.errorKind)) {
+      setAdminUploadIssue(null);
+    }
   }
 
   function onAdminUploadDragOver(event: DragEvent<HTMLDivElement>) {
@@ -1770,16 +1792,21 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   async function submitAdminUploads() {
     if (!detail || !canAdminUpload) return;
     setAdminUploading(true);
+    setAdminUploadIssue(null);
+    setAdminUploadNeedsRefresh(false);
     setAdminUploadStatus({ kind: "working", message: "Uploading files..." });
     let noteSaved = false;
     let uploadedCount = 0;
     let failedCount = 0;
     let staleCount = 0;
+    let halted = false;
+    let surfacedIssue: BucketUploadIssue | null = null;
     const lockedFiles: File[] = [];
+    const queuedFiles = adminUploadFiles.filter(clientQueuedUploadCanSubmit);
     try {
-      for (const queued of adminUploadFiles.filter(clientQueuedUploadCanSubmit)) {
+      for (const queued of queuedFiles) {
         try {
-          updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload" });
+          updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload", errorKind: undefined });
           await assertPdfUploadUnlocked(queued.file);
           const init = await call<UploadInitResponse>(`/buckets/admin/${detail.id}/files/upload-init`, {
             method: "POST",
@@ -1802,7 +1829,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
           });
           noteSaved = noteSaved || !!adminUploadForm.note.trim();
           uploadedCount += 1;
-          updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded" });
+          updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded", errorKind: undefined });
         } catch (error) {
           if (isPasswordProtectedPdfUploadError(error)) {
             lockedFiles.push(queued.file);
@@ -1814,30 +1841,114 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               requested_document_id: "",
               requiresRetarget: true,
               message: "The request changed. Choose a current document before retrying.",
+              errorKind: "upload",
             });
           } else {
+            const issue = bucketUploadIssue(error);
             failedCount += 1;
-            updateAdminUploadFile(queued.id, { status: "error", message: readableError(error) });
+            // A batch-wide problem must replace an earlier file-specific
+            // problem so the recovery action matches what blocks the rest.
+            if (!surfacedIssue || issue.kind === "authentication" || issue.kind === "network") {
+              surfacedIssue = issue;
+            }
+            updateAdminUploadFile(queued.id, { status: "error", message: issue.itemMessage, errorKind: issue.kind });
+            // Authentication and network failures affect every subsequent
+            // file. Stop here instead of issuing the same doomed request for
+            // the rest of the queue; those File objects stay untouched in
+            // memory and are eligible for the next retry.
+            if (issue.kind === "authentication" || issue.kind === "network") {
+              halted = true;
+              break;
+            }
           }
         }
       }
-      await loadBucket(detail.id);
-      await loadBuckets();
+
+      if (!halted) {
+        try {
+          await loadBucket(detail.id);
+          await loadBuckets();
+        } catch (error) {
+          const refreshIssue = bucketUploadIssue(error);
+          setAdminUploadNeedsRefresh(true);
+          surfacedIssue = uploadedCount > 0
+            ? {
+                ...refreshIssue,
+                title: "Files uploaded — list refresh paused",
+                message: refreshIssue.kind === "authentication"
+                  ? `${uploadedCount} file${uploadedCount === 1 ? " was" : "s were"} uploaded safely, but the file list could not refresh because your secure session expired. Keep this tab open and sign in again in a new tab.`
+                  : `${uploadedCount} file${uploadedCount === 1 ? " was" : "s were"} uploaded safely, but the file list could not refresh. ${refreshIssue.message}`,
+              }
+            : refreshIssue;
+        }
+      }
+
       setAdminUploadFiles((current) => current.filter((file) => file.status !== "uploaded"));
-      if (failedCount === 0 && staleCount === 0 && lockedFiles.length === 0) {
+      if (uploadedCount === queuedFiles.length && queuedFiles.length > 0) {
+        // The note is attached to the first completed file. Do not leave it
+        // behind to be accidentally reused merely because the follow-up list
+        // refresh hit an authentication or network problem.
+        setAdminUploadForm((form) => ({ ...form, note: "" }));
+      }
+      if (surfacedIssue) {
+        setAdminUploadIssue(surfacedIssue);
+        setBucketSectionsOpen((current) => ({ ...current, upload: true }));
+      }
+      if (failedCount === 0 && staleCount === 0 && lockedFiles.length === 0 && !surfacedIssue) {
         setAdminUploadFiles([]);
         setAdminUploadForm((form) => ({ ...form, note: "" }));
         setAdminUploadStatus({ kind: "success", message: `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded.` });
       } else {
+        const queuedCount = Math.max(0, queuedFiles.length - uploadedCount - lockedFiles.length);
         setAdminUploadStatus({
           kind: "error",
           message: [
-            staleCount ? `${uploadedCount} uploaded. The checklist changed for ${staleCount} file${staleCount === 1 ? "" : "s"}; choose a current request before retrying.` : "",
+            uploadedCount ? `${uploadedCount} file${uploadedCount === 1 ? "" : "s"} uploaded.` : "",
+            halted && queuedCount ? `${queuedCount} file${queuedCount === 1 ? " remains" : "s remain"} queued in this tab.` : "",
+            staleCount ? `The checklist changed for ${staleCount} file${staleCount === 1 ? "" : "s"}; choose a current request before retrying.` : "",
             lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
-            !staleCount && failedCount ? `${uploadedCount} uploaded. ${failedCount} file${failedCount === 1 ? "" : "s"} need attention.` : "",
+            !halted && !staleCount && failedCount ? `${failedCount} file${failedCount === 1 ? " needs" : "s need"} attention.` : "",
+            surfacedIssue && !halted && uploadedCount > 0 && failedCount === 0 ? "Refresh the list after resolving the notice below." : "",
           ].filter(Boolean).join(" "),
         });
       }
+    } catch (error) {
+      const issue = bucketUploadIssue(error);
+      setAdminUploadIssue(issue);
+      setBucketSectionsOpen((current) => ({ ...current, upload: true }));
+      setAdminUploadFiles((current) => current
+        .filter((file) => file.status !== "uploaded")
+        .map((file) => file.status === "uploading"
+          ? { ...file, status: "error" as const, message: issue.itemMessage, errorKind: issue.kind }
+          : file));
+      setAdminUploadStatus({ kind: "error", message: "Upload paused. Your remaining files are still queued in this tab." });
+    } finally {
+      setAdminUploading(false);
+    }
+  }
+
+  async function refreshAdminUploadList() {
+    if (!detail || adminUploading) return;
+    setAdminUploading(true);
+    setAdminUploadStatus({ kind: "working", message: "Refreshing the file list..." });
+    try {
+      await loadBucket(detail.id);
+      await loadBuckets();
+      setAdminUploadNeedsRefresh(false);
+      setAdminUploadIssue(null);
+      setAdminUploadStatus({ kind: "success", message: "File list refreshed. Your completed uploads are now visible." });
+    } catch (error) {
+      const issue = bucketUploadIssue(error);
+      setAdminUploadNeedsRefresh(true);
+      setAdminUploadIssue({
+        ...issue,
+        title: "File list refresh paused",
+        message: issue.kind === "authentication"
+          ? "The uploads are safe, but the list still needs a valid secure session. Keep this tab open, sign in again in a new tab, then refresh the list here."
+          : `The uploads are safe, but the file list still could not refresh. ${issue.message}`,
+      });
+      setBucketSectionsOpen((current) => ({ ...current, upload: true }));
+      setAdminUploadStatus({ kind: "error", message: "The completed uploads are safe. Refresh the file list to show them here." });
     } finally {
       setAdminUploading(false);
     }
@@ -3178,7 +3289,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                         <Select
                           style={{ width: 190 }}
                           value={item.requested_document_id}
-                          onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, status: "ready", message: undefined, requiresRetarget: event.target.value ? false : item.requiresRetarget })}
+                          onChange={(event) => updateAdminUploadFile(item.id, { requested_document_id: event.target.value, status: "ready", message: undefined, requiresRetarget: event.target.value ? false : item.requiresRetarget, errorKind: undefined })}
                           disabled={adminUploading || item.status === "uploaded"}
                           aria-label={`Assign ${item.file.name} to a requested document`}
                         >
@@ -3199,10 +3310,60 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                 ) : (
                   <div className="hintbox mt">Choose files from your computer and assign them to a requested item or leave them as general uploads.</div>
                 )}
+                {adminUploadIssue ? (
+                  <div className="mt">
+                    <Callout tone="bad" icon={<Icon name="alert" size={18} />}>
+                      <div role="alert" aria-live="assertive" aria-atomic="true">
+                        <strong style={{ display: "block", fontSize: 14 }}>{adminUploadIssue.title}</strong>
+                        <div className="sub" style={{ marginTop: 4, color: "inherit", lineHeight: 1.5 }}>
+                          {adminUploadIssue.message}
+                        </div>
+                        <div className="row" style={{ marginTop: 12, flexWrap: "wrap", gap: 8 }}>
+                          {adminUploadIssue.kind === "authentication" ? (
+                            <a
+                              className="btn"
+                              href={SIGN_IN_URL}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{ minHeight: 44, justifyContent: "center" }}
+                            >
+                              <Icon name="external" size={14} />
+                              Sign in again in a new tab
+                            </a>
+                          ) : null}
+                          {adminUploadFiles.some(clientQueuedUploadCanSubmit) ? (
+                            <Btn
+                              variant="pri"
+                              style={{ minHeight: 44, justifyContent: "center" }}
+                              onClick={submitAdminUploads}
+                              disabled={!canAdminUpload}
+                            >
+                              <Icon name="refresh" size={14} />
+                              Retry queued files
+                            </Btn>
+                          ) : null}
+                          {adminUploadNeedsRefresh ? (
+                            <Btn
+                              variant="pri"
+                              style={{ minHeight: 44, justifyContent: "center" }}
+                              onClick={refreshAdminUploadList}
+                              disabled={adminUploading}
+                            >
+                              <Icon name="refresh" size={14} />
+                              Refresh file list
+                            </Btn>
+                          ) : null}
+                        </div>
+                      </div>
+                    </Callout>
+                  </div>
+                ) : null}
                 {adminUploadStatus ? <div className="mt"><CreateStatusBanner status={adminUploadStatus} /></div> : null}
                 <div className="row mt" style={{ justifyContent: "flex-end" }}>
                   <Btn variant="pri" style={{ minWidth: 148, justifyContent: "center" }} onClick={submitAdminUploads} disabled={!canAdminUpload}>
-                    {adminUploading ? "Uploading..." : "Upload files"}
+                    {adminUploading
+                      ? adminUploadNeedsRefresh ? "Refreshing..." : "Uploading..."
+                      : adminUploadIssue && adminUploadFiles.some(clientQueuedUploadCanSubmit) ? "Retry queued files" : "Upload files"}
                   </Btn>
                 </div>
               </Panel>
@@ -4676,4 +4837,10 @@ function noticeIsFailure(notice: string): boolean {
 function readableError(error: unknown) {
   if (error instanceof Error) return error.message;
   return "Bucket could not be created. Please try again.";
+}
+
+function bucketSessionUnavailableError() {
+  const error = new Error("Your secure session is no longer available.");
+  error.name = "ClerkSessionError";
+  return error;
 }
