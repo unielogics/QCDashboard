@@ -3693,7 +3693,7 @@ function ConfirmDeleteLeadModal({
     try {
       await onConfirm(confirmationName);
     } catch (error) {
-      toast.show(error instanceof Error ? error.message : "Could not delete this lead.");
+      toast.show(error instanceof Error ? error.message : "Could not archive this AI Intake file.");
     } finally {
       setBusy(false);
     }
@@ -3718,6 +3718,9 @@ function ConfirmDeleteLeadModal({
     >
       <div className="grid">
         <div className="warnline"><strong>{expectedName}</strong> will leave the active workspace. Uploaded documents, generated artifacts, conversations, and history remain retained and can be restored.</div>
+        <Callout tone="acc" icon={<Icon name="vault" size={15} />}>
+          Protected payment agreements and ACH authorization records keep their protected-until date or legal hold after this file is archived.
+        </Callout>
         <Field label={`Type “${expectedName}” to confirm`} req>
           <Input
             autoFocus

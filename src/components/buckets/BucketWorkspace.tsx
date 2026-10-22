@@ -34,7 +34,9 @@ import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN, SIGN_IN_URL } from "@/lib/appUrl";
 import { openSignedUrl } from "@/lib/safeOpen";
 import { semanticStatusClass } from "@/lib/semanticStatus";
+import { bucketArchiveLabel, bucketListPath, isBucketArchived, type BucketArchiveFilter } from "@/lib/bucketArchive";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
+import { bucketFileRemovalError, bucketFileRetentionPresentation } from "@/lib/bucketRetention";
 import { bucketUploadIssue, type BucketUploadIssue } from "@/lib/bucketUploadError";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
@@ -62,6 +64,7 @@ type Bucket = {
   purpose?: string | null;
   description?: string | null;
   status: string;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
   file_count?: number;
@@ -91,6 +94,12 @@ type BucketFile = {
   deleted_at?: string | null;
   deleted_by_user_id?: string | null;
   delete_storage_status?: string | null;
+  retention_class?: string | null;
+  protected_until?: string | null;
+  legal_hold?: boolean;
+  source_entity_type?: string | null;
+  source_entity_id?: string | null;
+  source_immutable_ref?: string | null;
   created_at: string;
 };
 type AdminQueuedFile = {
@@ -470,8 +479,10 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const [bucketFileSort, setBucketFileSort] = useState<BucketFileSort>("newest");
   const [search, setSearch] = useState("");
   const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
+  const [bucketArchiveFilter, setBucketArchiveFilter] = useState<BucketArchiveFilter>("active");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [restoringBucketId, setRestoringBucketId] = useState<string | null>(null);
   const [deleteReviewBucket, setDeleteReviewBucket] = useState<Bucket | null>(null);
   const [deletingFileId, setDeletingFileId] = useState<string | null>(null);
   const [restoringFileId, setRestoringFileId] = useState<string | null>(null);
@@ -611,7 +622,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       return;
     }
     const [bucketRows, templateRows, vendorRows] = await Promise.all([
-      call<Bucket[]>("/buckets"),
+      call<Bucket[]>(bucketListPath(bucketArchiveFilter), { signal }),
       call<Template[]>("/buckets/templates"),
       call<VendorUser[]>("/buckets/admin/vendors"),
     ]);
@@ -835,10 +846,31 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       await call<void>(`/buckets/admin/${bucket.id}`, { method: "DELETE" });
       if (detail?.id === bucket.id) closeBucketDetail();
       await loadBuckets();
-      setNotice("Bucket deleted.");
+      setNotice("Bucket archived. Its files and history were retained. To recover it, switch the Bucket list to Archived and select Restore bucket.");
       setDeleteReviewBucket(null);
+    } catch (error) {
+      setNotice(`Archive failed: ${readableError(error)}`);
     } finally {
       setDeletingId(null);
+    }
+  }
+
+  async function restoreBucket(bucket: Bucket) {
+    if (!isBucketArchived(bucket) || restoringBucketId) return;
+    setRestoringBucketId(bucket.id);
+    setNotice(null);
+    try {
+      const restored = await call<Bucket>(`/buckets/admin/${bucket.id}/restore`, { method: "POST" });
+      await loadBuckets();
+      if (detail?.id === bucket.id) {
+        if (bucketArchiveFilter === "archived") closeBucketDetail();
+        else await openBucket(restored.id);
+      }
+      setNotice(`${bucket.name} restored to the active Bucket list. Its retention dates remain unchanged.`);
+    } catch (error) {
+      setNotice(`Restore failed: ${readableError(error)}`);
+    } finally {
+      setRestoringBucketId(null);
     }
   }
 
@@ -877,7 +909,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   useEffect(() => {
     if (!embedded && me?.role === Role.SUPER_ADMIN) loadBuckets().catch((e) => setNotice(String(e)));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [embedded, me?.role]);
+  }, [embedded, me?.role, bucketArchiveFilter]);
 
   useEffect(() => {
     if (embedded) return;
@@ -1031,6 +1063,11 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const detailArchived = Boolean(detail && isBucketArchived(detail));
+  const reviewFileRetention = useMemo(
+    () => reviewFile ? bucketFileRetentionPresentation(reviewFile) : null,
+    [reviewFile],
+  );
   const requestedDocNameById = useMemo(() => new Map((detail?.requested_documents ?? []).map((doc) => [doc.id, doc.name])), [detail?.requested_documents]);
   const bucketFileStatusOptions = useMemo(() => {
     const statuses = new Set(visibleFiles.map((file) => file.status).filter(Boolean));
@@ -1979,10 +2016,15 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   async function deleteFile(file: BucketFile) {
     if (!detail || deletingFileId) return;
+    const retention = bucketFileRetentionPresentation(file);
+    if (retention?.isRemovalBlocked) {
+      setNotice(`Removal blocked: ${retention.detail} Archive the bucket instead if it should leave the active workspace.`);
+      return;
+    }
     const confirmed = await confirmAction({
-      title: `Move ${file.file_name} to deleted files`,
-      body: "This removes the file from active evidence and revokes share access. The stored document is retained and can be restored.",
-      confirmLabel: "Move to deleted files",
+      title: `Remove ${file.file_name} from active evidence`,
+      body: "This removes the file from active evidence and revokes share access. It does not erase the stored document. You can restore it from Removed files.",
+      confirmLabel: "Remove from active evidence",
       tone: "danger",
       reversible: true,
     });
@@ -1995,7 +2037,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         delete next[file.id];
         return next;
       });
-      setNotice("File moved to Deleted files. Its stored document was retained.");
+      setNotice("File moved to Removed files. Its stored document was retained and can be restored.");
       if (reviewFile?.id === file.id) {
         setReviewMinimized(false);
         setReviewFile(null);
@@ -2003,7 +2045,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       await loadBucket(detail.id);
       await loadBuckets();
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Could not delete file.");
+      setNotice(bucketFileRemovalError(error, retention));
     } finally {
       setDeletingFileId(null);
     }
@@ -2205,7 +2247,11 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       {!embedded ? <div className="ckhead">
         <div className="ckrow">
           <h1>Buckets</h1>
-          <CellChip tone="mut">{buckets.filter((bucket) => !bucket.status.toLowerCase().includes("complete")).length} open</CellChip>
+          <CellChip tone="mut">
+            {bucketArchiveFilter === "archived"
+              ? `${buckets.length} archived`
+              : `${buckets.filter((bucket) => !isBucketArchived(bucket) && !bucket.status.toLowerCase().includes("complete")).length} open`}
+          </CellChip>
           <span className="sp" />
           <span className="sub">Secure document rooms. Every bucket can feed an AI intake.</span>
           <Btn variant="pri" size="sm" onClick={() => {
@@ -2222,14 +2268,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
             { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
           ]} />
         </div>
-        <div className="cktabs" role="tablist" aria-label="Bucket status">
+        {bucketArchiveFilter !== "archived" ? <div className="cktabs" role="tablist" aria-label="Bucket status">
           {[
             { value: "all" as const, label: "All buckets" },
             { value: "collecting" as const, label: "Collecting" },
             { value: "review" as const, label: "In review" },
             { value: "complete" as const, label: "Complete" },
           ].map((item) => <button key={item.value} type="button" role="tab" aria-selected={bucketView === item.value} className={bucketView === item.value ? "on" : undefined} onClick={() => setBucketView(item.value)}>{item.label}</button>)}
-        </div>
+        </div> : null}
       </div> : null}
 
       {notice ? (
@@ -2428,15 +2474,30 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                 aria-label="Search buckets"
               />
             </div>
+            <Select
+              value={bucketArchiveFilter}
+              onChange={(event) => {
+                setBucketView("all");
+                setBucketArchiveFilter(event.target.value as BucketArchiveFilter);
+              }}
+              aria-label="Bucket visibility"
+              style={{ minWidth: 150 }}
+            >
+              <option value="active">Active only</option>
+              <option value="archived">Archived</option>
+              <option value="all">Active + archived</option>
+            </Select>
             {pinnedBucketIds.length ? <Btn size="sm" onClick={clearBucketPins}>Clear pinned ({pinnedBucketIds.length})</Btn> : null}
           </>
         }
       >
         <BucketTable
           buckets={orderedBuckets}
+          archiveFilter={bucketArchiveFilter}
           links={bucketLinks}
           primaryIntakeByBucket={primaryIntakeByBucket}
           deletingId={deletingId}
+          restoringId={restoringBucketId}
           isPinned={isBucketPinned}
           onTogglePin={toggleBucketPin}
           onSelect={(id) => openBucket(id)}
@@ -2445,6 +2506,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
           onLinkIntake={setLinkBucket}
           onOpenLinkedFile={openLinkedFile}
           onDelete={setDeleteReviewBucket}
+          onRestore={(bucket) => restoreBucket(bucket)}
         />
       </TableWorkspace> : null}
 
@@ -2465,16 +2527,17 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         open={deleteReviewBucket !== null}
         onClose={() => setDeleteReviewBucket(null)}
         width="md"
-        title="Review before running"
-        sub="Delete bucket"
+        title="Archive bucket"
+        sub="Remove it from the active workspace without deleting its records."
         closeOnBackdrop={!deletingId}
-        footer={<><Btn onClick={() => setDeleteReviewBucket(null)} disabled={Boolean(deletingId)}>Cancel</Btn><span className="sp" /><Btn onClick={() => deleteReviewBucket && deleteBucket(deleteReviewBucket)} disabled={Boolean(deletingId)} className="danger">{deletingId ? "Deleting..." : "Delete bucket"}</Btn></>}
+        footer={<><Btn onClick={() => setDeleteReviewBucket(null)} disabled={Boolean(deletingId)}>Cancel</Btn><span className="sp" /><Btn onClick={() => deleteReviewBucket && deleteBucket(deleteReviewBucket)} disabled={Boolean(deletingId)} className="danger">{deletingId ? "Archiving..." : "Archive bucket"}</Btn></>}
       >
         <div className="grid">
-          <div className="warnline"><b>{deleteReviewBucket?.name}</b> will be removed from the active bucket list.</div>
+          <div className="warnline"><b>{deleteReviewBucket?.name}</b> will leave the active bucket list. Its files, notes, sharing history, and audit activity are retained.</div>
           <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
           <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
-          <div className="kv"><span>Reversible</span><b>No</b></div>
+          <div className="kv"><span>Record deletion</span><b>None — this is archive only</b></div>
+          <div className="kv"><span>Recovery</span><b>Buckets → Archived → Restore bucket</b></div>
         </div>
       </Drawer>
 
@@ -2731,20 +2794,20 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
           title={
             <span className="bucket-detail-title">
               <span className="trunc">{detail.name}</span>
-              <IconBtn
+              {detailArchived ? <CellChip tone="mut">{bucketArchiveLabel(detail) || "Archived"}</CellChip> : <IconBtn
                 onClick={() => openBucketEdit(detail)}
                 aria-label="Edit bucket details"
                 title="Rename bucket"
               >
                 <Icon name="pencil" size={14} />
-              </IconBtn>
+              </IconBtn>}
             </span>
           }
           subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
           onClose={closeBucketDetail}
           action={
             <div className="row">
-              <IconBtn
+              {!detailArchived ? <IconBtn
                 className={cx(detailFocus === "vendors" && "pri")}
                 aria-pressed={detailFocus === "vendors"}
                 onClick={showVendorSettings}
@@ -2752,8 +2815,18 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                 title="Vendor access - login required"
               >
                 <Icon name="user" size={16} />
-              </IconBtn>
-              {!embedded ? <><Btn
+              </IconBtn> : (
+                <Btn
+                  size="sm"
+                  variant="pri"
+                  onClick={() => restoreBucket(detail)}
+                  disabled={restoringBucketId === detail.id}
+                >
+                  <Icon name="refresh" size={15} />
+                  {restoringBucketId === detail.id ? "Restoring..." : "Restore bucket"}
+                </Btn>
+              )}
+              {!embedded && !detailArchived ? <><Btn
                 size="sm"
                 onClick={() => detail && setConvertLeadBucket(detail)}
                 aria-label="Convert to AI Underwriter Lead"
@@ -2782,7 +2855,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                   {embedded ? "Return to intake" : "Open file"}
                 </Btn>
               ) : null}
-              <div ref={shareMenuRef} className="popwrap">
+              {!detailArchived ? <div ref={shareMenuRef} className="popwrap">
                 <Btn
                   size="sm"
                   variant={sharePopupOpen ? "pri" : "default"}
@@ -2911,8 +2984,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     </div>
                   </div>
                 ) : null}
-              </div>
-              <div ref={publicShareMenuRef} className="popwrap">
+              </div> : null}
+              {!detailArchived ? <div ref={publicShareMenuRef} className="popwrap">
                 <Btn
                   size="sm"
                   variant={publicSharePopupOpen ? "pri" : "default"}
@@ -3052,7 +3125,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     </div>
                   </div>
                 ) : null}
-              </div>
+              </div> : null}
               <IconBtn aria-label="Minimize bucket workspace" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
                 <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
               </IconBtn>
@@ -3061,8 +3134,16 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         >
           {/* File review owns the workspace. The secondary controls start as a
               narrow rail and expand only when the operator asks for them. */}
-          <div className={cx("bucket-detail-review-layout", bucketUtilityRailCollapsed && "utility-collapsed")}>
+          <div className={cx("bucket-detail-review-layout", !detailArchived && bucketUtilityRailCollapsed && "utility-collapsed")}>
             <div className="grid">
+              {detailArchived ? (
+                <Callout tone="acc" icon={<Icon name="vault" size={17} />}>
+                  <b>Archived workspace — retained records are read only.</b>
+                  <div className="sub" style={{ color: "inherit", marginTop: 3 }}>
+                    Preview or download active retained files below. Restore the bucket before uploading, sharing, annotating, or restoring removed evidence.
+                  </div>
+                </Callout>
+              ) : null}
               <Panel
                 title="Uploaded documents"
                 actions={
@@ -3081,9 +3162,9 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                       onClick={() => setShowDeletedFiles((current) => !current)}
                       aria-expanded={showDeletedFiles}
                     >
-                      {showDeletedFiles ? "Hide deleted" : `Deleted (${deletedFiles.length})`}
+                      {showDeletedFiles ? "Hide removed" : `Removed (${deletedFiles.length})`}
                     </Btn>
-                    <Btn
+                    {!detailArchived ? <Btn
                       size="sm"
                       onClick={() => {
                         setBucketSectionsOpen((current) => ({ ...current, upload: true }));
@@ -3092,7 +3173,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     >
                       <Icon name="upload" size={13} />
                       Add files
-                    </Btn>
+                    </Btn> : null}
                   </div>
                 }
               >
@@ -3131,16 +3212,18 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     <EmptyInline icon="file" title="No files uploaded yet" body="Upload files or send an invite; documents will appear here first." />
                   ) : filteredBucketFiles.length === 0 ? (
                     <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more bucket files." />
-                  ) : filteredBucketFiles.map((file) => (
+                  ) : filteredBucketFiles.map((file) => {
+                    const retention = bucketFileRetentionPresentation(file);
+                    return (
                     <div key={file.id} className={`itemrow bucket-file-row ${semanticStatusClass(file.status)}`}>
-                      <label className="bucket-file-share-toggle" title={`Select ${file.file_name} for sharing`}>
+                      {!detailArchived ? <label className="bucket-file-share-toggle" title={`Select ${file.file_name} for sharing`}>
                         <input
                           type="checkbox"
                           checked={!!shareFiles[file.id]}
                           onChange={(event) => setShareFiles((current) => ({ ...current, [file.id]: event.target.checked }))}
                           aria-label={`Select ${file.file_name} for sharing`}
                         />
-                      </label>
+                      </label> : null}
                       <button
                         type="button"
                         className="bucket-file-open grow"
@@ -3153,9 +3236,16 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                           <span className="sub">
                             {requestedDocNameById.get(file.requested_document_id || "") || "General upload"} | {file.uploaded_by_name || "Unknown"} | {formatSize(file.size_bytes)} | Uploaded {formatDateTime(file.created_at)}
                           </span>
+                          {retention ? (
+                            <span className="sub" style={{ display: "flex", alignItems: "center", gap: 5, marginTop: 4 }}>
+                              <Icon name={retention.isRemovalBlocked ? "lock" : "audit"} size={12} aria-hidden="true" />
+                              {retention.detail}
+                            </span>
+                          ) : null}
                         </span>
                       </button>
                       <CellChip tone={file.requested_document_id ? "acc" : "mut"}>{file.requested_document_id ? "task" : "general"}</CellChip>
+                      {retention ? <CellChip tone={retention.isRemovalBlocked ? "warn" : retention.isRetained ? "acc" : "mut"}>{retention.badge}</CellChip> : null}
                       <div className="row">
                         <Btn size="sm" onClick={() => openFile(file, false)}>
                           <Icon name="eye" size={13} />
@@ -3165,31 +3255,34 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                           <Icon name="download" size={13} />
                           Download
                         </Btn>
-                        <Btn
+                        {!detailArchived ? <Btn
                           size="sm"
                           className="danger"
                           onClick={() => deleteFile(file).catch(() => undefined)}
-                          disabled={deletingFileId === file.id}
+                          disabled={deletingFileId === file.id || Boolean(retention?.isRemovalBlocked)}
+                          title={retention?.isRemovalBlocked ? retention.detail : "Remove from active evidence; the retained file can be restored"}
                         >
-                          <Icon name="x" size={13} />
-                          {deletingFileId === file.id ? "Deleting..." : "Delete"}
-                        </Btn>
+                          <Icon name={retention?.isRemovalBlocked ? "lock" : "x"} size={13} />
+                          {deletingFileId === file.id ? "Removing..." : retention?.isRemovalBlocked ? "Protected" : "Remove"}
+                        </Btn> : <CellChip tone="mut">Read only</CellChip>}
                       </div>
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
                 {showDeletedFiles ? (
-                  <div className="grid g8 mt" aria-label="Deleted bucket files">
+                  <div className="grid g8 mt" aria-label="Removed bucket files">
                     <div className="row">
                       <div>
-                        <strong>Deleted files</strong>
-                        <div className="sub">Recoverable documents retain their stored bytes and can be returned to active evidence.</div>
+                        <strong>Removed files</strong>
+                        <div className="sub">These documents were removed from active evidence, not erased. Recoverable records can be restored here.</div>
                       </div>
                       <span className="sp" />
                       <CellChip tone="mut">{deletedFiles.length}</CellChip>
                     </div>
                     {deletedFiles.length ? deletedFiles.map((file) => {
                       const recoverable = ["retained_soft_delete", "retained_package_artifact"].includes(file.delete_storage_status || "");
+                      const retention = bucketFileRetentionPresentation(file);
                       return (
                         <div key={file.id} className="itemrow bucket-file-row">
                           <span className="grow">
@@ -3197,9 +3290,11 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                             <span className="sub">
                               {formatSize(file.size_bytes)} | Removed {file.deleted_at ? formatDateTime(file.deleted_at) : "previously"}
                             </span>
+                            {retention ? <span className="sub" style={{ display: "block", marginTop: 4 }}>{retention.detail}</span> : null}
                           </span>
+                          {retention ? <CellChip tone={retention.isRemovalBlocked ? "warn" : retention.isRetained ? "acc" : "mut"}>{retention.badge}</CellChip> : null}
                           <CellChip tone={recoverable ? "ok" : "warn"}>{recoverable ? "retained" : "historical"}</CellChip>
-                          <Btn
+                          {!detailArchived ? <Btn
                             size="sm"
                             variant="pri"
                             disabled={!recoverable || restoringFileId === file.id}
@@ -3207,15 +3302,15 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                             onClick={() => restoreFile(file).catch(() => undefined)}
                           >
                             {restoringFileId === file.id ? "Restoring..." : "Restore"}
-                          </Btn>
+                          </Btn> : <CellChip tone="mut">Restore bucket to change</CellChip>}
                         </div>
                       );
-                    }) : <EmptyInline icon="file" title="No deleted files" body="Files removed after recovery retention is enabled will appear here." />}
+                    }) : <EmptyInline icon="file" title="No removed files" body="Files removed from active evidence will appear here when their stored record is recoverable." />}
                   </div>
                 ) : null}
               </Panel>
 
-              <Panel
+              {!detailArchived ? <Panel
                 className={cx(!bucketSectionsOpen.upload && "bucket-panel-collapsed")}
                 title="Upload on behalf"
                 actions={bucketSectionActions(
@@ -3366,7 +3461,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                       : adminUploadIssue && adminUploadFiles.some(clientQueuedUploadCanSubmit) ? "Retry queued files" : "Upload files"}
                   </Btn>
                 </div>
-              </Panel>
+              </Panel> : null}
 
               <Panel
                 className={cx(!bucketSectionsOpen.tasks && "bucket-panel-collapsed")}
@@ -3394,7 +3489,22 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               </Panel>
             </div>
 
-            {bucketUtilityRailCollapsed ? (
+            {detailArchived ? (
+              <aside className="grid bucket-utility-rail" aria-label="Archived bucket summary">
+                <Panel title="Archived record" sub="Historical context stays available while changes remain locked.">
+                  <div className="grid g8">
+                    <div className="kv"><span>Archived</span><b>{formatDateTime(detail.archived_at)}</b></div>
+                    <div className="kv"><span>Notes retained</span><b>{detail.notes.length}</b></div>
+                    <div className="kv"><span>Activity entries</span><b>{activityTotal}</b></div>
+                    <div className="kv"><span>Removed files</span><b>{deletedFiles.length}</b></div>
+                    <Btn variant="pri" onClick={() => restoreBucket(detail)} disabled={restoringBucketId === detail.id}>
+                      <Icon name="refresh" size={14} />
+                      {restoringBucketId === detail.id ? "Restoring..." : "Restore to active work"}
+                    </Btn>
+                  </div>
+                </Panel>
+              </aside>
+            ) : bucketUtilityRailCollapsed ? (
               <aside className="bucket-utility-rail-collapsed" aria-label="Bucket review tools">
                 <button
                   type="button"
@@ -4086,13 +4196,26 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
           }}
           reviewKey={reviewFile.id}
           loadReview={() => loadAdminReview(reviewFile)}
-          saveAnnotation={(payload) => saveAdminAnnotation(reviewFile, payload)}
-          onDelete={() => {
-            const file = reviewFile;
-            setReviewMinimized(false);
-            setReviewFile(null);
-            deleteFile(file).catch(() => undefined);
+          saveAnnotation={detailArchived ? undefined : (payload) => saveAdminAnnotation(reviewFile, payload)}
+          annotationsEnabled={!detailArchived}
+          deleteLabel={reviewFileRetention?.isRemovalBlocked ? "Protected" : "Remove from active"}
+          deleteDisabled={Boolean(reviewFileRetention?.isRemovalBlocked)}
+          deleteTitle={reviewFileRetention?.isRemovalBlocked
+            ? reviewFileRetention.detail
+            : "Remove from active evidence; the retained file can be restored"}
+          onDelete={detailArchived ? undefined : () => {
+            deleteFile(reviewFile).catch(() => undefined);
           }}
+          reviewContext={(
+              <Callout tone={reviewFileRetention?.isRemovalBlocked ? "warn" : "acc"} icon={<Icon name={reviewFileRetention?.isRemovalBlocked || detailArchived ? "lock" : "vault"} size={15} />}>
+                <b>{detailArchived ? "Archived record" : reviewFileRetention?.badge || "Recoverable removal"}</b>
+                <div className="sub" style={{ color: "inherit", marginTop: 3 }}>
+                  {detailArchived
+                    ? `${reviewFileRetention?.detail || "This file remains retained."} Restore the bucket before changing evidence.`
+                    : reviewFileRetention?.detail || "Removing this file only removes it from active evidence and revokes its shares. The stored document stays in Removed files and can be restored."}
+                </div>
+              </Callout>
+          )}
           onClose={() => {
             setReviewMinimized(false);
             setReviewFile(null);
@@ -4468,9 +4591,11 @@ function ConvertToLeadModal({
 
 function BucketTable({
   buckets,
+  archiveFilter,
   links,
   primaryIntakeByBucket,
   deletingId,
+  restoringId,
   isPinned,
   onTogglePin,
   onSelect,
@@ -4479,11 +4604,14 @@ function BucketTable({
   onLinkIntake,
   onOpenLinkedFile,
   onDelete,
+  onRestore,
 }: {
   buckets: Bucket[];
+  archiveFilter: BucketArchiveFilter;
   links: BucketIntakeLinkRead[];
   primaryIntakeByBucket: Map<string, string>;
   deletingId: string | null;
+  restoringId: string | null;
   isPinned: (id: string) => boolean;
   onTogglePin: (id: string) => void;
   onSelect: (id: string) => void;
@@ -4492,9 +4620,14 @@ function BucketTable({
   onLinkIntake: (bucket: Bucket) => void;
   onOpenLinkedFile: (file: BucketLinkedFile) => void;
   onDelete: (bucket: Bucket) => void;
+  onRestore: (bucket: Bucket) => void;
 }) {
   if (buckets.length === 0) {
-    return <div className="sub" style={{ padding: 18 }}>No buckets yet. Use Create bucket to start.</div>;
+    return <div className="sub" style={{ padding: 18 }}>
+      {archiveFilter === "archived"
+        ? "No archived buckets. Buckets removed from active work will appear here and can be restored."
+        : "No buckets match this view. Use Create bucket to start a new document room."}
+    </div>;
   }
   return (
     <div className="tblwrap">
@@ -4507,25 +4640,29 @@ function BucketTable({
             const connected = bucket.linked_files?.[0];
             const connectedDetail = connected?.reference || connected?.email || connected?.phone;
             const pinned = isPinned(bucket.id);
+            const archived = isBucketArchived(bucket);
+            const archiveLabel = bucketArchiveLabel(bucket);
             return (
               <tr
                 key={bucket.id}
                 onClick={() => onSelect(bucket.id)}
-                className={cx(pinned && "table-row-pinned")}
+                className={cx(pinned && "table-row-pinned", archived && semanticStatusClass("archived"))}
                 data-pinned={pinned || undefined}
               >
-                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}</div></td>
+                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}{archiveLabel ? ` · ${archiveLabel}` : ""}</div></td>
                 <td>{bucket.client_name || <span className="sub">No client</span>}</td>
                 <td className="num">{bucket.file_count ?? 0} / {bucket.uploaded_file_count ?? 0}</td>
                 <td className="num">{bucket.vendor_access_count ?? 0}</td>
-                <td><CellChip tone={bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{statusLabel(bucket.status)}</CellChip></td>
+                <td><CellChip tone={archived ? "mut" : bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{archived ? "Archived" : statusLabel(bucket.status)}</CellChip></td>
                 <td>
                   {connected ? (
                     <div className="bucket-list-connected-file">
                       <button type="button" className="linky tl" onClick={(event) => { event.stopPropagation(); onOpenLinkedFile(connected); }}>{connected.label}</button>
                       <span className="sub">{connected.kind}{connectedDetail ? ` · ${connectedDetail}` : ""}{(bucket.linked_files?.length ?? 0) > 1 ? ` · +${(bucket.linked_files?.length ?? 1) - 1}` : ""}</span>
                     </div>
-                  ) : link || primaryIntakeId ? (
+                  ) : link || primaryIntakeId ? archived ? (
+                    <CellChip tone="mut">AI intake {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</CellChip>
+                  ) : (
                     <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>AI intake {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button>
                   ) : <span className="sub">Not connected</span>}
                 </td>
@@ -4533,13 +4670,17 @@ function BucketTable({
                 <td>
                   <span className="bucket-list-actions" onClick={(event) => event.stopPropagation()}>
                     <PinRowButton pinned={pinned} onToggle={() => onTogglePin(bucket.id)} label={bucket.name} />
-                    <PageActionMenu label={`Actions for ${bucket.name}`} items={[
+                    <PageActionMenu label={`Actions for ${bucket.name}`} items={archived ? [
+                      { label: "Open retained records", onSelect: () => onSelect(bucket.id) },
+                      ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),
+                      { label: restoringId === bucket.id ? "Restoring..." : "Restore bucket", onSelect: () => onRestore(bucket) },
+                    ] : [
                       { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
                       ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),
                       { label: "Vendor access", onSelect: () => onOpenVendors(bucket.id) },
                       { label: link || primaryIntakeId ? "Manage AI intake link" : "Link AI intake", onSelect: () => onLinkIntake(bucket) },
                       { label: "Create AI intake", onSelect: () => onConvertToLead(bucket) },
-                      { label: deletingId === bucket.id ? "Deleting..." : "Delete bucket", onSelect: () => onDelete(bucket), tone: "danger" },
+                      { label: deletingId === bucket.id ? "Archiving..." : "Archive bucket", onSelect: () => onDelete(bucket), tone: "danger" },
                     ]} />
                   </span>
                 </td>
@@ -4829,7 +4970,7 @@ function generateAccessCode() {
  * about renders as success, which is how the page behaved before.
  */
 function noticeIsFailure(notice: string): boolean {
-  return /\b(fail|failed|error|could\s*not|couldn't|unable|denied|invalid|expired|rejected)\b/i.test(
+  return /\b(fail|failed|error|could\s*not|couldn't|unable|denied|invalid|expired|rejected|blocked|protected)\b/i.test(
     notice,
   );
 }
