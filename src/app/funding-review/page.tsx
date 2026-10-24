@@ -19,6 +19,7 @@ import { readCapitalReadinessHandoffFragment, readinessFundingPurposeLabel, toCa
 import { validPhone } from "@/lib/formCoerce";
 import { metricProvenance } from "@/lib/intake";
 import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
+import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import type { IntakeChatAction, IntakeChatActionResult } from "@/lib/intake";
 import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
@@ -819,14 +820,14 @@ export default function DealerAIUnderwriterPage() {
         anchor.download = filename;
         anchor.click();
         URL.revokeObjectURL(url);
-      } else if (action.action_type === "complete_now" && result.room_url) {
-        window.location.assign(result.room_url);
+      } else {
+        // complete_now / open_worksheet: this page has no inline forms, so the
+        // minted form link opens in a new tab and the client stays in the room
+        // (older backends without form_url fall back to room_url).
+        const target = resolveChatActionTarget(action, result);
+        if (target.kind === "open") window.open(target.url, "_blank", "noopener");
       }
-      setStatus(
-        result.delivery?.recipient_masked
-          ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.`
-          : result.detail,
-      );
+      setStatus(chatActionStatusText(result, language ?? "en"));
       await loadIntake();
     } catch (error) {
       setStatus(errorMessage(error));

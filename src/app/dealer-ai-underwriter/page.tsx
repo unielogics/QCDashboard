@@ -14,6 +14,7 @@ import { SignRequestedDocument, type SignRequestedDocumentPayload } from "@/comp
 import { ProductionSigningGate, type SignPayload as ProductionSignPayload, type SignResult as ProductionSignResult } from "@/components/intake/ProductionSigningGate";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
+import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
@@ -1027,9 +1028,14 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
         `/public/dealer-ai-intake/${encodeURIComponent(token)}/chat-actions/${action.id}`,
         { method: "POST", body: JSON.stringify({}) },
       );
-      if (action.action_type === "complete_now") {
+      // PFS and debt schedule draft inline here; the P&L + balance sheet
+      // worksheet and "Open the worksheet" open their minted link in a new tab.
+      const target = resolveChatActionTarget(action, result, { inlineKinds: ["pfs", "debt_schedule"] });
+      if (target.kind === "inline") {
         setDraftError(null);
-        setDraftingDocKind(action.requirement_key === "owner_personal_financial_statement" ? "pfs" : "debt_schedule");
+        setDraftingDocKind(target.docKind);
+      } else if (target.kind === "open") {
+        window.open(target.url, "_blank", "noopener");
       } else if (action.action_type === "upload_own") {
         const input = document.createElement("input");
         input.type = "file";
@@ -1054,7 +1060,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
         link.remove();
         window.URL.revokeObjectURL(url);
       }
-      setStatus(result.delivery?.recipient_masked ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.` : result.detail);
+      setStatus(chatActionStatusText(result, language ?? "en"));
       await loadIntake();
     } catch (error) {
       setStatus(errorMessage(error));

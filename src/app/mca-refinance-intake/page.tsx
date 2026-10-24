@@ -21,6 +21,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
+import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
 import {
   SignRequestedDocument,
   type SignRequestedDocumentPayload,
@@ -942,14 +943,14 @@ export default function McaRefinanceIntakePage() {
         anchor.download = filename;
         anchor.click();
         URL.revokeObjectURL(url);
-      } else if (action.action_type === "complete_now" && result.room_url) {
-        window.location.assign(result.room_url);
+      } else {
+        // complete_now / open_worksheet: this page has no inline forms, so the
+        // minted form link opens in a new tab and the client stays in the room
+        // (older backends without form_url fall back to room_url).
+        const target = resolveChatActionTarget(action, result);
+        if (target.kind === "open") window.open(target.url, "_blank", "noopener");
       }
-      setChatNotice(
-        result.delivery?.recipient_masked
-          ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.`
-          : result.detail,
-      );
+      setChatNotice(chatActionStatusText(result, language ?? "en"));
       await refresh();
     } catch (error) {
       setChatError(apiErrorText(error, c));

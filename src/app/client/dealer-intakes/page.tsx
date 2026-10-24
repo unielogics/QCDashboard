@@ -9,6 +9,7 @@ import { api, apiBase } from "@/lib/api";
 import { clientQueuedUploadCanSubmit, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
+import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
 import { useCurrentUser } from "@/hooks/useApi";
@@ -33,12 +34,12 @@ type ChatAction = {
   id: string;
   source_message_id: string;
   requirement_key: string;
-  action_type: "upload_own" | "complete_now" | "download_template" | "email_template";
+  action_type: "upload_own" | "complete_now" | "download_template" | "email_template" | "open_worksheet";
   template_kind?: string | null;
   label: string;
   status: string;
 };
-type ChatActionResult = { action_id: string; status: "executed" | "failed"; detail: string; download_url?: string | null; room_url?: string | null; delivery?: { recipient_masked?: string; provider_accepted?: boolean; status?: string } | null };
+type ChatActionResult = { action_id: string; status: "executed" | "failed"; detail: string; download_url?: string | null; room_url?: string | null; form_url?: string | null; access_code?: string | null; delivery?: { recipient_masked?: string; provider_accepted?: boolean; status?: string } | null };
 type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null; capital_readiness?: ApplicationCapitalReadinessSnapshot | null; communication_locale?: "en" | "es" | null };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
@@ -177,9 +178,14 @@ export default function ClientDealerIntakesPage() {
         method: "POST",
         body: JSON.stringify({}),
       });
-      if (action.action_type === "complete_now") {
+      // PFS and debt schedule draft inline here; the P&L + balance sheet
+      // worksheet and "Open the worksheet" open their minted link in a new tab.
+      const target = resolveChatActionTarget(action, result, { inlineKinds: ["pfs", "debt_schedule"] });
+      if (target.kind === "inline") {
         setDraftError(null);
-        setDraftingDocKind(action.requirement_key === "owner_personal_financial_statement" ? "pfs" : "debt_schedule");
+        setDraftingDocKind(target.docKind);
+      } else if (target.kind === "open") {
+        window.open(target.url, "_blank", "noopener");
       } else if (action.action_type === "upload_own") {
         fileInputRef.current?.click();
       } else if (action.action_type === "download_template" && result.download_url) {
@@ -198,10 +204,9 @@ export default function ClientDealerIntakesPage() {
         anchor.click();
         URL.revokeObjectURL(url);
       }
-      const deliveryText = result.delivery?.recipient_masked
-        ? `${result.detail} Recipient: ${result.delivery.recipient_masked}.`
-        : result.detail;
-      setNotice(deliveryText);
+      // This portal renders in English (see lib/intakeCopy.ts header), so the
+      // PIN sentence stays English here too.
+      setNotice(chatActionStatusText(result));
       const refreshed = await authed<IntakeDetail>(`/buckets/client/intakes/${detail.intake.id}`);
       setDetail(refreshed);
       setMessages(refreshed.messages?.length ? refreshed.messages : messages);
@@ -350,7 +355,7 @@ export default function ClientDealerIntakesPage() {
                         <span>{message.content}</span>
                         {message.role === "assistant" && actions.length ? (
                           <div style={chatActions()}>
-                            {actions.map((action) => <button key={action.id} type="button" style={chatActionButton(action.action_type === "email_template")} disabled={actionBusy === action.id || action.status === "disabled" || action.status === "expired"} onClick={() => void executeChatAction(action)}>{actionBusy === action.id ? "Working..." : action.label}</button>)}
+                            {actions.map((action) => <button key={action.id} type="button" style={chatActionButton(action.action_type)} disabled={actionBusy === action.id || action.status === "disabled" || action.status === "expired"} onClick={() => void executeChatAction(action)}>{actionBusy === action.id ? "Working..." : action.label}{action.action_type === "open_worksheet" && actionBusy !== action.id ? <span aria-hidden="true"> ↗</span> : null}</button>)}
                           </div>
                         ) : null}
                       </div>
@@ -425,4 +430,20 @@ const composer: CSSProperties = { display: "grid", gridTemplateColumns: "1fr aut
 const input = (): CSSProperties => ({ border: `1px solid ${V.lineStrong}`, borderRadius: 999, padding: "0 14px", minHeight: 40, outline: "none" });
 const noticeBox = (): CSSProperties => ({ border: `1px solid ${V.warn}`, background: V.warnBg, color: V.warn, borderRadius: 12, padding: 12, marginTop: 12 });
 const chatActions = (): CSSProperties => ({ display: "flex", flexWrap: "wrap", gap: 7, marginTop: 10, paddingTop: 10, borderTop: `1px solid ${V.line}` });
-const chatActionButton = (primaryAction = false): CSSProperties => ({ border: `1px solid ${primaryAction ? V.petrol : V.lineStrong}`, borderRadius: 8, minHeight: 34, padding: "0 11px", background: primaryAction ? V.petrol : V.surface, color: primaryAction ? V.inverse : V.ink, fontSize: 12, fontWeight: 800, cursor: "pointer" });
+// `email_template` stays the filled primary; `open_worksheet` gets an outline
+// on a light tint (mirrors IntakeChatActions.tsx); everything else is unchanged.
+const chatActionButton = (actionType: ChatAction["action_type"]): CSSProperties => {
+  const primaryAction = actionType === "email_template";
+  const worksheet = actionType === "open_worksheet";
+  return {
+    border: `1px solid ${primaryAction || worksheet ? V.petrol : V.lineStrong}`,
+    borderRadius: 8,
+    minHeight: 34,
+    padding: "0 11px",
+    background: primaryAction ? V.petrol : worksheet ? V.petrolSoft : V.surface,
+    color: primaryAction ? V.inverse : worksheet ? V.petrol : V.ink,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+};
