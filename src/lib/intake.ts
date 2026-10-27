@@ -102,6 +102,7 @@ export type Widget = {
 
 export type IntakeResponse = {
   intake: Intake;
+  mca_refinance_policy?: import("@/lib/mcaRefinancePolicy").McaRefinancePolicy | null;
   token?: string | null;
   session_token?: string | null;
   resume_url?: string | null;

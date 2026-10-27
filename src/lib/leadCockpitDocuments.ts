@@ -1,6 +1,7 @@
 import { clientRequestedDocumentNeedsAction } from "@/lib/clientRoomDocuments";
 import type { ApplicationProgramReadiness, ApplicationRequirement } from "@/lib/applicationProfile";
 import type { RequestedDoc, UploadedFile } from "@/lib/intake";
+import { mcaRefinanceReviewState, type McaRefinanceReviewResponse } from "@/lib/mcaRefinanceReview";
 
 export type LeadCockpitReadiness = Pick<ApplicationProgramReadiness, "requirements" | "can_advance">;
 export type LeadCockpitMissingRow = { title: string; detail: string; priority: string };
@@ -61,13 +62,22 @@ export function canonicalRequirementComplete(
     || ["verified", "waived", "not_applicable"].includes(requirement.status);
 }
 
-/** A completed latest review must win over the older intake snapshot. */
+/** Current routing governs an MCA file; otherwise prefer the completed review. */
 export function preferredIntakeReviewResult(
-  response: {
+  response: McaRefinanceReviewResponse & {
     latest_review?: { status?: string | null; result?: Record<string, unknown> | null } | null;
     intake: { result_snapshot?: Record<string, unknown> | null };
   },
 ): Record<string, unknown> | null {
+  const mca = mcaRefinanceReviewState(response);
+  if (mca && mca.mode !== "automated_review") {
+    return {
+      ...(response.intake.result_snapshot ?? {}),
+      probability_status: mca.title,
+      executive_summary: mca.description,
+      one_next_step: mca.description,
+    };
+  }
   if (response.latest_review?.status === "completed" && response.latest_review.result) {
     return response.latest_review.result;
   }

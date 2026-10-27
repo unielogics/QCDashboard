@@ -32,6 +32,7 @@ import { validPhone } from "@/lib/formCoerce";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
+import { mcaRefinanceReviewMode, parseMcaRefinanceAmount, parseMcaRefinanceCount, parseMcaRefinanceQualification, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 import {
   cryptoId,
   errorMessage,
@@ -74,6 +75,7 @@ type McaIntakeResponse = Omit<
 > & {
   intake: Intake & { preferred_language?: string | null; communication_locale?: "en" | "es" | null };
   communication_locale?: "en" | "es" | null;
+  mca_refinance_policy?: McaRefinancePolicy | null;
   // Non-null while the desk has taken the conversation over: a person is
   // answering and the assistant is standing down until this time.
   ai_paused_until?: string | null;
@@ -186,6 +188,24 @@ type Copy = {
   eyebrow: string;
   heroTitle: string;
   heroLead: string;
+  programTerms: string;
+  qualificationTitle: string;
+  qualificationIntro: string;
+  qualificationCount: string;
+  qualificationAmount: string;
+  qualificationSave: string;
+  qualificationBusy: string;
+  qualificationSaved: string;
+  qualificationError: string;
+  manualTitle: string;
+  manualBody: string;
+  manualHint: string;
+  manualRequest: string;
+  manualBusy: string;
+  manualRequested: string;
+  manualCreditReview: string;
+  informationTitle: string;
+  informationBody: string;
   pillSoft: string;
   pillEncrypted: string;
   pillTen: string;
@@ -313,6 +333,24 @@ const COPY: Record<Lang, Copy> = {
     heroTitle: "Refinance your merchant cash advances",
     heroLead:
       "Three items, about ten minutes. No rates or offers on this page — just the file we need to get you on a call with the desk.",
+    programTerms: "Standard MCA refinance: up to $350,000, terms up to 10 years, and no more than 2 active MCAs. All terms depend on qualification. Applications with more than 2 MCAs are still accepted for manual review by our team.",
+    qualificationTitle: "Your refinance details",
+    qualificationIntro: "Declare every active MCA and the total amount you need to refinance, whether you upload agreements or type their terms. You can start your file now and complete these details before automatic review.",
+    qualificationCount: "Number of active MCAs",
+    qualificationAmount: "Amount to refinance ($)",
+    qualificationSave: "Save refinance details",
+    qualificationBusy: "Saving details…",
+    qualificationSaved: "Your refinance details are saved.",
+    qualificationError: "Enter a whole-number MCA count from 0 to 50 and a positive refinance amount. More than 2 MCAs or an amount above $350,000 will go to manual review; your application is still accepted.",
+    manualTitle: "Manual review with our team",
+    manualBody: "Your application is accepted for a person to review. Your file is outside the standard automatic-review route, so the AI will not automatically underwrite it. Continue sharing your documents and complete your application for the team.",
+    manualHint: "Your previous answers suggest a manual review. You can still apply. Confirm the exact active MCA count and refinance amount so our team has the full picture.",
+    manualRequest: "Request manual review",
+    manualBusy: "Sending to our team…",
+    manualRequested: "Your manual review request is received. Our team will review your file; this request does not run automatic underwriting.",
+    manualCreditReview: "Your signed authorization is saved. Any further credit review is handled by our team.",
+    informationTitle: "A few refinance details are needed",
+    informationBody: "Save your active MCA count and refinance amount below. Automatic underwriting stays off until the required information is complete and the program rules are met. You can continue uploading documents.",
     pillSoft: "Soft credit check — no score impact",
     pillEncrypted: "Encrypted uploads",
     pillTen: "About 10 minutes",
@@ -425,6 +463,24 @@ const COPY: Record<Lang, Copy> = {
     heroTitle: "Refinancia tus adelantos de capital (MCA)",
     heroLead:
       "Tres elementos, unos diez minutos. En esta página no hay tasas ni ofertas: solo el expediente que necesitamos para llevarte a una llamada con nuestro equipo.",
+    programTerms: "Refinanciamiento MCA estándar: hasta $350,000, plazos de hasta 10 años y no más de 2 MCA vigentes. Todo depende de la calificación. Aceptamos solicitudes con más de 2 MCA para revisión manual de nuestro equipo.",
+    qualificationTitle: "Datos de su refinanciamiento",
+    qualificationIntro: "Declare todos los MCA vigentes y el monto total que necesita refinanciar, tanto si sube contratos como si escribe sus términos. Puede iniciar el expediente ahora y completar estos datos antes de la revisión automática.",
+    qualificationCount: "Número de MCA vigentes",
+    qualificationAmount: "Monto a refinanciar ($)",
+    qualificationSave: "Guardar datos de refinanciamiento",
+    qualificationBusy: "Guardando datos…",
+    qualificationSaved: "Sus datos de refinanciamiento están guardados.",
+    qualificationError: "Ingrese un número entero de MCA entre 0 y 50 y un monto positivo. Más de 2 MCA o un monto superior a $350,000 pasan a revisión manual; su solicitud sigue siendo aceptada.",
+    manualTitle: "Revisión manual con nuestro equipo",
+    manualBody: "Aceptamos su solicitud para que una persona la revise. Su expediente está fuera de la ruta automática estándar, por lo que la IA no lo evaluará automáticamente. Continúe compartiendo documentos y complete su solicitud para el equipo.",
+    manualHint: "Sus respuestas anteriores sugieren una revisión manual. Puede solicitar de todas formas. Confirme el número exacto de MCA y el monto para que nuestro equipo tenga toda la información.",
+    manualRequest: "Solicitar revisión manual",
+    manualBusy: "Enviando a nuestro equipo…",
+    manualRequested: "Recibimos su solicitud de revisión manual. Nuestro equipo revisará el expediente; esta solicitud no ejecuta una evaluación automática.",
+    manualCreditReview: "Su autorización firmada está guardada. Nuestro equipo se encarga de cualquier revisión de crédito adicional.",
+    informationTitle: "Faltan algunos datos de refinanciamiento",
+    informationBody: "Guarde abajo el número de MCA vigentes y el monto. La evaluación automática permanece desactivada hasta completar la información y cumplir las reglas del programa. Puede seguir subiendo documentos.",
     pillSoft: "Consulta de crédito blanda — sin impacto en tu puntaje",
     pillEncrypted: "Cargas cifradas",
     pillTen: "Unos 10 minutos",
@@ -612,6 +668,12 @@ export default function McaRefinanceIntakePage() {
   const [startBusy, setStartBusy] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [seed, setSeed] = useState<Seed>({ payback: null, months: null, freq: null });
+  const [qualificationForm, setQualificationForm] = useState({ activeCount: "", requestedAmount: "" });
+  const qualificationDirty = useRef(false);
+  const [qualificationBusy, setQualificationBusy] = useState(false);
+  const [qualificationError, setQualificationError] = useState<string | null>(null);
+  const [qualificationSaved, setQualificationSaved] = useState(false);
+  const [manualReviewHint, setManualReviewHint] = useState(false);
 
   // Code / login screen
   const [codeEmail, setCodeEmail] = useState("");
@@ -669,6 +731,9 @@ export default function McaRefinanceIntakePage() {
 
   const c = useMemo(() => COPY[language ?? "en"], [language]);
   const aiPaused = Boolean(response?.ai_paused_until);
+  const reviewMode = mcaRefinanceReviewMode(response?.mca_refinance_policy, manualReviewHint);
+  const manualReview = reviewMode === "manual_review";
+  const manualReviewRequested = manualReview && response?.mca_refinance_policy?.manual_review_requested === true;
 
   // --- boot: strip URL params, restore token or show language picker --------
   useEffect(() => {
@@ -678,6 +743,9 @@ export default function McaRefinanceIntakePage() {
     const paybackParam = url.searchParams.get("payback");
     const monthsParam = url.searchParams.get("months");
     const freqParam = (url.searchParams.get("freq") ?? "").toLowerCase();
+    const countParam = url.searchParams.get("active_mca_count") ?? "";
+    const declaredCount = parseMcaRefinanceCount(countParam);
+    setManualReviewHint(url.searchParams.get("review_route") === "manual" || countParam === "3_plus" || url.searchParams.get("refinance_amount_band") === "over_350k");
     if (url.search) window.history.replaceState(null, "", url.pathname);
 
     const payback = paybackParam ? numericOrNull(paybackParam) : null;
@@ -685,6 +753,7 @@ export default function McaRefinanceIntakePage() {
     const months = Number.isFinite(monthsParsed) && monthsParsed > 0 ? monthsParsed : null;
     const freq = (FREQS as readonly string[]).includes(freqParam) ? (freqParam as Freq) : null;
     if (payback !== null || months !== null || freq) setSeed({ payback, months, freq });
+    setQualificationForm({ activeCount: declaredCount === null ? "" : String(declaredCount), requestedAmount: payback !== null && payback > 0 ? String(payback) : "" });
 
     const storedLang = getStoredLanguage("mca_refinance");
     if (storedLang) setLanguage(storedLang);
@@ -714,6 +783,13 @@ export default function McaRefinanceIntakePage() {
   // --- response plumbing ----------------------------------------------------
   function adopt(payload: McaIntakeResponse) {
     setResponse(payload);
+    const policy = payload.mca_refinance_policy;
+    if (policy && !qualificationDirty.current) {
+      setQualificationForm({
+        activeCount: typeof policy.active_mca_count === "number" && Number.isFinite(policy.active_mca_count) ? String(policy.active_mca_count) : "",
+        requestedAmount: typeof policy.requested_amount === "number" && Number.isFinite(policy.requested_amount) ? String(policy.requested_amount) : "",
+      });
+    }
     const nextToken = payload.token ?? tokenRef.current;
     if (nextToken) {
       tokenRef.current = nextToken;
@@ -759,6 +835,26 @@ export default function McaRefinanceIntakePage() {
     adopt(payload);
   }
 
+  // Resuming an existing room must preserve a manual-review arrival just as
+  // starting a new application does. This only restricts automation; it does
+  // not fabricate a position count or replace any financial declaration.
+  useEffect(() => {
+    if (!manualReviewHint || !response || response.mca_refinance_policy?.review_mode === "manual_review") return;
+    const currentToken = tokenRef.current;
+    if (!currentToken) return;
+    let current = true;
+    void call<McaIntakeResponse>(`/${encodeURIComponent(currentToken)}/qualification`, {
+      method: "POST", body: JSON.stringify({ manual_review_requested: true }),
+    }).then((payload) => {
+      if (current) adopt(payload);
+    }).catch((error) => {
+      if (current) setQualificationError(apiErrorText(error, c));
+    });
+    return () => { current = false; };
+    // The saved mode and application identity own this one-way routing sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [manualReviewHint, response?.intake.id, response?.mca_refinance_policy?.review_mode]);
+
   async function restoreToken(candidate: string, hasStoredLang: boolean) {
     try {
       const payload = await call<McaIntakeResponse>(`/${encodeURIComponent(candidate)}`);
@@ -802,6 +898,12 @@ export default function McaRefinanceIntakePage() {
       setStartError(c.errTermsCheckbox);
       return;
     }
+    const activeCount = parseMcaRefinanceCount(qualificationForm.activeCount);
+    const requestedAmount = parseMcaRefinanceAmount(qualificationForm.requestedAmount);
+    if ((qualificationForm.activeCount.trim() && activeCount === null) || (qualificationForm.requestedAmount.trim() && requestedAmount === null)) {
+      setStartError(c.qualificationError);
+      return;
+    }
     setStartBusy(true);
     setStartError(null);
     const body: Record<string, unknown> = {
@@ -817,8 +919,12 @@ export default function McaRefinanceIntakePage() {
     if (seed.payback !== null) body.remaining_payback = seed.payback;
     if (seed.months !== null) body.months_remaining = seed.months;
     if (seed.freq) body.payment_frequency = seed.freq;
+    if (activeCount !== null) body.active_mca_count = activeCount;
+    if (requestedAmount !== null) body.requested_amount = requestedAmount;
+    if (manualReviewHint) body.manual_review_requested = true;
     try {
       const payload = await call<McaIntakeResponse>("/start", { method: "POST", body: JSON.stringify(body) });
+      qualificationDirty.current = false;
       adopt(payload);
       setPhase("room");
     } catch (error) {
@@ -1050,6 +1156,10 @@ export default function McaRefinanceIntakePage() {
   async function runCreditPull() {
     const tok = tokenRef.current;
     if (!tok || pullBusy) return;
+    if (reviewMode !== "automated_review" || qualificationDirty.current) {
+      setPullError(manualReview ? c.manualBody : c.informationBody);
+      return;
+    }
     setPullBusy(true);
     setPullError(null);
     const body = needSsn && ssn ? { ssn: onlyDigits(ssn) } : {};
@@ -1059,6 +1169,11 @@ export default function McaRefinanceIntakePage() {
         body: JSON.stringify(body),
       });
       adopt(payload);
+      if (mcaRefinanceReviewMode(payload.mca_refinance_policy) !== "automated_review") {
+        setPullState("idle");
+        setPullError(mcaRefinanceReviewMode(payload.mca_refinance_policy) === "manual_review" ? c.manualBody : c.informationBody);
+        return;
+      }
       setPullState("done");
       setNeedSsn(false);
     } catch (error) {
@@ -1068,6 +1183,10 @@ export default function McaRefinanceIntakePage() {
           setPullError(c.ssnPrompt);
         } else if (error.status === 503) {
           setPullState("deferred");
+        } else if (error.status === 409 && error.code === "mca_refinance_manual_review_required") {
+          setPullState("idle");
+          setPullError(error.message || c.manualBody);
+          try { await refresh(); } catch { /* Keep the policy error visible if refresh is temporarily unavailable. */ }
         } else if (error.status === 409) {
           // The button only renders once the authorization is signed, so a
           // 409 here means the pull already happened.
@@ -1121,7 +1240,7 @@ export default function McaRefinanceIntakePage() {
         ...(Number.isFinite(paymentsLeft) && paymentsLeft > 0 ? { payments_remaining: paymentsLeft } : {}),
       });
     }
-    if (!cleanRows.length || cleanRows.length > 5) {
+    if (!cleanRows.length || cleanRows.length > 50) {
       setTermsError(c.errAdvance);
       return;
     }
@@ -1151,9 +1270,45 @@ export default function McaRefinanceIntakePage() {
   }
 
   // --- review + booking -----------------------------------------------------
+  function changeQualification(field: "activeCount" | "requestedAmount", value: string) {
+    qualificationDirty.current = true;
+    setQualificationForm((current) => ({ ...current, [field]: value }));
+    setQualificationSaved(false);
+    setQualificationError(null);
+  }
+
+  async function saveQualification() {
+    const tok = tokenRef.current;
+    if (!tok || qualificationBusy) return;
+    const declaration = parseMcaRefinanceQualification(qualificationForm.activeCount, qualificationForm.requestedAmount);
+    if (!declaration && !manualReviewHint) {
+      setQualificationError(c.qualificationError);
+      return;
+    }
+    setQualificationBusy(true);
+    setQualificationError(null);
+    setQualificationSaved(false);
+    try {
+      const payload = await call<McaIntakeResponse>(`/${encodeURIComponent(tok)}/qualification`, {
+        method: "POST", body: JSON.stringify({ ...declaration, ...(manualReviewHint ? { manual_review_requested: true } : {}) }),
+      });
+      qualificationDirty.current = false;
+      adopt(payload);
+      setQualificationSaved(true);
+    } catch (error) {
+      setQualificationError(apiErrorText(error, c));
+    } finally {
+      setQualificationBusy(false);
+    }
+  }
+
   async function runReview() {
     const tok = tokenRef.current;
     if (!tok || reviewBusy) return;
+    if (reviewMode === "information_required" || qualificationDirty.current) {
+      setReviewError(c.informationBody);
+      return;
+    }
     setReviewBusy(true);
     setReviewError(null);
     try {
@@ -1230,7 +1385,7 @@ export default function McaRefinanceIntakePage() {
   ];
   const doneCount = docCards.filter((entry) => documentDone(entry.doc)).length;
   const allDone = docCards.every((entry) => documentDone(entry.doc)) && slots.unresolvedUnlockedCopies.length === 0;
-  const reviewDone = Boolean(response?.latest_review?.result ?? response?.intake.result_snapshot);
+  const reviewDone = reviewMode === "automated_review" && Boolean(response?.latest_review?.result ?? response?.intake.result_snapshot);
   const bookingSlots = response?.booking?.slots ?? [];
 
   function filesFor(docId: string | undefined): UploadedFile[] {
@@ -1267,6 +1422,8 @@ export default function McaRefinanceIntakePage() {
         <div className="vm-herostack">
           <h1 className="vm-hero-t">{c.heroTitle}</h1>
           <p className="vm-hero-l">{c.heroLead}</p>
+          <p className="vm-calm">{c.programTerms}</p>
+          {manualReviewHint ? <p className="vm-note">{c.manualHint}</p> : null}
           <div className="vm-pillrow">
             <span className="vm-pill">{c.pillTen}</span>
             <span className="vm-pill">{c.pillSoft}</span>
@@ -1310,7 +1467,23 @@ export default function McaRefinanceIntakePage() {
               autoComplete="tel"
               required
             />
+            <Field
+              label={c.qualificationCount}
+              value={qualificationForm.activeCount}
+              onChange={(value) => changeQualification("activeCount", value)}
+              inputMode="numeric"
+              type="number"
+              placeholder="0–50"
+            />
+            <Field
+              label={c.qualificationAmount}
+              value={qualificationForm.requestedAmount}
+              onChange={(value) => changeQualification("requestedAmount", value)}
+              inputMode="decimal"
+              placeholder="100000"
+            />
           </div>
+          <p className="vm-sub">{c.qualificationIntro}</p>
           <label className="vm-check">
             <input
               type="checkbox"
@@ -1462,6 +1635,19 @@ export default function McaRefinanceIntakePage() {
 
     const rail = (
       <aside className="vm-rail" aria-label={c.progressLabel(doneCount)}>
+        <section className="vm-card" aria-labelledby="mca-qualification-title">
+          <h2 id="mca-qualification-title" className="vm-sect-t">{c.qualificationTitle}</h2>
+          <p className="vm-sub">{c.programTerms}</p>
+          <div className="vm-fg2">
+            <Field label={c.qualificationCount} value={qualificationForm.activeCount} onChange={(value) => changeQualification("activeCount", value)} inputMode="numeric" type="number" />
+            <Field label={c.qualificationAmount} value={qualificationForm.requestedAmount} onChange={(value) => changeQualification("requestedAmount", value)} inputMode="decimal" />
+          </div>
+          <button type="button" className="vm-ghost" disabled={qualificationBusy} onClick={saveQualification}>
+            {qualificationBusy ? c.qualificationBusy : c.qualificationSave}
+          </button>
+          {qualificationError ? <div role="alert" className="vm-err">{qualificationError}</div> : null}
+          {qualificationSaved ? <div role="status" className="vm-ok">{c.qualificationSaved}</div> : null}
+        </section>
         <div className="vm-card railhead">
           <div className="vm-prog-r">
             <span className="vm-prog-l">{c.progressLabel(doneCount)}</span>
@@ -1470,6 +1656,9 @@ export default function McaRefinanceIntakePage() {
             {/* width IS the progress figure — data, not styling. */}
             <div className="vm-prog-f" style={{ width: `${(doneCount / 3) * 100}%` }} />
           </div>
+          {manualReview ? <div className="vm-note" role="status"><strong>{c.manualTitle}</strong><p>{manualReviewRequested ? c.manualRequested : c.manualBody}</p></div> : null}
+          {reviewMode === "information_required" || qualificationDirty.current ? <div className="vm-calm" role="status"><strong>{c.informationTitle}</strong><p>{c.informationBody}</p></div> : null}
+          {manualReview && !manualReviewRequested ? <div className="grid g8"><button type="button" onClick={runReview} disabled={reviewBusy || qualificationDirty.current} className="vm-gold">{reviewBusy ? c.manualBusy : c.manualRequest}</button>{reviewError ? <div role="alert" className="vm-err">{reviewError}</div> : null}</div> : null}
           {booked ? (
             <div className="vm-ok">{c.booked}</div>
           ) : bookingSlots.length ? (
@@ -1499,7 +1688,7 @@ export default function McaRefinanceIntakePage() {
               <div className="vm-rev-t">{c.reviewDoneTitle}</div>
               <div className="vm-sub">{c.reviewDoneSub}</div>
             </div>
-          ) : allDone ? (
+          ) : manualReview || reviewMode === "information_required" || qualificationDirty.current ? null : allDone ? (
             <div className="grid g8">
               <button type="button" onClick={runReview} disabled={reviewBusy} className="vm-gold">
                 {reviewBusy ? c.reviewRunning : c.runReview}
@@ -1541,6 +1730,8 @@ export default function McaRefinanceIntakePage() {
                   <div className="vm-ok">{c.softCheckDone}</div>
                 ) : pullState === "deferred" ? (
                   <div className="vm-calm">{c.softCheckDeferred}</div>
+                ) : reviewMode !== "automated_review" || qualificationDirty.current ? (
+                  <div className="vm-calm">{manualReview ? c.manualCreditReview : c.informationBody}</div>
                 ) : (
                   <>
                     {needSsn ? (
@@ -1674,7 +1865,7 @@ export default function McaRefinanceIntakePage() {
                         </div>
                       </fieldset>
                     ))}
-                    {advances.length < 5 ? (
+                    {advances.length < 50 ? (
                       <button type="button" className="vm-ghost" onClick={() => setAdvances((current) => [...current, blankAdvance()])}>
                         {c.addAdvance}
                       </button>

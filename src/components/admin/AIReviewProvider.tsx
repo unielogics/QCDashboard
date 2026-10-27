@@ -17,7 +17,9 @@ import { Btn, Callout, CellChip, cx, IconBtn, Sub } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import { aiReviewInvalidationKeys } from "@/lib/aiReviewInvalidation";
-import { restoreReviewAnnouncements, shouldAnnounceReviewCompletion } from "@/lib/aiReviewJobs";
+import { isReviewRoutingStop, isReviewTerminal, restoreReviewAnnouncements, shouldAnnounceReviewCompletion } from "@/lib/aiReviewJobs";
+import { ApiError } from "@/lib/api";
+import { mcaRefinanceReviewMode, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 
 export type ReviewProgress = {
   review_id: string;
@@ -115,7 +117,7 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
           );
           updateJob(job.intakeId, {
             ...progress,
-            completedAt: progress.status === "completed" || progress.status === "failed"
+            completedAt: isReviewTerminal(progress.status)
               ? new Date().toISOString()
               : null,
           });
@@ -143,7 +145,7 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
       for (const queryKey of aiReviewInvalidationKeys(job.intakeId)) {
         void queryClient.invalidateQueries({ queryKey });
       }
-      window.dispatchEvent(new CustomEvent("qc-ai-review-completed", { detail: { intakeId: job.intakeId } }));
+      window.dispatchEvent(new CustomEvent("qc-ai-review-completed", { detail: { intakeId: job.intakeId, status: job.status } }));
       updateJob(job.intakeId, { announcedAt: new Date().toISOString() });
     }
   }, [jobs, queryClient, updateJob]);
@@ -198,6 +200,19 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
       );
       updateJob(request.intakeId, { review_id: started.review_id, status: started.status || "queued" });
     } catch (error) {
+      const detail = error instanceof ApiError
+        ? (error.body as { detail?: { code?: string; mca_refinance_policy?: McaRefinancePolicy } } | null)?.detail
+        : null;
+      const mode = detail?.code === "mca_refinance_manual_review_required"
+        ? mcaRefinanceReviewMode(detail.mca_refinance_policy) : null;
+      if (mode && mode !== "automated_review") {
+        updateJob(request.intakeId, {
+          status: mode, stage: mode,
+          label: mode === "manual_review" ? "Accepted for manual desk review" : "Confirm MCA eligibility information",
+          error: null, completedAt: new Date().toISOString(),
+        });
+        return;
+      }
       updateJob(request.intakeId, {
         status: "failed",
         stage: "error",
@@ -243,7 +258,7 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
       <ReviewDock
         jobs={jobs}
         onOpen={(job) => {
-          if (job.status === "completed") {
+          if (job.status === "completed" || isReviewRoutingStop(job.status)) {
             viewResults(job);
             return;
           }
@@ -273,8 +288,9 @@ function ReviewDialog({
   const running = Boolean(job && ACTIVE_STATUSES.has(job.status));
   const failed = job?.status === "failed";
   const completed = job?.status === "completed";
+  const stopped = Boolean(job && isReviewRoutingStop(job.status));
   const pct = Math.max(0, Math.min(100, job?.percent ?? 0));
-  const title = confirm ? "Run AI review" : completed ? "Review complete" : failed ? "Review did not finish" : "Running AI review...";
+  const title = confirm ? "Run AI review" : stopped ? job?.status === "manual_review" ? "Manual desk review required" : "MCA eligibility details needed" : completed ? "Review complete" : failed ? "Review did not finish" : "Running AI review...";
 
   return (
     <Drawer
@@ -290,6 +306,8 @@ function ReviewDialog({
           <><Sub className="grow">The review continues after this window is minimized.</Sub><Btn onClick={onClose}><Icon name="minimize" size={14} />Minimize</Btn></>
         ) : completed && job ? (
           <><span className="sp" /><Btn onClick={onClose}>Keep in background</Btn><Btn variant="pri" onClick={() => onViewResults(job)}>View AI intake</Btn></>
+        ) : stopped && job ? (
+          <><span className="sp" /><Btn onClick={onClose}>Close</Btn><Btn variant="pri" onClick={() => onViewResults(job)}>Open accepted application</Btn></>
         ) : failed ? (
           <><span className="sp" /><Btn onClick={onClose}>Close</Btn><Btn variant="pri" onClick={() => void onStart(state.request)}>Try again</Btn></>
         ) : undefined
@@ -313,6 +331,11 @@ function ReviewProgressBody({ job, pct }: { job: AIReviewJob | null; pct: number
   if (!job) return <div className="empty">Preparing the review...</div>;
   if (job.status === "failed") {
     return <Callout tone="bad" icon={<Icon name="x" size={17} />}>{job.error || "The review could not be completed."}</Callout>;
+  }
+  if (isReviewRoutingStop(job.status)) {
+    return <Callout tone="warn" icon={<Icon name="user" size={18} />}>{job.status === "manual_review"
+      ? "The application remains accepted for manual desk review. Automatic underwriting was not run. Review the active MCA count, requested amount and program limits with the desk."
+      : "The application remains accepted. Confirm the active MCA count and requested amount before automatic underwriting can run."}</Callout>;
   }
   if (job.status === "completed") {
     const reviewed = job.files_total || job.files_done;
@@ -353,9 +376,9 @@ function ReviewDock({ jobs, onOpen, onRemove }: { jobs: AIReviewJob[]; onOpen: (
             <div key={job.intakeId} className={cx("ai-review-job", job.status === "completed" && "done", job.status === "failed" && "failed")}>
               <button type="button" className="ai-review-job-main" onClick={() => onOpen(job)}>
                 <span className={cx("ai-review-job-icon", running && "running")}>
-                  {running ? <span className="spinner" /> : <Icon name={job.status === "completed" ? "check" : "x"} size={14} />}
+                  {running ? <span className="spinner" /> : <Icon name={isReviewRoutingStop(job.status) ? "user" : job.status === "completed" ? "check" : "x"} size={14} />}
                 </span>
-                <span className="grow trunc"><b className="trunc">{job.leadName}</b><small>{job.status === "completed" ? "Review complete - open intake" : job.status === "failed" ? "Review needs attention" : `${job.label || "Reviewing"} - ${job.percent}%`}</small></span>
+                <span className="grow trunc"><b className="trunc">{job.leadName}</b><small>{job.status === "manual_review" ? "Manual desk review - application accepted" : job.status === "information_required" ? "Confirm MCA eligibility details" : job.status === "completed" ? "Review complete - open intake" : job.status === "failed" ? "Review needs attention" : `${job.label || "Reviewing"} - ${job.percent}%`}</small></span>
               </button>
               {!running ? <IconBtn onClick={() => onRemove(job.intakeId)} aria-label={`Dismiss ${job.leadName} review`} title="Dismiss"><Icon name="x" size={13} /></IconBtn> : null}
               {running ? <div className="ai-review-job-track"><span style={{ width: `${Math.max(2, job.percent)}%` }} /></div> : null}

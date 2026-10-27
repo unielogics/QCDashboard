@@ -116,6 +116,9 @@ import {
   preferredIntakeReviewResult,
 } from "@/lib/leadCockpitDocuments";
 import { validPhone } from "@/lib/formCoerce";
+import { mcaRefinanceReviewState } from "@/lib/mcaRefinanceReview";
+import { reviewCompletionNotice } from "@/lib/aiReviewJobs";
+import type { McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 import {
   PIPELINE_LIFECYCLE,
   originTone,
@@ -149,6 +152,8 @@ import { useConsoleAuth } from "@/lib/consoleAuth";
 type LeadRow = {
   id: string;
   variant: string;
+  mca_refinance_policy?: McaRefinancePolicy | null;
+  intake_state?: Record<string, unknown> | null;
   client_id?: string | null;
   bucket_id: string;
   bucket_name: string;
@@ -229,6 +234,7 @@ function isSourceEvidenceFile(file: UploadedFile): boolean {
 }
 
 type LeadDetail = {
+  mca_refinance_policy?: McaRefinancePolicy | null;
   intake: LeadRow & {
     loan_purpose?: string | null;
     referral_source?: string | null;
@@ -760,11 +766,12 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   useEffect(() => {
     const onReviewCompleted = (event: Event) => {
-      const intakeId = (event as CustomEvent<{ intakeId?: string }>).detail?.intakeId;
+      const detail = (event as CustomEvent<{ intakeId?: string; status?: string }>).detail;
+      const intakeId = detail?.intakeId;
       if (!intakeId || intakeId !== selectedId) return;
       void refreshSelectedLead();
       void loadLeads(offset, { background: true });
-      setNotice("AI review complete - showing the latest breakdown.");
+      setNotice(reviewCompletionNotice(detail?.status));
     };
     window.addEventListener("qc-ai-review-completed", onReviewCompleted);
     return () => window.removeEventListener("qc-ai-review-completed", onReviewCompleted);
@@ -879,7 +886,12 @@ export default function AdminAIUnderwriterLeadsPage() {
   }, [leadDetailMinimized, selectedId]);
 
   function openRerun() {
-    if (!selectedId) return;
+    if (!selectedId || !detail || detail.intake.id !== selectedId) return;
+    const mca = mcaRefinanceReviewState(detail);
+    if (mca && mca.mode !== "automated_review") {
+      setNotice(mca.description);
+      return;
+    }
     requestReview({
       intakeId: selectedId,
       leadName: detail?.intake.business_name || detail?.intake.full_name || "AI intake",
@@ -893,6 +905,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     return {
       token: null,
       session_token: null,
+      mca_refinance_policy: detail.mca_refinance_policy ?? detail.intake.mca_refinance_policy ?? null,
       intake: {
         id: detail.intake.id,
         bucket_id: detail.intake.bucket_id,
@@ -906,6 +919,8 @@ export default function AdminAIUnderwriterLeadsPage() {
         referral_source: detail.intake.referral_source ?? null,
         status: detail.intake.status,
         result_snapshot: detail.intake.result_snapshot ?? null,
+        intake_state: detail.intake.intake_state ?? null,
+        mca_refinance_policy: detail.intake.mca_refinance_policy ?? detail.mca_refinance_policy ?? null,
       },
       requested_documents: detail.requested_documents,
       files: detail.files.filter(isSourceEvidenceFile),
@@ -1127,7 +1142,8 @@ export default function AdminAIUnderwriterLeadsPage() {
                 files: r.files ?? current.files,
                 requested_documents: r.requested_documents ?? current.requested_documents,
                 latest_review: r.latest_review ?? current.latest_review,
-                intake: { ...current.intake, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
+                mca_refinance_policy: r.mca_refinance_policy ?? current.mca_refinance_policy,
+                intake: { ...current.intake, intake_state: r.intake?.intake_state ?? current.intake.intake_state, mca_refinance_policy: r.mca_refinance_policy ?? current.intake.mca_refinance_policy, result_snapshot: r.intake?.result_snapshot ?? current.intake.result_snapshot },
               }
             : current,
         );
@@ -1340,6 +1356,7 @@ export default function AdminAIUnderwriterLeadsPage() {
               {loading ? <tr><td colSpan={12}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
                 const unified = unifiedByIntake.get(row.id);
                 const readiness = listReadinessSummary(unified);
+                const mcaReview = mcaRefinanceReviewState({ intake: row });
                 const workspaceState = resolveIntakeWorkspaceState({
                   workspaceState: row.workspace_state,
                   workspaceStateReason: row.workspace_state_reason,
@@ -1384,7 +1401,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
                     <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
                     <td>{readiness ? <div className="capital-readiness-list-summary"><div><b>{readiness.score == null ? "—" : Math.round(readiness.score)}</b><CellChip tone={capitalReadinessBandTone(readiness.band)}>{capitalReadinessBandLabel(readiness.band)}</CellChip></div><small>{readiness.evidence_coverage_pct == null ? "Coverage unavailable" : `${Math.round(readiness.evidence_coverage_pct)}% evidence coverage`}</small></div> : <span className="sub">Not calculated</span>}</td>
-                    <td><CellChip tone={probabilityTone(row.probability_status)}>{row.probability_status || "Awaiting review"}</CellChip></td>
+                    <td><CellChip tone={mcaReview && mcaReview.mode !== "automated_review" ? "warn" : probabilityTone(row.probability_status)}>{mcaReview && mcaReview.mode !== "automated_review" ? mcaReview.title : row.probability_status || "Awaiting review"}</CellChip></td>
                     <td><CellChip tone={manuallyArchived ? "mut" : statusPresentation.tone}>{manuallyArchived ? "Archived" : statusPresentation.label}</CellChip></td>
                     <td>
                       {unified && hasEconomics ? (
@@ -1653,6 +1670,8 @@ function LeadDetailPanel({
     estimated_credit_score: "",
     referral_source: "",
   });
+  const mcaReview = mcaRefinanceReviewState(detail);
+  const mcaAutoReviewBlocked = Boolean(mcaReview && mcaReview.mode !== "automated_review");
   const result = detail ? preferredIntakeReviewResult(detail) : null;
   const forecastEarnings = underwriting?.forecast_earnings ?? calculateDealEarnings(
     underwriting?.accepted_amount,
@@ -2540,14 +2559,14 @@ function LeadDetailPanel({
   const evidenceComplete = hasEvidence && (requiredDocs.length === 0 || requiredUploaded === requiredDocs.length);
   const evidenceAndBankingComplete = Boolean(profileVerification?.business_banking_complete && (profileVerification.evidence_complete || evidenceComplete));
   const hasBankingActivity = Boolean(profileVerification?.bank_connection_count || profileVerification?.bank_statement_months);
-  const reviewComplete = detail?.latest_review?.status === "completed" || detail?.intake.status === "reviewed";
-  const reviewActive = detail ? rerunning || ["queued", "running"].includes(detail.latest_review?.status || "") : false;
+  const reviewComplete = !mcaAutoReviewBlocked && (detail?.latest_review?.status === "completed" || detail?.intake.status === "reviewed");
+  const reviewActive = !mcaAutoReviewBlocked && Boolean(detail && (rerunning || ["queued", "running"].includes(detail.latest_review?.status || "")));
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
     { id: 1, label: "Profile & ownership", sub: "Identity, owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
     { id: 2, label: "Evidence & banking", sub: "Files, forms, AI decisions and bank coverage", status: evidenceAndBankingComplete ? "complete" : hasEvidence || hasBankingActivity ? "partial" : "not-started" },
     { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
-    { id: 4, label: "AI review", sub: "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
+    { id: 4, label: mcaAutoReviewBlocked ? mcaReview?.mode === "manual_review" ? "Manual desk review" : "Confirm MCA details" : "AI review", sub: mcaAutoReviewBlocked ? "Accepted application; automatic underwriting disabled" : "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
     { id: 5, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packageInSync ? "partial" : packet || summary ? "partial" : "not-started" },
   ];
 
@@ -2572,8 +2591,8 @@ function LeadDetailPanel({
         </div>
         <span className="sp" />
         {detail ? (
-          <Btn variant="pri" onClick={submissionStep === 2 ? () => headerUploadRef.current?.click() : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => void refreshFullPackage(true) : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 2 && headerUploading)}>
-            {submissionStep === 2 ? (headerUploading ? "Uploading..." : "Add evidence") : submissionStep === 4 ? (rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? (busy === "package-all" ? "Refreshing package..." : summary && packet ? "Refresh package" : "Generate package") : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
+          <Btn variant="pri" onClick={submissionStep === 2 ? () => headerUploadRef.current?.click() : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => void refreshFullPackage(true) : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 2 && headerUploading) || (submissionStep === 4 && mcaAutoReviewBlocked)}>
+            {submissionStep === 2 ? (headerUploading ? "Uploading..." : "Add evidence") : submissionStep === 4 ? (mcaAutoReviewBlocked ? "Desk review required" : rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? (busy === "package-all" ? "Refreshing package..." : summary && packet ? "Refresh package" : "Generate package") : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
           </Btn>
         ) : null}
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
@@ -2616,6 +2635,7 @@ function LeadDetailPanel({
         </IconBtn>
       </div>
 
+      {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
       {loading || !detail ? <div className="empty">Loading intake file...</div> : (
         <>
           <div className="intake-tabs" role="tablist" aria-label="AI intake detail">
@@ -2666,7 +2686,7 @@ function LeadDetailPanel({
                   uploadBusy={headerUploading}
                   uploadStatus={uploadStatus}
                   onNotice={toast.show}
-                  onRunAiReview={onRerun}
+                  onRunAiReview={mcaAutoReviewBlocked ? undefined : onRerun}
                   aiReviewRunning={rerunning}
                   onAddFromDrive={() => setIngestPickerOpen(true)}
                   onAttachBucket={onLinkBucketIntake}
@@ -2680,7 +2700,7 @@ function LeadDetailPanel({
               ) : null}
               {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 4 ? (
-                <Panel title="AI review" actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning}>{rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
+                <Panel title={mcaAutoReviewBlocked ? mcaReview?.title ?? "MCA refinance review" : "AI review"} actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning || mcaAutoReviewBlocked}>{mcaAutoReviewBlocked ? "Automatic review disabled" : rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
                   <section className="ai-review-overview" aria-label="AI review overview">
                     <div className="ai-review-summary-strip">
                       <div className="ai-review-summary-primary">
@@ -2704,7 +2724,7 @@ function LeadDetailPanel({
                       <span className="lbl">Open items</span>
                       <div>{reviewMissingItems.map((item) => <button key={item.title} type="button" title={item.detail || item.title} aria-label={`Open missing item: ${item.title}${item.detail ? `. ${item.detail}` : ""}`} onClick={() => openReviewDestination(reviewDestination(item.query))}><span>{item.title}</span><Icon name="arrowR" size={12} /></button>)}</div>
                     </nav> : null}
-                    <div className="ai-review-next-action"><span className="lbl">Next best action</span><p>{programReadiness?.can_advance
+                    <div className="ai-review-next-action"><span className="lbl">Next best action</span><p>{mcaAutoReviewBlocked ? mcaReview?.description : programReadiness?.can_advance
                       ? "Canonical evidence requirements are complete. Advance the file to underwriting."
                       : canonicalMissingDocuments.length
                         ? `Collect ${canonicalMissingDocuments.map((document) => document.name).join(", ")}.`
@@ -3297,8 +3317,8 @@ function LeadDetailPanel({
 
               <InfoBlock title="Actions">
                 <Row>
-                  <Btn variant="pri" onClick={onRerun} disabled={rerunning}>
-                    {rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
+                  <Btn variant="pri" onClick={onRerun} disabled={rerunning || mcaAutoReviewBlocked}>
+                    {mcaAutoReviewBlocked ? "Automatic review disabled" : rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
                   </Btn>
                   <Btn onClick={onExport}>Export intelligence PDF</Btn>
                   <Btn onClick={() => setOpenBucketId(detail.intake.bucket_id)}>Open bucket</Btn>
