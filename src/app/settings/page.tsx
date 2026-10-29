@@ -94,6 +94,7 @@ const SECTIONS = [
   { id: "property_intelligence", label: "Property Intel", icon: "map" as const, hidden: false },
   { id: "connections", label: "Connections", icon: "link" as const, hidden: false },
   { id: "letterhead", label: "Firm letterhead", icon: "docCheck" as const, hidden: false },
+  { id: "email_footer", label: "Email sign-off", icon: "mail" as const, hidden: false },
   { id: "security", label: "Security", icon: "shield" as const, hidden: false },
   { id: "regional_managers", label: "Regional Managers", icon: "clients" as const, hidden: false },
   { id: "team", label: "Team", icon: "clients" as const, hidden: false },
@@ -112,6 +113,7 @@ const SECTION_SETTINGS_KEY: Partial<Record<SectionId, keyof AppSettingsData>> = 
   simulator: "simulator",
   security: "security",
   letterhead: "letterhead",
+  email_footer: "email_footer",
   file_updates: "file_updates",
 };
 
@@ -229,6 +231,7 @@ export default function SettingsPage() {
           show_ltv_toggle: true,
         },
         letterhead: defaultLetterhead(),
+        email_footer: defaultEmailFooter(),
         file_updates: defaultFileUpdates(),
       });
     }
@@ -511,6 +514,16 @@ export default function SettingsPage() {
         {section === "deal_analyzer" && <DealAnalyzerSection />}
         {section === "property_intelligence" && <PropertyIntelligenceSection canEdit={canEdit} />}
         {section === "connections" && <ConnectionsSection />}
+        {section === "email_footer" && (
+          <EmailFooterSection
+            draft={draft}
+            setDraft={setDraft}
+            canEdit={canEdit}
+            dirty={isDirty("email_footer")}
+            onSave={() => handleSaveSection("email_footer")}
+            saving={update.isPending}
+          />
+        )}
         {section === "letterhead" && (
           <LetterheadSection
             draft={draft}
@@ -2256,8 +2269,15 @@ function withDefaults(data: AppSettingsData): AppSettingsData {
       show_ltv_toggle: true,
     },
     letterhead: data.letterhead ?? defaultLetterhead(),
+    email_footer: data.email_footer ?? defaultEmailFooter(),
     file_updates: data.file_updates ?? defaultFileUpdates(),
   };
+}
+
+function defaultEmailFooter(): { enabled: boolean; text: string } {
+  // Off by being empty rather than by a flag: a firm that has not written a
+  // sign-off should not have one invented for it and sent to its clients.
+  return { enabled: true, text: "" };
 }
 
 function defaultFileUpdates(): FileUpdatesSettings {
@@ -2292,4 +2312,77 @@ function defaultLetterhead(): LetterheadSettings {
     office_address_line_3: "www.qualifiedcommercial.com",
     signature_s3_key: null,
   };
+}
+
+
+// Email sign-off — appended to mail sent from a file's communications tab.
+//
+// One firm template rather than a field per operator. The wording and any
+// disclaimer belong to the firm; the name at the bottom belongs to whoever
+// pressed send, which is what the placeholders are for. A line whose
+// placeholders are all empty is dropped on send rather than rendered hollow,
+// so an operator with no phone on file does not sign off with "Phone:" and
+// nothing after it.
+function EmailFooterSection({
+  draft,
+  setDraft,
+  canEdit,
+  dirty,
+  onSave,
+  saving,
+}: {
+  draft: AppSettingsData;
+  setDraft: React.Dispatch<React.SetStateAction<AppSettingsData | null>>;
+  canEdit: boolean;
+  dirty: boolean;
+  onSave: () => void;
+  saving: boolean;
+}) {
+  const footer = draft.email_footer ?? { enabled: true, text: "" };
+  const set = (patch: Partial<{ enabled: boolean; text: string }>) =>
+    setDraft((prev) =>
+      prev ? { ...prev, email_footer: { ...(prev.email_footer ?? footer), ...patch } } : prev,
+    );
+
+  return (
+    <Panel
+      title="Email sign-off"
+      actions={
+        <Btn variant="pri" disabled={!canEdit || !dirty || saving} onClick={onSave}>
+          {saving ? "Saving…" : "Save section"}
+        </Btn>
+      }
+    >
+      <div className="sub">
+        Appended to every email sent from a file&apos;s Communications tab — new
+        threads, replies and retries alike. Automated mail is untouched: it
+        carries its own footers and its own unsubscribe obligations.
+      </div>
+
+      <Field className="mt" label="Sign-off">
+        <Textarea
+          rows={7}
+          value={footer.text}
+          disabled={!canEdit}
+          placeholder={"Best regards,\n{name}\n{title}\nQualified Commercial LLC\n{phone} · {email}"}
+          onChange={(e) => set({ text: e.target.value })}
+        />
+      </Field>
+      <div className="sub">
+        <b>{"{name}"}</b>, <b>{"{title}"}</b>, <b>{"{email}"}</b> and <b>{"{phone}"}</b> are
+        filled in from the sender&apos;s own profile. A line whose placeholders are all empty
+        is left out rather than sent blank. Leave this empty to send nothing.
+      </div>
+
+      <label className="row mt" style={{ gap: 8 }}>
+        <input
+          type="checkbox"
+          checked={footer.enabled}
+          disabled={!canEdit}
+          onChange={(e) => set({ enabled: e.target.checked })}
+        />
+        <span>Append this sign-off to outgoing file email</span>
+      </label>
+    </Panel>
+  );
 }

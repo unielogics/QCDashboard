@@ -627,6 +627,22 @@ export function AIIntakeEmailWorkspace({
       setReplyAttachments([]);
     },
   });
+  // Send a failed email again, as it was written. The body comes from the
+  // stored message server-side, so this carries no draft — there is nothing for
+  // the operator to retype and nothing to get wrong in the retyping.
+  const retrySend = useMutation({
+    mutationFn: (messageId: string) => {
+      if (directContactSuppressed) throw new Error(suppressionReason);
+      return apiCall<EmailThreadDetail>(
+        `/application-profiles/${profileId}/communications/email/threads/${selectedThreadId}/messages/${messageId}/retry`,
+        { method: "POST" },
+      );
+    },
+    onSuccess: (next) => {
+      qc.setQueryData(["application-email-thread", profileId, selectedThreadId], next);
+      void qc.invalidateQueries({ queryKey: ["application-email-threads", profileId] });
+    },
+  });
   const addLink = useMutation({
     mutationFn: () => {
       const option = (links.data ?? []).find((item) => item.key === linkKey);
@@ -720,13 +736,23 @@ export function AIIntakeEmailWorkspace({
               <div className="email-message-head"><b>{message.direction === "outbound" ? "You" : message.sender || "Client"}</b><span>{when(message.created_at)}</span></div>
               <p>{message.body}</p>
               {message.attachment_names?.length ? <div className="email-message-attachments" aria-label="Attachments">{message.attachment_names.map((name, index) => <span key={`${name}:${index}`} className="email-attachment-chip"><Icon name="paperclip" size={12} /><span>{name}</span></span>)}</div> : null}
-              <div className="email-message-meta"><CellChip tone={message.direction === "inbound" ? "acc" : deliveryTone(message.delivery_status)}>{message.direction === "inbound" ? "Reply received" : message.delivery_status}</CellChip>{message.provider ? <span>{message.provider}</span> : null}{message.delivery_detail && ["failed", "blocked", "bounced", "complained"].includes(message.delivery_status) ? <span>{message.delivery_detail}</span> : null}</div>
+              <div className="email-message-meta"><CellChip tone={message.direction === "inbound" ? "acc" : deliveryTone(message.delivery_status)}>{message.direction === "inbound" ? "Reply received" : message.delivery_status}</CellChip>{message.provider ? <span>{message.provider}</span> : null}{message.delivery_detail && ["failed", "blocked", "bounced", "complained"].includes(message.delivery_status) ? <span>{message.delivery_detail}</span> : null}
+                {/* Only on a failure, and only outbound. A delivered message
+                    resent is a second email to a client who already had it —
+                    the server refuses it too, but the button should not invite
+                    the attempt. */}
+                {message.direction === "outbound" && message.delivery_status === "failed" ? (
+                  <Btn size="sm" disabled={directContactSuppressed || retrySend.isPending} onClick={() => retrySend.mutate(message.id)}>
+                    <Icon name="refresh" size={12} />{retrySend.isPending && retrySend.variables === message.id ? "Sending…" : "Retry send"}
+                  </Btn>
+                ) : null}</div>
             </article>)}
           </div>
           {detail.data.thread.can_reply ? <div className="ai-intake-email-reply">
             <Textarea rows={4} value={reply} disabled={directContactSuppressed} onChange={(event) => setReply(event.target.value)} placeholder="Reply by email…" aria-label="Email reply" />
             <EmailAttachmentPicker context="reply" options={evidenceAttachmentOptions} selected={replyAttachments} onChange={setReplyAttachments} disabled={directContactSuppressed} loading={attachmentOptions.isLoading} error={attachmentOptions.isError} />
             {sendReply.isError ? <Callout tone="bad">{sendReply.error instanceof Error ? sendReply.error.message : "Reply failed."}</Callout> : null}
+            {retrySend.isError ? <Callout tone="bad">{retrySend.error instanceof Error ? retrySend.error.message : "That retry did not go through."}</Callout> : null}
             <div className="row"><span className="sub">Replies sync here when the connected mailbox receives them.</span><span className="sp" /><Btn variant="pri" disabled={directContactSuppressed || sendReply.isPending || !reply.trim()} onClick={() => sendReply.mutate()}><Icon name="send" size={14} />{sendReply.isPending ? "Sending…" : "Send reply"}</Btn></div>
           </div> : <Callout tone="mut">This thread belongs to {detail.data.thread.owner_name || detail.data.thread.owner_email || "another mailbox"}. Start a new email to reply from your mailbox.</Callout>}
         </> : null}

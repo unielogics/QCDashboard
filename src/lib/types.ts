@@ -1488,6 +1488,11 @@ export interface AppSettingsData {
   security: SecuritySettings;
   simulator: SimulatorSettings;
   letterhead: LetterheadSettings;
+  // The sign-off appended to email sent from a file's communications tab.
+  // One firm template with the sender substituted in — {name} {title}
+  // {email} {phone}. Optional: rows written before the block existed have
+  // no key, and the settings page backfills the default.
+  email_footer?: { enabled: boolean; text: string };
   dscr_pricing?: DscrPricingSettings;
   // Email switches for a file's timeline (services/file_events.py). Optional:
   // rows persisted before the block existed have no key, and the settings
