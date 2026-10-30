@@ -427,7 +427,7 @@
 .capital-readiness-score-ring strong, .capital-readiness-score-ring span { position: relative; z-index: 1; }
 .capital-readiness-score-ring strong { font-size: 25px; line-height: 1; }
 .capital-readiness-score-ring span { color: var(--muted); font-size: 10px; }
-.capital-readiness-gauge b, .capital-readiness-policy b { font-size: 20px; }
+.capital-readiness-gauge b, .capital-readiness-policy b { min-width: 0; font-size: 20px; overflow-wrap: anywhere; }
 .capital-readiness-gauge small, .capital-readiness-policy small { color: var(--muted); }
 .capital-readiness-track { display: block; width: 100%; height: 7px; overflow: hidden; border-radius: 999px; background: var(--sunken); }
 .capital-readiness-track > span { display: block; height: 100%; border-radius: inherit; background: var(--accent); }
@@ -465,10 +465,11 @@
 .capital-readiness-list.is-blockers .capital-readiness-list-row > span { background: var(--bad-50, #fff1f0); color: var(--bad); }
 .capital-readiness-list.is-strengths .capital-readiness-list-row > span { background: var(--ok-50, #ecf8f0); color: var(--ok); }
 .capital-readiness-list-row p { margin-top: 3px; color: var(--muted); font-size: 12px; }
-.capital-readiness-phases > div { grid-template-columns: repeat(5, minmax(0, 1fr)); align-items: stretch; }
+.capital-readiness-phases > div { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); align-items: stretch; }
 .capital-readiness-phase { position: relative; min-width: 0; padding: 14px; display: grid; grid-template-columns: 30px minmax(0, 1fr); gap: 10px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
 .capital-readiness-phase-number { width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: var(--accent-100); color: var(--accent); font-weight: 800; }
-.capital-readiness-phase-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.capital-readiness-phase-title { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 6px; }
+.capital-readiness-phase-title b { min-width: 0; overflow-wrap: anywhere; }
 .capital-readiness-phase p, .capital-readiness-phase small { margin-top: 4px; color: var(--muted); font-size: 11px; }
 .capital-readiness-roadmap-row { margin-top: 10px; display: grid; grid-template-columns: 8px minmax(0, 1fr); gap: 7px; }
 .capital-readiness-roadmap-row .btn { margin-top: 7px; }
@@ -2538,8 +2539,9 @@ button.pick { width: 100%; text-align: left; }
 .bucket-file-toolbar .fieldwrap { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--muted); }
 .bucket-file-toolbar .fieldwrap .field { min-width: 0; }
 .bucket-file-list { display: grid; gap: 8px; min-height: min(62vh, 680px); max-height: calc(100dvh - 245px); overflow-y: auto; overscroll-behavior: contain; padding-right: 2px; align-content: start; }
-.bucket-file-row { align-items: center; }
-.bucket-file-row > .row:last-child { flex-wrap: nowrap; }
+.bucket-file-row { align-items: center; flex-wrap: wrap; }
+.bucket-file-row > .bucket-file-open { flex: 1 1 300px; }
+.bucket-file-row > .row:last-child { flex-wrap: nowrap; margin-left: auto; }
 .bucket-file-share-toggle { width: 28px; min-width: 28px; min-height: 34px; display: grid; place-items: center; cursor: pointer; }
 .bucket-file-open { min-width: 0; display: block; padding: 4px 2px; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; border-radius: 5px; }
 .bucket-file-open:hover strong, .bucket-file-open:focus-visible strong { color: var(--accent); text-decoration: underline; text-underline-offset: 2px; }
@@ -6378,7 +6380,7 @@ a.pick { color: inherit; text-decoration: none; }
 .payment-fee-lines > div:last-child { border-right: 0; }
 .payment-fee-lines .total { background: var(--accent-100); }
 .payment-fee-lines span, .payment-fee-lines small, .payment-status-block > span, .payment-confirmation span, .payment-private-plan span, .payment-transfer span { display: block; color: var(--muted); font-size: 10px; font-weight: 750; letter-spacing: .04em; text-transform: uppercase; }
-.payment-fee-lines strong { display: block; margin: 4px 0 2px; font-size: 18px; }
+.payment-fee-lines strong { display: block; margin: 4px 0 2px; font-size: 18px; overflow-wrap: anywhere; }
 .payment-fee-lines small { font-weight: 500; letter-spacing: 0; line-height: 1.35; text-transform: none; }
 .payment-mode-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
 .payment-mode-grid > button { min-height: 70px; display: grid; grid-template-columns: 32px minmax(0, 1fr) 18px; align-items: center; gap: 9px; padding: 10px 12px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
@@ -6401,14 +6403,14 @@ a.pick { color: inherit; text-decoration: none; }
 .payment-line-allocation-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .payment-line-allocation-heading > span { min-width: 0; }
 .payment-line-allocation-heading b, .payment-line-allocation-heading small { display: block; }
-.payment-line-allocation-heading b { font-size: 12px; }
-.payment-line-allocation-heading small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; }
+.payment-line-allocation-heading b { font-size: 12px; overflow-wrap: anywhere; }
+.payment-line-allocation-heading small { margin-top: 3px; color: var(--muted); font-size: 10px; line-height: 1.35; overflow-wrap: anywhere; }
 .payment-line-allocation-heading strong { white-space: nowrap; font-size: 15px; }
-.payment-line-allocation-controls { display: grid; grid-template-columns: minmax(210px, 1fr) minmax(150px, .55fr); align-items: end; gap: 9px; }
+.payment-line-allocation-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); align-items: end; gap: 9px; }
 .payment-line-allocation .payment-ach-presets { padding: 0; border: 0; background: transparent; }
 .payment-line-allocation .payment-ach-presets > div { width: 100%; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .payment-line-allocation .payment-ach-presets button { min-width: 0; }
-.payment-allocation-fields { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+.payment-allocation-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
 .payment-amount-input { min-width: 0; border: 0 !important; padding-inline: 4px !important; }
 .payment-allocation-actions { align-items: center; justify-content: flex-end; }
 .payment-allocation-actions > span { margin-right: auto; color: var(--muted); font-size: 11px; }
@@ -6417,7 +6419,7 @@ a.pick { color: inherit; text-decoration: none; }
 .payment-metrics, .payment-operations-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .payment-metrics > div, .payment-operations-metrics > div { min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); }
 .payment-metrics span, .payment-operations-metrics span { display: block; color: var(--muted); font-size: 10px; font-weight: 750; text-transform: uppercase; }
-.payment-metrics strong, .payment-operations-metrics strong { display: block; margin: 5px 0 2px; font-size: 20px; }
+.payment-metrics strong, .payment-operations-metrics strong { display: block; margin: 5px 0 2px; font-size: 20px; overflow-wrap: anywhere; }
 .payment-metrics small, .payment-operations-metrics small { display: block; overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .payment-primary-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 340px); gap: 14px; }
 .payment-primary-main, .payment-primary-rail { min-width: 0; display: grid; align-content: start; gap: 12px; }
@@ -6462,7 +6464,8 @@ a.pick { color: inherit; text-decoration: none; }
 .payment-check small { margin-top: 2px; color: var(--muted); font-size: 11px; }
 .payment-obligation-lines { display: grid; gap: 6px; }
 .payment-obligation-lines > div, .payment-obligation-total { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 9px 10px; border-radius: 6px; background: var(--sunken2); }
-.payment-obligation-lines b, .payment-obligation-lines small { display: block; }
+.payment-obligation-lines > div > span { min-width: 0; }
+.payment-obligation-lines b, .payment-obligation-lines small { display: block; overflow-wrap: anywhere; }
 .payment-obligation-lines small { margin-top: 2px; color: var(--muted); font-size: 10px; }
 .payment-obligation-total { margin-top: 7px; background: var(--accent-100); }
 .payment-status-row { display: grid; grid-template-columns: 1fr 1fr auto; align-items: stretch; gap: 8px; }
@@ -6492,7 +6495,7 @@ a.pick { color: inherit; text-decoration: none; }
 .payment-timeline > div:last-child { border-bottom: 0; }
 .payment-timeline > div > span { width: 8px; height: 8px; margin-top: 4px; border-radius: 50%; background: var(--muted); }
 .payment-timeline > div > span.tone-success { background: var(--ok); } .payment-timeline > div > span.tone-warning { background: var(--warn); } .payment-timeline > div > span.tone-danger { background: var(--bad); } .payment-timeline > div > span.tone-info { background: var(--accent); }
-.payment-timeline b, .payment-timeline p, .payment-timeline small { display: block; margin: 0; }
+.payment-timeline b, .payment-timeline p, .payment-timeline small { display: block; margin: 0; overflow-wrap: anywhere; }
 .payment-timeline p { margin-top: 3px; color: var(--ink2); font-size: 11px; line-height: 1.35; }
 .payment-timeline small { margin-top: 4px; color: var(--muted); font-size: 10px; }
 .payment-private-plan { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) auto; gap: 8px; align-items: center; }
@@ -6546,8 +6549,6 @@ a.pick { color: inherit; text-decoration: none; }
 
 @media (max-width: 1180px) {
   .payment-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .payment-allocation-fields { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
-  .payment-line-allocation-controls { grid-template-columns: 1fr; }
   .payment-primary-grid { grid-template-columns: minmax(0, 1fr); }
   .payment-primary-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .payment-primary-rail > :first-child { grid-column: 1 / -1; }

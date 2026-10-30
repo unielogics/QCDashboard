@@ -1834,6 +1834,7 @@ export function LeadDetailPanel({
                             {underwriting?.estimated_close_date ? ` · closing ${new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString()}` : " · no closing date"}
                           </span>
                         </div>
+                      </div>
                       <FileSection
                         id="readiness"
                         title="Capital readiness"
@@ -1981,7 +1982,6 @@ export function LeadDetailPanel({
                         />
                         </FileSection>
                       ) : null}
-                    </div>
                     </div>
                   )}
                 </Panel>
