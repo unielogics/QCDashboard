@@ -1,3 +1,5 @@
+import type { LeadDetailView } from "@/components/file/leadFile";
+
 /**
  * Routes for one file and its sections.
  *
@@ -41,3 +43,26 @@ export function sectionFromLegacyParams(params: { view?: string | null; step?: s
 export function fileHref(id: string, section: FileSection = "overview"): string {
   return section === "overview" ? `/files/${id}` : `/files/${id}?section=${section}`;
 }
+
+export type SectionDefinition = {
+  key: FileSection;
+  label: string;
+  hint: string;
+  view: LeadDetailView;
+  activeTab: "conversation" | "workspace";
+  workspaceSection?: "overview" | "documents" | "client" | "credit" | "contracts" | "package";
+  evidenceTab?: "requirements" | "banking";
+};
+
+export const SECTION_DEFINITIONS: Record<FileSection, SectionDefinition> = {
+  conversation: { key: "conversation", label: "Underwriter chat", hint: "Ask the AI about this file", view: "workspace", activeTab: "conversation" },
+  overview: { key: "overview", label: "Overview", hint: "Who, what, and where it stands", view: "workspace", activeTab: "workspace", workspaceSection: "overview" },
+  documents: { key: "documents", label: "Documents", hint: "The room, checklist and uploads", view: "workspace", activeTab: "workspace", workspaceSection: "documents" },
+  evidence: { key: "evidence", label: "Evidence & programs", hint: "Requirements, fit and readiness", view: "underwriting", activeTab: "workspace", evidenceTab: "requirements" },
+  banking: { key: "banking", label: "Banking", hint: "Statements and connected accounts", view: "underwriting", activeTab: "workspace", evidenceTab: "banking" },
+  communications: { key: "communications", label: "Communications", hint: "Client thread, email, SMS", view: "communications", activeTab: "workspace" },
+  package: { key: "package", label: "Package", hint: "Summary, lender packet, delivery", view: "production", activeTab: "workspace" },
+  payments: { key: "payments", label: "Payments", hint: "Fees and collections", view: "payments", activeTab: "workspace" },
+  timeline: { key: "timeline", label: "Timeline", hint: "Everything that happened", view: "audit", activeTab: "workspace" },
+  review: { key: "review", label: "AI review", hint: "The reviewer's digest", view: "reviewer", activeTab: "workspace" },
+};

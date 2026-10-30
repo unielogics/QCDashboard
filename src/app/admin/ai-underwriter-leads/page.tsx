@@ -27,7 +27,7 @@ import { useConsoleAuth } from "@/lib/consoleAuth";
 import { CreateLeadPayload, DEFAULT_PAGE_SIZE, LeadDetail, LeadPage, LeadRow, PAGE_SIZES, PROBABILITY_FILTERS, STATUS_FILTERS, VARIANT_FILTERS, apiErrorMessage, formatMoney, intakeStatusPresentation, presentContact, probabilityTone, variantLabel } from "@/components/file/leadFile";
 import { ConfirmDeleteLeadModal, Stat } from "@/components/file/LeadDetailPanel";
 import { CreateLeadModal } from "@/components/file/CreateLeadModal";
-import { fileHref, sectionFromLegacyParams } from "@/components/file/FileRail";
+import { fileHref, sectionFromLegacyParams } from "@/lib/fileRoutes";
 
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();

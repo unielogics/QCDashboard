@@ -566,7 +566,8 @@ export function LeadDetailPanel({
   // Delete is the desk's — super admin and underwriting — and nobody else's.
   canDelete: boolean;
   onClose: () => void;
-  onMinimize: () => void;
+  /** Absent when the panel is the page: there is nothing to minimise into. */
+  onMinimize?: () => void;
   onExport: () => void;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
@@ -790,7 +791,7 @@ export function LeadDetailPanel({
       else if (previewWindow) previewWindow.close();
       toast.show(generated.superseded_bucket_file_ids.length
         ? "Package refreshed. The previous bucket PDFs were superseded."
-        : "Executive summary and lender package are ready in the bucket.");
+        : "Executive summary and lender package are ready in the room.");
     } catch (reason) {
       previewWindow?.close();
       toast.show(apiErrorMessage(reason, "The lender package could not be refreshed."));
@@ -1660,9 +1661,9 @@ export function LeadDetailPanel({
           { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Archive lead", onSelect: () => setConfirmDeleteOpen(true), hidden: !detail || !canGovern },
         ]} />
-        <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
+        {onMinimize ? <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
           <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
-        </IconBtn>
+        </IconBtn> : null}
         <IconBtn aria-label="Close" title="Close" onClick={onClose}>
           <Icon name="x" size={16} />
         </IconBtn>
@@ -1771,7 +1772,7 @@ export function LeadDetailPanel({
               {prototypeView === "workspace" && submissionStep === 5 ? (
                 <Panel
                   title="Package readiness"
-                  sub="One refresh creates both branded PDFs, saves them to the bucket, and supersedes the prior package."
+                  sub="One refresh creates both branded PDFs, saves them to the room, and supersedes the prior package."
                   actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => void refreshFullPackage(true)}><Icon name="refresh" size={14} />{busy === "package-all" ? "Building both PDFs..." : summary && packet ? "Refresh package + preview" : "Generate package + preview"}</Btn>}
                 >
                   <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Overview'], ['package', 'PDF versions'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary && packet ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="docCheck" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
@@ -1789,7 +1790,7 @@ export function LeadDetailPanel({
                     <UnderwriterDigest artifact={summary} />
                   </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate once to create the executive-summary PDF and lender-package PDF from the same evidence snapshot. Both will be saved in this file&apos;s bucket.</p></div> : null}
                   {packageTab === "package" ? <div className="package-version-workspace">
-                    <Callout tone="acc">The current pair is the only active package in the bucket. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
+                    <Callout tone="acc">The current pair is the only active package in the room. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
                     <div className="package-version-columns">
                       <PackageVersionList label="Executive summary" artifacts={summaryHistory} />
                       <PackageVersionList label="Lender package" artifacts={packetHistory} />
@@ -2133,7 +2134,7 @@ export function LeadDetailPanel({
         open={requestOpen}
         onClose={() => setRequestOpen(false)}
         title="Request missing evidence"
-        sub="Add a required item to the client room. The request is recorded in the bucket audit trail."
+        sub="Add a required item to the client room. The request is recorded in the room audit trail."
         width="md"
         closeOnBackdrop={!requestSaving}
         footer={requestResult ? <><span className="sp" /><Btn variant="pri" onClick={() => setRequestOpen(false)}>Done</Btn></> : <><span className="sp" /><Btn onClick={() => setRequestOpen(false)} disabled={requestSaving}>Cancel</Btn><Btn variant="pri" onClick={() => void createDocumentRequest()} disabled={requestSaving || requestDraft.name.trim().length < 2}>{requestSaving ? "Creating..." : "Create request"}</Btn></>}
