@@ -31,6 +31,8 @@ const isPublicPage = createRouteMatcher([
   // need to not bounce them off the edge.
   "/hud/share(.*)",
   "/buckets/request(.*)",
+  // One address for a client's secure link; it resolves to one of the public screens above.
+  "/link(.*)",
   "/lender-submissions(.*)",
   "/forms(.*)",
   // A production package forwarded to someone with no account. The token
