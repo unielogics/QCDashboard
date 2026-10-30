@@ -10,6 +10,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { fileHref } from "@/lib/fileRoutes";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
@@ -237,7 +238,7 @@ export function AIReviewProvider({ children }: { children: ReactNode }) {
 
   function viewResults(job: AIReviewJob) {
     setDialog(null);
-    router.push(`/admin/ai-underwriter-leads?lead=${job.intakeId}`);
+    router.push(fileHref(job.intakeId));
   }
 
   function removeJob(intakeId: string) {

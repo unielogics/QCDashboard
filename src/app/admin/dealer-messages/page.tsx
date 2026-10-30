@@ -6,13 +6,14 @@
 // Thin wrapper over the shared inbox view (admin scope).
 
 import { DealerChannelInboxView } from "@/components/messages/DealerChannelInboxView";
+import { fileHref } from "@/lib/fileRoutes";
 
 export default function AdminDealerMessagesPage() {
   return (
     <DealerChannelInboxView
       scope="admin"
       apiPrefix="/admin/ai-underwriter-leads"
-      fileHref={(id) => `/admin/ai-underwriter-leads?lead=${id}&notes=1`}
+      fileHref={(id) => `${fileHref(id)}?notes=1`}
       selfRole="team"
       subtitle="Your conversations with dealer partners, one per AI file."
       panelSubtitle="Private channel with this lead's dealer partner — never visible to the client."

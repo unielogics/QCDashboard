@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { fileHref as fileRouteHref } from "@/lib/fileRoutes";
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
@@ -473,7 +474,7 @@ function FileTab({ workspace, apiCall, refresh, onOutcome }: { workspace: Appoin
   return (
     <div className="calendar-v2-file-layout">
       <Panel title="Linked file">
-        {workspace.application ? <div className="calendar-v2-file-hero"><div><CellChip tone="acc">AI Intake</CellChip><h3>{workspace.application.vertical.replace("_", " ")}</h3><p>{workspace.application.underwriting_status.replaceAll("_", " ")}</p></div><Link className="btn pri" href={`/admin/ai-underwriter-leads?lead=${workspace.application.intake_id}&view=underwriting`}>Open application</Link></div> : null}
+        {workspace.application ? <div className="calendar-v2-file-hero"><div><CellChip tone="acc">AI Intake</CellChip><h3>{workspace.application.vertical.replace("_", " ")}</h3><p>{workspace.application.underwriting_status.replaceAll("_", " ")}</p></div><Link className="btn pri" href={fileRouteHref(workspace.application.intake_id, "evidence")}>Open application</Link></div> : null}
         {workspace.funding_file ? <div className="calendar-v2-file-hero"><div><CellChip tone="pet">Funding Loan</CellChip><h3>{workspace.funding_file.entity_name || workspace.funding_file.deal_id}</h3><p>{workspace.funding_file.stage.replaceAll("_", " ")} · {money(workspace.funding_file.amount)}</p></div><Link className="btn pri" href={`/loans/${workspace.funding_file.loan_id}`}>Open loan</Link></div> : null}
         {!workspace.application && !workspace.funding_file ? <div className="calendar-v2-empty-compact">No file is linked yet. Search below or create one through a reviewed Qualified outcome.</div> : null}
       </Panel>
@@ -552,7 +553,7 @@ function PreparationTab({ workspace, apiCall, refresh }: {
 
   if (!precall) return <StatusLine tone="warn">Pre-call preparation was not started for this appointment.</StatusLine>;
   const readiness = precall.readiness;
-  const fileHref = precall.href || (precall.intake_id ? `/admin/ai-underwriter-leads?lead=${precall.intake_id}` : null);
+  const fileHref = precall.href || (precall.intake_id ? fileRouteHref(precall.intake_id) : null);
   const steps = [...(precall.steps ?? [])].sort((a, b) => new Date(a.due_at).getTime() - new Date(b.due_at).getTime());
   const copyValue = async (value: string) => {
     await navigator.clipboard.writeText(value);

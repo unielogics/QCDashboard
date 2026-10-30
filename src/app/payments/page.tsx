@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useState } from "react";
+import { fileHref } from "@/lib/fileRoutes";
 import Link from "next/link";
 import { Btn, CellChip, Empty, Input, Loading, PageHeader, Select } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -142,7 +143,7 @@ function PaymentQueueRow({ item }: { item: PaymentsQueueItem & { kind: PaymentPl
   const href = item.loan_id
     ? `/loans/${item.loan_id}?tab=payments`
     : item.intake_id
-      ? `/admin/ai-underwriter-leads?lead=${item.intake_id}&view=payments`
+      ? fileHref(item.intake_id, "payments")
       : `/payments?queue=${item.kind === "private_funding" ? "private_funding" : "origination_fees"}`;
   return <div className="payments-operations-row" role="row"><span><b>{item.display_name}</b><small>{item.reference || item.profile_id}</small><CellChip tone="mut">{item.kind === "origination_fee" ? "Origination fee" : "Private schedule"}</CellChip></span><span data-label="Owner">{item.owner_name || "Unassigned"}</span><span data-label="Amount"><b>{paymentMoney(item.amount)}</b><small>{paymentMoney(item.outstanding_amount)} outstanding</small></span><span data-label="Status"><CellChip tone={paymentStatusTone(item.status)}>{humanize(item.status)}</CellChip></span><span data-label="Next action">{item.next_action}</span><span data-label="Due">{dateTimeLabel(item.next_due_at)}</span><span><Link className="btn sm" href={href}>Open <Icon name="arrowR" size={13} /></Link></span></div>;
 }

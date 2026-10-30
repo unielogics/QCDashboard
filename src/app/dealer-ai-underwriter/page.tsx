@@ -1,12 +1,13 @@
 "use client";
 
 import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
 import { clientActionableRequestedDocumentUploadTarget, clientApiError, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
-import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
 import { lockedEvidencePresentation, unlockedCopyActionState, type UnlockedCopyRequestLike } from "@/lib/lockedEvidence";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
@@ -857,27 +858,15 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
       for (const item of queuedFiles.filter((file) => file.status === "ready" || file.status === "error")) {
         updateQueuedFile(item.id, { status: "uploading", message: "Preparing upload" });
         try {
-          await assertPdfUploadUnlocked(item.file);
-          const init = await call<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(
-            `/public/dealer-ai-intake/${encodeURIComponent(token)}/files/upload-init`,
+          await uploadFile(
+            { initPath: `/public/dealer-ai-intake/${encodeURIComponent(token)}/files/upload-init`, completePath: `/public/dealer-ai-intake/${encodeURIComponent(token)}/files/complete`, call },
+            item.file,
             {
-              method: "POST",
-              body: JSON.stringify({
-                requested_document_id: item.requested_document_id ?? null,
-                file_name: item.file.name,
-                content_type: item.file.type || "application/octet-stream",
-                size_bytes: item.file.size,
-              }),
+              requestedDocumentId: item.requested_document_id ?? null,
+              onStage: (stage) => updateQueuedFile(item.id, { message: stage === "uploading" ? "Uploading encrypted file" : stage === "confirming" ? "Confirming upload" : "Preparing upload" }),
+              storageRejectedMessage: (file) => `Secure storage rejected ${file.name}.`,
             },
           );
-          updateQueuedFile(item.id, { message: "Uploading encrypted file" });
-          const put = await fetch(init.upload_url, { method: "PUT", body: item.file, headers: init.required_headers });
-          if (!put.ok) throw new Error(`Secure storage rejected ${item.file.name}.`);
-          updateQueuedFile(item.id, { message: "Confirming upload" });
-          await call(`/public/dealer-ai-intake/${encodeURIComponent(token)}/files/complete`, {
-            method: "POST",
-            body: JSON.stringify({ file_id: init.file_id }),
-          });
           uploaded += 1;
           uploadedIds.add(item.id);
           updateQueuedFile(item.id, { status: "uploaded", message: "Uploaded" });

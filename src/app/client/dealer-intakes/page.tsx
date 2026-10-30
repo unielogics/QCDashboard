@@ -1,13 +1,14 @@
 "use client";
 
 import type { CSSProperties } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import { api, apiBase } from "@/lib/api";
 import { clientQueuedUploadCanSubmit, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
-import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { PfsFormModal, DebtScheduleFormModal, type PfsFormPayload, type DebtScheduleFormPayload } from "@/components/intake/DraftFinancialFormModal";
 import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
@@ -98,25 +99,11 @@ export default function ClientDealerIntakesPage() {
       for (const item of queuedFiles.filter(clientQueuedUploadCanSubmit)) {
         setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "uploading", message: "Preparing upload" } : file)));
         try {
-          await assertPdfUploadUnlocked(item.file);
-          const init = await authed<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(
-            `/buckets/client/intakes/${detail.intake.id}/files/upload-init`,
-            {
-              method: "POST",
-              body: JSON.stringify({
-                requested_document_id: item.requestedDocumentId || null,
-                file_name: item.file.name,
-                content_type: item.file.type || "application/octet-stream",
-                size_bytes: item.file.size,
-              }),
-            },
+          await uploadFile(
+            { initPath: `/buckets/client/intakes/${detail.intake.id}/files/upload-init`, completePath: `/buckets/client/intakes/${detail.intake.id}/files/complete`, call: authed },
+            item.file,
+            { requestedDocumentId: item.requestedDocumentId || null, storageRejectedMessage: (file) => `Secure storage rejected ${file.name}.` },
           );
-          const put = await fetch(init.upload_url, { method: "PUT", body: item.file, headers: init.required_headers });
-          if (!put.ok) throw new Error(`Secure storage rejected ${item.file.name}.`);
-          await authed(`/buckets/client/intakes/${detail.intake.id}/files/complete`, {
-            method: "POST",
-            body: JSON.stringify({ file_id: init.file_id }),
-          });
           uploadedIds.add(item.id);
           setQueuedFiles((current) => current.map((file) => (file.id === item.id ? { ...file, status: "uploaded", message: "Uploaded" } : file)));
         } catch (error) {

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { uploadFile } from "@/lib/fileUpload";
+import { fileHref } from "@/lib/fileRoutes";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -40,7 +42,7 @@ import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
 import { bucketFileRemovalError, bucketFileRetentionPresentation } from "@/lib/bucketRetention";
 import { bucketUploadIssue, type BucketUploadIssue } from "@/lib/bucketUploadError";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
-import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { isVisualQa, useConsoleAuth } from "@/lib/consoleAuth";
 
@@ -891,14 +893,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         body: JSON.stringify(payload),
       });
       setConvertLeadBucket(null);
-      router.push(`/admin/ai-underwriter-leads?lead=${res.intake.id}`);
+      router.push(fileHref(res.intake.id));
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         const body = error.body as { detail?: { intake_id?: string; message?: string } } | undefined;
         const intakeId = body?.detail?.intake_id;
         if (intakeId) {
           setConvertLeadBucket(null);
-          router.push(`/admin/ai-underwriter-leads?lead=${intakeId}`);
+          router.push(fileHref(intakeId));
           return;
         }
       }
@@ -1849,26 +1851,17 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       for (const queued of queuedFiles) {
         try {
           updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload", errorKind: undefined });
-          await assertPdfUploadUnlocked(queued.file);
-          const init = await call<UploadInitResponse>(`/buckets/admin/${detail.id}/files/upload-init`, {
-            method: "POST",
-            body: JSON.stringify({
-              requested_document_id: queued.requested_document_id || null,
-              file_name: queued.file.name,
-              content_type: queued.file.type || "application/octet-stream",
-              size_bytes: queued.file.size,
-              uploader_name: adminUploadForm.uploader_name.trim(),
-              uploader_email: adminUploadForm.uploader_email.trim() || null,
-            }),
-          });
-          updateAdminUploadFile(queued.id, { message: "Uploading to storage" });
-          const put = await fetch(init.upload_url, { method: "PUT", body: queued.file, headers: init.required_headers });
-          if (!put.ok) throw new Error(`Storage rejected ${queued.file.name} (${put.status}).`);
-          updateAdminUploadFile(queued.id, { message: "Finalizing" });
-          await call<BucketFile>(`/buckets/admin/${detail.id}/files/complete`, {
-            method: "POST",
-            body: JSON.stringify({ file_id: init.file_id, note: !noteSaved ? adminUploadForm.note.trim() || null : null }),
-          });
+          await uploadFile<BucketFile>(
+            { initPath: `/buckets/admin/${detail.id}/files/upload-init`, completePath: `/buckets/admin/${detail.id}/files/complete`, call },
+            queued.file,
+            {
+              requestedDocumentId: queued.requested_document_id || null,
+              extraInit: { uploader_name: adminUploadForm.uploader_name.trim(), uploader_email: adminUploadForm.uploader_email.trim() || null },
+              extraComplete: { note: !noteSaved ? adminUploadForm.note.trim() || null : null },
+              onStage: (stage) => updateAdminUploadFile(queued.id, { message: stage === "uploading" ? "Uploading to storage" : stage === "confirming" ? "Finalizing" : "Preparing upload" }),
+              storageRejectedMessage: (file, status) => `Storage rejected ${file.name} (${status}).`,
+            },
+          );
           noteSaved = noteSaved || !!adminUploadForm.note.trim();
           uploadedCount += 1;
           updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded", errorKind: undefined });

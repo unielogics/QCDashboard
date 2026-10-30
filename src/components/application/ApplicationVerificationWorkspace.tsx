@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BucketFileReviewPanel,
@@ -574,10 +575,11 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
       const screened = await screenPdfUploads(files);
       for (const file of screened.uploadable) {
         setUploadState(`Uploading ${file.name} · ${uploaded + 1} of ${files.length}`);
-        const init = await apiCall<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${sourceId}/files/upload-init`, { method: "POST", body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
-        const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
-        if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
-        await apiCall(`/admin/ai-underwriter-leads/${sourceId}/files/complete`, { method: "POST", body: JSON.stringify({ file_id: init.file_id }) });
+        await uploadFile(
+          { initPath: `/admin/ai-underwriter-leads/${sourceId}/files/upload-init`, completePath: `/admin/ai-underwriter-leads/${sourceId}/files/complete`, call: apiCall },
+          file,
+          { requestedDocumentId: null, storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded.` },
+        );
         uploaded += 1;
       }
       setUploadState(uploaded ? `${uploaded} statement file${uploaded === 1 ? "" : "s"} uploaded and queued for extraction.` : "");

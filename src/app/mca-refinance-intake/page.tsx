@@ -17,6 +17,7 @@
 // matching the security rule on the other public intake pages.
 
 import type { ReactNode } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
@@ -30,7 +31,7 @@ import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, typ
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
-import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 import { mcaRefinanceReviewMode, parseMcaRefinanceAmount, parseMcaRefinanceCount, parseMcaRefinanceQualification, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 import {
@@ -1085,24 +1086,11 @@ export default function McaRefinanceIntakePage() {
     setChatError(null);
     for (const row of rows) {
       try {
-        await assertPdfUploadUnlocked(row.file);
-        const init = await call<UploadInitResponse>(`/${encodeURIComponent(tokenRef.current)}/files/upload-init`, {
-          method: "POST",
-          body: JSON.stringify({
-            file_name: row.file.name,
-            content_type: row.file.type || "application/octet-stream",
-            size: row.file.size,
-            requested_document_id: docId,
-          }),
-        });
-        const headers =
-          init.headers ?? init.required_headers ?? { "Content-Type": row.file.type || "application/octet-stream" };
-        const put = await fetch(init.upload_url, { method: "PUT", body: row.file, headers });
-        if (!put.ok) throw new Error(c.uploadRejected);
-        await call(`/${encodeURIComponent(tokenRef.current)}/files/complete`, {
-          method: "POST",
-          body: JSON.stringify({ file_id: init.file_id }),
-        });
+        await uploadFile(
+          { initPath: `/${encodeURIComponent(tokenRef.current)}/files/upload-init`, completePath: `/${encodeURIComponent(tokenRef.current)}/files/complete`, call, sizeField: "size" },
+          row.file,
+          { requestedDocumentId: docId, storageRejectedMessage: () => c.uploadRejected },
+        );
         uploaded += 1;
         doneIds.add(row.id);
         patchQueued(docId, row.id, { status: "uploaded" });

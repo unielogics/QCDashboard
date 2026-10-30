@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Btn, Callout, CellChip, cx, Input, Select, WarnLine } from "@/components/ds";
@@ -162,10 +163,11 @@ export default function AdminAIUnderwriterLeadsPage() {
       await call(`/application-profiles/${profile.id}/draft`, { method: "POST" });
       let uploaded = 0;
       for (const file of screened.uploadable) {
-        const init = await call<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${res.intake.id}/files/upload-init`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
-        const upload = await fetch(init.upload_url, { method: "PUT", headers: init.required_headers, body: file });
-        if (!upload.ok) throw new Error(`${file.name} could not be uploaded. The draft was preserved.`);
-        await call(`/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ file_id: init.file_id }) });
+        await uploadFile(
+          { initPath: `/admin/ai-underwriter-leads/${res.intake.id}/files/upload-init`, completePath: `/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, call },
+          file,
+          { requestedDocumentId: null, storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded. The draft was preserved.` },
+        );
         uploaded += 1;
       }
       setNotice([
