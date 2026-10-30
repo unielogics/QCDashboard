@@ -302,7 +302,7 @@ export function BucketFileReviewPanel({
   const parsedSheets = review?.sheets ?? null;
   useEffect(() => {
     let cancelled = false;
-    if (!previewUrl || (fileType !== "csv" && fileType !== "text") || (fileType === "csv" && parsedSheets)) {
+    if (!previewUrl || (fileType !== "csv" && fileType !== "text") || (fileType === "csv" && parsedSheets && !parsedSheets.error_code)) {
       setTextPreview("");
       return;
     }
@@ -567,7 +567,7 @@ export function BucketFileReviewPanel({
               </ReviewStage>
             ) : review && (fileType === "csv" || fileType === "spreadsheet") && review.sheets && !review.sheets.error_code ? (
               <SheetsPreview sheets={review.sheets} fileName={review.file.file_name} previewUrl={review.preview_url} />
-            ) : review && (fileType === "csv" || fileType === "spreadsheet") && review.sheets?.error_code ? (
+            ) : review && fileType === "spreadsheet" && review.sheets?.error_code ? (
               <UnreadableSheetsPreview sheets={review.sheets} previewUrl={review.preview_url} />
             ) : review?.preview_url && fileType === "csv" ? (
               <CsvPreview text={textPreview} />
@@ -851,9 +851,10 @@ function SheetsPreview({ sheets, fileName, previewUrl }: { sheets: BucketFileShe
   );
 }
 
-const SHEET_ERROR_COPY: Record<string, { title: string; detail: string }> = {
+const SHEET_ERROR_COPY: Record<string, { title: string; detail?: string }> = {
   locked: { title: "This spreadsheet is password protected.", detail: "The AI cannot read it either. Ask for an unprotected copy or a PDF export." },
-  not_a_workbook: { title: "This is not a spreadsheet.", detail: "It is an old-format Office file (Word, PowerPoint or Outlook). Ask for a PDF export." },
+  // The server's message says which kind of non-spreadsheet this is.
+  not_a_workbook: { title: "This is not a spreadsheet." },
   empty: { title: "This spreadsheet has no readable rows.", detail: "The file was saved before any data was entered, or every sheet is hidden." },
   too_large: { title: "This spreadsheet is too large to preview here.", detail: "Download it to open it locally." },
   unavailable: { title: "The file could not be read from storage right now.", detail: "Retry in a moment or download it." },
@@ -861,7 +862,10 @@ const SHEET_ERROR_COPY: Record<string, { title: string; detail: string }> = {
 };
 
 function UnreadableSheetsPreview({ sheets, previewUrl }: { sheets: BucketFileSheets; previewUrl: string | null }) {
-  const copy = SHEET_ERROR_COPY[sheets.error_code ?? ""] ?? { title: "This spreadsheet could not be read.", detail: sheets.error_message || "Download it to open it locally." };
+  const known = SHEET_ERROR_COPY[sheets.error_code ?? ""];
+  const copy = known
+    ? { title: known.title, detail: known.detail ?? sheets.error_message ?? "Download it to open it locally." }
+    : { title: "This spreadsheet could not be read.", detail: sheets.error_message || "Download it to open it locally." };
   return (
     <div className="hintbox" style={{ minHeight: 360 }}>
       <span className="hintbox-i"><Icon name="doc" size={18} /></span>
@@ -966,7 +970,8 @@ function reviewFileType(contentType: string, fileName: string): ReviewFileType {
   if (lower.includes("application/pdf") || lower.endsWith(".pdf")) return "pdf";
   if (lower.includes("image/") || /\.(png|jpe?g|webp|gif)$/i.test(fileName)) return "image";
   if (lower.includes("text/csv") || lower.includes("application/csv") || /\.(csv|tsv)$/i.test(fileName)) return "csv";
-  if (/\.(xlsx?|xlsm)$/i.test(fileName) || lower.includes("spreadsheet") || lower.includes("application/vnd.ms-excel")) return "spreadsheet";
+  const declared = contentType.toLowerCase();
+  if (/\.(xlsx?|xlsm)$/i.test(fileName) || declared.includes("spreadsheet") || declared.includes("application/vnd.ms-excel")) return "spreadsheet";
   if (lower.includes("text/") || /\.(txt|md|log)$/i.test(fileName)) return "text";
   return "unsupported";
 }
