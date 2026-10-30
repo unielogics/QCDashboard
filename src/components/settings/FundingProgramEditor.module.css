@@ -104,3 +104,7 @@
   .patternHeader > :first-child { grid-column: 1 / -1; }
 }
 @media (max-width: 440px) { .patternChoices, .commercialTerms { grid-template-columns: 1fr; } }
+
+/* Catalog count and the New program action sit together, wrapping on narrow
+   screens rather than crowding the heading. */
+.headerActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

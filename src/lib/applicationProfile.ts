@@ -134,6 +134,9 @@ export type ApplicationProgramSelection = {
   fit_reasons: string[];
   selected_at: string;
   needs_scope_review: boolean;
+  /** The catalog row behind this selection has been retired. The file keeps
+   *  working off its pinned playbook version; the desk decides what to do. */
+  program_retired?: boolean;
 };
 
 export type EvidencePolicySelection = {
