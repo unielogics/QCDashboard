@@ -366,12 +366,13 @@ function fileKindLabel(file: FileRow): string {
 }
 
 function reviewFileType(contentType: string, fileName: string): "pdf" | "image" | "csv" | "text" | "spreadsheet" | "unsupported" {
+  // Keep in step with BucketFileReviewPanel.reviewFileType.
   const lower = `${contentType} ${fileName}`.toLowerCase();
   if (lower.includes("application/pdf") || lower.endsWith(".pdf")) return "pdf";
   if (lower.includes("image/") || /\.(png|jpe?g|webp|gif)$/i.test(fileName)) return "image";
-  if (lower.includes("text/csv") || lower.endsWith(".csv")) return "csv";
+  if (lower.includes("text/csv") || lower.includes("application/csv") || /\.(csv|tsv)$/i.test(fileName)) return "csv";
+  if (/\.(xlsx?|xlsm)$/i.test(fileName) || lower.includes("spreadsheet") || lower.includes("application/vnd.ms-excel")) return "spreadsheet";
   if (lower.includes("text/") || /\.(txt|md|log)$/i.test(fileName)) return "text";
-  if (/\.(xlsx?|xlsm)$/i.test(fileName) || lower.includes("spreadsheet")) return "spreadsheet";
   return "unsupported";
 }
 

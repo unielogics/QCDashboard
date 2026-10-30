@@ -503,8 +503,8 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   }) : null, [selectedReviewContentType, selectedReviewCreatedAt, selectedReviewId, selectedReviewName, selectedReviewSize, selectedStatementPasswordProtected]);
   const loadStatementReview = useCallback(async (): Promise<BucketFileReview> => {
     if (!selectedStatementReviewFile) throw new Error("Bank statement file is no longer available.");
-    const signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedStatementReviewFile.id}/url`);
-    return { file: selectedStatementReviewFile, preview_url: signed.url, annotations: [] };
+    const signed = await apiCall<{ url: string; expires_in: number; sheets?: BucketFileReview["sheets"] }>(`/application-profiles/${profileId}/evidence/files/${selectedStatementReviewFile.id}/url`);
+    return { file: selectedStatementReviewFile, preview_url: signed.url, annotations: [], sheets: signed.sheets ?? null };
   }, [apiCall, profileId, selectedStatementReviewFile]);
   const previewStatement = useCallback((fileId: string) => {
     if (onPreviewEvidence) onPreviewEvidence(fileId);

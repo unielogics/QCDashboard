@@ -441,9 +441,9 @@ export function ApplicationEvidenceWorkspace({
   const loadSelectedReview = useCallback(async (): Promise<BucketFileReview> => {
     if (!selectedReviewFile) throw new Error("Evidence file is no longer available.");
     const expectedHash = selectedPreviewHash ? `?expected_content_hash=${encodeURIComponent(selectedPreviewHash)}` : "";
-    let signed: { url: string; expires_in: number };
+    let signed: { url: string; expires_in: number; sheets?: BucketFileReview["sheets"] };
     try {
-      signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url${expectedHash}`);
+      signed = await apiCall<{ url: string; expires_in: number; sheets?: BucketFileReview["sheets"] }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url${expectedHash}`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) throw new Error("Source file changed. Review its current version and refresh the analysis before using this reference.");
       throw error;
@@ -452,6 +452,7 @@ export function ApplicationEvidenceWorkspace({
       file: selectedReviewFile,
       preview_url: signed.url,
       annotations: [],
+      sheets: signed.sheets ?? null,
     };
   }, [apiCall, profileId, selectedReviewFile, selectedPreviewHash]);
 
