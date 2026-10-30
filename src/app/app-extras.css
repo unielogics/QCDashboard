@@ -4343,9 +4343,11 @@ a.pick { color: inherit; text-decoration: none; }
 .client-access-filters select.field { width: 166px; }
 .client-access-contact { display: block; max-width: 205px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
 .client-access-drawer { overflow-y: auto; }
-.client-access-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); }
+.client-access-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); }
 .client-access-summary > div { min-width: 0; display: grid; gap: 6px; padding: 12px 14px; border-right: 1px solid var(--line); }
 .client-access-summary > div:last-child { border-right: 0; }
+/* The client-access drawer shows five tiles; the Team drawer shares the base four-tile strip. */
+@media (min-width: 921px) { .client-access-summary--five { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 .client-access-form-grid, .client-access-product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .client-access-form-grid label { min-width: 0; display: grid; gap: 6px; }
 .client-access-product { min-width: 0; display: flex; align-items: center; gap: 11px; min-height: 74px; padding: 13px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); cursor: pointer; }
@@ -4377,8 +4379,11 @@ a.pick { color: inherit; text-decoration: none; }
   .client-access-filters .field:first-child { width: 100%; }
   .client-access-filters select.field { flex: 1; width: auto; }
   .client-access-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .client-access-summary > div:nth-child(2n) { border-right: 0; }
-  .client-access-summary > div:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+  .client-access-summary > div:nth-child(2) { border-right: 0; }
+  .client-access-summary > div:nth-child(-n+2) { border-bottom: 1px solid var(--line); }
+  .client-access-summary--five > div:nth-child(2n) { border-right: 0; }
+  .client-access-summary--five > div:nth-child(-n+4) { border-bottom: 1px solid var(--line); }
+  .client-access-summary--five > div:last-child:nth-child(odd) { grid-column: 1 / -1; }
 }
 @media (max-width: 620px) {
   .client-access-form-grid, .client-access-product-grid { grid-template-columns: 1fr; }
@@ -6228,9 +6233,16 @@ a.pick { color: inherit; text-decoration: none; }
 .funding-program-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) minmax(180px, 260px); gap: 8px; }
 .funding-program-layout { min-width: 0; display: grid; grid-template-columns: minmax(240px, 320px) minmax(0, 1fr); gap: 14px; align-items: start; }
 .funding-program-list { min-width: 0; display: grid; gap: 5px; max-height: calc(100vh - 280px); overflow: auto; padding-right: 4px; }
-.funding-program-list > button { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
-.funding-program-list > button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
-.funding-program-list > button > span { min-width: 0; display: grid; gap: 2px; }
+.funding-program-row { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: stretch; gap: 4px; }
+.funding-program-list .funding-program-pick { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--ink); text-align: left; cursor: pointer; }
+.funding-program-list .funding-program-pick.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.funding-program-list .funding-program-pick > span { min-width: 0; display: grid; gap: 2px; }
+.funding-program-retire { display: grid; place-items: center; width: 30px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); cursor: pointer; }
+.funding-program-retire:hover:not(:disabled) { border-color: var(--accent); color: var(--ink); }
+.funding-program-retire.danger:hover:not(:disabled) { border-color: var(--bad, #b4232a); color: var(--bad, #b4232a); }
+.funding-program-retire:disabled { cursor: not-allowed; opacity: .5; }
+.funding-program-row-skeleton { display: grid; gap: 5px; }
+.funding-program-row-skeleton > span { display: block; height: 44px; border-radius: 6px; }
 .funding-program-list strong { overflow: hidden; font-size: 11px; text-overflow: ellipsis; }
 .funding-program-list small { overflow: hidden; color: var(--muted); font-size: 9px; text-overflow: ellipsis; text-transform: capitalize; }
 .funding-program-editor { min-width: 0; display: grid; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }

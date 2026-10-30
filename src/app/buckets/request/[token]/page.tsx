@@ -212,12 +212,16 @@ export default function BucketRequestPage() {
     window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
-  async function fetchAccessSession(): Promise<UploadSession> {
-    const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/access`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
+  // Entering the room records a sign-in; refreshing an open room must not,
+  // so the first call goes to /access and every later one to /status.
+  async function fetchSession(endpoint: "access" | "status"): Promise<UploadSession> {
+    const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
     if (!response.ok) throw await responseError(response, "The room PIN did not work.");
     const data = await response.json() as UploadSession;
     return { ...data, room_kind: data.room_kind ?? "basic" };
   }
+  async function fetchAccessSession(): Promise<UploadSession> { return fetchSession("access"); }
+  async function fetchStatusSession(): Promise<UploadSession> { return fetchSession("status"); }
   async function fetchOfferOnlySession(code: string): Promise<UploadSession> {
     const response = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/offer-deliveries`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
     if (!response.ok) throw await responseError(response, "The room PIN did not work.");
@@ -333,7 +337,7 @@ export default function BucketRequestPage() {
     if (loaded.roomKind) setPrecallRoomKind(loaded.roomKind);
   }
   async function refreshRoom() {
-    const nextSession = await fetchAccessSession();
+    const nextSession = await fetchStatusSession();
     const context = await fetchRoomContext(passcode.trim(), nextSession.room_kind);
     const [nextOffer, nextUpdates] = await Promise.all([
       context.hasMerchantOffer ? fetchOffer(passcode.trim()) : Promise.resolve(null),

@@ -329,10 +329,11 @@ export interface ClientAccessDirectoryRow {
   account_status: string | null;
   file_count: number;
   last_active_at: string | null;
-  // Last sign-in by any door: Clerk session, room PIN, or emailed one-time code.
-  last_login_at?: string | null;
-  // Sign-ins that never involved a login account (room PIN, emailed code).
+  // Sign-ins that never involved a login account: this person's own room-PIN
+  // entries plus emailed one-time codes. Clerk sessions are not recorded here.
   passcode_signin_count?: number;
+  room_pin_signin_count?: number;
+  email_code_signin_count?: number;
   last_passcode_signin_at?: string | null;
   status: string;
 }

@@ -40,15 +40,49 @@ const LOGIN_LABEL: Record<ClientAccessDirectoryRow["login_state"], string> = {
   passcode: "PIN access",
 };
 
-const STATUS_LABEL: Record<string, string> = {
-  no_login: "No login",
-  passcode_access: "PIN access",
+const HISTORY_LABEL: Record<string, string> = {
+  room_pin_signin: "PIN sign-in",
+  room_pin_failed: "Wrong PIN entered",
+  email_code_signin: "Email code sign-in",
 };
 
-function passcodeSummary(row: Pick<ClientAccessDirectoryRow, "passcode_signin_count" | "last_passcode_signin_at">) {
-  const count = row.passcode_signin_count ?? 0;
-  if (!count) return null;
-  return `${count} PIN sign-in${count === 1 ? "" : "s"} · last ${formatDate(row.last_passcode_signin_at ?? null)}`;
+type SigninCounts = Pick<ClientAccessDirectoryRow, "passcode_signin_count" | "room_pin_signin_count" | "email_code_signin_count" | "last_passcode_signin_at">;
+
+// The "passcode" state covers two doors: the room PIN and the emailed
+// one-time code. Name the door the person actually used.
+function accessLabel(row: Pick<ClientAccessDirectoryRow, "login_state" | "room_pin_signin_count" | "email_code_signin_count">) {
+  if (row.login_state !== "passcode") return LOGIN_LABEL[row.login_state];
+  const pins = row.room_pin_signin_count ?? 0;
+  const codes = row.email_code_signin_count ?? 0;
+  if (pins && codes) return "PIN + code access";
+  if (codes && !pins) return "Code access";
+  return "PIN access";
+}
+
+function statusLabel(row: Pick<ClientAccessDirectoryRow, "status" | "login_state" | "room_pin_signin_count" | "email_code_signin_count">) {
+  if (row.status === "passcode_access") return accessLabel(row);
+  if (row.status === "no_login") return "No login";
+  return labelize(row.status);
+}
+
+function signinParts(row: SigninCounts) {
+  const pins = row.room_pin_signin_count ?? 0;
+  const codes = row.email_code_signin_count ?? 0;
+  const parts: string[] = [];
+  if (pins) parts.push(`${pins} PIN sign-in${pins === 1 ? "" : "s"}`);
+  if (codes) parts.push(`${codes} code sign-in${codes === 1 ? "" : "s"}`);
+  if (!parts.length && row.passcode_signin_count) parts.push(`${row.passcode_signin_count} sign-in${row.passcode_signin_count === 1 ? "" : "s"}`);
+  return parts;
+}
+
+// Short form for the table cell; the full sentence goes in the tooltip and the drawer.
+function passcodeSummary(row: SigninCounts, full = false) {
+  const parts = signinParts(row);
+  if (!parts.length) return null;
+  const last = row.last_passcode_signin_at ?? null;
+  return full
+    ? `${parts.join(" + ")} · last ${formatDate(last)}`
+    : `${parts.join(" + ")} · ${formatShortDate(last)}`;
 }
 
 function clientAccessRowId(row: ClientAccessDirectoryRow) {
@@ -145,7 +179,7 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
             { label: "Business" },
             { label: "Contact", width: 210 },
             { label: "Origin", width: 130 },
-            { label: "Login", width: 168 },
+            { label: "Login", width: 190 },
             { label: "Account types", width: 170 },
             { label: "Files", width: 62, align: "r" },
             { label: "Last active", width: 126 },
@@ -174,13 +208,13 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
               </Td>
               <Td><span className="sub">{labelize(row.origin)}</span></Td>
               <Td>
-                <CellChip tone={LOGIN_TONE[row.login_state]}>{LOGIN_LABEL[row.login_state]}</CellChip>
-                {passcodeSummary(row) ? <div className="sub">{passcodeSummary(row)}</div> : null}
+                <CellChip tone={LOGIN_TONE[row.login_state]}>{accessLabel(row)}</CellChip>
+                {passcodeSummary(row) ? <div className="sub" title={passcodeSummary(row, true) ?? undefined}>{passcodeSummary(row)}</div> : null}
               </Td>
               <Td><AccountTypeBadges products={row.account_types} /></Td>
               <Td align="r"><span className="num">{row.file_count}</span></Td>
               <Td><span className="sub">{formatDate(row.last_active_at)}</span></Td>
-              <Td><CellChip tone={row.account_status === "suspended" ? "bad" : "mut"}>{STATUS_LABEL[row.status] ?? labelize(row.status)}</CellChip></Td>
+              <Td><CellChip tone={row.account_status === "suspended" ? "bad" : "mut"}>{statusLabel(row)}</CellChip></Td>
               <Td>
                 <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 4 }}>
                   <PinRowButton pinned={pinned} onToggle={() => togglePin(rowId)} label={row.client_name} />
@@ -302,7 +336,7 @@ function ClientAccessDrawer({ row, onClose }: { row: ClientAccessDirectoryRow | 
       open={!!row}
       onClose={onClose}
       title={result ? "Access updated" : reviewAction ? "Review before running" : "Manage client access"}
-      sub={row ? `${row.client_name} · ${row.email || "No login"}` : undefined}
+      sub={row ? `${row.client_name} · ${row.email || "No email"}` : undefined}
       width="lg"
       closeOnBackdrop={!busy}
       bodyClass="client-access-drawer"
@@ -312,9 +346,9 @@ function ClientAccessDrawer({ row, onClose }: { row: ClientAccessDirectoryRow | 
       {detail.error ? <CellChip tone="bad">{detail.error.message}</CellChip> : null}
       {detail.data && !reviewAction && !result ? (
         <div className="grid">
-          <div className="client-access-summary">
-            <div><span className="lbl">Login</span><CellChip tone={LOGIN_TONE[detail.data.subject.login_state]}>{LOGIN_LABEL[detail.data.subject.login_state]}</CellChip></div>
-            <div><span className="lbl">Last sign-in</span><b>{formatDate(detail.data.subject.last_login_at ?? null, true)}</b>{passcodeSummary(detail.data.subject) ? <span className="sub">{passcodeSummary(detail.data.subject)}</span> : null}</div>
+          <div className="client-access-summary client-access-summary--five">
+            <div><span className="lbl">Login</span><CellChip tone={LOGIN_TONE[detail.data.subject.login_state]}>{accessLabel(detail.data.subject)}</CellChip></div>
+            <div><span className="lbl">Last PIN/code sign-in</span><b>{formatDate(detail.data.subject.last_passcode_signin_at ?? null, true)}</b>{passcodeSummary(detail.data.subject, true) ? <span className="sub">{passcodeSummary(detail.data.subject, true)}</span> : null}</div>
             <div><span className="lbl">Last active</span><b>{formatDate(detail.data.subject.last_active_at)}</b></div>
             <div><span className="lbl">Files</span><b className="num">{detail.data.subject.file_count}</b></div>
             <div><span className="lbl">Origin</span><b>{labelize(detail.data.subject.origin)}</b></div>
@@ -392,7 +426,7 @@ function ClientAccessDrawer({ row, onClose }: { row: ClientAccessDirectoryRow | 
               {detail.data.access_history.map((event) => (
                 <div className="itemrow" key={event.id}>
                   <Icon name="shield" size={13} />
-                  <span className="grow"><b>{labelize(event.action)}</b><span className="sub">{event.reason || "No reason recorded"}</span></span>
+                  <span className="grow"><b>{HISTORY_LABEL[event.action] ?? labelize(event.action)}</b><span className="sub">{event.reason || "No reason recorded"}</span></span>
                   <span className="sub">{formatDate(event.created_at, true)}</span>
                 </div>
               ))}
@@ -473,6 +507,12 @@ function actionLabel(action: ReviewAction, isNew: boolean, suspended: boolean) {
 
 function shortId(value: string) { return value.slice(0, 8).toUpperCase(); }
 function labelize(value: string) { return value.replace(/[._-]+/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()); }
+function formatShortDate(value: string | null) {
+  if (!value) return "never";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "unknown";
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
 function formatDate(value: string | null, includeTime = false) {
   if (!value) return "Never";
   const date = new Date(value);
