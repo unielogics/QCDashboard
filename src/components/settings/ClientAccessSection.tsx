@@ -28,6 +28,7 @@ const LOGIN_TONE: Record<ClientAccessDirectoryRow["login_state"], ChipTone> = {
   active: "ok",
   suspended: "bad",
   invite_failed: "bad",
+  passcode: "acc",
 };
 
 const LOGIN_LABEL: Record<ClientAccessDirectoryRow["login_state"], string> = {
@@ -36,7 +37,19 @@ const LOGIN_LABEL: Record<ClientAccessDirectoryRow["login_state"], string> = {
   active: "Active",
   suspended: "Suspended",
   invite_failed: "Invite failed",
+  passcode: "PIN access",
 };
+
+const STATUS_LABEL: Record<string, string> = {
+  no_login: "No login",
+  passcode_access: "PIN access",
+};
+
+function passcodeSummary(row: Pick<ClientAccessDirectoryRow, "passcode_signin_count" | "last_passcode_signin_at">) {
+  const count = row.passcode_signin_count ?? 0;
+  if (!count) return null;
+  return `${count} PIN sign-in${count === 1 ? "" : "s"} · last ${formatDate(row.last_passcode_signin_at ?? null)}`;
+}
 
 function clientAccessRowId(row: ClientAccessDirectoryRow) {
   return `${row.subject_kind}:${row.subject_id}`;
@@ -92,6 +105,7 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
             <Select value={loginFilter} onChange={(event) => { setLoginFilter(event.target.value); setPage(1); }} aria-label="Login status">
               <option value="all">All login states</option>
               <option value="no_login">No login</option>
+              <option value="passcode">PIN access</option>
               <option value="invited">Invited</option>
               <option value="active">Active</option>
               <option value="suspended">Suspended</option>
@@ -131,7 +145,7 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
             { label: "Business" },
             { label: "Contact", width: 210 },
             { label: "Origin", width: 130 },
-            { label: "Login", width: 110 },
+            { label: "Login", width: 168 },
             { label: "Account types", width: 170 },
             { label: "Files", width: 62, align: "r" },
             { label: "Last active", width: 126 },
@@ -159,11 +173,14 @@ export function ClientAccessSection({ initialClientId }: { initialClientId?: str
                 <span className="sub">{row.phone || "No phone"}</span>
               </Td>
               <Td><span className="sub">{labelize(row.origin)}</span></Td>
-              <Td><CellChip tone={LOGIN_TONE[row.login_state]}>{LOGIN_LABEL[row.login_state]}</CellChip></Td>
+              <Td>
+                <CellChip tone={LOGIN_TONE[row.login_state]}>{LOGIN_LABEL[row.login_state]}</CellChip>
+                {passcodeSummary(row) ? <div className="sub">{passcodeSummary(row)}</div> : null}
+              </Td>
               <Td><AccountTypeBadges products={row.account_types} /></Td>
               <Td align="r"><span className="num">{row.file_count}</span></Td>
               <Td><span className="sub">{formatDate(row.last_active_at)}</span></Td>
-              <Td><CellChip tone={row.account_status === "suspended" ? "bad" : "mut"}>{labelize(row.status)}</CellChip></Td>
+              <Td><CellChip tone={row.account_status === "suspended" ? "bad" : "mut"}>{STATUS_LABEL[row.status] ?? labelize(row.status)}</CellChip></Td>
               <Td>
                 <span className="row" style={{ justifyContent: "flex-end", flexWrap: "nowrap", gap: 4 }}>
                   <PinRowButton pinned={pinned} onToggle={() => togglePin(rowId)} label={row.client_name} />
@@ -297,6 +314,7 @@ function ClientAccessDrawer({ row, onClose }: { row: ClientAccessDirectoryRow | 
         <div className="grid">
           <div className="client-access-summary">
             <div><span className="lbl">Login</span><CellChip tone={LOGIN_TONE[detail.data.subject.login_state]}>{LOGIN_LABEL[detail.data.subject.login_state]}</CellChip></div>
+            <div><span className="lbl">Last sign-in</span><b>{formatDate(detail.data.subject.last_login_at ?? null, true)}</b>{passcodeSummary(detail.data.subject) ? <span className="sub">{passcodeSummary(detail.data.subject)}</span> : null}</div>
             <div><span className="lbl">Last active</span><b>{formatDate(detail.data.subject.last_active_at)}</b></div>
             <div><span className="lbl">Files</span><b className="num">{detail.data.subject.file_count}</b></div>
             <div><span className="lbl">Origin</span><b>{labelize(detail.data.subject.origin)}</b></div>

@@ -312,7 +312,7 @@ export interface Document {
 }
 
 export type ProductAccountType = "funding" | "audit";
-export type ClientLoginState = "no_login" | "invited" | "active" | "suspended" | "invite_failed";
+export type ClientLoginState = "no_login" | "invited" | "active" | "suspended" | "invite_failed" | "passcode";
 
 export interface ClientAccessDirectoryRow {
   subject_kind: "client" | "intake" | "user";
@@ -329,6 +329,11 @@ export interface ClientAccessDirectoryRow {
   account_status: string | null;
   file_count: number;
   last_active_at: string | null;
+  // Last sign-in by any door: Clerk session, room PIN, or emailed one-time code.
+  last_login_at?: string | null;
+  // Sign-ins that never involved a login account (room PIN, emailed code).
+  passcode_signin_count?: number;
+  last_passcode_signin_at?: string | null;
   status: string;
 }
 
