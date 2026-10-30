@@ -6,6 +6,12 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // Next compiles JSX with the automatic runtime (react/jsx-runtime). Without
+  // this, esbuild falls back to React.createElement under test and any .tsx
+  // component without a React import throws "React is not defined" when a
+  // test renders it — a difference between test and build, not a bug in the
+  // component.
+  esbuild: { jsx: "automatic" },
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
