@@ -237,6 +237,11 @@
   .client-payment-proof-actions > * { width: 100%; }
 }
 .application-room-section { min-height: 560px; padding: 26px 0; }
+/* Documents tab: uploads are the first thing on the page and size to their content; the use-of-funds editor follows under a divider. The To-do teaser is a strip, not a tab-height block. */
+.application-room-section.application-room-documents { min-height: 0; }
+.application-room-section--secondary { min-height: 0; padding-top: 20px; border-top: 1px solid var(--room-line); }
+.application-room-section--teaser { min-height: 0; padding: 18px 0; }
+.application-room-section--teaser .application-room-section-head { margin-bottom: 0; }
 .application-room-section-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 20px; }
 .application-room-section h2 { margin-top: 4px; font-size: 20px; }
 .application-room-document-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 390px); gap: 20px; align-items: start; }
