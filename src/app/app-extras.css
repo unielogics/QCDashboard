@@ -6606,3 +6606,12 @@ a.pick { color: inherit; text-decoration: none; }
   .file-rail { grid-auto-flow: column; grid-auto-columns: max-content; overflow-x: auto; scrollbar-width: none; }
   .file-rail::-webkit-scrollbar { display: none; }
 }
+
+/* Script-focused regions are landing points for assistive tech, not controls.
+   The list shell, the detail shell and the file page focus a wrapper div so a
+   screen reader starts in the right place; Chrome treats that focus as
+   :focus-visible before any pointer input and draws its black two-tone ring
+   around the whole region — the "border" that appears on some reloads. Real
+   controls keep the accent ring above; non-interactive containers do not. */
+.app :where(div, section, main, aside, article)[tabindex="-1"]:focus,
+.app :where(div, section, main, aside, article)[tabindex="-1"]:focus-visible { outline: none; }
