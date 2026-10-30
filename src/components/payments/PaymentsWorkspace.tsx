@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Btn, Callout, CellChip, Empty, Field, Input, Loading, Panel, Select, Textarea, WarnLine } from "@/components/ds";
+import { Btn, Callout, CellChip, Empty, Field, Input, Loading, Panel, Select, Textarea, WarnLine, cx } from "@/components/ds";
+import { FileSection, useSectionState } from "@/components/file/FileSection";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { Icon } from "@/components/design-system/Icon";
 import { FeeAllocationEditor } from "@/components/payments/FeeAllocationEditor";
@@ -9,7 +10,14 @@ import { PrivateFundingSchedulePanel } from "@/components/payments/PrivateFundin
 import { usePaymentCommand, usePaymentSummary } from "@/hooks/usePayments";
 import { isAchMandateActive, isAchMandateSigned, paymentMoney, paymentPaths, type AuthorizationRequestDelivery, type DebitNotice, type PaymentSummary, type PaymentTimelineItem, type ProtectedPaymentArtifact } from "@/lib/payments";
 
-export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: string | null | undefined; sourceLabel?: string }) {
+/**
+ * `compact` is the file page's mode: each step folds behind its heading (open
+ * while incomplete, closed once done) and the timeline/receipts/refund rail
+ * folds into one section, so the tab reads as five lines first. The loans
+ * page keeps the expanded layout.
+ */
+export function PaymentsWorkspace({ profileId, sourceLabel, compact = false }: { profileId: string | null | undefined; sourceLabel?: string; compact?: boolean }) {
+  const railSections = useSectionState("qc:file:payment-rail");
   const summaryQuery = usePaymentSummary(profileId, Boolean(profileId));
   const command = usePaymentCommand(profileId);
   const [confirmRelease, setConfirmRelease] = useState(false);
@@ -82,6 +90,14 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
     }
   }
 
+  const paymentRail = (
+          <aside className="payment-primary-rail">
+                <Panel title="Collection timeline" noPad><PaymentTimeline items={summary.timeline} /></Panel>
+                {obligation ? <FeeReceiptPanel summary={summary} form={receiptForm} setForm={setReceiptForm} busy={command.isPending} onSave={() => run(paymentPaths.bankDirectReceipts(profileId), `${receiptForm.receipt_type}-receipt`, profileId, { obligation_id: obligation.id, receipt_type: receiptForm.receipt_type, amount: Number(receiptForm.amount), received_on: receiptForm.received_at, reference: receiptForm.reference.trim(), note: receiptForm.note.trim() || null }, receiptForm.receipt_type === "bank_direct" ? "Bank-direct receipt reconciled." : "External/manual receipt reconciled.")} /> : null}
+                {transfer && summary.permissions.can_refund && transfer.refundable_amount > 0 ? <RefundPanel amount={refundAmount} setAmount={setRefundAmount} max={transfer.refundable_amount} busy={command.isPending} onRefund={() => setConfirmRefund(true)} /> : null}
+              </aside>
+  );
+
   return (
     <div className="payments-workspace">
       <header className="payments-workspace-header">
@@ -108,7 +124,7 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
         sub="Primary collection workflow"
         actions={<CellChip tone={obligationTone(obligation?.status)}>{obligation ? humanize(obligation.status) : "Not prepared"}</CellChip>}
       >
-        <div className="payment-primary-grid">
+        <div className={cx("payment-primary-grid", compact && "is-compact")}>
           <div className="payment-primary-main">
             <FeeAllocationEditor
               profileId={profileId}
@@ -117,7 +133,7 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
             />
 
             <section className="payment-step-section payment-agreement-step">
-              <StepHeading number="1" title="Prepare the Success Fee Agreement" detail="Create the deal-specific agreement from the current accepted economics before any ACH authorization is requested." complete={signedSuccessFeeAgreement} />
+              <StepHeading number="1" stepKey={compact ? "qc:file:payment-steps" : undefined} title="Prepare the Success Fee Agreement" detail="Create the deal-specific agreement from the current accepted economics before any ACH authorization is requested." complete={signedSuccessFeeAgreement} />
               <div className="payment-agreement-summary">
                 <div><span>Accepted amount</span><strong>{paymentMoney(summary.accepted_amount)}</strong></div>
                 <div><span>Origination fee</span><strong>{paymentMoney(summary.origination_fee)}</strong><small>{summary.origination_fee_points == null ? "No points saved" : `${summary.origination_fee_points.toFixed(2)} points`}</small></div>
@@ -148,7 +164,7 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
             </section>
 
             <section className="payment-step-section">
-              <StepHeading number="2" title="Prepare the fee obligation" detail="Freeze each fee line against its governing executed agreement. Signing Step 1 normally creates this automatically; use the replacement controls only to correct an existing request." complete={Boolean(obligation?.agreement_ready && obligationCurrent)} />
+              <StepHeading number="2" stepKey={compact ? "qc:file:payment-steps" : undefined} title="Prepare the fee obligation" detail="Freeze each fee line against its governing executed agreement. Signing Step 1 normally creates this automatically; use the replacement controls only to correct an existing request." complete={Boolean(obligation?.agreement_ready && obligationCurrent)} />
               {obligation?.agreement_ready ? <>
                 <FeeObligationView summary={summary} />
                 {!obligationCurrent ? <Callout tone="bad"><b>This fee request is out of date.</b> Deal economics changed after it was prepared. It cannot be sent or released. Save a current balanced allocation, then prepare a replacement below.</Callout> : null}
@@ -192,7 +208,7 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
             </section>
 
             <section className="payment-step-section">
-              <StepHeading number="3" title="Request one-time CCD authorization" detail="Set the exact debit date and window, send the signing request, and keep the post-signature exact debit notice as a separate release gate." complete={activeMandate && summary.readiness.debit_notice_delivered} />
+              <StepHeading number="3" stepKey={compact ? "qc:file:payment-steps" : undefined} title="Request one-time CCD authorization" detail="Set the exact debit date and window, send the signing request, and keep the post-signature exact debit notice as a separate release gate." complete={activeMandate && summary.readiness.debit_notice_delivered} />
               <div className="payment-status-row">
                 <StatusBlock label="Payment account" value={summary.funding_source ? `${summary.funding_source.institution_name || "Connected bank"} ••••${summary.funding_source.account_mask || ""} · ${summary.funding_source.ach_class}` : "Not connected"} status={summary.funding_source?.status ?? "pending"} />
                 <StatusBlock label="One-time mandate" value={summary.mandate ? `${summary.mandate.sec_code} · ${paymentMoney(summary.mandate.authorized_amount)}` : "Not signed"} status={activeMandate ? "active" : summary.mandate?.status ?? "pending"} />
@@ -249,7 +265,7 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
             </section>
 
             <section className="payment-step-section">
-              <StepHeading number="4" title="Confirm actual funding" detail="An estimated closing date or pipeline status can never unlock ACH." complete={Boolean(summary.funding_confirmation)} />
+              <StepHeading number="4" stepKey={compact ? "qc:file:payment-steps" : undefined} title="Confirm actual funding" detail="An estimated closing date or pipeline status can never unlock ACH." complete={Boolean(summary.funding_confirmation)} />
               {summary.funding_confirmation ? <FundingConfirmationView confirmation={summary.funding_confirmation} /> : summary.permissions.can_confirm_funding && obligation ? (
                 <div className="payment-funding-form">
                   <Field label="Actual funding date"><Input type="date" value={fundingForm.funded_at} onChange={(event) => setFundingForm({ ...fundingForm, funded_at: event.target.value })} /></Field>
@@ -274,7 +290,7 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
             </section>
 
             <section className="payment-step-section payment-release-section">
-              <StepHeading number="5" title="Release ACH collection" detail="This is the only action that can initiate the one-time origination-fee debit." complete={Boolean(transfer)} />
+              <StepHeading number="5" stepKey={compact ? "qc:file:payment-steps" : undefined} title="Release ACH collection" detail="This is the only action that can initiate the one-time origination-fee debit." complete={Boolean(transfer)} />
               <ReadinessChecklist summary={summary} />
               {transfer ? <><TransferView transfer={transfer} /><div className="payment-private-actions">{transfer.resume_eligible && summary.permissions.can_retry ? <Btn disabled={command.isPending} onClick={() => setConfirmResume(true)}>Resume existing ACH attempt</Btn> : null}{transfer.retry_eligible && summary.permissions.can_retry ? <Btn disabled={command.isPending} onClick={() => setConfirmRetry(true)}>Review eligible ACH retry</Btn> : null}</div></> : (
                 <Btn
@@ -287,11 +303,11 @@ export function PaymentsWorkspace({ profileId, sourceLabel }: { profileId: strin
             </section>
           </div>
 
-          <aside className="payment-primary-rail">
-            <Panel title="Collection timeline" noPad><PaymentTimeline items={summary.timeline} /></Panel>
-            {obligation ? <FeeReceiptPanel summary={summary} form={receiptForm} setForm={setReceiptForm} busy={command.isPending} onSave={() => run(paymentPaths.bankDirectReceipts(profileId), `${receiptForm.receipt_type}-receipt`, profileId, { obligation_id: obligation.id, receipt_type: receiptForm.receipt_type, amount: Number(receiptForm.amount), received_on: receiptForm.received_at, reference: receiptForm.reference.trim(), note: receiptForm.note.trim() || null }, receiptForm.receipt_type === "bank_direct" ? "Bank-direct receipt reconciled." : "External/manual receipt reconciled.")} /> : null}
-            {transfer && summary.permissions.can_refund && transfer.refundable_amount > 0 ? <RefundPanel amount={refundAmount} setAmount={setRefundAmount} max={transfer.refundable_amount} busy={command.isPending} onRefund={() => setConfirmRefund(true)} /> : null}
-          </aside>
+          {compact ? (
+            <FileSection id="rail" title="Timeline, receipts and refunds" summary="Collection history and reconciliation for this file" open={railSections.isOpen("rail", false)} onToggle={() => railSections.toggle("rail", false)}>
+              {paymentRail}
+            </FileSection>
+          ) : paymentRail}
         </div>
       </Panel>
 
@@ -365,8 +381,27 @@ function PaymentMetrics({ summary }: { summary: PaymentSummary }) {
   return <div className="payment-metrics">{metrics.map(([label, value, detail]) => <div key={label}><span>{label}</span><strong>{paymentMoney(value)}</strong><small>{detail}</small></div>)}</div>;
 }
 
-function StepHeading({ number, title, detail, complete }: { number: string; title: string; detail: string; complete: boolean }) {
-  return <header className="payment-step-heading"><span className={complete ? "done" : undefined}>{complete ? <Icon name="check" size={14} /> : number}</span><div><h4>{title}</h4><p>{detail}</p></div></header>;
+function StepHeading({ number, title, detail, complete, stepKey }: { number: string; title: string; detail: string; complete: boolean; stepKey?: string }) {
+  // With a stepKey the heading folds its step: open while the step is still to
+  // do, closed once complete, and the viewer's choice is remembered.
+  const sections = useSectionState(stepKey ?? "qc:payments:steps");
+  const collapsible = Boolean(stepKey);
+  const open = collapsible ? sections.isOpen(number, !complete) : true;
+  return (
+    <header
+      className={cx("payment-step-heading", collapsible && "is-collapsible")}
+      data-open={collapsible ? String(open) : undefined}
+      onClick={collapsible ? () => sections.toggle(number, !complete) : undefined}
+    >
+      <span className={complete ? "done" : undefined}>{complete ? <Icon name="check" size={14} /> : number}</span>
+      <div><h4>{title}</h4><p>{detail}</p></div>
+      {collapsible ? (
+        <button type="button" className="payment-step-toggle" aria-expanded={open} aria-label={`${open ? "Collapse" : "Expand"} step ${number}`} onClick={(event) => { event.stopPropagation(); sections.toggle(number, !complete); }}>
+          <Icon name={open ? "chevU" : "chevD"} size={14} />
+        </button>
+      ) : null}
+    </header>
+  );
 }
 
 function FeeObligationView({ summary }: { summary: PaymentSummary }) {

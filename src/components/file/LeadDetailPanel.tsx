@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { FileSection, useSectionState } from "./FileSection";
 import Link from "next/link";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
 import { Btn, Callout, CellChip, cx, Field, IconBtn, Input, Lbl, Linky, Panel, Row, Seg, Select, StatusLine, Textarea, WarnLine } from "@/components/ds";
@@ -160,7 +161,7 @@ export function PackageArtifactCard({ artifact, label, description, version, cur
   const previewUrl = artifact.preview_url || artifact.download_url;
   return <article className="package-document-card">
     <div className="package-document-icon"><Icon name="docCheck" size={20} /></div>
-    <div className="package-document-copy"><div><span className="lbl">{label}</span><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip></div><strong>{artifact.title}</strong><p>{description}</p><small>v{version} · {formatDateTime(artifact.created_at)} · {bucketSynced ? "Synced to bucket" : "Legacy artifact"}{sha ? ` · ${sha.slice(0, 10)}…` : ""}</small></div>
+    <div className="package-document-copy"><div><span className="lbl">{label}</span><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip></div><strong>{artifact.title}</strong><p>{description}</p><small>v{version} · {formatDateTime(artifact.created_at)} · {bucketSynced ? "Synced to room" : "Legacy artifact"}{sha ? ` · ${sha.slice(0, 10)}…` : ""}</small></div>
     <div className="package-document-actions">{previewUrl ? <><a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm"><Icon name="eye" size={14} />Preview</a>{artifact.download_url ? <a href={artifact.download_url} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Download ${label}`} aria-label={`Download ${label}`}><Icon name="download" size={14} /></a> : null}</> : <CellChip tone="warn">PDF unavailable</CellChip>}</div>
   </article>;
 }
@@ -170,7 +171,7 @@ export function PackageVersionList({ label, artifacts }: { label: string; artifa
     const version = artifactVersion(artifact, artifacts.length - index);
     const previewUrl = artifact.preview_url || artifact.download_url;
     const current = index === 0 && artifact.status !== "superseded";
-    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Bucket PDF" : " · Legacy artifact"}</small></span></div>{previewUrl ? <a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Preview ${label} version ${version}`} aria-label={`Preview ${label} version ${version}`}><Icon name="eye" size={14} /></a> : null}</div>;
+    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Room PDF" : " · Legacy artifact"}</small></span></div>{previewUrl ? <a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Preview ${label} version ${version}`} aria-label={`Preview ${label} version ${version}`}><Icon name="eye" size={14} /></a> : null}</div>;
   }) : <div className="empty">No PDF versions yet.</div>}</section>;
 }
 
@@ -634,6 +635,8 @@ export function LeadDetailPanel({
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [prototypeView, setPrototypeView] = useState<LeadDetailView>(initialView);
+  // Which Underwriting sections this viewer keeps open; the defaults open the step that needs attention.
+  const uwSections = useSectionState("qc:file:underwriting-sections");
   const [productionShareOpen, setProductionShareOpen] = useState(false);
   // "Record loan terms": the term-sheet drawer lives in the Production tab; the
   // Underwriting tab and the page-action menu ask for it through this flag.
@@ -790,7 +793,7 @@ export function LeadDetailPanel({
       if (previewWindow && previewUrl) previewWindow.location.replace(previewUrl);
       else if (previewWindow) previewWindow.close();
       toast.show(generated.superseded_bucket_file_ids.length
-        ? "Package refreshed. The previous bucket PDFs were superseded."
+        ? "Package refreshed. The previous room PDFs were superseded."
         : "Executive summary and lender package are ready in the room.");
     } catch (reason) {
       previewWindow?.close();
@@ -1654,7 +1657,7 @@ export function LeadDetailPanel({
         <PageActionMenu items={[
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
           { label: "View client conversation", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("client"); }, hidden: !detail },
-          { label: "Attach another bucket", onSelect: onLinkBucketIntake, hidden: !detail },
+          { label: "Attach another room", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
@@ -1810,7 +1813,6 @@ export function LeadDetailPanel({
                   {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
                   {underwritingLoading ? <div className="empty">Loading underwriting controls...</div> : (
                     <div className="underwriting-workspace">
-                      {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
                       <div className="underwriting-status-strip">
                         <div>
                           <span className="lbl">Current lifecycle</span>
@@ -1832,18 +1834,26 @@ export function LeadDetailPanel({
                             {underwriting?.estimated_close_date ? ` · closing ${new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString()}` : " · no closing date"}
                           </span>
                         </div>
-                      </div>
-                      <section className="deal-economics-panel" aria-labelledby="underwriting-deal-economics-title">
-                        <div className="deal-economics-panel-head">
-                          <div>
-                            <span className="lbl">Internal earnings</span>
-                            <h3 id="underwriting-deal-economics-title">Deal economics</h3>
-                            <p className="sub">Compare the lender-approved amount with what the client accepted, then record QC revenue.</p>
-                          </div>
-                          <Btn variant="pri" onClick={saveDealEconomics} disabled={underwritingSaving || !draftEconomics.valid}>
-                            {underwritingSaving ? "Saving..." : "Save deal economics"}
-                          </Btn>
-                        </div>
+                      <FileSection
+                        id="readiness"
+                        title="Capital readiness"
+                        summary={"Financial intelligence, score and policy for this file"}
+                        status={null}
+                        open={uwSections.isOpen("readiness", false)}
+                        onToggle={() => uwSections.toggle("readiness", false)}
+                      >
+                      {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
+                      </FileSection>
+                      <FileSection
+                        id="economics"
+                        title="Deal economics"
+                        summary={underwriting?.accepted_amount != null ? `${formatMoney(underwriting.accepted_amount)} accepted${forecastEarnings != null ? ` · ${formatMoney(forecastEarnings)} expected earnings` : ""}` : "Record what the client accepted and QC revenue"}
+                        status={underwriting?.accepted_amount != null ? { label: "Recorded", tone: "ok" } : { label: "Not recorded", tone: "warn" }}
+                        actions={<Btn variant="pri" size="sm" onClick={saveDealEconomics} disabled={underwritingSaving || !draftEconomics.valid}>{underwritingSaving ? "Saving..." : "Save deal economics"}</Btn>}
+                        open={uwSections.isOpen("economics", underwriting?.accepted_amount == null)}
+                        onToggle={() => uwSections.toggle("economics", underwriting?.accepted_amount == null)}
+                      >
+                      <section className="deal-economics-panel">
                         <DealEconomicsFields
                           profileId={profileId}
                           vertical={dealEconomicsVertical}
@@ -1862,41 +1872,61 @@ export function LeadDetailPanel({
                           onEstimatedCloseDateChange={(value) => setUnderwritingDraft((current) => ({ ...current, estimated_close_date: value }))}
                         />
                       </section>
+                      </FileSection>
                       {isDealerFile ? (
-                        <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
-                          <div>
-                            <span className="lbl">Loan terms</span>
-                            <b>
-                              {termSheet?.current
-                                ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}`
-                                : "No loan terms recorded"}
-                            </b>
-                            <span className="sub">
-                              {termSheet?.current
-                                ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · recorded ${formatDateTime(termSheet.current.entered_at)}.`
-                                : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
-                            </span>
+                      <FileSection
+                          id="terms"
+                          title="Loan terms"
+                          summary={termSheet?.current ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)}` : "No loan terms recorded yet"}
+                          status={termSheet?.current ? { label: "Recorded", tone: "ok" } : { label: "Needed for the package", tone: "warn" }}
+                          open={uwSections.isOpen("terms", !termSheet?.current)}
+                          onToggle={() => uwSections.toggle("terms", !termSheet?.current)}
+                        >
+                        {isDealerFile ? (
+                          <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
+                            <div>
+                              <span className="lbl">Loan terms</span>
+                              <b>
+                                {termSheet?.current
+                                  ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}`
+                                  : "No loan terms recorded"}
+                              </b>
+                              <span className="sub">
+                                {termSheet?.current
+                                  ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · recorded ${formatDateTime(termSheet.current.entered_at)}.`
+                                  : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
+                              </span>
+                            </div>
+                            <div className="underwriting-term-sheet-actions">
+                              {termSheet?.current && underwriting?.profile_id ? (
+                                <DealerTermSheetDocumentActions
+                                  profileId={underwriting.profile_id}
+                                  terms={termSheet.current}
+                                  contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
+                                  onEdit={openTermSheet}
+                                  selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
+                                  onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
+                                  onCompose={() => openOfferComposer(productionTermSelection)}
+                                />
+                              ) : (
+                                <Btn variant="pri" size="sm" onClick={openTermSheet}>
+                                  <Icon name="pencil" size={14} />
+                                  Record terms
+                                </Btn>
+                              )}
+                            </div>
                           </div>
-                          <div className="underwriting-term-sheet-actions">
-                            {termSheet?.current && underwriting?.profile_id ? (
-                              <DealerTermSheetDocumentActions
-                                profileId={underwriting.profile_id}
-                                terms={termSheet.current}
-                                contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
-                                onEdit={openTermSheet}
-                                selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
-                                onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
-                                onCompose={() => openOfferComposer(productionTermSelection)}
-                              />
-                            ) : (
-                              <Btn variant="pri" size="sm" onClick={openTermSheet}>
-                                <Icon name="pencil" size={14} />
-                                Record terms
-                              </Btn>
-                            )}
-                          </div>
-                        </div>
+                        ) : null}
+                        </FileSection>
                       ) : null}
+                      <FileSection
+                        id="merchant"
+                        title="Merchant processing offer"
+                        summary={merchantOfferStatus ? `Offer ${merchantOfferStatus.replaceAll("_", " ")}` : "Read a partner terms PDF and offer processing savings"}
+                        status={merchantOfferStatus ? { label: merchantOfferStatus.replaceAll("_", " "), tone: merchantOfferStatus === "accepted" ? "ok" : "acc" } : null}
+                        open={uwSections.isOpen("merchant", false)}
+                        onToggle={() => uwSections.toggle("merchant", false)}
+                      >
                       <MerchantOfferStrip
                         profileId={underwriting?.profile_id}
                         onStatus={setMerchantOfferStatus}
@@ -1909,6 +1939,15 @@ export function LeadDetailPanel({
                           setPrototypeView("reviewer");
                         }}
                       />
+                      </FileSection>
+                      <FileSection
+                        id="offers"
+                        title="Offer delivery"
+                        summary={offerDeliveryReceipt ? `Sent ${formatDateTime(offerDeliveryReceipt.sent_at)}` : selectedOfferSelections.length ? `${selectedOfferSelections.length} selected, not yet sent` : "Select loan terms or an offer above to send them together"}
+                        status={selectedOfferSelections.length ? { label: `${selectedOfferSelections.length} selected`, tone: "acc" } : null}
+                        open={uwSections.isOpen("offers", selectedOfferSelections.length > 0)}
+                        onToggle={() => uwSections.toggle("offers", selectedOfferSelections.length > 0)}
+                      >
                       {selectedOfferSelections.length ? <div className="offer-delivery-bar" role="region" aria-label="Selected client offers" aria-live="polite">
                         <div className="offer-delivery-bar-copy">
                           <span className="offer-delivery-bar-icon"><Icon name="mail" size={16} /></span>
@@ -1921,15 +1960,28 @@ export function LeadDetailPanel({
                       </div> : null}
                       {offerDeliveryReceipt ? <Callout tone="ok"><b>Offer package sent.</b> The exact PDFs are in the client inbox until and after the {formatDateTime(offerDeliveryReceipt.expires_at)} response deadline.</Callout> : null}
                       {underwriting?.profile_id ? <OfferDeliveryHistory profileId={underwriting.profile_id} refreshKey={offerDeliveryReceipt?.id} /> : null}
-                      {!isDealerFile && underwriting?.profile_id ? <ApplicationClientTermsPanel
-                        key={underwriting.profile_id}
-                        profileId={underwriting.profile_id}
-                        onSaved={refreshUnderwritingFromTerms}
-                        selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
-                        onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
-                        onOfferReady={handleApplicationTermReady}
-                        onCompose={() => openOfferComposer(applicationTermSelection)}
-                      /> : null}
+                      </FileSection>
+                      {!isDealerFile && underwriting?.profile_id ? (
+                      <FileSection
+                          id="client-terms"
+                          title="Client terms"
+                          summary={"Terms the client sees and can accept"}
+                          status={null}
+                          open={uwSections.isOpen("client-terms", false)}
+                          onToggle={() => uwSections.toggle("client-terms", false)}
+                        >
+                        <ApplicationClientTermsPanel
+                          key={underwriting.profile_id}
+                          profileId={underwriting.profile_id}
+                          onSaved={refreshUnderwritingFromTerms}
+                          selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
+                          onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
+                          onOfferReady={handleApplicationTermReady}
+                          onCompose={() => openOfferComposer(applicationTermSelection)}
+                        />
+                        </FileSection>
+                      ) : null}
+                    </div>
                     </div>
                   )}
                 </Panel>
@@ -1938,6 +1990,7 @@ export function LeadDetailPanel({
 
               {prototypeView === "payments" && canViewPayments ? (
                 <PaymentsWorkspace
+                  compact
                   profileId={profileId}
                   sourceLabel={detail.intake.business_name || detail.intake.full_name}
                 />
@@ -2358,9 +2411,9 @@ export function LeadDetailPanel({
                   <Btn onClick={() => setOpenBucketId(detail.intake.bucket_id)}>Open documents</Btn>
                   <Btn onClick={onLinkBucketIntake}>
                     <Icon name="link" size={14} />
-                    Link bucket
+                    Link room
                   </Btn>
-                  <Btn onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy bucket ID</Btn>
+                  <Btn onClick={() => navigator.clipboard.writeText(detail.intake.bucket_id)}>Copy room ID</Btn>
                 </Row>
                 {detail.latest_review?.status ? (
                   <StatusLine className="mt" tone={detail.latest_review.status === "failed" ? "bad" : "mut"}>
@@ -2513,9 +2566,9 @@ export function LeadDetailPanel({
                     </Btn>
                     <Btn onClick={onLinkBucketIntake}>
                       <Icon name="link" size={14} />
-                      Link bucket
+                      Link room
                     </Btn>
-                    <Btn onClick={() => copyText("Bucket ID", detail.intake.bucket_id)}>Copy bucket ID</Btn>
+                    <Btn onClick={() => copyText("Room ID", detail.intake.bucket_id)}>Copy room ID</Btn>
                   </Row>
                   <p className="sub">
                     The ZIP bundles every uploaded document, the lender packet PDF, the executive summary, and an editable email template — ready to attach, upload, or archive anywhere.
@@ -2595,7 +2648,7 @@ export function LeadDetailPanel({
                       <Select value={bucketAccess} onChange={(e) => setBucketAccess(e.target.value as BucketAccessMode)} aria-label="Room access" style={{ minWidth: 210 }}>
                         <option value="login">Vendor login link (invited email)</option>
                         <option value="passcode">Link + access code (no login)</option>
-                        <option value="none">No bucket access</option>
+                        <option value="none">No room access</option>
                       </Select>
                       <span className="sub">
                         {bucketAccess === "passcode"
@@ -2606,7 +2659,7 @@ export function LeadDetailPanel({
                       </span>
                     </Row>
                     <span className="sub">
-                      Files over 8&nbsp;MB (or a combined set over ~18&nbsp;MB) fall back to the secure bucket link instead of attaching.
+                      Files over 8&nbsp;MB (or a combined set over ~18&nbsp;MB) fall back to the secure room link instead of attaching.
                     </span>
                   </div>
 
