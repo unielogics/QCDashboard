@@ -29,6 +29,7 @@ import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@
 import type { BucketIntakeLinkRead } from "@/lib/unifiedOperator";
 import type { UnifiedFilePage } from "@/lib/unifiedOperator";
 import { api, ApiError } from "@/lib/api";
+import { OPERATOR_BUCKET_TYPES, bucketTypeLabel, isBucketType } from "@/lib/bucketTypes";
 import { validPhone } from "@/lib/formCoerce";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN, SIGN_IN_URL } from "@/lib/appUrl";
@@ -270,7 +271,7 @@ type VendorAccessDraft = {
   expires_days: number;
 };
 
-const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
+const BUCKET_TYPES = OPERATOR_BUCKET_TYPES;
 const FIELD_DESK_ORIGIN = process.env.NEXT_PUBLIC_FIELD_DESK_URL ?? "https://rep.qualifiedcommercial.com";
 const REQUEST_DOCS_PER_PAGE = 10;
 const ACTIVITY_PAGE_SIZE = 12;
@@ -513,7 +514,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     name: "",
     client_name: "",
     purpose: "",
-    bucket_type: "Loan File",
+    bucket_type: "general",
     description: "",
   });
   const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
@@ -1207,7 +1208,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       }
       setCreateStatus({ kind: "working", message: "Refreshing room list..." });
       await loadBuckets();
-      setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
+      setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "general", description: "" });
       setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
       setCreateInvites([]);
       setCreateChecked({});
@@ -2617,7 +2618,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                 <Input placeholder="Room name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
                 <Input placeholder="Client / borrower" value={bucketForm.client_name} onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
                 <Select value={bucketForm.bucket_type} onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}>
-                  {BUCKET_TYPES.map((type) => <option key={type}>{type}</option>)}
+                  {BUCKET_TYPES.map((type) => <option key={type} value={type}>{bucketTypeLabel(type)}</option>)}
                 </Select>
                 <Input placeholder="Purpose, deal, or package" value={bucketForm.purpose} onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
                 <Textarea
@@ -2807,7 +2808,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               </IconBtn>}
             </span>
           }
-          subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
+          subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${bucketTypeLabel(detail.bucket_type)}`}
           onClose={closeBucketDetail}
           action={
             <div className="row">
@@ -4142,12 +4143,15 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                   placeholder="Client or borrower"
                 />
               </Field>
-              <Field label="Bucket type">
-                <Input
+              <Field label="Room type">
+                <Select
                   value={editBucketForm.bucket_type}
                   onChange={(event) => setEditBucketForm((form) => ({ ...form, bucket_type: event.target.value }))}
-                  placeholder="Loan File"
-                />
+                >
+                  {/* A room an intake created keeps its own kind; the operator chooses only among the manual ones. */}
+                  {(isBucketType(editBucketForm.bucket_type) && !OPERATOR_BUCKET_TYPES.includes(editBucketForm.bucket_type) ? [editBucketForm.bucket_type] : []).map((type) => <option key={type} value={type}>{bucketTypeLabel(type)}</option>)}
+                  {OPERATOR_BUCKET_TYPES.map((type) => <option key={type} value={type}>{bucketTypeLabel(type)}</option>)}
+                </Select>
               </Field>
             </div>
             <Field label="Purpose">
@@ -4653,7 +4657,7 @@ function BucketTable({
                 className={cx(pinned && "table-row-pinned", archived && semanticStatusClass("archived"))}
                 data-pinned={pinned || undefined}
               >
-                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Room"}{archiveLabel ? ` · ${archiveLabel}` : ""}</div></td>
+                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucketTypeLabel(bucket.bucket_type)}{archiveLabel ? ` · ${archiveLabel}` : ""}</div></td>
                 <td>{bucket.client_name || <span className="sub">No client</span>}</td>
                 <td className="num">{bucket.open_request_count ?? 0} open · {bucket.file_count ?? 0} files</td>
                 <td className="num">{bucket.vendor_access_count ?? 0}</td>

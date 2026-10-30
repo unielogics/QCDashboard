@@ -894,7 +894,7 @@ export default function AdminAIUnderwriterLeadsPage() {
     }
     requestReview({
       intakeId: selectedId,
-      leadName: detail?.intake.business_name || detail?.intake.full_name || "AI intake",
+      leadName: detail?.intake.business_name || detail?.intake.full_name || "File",
     });
   }
 

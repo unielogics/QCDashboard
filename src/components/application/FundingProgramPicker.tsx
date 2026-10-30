@@ -40,7 +40,7 @@ function candidateTone(candidate: ProgramFitCandidate): "ok" | "warn" | "bad" | 
 
 export function FundingProgramPicker({
   candidates, selections, selectedKeys, onSelectionChange, reason, onReasonChange,
-  requiresOverride, changed, busy, error, onClose, onApply,
+  requiresOverride, changed, busy, error, onClose, onApply, selectionMode,
 }: {
   candidates: ProgramFitCandidate[];
   selections: ApplicationProgramSelection[];
@@ -50,6 +50,8 @@ export function FundingProgramPicker({
   onReasonChange: (reason: string) => void;
   requiresOverride: boolean;
   changed: boolean;
+  /** The file's current mode; applying from `auto` is the moment AI selection is switched off. */
+  selectionMode?: "auto" | "manual";
   busy: boolean;
   error: string | null;
   onClose: () => void;
@@ -65,11 +67,11 @@ export function FundingProgramPicker({
     <div className={styles.footer}>
       <span className={styles.footerCount} aria-live="polite">{selectedKeys.length} selected{changed ? " · Unsaved changes" : ""}</span>
       <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
-      <Btn variant="pri" disabled={busy || !changed || (requiresOverride && reason.trim().length < 8)} onClick={onApply}>{busy ? "Applying…" : "Apply selection"}</Btn>
+      <Btn variant="pri" disabled={busy || !changed || (requiresOverride && reason.trim().length < 8)} onClick={onApply}>{busy ? "Applying…" : selectionMode === "manual" ? "Apply selection" : "Apply manual selection"}</Btn>
     </div>
   }>
     <div className={styles.layout}>
-      <p className={styles.hint}>Choose programs for this file. Applying your selection updates its evidence requirements. AI fit is advisory; selecting a program outside its criteria requires a review reason.</p>
+      <p className={styles.hint}>Choose programs for this file. Applying your selection updates its evidence requirements{selectionMode === "manual" ? "" : " and switches this file to manual selection: the AI will not change its programs until you return it to AI selection"}. AI fit is advisory; selecting a program outside its criteria requires a review reason.</p>
       {error ? <Callout tone="warn">{error}</Callout> : null}
       <div className={styles.toolbar}>
         <Field label="Find a program"><Input autoFocus aria-label="Find a program" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search programs or fit reasons" /></Field>

@@ -60,7 +60,7 @@ function originLabel(origin: string | null): string {
     case "field_desk": return "Field desk";
     case "calendar": return "Calendar";
     case "public": return "Public booking page";
-    case "intake": return "AI intake";
+    case "intake": return "File";
     default: return "Not recorded";
   }
 }

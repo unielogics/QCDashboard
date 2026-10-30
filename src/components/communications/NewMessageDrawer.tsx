@@ -14,7 +14,7 @@ import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import type { ComposeRecipient, UnifiedComposeResult } from "@/lib/communications";
 
-const KIND_LABEL = { client: "Client", intake: "AI intake", dealer: "Audit file" } as const;
+const KIND_LABEL = { client: "Client", intake: "File", dealer: "Audit file" } as const;
 const KIND_TONE = { client: "acc", intake: "pet", dealer: "gold" } as const;
 
 export function NewMessageDrawer({
