@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useRef } from "react";
+import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
@@ -399,6 +400,63 @@ export function useAITasks() {
   return useQuery({
     queryKey: ["aiTasks", devUser],
     queryFn: () => apiCall<AITask[]>("/ai-tasks"),
+  });
+}
+
+/** What is stalling on the desk, each row with the link that opens its file. */
+export function useAttentionQueue(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["attention-queue", devUser],
+    queryFn: () => apiCall<AttentionQueue>("/operator-files/attention"),
+    enabled,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** AI suggestions across every live room, oldest first — the Elara inbox. */
+export function useProposedActionItems(enabled = true, status: "proposed" | "approved" | "rejected" | "completed" = "proposed") {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-action-items", status, devUser],
+    queryFn: () => apiCall<BucketAIActionItemQueueItem[]>(`/buckets/admin/ai-action-items?status=${status}`),
+    enabled,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useDecideActionItem() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // invalidates: ["ai-action-items"], ["attention-queue"]
+    mutationFn: ({ bucketId, itemId, status }: { bucketId: string; itemId: string; status: "approved" | "rejected" }) =>
+      apiCall<BucketAIActionItemQueueItem>(`/buckets/admin/${bucketId}/ai-action-items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-action-items"] });
+      qc.invalidateQueries({ queryKey: ["attention-queue"] });
+    },
+  });
+}
+
+/** Re-send the client their room link; the one-click nudge for a file that never received a document. */
+export function useSendRoomReminder() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ profileId, purpose = "room" }: { profileId: string; purpose?: "documents" | "business_banking" | "room" }) =>
+      apiCall<{ overall_status: string; room_url: string }>(`/application-profiles/${profileId}/room/reminders`, {
+        method: "POST",
+        body: JSON.stringify({ purpose, email_room_link: true, sms_reminder: false }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["attention-queue"] }),
   });
 }
 

@@ -1105,7 +1105,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   if (me && !isIntakeOperator) return null;
 
   const activeLeadId = selectedId;
-  const activeLeadTitle = detail?.intake.business_name || detail?.intake.full_name || "AI intake file";
+  const activeLeadTitle = detail?.intake.business_name || detail?.intake.full_name || "File";
   const selectedLeadPanel = activeLeadId ? (
     <LeadDetailPanel
       detail={detail}
@@ -1183,7 +1183,7 @@ export default function AdminAIUnderwriterLeadsPage() {
         onClose={() => setLinkLead(null)}
         initialBucketId={linkLead?.bucket_id}
         initialIntakeId={linkLead?.id}
-        title="Link AI intake to bucket"
+        title="Link file to room"
       />
       <FileEconomicsDrawer
         open={economicsRow !== null}
@@ -1195,33 +1195,37 @@ export default function AdminAIUnderwriterLeadsPage() {
     </>
   );
 
+  // The list row or the open detail both know the file's room; either lets the
+  // menu open that room directly instead of the whole directory.
+  const selectedBucketId = rows.find((row) => row.id === selectedId)?.bucket_id ?? detail?.intake.bucket_id ?? null;
   return (
     <>
     <div
       ref={listShellRef}
       tabIndex={-1}
-      aria-label="AI intake file list"
+      aria-label="File list"
       className={cx("ai-intake-list-shell", selectedLeadPanel && !leadDetailMinimized && "workspace-hidden")}
       style={{ maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: "calc(100dvh - 95px - var(--pad-y))" }}
     >
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow">
-          <h1>AI intake</h1>
+          <h1>Files</h1>
           <CellChip tone="mut">{counts.total} files</CellChip>
           <span className="sp" />
           <span className="sub">Operational view across evidence, underwriting, ownership, and next actions.</span>
-          {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> Create intake</Btn> : null}
-          <PageActionMenu label="AI intake actions" items={[
+          {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> New file</Btn> : null}
+          <PageActionMenu label="File actions" items={[
             { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
-            ...(canGovern ? [{ label: "Open document buckets", href: "/admin/buckets" }] : []),
+            ...(selectedBucketId ? [{ label: "Open this file's documents", href: `/admin/buckets?bucket=${selectedBucketId}` }] : []),
+            ...(canGovern ? [{ label: "All documents", href: "/admin/buckets" }] : []),
           ]} />
         </div>
-        <div className="cktabs" role="tablist" aria-label="AI intake vertical">
+        <div className="cktabs" role="tablist" aria-label="File vertical">
           {VARIANT_FILTERS.map((item) => <button type="button" role="tab" aria-selected={variantFilter === item.value} className={variantFilter === item.value ? "on" : undefined} key={item.value} onClick={() => { setOffset(0); setVariantFilter(item.value); }}>{item.label}</button>)}
         </div>
       </div>
 
-      <div className="kpis ai-intake-stats" style={{ flexShrink: 0 }} aria-label="AI intake overview">
+      <div className="kpis ai-intake-stats" style={{ flexShrink: 0 }} aria-label="Files overview">
         <Stat
           title={archivedFilter === "active" ? "Active files" : archivedFilter === "archived" ? "Closed & archived files" : "All files"}
           value={String(counts.total)}
@@ -1322,7 +1326,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       ) : null}
 
       <TableWorkspace
-        title="AI intake files"
+        title="Files"
         description="Scroll the page to give the file list the full workspace, or focus the table for concentrated review."
         storageKey={aiIntakeTableStorageKey ?? undefined}
         actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
@@ -1422,7 +1426,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                         ) : (
                           <>
                             <Btn size="sm" onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>Open</Btn>
-                            {canDelete ? <Btn size="sm" title="Archive this intake and retain its files" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Archive</Btn> : null}
+                            {canDelete ? <Btn size="sm" title="Archive this file and retain its documents" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Archive</Btn> : null}
                           </>
                         )}
                       </div>
@@ -2579,7 +2583,7 @@ function LeadDetailPanel({
       <div className="intake-file-head">
         <div className="grid g6">
           <Row>
-            <h3>{detail?.intake.business_name || detail?.intake.full_name || "AI intake file"}</h3>
+            <h3>{detail?.intake.business_name || detail?.intake.full_name || "File"}</h3>
             {detail ? <CellChip tone={probabilityTone(String(result?.probability_status || ""))}>{String(result?.probability_status || "Awaiting review")}</CellChip> : null}
             {headerStatus ? <CellChip tone={headerStatus.tone}>{headerStatus.label}</CellChip> : null}
             {forecastEarnings != null ? <CellChip tone="ok">{formatMoney(forecastEarnings)} expected earnings</CellChip> : null}
@@ -2638,7 +2642,7 @@ function LeadDetailPanel({
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
       {loading || !detail ? <div className="empty">Loading intake file...</div> : (
         <>
-          <div className="intake-tabs" role="tablist" aria-label="AI intake detail">
+          <div className="intake-tabs" role="tablist" aria-label="File detail">
             {[
               ["workspace", "File workspace"],
               ...(canUnderwrite ? [["underwriting", "Underwriting"] as const] : []),
@@ -3043,7 +3047,7 @@ function LeadDetailPanel({
         open={pendingApprovalPatch != null}
         onClose={cancelApproval}
         title="Record approval"
-        sub={detail ? `${detail.intake.business_name || detail.intake.full_name || "This AI intake"} will move from ${underwritingStatusLabel(underwriting?.underwriting_status)} to Approved.` : undefined}
+        sub={detail ? `${detail.intake.business_name || detail.intake.full_name || "This file"} will move from ${underwritingStatusLabel(underwriting?.underwriting_status)} to Approved.` : undefined}
         width="md"
         closeOnBackdrop={!underwritingSaving}
         footer={(
@@ -3321,7 +3325,7 @@ function LeadDetailPanel({
                     {mcaAutoReviewBlocked ? "Automatic review disabled" : rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
                   </Btn>
                   <Btn onClick={onExport}>Export intelligence PDF</Btn>
-                  <Btn onClick={() => setOpenBucketId(detail.intake.bucket_id)}>Open bucket</Btn>
+                  <Btn onClick={() => setOpenBucketId(detail.intake.bucket_id)}>Open documents</Btn>
                   <Btn onClick={onLinkBucketIntake}>
                     <Icon name="link" size={14} />
                     Link bucket
@@ -3557,8 +3561,8 @@ function LeadDetailPanel({
                       </label>
                     </div>
                     <Row>
-                      <Lbl>Bucket access</Lbl>
-                      <Select value={bucketAccess} onChange={(e) => setBucketAccess(e.target.value as BucketAccessMode)} aria-label="Bucket access" style={{ minWidth: 210 }}>
+                      <Lbl>Room access</Lbl>
+                      <Select value={bucketAccess} onChange={(e) => setBucketAccess(e.target.value as BucketAccessMode)} aria-label="Room access" style={{ minWidth: 210 }}>
                         <option value="login">Vendor login link (invited email)</option>
                         <option value="passcode">Link + access code (no login)</option>
                         <option value="none">No bucket access</option>
@@ -3724,7 +3728,7 @@ function ConfirmDeleteLeadModal({
       open={open}
       onClose={onClose}
       width="md"
-      title="Archive AI Intake file"
+      title="Archive file"
       sub="Remove it from active work without deleting documents or history"
       footer={
         <>

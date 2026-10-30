@@ -470,7 +470,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   // stage-one Production Package on the partner's own lead: the partner fills
   // and sends it, the desk picks the sponsor. Dealer-variant leads only.
   const detailTabOptions: TabOption<DetailTab>[] = [
-    { id: "files", label: "Document room & AI review" },
+    { id: "files", label: "Documents & AI review" },
     {
       id: "messages",
       label: "Messages",

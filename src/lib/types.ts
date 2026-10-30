@@ -3528,3 +3528,46 @@ export interface PipelineClientSummary {
   primary_deal_id: string | null;
   primary_deal_title: string | null;
 }
+
+// --- Desk attention queue (GET /operator-files/attention) ---
+export type AttentionItemKind = "intake_no_files" | "no_client_entry" | "request_overdue" | "action_items_stale";
+
+export interface AttentionItem {
+  kind: AttentionItemKind;
+  severity: "warn" | "bad";
+  title: string;
+  detail: string;
+  age_days: number;
+  count: number;
+  href: string;
+  bucket_id: string | null;
+  intake_id: string | null;
+  profile_id: string | null;
+  link_last_sent_at: string | null;
+  actions: Array<"resend_link">;
+}
+
+export interface AttentionQueue {
+  generated_at: string;
+  items: AttentionItem[];
+  counts: Partial<Record<AttentionItemKind, number>>;
+}
+
+// --- AI action items seen from the desk (GET /buckets/admin/ai-action-items) ---
+export interface BucketAIActionItemQueueItem {
+  id: string;
+  bucket_id: string;
+  status: "proposed" | "approved" | "rejected" | "completed" | string;
+  route: "admin" | "uploader" | "share" | "vendor" | string;
+  title: string;
+  instructions: string;
+  rationale: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  bucket_name: string;
+  client_name: string | null;
+  intake_id: string | null;
+  href: string;
+  approvable_here: boolean;
+}

@@ -112,7 +112,7 @@ export function UnifiedMessagesInbox() {
       <PageHeader
         title="Messages"
         lede="Every person you talk to — in-system chat, email, and SMS — grouped by contact, newest first."
-        actions={<div className="row"><Btn variant="pri" onClick={() => setComposeOpen(true)}><Icon name="plus" size={14} /> New message</Btn><PageActionMenu label="Message actions" items={[{ label: "Open Elara queue", href: "/ai-inbox" }, { label: "Open AI intake", href: "/admin/ai-underwriter-leads" }, { label: "Open dealer messages", href: "/admin/dealer-messages" }]} /></div>}
+        actions={<div className="row"><Btn variant="pri" onClick={() => setComposeOpen(true)}><Icon name="plus" size={14} /> New message</Btn><PageActionMenu label="Message actions" items={[{ label: "Open Elara queue", href: "/ai-inbox" }, { label: "Open file", href: "/admin/ai-underwriter-leads" }, { label: "Open dealer messages", href: "/admin/dealer-messages" }]} /></div>}
         meta={<div className="row"><CellChip tone="acc">{contacts.data?.total ?? 0} contacts</CellChip><CellChip tone={(contacts.data?.unread_total ?? 0) ? "warn" : "mut"}>{contacts.data?.unread_total ?? 0} unread</CellChip></div>}
       />
       <div className="global-inbox">
