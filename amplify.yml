@@ -16,6 +16,7 @@ frontend:
           # the <SignIn> / <SignUp> components — keeping the env vars produces
           # console warnings about double-set redirect URLs.
           for var in NEXT_PUBLIC_API_URL \
+                    NEXT_PUBLIC_CAPITAL_APP_URL \
                     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY \
                     CLERK_SECRET_KEY \
                     NEXT_PUBLIC_CLERK_SIGN_IN_URL \

@@ -9,14 +9,17 @@
 import { Role } from "@/lib/enums.generated";
 import type { OperatorAccountAccessType } from "@/lib/types";
 
-export const CONSOLE_LABELS: Record<OperatorAccountAccessType, string> = { funding: "Funding", field_desk: "Field Desk", audit: "Audit" };
+export const CONSOLE_LABELS: Record<OperatorAccountAccessType, string> = { funding: "Funding", field_desk: "Field Desk", audit: "Audit", capital: "Capital Partners" };
 
 export const INHERITED_CONSOLES: Record<string, OperatorAccountAccessType[]> = {
-  [Role.SUPER_ADMIN]: ["funding", "field_desk", "audit"],
-  [Role.LOAN_EXEC]: ["funding", "field_desk", "audit"],
+  // Operators inherit the Capital Partners console to preview the member
+  // portal; the API lets them look and never subscribe.
+  [Role.SUPER_ADMIN]: ["funding", "field_desk", "audit", "capital"],
+  [Role.LOAN_EXEC]: ["funding", "field_desk", "audit", "capital"],
   [Role.REGIONAL_MANAGER]: ["funding"],
   [Role.BROKER]: ["funding"],
   [Role.FIELD_REP]: ["field_desk", "audit"],
+  [Role.CAPITAL_PARTNER]: ["capital"],
 };
 
 // What a super admin may toggle per role beyond what the role inherits. Audit

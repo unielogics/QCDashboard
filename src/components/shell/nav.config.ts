@@ -113,6 +113,19 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
       },
+      {
+        // The Rule 506(b) loan-participation program: publish a funded file
+        // as a listing, review members, keep the Form D clock. Super admin
+        // only; the middleware and each page enforce it.
+        id: "marketplace",
+        label: "Marketplace",
+        items: [
+          { label: "Listings", href: "/admin/marketplace", icon: "layers", match: "exact" },
+          { label: "Members", href: "/admin/marketplace/members", icon: "clients" },
+          { label: "Compliance", href: "/admin/marketplace/compliance", icon: "shieldChk" },
+          { label: "Transfers", href: "/admin/marketplace/transfers", icon: "trend" },
+        ],
+      },
       COMMS,
     ],
     tools: [

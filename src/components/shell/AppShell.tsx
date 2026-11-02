@@ -14,7 +14,7 @@ import { useCurrentUser, useContractStatus } from "@/hooks/useApi";
 import { useRecordPendingConsent } from "@/hooks/useRecordPendingConsent";
 import { useRecordPendingSignupAttribution } from "@/hooks/useRecordPendingSignupAttribution";
 import { useLiveInvalidation } from "@/lib/liveInvalidation";
-import { SIGN_IN_URL } from "@/lib/appUrl";
+import { SIGN_IN_URL, CAPITAL_APP_ORIGIN } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
 import { Role, ContractType } from "@/lib/enums.generated";
@@ -167,6 +167,15 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
       window.location.replace("https://audit.qualifiedcommercial.com");
     }
   }, [isAuditOnlyClient]);
+  // A capital partner's only console is the member portal. The API already
+  // refuses this role everything outside /api/v1/capital; this keeps the
+  // funding chrome from ever drawing for them.
+  const isCapitalPartner = user?.role === Role.CAPITAL_PARTNER;
+  useEffect(() => {
+    if (isCapitalPartner) {
+      window.location.replace(CAPITAL_APP_ORIGIN);
+    }
+  }, [isCapitalPartner]);
 
   if (!authLoaded || isSignedIn === false) {
     return <div className="bareshell" />;

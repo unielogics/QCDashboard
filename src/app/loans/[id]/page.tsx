@@ -214,6 +214,9 @@ export default function LoanDetailPage() {
               { label: "Set deal economics", onSelect: () => setEconomicsOpen(true), hidden: !isInternal || !unifiedLoanFile?.file },
               { label: "Open Elara", onSelect: () => setAiOpen(true) },
               { label: "Open lender chat", onSelect: () => setTab("thread"), hidden: !isInternal },
+              // Cuts a Capital Partners marketplace listing from this loan
+              // (super admin only; the API refuses anyone else).
+              { label: "Publish to marketplace", onSelect: () => window.location.assign(`/admin/marketplace/new?loan_id=${loan.id}`), hidden: profile.role !== Role.SUPER_ADMIN },
             ]}
           />
           {agentPickerOpen ? (
