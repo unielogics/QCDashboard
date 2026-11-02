@@ -70,6 +70,7 @@ const isSuperAdminOnlyPage = createRouteMatcher([
   "/admin/lenders(.*)",
   "/admin/borrowers(.*)",
   "/admin/capital-partner-applications(.*)",
+  "/admin/marketplace(.*)",
   "/admin/buckets(.*)",
   "/settings(.*)",
 ]);

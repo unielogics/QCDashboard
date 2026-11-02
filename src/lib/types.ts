@@ -1530,7 +1530,7 @@ export interface SignatureUploadInitResponse {
 }
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
-export type OperatorAccountAccessType = "funding" | "field_desk" | "audit";
+export type OperatorAccountAccessType = "funding" | "field_desk" | "audit" | "capital";
 
 export interface UserRow {
   id: string;
