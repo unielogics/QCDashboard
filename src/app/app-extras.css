@@ -6724,3 +6724,12 @@ a.pick { color: inherit; text-decoration: none; }
 .fc-adv-remove { appearance: none; border: 1px solid var(--line); background: var(--surface); color: var(--muted); border-radius: 999px; width: 26px; height: 26px; display: inline-grid; place-items: center; cursor: pointer; }
 .fc-adv-remove:hover { color: var(--danger); border-color: var(--danger); }
 .tbl-wrap { overflow-x: auto; }
+.fc-pivot th:first-child, .fc-pivot td:first-child { position: sticky; left: 0; background: var(--surface); z-index: 1; min-width: 160px; }
+.fc-pivot tfoot td { border-top: 1px solid var(--line2); }
+.fc-sim-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr)); gap: 8px; }
+.fc-sim-pick { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 4px 10px; align-items: center; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 8px 10px; background: var(--surface); cursor: pointer; }
+.fc-sim-pick.on { border-color: var(--accent); background: var(--accent-100); }
+.fc-sim-pick input { grid-row: span 2; }
+.fc-sim-pick-name { font-weight: 600; color: var(--ink); }
+.fc-sim-pick .cellchip { justify-self: start; }
+.fc-sim-pick .sub { grid-column: 2; }

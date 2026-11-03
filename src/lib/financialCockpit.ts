@@ -24,6 +24,22 @@ export type CockpitMonth = {
   negative_days: number | null;
   net: number | null;
   outflow_ratio: number | null;
+  negative_dates: string[];
+  overdraft_items: OverdraftItem[];
+  fees: number | null;
+};
+
+export type OverdraftItem = { date: string | null; description: string; amount: number | null; type: "nsf_fee" | "overdraft_fee" | "returned_item" | "negative_balance" | "other"; account?: string; month?: string };
+
+export type CockpitOverdrafts = {
+  by_month: Array<{ month: string; label: string; negative_dates: string[]; negative_days: number; nsf: number; returned_checks: number; low_balance: number | null; ending_balance: number | null; fees: number | null; items: OverdraftItem[] }>;
+  items: OverdraftItem[];
+  negative_days_total: number;
+  negative_months: string[];
+  nsf_total: number;
+  returned_total: number;
+  fees_total: number | null;
+  lowest_balance: number | null;
 };
 
 export type CockpitBankSummary = {
@@ -56,7 +72,10 @@ export type CockpitBankSummary = {
   estimates_available: boolean;
 };
 
-export type CockpitAccount = { key: string; label: string; months: string[]; accepted_months: string[] };
+export type CockpitAccount = { key: string; label: string; months: string[]; accepted_months: string[]; series: CockpitMonth[]; summary: CockpitBankSummary; counted: boolean };
+
+export type BankAccountRead = { key: string; label: string; months: string[]; accepted_months: string[]; counted: boolean; latest_month: string | null };
+export type BankAccountsRead = { profile_id: string; accounts: BankAccountRead[]; counted: string[] };
 
 export type CockpitTaxYear = {
   file_id: string | null;
@@ -213,7 +232,13 @@ export type PayeeKind =
   | "owner_draw"
   | "transfer"
   | "vendor"
-  | "other";
+  | "other"
+  | "customer"
+  | "card_settlement"
+  | "advance_funding"
+  | "loan_proceeds"
+  | "refund"
+  | "owner_contribution";
 
 export type RecurringPayee = {
   key: string;
@@ -227,8 +252,10 @@ export type RecurringPayee = {
   total: number | null;
   average_amount: number | null;
   monthly_average: number | null;
+  monthly: Record<string, number>;
   months: string[];
   months_seen: number;
+  accounts: string[];
   first_date: string | null;
   last_date: string | null;
   file_ids: string[];
@@ -241,6 +268,7 @@ export type CockpitRecurring = {
   payees: RecurringPayee[];
   months_read: string[];
   files_need_reread: string[];
+  total_monthly: number | null;
   observed_debt_service_monthly: number | null;
   observed_mca_monthly: number | null;
   observed_loan_monthly: number | null;
@@ -395,7 +423,19 @@ export type FinancialCockpit = {
   generated_at: string;
   requested_amount: number | null;
   coverage: CockpitCoverage;
-  bank: { months: CockpitMonth[]; summary: CockpitBankSummary; accounts: CockpitAccount[]; recurring: CockpitRecurring };
+  bank: {
+    months: CockpitMonth[];
+    summary: CockpitBankSummary;
+    accounts: CockpitAccount[];
+    recurring: CockpitRecurring;
+    recurring_credits: CockpitRecurring;
+    overdrafts: CockpitOverdrafts;
+    /** Keys the desk chose to count; empty when every account counts. */
+    counted_accounts: string[];
+    /** Every account combined, only when the desk narrowed the counted set. */
+    all_months: CockpitMonth[] | null;
+    all_summary: CockpitBankSummary | null;
+  };
   tax: { years: CockpitTaxYear[] };
   profit_and_loss: CockpitProfitAndLoss | null;
   balance_sheet: CockpitBalanceSheet | null;
@@ -605,6 +645,12 @@ export function payeeKindTone(kind: PayeeKind | null | undefined): CockpitTone {
       return "acc";
     case "credit_card":
       return "warn";
+    case "advance_funding":
+    case "loan_proceeds":
+      return "warn";
+    case "card_settlement":
+    case "customer":
+      return "ok";
     case "payroll":
     case "rent":
     case "tax":

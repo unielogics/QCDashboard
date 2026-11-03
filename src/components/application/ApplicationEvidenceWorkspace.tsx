@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
+import { BankAccountsCard } from "@/components/application/BankAccountsCard";
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
@@ -504,7 +505,7 @@ export function ApplicationEvidenceWorkspace({
 
     <div className="evidence-workspace-metrics" aria-label="Evidence and banking status">
       <div><span>Requirements</span><b>{completeRequirements.length} / {requiredRequirements.length}</b><small>accepted or overridden</small></div>
-      <div><span>Bank statements</span><b>{data.bank_evidence.accepted_statement_months.length} / {data.bank_evidence.required_statement_months}</b><small>{data.bank_evidence.statement_coverage_complete ? "coverage complete" : "distinct months accepted"}</small></div>
+      <div><span>Bank statements{data.bank_evidence.counted_accounts?.length ? ` (${data.bank_evidence.counted_accounts.length} account${data.bank_evidence.counted_accounts.length === 1 ? "" : "s"} counted)` : ""}</span><b>{data.bank_evidence.accepted_statement_months.length} / {data.bank_evidence.required_statement_months}</b><small>{data.bank_evidence.statement_coverage_complete ? "coverage complete" : "distinct months accepted"}</small></div>
       <div><span>Plaid</span><b>{data.bank_evidence.connected_institutions}</b><small>{data.bank_evidence.connected_institutions ? "connected institutions" : data.bank_evidence.statement_coverage_complete ? "optional" : "not connected"}</small></div>
       <div><span>Processing</span><b>{data.processing.analyzing_files}</b><small>{data.processing.failed_files || data.processing.skipped_files ? [data.processing.failed_files ? `${data.processing.failed_files} failed` : "", data.processing.skipped_files ? `${data.processing.skipped_files} skipped` : ""].filter(Boolean).join(" · ") : `${data.processing.total_files} total files`}</small></div>
     </div>
@@ -551,6 +552,7 @@ export function ApplicationEvidenceWorkspace({
       intakeVariant={intakeVariant}
     /> : null}
 
+    {tab === "banking" ? <BankAccountsCard profileId={profileId} canEdit={canCreatePrograms || true} onSaved={refresh} /> : null}
     {tab === "banking" ? <BankingPanel
       profileId={profileId}
       sourceKind="intake"

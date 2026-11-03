@@ -677,6 +677,8 @@ export type BusinessBankEvidence = {
   processing_files: number;
   needs_attention_files: number;
   reconnect_required: boolean;
+  /** Account keys the desk chose to count toward the statement requirement; empty when every account counts. */
+  counted_accounts?: string[];
 };
 
 export type ApplicationEvidenceWorkspace = {

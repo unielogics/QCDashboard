@@ -5,7 +5,7 @@ import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
-import type { AdvanceIn, AdvancesRead, FinancialCockpit, StatementRereadResult } from "@/lib/financialCockpit";
+import type { AdvanceIn, AdvancesRead, BankAccountsRead, FinancialCockpit, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -1117,6 +1117,31 @@ export function useRereadStatements(profileId: string | null | undefined) {
   const apiCall = useAuthedApi();
   return useMutation({
     mutationFn: () => apiCall<StatementRereadResult>(`/application-profiles/${profileId}/financial-cockpit/reread-statements`, { method: "POST" }),
+  });
+}
+
+/** The checking accounts the AI found on the statements and which ones count. */
+export function useBankAccounts(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["bank-accounts", profileId, devUser],
+    queryFn: () => apiCall<BankAccountsRead>(`/application-profiles/${profileId}/bank-accounts`),
+    enabled: !!profileId && enabled,
+  });
+}
+
+/** Chooses which accounts count; readiness, the evidence workspace and the cockpit all re-read. */
+export function useSaveBankAccounts(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (counted: string[]) => apiCall<BankAccountsRead>(`/application-profiles/${profileId}/bank-accounts`, { method: "PUT", body: JSON.stringify({ counted }) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["bank-accounts", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["application-evidence-workspace", profileId] });
+    },
   });
 }
 

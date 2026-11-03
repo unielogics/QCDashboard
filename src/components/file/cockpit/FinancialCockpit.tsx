@@ -14,7 +14,7 @@
 // (app/services/financial_cockpit.py); this component only arranges it.
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, StatusLine, cx, type ChipTone } from "@/components/ds";
+import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useFinancialCockpit } from "@/hooks/useApi";
@@ -34,12 +34,15 @@ import {
   sourceLabel,
   trendDirection,
   type CockpitDscrCandidate,
+  type CockpitBankSummary,
   type CockpitMonth,
   type CockpitProfitCandidate,
   type FinancialCockpit as Cockpit,
 } from "@/lib/financialCockpit";
 import { AdvancesCard } from "./AdvancesCard";
 import { OfferPanel } from "./OfferPanel";
+import { OverdraftCard } from "./OverdraftCard";
+import { SimulatorCard } from "./SimulatorCard";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { RecurringCard } from "./RecurringCard";
 
@@ -106,9 +109,7 @@ function monthBands(months: CockpitMonth[]): ChartBand[] {
   return months.map((m) => ({ key: m.month, label: m.label, short: monthShort(m.month), muted: !m.accepted }));
 }
 
-function BankCards({ cockpit, onOpenEvidence }: { cockpit: Cockpit; onOpenEvidence: () => void }) {
-  const months = cockpit.bank.months;
-  const summary = cockpit.bank.summary;
+function BankCards({ cockpit, months, summary, accountLabel, onOpenEvidence }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; onOpenEvidence: () => void }) {
   const bands = monthBands(months);
   if (!months.length) {
     return (
@@ -121,8 +122,9 @@ function BankCards({ cockpit, onOpenEvidence }: { cockpit: Cockpit; onOpenEviden
   const accounts = cockpit.bank.accounts;
   const coverageSub = (
     <span className="fc-chips">
+      <CellChip tone="acc">{accountLabel}</CellChip>
       {accounts.map((a) => (
-        <CellChip key={a.key} tone="mut">{a.label} · {a.months.length} mo</CellChip>
+        <CellChip key={a.key} tone={a.counted ? "mut" : "warn"}>{a.label} · {a.months.length} mo{a.counted ? "" : " · not counted"}</CellChip>
       ))}
       {summary.gaps.length ? <CellChip tone="warn">Missing {summary.gaps.map((g) => monthShort(g)).join(", ")}</CellChip> : null}
       {unaccepted ? <CellChip tone="warn">{unaccepted} month{unaccepted === 1 ? "" : "s"} not yet accepted (lighter marks)</CellChip> : null}
@@ -531,6 +533,7 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 export function FinancialCockpit(props: Props) {
   const query = useFinancialCockpit(props.profileId);
   const marketplaceRef = useRef<HTMLElement>(null);
+  const [accountChoice, setAccountChoice] = useState<string>("counted");
   const { focus, onFocusHandled } = props;
   useEffect(() => {
     if (focus === "marketplace" && query.data && marketplaceRef.current) {
@@ -550,12 +553,26 @@ export function FinancialCockpit(props: Props) {
     return <StatusLine tone="bad">{errorMessage(query.error, "The financial cockpit could not be read.")}</StatusLine>;
   }
   const cockpit = query.data;
-  const summary = cockpit.bank.summary;
   const coverage = cockpit.coverage;
+  const narrowed = cockpit.bank.all_months != null;
+  const accountOptions = [
+    { value: "counted", label: narrowed ? "Counted accounts" : "All accounts" },
+    ...(narrowed ? [{ value: "all", label: "All accounts" }] : []),
+    ...cockpit.bank.accounts.map((a) => ({ value: a.key, label: a.counted ? a.label : `${a.label} (not counted)` })),
+  ];
+  const chosen = cockpit.bank.accounts.find((a) => a.key === accountChoice) ?? null;
+  const selection =
+    accountChoice === "all" && cockpit.bank.all_months && cockpit.bank.all_summary
+      ? { months: cockpit.bank.all_months, summary: cockpit.bank.all_summary, label: "All accounts", accountLabel: null as string | null }
+      : chosen
+        ? { months: chosen.series, summary: chosen.summary, label: chosen.label, accountLabel: chosen.label as string | null }
+        : { months: cockpit.bank.months, summary: cockpit.bank.summary, label: narrowed ? "Counted accounts" : "All accounts", accountLabel: null as string | null };
+  const summary = selection.summary;
+  const payeesForSelection = selection.accountLabel ? cockpit.bank.recurring.payees.filter((p) => p.accounts.includes(selection.accountLabel as string)) : cockpit.bank.recurring.payees;
   const headline = cockpit.dscr.headline;
   const conclusion = cockpit.net_profit.conclusion;
   const generated = new Date(cockpit.generated_at);
-  const depositValues = cockpit.bank.months.map((m) => m.deposits);
+  const depositValues = selection.months.map((m) => m.deposits);
   return (
     <div className={cx("fin-cockpit", query.isFetching && "is-refreshing")}>
       <div className="fc-head">
@@ -589,6 +606,13 @@ export function FinancialCockpit(props: Props) {
         </Callout>
       ) : null}
 
+      {cockpit.bank.accounts.length > 1 ? (
+        <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+          <span className="lbl">Account</span>
+          <Seg as="filter" ariaLabel="Checking account" value={accountChoice} onChange={setAccountChoice} options={accountOptions} />
+          <span className="sub">Choose which accounts count on Evidence &amp; banking → Banking.</span>
+        </div>
+      ) : null}
       <KpiRow>
         <Kpi
           label="Average monthly deposits"
@@ -611,7 +635,12 @@ export function FinancialCockpit(props: Props) {
       </KpiRow>
 
       <div className="fc-grid fc-grid-charts">
-        <BankCards cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
+        <BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} />
+        <OverdraftCard months={selection.months} accountLabel={selection.label} needReread={coverage.statements_need_reread} />
+      </div>
+
+      <div className="fc-grid">
+        <SimulatorCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} payees={payeesForSelection} />
       </div>
 
       <div className="fc-grid fc-grid-charts">
@@ -626,7 +655,7 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         <AdvancesCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} />
-        <RecurringCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} onRefresh={() => query.refetch()} />
+        <RecurringCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} onRefresh={() => query.refetch()} accountLabel={selection.accountLabel} />
       </div>
 
       <div className="fc-grid">
