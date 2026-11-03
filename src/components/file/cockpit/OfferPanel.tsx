@@ -331,7 +331,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
               {candidates.map((c) => {
                 const already = products.some((p) => p.program_key === c.key);
                 return (
-                  <Btn key={c.key} size="sm" disabled={already || !editable} onClick={() => void addProgram(c.key, c.name, c.eligible)} title={c.eligible === false ? "Not eligible on today's facts" : undefined}>
+                  <Btn key={c.key} size="sm" disabled={already || !editable} onClick={() => void addProgram(c.key, c.name, c.eligible)} aria-label={`${already ? "Offered: " : "Offer "}${c.name}${c.eligible === false ? ", not eligible on today's facts" : ""}`}>
                     <Icon name={already ? "check" : "plus"} size={12} /> {c.name}
                     {c.eligible === false ? " · not eligible" : c.selected ? " · on the file" : ""}
                   </Btn>
