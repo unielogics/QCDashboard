@@ -27,6 +27,8 @@ import {
   multiple,
   payeeKindTone,
   sourceLabel,
+  EMPTY_SCHEDULE,
+  declaredBy,
   type CockpitBankSummary,
   type CockpitMonth,
   type FinancialCockpit as Cockpit,
@@ -93,6 +95,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
 
   const local = useMemo(() => evaluatePlanLocally(cockpit, plan, months), [cockpit, plan, months]);
   const { headline, thresholds, candidates, reason, debt_service_source } = cockpit.dscr;
+  const noDebt = Boolean(cockpit.dscr.no_debt);
+  const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
   const obligations = cockpit.debt.obligations;
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
@@ -179,11 +183,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
         <div className="grid g8">
           <Lbl>Today</Lbl>
           <div className="fc-hero">
-            {multiple(headline?.value)}
-            <small>{headline ? headline.label : "not available"}</small>
+            {noDebt ? "No debt" : multiple(headline?.value)}
+            <small>{noDebt ? `declared ${declaredBy(schedule.voided)}` : headline ? headline.label : "not available"}</small>
           </div>
           <div className="fc-chips">
-            <CellChip tone={dscrTone(headline?.status)}>{dscrLabel(headline?.status)}</CellChip>
+            {noDebt ? <CellChip tone="ok">No debt to cover</CellChip> : <CellChip tone={dscrTone(headline?.status)}>{dscrLabel(headline?.status)}</CellChip>}
             {headlineConfidence ? <CellChip tone={confidenceTone(headlineConfidence)}>{confidenceLabel(headlineConfidence)}</CellChip> : null}
             <CellChip tone={debt_service_source === "none" ? "warn" : "mut"}>Debt service {money(local.serviceBefore)} / mo · {sourceLabel(debt_service_source)}</CellChip>
           </div>
@@ -254,7 +258,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
               </table>
             </div>
           ) : (
-            <div className="fc-empty">No obligations found yet: record the advances, enter the debt schedule, or re-read the statements.</div>
+            <div className="fc-empty">
+              {schedule.status === "voided"
+                ? `No debt on the business: the desk voided the debt schedule, ${declaredBy(schedule.voided)}.`
+                : `No obligations found yet. Debt schedule: ${schedule.label.toLowerCase()}. Record the advances, enter the schedule below, or re-read the statements.`}
+            </div>
           )}
           {excludable.length ? (
             <div className="grid g4">

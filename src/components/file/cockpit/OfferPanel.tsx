@@ -27,7 +27,7 @@ import {
   type CpOfferSuggestions,
 } from "@/hooks/useCapitalPartners";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
-import { amortizedPayment, compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money, multiple, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
+import { amortizedPayment, compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
 import type { CockpitPackageState } from "./FinancialCockpit";
 
 type Props = {
@@ -300,7 +300,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
           <strong>{coverage.bank_months_accepted} of {coverage.bank_months_required} statement months accepted</strong>
           <div className="fc-chips">
             <CellChip tone={coverage.tax_years.length ? "ok" : "warn"}>{coverage.tax_years.length ? `Tax years ${coverage.tax_years.join(", ")}` : "No tax return"}</CellChip>
-            <CellChip tone={coverage.debt_rows || coverage.has_debt_schedule_document ? "ok" : "warn"}>{coverage.debt_rows || coverage.has_debt_schedule_document ? "Debt schedule on file" : "No debt schedule"}</CellChip>
+            <CellChip tone={scheduleStatusTone(coverage.debt_schedule_status ?? "missing")}>Debt schedule · {scheduleStatusShort(coverage.debt_schedule_status ?? "missing", coverage.debt_rows)}</CellChip>
           </div>
           <Btn size="sm" onClick={onOpenEvidence}>Open the evidence room</Btn>
         </div>

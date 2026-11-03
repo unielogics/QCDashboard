@@ -1834,6 +1834,7 @@ export function LeadDetailPanel({
                     businessName={detail.intake.business_name || detail.intake.full_name}
                     canPublish={currentUser?.role === Role.SUPER_ADMIN}
                     canRecordTerms={isDealerFile && canUnderwrite}
+                    canUnderwrite={canUnderwrite}
                     programReadiness={programReadiness}
                     termSheet={termSheet}
                     packageState={{

@@ -74,6 +74,8 @@ type FormStatus = {
   total_liabilities?: number | null;
   total_equity?: number | null;
   balances?: boolean | null;
+  /** The debt schedule only: the desk declared the business carries no debt. */
+  voided?: { reason: string; by: string | null; by_user_id: string | null; at: string | null } | null;
 };
 
 type Packet = {
@@ -99,6 +101,7 @@ const isStatementKind = (kind: FormKind): kind is StatementKind =>
 
 /** What the desk needs to know at a glance, in words rather than a tick. */
 function statusChip(form: FormStatus) {
+  if (form.voided) return <CellChip tone="ok">Voided · no debt</CellChip>;
   if (form.source === "filled") return <CellChip tone="ok">Filled in</CellChip>;
   if (form.source === "uploaded") return <CellChip tone="ok">Uploaded</CellChip>;
   if (form.requested) return <CellChip tone="warn">Outstanding</CellChip>;
@@ -153,6 +156,12 @@ function summaryLines(form: FormStatus): string[] {
     if (form.source === "none" && form.statement_id) {
       return ["A draft has been started. Open it to carry on where it was left."];
     }
+  }
+
+  if (form.kind === "debt_schedule" && form.voided) {
+    const who = form.voided.by ? `by ${form.voided.by}` : "by the desk";
+    const when = form.voided.at ? ` on ${shortDate(form.voided.at)}` : "";
+    return [`No debt on the business, declared ${who}${when}. ${form.voided.reason}`];
   }
 
   if (form.kind === "debt_schedule" && form.row_count > 0) {
@@ -393,6 +402,17 @@ export function FinancialFormsPanel({
       });
     });
 
+  /** The desk's declaration that the business carries no debt, and its undo.
+   *  Both go through the cockpit's routes so the readiness, the room and the
+   *  cockpit read the same decision. */
+  const setVoided = (on: boolean) =>
+    run("void", async () => {
+      await api(`/application-profiles/${fileId}/debt-schedule/${on ? "void" : "restore"}`, {
+        method: "POST",
+        ...(on ? { body: JSON.stringify({ reason: "No debt on the business" }) } : {}),
+      });
+    });
+
   const open = (form: FormStatus) =>
     run(`open:${form.kind}`, async () => {
       if (form.kind === "debt_schedule") {
@@ -519,9 +539,19 @@ export function FinancialFormsPanel({
               </span>
             ))}
           </div>
-          {!form.requested ? (
+          {!form.requested && !form.voided ? (
             <Btn size="sm" disabled={busy !== ""} onClick={() => void request(form.kind)}>
               {busy === `request:${form.kind}` ? "Requesting…" : "Request it"}
+            </Btn>
+          ) : null}
+          {form.kind === "debt_schedule" && form.voided ? (
+            <Btn size="sm" disabled={busy !== ""} onClick={() => void setVoided(false)}>
+              {busy === "void" ? "Restoring…" : "Undo void"}
+            </Btn>
+          ) : null}
+          {form.kind === "debt_schedule" && !form.voided && form.source === "none" ? (
+            <Btn size="sm" disabled={busy !== ""} onClick={() => void setVoided(true)}>
+              {busy === "void" ? "Voiding…" : "No debt: void"}
             </Btn>
           ) : null}
           <Btn size="sm" disabled={busy !== ""} onClick={() => void copyLink(form.kind)}>

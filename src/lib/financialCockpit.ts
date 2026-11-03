@@ -216,7 +216,76 @@ export type CockpitDocumentedDebt = {
   source: "document";
 };
 
-export type DebtServiceSource = "debt_schedule_rows" | "debt_schedule_rows+bank_observed" | "debt_schedule_document" | "advance_terms" | "bank_observed" | "none";
+export type DebtServiceSource = "debt_schedule_rows" | "debt_schedule_rows+bank_observed" | "debt_schedule_document" | "advance_terms" | "bank_observed" | "declared_none" | "none";
+
+/** Where the debt schedule stands. It is a standing part of every file: the
+ *  block is always there, and only the desk's declaration ("voided") means the
+ *  business carries no debt. */
+export type DebtScheduleStatus = "voided" | "rows" | "document" | "advance_terms" | "received" | "requested" | "missing";
+export type DebtScheduleDeclaration = { reason: string; by: string | null; by_user_id: string | null; at: string | null };
+export type CockpitDebtSchedule = {
+  status: DebtScheduleStatus;
+  label: string;
+  rows: number;
+  documented: number;
+  has_document: boolean;
+  voided: DebtScheduleDeclaration | null;
+  requested_at: string | null;
+  received_at: string | null;
+  requirement_status: string | null;
+  requirement_present: boolean;
+  can_void: boolean;
+};
+export const EMPTY_SCHEDULE: CockpitDebtSchedule = { status: "missing", label: "Not requested yet", rows: 0, documented: 0, has_document: false, voided: null, requested_at: null, received_at: null, requirement_status: null, requirement_present: false, can_void: false };
+export type DebtScheduleVoidWrite = { reason?: string | null };
+
+export function scheduleStatusTone(status: DebtScheduleStatus | null | undefined): CockpitTone {
+  switch (status) {
+    case "voided":
+    case "rows":
+    case "document":
+      return "ok";
+    case "received":
+      return "acc";
+    case "advance_terms":
+    case "requested":
+      return "warn";
+    case "missing":
+      return "bad";
+    default:
+      return "mut";
+  }
+}
+
+export function scheduleStatusShort(status: DebtScheduleStatus | null | undefined, rows = 0): string {
+  switch (status) {
+    case "voided":
+      return "voided, no debt";
+    case "rows":
+      return `${rows} row${rows === 1 ? "" : "s"}`;
+    case "document":
+      return "uploaded";
+    case "advance_terms":
+      return "advance terms only";
+    case "received":
+      return "received, in review";
+    case "requested":
+      return "requested, not received";
+    case "missing":
+      return "not requested";
+    default:
+      return "unknown";
+  }
+}
+
+/** "by Jane Desk on Nov 3, 2026", or as much of it as the declaration carries. */
+export function declaredBy(declaration: DebtScheduleDeclaration | null | undefined): string {
+  if (!declaration) return "";
+  const who = declaration.by ? `by ${declaration.by}` : "by the desk";
+  if (!declaration.at) return who;
+  const date = new Date(declaration.at);
+  return Number.isNaN(date.getTime()) ? who : `${who} on ${date.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })}`;
+}
 
 export type PayeeKind =
   | "merchant_cash_advance"
@@ -449,6 +518,10 @@ export type CockpitDebtService = {
   observed_loan_monthly: number | null;
   observed_card_monthly: number | null;
   unexplained_observed_monthly: number | null;
+  /** The desk voided the schedule as no debt on the business. */
+  declared_none: boolean;
+  /** Voided, yet the statements still show lender debits: the observed figure wins. */
+  declaration_conflict: boolean;
 };
 
 export type CockpitProposedPayment = {
@@ -485,6 +558,8 @@ export type CockpitDscr = {
   proposed: CockpitProposedPayment | null;
   thresholds: { acceptable: number; healthy: number; very_strong: number };
   reason: string | null;
+  /** No debt service because the desk declared the business debt-free. */
+  no_debt: boolean;
 };
 
 export type CockpitProfitCandidate = {
@@ -512,6 +587,7 @@ export type CockpitCoverage = {
   has_profit_and_loss: boolean;
   has_balance_sheet: boolean;
   has_debt_schedule_document: boolean;
+  debt_schedule_status: DebtScheduleStatus;
   debt_rows: number;
   documented_debts: number;
   recurring_months_read: number;
@@ -554,6 +630,7 @@ export type FinancialCockpit = {
     service: CockpitDebtService;
     reconciliation: CockpitReconciliation;
     obligations: Obligation[];
+    schedule: CockpitDebtSchedule;
   };
   plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[] };
   dscr: CockpitDscr;
@@ -655,6 +732,7 @@ const SOURCE_LABELS: Record<string, string> = {
   bank_observed: "Lender debits seen in the statements",
   debt_schedule_document: "Uploaded debt schedule",
   advance_terms: "Advance terms read off documents",
+  declared_none: "No debt on the business, declared by the desk",
   none: "No debt service on file",
   tax_return: "Tax return",
   profit_and_loss: "Profit and loss",

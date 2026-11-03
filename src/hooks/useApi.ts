@@ -5,7 +5,7 @@ import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
-import type { AdvanceIn, AdvancesRead, BankAccountsRead, BankAccountsWrite, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
+import type { AdvanceIn, AdvancesRead, BankAccountsRead, BankAccountsWrite, DebtScheduleVoidWrite, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -1153,6 +1153,32 @@ export function useSaveFinancialPlan(profileId: string | null | undefined) {
     mutationFn: (plan: FinancialPlanWrite) => apiCall<FinancialPlanRead>(`/application-profiles/${profileId}/financial-plan`, { method: "PUT", body: JSON.stringify(plan) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+/** The desk declares the business carries no debt: the standing debt schedule
+ *  requirement is set aside and the cockpit comes back re-read. */
+export function useVoidDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DebtScheduleVoidWrite) => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/void`, { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+export function useRestoreDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/restore`, { method: "POST" }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
       void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
     },
   });

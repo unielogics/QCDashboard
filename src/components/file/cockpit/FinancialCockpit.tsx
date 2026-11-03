@@ -17,7 +17,10 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
-import { useFinancialCockpit } from "@/hooks/useApi";
+import { Drawer } from "@/components/ds/Drawer";
+import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
+import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import {
   compactMoney,
@@ -38,6 +41,10 @@ import {
   type CockpitMonth,
   type CockpitProfitCandidate,
   type FinancialCockpit as Cockpit,
+  EMPTY_SCHEDULE,
+  declaredBy,
+  scheduleStatusShort,
+  scheduleStatusTone,
 } from "@/lib/financialCockpit";
 import { AdvancesCard } from "./AdvancesCard";
 import { OfferPanel } from "./OfferPanel";
@@ -53,6 +60,8 @@ type Props = {
   businessName: string;
   canPublish: boolean;
   canRecordTerms: boolean;
+  /** Admin or underwriter: may enter, request or void the debt schedule. */
+  canUnderwrite: boolean;
   programReadiness: ApplicationProgramReadiness | null;
   termSheet: ApplicationTermSheetState | null;
   packageState: CockpitPackageState;
@@ -361,8 +370,88 @@ function ExpensesCard({ cockpit }: { cockpit: Cockpit }) {
 // Debt, DSCR, net profit
 // ---------------------------------------------------------------------------
 
-function DebtCard({ cockpit }: { cockpit: Cockpit }) {
+function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit; profileId: string; canEdit: boolean; onRefresh: () => void }) {
   const { rows, documented, document, service } = cockpit.debt;
+  const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
+  const voided = schedule.voided;
+  const api = useAuthedApi();
+  const voidIt = useVoidDebtSchedule(profileId);
+  const restore = useRestoreDebtSchedule(profileId);
+  const confirmAction = useConfirmAction();
+  const [editing, setEditing] = useState(false);
+  const [body, setBody] = useState<DebtBody>({});
+  const [busy, setBusy] = useState<"" | "open" | "save" | "request">("");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  const openForm = async () => {
+    setError(null);
+    setBusy("open");
+    try {
+      // A load that failed must not open a form whose Save would clear the desk's rows.
+      const saved = await api<{ debts: DebtBody["debts"] }>(`/application-profiles/${profileId}/financial-forms/debt-schedule/body`);
+      setBody({ debts: saved.debts ?? [] });
+      setEditing(true);
+    } catch (e) {
+      setError(errorMessage(e, "The debt schedule could not be loaded, so it was not opened."));
+    } finally {
+      setBusy("");
+    }
+  };
+  const saveForm = async () => {
+    setError(null);
+    setBusy("save");
+    try {
+      await api(`/application-profiles/${profileId}/financial-forms/debt-schedule`, { method: "PUT", body: JSON.stringify({ body, submit: true }) });
+      setEditing(false);
+      setNotice("Schedule saved. The debt service and the coverage read it now.");
+      onRefresh();
+    } catch (e) {
+      setError(errorMessage(e, "The debt schedule could not be saved."));
+    } finally {
+      setBusy("");
+    }
+  };
+  const requestIt = async () => {
+    setError(null);
+    setBusy("request");
+    try {
+      const result = await api<{ requested: boolean; already: boolean }>(`/application-profiles/${profileId}/financial-forms/debt_schedule/request`, { method: "POST" });
+      setNotice(result.already ? "The borrower was already asked for the debt schedule." : "The debt schedule is on the borrower's checklist now.");
+      onRefresh();
+    } catch (e) {
+      setError(errorMessage(e, "The request could not be sent."));
+    } finally {
+      setBusy("");
+    }
+  };
+  const declareNoDebt = async () => {
+    const confirmed = await confirmAction({
+      title: "Void the debt schedule?",
+      body: "This records that the business carries no debt. The schedule stops being asked for, the debt service becomes zero and the coverage reads the proposed payment alone. Your name and the date go on the file. It can be undone.",
+      confirmLabel: "No debt on the business",
+      tone: "danger",
+      reversible: true,
+    });
+    if (!confirmed) return;
+    setError(null);
+    try {
+      await voidIt.mutateAsync({ reason: "No debt on the business" });
+      setNotice("Voided: the business carries no debt.");
+    } catch (e) {
+      setError(errorMessage(e, "The schedule could not be voided."));
+    }
+  };
+  const restoreIt = async () => {
+    setError(null);
+    try {
+      await restore.mutateAsync();
+      setNotice("The debt schedule is required again.");
+    } catch (e) {
+      setError(errorMessage(e, "The schedule could not be restored."));
+    }
+  };
+
   const scheduleTable: ChartTable | null = rows.length
     ? {
         caption: "Debt schedule rows on the file",
@@ -381,21 +470,73 @@ function DebtCard({ cockpit }: { cockpit: Cockpit }) {
         rows: documented.map((d, i) => ({ key: `${d.lender}-${i}`, cells: [d.lender, money(d.balance), money(d.monthly_payment), d.payment_frequency ? `${money(d.payment_amount)} ${d.payment_frequency}` : "monthly", d.maturity_on ?? "—"] })),
       }
     : null;
+  const canRequest = !voided && !schedule.requested_at && !["rows", "document", "received"].includes(schedule.status);
+  const actions = canEdit ? (
+    <>
+      {voided ? <Btn size="sm" onClick={() => void restoreIt()} disabled={restore.isPending}>{restore.isPending ? "Restoring…" : "Undo: the business carries debt"}</Btn> : null}
+      {!voided ? <Btn size="sm" onClick={() => void openForm()} disabled={busy !== ""}>{busy === "open" ? "Opening…" : rows.length ? "Edit the schedule" : "Enter the schedule"}</Btn> : null}
+      {canRequest ? <Btn size="sm" onClick={() => void requestIt()} disabled={busy !== ""}>{busy === "request" ? "Requesting…" : "Request from the borrower"}</Btn> : null}
+      {schedule.can_void ? <Btn size="sm" onClick={() => void declareNoDebt()} disabled={voidIt.isPending}>{voidIt.isPending ? "Voiding…" : "No debt on the business"}</Btn> : null}
+    </>
+  ) : null;
+  const emptyText = voided
+    ? `No debt on the business, declared ${declaredBy(voided)}.`
+    : schedule.status === "document"
+      ? "The uploaded schedule printed no rows we could read; its totals are above."
+      : schedule.status === "requested" || schedule.status === "received"
+        ? "Waiting on the borrower's schedule. If they gave you the terms verbally, enter them here and the coverage reads them."
+        : "Nothing on the schedule yet. Enter it, ask the borrower for it, or void it if the business carries no debt.";
   return (
-    <Card title="Debt schedule and debt service" sub="Rows a person entered or confirmed win; then the total printed on an uploaded schedule; then the payments read off advance terms. Edit rows under Underwriting → Financial forms.">
-      <div className="fc-stat-list">
-        <Stat label={<>Monthly debt service <CellChip tone={service.source === "none" ? "warn" : "mut"}>{sourceLabel(service.source)}</CellChip></>}>{money(service.monthly)}</Stat>
-        <Stat label="Annual debt service">{money(service.annual)}</Stat>
-        {service.schedule_monthly != null ? <Stat label={`Schedule rows (${service.schedule_rows_counted} counted)`}>{`${money(service.schedule_monthly)} / mo · ${compactMoney(service.schedule_balance)} owed`}</Stat> : null}
-        {service.document_monthly != null || service.document_balance != null ? <Stat label="Uploaded schedule total">{`${money(service.document_monthly)} / mo · ${compactMoney(service.document_balance)} owed`}</Stat> : null}
-        {service.documented_monthly != null ? <Stat label="Advance terms read off documents">{`${money(service.documented_monthly)} / mo · ${compactMoney(service.documented_balance)} owed`}</Stat> : null}
-        <Stat label="Active advances (MCA)">{service.mca_count ? `${service.mca_count} · ${money(service.mca_monthly)} / mo · ${compactMoney(service.mca_balance)} owed` : "None on file"}</Stat>
-        {service.observed_monthly != null ? <Stat label="Lender and funder debits seen in the statements">{`${money(service.observed_monthly)} / mo${service.unexplained_observed_monthly ? ` · ${money(service.unexplained_observed_monthly)} not on any row` : ""}`}</Stat> : null}
-      </div>
-      {scheduleTable ? <ChartCard plain title="Schedule rows" table={scheduleTable} chart={<HBarList rows={rows.map((r) => ({ key: r.id || r.lender, label: r.lender, value: r.monthly_payment, muted: !r.count_in_dscr, sub: `${r.is_mca ? "Advance" : r.category.replace(/_/g, " ")}${r.balance != null ? ` · ${compactMoney(r.balance)} owed` : ""}${r.count_in_dscr ? "" : " · excluded from DSCR"}` }))} />} /> : null}
-      {documentedTable ? <ChartCard plain title="Read off documents" table={documentedTable} chart={<HBarList rows={documented.map((d, i) => ({ key: `${d.lender}-${i}`, label: d.lender, value: d.monthly_payment, sub: `${d.is_mca ? "Advance" : "Loan"}${d.balance != null ? ` · ${compactMoney(d.balance)} owed` : ""}${d.payment_frequency ? ` · ${d.payment_frequency}` : ""}` }))} />} /> : null}
-      {!scheduleTable && !documentedTable ? <Empty>No debt on file. {document ? "The uploaded schedule printed no rows." : "Enter the debt schedule, or upload one, to compute the coverage."}</Empty> : null}
-    </Card>
+    <>
+      <Card title="Debt schedule and debt service" sub="Every file carries a debt schedule. Rows a person entered or confirmed win; then the total printed on an uploaded schedule; then the payments read off advance terms. Only the desk sets it aside, by declaring the business carries no debt." actions={actions}>
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <CellChip tone={scheduleStatusTone(schedule.status)}>{schedule.label}</CellChip>
+          {voided ? (
+            <span className="sub">{declaredBy(voided)} · {voided.reason}</span>
+          ) : schedule.requested_at ? (
+            <span className="sub">Asked {declaredBy({ reason: "", by: null, by_user_id: null, at: schedule.requested_at }).replace("by the desk ", "")}</span>
+          ) : schedule.status === "missing" ? (
+            <span className="sub">Every file carries a debt schedule: ask the borrower for it here, or void it if the business carries no debt.</span>
+          ) : null}
+        </div>
+        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+        {notice && !error ? <StatusLine tone="ok">{notice}</StatusLine> : null}
+        {service.declaration_conflict ? <StatusLine tone="warn">The statements still show {money(service.observed_monthly)} a month going to lenders or funders. The debt service keeps that figure until the schedule is restored or those payees are reclassified.</StatusLine> : null}
+        <div className="fc-stat-list">
+          <Stat label={<>Monthly debt service <CellChip tone={service.source === "none" ? "warn" : service.source === "declared_none" ? "ok" : "mut"}>{sourceLabel(service.source)}</CellChip></>}>{money(service.monthly)}</Stat>
+          <Stat label="Annual debt service">{money(service.annual)}</Stat>
+          {service.schedule_monthly != null ? <Stat label={`Schedule rows (${service.schedule_rows_counted} counted)`}>{`${money(service.schedule_monthly)} / mo · ${compactMoney(service.schedule_balance)} owed`}</Stat> : null}
+          {service.document_monthly != null || service.document_balance != null ? <Stat label="Uploaded schedule total">{`${money(service.document_monthly)} / mo · ${compactMoney(service.document_balance)} owed`}</Stat> : null}
+          {service.documented_monthly != null ? <Stat label="Advance terms read off documents">{`${money(service.documented_monthly)} / mo · ${compactMoney(service.documented_balance)} owed`}</Stat> : null}
+          <Stat label="Active advances (MCA)">{service.mca_count ? `${service.mca_count} · ${money(service.mca_monthly)} / mo · ${compactMoney(service.mca_balance)} owed` : "None on file"}</Stat>
+          {service.observed_monthly != null ? <Stat label="Lender and funder debits seen in the statements">{`${money(service.observed_monthly)} / mo${service.unexplained_observed_monthly ? ` · ${money(service.unexplained_observed_monthly)} not on any row` : ""}`}</Stat> : null}
+        </div>
+        {scheduleTable ? <ChartCard plain title="Schedule rows" table={scheduleTable} chart={<HBarList rows={rows.map((r) => ({ key: r.id || r.lender, label: r.lender, value: r.monthly_payment, muted: !r.count_in_dscr, sub: `${r.is_mca ? "Advance" : r.category.replace(/_/g, " ")}${r.balance != null ? ` · ${compactMoney(r.balance)} owed` : ""}${r.count_in_dscr ? "" : " · excluded from DSCR"}` }))} />} /> : null}
+        {documentedTable ? <ChartCard plain title="Read off documents" table={documentedTable} chart={<HBarList rows={documented.map((d, i) => ({ key: `${d.lender}-${i}`, label: d.lender, value: d.monthly_payment, sub: `${d.is_mca ? "Advance" : "Loan"}${d.balance != null ? ` · ${compactMoney(d.balance)} owed` : ""}${d.payment_frequency ? ` · ${d.payment_frequency}` : ""}` }))} />} /> : null}
+        {!scheduleTable && !documentedTable ? <Empty>{emptyText}</Empty> : null}
+      </Card>
+      {editing ? (
+        <Drawer
+          open
+          fullscreen
+          closeOnBackdrop={false}
+          onClose={() => setEditing(false)}
+          title="Business debt schedule"
+          sub="Every loan, advance, lease and card the business pays. Saving puts the rows on the file's schedule, which is what the DSCR reads."
+          footer={
+            <>
+              <Btn onClick={() => setEditing(false)} disabled={busy === "save"}>Close</Btn>
+              <span className="sp" />
+              <Btn variant="pri" onClick={() => void saveForm()} disabled={busy !== ""}>{busy === "save" ? "Saving…" : "Save the schedule"}</Btn>
+            </>
+          }
+        >
+          <div className="pfs-editor financial-form-modal-editor">
+            <DebtScheduleForm value={body} onChange={setBody} disabled={busy !== ""} />
+          </div>
+        </Drawer>
+      ) : null}
+    </>
   );
 }
 
@@ -501,7 +642,7 @@ export function FinancialCockpit(props: Props) {
             <CellChip tone={coverage.bank_months_accepted >= coverage.bank_months_required ? "ok" : "warn"}>Statements {coverage.bank_months_accepted}/{coverage.bank_months_required}</CellChip>
             <CellChip tone={coverage.tax_years.length ? "ok" : "mut"}>Tax returns {coverage.tax_years.length ? coverage.tax_years.join(", ") : "none"}</CellChip>
             <CellChip tone={coverage.has_profit_and_loss ? "ok" : "mut"}>P&amp;L {yesNo(coverage.has_profit_and_loss)}</CellChip>
-            <CellChip tone={coverage.debt_rows || coverage.has_debt_schedule_document || coverage.documented_debts ? "ok" : "mut"}>Debt {coverage.debt_rows ? `${coverage.debt_rows} rows` : coverage.has_debt_schedule_document ? "document" : coverage.documented_debts ? `${coverage.documented_debts} read off documents` : "none"}</CellChip>
+            <CellChip tone={scheduleStatusTone(coverage.debt_schedule_status ?? "missing")}>Debt schedule · {scheduleStatusShort(coverage.debt_schedule_status ?? "missing", coverage.debt_rows)}</CellChip>
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
@@ -546,7 +687,11 @@ export function FinancialCockpit(props: Props) {
         <Kpi label="Net cash flow per month" value={money(summary.avg_net)} sub={summary.annualized_net != null ? `${compactMoney(summary.annualized_net)} a year · deposits minus withdrawals` : "deposits minus withdrawals"} tone={toneForSign(summary.avg_net)} />
         <Kpi label="Average balance" value={money(summary.average_balance)} sub={`begins ${compactMoney(summary.beginning_balance)} · ends ${compactMoney(summary.ending_balance)} · low ${compactMoney(summary.lowest_balance)}`} />
         <Kpi label="NSF and overdrafts" value={count(summary.nsf_total)} sub={`${summary.negative_days_total} negative-balance day${summary.negative_days_total === 1 ? "" : "s"}`} tone={summary.nsf_total ? "bad" : "ok"} />
-        <Kpi label={`DSCR · ${headline ? sourceLabel(headline.key) : "no basis"}`} value={multiple(headline?.value)} sub={dscrLabel(headline?.status)} tone={dscrTone(headline?.status)} />
+        {cockpit.dscr.no_debt ? (
+          <Kpi label="DSCR · no debt" value="No debt" sub={cockpit.dscr.pro_forma_headline?.pro_forma_value != null ? `declared by the desk · ${multiple(cockpit.dscr.pro_forma_headline.pro_forma_value)} with the proposed payment` : "declared by the desk"} tone="ok" />
+        ) : (
+          <Kpi label={`DSCR · ${headline ? sourceLabel(headline.key) : "no basis"}`} value={multiple(headline?.value)} sub={dscrLabel(headline?.status)} tone={dscrTone(headline?.status)} />
+        )}
         <Kpi label="Net profit" value={money(conclusion?.value)} sub={conclusion ? `${conclusion.label}${conclusion.period && conclusion.key !== "tax_return" ? ` · ${conclusion.period}` : ""}` : "No income figure yet"} tone={toneForSign(conclusion?.value)} />
       </KpiRow>
 
@@ -573,7 +718,7 @@ export function FinancialCockpit(props: Props) {
       <div className="fc-grid">
         <NetProfitCard cockpit={cockpit} />
         <ExpensesCard cockpit={cockpit} />
-        <DebtCard cockpit={cockpit} />
+        <DebtCard cockpit={cockpit} profileId={props.profileId} canEdit={props.canUnderwrite} onRefresh={() => void query.refetch()} />
       </div>
 
       <div className="fc-grid">
