@@ -316,7 +316,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
           <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Optional for a listing" : packageState.inSync ? "Current" : "Needs a refresh"}</CellChip></div>
           <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>
         </div>
-        {cockpit.plan.evaluation.active ? (
+        {cockpit.plan?.evaluation?.active ? (
           <div className="fc-listing-item">
             <Lbl>The plan</Lbl>
             <strong>{cockpit.plan.evaluation.retired_count} obligation{cockpit.plan.evaluation.retired_count === 1 ? "" : "s"} paid off · needs {money(cockpit.plan.evaluation.loan_amount_needed)}</strong>

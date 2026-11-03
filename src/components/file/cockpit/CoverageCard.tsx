@@ -41,8 +41,11 @@ const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad
   return tone === "acc" ? "mut" : tone;
 };
 
+const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, note: null };
+
 function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
-  const r = cockpit.plan.record;
+  const r = cockpit.plan?.record;
+  if (!r) return EMPTY_PLAN;
   return {
     retire: [...r.retire],
     exclude: [...r.exclude],
@@ -92,7 +95,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const { headline, thresholds, candidates, reason, debt_service_source } = cockpit.dscr;
   const obligations = cockpit.debt.obligations;
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
-  const levers = cockpit.plan.levers;
+  const levers = cockpit.plan?.levers ?? [];
   const headlineKey = headline?.key ?? candidates[0]?.key ?? null;
   const headlineConfidence = headline?.confidence ?? candidates[0]?.confidence ?? null;
   const afterStatus = local.noDebtLeft ? "very_strong" : local.headlineAfter == null ? "unavailable" : local.headlineAfter < 1 ? "concerning" : local.headlineAfter < 1.25 ? "acceptable" : local.headlineAfter < 1.5 ? "healthy" : "very_strong";
@@ -124,7 +127,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   };
   const clearPlan = () => {
     setSaved(null);
-    setPlan({ retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, note: null });
+    setPlan(EMPTY_PLAN);
     setPaymentText("");
   };
   const submit = async () => {

@@ -1709,6 +1709,8 @@ export function LeadDetailPanel({
             // it and takes the freed 260px, so its own components get the room.
             prototypeView === "workspace" && "with-sequence",
             !contextRailOpen && "context-collapsed",
+            // The cockpit takes the full width; the details rail has nothing to add there.
+            prototypeView === "financials" && "no-context",
           )}>
             {prototypeView === "workspace" ? (
               <aside className="submission-rail">

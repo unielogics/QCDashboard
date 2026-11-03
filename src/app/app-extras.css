@@ -6739,3 +6739,5 @@ a.pick { color: inherit; text-decoration: none; }
 .fc-lever.is-good { border-color: var(--ok); background: var(--ok-tint); }
 .fc-lever-side { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
 .linky { appearance: none; border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
+.intake-file-body.no-context { grid-template-columns: minmax(0, 1fr); }
+.intake-file-body.no-context > .intake-file-context, .intake-file-body.no-context > .intake-file-context-collapsed { display: none; }

@@ -146,7 +146,7 @@ function obligationAmountInMonth(obligation: Obligation, month: string, payees: 
 }
 
 export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPlanWrite, months: CockpitMonth[]): LocalPlanEvaluation {
-  const obligations = cockpit.debt.obligations;
+  const obligations = cockpit.debt.obligations ?? [];
   const payees = cockpit.bank.recurring.payees;
   const monthsRead = cockpit.bank.recurring.months_read;
   const retire = new Set(plan.retire);
