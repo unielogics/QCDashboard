@@ -77,6 +77,8 @@ type McaIntakeResponse = Omit<
   intake: Intake & { preferred_language?: string | null; communication_locale?: "en" | "es" | null };
   communication_locale?: "en" | "es" | null;
   mca_refinance_policy?: McaRefinancePolicy | null;
+  // Where the soft credit check stands; the server runs it when the authorization is signed.
+  credit_check?: { status: "not_started" | "completed" | "needs_ssn" | "deferred"; attempted_at?: string | null } | null;
   // Non-null while the desk has taken the conversation over: a person is
   // answering and the assistant is standing down until this time.
   ai_paused_until?: string | null;
@@ -787,6 +789,12 @@ export default function McaRefinanceIntakePage() {
   // --- response plumbing ----------------------------------------------------
   function adopt(payload: McaIntakeResponse) {
     setResponse(payload);
+    // The pull runs on the server the moment the authorization is signed, so
+    // the card shows where it stands even after a reload.
+    const check = payload.credit_check?.status;
+    if (check === "completed") { setPullState("done"); setNeedSsn(false); }
+    else if (check === "needs_ssn") { setPullState("idle"); setNeedSsn(true); setPullError((current) => current ?? c.ssnPrompt); }
+    else if (check === "deferred") { setPullState("deferred"); }
     const policy = payload.mca_refinance_policy;
     if (policy && !qualificationDirty.current) {
       setQualificationForm({

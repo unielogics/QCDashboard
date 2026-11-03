@@ -866,6 +866,10 @@ export interface LeadCreditStatusResponse {
   fico: number | null;
   pulled_at: string | null;
   expires_at: string | null;
+  fico_source?: string | null;
+  score_verified?: boolean;
+  report_available?: boolean;
+  attention?: string | null;
 }
 
 // Deterministic (non-AI) program-fit screen for a dealer AI Underwriter Lead
