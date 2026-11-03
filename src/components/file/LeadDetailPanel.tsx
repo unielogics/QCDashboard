@@ -706,6 +706,7 @@ export function LeadDetailPanel({
     loan_purpose: "",
     estimated_credit_score: "",
     referral_source: "",
+    years_in_business: "",
   });
   const mcaReview = mcaRefinanceReviewState(detail);
   const mcaAutoReviewBlocked = Boolean(mcaReview && mcaReview.mode !== "automated_review");
@@ -1203,6 +1204,7 @@ export function LeadDetailPanel({
       loan_purpose: detail.intake.loan_purpose || "",
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
+      years_in_business: detail.intake.years_in_business == null ? "" : String(detail.intake.years_in_business),
     });
   }, [detail, initialCommunicationChannel, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite, canViewPayments]);
 
@@ -1222,6 +1224,7 @@ export function LeadDetailPanel({
         loan_purpose: contactDraft.loan_purpose.trim() || null,
         estimated_credit_score: contactDraft.estimated_credit_score ? Number(contactDraft.estimated_credit_score) : null,
         referral_source: contactDraft.referral_source.trim() || null,
+        years_in_business: contactDraft.years_in_business.trim() ? Number(contactDraft.years_in_business.replace(",", ".")) : null,
       });
       setContactEditOpen(false);
       toast.show("Contact details updated.");
@@ -2191,6 +2194,7 @@ export function LeadDetailPanel({
           <Field label="Mobile"><Input aria-label="Mobile" type="tel" value={contactDraft.phone} onChange={(event) => setContactDraft({ ...contactDraft, phone: event.target.value })} /></Field>
           <Field label="Requested amount"><Input aria-label="Requested amount" type="number" min="0" value={contactDraft.requested_loan_amount} onChange={(event) => setContactDraft({ ...contactDraft, requested_loan_amount: event.target.value })} /></Field>
           <Field label="Estimated credit"><Input aria-label="Estimated credit" type="number" min="300" max="850" value={contactDraft.estimated_credit_score} onChange={(event) => setContactDraft({ ...contactDraft, estimated_credit_score: event.target.value })} /></Field>
+          <Field label="Years in business"><Input aria-label="Years in business" type="number" min="0" max="150" step="0.5" value={contactDraft.years_in_business} onChange={(event) => setContactDraft({ ...contactDraft, years_in_business: event.target.value })} /></Field>
           <Field label="Loan purpose"><Input aria-label="Loan purpose" value={contactDraft.loan_purpose} onChange={(event) => setContactDraft({ ...contactDraft, loan_purpose: event.target.value })} /></Field>
           <Field label="Referral source"><Input aria-label="Referral source" value={contactDraft.referral_source} onChange={(event) => setContactDraft({ ...contactDraft, referral_source: event.target.value })} /></Field>
         </div>

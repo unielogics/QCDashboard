@@ -73,6 +73,7 @@ export type LeadRow = {
   missing_required_count: number;
   requested_loan_amount?: number | null;
   estimated_credit_score?: number | null;
+  years_in_business?: number | null;
   created_at: string;
   updated_at: string;
   last_message_at?: string | null;
@@ -273,6 +274,8 @@ export type LeadContactUpdate = {
   requested_loan_amount?: number | null;
   estimated_credit_score?: number | null;
   referral_source?: string | null;
+  /** How long the business has operated; program fit asks for it. */
+  years_in_business?: number | null;
 };
 
 export type RoomDeliveryReceipt = {
