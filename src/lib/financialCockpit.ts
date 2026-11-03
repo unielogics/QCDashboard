@@ -74,8 +74,9 @@ export type CockpitBankSummary = {
 
 export type CockpitAccount = { key: string; label: string; months: string[]; accepted_months: string[]; series: CockpitMonth[]; summary: CockpitBankSummary; counted: boolean };
 
-export type BankAccountRead = { key: string; label: string; months: string[]; accepted_months: string[]; counted: boolean; latest_month: string | null };
-export type BankAccountsRead = { profile_id: string; accounts: BankAccountRead[]; counted: string[] };
+export type BankAccountRead = { key: string; label: string; months: string[]; accepted_months: string[]; counted: boolean; latest_month: string | null; members: string[] };
+export type BankAccountsRead = { profile_id: string; accounts: BankAccountRead[]; counted: string[]; aliases: Record<string, string> };
+export type BankAccountsWrite = { counted: string[]; aliases?: Record<string, string> | null };
 
 export type CockpitTaxYear = {
   file_id: string | null;

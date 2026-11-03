@@ -5,7 +5,7 @@ import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
-import type { AdvanceIn, AdvancesRead, BankAccountsRead, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
+import type { AdvanceIn, AdvancesRead, BankAccountsRead, BankAccountsWrite, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -1136,7 +1136,7 @@ export function useSaveBankAccounts(profileId: string | null | undefined) {
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (counted: string[]) => apiCall<BankAccountsRead>(`/application-profiles/${profileId}/bank-accounts`, { method: "PUT", body: JSON.stringify({ counted }) }),
+    mutationFn: (body: BankAccountsWrite) => apiCall<BankAccountsRead>(`/application-profiles/${profileId}/bank-accounts`, { method: "PUT", body: JSON.stringify(body) }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["bank-accounts", profileId] });
       void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
