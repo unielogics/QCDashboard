@@ -249,6 +249,7 @@ export function clientRequestedDocumentState({
   documentStatus,
   hasUploadedFile,
   requirementComplete,
+  coverageComplete,
   processingEvidenceCount,
   uploadedEvidence = [],
   replacementReviewState,
@@ -257,6 +258,8 @@ export function clientRequestedDocumentState({
   documentStatus?: string | null;
   hasUploadedFile: boolean;
   requirementComplete?: boolean;
+  /** The requirement has every document it asked for; verification may still be pending. */
+  coverageComplete?: boolean;
   processingEvidenceCount?: number;
   uploadedEvidence?: ClientUploadedAnalysisSignal[];
   replacementReviewState?: string | null;
@@ -288,7 +291,9 @@ export function clientRequestedDocumentState({
   // "everything is accepted on upload" defect.
   if (typeof requirementComplete === "boolean") {
     if (requirementComplete) return "accepted";
-    return (processingEvidenceCount ?? 0) > 0 ? "checking" : "needed";
+    // Everything asked for has arrived and is awaiting review: the client is
+    // not asked for it again while the desk verifies it.
+    return (processingEvidenceCount ?? 0) > 0 || coverageComplete === true ? "checking" : "needed";
   }
   if (documentStatus === "uploaded" || hasUploadedFile) return "accepted";
   return (processingEvidenceCount ?? 0) > 0 ? "checking" : "needed";

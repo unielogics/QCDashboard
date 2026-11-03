@@ -2,6 +2,30 @@ import { describe, expect, it } from "vitest";
 
 import { clientActionableRequestedDocumentUploadTarget, clientActionNeeded, clientApiError, clientApiErrorCode, clientApiErrorDetail, clientMcaRequestedDocumentLayout, clientQueuedUploadCanSubmit, clientRequestedDocumentContextText, clientRequestedDocumentNeedsAction, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isStaleRequestedDocumentError, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
 
+describe("a fully covered requirement awaiting review", () => {
+  it("reads as checking, not as something the client still owes", () => {
+    expect(clientRequestedDocumentState({
+      isUnlockedCopyRequest: false,
+      documentStatus: "requested",
+      hasUploadedFile: true,
+      requirementComplete: false,
+      coverageComplete: true,
+      processingEvidenceCount: 0,
+    })).toBe("checking");
+  });
+
+  it("is still needed while coverage is short and nothing is processing", () => {
+    expect(clientRequestedDocumentState({
+      isUnlockedCopyRequest: false,
+      documentStatus: "requested",
+      hasUploadedFile: true,
+      requirementComplete: false,
+      coverageComplete: false,
+      processingEvidenceCount: 0,
+    })).toBe("needed");
+  });
+});
+
 describe("choosing a room PIN", () => {
   it("is required the first time the client arrives with the code in the link", () => {
     expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: true, dismissed: false })).toBe("required");

@@ -24,7 +24,7 @@ type RequestedDoc = { id: string; name: string; category?: string | null; descri
 type BucketSummary = { name: string; client_name?: string | null; purpose?: string | null };
 type UploadedFile = { id: string; requested_document_id?: string | null; file_name: string; content_type: string; size_bytes: number; uploaded_by_name?: string | null; uploaded_by_email?: string | null; status: string; created_at: string; analysis_status?: string | null; analysis_reason_code?: string | null; analysis_classification?: string | null; analysis_review_state?: "checking" | "received" | "needs_another_copy" | null; is_password_protected?: boolean; unlocked_copy_request?: { requested_document_id?: string | null; request_status?: string | null; delivery_status?: string | null; requested_at?: string | null; last_delivery_at?: string | null; replacement_review_state?: "requested" | "checking" | "received" | "needs_another_copy" | null } | null };
 type RequestInfo = { bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; requires_passcode: boolean; status: string };
-type ClientRequirementSummary = { requirement_key: string; label: string; required_level: "required" | "recommended" | "optional"; status: string; complete: boolean; evidence_count: number; accepted_evidence_count: number; processing_evidence_count: number };
+type ClientRequirementSummary = { requirement_key: string; label: string; required_level: "required" | "recommended" | "optional"; status: string; complete: boolean; coverage_complete?: boolean; evidence_count: number; accepted_evidence_count: number; processing_evidence_count: number };
 type ClientEvidenceBankingSummary = {
   requirements: ClientRequirementSummary[];
   required_count: number;
@@ -167,7 +167,7 @@ export default function BucketRequestPage() {
       const requirement = doc.requirement_key ? requirementSummaryByKey.get(doc.requirement_key) : undefined;
       const replacements = uploadedEvidenceByDocId.get(doc.id) ?? [];
       const unlockedCopy = isUnlockedCopyRequestedDocument({ id: doc.id, requestKind: doc.request_kind }, unlockedCopyDocIds);
-      const state = clientRequestedDocumentState({ isUnlockedCopyRequest: unlockedCopy, documentStatus: doc.status, hasUploadedFile: uploadedDocIds.has(doc.id), requirementComplete: requirement?.complete, processingEvidenceCount: requirement?.processing_evidence_count, replacementReviewState: doc.replacement_review_state, uploadedEvidence: replacements.map((file) => ({ analysisReviewState: file.analysis_review_state, analysisStatus: file.analysis_status, analysisReasonCode: file.analysis_reason_code, analysisClassification: file.analysis_classification, isPasswordProtected: file.is_password_protected })) });
+      const state = clientRequestedDocumentState({ isUnlockedCopyRequest: unlockedCopy, documentStatus: doc.status, hasUploadedFile: uploadedDocIds.has(doc.id), requirementComplete: requirement?.complete, coverageComplete: requirement?.coverage_complete, processingEvidenceCount: requirement?.processing_evidence_count, replacementReviewState: doc.replacement_review_state, uploadedEvidence: replacements.map((file) => ({ analysisReviewState: file.analysis_review_state, analysisStatus: file.analysis_status, analysisReasonCode: file.analysis_reason_code, analysisClassification: file.analysis_classification, isPasswordProtected: file.is_password_protected })) });
       result.set(doc.id, { state, unlockedCopy, replacementCount: replacements.length });
     }
     return result;
