@@ -106,6 +106,7 @@ export function ApplicationEvidenceWorkspace({
   aiReviewRunning = false,
   onAddFromDrive,
   onAttachBucket,
+  onRequestDocument,
   onVerificationChange,
   onProgramReadinessChange,
   focusRequirement,
@@ -124,6 +125,8 @@ export function ApplicationEvidenceWorkspace({
   aiReviewRunning?: boolean;
   onAddFromDrive?: () => void;
   onAttachBucket?: () => void;
+  /** Ask the client for something the checklist does not list yet (a custom request on the room). */
+  onRequestDocument?: () => void;
   onVerificationChange?: (state: EvidenceWorkspace["verification"]) => void;
   onProgramReadinessChange?: (readiness: Readiness) => void;
   focusRequirement?: RequirementFocus | null;
@@ -477,6 +480,7 @@ export function ApplicationEvidenceWorkspace({
       <div className="evidence-workspace-actions">
         {onAddFromDrive ? <Btn onClick={onAddFromDrive}><Icon name="upload" size={14} />Add from Drive</Btn> : null}
         {onAttachBucket ? <Btn onClick={onAttachBucket}><Icon name="link" size={14} />Attach bucket</Btn> : null}
+        {onRequestDocument ? <Btn onClick={onRequestDocument}><Icon name="send" size={14} />Request a document</Btn> : null}
         {data.primary_bucket_id ? <Btn onClick={() => setOpenBucketId(data.primary_bucket_id)}><Icon name="vault" size={14} />Open bucket</Btn> : null}
         <Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn>
       </div>

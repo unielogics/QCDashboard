@@ -1741,6 +1741,7 @@ export function LeadDetailPanel({
                   aiReviewRunning={rerunning}
                   onAddFromDrive={() => setIngestPickerOpen(true)}
                   onAttachBucket={onLinkBucketIntake}
+                  onRequestDocument={openDocumentRequest}
                   onVerificationChange={setProfileVerification}
                   onProgramReadinessChange={setProgramReadiness}
                   focusRequirement={evidenceFocus}

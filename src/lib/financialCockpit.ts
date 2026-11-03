@@ -196,10 +196,115 @@ export type CockpitDocumentedDebt = {
   source: "document";
 };
 
+export type DebtServiceSource = "debt_schedule_rows" | "debt_schedule_rows+bank_observed" | "debt_schedule_document" | "advance_terms" | "bank_observed" | "none";
+
+export type PayeeKind =
+  | "merchant_cash_advance"
+  | "loan"
+  | "credit_card"
+  | "lease"
+  | "payroll"
+  | "rent"
+  | "tax"
+  | "insurance"
+  | "utilities"
+  | "merchant_services"
+  | "bank_fees"
+  | "owner_draw"
+  | "transfer"
+  | "vendor"
+  | "other";
+
+export type RecurringPayee = {
+  key: string;
+  payee: string;
+  kind: PayeeKind;
+  kind_label: string;
+  rationale: string;
+  cadence: string | null;
+  same_amount: boolean | null;
+  occurrences: number;
+  total: number | null;
+  average_amount: number | null;
+  monthly_average: number | null;
+  months: string[];
+  months_seen: number;
+  first_date: string | null;
+  last_date: string | null;
+  file_ids: string[];
+  accepted: boolean;
+  is_debt: boolean;
+  is_card: boolean;
+};
+
+export type CockpitRecurring = {
+  payees: RecurringPayee[];
+  months_read: string[];
+  files_need_reread: string[];
+  observed_debt_service_monthly: number | null;
+  observed_mca_monthly: number | null;
+  observed_loan_monthly: number | null;
+  observed_card_monthly: number | null;
+};
+
+export type ReconciliationStatus = "matches" | "differs" | "not_seen" | "seen" | "no_statements_read";
+
+export type ReconciliationRow = {
+  row_id: string | null;
+  lender: string;
+  is_mca: boolean;
+  declared_monthly: number | null;
+  declared_balance: number | null;
+  documented: { lender: string; balance: number | null; monthly_payment: number | null; payment_frequency: string | null } | null;
+  documented_monthly_delta_pct: number | null;
+  documented_balance_delta_pct: number | null;
+  observed: { payee: string; kind: PayeeKind; cadence: string | null; average_amount: number | null; monthly_average: number | null; months_seen: number } | null;
+  observed_delta_pct: number | null;
+  status: ReconciliationStatus;
+};
+
+export type CockpitReconciliation = {
+  rows: ReconciliationRow[];
+  unmatched_observed: RecurringPayee[];
+  unmatched_documented: CockpitDocumentedDebt[];
+  months_read: number;
+  matches: number;
+  differs: number;
+  not_seen: number;
+};
+
+export type AdvanceFrequency = "daily" | "weekly" | "biweekly" | "monthly";
+
+export type AdvanceIn = {
+  id?: string | null;
+  lender: string;
+  original_amount: number | null;
+  balance: number | null;
+  payment_amount: number | null;
+  payment_frequency: AdvanceFrequency | null;
+  factor_rate: number | null;
+  payoff_amount: number | null;
+  maturity_on: string | null;
+  notes: string | null;
+  count_in_dscr: boolean;
+};
+
+export type AdvanceRead = AdvanceIn & { id: string; monthly_payment: number | null; origin: string; editable: boolean; source: string };
+export type AdvancesRead = { profile_id: string; rows: AdvanceRead[]; origin: string };
+export type StatementRereadResult = { queued: number; file_ids: string[] };
+
+/** The intake's own cadence table, so a verbal breakdown lands on the same monthly figure as a typed one. */
+export const PAYMENTS_PER_MONTH: Record<AdvanceFrequency, number> = { daily: 21, weekly: 4.33, biweekly: 2.17, monthly: 1 };
+
+export function monthlyEquivalent(amount: number | null | undefined, frequency: AdvanceFrequency | null | undefined): number | null {
+  if (amount == null || !Number.isFinite(amount)) return null;
+  return Math.round(amount * PAYMENTS_PER_MONTH[frequency ?? "monthly"] * 100) / 100;
+}
+
 export type CockpitDebtService = {
   monthly: number | null;
   annual: number | null;
-  source: "debt_schedule_rows" | "debt_schedule_document" | "advance_terms" | "none";
+  source: DebtServiceSource;
   schedule_monthly: number | null;
   schedule_balance: number | null;
   schedule_rows_counted: number;
@@ -210,6 +315,11 @@ export type CockpitDebtService = {
   mca_count: number;
   mca_monthly: number | null;
   mca_balance: number | null;
+  observed_monthly: number | null;
+  observed_mca_monthly: number | null;
+  observed_loan_monthly: number | null;
+  observed_card_monthly: number | null;
+  unexplained_observed_monthly: number | null;
 };
 
 export type CockpitProposedPayment = {
@@ -275,6 +385,9 @@ export type CockpitCoverage = {
   has_debt_schedule_document: boolean;
   debt_rows: number;
   documented_debts: number;
+  recurring_months_read: number;
+  statements_need_reread: number;
+  bank_files_need_reread: string[];
 };
 
 export type FinancialCockpit = {
@@ -282,7 +395,7 @@ export type FinancialCockpit = {
   generated_at: string;
   requested_amount: number | null;
   coverage: CockpitCoverage;
-  bank: { months: CockpitMonth[]; summary: CockpitBankSummary; accounts: CockpitAccount[] };
+  bank: { months: CockpitMonth[]; summary: CockpitBankSummary; accounts: CockpitAccount[]; recurring: CockpitRecurring };
   tax: { years: CockpitTaxYear[] };
   profit_and_loss: CockpitProfitAndLoss | null;
   balance_sheet: CockpitBalanceSheet | null;
@@ -298,6 +411,7 @@ export type FinancialCockpit = {
     documented: CockpitDocumentedDebt[];
     document: { total_monthly_debt_service: number | null; total_outstanding_balance: number | null; debts: Record<string, unknown>[] } | null;
     service: CockpitDebtService;
+    reconciliation: CockpitReconciliation;
   };
   dscr: CockpitDscr;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
@@ -394,6 +508,8 @@ export function dscrLabel(status: DscrStatus | null | undefined): string {
 
 const SOURCE_LABELS: Record<string, string> = {
   debt_schedule_rows: "Debt schedule on the file",
+  "debt_schedule_rows+bank_observed": "Schedule rows plus lender debits the rows forgot",
+  bank_observed: "Lender debits seen in the statements",
   debt_schedule_document: "Uploaded debt schedule",
   advance_terms: "Advance terms read off documents",
   none: "No debt service on file",
@@ -478,4 +594,57 @@ export function linePath(points: Array<{ x: number; y: number } | null>): string
     pen = true;
   }
   return path.trim();
+}
+
+export function payeeKindTone(kind: PayeeKind | null | undefined): CockpitTone {
+  switch (kind) {
+    case "merchant_cash_advance":
+      return "bad";
+    case "loan":
+    case "lease":
+      return "acc";
+    case "credit_card":
+      return "warn";
+    case "payroll":
+    case "rent":
+    case "tax":
+    case "insurance":
+    case "utilities":
+      return "mut";
+    default:
+      return "mut";
+  }
+}
+
+export function reconciliationLabel(row: ReconciliationRow): { tone: CockpitTone; label: string } {
+  switch (row.status) {
+    case "matches":
+      return { tone: "ok", label: `Statements: ${money(row.observed?.monthly_average)} / mo, matches` };
+    case "differs":
+      return { tone: "warn", label: `Statements: ${money(row.observed?.monthly_average)} / mo (${signedPct(row.observed_delta_pct)} declared)` };
+    case "seen":
+      return { tone: "acc", label: `Seen in statements as ${row.observed?.payee ?? "a lender"}` };
+    case "not_seen":
+      return { tone: "warn", label: "Not seen in the statements" };
+    default:
+      return { tone: "mut", label: "Statements not read for payees yet" };
+  }
+}
+
+export function cadenceLabel(value: string | null | undefined): string {
+  switch ((value ?? "").toLowerCase()) {
+    case "daily":
+      return "Daily";
+    case "weekly":
+      return "Weekly";
+    case "biweekly":
+    case "bi-weekly":
+      return "Every two weeks";
+    case "monthly":
+      return "Monthly";
+    case "irregular":
+      return "Irregular";
+    default:
+      return "—";
+  }
 }

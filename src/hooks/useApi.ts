@@ -5,7 +5,7 @@ import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
-import type { FinancialCockpit } from "@/lib/financialCockpit";
+import type { AdvanceIn, AdvancesRead, FinancialCockpit, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -1085,6 +1085,38 @@ export function useFinancialCockpit(profileId: string | null | undefined, enable
     queryFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/financial-cockpit`),
     enabled: !!profileId && enabled,
     staleTime: 30_000,
+  });
+}
+
+/** The merchant cash advances on the file's debt schedule, whoever wrote them. */
+export function useAdvances(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["advances", profileId, devUser],
+    queryFn: () => apiCall<AdvancesRead>(`/application-profiles/${profileId}/advances`),
+    enabled: !!profileId && enabled,
+  });
+}
+
+/** Records the desk's advance rows (from the client's verbal breakdown) and refreshes the cockpit. */
+export function useSaveAdvances(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: AdvanceIn[]) => apiCall<AdvancesRead>(`/application-profiles/${profileId}/advances`, { method: "PUT", body: JSON.stringify({ rows }) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+    },
+  });
+}
+
+/** Queues every bank statement on the file for a fresh AI read (recurring payees). */
+export function useRereadStatements(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: () => apiCall<StatementRereadResult>(`/application-profiles/${profileId}/financial-cockpit/reread-statements`, { method: "POST" }),
   });
 }
 

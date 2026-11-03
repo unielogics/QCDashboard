@@ -39,7 +39,9 @@ import {
   type CockpitProfitCandidate,
   type FinancialCockpit as Cockpit,
 } from "@/lib/financialCockpit";
+import { AdvancesCard } from "./AdvancesCard";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
+import { RecurringCard } from "./RecurringCard";
 
 export type CockpitPackageState = { generated: boolean; inSync: boolean; summaryVersion: number | null; packetVersion: number | null };
 
@@ -386,6 +388,7 @@ function DebtCard({ cockpit }: { cockpit: Cockpit }) {
         {service.document_monthly != null || service.document_balance != null ? <Stat label="Uploaded schedule total">{`${money(service.document_monthly)} / mo · ${compactMoney(service.document_balance)} owed`}</Stat> : null}
         {service.documented_monthly != null ? <Stat label="Advance terms read off documents">{`${money(service.documented_monthly)} / mo · ${compactMoney(service.documented_balance)} owed`}</Stat> : null}
         <Stat label="Active advances (MCA)">{service.mca_count ? `${service.mca_count} · ${money(service.mca_monthly)} / mo · ${compactMoney(service.mca_balance)} owed` : "None on file"}</Stat>
+        {service.observed_monthly != null ? <Stat label="Lender and funder debits seen in the statements">{`${money(service.observed_monthly)} / mo${service.unexplained_observed_monthly ? ` · ${money(service.unexplained_observed_monthly)} not on any row` : ""}`}</Stat> : null}
       </div>
       {scheduleTable ? <ChartCard plain title="Schedule rows" table={scheduleTable} chart={<HBarList rows={rows.map((r) => ({ key: r.id || r.lender, label: r.lender, value: r.monthly_payment, muted: !r.count_in_dscr, sub: `${r.is_mca ? "Advance" : r.category.replace(/_/g, " ")}${r.balance != null ? ` · ${compactMoney(r.balance)} owed` : ""}${r.count_in_dscr ? "" : " · excluded from DSCR"}` }))} />} /> : null}
       {documentedTable ? <ChartCard plain title="Read off documents" table={documentedTable} chart={<HBarList rows={documented.map((d, i) => ({ key: `${d.lender}-${i}`, label: d.lender, value: d.monthly_payment, sub: `${d.is_mca ? "Advance" : "Loan"}${d.balance != null ? ` · ${compactMoney(d.balance)} owed` : ""}${d.payment_frequency ? ` · ${d.payment_frequency}` : ""}` }))} />} /> : null}
@@ -734,6 +737,11 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         <DscrCard cockpit={cockpit} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} />
+      </div>
+
+      <div className="fc-grid">
+        <AdvancesCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} />
+        <RecurringCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} onRefresh={() => query.refetch()} />
       </div>
 
       <div className="fc-grid">
