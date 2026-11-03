@@ -1771,10 +1771,17 @@ export function LeadDetailPanel({
                       : canonicalMissingDocuments.length
                         ? `Collect ${canonicalMissingDocuments.map((document) => document.name).join(", ")}.`
                         : String(result?.one_next_step || result?.executive_summary || "Run the review after the evidence room is complete.")}</p></div>
-                    {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
-                    <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
+                    {/* The review reads as one verdict, what is still open, and where a
+                        person overrides. Everything the engines computed stays one click
+                        away instead of stacked under the verdict. */}
+                    <div className="ai-review-overrides"><span className="lbl">Overrides</span><p>The AI accepts what it validated. A person corrects or overrides any decision from the requirements list.</p><Btn onClick={() => setSubmissionStep(2)}>Review requirements and override</Btn></div>
+                    <details className="ai-review-breakdown">
+                      <summary>Full breakdown: capital readiness, intelligence and extracted facts</summary>
+                      {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
+                      <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
+                      <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
+                    </details>
                   </section>
-                  <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                 </Panel>
               ) : null}
               {prototypeView === "workspace" && submissionStep === 5 ? (

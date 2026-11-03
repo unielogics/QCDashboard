@@ -2174,6 +2174,11 @@ button.pick { width: 100%; text-align: left; }
 .ai-review-missing-items button svg { flex: 0 0 auto; color: var(--warn); }
 .ai-review-next-action { min-width: 0; display: grid; grid-template-columns: minmax(95px, auto) minmax(0, 1fr); align-items: baseline; gap: 10px; padding: 9px 11px; border-left: 2px solid var(--accent); background: var(--sunken2); }
 .ai-review-next-action p { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+.ai-review-overrides { min-width: 0; display: grid; grid-template-columns: minmax(95px, auto) minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 9px 11px; border-left: 2px solid var(--line, #e5e7eb); background: var(--sunken2); }
+.ai-review-overrides p { min-width: 0; margin: 0; overflow-wrap: anywhere; font-size: 12px; line-height: 1.45; }
+.ai-review-breakdown { min-width: 0; display: grid; gap: 14px; }
+.ai-review-breakdown > summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--muted, #64748b); padding: 6px 0; list-style: revert; }
+.ai-review-breakdown:not([open]) > summary { padding-bottom: 0; }
 .artifact-preview { display: grid; gap: 8px; max-height: 360px; overflow-y: auto; padding: 12px 0; }
 
 /* Searchable controlled-taxonomy input. The input remains mounted while its
@@ -2605,7 +2610,7 @@ button.pick { width: 100%; text-align: left; }
   .ai-review-summary-strip > :nth-child(3) { border-top: 1px solid var(--line); border-right: 0; }
   .ai-review-summary-primary { grid-column: 1 / -1; border-right: 0 !important; }
   .ai-review-missing-items,
-  .ai-review-next-action { grid-template-columns: 1fr; }
+  .ai-review-next-action, .ai-review-overrides { grid-template-columns: 1fr; }
   .ai-review-missing-items button { flex: 1 1 100%; justify-content: space-between; border-radius: 7px; }
   .ai-review-missing-items button span { max-width: none; white-space: normal; }
 }
