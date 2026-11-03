@@ -46,6 +46,23 @@ export interface CpSourceRow {
   updated_at: string | null; already_listed_ref: string | null;
 }
 export interface CpListingRef { id: string; ref: string; status: CpListingStatus; name: string }
+/** One product offered on a listing: a program with suggested amount, rate and term; the primary one supplies the headline terms. */
+export interface CpListingProduct {
+  program_key: string | null; label: string; amount: number | string | null; rate_pct: number | string | null; factor_rate?: number | string | null;
+  term_months: number | null; payment_frequency: "monthly" | "weekly" | "daily" | null; monthly_payment: number | string | null; dscr: number | string | null;
+  notes: string | null; primary: boolean;
+}
+export interface CpOfferSuggestion {
+  program_key: string | null; label: string; eligible: boolean | null; amount: number | null; rate_pct: number | null; factor_rate: number | null; term_months: number;
+  payment_frequency: string; monthly_payment: number | null; dscr: number | null; dscr_status: string; affordable_amount: number | null; room_monthly: number | null;
+  requested_amount: number | null; requested_monthly_payment: number | null; requested_dscr: number | null; requested_dscr_status: string;
+  bounds: { min_amount: number | null; max_amount: number | null; min_term: number | null; max_term: number | null; pricing_basis: string | null; published: boolean };
+  reason: string | null; reading: string;
+}
+export interface CpOfferSuggestions {
+  profile_id: string; income_annual: number | null; income_basis: string | null; income_label: string | null; existing_debt_service_monthly: number | null;
+  debt_service_source: string | null; target_dscr: number; requested_amount: number | null; products: CpOfferSuggestion[];
+}
 /** What the file page asks before offering "Publish to marketplace". */
 export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean }
 export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string }
@@ -55,7 +72,7 @@ export interface CpListingCard {
   ltv_pct: string | null; ltv_kind: "ltv" | "ltc" | "cltv"; minimum_investment: string | null; loan_amount: string | null; offered_amount: string | null;
   committed_amount: string; remaining_amount: string; pct_committed: number; payment_frequency: "monthly" | "quarterly" | "at_maturity";
   personal_guarantee: boolean; status: CpListingStatus; outcome: CpListingOutcome | null; opens_at: string | null; closes_at: string | null;
-  days_left: number | null; funded_at: string | null; repaid_at: string | null; maturity_date: string | null; published_at: string | null;
+  days_left: number | null; funded_at: string | null; repaid_at: string | null; maturity_date: string | null; published_at: string | null; products: CpListingProduct[];
 }
 export interface CpSubscription {
   id: string; listing_id: string; listing_ref: string | null; listing_name: string | null; entity_id: string | null; entity_name: string | null;
@@ -84,7 +101,7 @@ export type CpListingPatch = Partial<{
   term_months: number | null; ltv_pct: string | null; ltv_kind: "ltv" | "ltc" | "cltv"; loan_amount: string | null; offered_amount: string | null;
   minimum_investment: string | null; payment_frequency: "monthly" | "quarterly" | "at_maturity"; personal_guarantee: boolean; guarantee_text: string | null;
   borrower_track_record: string | null; exit_plan: string | null; valuation_amount: string | null; valuation_source: string | null; title_status: string | null;
-  servicer_label: string | null; maturity_date: string | null; closes_at: string | null; source_snapshot: Record<string, unknown>;
+  servicer_label: string | null; maturity_date: string | null; closes_at: string | null; source_snapshot: Record<string, unknown>; products: CpListingProduct[];
 }>;
 export interface CpTransfer {
   id: string; ref: string; listing_id: string; listing_ref: string; listing_name: string; vertical: CpVertical; vertical_label: string; principal_amount: string;
@@ -189,6 +206,16 @@ export type CpPrefillDraft = CpListingPatch & { source_snapshot?: Record<string,
 export function useCpPrefill() {
   const api = useAuthedApi();
   return useMutation({ mutationFn: (body: CpPrefillBody) => api<CpPrefillDraft>("/capital/admin/listings/prefill", { method: "POST", body: JSON.stringify(body) }) });
+}
+export function useCpSuggestTerms(profileId: string | null | undefined, programKeys: string[] | null, enabled = true) {
+  const api = useAuthedApi();
+  const keys = programKeys && programKeys.length ? programKeys.join(",") : undefined;
+  return useQuery({
+    enabled: enabled && !!profileId,
+    queryKey: [...KEYS.sources, "suggest", profileId ?? "", keys ?? ""],
+    queryFn: () => api<CpOfferSuggestions>(`/capital/admin/sources/suggest-terms${qs({ profile_id: profileId ?? undefined, program_keys: keys })}`),
+    staleTime: 30_000,
+  });
 }
 export function useCpSourceLookup(params: { profile_id?: string | null; loan_id?: string | null }, enabled = true) {
   const api = useAuthedApi();

@@ -18,7 +18,6 @@ import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, StatusLine, cx, type
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useFinancialCockpit } from "@/hooks/useApi";
-import { useCpCreateListing, useCpPrefill, useCpSourceLookup } from "@/hooks/useCapitalPartners";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import {
   compactMoney,
@@ -40,6 +39,7 @@ import {
   type FinancialCockpit as Cockpit,
 } from "@/lib/financialCockpit";
 import { AdvancesCard } from "./AdvancesCard";
+import { OfferPanel } from "./OfferPanel";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { RecurringCard } from "./RecurringCard";
 
@@ -525,121 +525,6 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 }
 
 // ---------------------------------------------------------------------------
-// Capital partners
-// ---------------------------------------------------------------------------
-
-function MarketplaceCard({ cockpit, props, innerRef }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement> }) {
-  const { programReadiness, termSheet, packageState, canPublish, canRecordTerms, onRecordTerms, onOpenEvidence, onOpenPackage, profileId } = props;
-  const lookup = useCpSourceLookup({ profile_id: profileId }, canPublish);
-  const prefill = useCpPrefill();
-  const create = useCpCreateListing();
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const selection = programReadiness?.selections?.[0] ?? null;
-  const candidate = selection ? programReadiness?.candidates?.find((c) => c.program_key === selection.program_key) ?? null : null;
-  const programItem = selection ? programReadiness?.programs?.find((p) => p.program_key === selection.program_key) ?? null : null;
-  const eligibility: { tone: ChipTone; label: string } = !selection
-    ? { tone: "mut", label: "No program selected" }
-    : candidate?.eligible
-      ? { tone: "ok", label: candidate.requires_review ? "Eligible on estimates" : "Eligible" }
-      : candidate
-        ? { tone: "bad", label: "Not eligible" }
-        : { tone: "mut", label: "Eligibility unknown" };
-  const coverage = cockpit.coverage;
-  const sheet = termSheet?.current ?? null;
-  const headline = cockpit.dscr.headline;
-  const listing = lookup.data?.listing ?? null;
-  const start = async () => {
-    setError(null);
-    setBusy(true);
-    try {
-      const draft = await prefill.mutateAsync({ profile_id: profileId });
-      if (draft.existing_listing) {
-        window.location.assign(`/admin/marketplace/${draft.existing_listing.id}`);
-        return;
-      }
-      const { existing_listing: _existing, ...rest } = draft;
-      const created = await create.mutateAsync(rest);
-      window.location.assign(`/admin/marketplace/${created.id}`);
-    } catch (e) {
-      setError(errorMessage(e, "Could not start the listing."));
-      setBusy(false);
-    }
-  };
-  return (
-    <Card
-      title="Send the file to capital partners"
-      wide
-      id="fc-marketplace"
-      innerRef={innerRef}
-      sub="A listing draft is cut from this file: readiness, the recorded loan terms, the package and the figures above travel with it, and the desk finishes the terms and the narrative in the marketplace editor."
-      actions={
-        listing ? (
-          <>
-            <CellChip tone={listing.status === "draft" ? "mut" : "ok"}>Listed as {listing.ref} · {listing.status.replace(/_/g, " ")}</CellChip>
-            <Btn size="sm" variant="pri" onClick={() => window.location.assign(`/admin/marketplace/${listing.id}`)}>
-              Open listing <Icon name="arrowR" size={13} />
-            </Btn>
-          </>
-        ) : canPublish ? (
-          <Btn size="sm" variant="pri" disabled={busy || lookup.isLoading} onClick={() => void start()}>
-            {busy ? "Cutting the draft…" : "Publish to marketplace"}
-          </Btn>
-        ) : (
-          <span className="sub">A super admin publishes listings.</span>
-        )
-      }
-    >
-      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
-      <div className="fc-listing-grid">
-        <div className="fc-listing-item">
-          <Lbl>Program</Lbl>
-          <strong>{selection?.program_name ?? "None selected"}</strong>
-          <div className="fc-chips">
-            <CellChip tone={eligibility.tone}>{eligibility.label}</CellChip>
-            {programItem ? <CellChip tone={programItem.complete ? "ok" : "warn"}>{programItem.satisfied_count} of {programItem.required_count} requirements</CellChip> : null}
-          </div>
-          {candidate?.reasons?.length ? <div className="sub">{candidate.reasons.slice(0, 2).join(" ")}</div> : null}
-        </div>
-        <div className="fc-listing-item">
-          <Lbl>Evidence</Lbl>
-          <strong>{coverage.bank_months_accepted} of {coverage.bank_months_required} statement months accepted</strong>
-          <div className="fc-chips">
-            <CellChip tone={coverage.tax_years.length ? "ok" : "warn"}>{coverage.tax_years.length ? `Tax years ${coverage.tax_years.join(", ")}` : "No tax return"}</CellChip>
-            <CellChip tone={coverage.debt_rows || coverage.has_debt_schedule_document ? "ok" : "warn"}>{coverage.debt_rows || coverage.has_debt_schedule_document ? "Debt schedule on file" : "No debt schedule"}</CellChip>
-          </div>
-          <Btn size="sm" onClick={onOpenEvidence}>Open the evidence room</Btn>
-        </div>
-        <div className="fc-listing-item">
-          <Lbl>Loan terms on record</Lbl>
-          <strong>{sheet ? `${money(sheet.approved_amount)} at ${sheet.rate_pct}% for ${sheet.term_months} mo` : "Not recorded"}</strong>
-          <div className="sub">{sheet ? `${sheet.funding_party_name} · v${sheet.version}` : lookup.data?.has_term_sheet ? "Recorded on the profile" : "The listing's rate, term and amount come from here."}</div>
-          {canRecordTerms ? <Btn size="sm" onClick={onRecordTerms}>{sheet ? "Update loan terms" : "Record loan terms"}</Btn> : null}
-        </div>
-        <div className="fc-listing-item">
-          <Lbl>Package</Lbl>
-          <strong>{packageState.generated ? `Summary v${packageState.summaryVersion ?? "?"} · packet v${packageState.packetVersion ?? "?"}` : "Not generated"}</strong>
-          <div className="fc-chips">
-            <CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Optional for a listing" : packageState.inSync ? "Current" : "Needs a refresh"}</CellChip>
-          </div>
-          <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>
-        </div>
-        <div className="fc-listing-item">
-          <Lbl>Coverage and profit</Lbl>
-          <strong>
-            {multiple(headline?.value)} <CellChip tone={dscrTone(headline?.status)}>{dscrLabel(headline?.status).split(" (")[0]}</CellChip>
-          </strong>
-          <div className="sub">
-            {headline ? `${headline.label}` : "DSCR not available"}
-            {cockpit.net_profit.conclusion ? ` · net profit ${money(cockpit.net_profit.conclusion.value)} (${sourceLabel(cockpit.net_profit.conclusion.key)})` : ""}
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // The cockpit
 // ---------------------------------------------------------------------------
 
@@ -751,7 +636,7 @@ export function FinancialCockpit(props: Props) {
       </div>
 
       <div className="fc-grid">
-        <MarketplaceCard cockpit={cockpit} props={props} innerRef={marketplaceRef} />
+        <OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} />
       </div>
     </div>
   );

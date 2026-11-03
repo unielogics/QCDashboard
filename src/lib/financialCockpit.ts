@@ -648,3 +648,28 @@ export function cadenceLabel(value: string | null | undefined): string {
       return "—";
   }
 }
+
+/** Level payment for a principal at an annual rate over a term; a factor-rate product divides payback by the term. */
+export function amortizedPayment(principal: number | null | undefined, ratePct: number | null | undefined, months: number | null | undefined, factorRate?: number | null): number | null {
+  if (principal == null || !Number.isFinite(principal) || principal <= 0 || !months || months <= 0) return null;
+  if (factorRate != null && Number.isFinite(factorRate) && factorRate > 0) return Math.round((principal * factorRate / months) * 100) / 100;
+  const rate = (ratePct ?? 0) / 100 / 12;
+  if (rate <= 0) return Math.round((principal / months) * 100) / 100;
+  return Math.round((principal * rate / (1 - Math.pow(1 + rate, -months))) * 100) / 100;
+}
+
+/** Coverage once a new monthly payment is added to today's debt service. */
+export function dscrWithPayment(incomeAnnual: number | null | undefined, existingMonthly: number | null | undefined, payment: number | null | undefined): number | null {
+  if (incomeAnnual == null || payment == null || !Number.isFinite(incomeAnnual) || !Number.isFinite(payment)) return null;
+  const annual = (existingMonthly ?? 0) * 12 + payment * 12;
+  if (annual <= 0) return null;
+  return Math.round((incomeAnnual / annual) * 100) / 100;
+}
+
+export function dscrStatusOf(value: number | null | undefined): DscrStatus {
+  if (value == null || !Number.isFinite(value)) return "unavailable";
+  if (value < 1) return "concerning";
+  if (value < 1.25) return "acceptable";
+  if (value < 1.5) return "healthy";
+  return "very_strong";
+}

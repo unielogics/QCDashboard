@@ -218,6 +218,22 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
         <F k="closes_at" label="Subscriptions close" type="datetime-local" hint="Drives the members' days-left counter." />
         <label className="pick" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={d.personal_guarantee} onChange={(e) => set("personal_guarantee", e.target.checked)} disabled={readOnly} /><span>Personal guarantee</span></label>
       </Panel>
+      {listing.products?.length ? (
+        <Panel title="Products offered" sub="Edited from the file's Financials tab (Send the file to capital partners). The primary product supplies the headline rate, term and amount above.">
+          <Table caption="Products" cols={[{ label: "Product" }, { label: "Amount", align: "r" }, { label: "Rate", align: "r" }, { label: "Term", align: "r" }, { label: "Payment / mo", align: "r" }, { label: "Coverage", align: "r" }]}>
+            {listing.products.map((product, index) => (
+              <Tr key={`${product.program_key ?? "p"}-${index}`}>
+                <Td>{product.label}{product.primary ? <CellChip tone="acc">Primary</CellChip> : null}{product.notes ? <div className="sub">{product.notes}</div> : null}</Td>
+                <Td className="num" align="r">{money(product.amount)}</Td>
+                <Td className="num" align="r">{product.factor_rate ? `${Number(product.factor_rate).toFixed(2)} factor` : product.rate_pct != null ? `${product.rate_pct}%` : "—"}</Td>
+                <Td className="num" align="r">{product.term_months ?? "—"} mo</Td>
+                <Td className="num" align="r">{money(product.monthly_payment)}</Td>
+                <Td className="num" align="r">{product.dscr != null ? `${Number(product.dscr).toFixed(2)}x` : "—"}</Td>
+              </Tr>
+            ))}
+          </Table>
+        </Panel>
+      ) : null}
       <Panel title="Narrative" bodyClass="grid g10">
         <Field label="Summary"><Textarea rows={3} value={d.summary} onChange={(e) => set("summary", e.target.value)} disabled={readOnly} /></Field>
         <div className="grid cols-auto">
