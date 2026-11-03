@@ -92,6 +92,27 @@ export type RequirementStateStatus =
   | "stale"
   | "failed";
 
+/**
+ * A requirement's state in the words the desk uses. The raw tokens
+ * ("received_unverified") said what the machine knew, not what to do next.
+ */
+export function requirementStatusLabel(
+  status: RequirementStateStatus | string | null | undefined,
+  options: { needsPerson?: boolean } = {},
+): string {
+  switch (status) {
+    case "missing": return "Not received";
+    case "requested": return "Waiting on client";
+    case "received_unverified": return options.needsPerson ? "Received · needs a person" : "Received · AI checking";
+    case "verified": return "Accepted";
+    case "waived": return "Waived";
+    case "not_applicable": return "Not needed";
+    case "stale": return "Received · out of date";
+    case "failed": return "Not accepted";
+    default: return String(status ?? "").replaceAll("_", " ") || "Unknown";
+  }
+}
+
 export type ProgramRecommendationStatus =
   | "recommended"
   | "needs_information"
