@@ -36,8 +36,6 @@ export function PrecallChecklist({ token, passcode, precall, roomKind = "dealer"
   const [draft, setDraft] = useState<OwnerDraft>(EMPTY_OWNER);
   const [adding, setAdding] = useState(false);
   const [consentTabOpen, setConsentTabOpen] = useState(false);
-  const [newPin, setNewPin] = useState("");
-  const [pinDismissed, setPinDismissed] = useState(false);
 
   const call = useCallback(async (path: string, method: string, body: Record<string, unknown>) => {
     const base = roomKind === "application" ? "application-profiles" : "dealer-os";
@@ -92,15 +90,7 @@ export function PrecallChecklist({ token, passcode, precall, roomKind = "dealer"
       </div>
     </div>
 
-    {roomKind === "dealer" && precall.passcode_needs_setup && !pinDismissed ? <div className="application-room-card application-room-pin-setup">
-      <div><b>Choose a PIN you'll remember</b><p>We sent you a generated PIN. Replace it with six digits of your own — you'll use it every time you open this room.</p></div>
-      <div className="application-room-pin-row">
-        <input inputMode="numeric" maxLength={6} placeholder="New 6-digit PIN" value={newPin} onChange={(event) => setNewPin(event.target.value.replace(/\D/g, "").slice(0, 6))} />
-        <button className="application-room-primary" disabled={busy || newPin.length !== 6} onClick={() => void run("Your PIN is updated. Use it next time you open the room.", async () => { await call("/passcode", "POST", { new_passcode: newPin }); setNewPin(""); })}>Save PIN</button>
-        <button className="application-room-secondary" disabled={busy} onClick={() => setPinDismissed(true)}>Keep the one you sent</button>
-      </div>
-      <span className="application-room-note">Note: after saving, use your new PIN for any further changes in this visit.</span>
-    </div> : null}
+    {/* Choosing a PIN moved to the room itself (RoomPinSetup), for every room kind. */}
 
     <ol className="application-room-steps">
       <li className={precall.ownership_complete && precall.contact_complete ? "done" : "open"}>

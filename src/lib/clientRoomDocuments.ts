@@ -91,6 +91,28 @@ export function isValidRoomPin(value: string): boolean {
   return /^\d{6}$/.test(value);
 }
 
+export type RoomPinSetupMode = "required" | "offered" | "hidden";
+
+/**
+ * Whether the room asks the client to choose their own PIN, and how firmly.
+ *
+ * A client handed in from their intake arrives with the generated code in the
+ * link and has never had to know it, so choosing one is the first thing the
+ * room asks of them. A client who typed the PIN we sent is offered the change
+ * and may put it off for this visit. Once a PIN is chosen, or on an
+ * offer-only visit that is not really the room, nothing is asked.
+ */
+export function roomPinSetupMode({ needsSetup, arrivedWithCode, dismissed, offerOnly = false }: {
+  needsSetup: boolean;
+  arrivedWithCode: boolean;
+  dismissed: boolean;
+  offerOnly?: boolean;
+}): RoomPinSetupMode {
+  if (!needsSetup || offerOnly) return "hidden";
+  if (arrivedWithCode) return "required";
+  return dismissed ? "hidden" : "offered";
+}
+
 export function clientActionNeeded(state: ClientRequestedDocumentState): boolean {
   return state === "needed";
 }

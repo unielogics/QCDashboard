@@ -11,11 +11,12 @@ import { QCMark } from "@/components/QCMark";
 import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
+import { RoomPinSetup } from "@/components/room/RoomPinSetup";
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
 import { RoomUseOfFunds } from "@/components/room/RoomUseOfFunds";
 import { RoomCollectionTasks } from "@/components/room/RoomCollectionTasks";
 import { apiBase } from "@/lib/api";
-import { clientActionNeeded, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin } from "@/lib/clientRoomDocuments";
+import { clientActionNeeded, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 
@@ -46,7 +47,7 @@ type ClientEvidenceBankingSummary = {
   };
 };
 type ClientRoomKind = RoomKind | "basic";
-type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
+type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; passcode_needs_setup?: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
 type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
@@ -77,6 +78,9 @@ export default function BucketRequestPage() {
   const [info, setInfo] = useState<RequestInfo | null>(null);
   const [session, setSession] = useState<UploadSession | null>(null);
   const [passcode, setPasscode] = useState("");
+  // True when the confirmation link carried the PIN, so the client has never typed it.
+  const [arrivedWithCode, setArrivedWithCode] = useState(false);
+  const [pinSetupDismissed, setPinSetupDismissed] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
@@ -123,7 +127,9 @@ export default function BucketRequestPage() {
     // A PIN in the fragment (from the confirmation link) prefills the gate and
     // is dropped from the URL so it never lands in history or a shared link.
     const match = /(?:^#|&)p=(\d{6})(?:&|$)/.exec(window.location.hash || "");
-    if (match) { setPasscode(match[1]); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
+    // Arriving with the code in hand is the one moment the client has never
+    // had to know their PIN; the room asks them to choose one before going on.
+    if (match) { setPasscode(match[1]); setArrivedWithCode(true); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
   }, []);
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
@@ -452,6 +458,9 @@ export default function BucketRequestPage() {
     } finally { submitInFlightRef.current = false; setIsUploading(false); }
   }
 
+  // Whether, and how firmly, the room asks the client to choose their own PIN.
+  const pinSetup = roomPinSetupMode({ needsSetup: Boolean(session?.passcode_needs_setup), arrivedWithCode, dismissed: pinSetupDismissed, offerOnly: offerOnlyAccess });
+
   return <main className={`application-room ${theme === "obsidian" ? "is-obsidian" : "is-light"}`}>
     <div className="application-room-topline" />
     {!session ? <section className="application-room-gate">
@@ -462,8 +471,9 @@ export default function BucketRequestPage() {
       <button className="application-room-primary" onClick={() => void openInvite()} disabled={!info || !info.requires_passcode || !isValidRoomPin(passcode.trim()) || isAccessing}>{isAccessing ? "Checking PIN..." : "Open application room"}</button>
       {status ? <div className={`application-room-status ${status.toLowerCase().includes("not") || status.toLowerCase().includes("unavailable") ? "bad" : ""}`}>{status}</div> : null}
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
-    </section> : <section className="application-room-shell">
+    </section> : <section className={`application-room-shell${pinSetup === "required" ? " is-pin-setup" : ""}`}>
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${missingDocs.length ? "attention" : ""}`}>{missingDocs.length ? `${missingDocs.length} action${missingDocs.length === 1 ? "" : "s"} needed` : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
+      {pinSetup !== "hidden" ? <RoomPinSetup token={token} passcode={passcode.trim()} required={pinSetup === "required"} onSaved={(pin) => { setPasscode(pin); setArrivedWithCode(false); setSession((current) => current ? { ...current, passcode_needs_setup: false } : current); }} onDismiss={() => setPinSetupDismissed(true)} /> : null}
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && missingDocs.length ? <span>{missingDocs.length}</span> : null}</button>)}</nav>
 
       {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}

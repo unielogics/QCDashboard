@@ -1087,7 +1087,8 @@ export default function McaRefinanceIntakePage() {
     for (const row of rows) {
       try {
         await uploadFile(
-          { initPath: `/${encodeURIComponent(tokenRef.current)}/files/upload-init`, completePath: `/${encodeURIComponent(tokenRef.current)}/files/complete`, call, sizeField: "size" },
+          // The intake endpoint reads `size_bytes`; sending `size` recorded every upload at 0 B.
+          { initPath: `/${encodeURIComponent(tokenRef.current)}/files/upload-init`, completePath: `/${encodeURIComponent(tokenRef.current)}/files/complete`, call },
           row.file,
           { requestedDocumentId: docId, storageRejectedMessage: () => c.uploadRejected },
         );
