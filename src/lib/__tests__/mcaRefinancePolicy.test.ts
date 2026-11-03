@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcaRefinanceReviewMode, parseMcaRefinanceCount, parseMcaRefinanceQualification, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
+import { mcaRefinanceReviewMode, parseMcaRefinanceCount, parseMcaRefinanceQualification, parseYearsInBusiness, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 
 const policy = (patch: Partial<McaRefinancePolicy> = {}): McaRefinancePolicy => ({
   review_mode: "automated_review", auto_underwriting_allowed: true, reason_codes: [],
@@ -53,5 +53,16 @@ describe("the marketing calculator's banded count", () => {
     expect(parseMcaRefinanceCount("3+")).toBe(3);
     expect(parseMcaRefinanceCount("2")).toBe(2);
     expect(parseMcaRefinanceCount("")).toBeNull();
+  });
+});
+
+describe("years in business", () => {
+  it("accepts whole and fractional years, nothing absurd", () => {
+    expect(parseYearsInBusiness("3")).toBe(3);
+    expect(parseYearsInBusiness("1,5")).toBe(1.5);
+    expect(parseYearsInBusiness("0.5")).toBe(0.5);
+    expect(parseYearsInBusiness("")).toBeNull();
+    expect(parseYearsInBusiness("-1")).toBeNull();
+    expect(parseYearsInBusiness("900")).toBeNull();
   });
 });

@@ -28,6 +28,13 @@ export function parseMcaRefinanceCount(input: string): number | null {
   return Number.isInteger(value) && value >= 0 && value <= MCA_REFINANCE_LIMITS.declarationCount ? value : null;
 }
 
+/** Years the business has operated; decimals are fine ("1.5"), nothing above 150. */
+export function parseYearsInBusiness(input: string): number | null {
+  if (!input.trim()) return null;
+  const value = Number(input.replace(/,/g, "."));
+  return Number.isFinite(value) && value >= 0 && value <= 150 ? Math.round(value * 100) / 100 : null;
+}
+
 export function parseMcaRefinanceAmount(input: string): number | null {
   if (!input.trim()) return null;
   const value = Number(input.replace(/,/g, ""));

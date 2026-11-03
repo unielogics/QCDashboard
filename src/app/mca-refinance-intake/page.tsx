@@ -33,7 +33,7 @@ import { validPhone } from "@/lib/formCoerce";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
-import { mcaRefinanceReviewMode, parseMcaRefinanceAmount, parseMcaRefinanceCount, parseMcaRefinanceQualification, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
+import { mcaRefinanceReviewMode, parseMcaRefinanceAmount, parseMcaRefinanceCount, parseMcaRefinanceQualification, type McaRefinancePolicy, parseYearsInBusiness } from "@/lib/mcaRefinancePolicy";
 import {
   cryptoId,
   errorMessage,
@@ -195,6 +195,7 @@ type Copy = {
   qualificationTitle: string;
   qualificationIntro: string;
   qualificationCount: string;
+  qualificationYears: string;
   qualificationAmount: string;
   qualificationSave: string;
   qualificationBusy: string;
@@ -319,6 +320,7 @@ type Copy = {
   errPhoneRequired: string;
   errPhoneIncomplete: string;
   errCountRequired: string;
+  errYearsRequired: string;
   errTermsCheckbox: string;
   errCode: string;
   errThrottled: string;
@@ -341,6 +343,7 @@ const COPY: Record<Lang, Copy> = {
     qualificationTitle: "Your refinance details",
     qualificationIntro: "Declare every active MCA and the total amount you need to refinance, whether you upload agreements or type their terms. You can start your file now and complete these details before automatic review.",
     qualificationCount: "Number of active MCAs",
+    qualificationYears: "Years in business",
     qualificationAmount: "Amount to refinance ($)",
     qualificationSave: "Save refinance details",
     qualificationBusy: "Saving details…",
@@ -455,6 +458,7 @@ const COPY: Record<Lang, Copy> = {
     errPhoneRequired: "A mobile number is required so we can reach you about your file.",
     errPhoneIncomplete: "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number.",
     errCountRequired: "Tell us how many merchant cash advances are active today: 1, 2, or 3 or more. It decides which program fits your refinance.",
+    errYearsRequired: "Tell us how many years the business has been operating. Decimals are fine, for example 1.5.",
     errTermsCheckbox: "Please accept the Terms and Privacy Policy.",
     errCode: "Enter the code from your email.",
     errThrottled: "Too many attempts — wait a minute and try again.",
@@ -472,6 +476,7 @@ const COPY: Record<Lang, Copy> = {
     qualificationTitle: "Datos de su refinanciamiento",
     qualificationIntro: "Declare todos los MCA vigentes y el monto total que necesita refinanciar, tanto si sube contratos como si escribe sus términos. Puede iniciar el expediente ahora y completar estos datos antes de la revisión automática.",
     qualificationCount: "Número de MCA vigentes",
+    qualificationYears: "Años en el negocio",
     qualificationAmount: "Monto a refinanciar ($)",
     qualificationSave: "Guardar datos de refinanciamiento",
     qualificationBusy: "Guardando datos…",
@@ -586,6 +591,7 @@ const COPY: Record<Lang, Copy> = {
     errPhoneRequired: "Se requiere un número de móvil para poder comunicarnos contigo sobre tu expediente.",
     errPhoneIncomplete: "Ese número no parece completo. Ingresa un móvil de 10 dígitos de EE. UU., o incluye el código de país para un número internacional.",
     errCountRequired: "Indique cuántos adelantos (MCA) están vigentes hoy: 1, 2 o 3 o más. Define el programa que corresponde a su refinanciamiento.",
+    errYearsRequired: "Indique cuántos años lleva operando el negocio. Puede usar decimales, por ejemplo 1.5.",
     errTermsCheckbox: "Acepta los Términos y la Política de Privacidad.",
     errCode: "Ingresa el código de tu correo.",
     errThrottled: "Demasiados intentos — espera un minuto e inténtalo de nuevo.",
@@ -674,7 +680,7 @@ export default function McaRefinanceIntakePage() {
   const [startBusy, setStartBusy] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [seed, setSeed] = useState<Seed>({ payback: null, months: null, freq: null });
-  const [qualificationForm, setQualificationForm] = useState({ activeCount: "", requestedAmount: "" });
+  const [qualificationForm, setQualificationForm] = useState({ activeCount: "", requestedAmount: "", yearsInBusiness: "" });
   const qualificationDirty = useRef(false);
   const [qualificationBusy, setQualificationBusy] = useState(false);
   const [qualificationError, setQualificationError] = useState<string | null>(null);
@@ -759,7 +765,7 @@ export default function McaRefinanceIntakePage() {
     const months = Number.isFinite(monthsParsed) && monthsParsed > 0 ? monthsParsed : null;
     const freq = (FREQS as readonly string[]).includes(freqParam) ? (freqParam as Freq) : null;
     if (payback !== null || months !== null || freq) setSeed({ payback, months, freq });
-    setQualificationForm({ activeCount: declaredCount === null ? "" : String(declaredCount), requestedAmount: payback !== null && payback > 0 ? String(payback) : "" });
+    setQualificationForm({ activeCount: declaredCount === null ? "" : String(declaredCount), requestedAmount: payback !== null && payback > 0 ? String(payback) : "", yearsInBusiness: "" });
 
     const storedLang = getStoredLanguage("mca_refinance");
     if (storedLang) setLanguage(storedLang);
@@ -797,10 +803,11 @@ export default function McaRefinanceIntakePage() {
     else if (check === "deferred") { setPullState("deferred"); }
     const policy = payload.mca_refinance_policy;
     if (policy && !qualificationDirty.current) {
-      setQualificationForm({
+      setQualificationForm((current) => ({
+        ...current,
         activeCount: typeof policy.active_mca_count === "number" && Number.isFinite(policy.active_mca_count) ? String(policy.active_mca_count) : "",
         requestedAmount: typeof policy.requested_amount === "number" && Number.isFinite(policy.requested_amount) ? String(policy.requested_amount) : "",
-      });
+      }));
     }
     const nextToken = payload.token ?? tokenRef.current;
     if (nextToken) {
@@ -922,6 +929,13 @@ export default function McaRefinanceIntakePage() {
       setStartError(c.errCountRequired);
       return;
     }
+    // Program fit asks how long the business has operated; asked once here
+    // rather than leaving every MCA file at "needs information".
+    const yearsInBusiness = parseYearsInBusiness(qualificationForm.yearsInBusiness);
+    if (yearsInBusiness === null) {
+      setStartError(c.errYearsRequired);
+      return;
+    }
     setStartBusy(true);
     setStartError(null);
     const body: Record<string, unknown> = {
@@ -938,6 +952,7 @@ export default function McaRefinanceIntakePage() {
     if (seed.months !== null) body.months_remaining = seed.months;
     if (seed.freq) body.payment_frequency = seed.freq;
     if (activeCount !== null) body.active_mca_count = activeCount;
+    body.years_in_business = yearsInBusiness;
     if (requestedAmount !== null) body.requested_amount = requestedAmount;
     if (manualReviewHint) body.manual_review_requested = true;
     try {
@@ -1276,7 +1291,7 @@ export default function McaRefinanceIntakePage() {
   }
 
   // --- review + booking -----------------------------------------------------
-  function changeQualification(field: "activeCount" | "requestedAmount", value: string) {
+  function changeQualification(field: "activeCount" | "requestedAmount" | "yearsInBusiness", value: string) {
     qualificationDirty.current = true;
     setQualificationForm((current) => ({ ...current, [field]: value }));
     setQualificationSaved(false);
@@ -1287,6 +1302,7 @@ export default function McaRefinanceIntakePage() {
     const tok = tokenRef.current;
     if (!tok || qualificationBusy) return;
     const declaration = parseMcaRefinanceQualification(qualificationForm.activeCount, qualificationForm.requestedAmount);
+    const railYears = parseYearsInBusiness(qualificationForm.yearsInBusiness);
     if (!declaration && !manualReviewHint) {
       setQualificationError(c.qualificationError);
       return;
@@ -1296,7 +1312,7 @@ export default function McaRefinanceIntakePage() {
     setQualificationSaved(false);
     try {
       const payload = await call<McaIntakeResponse>(`/${encodeURIComponent(tok)}/qualification`, {
-        method: "POST", body: JSON.stringify({ ...declaration, ...(manualReviewHint ? { manual_review_requested: true } : {}) }),
+        method: "POST", body: JSON.stringify({ ...declaration, ...(railYears !== null ? { years_in_business: railYears } : {}), ...(manualReviewHint ? { manual_review_requested: true } : {}) }),
       });
       qualificationDirty.current = false;
       adopt(payload);
@@ -1483,6 +1499,14 @@ export default function McaRefinanceIntakePage() {
               required
             />
             <Field
+              label={c.qualificationYears}
+              value={qualificationForm.yearsInBusiness}
+              onChange={(value) => changeQualification("yearsInBusiness", value)}
+              inputMode="decimal"
+              placeholder="e.g. 3 or 1.5"
+              required
+            />
+            <Field
               label={c.qualificationAmount}
               value={qualificationForm.requestedAmount}
               onChange={(value) => changeQualification("requestedAmount", value)}
@@ -1647,6 +1671,7 @@ export default function McaRefinanceIntakePage() {
           <p className="vm-sub">{c.programTerms}</p>
           <div className="vm-fg2">
             <Field label={c.qualificationCount} value={qualificationForm.activeCount} onChange={(value) => changeQualification("activeCount", value)} inputMode="numeric" type="number" />
+            <Field label={c.qualificationYears} value={qualificationForm.yearsInBusiness} onChange={(value) => changeQualification("yearsInBusiness", value)} inputMode="decimal" />
             <Field label={c.qualificationAmount} value={qualificationForm.requestedAmount} onChange={(value) => changeQualification("requestedAmount", value)} inputMode="decimal" />
           </div>
           <button type="button" className="vm-ghost" disabled={qualificationBusy} onClick={saveQualification}>
