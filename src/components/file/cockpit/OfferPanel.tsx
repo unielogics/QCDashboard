@@ -316,6 +316,13 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
           <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Optional for a listing" : packageState.inSync ? "Current" : "Needs a refresh"}</CellChip></div>
           <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>
         </div>
+        {cockpit.plan.evaluation.active ? (
+          <div className="fc-listing-item">
+            <Lbl>The plan</Lbl>
+            <strong>{cockpit.plan.evaluation.retired_count} obligation{cockpit.plan.evaluation.retired_count === 1 ? "" : "s"} paid off · needs {money(cockpit.plan.evaluation.loan_amount_needed)}</strong>
+            <div className="sub">Debt service after payoffs {money(cockpit.plan.evaluation.debt_service_before_new_payment_monthly)} / mo; the suggestions below size the loan to cover the payoffs.</div>
+          </div>
+        ) : null}
         <div className="fc-listing-item">
           <Lbl>Coverage basis</Lbl>
           <strong>{income == null ? "No income figure yet" : `${compactMoney(income)} a year`}</strong>

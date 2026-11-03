@@ -40,6 +40,7 @@ type Draft = {
   count_in_dscr: boolean;
   editable: boolean;
   source: string;
+  payee_key: string | null;
 };
 
 const FREQUENCIES: Array<{ value: AdvanceFrequency; label: string }> = [
@@ -69,6 +70,7 @@ function fromRead(row: AdvanceRead): Draft {
     count_in_dscr: row.count_in_dscr,
     editable: row.editable,
     source: row.source,
+    payee_key: row.payee_key ?? null,
   };
 }
 
@@ -88,6 +90,7 @@ function blank(partial: Partial<Draft> = {}): Draft {
     count_in_dscr: true,
     editable: true,
     source: "desk",
+    payee_key: null,
     ...partial,
   };
 }
@@ -112,6 +115,7 @@ function toPayload(draft: Draft): AdvanceIn {
     maturity_on: draft.maturity_on || null,
     notes: draft.notes.trim() || null,
     count_in_dscr: draft.count_in_dscr,
+    payee_key: draft.payee_key,
   };
 }
 
@@ -150,6 +154,7 @@ export function AdvancesCard({ profileId, cockpit, canEdit }: { profileId: strin
               payment_amount: payee.average_amount == null ? "" : String(payee.average_amount),
               payment_frequency: (["daily", "weekly", "biweekly", "monthly"].includes(payee.cadence ?? "") ? (payee.cadence as AdvanceFrequency) : "daily"),
               notes: `Seen in the statements: ${payee.occurrences} debits, ${money(payee.monthly_average)} a month.`,
+              payee_key: payee.key,
             }
           : {},
       ),

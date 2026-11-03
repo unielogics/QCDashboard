@@ -5,7 +5,7 @@ import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
-import type { AdvanceIn, AdvancesRead, BankAccountsRead, FinancialCockpit, StatementRereadResult } from "@/lib/financialCockpit";
+import type { AdvanceIn, AdvancesRead, BankAccountsRead, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -1141,6 +1141,19 @@ export function useSaveBankAccounts(profileId: string | null | undefined) {
       void queryClient.invalidateQueries({ queryKey: ["bank-accounts", profileId] });
       void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
       void queryClient.invalidateQueries({ queryKey: ["application-evidence-workspace", profileId] });
+    },
+  });
+}
+
+/** Saves the file's financial plan; coverage, the offer and the debt service all re-read it. */
+export function useSaveFinancialPlan(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (plan: FinancialPlanWrite) => apiCall<FinancialPlanRead>(`/application-profiles/${profileId}/financial-plan`, { method: "PUT", body: JSON.stringify(plan) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
     },
   });
 }

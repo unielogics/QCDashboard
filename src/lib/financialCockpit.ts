@@ -315,9 +315,109 @@ export type AdvanceIn = {
   maturity_on: string | null;
   notes: string | null;
   count_in_dscr: boolean;
+  /** The statement payee this advance is (cockpit payee key), when known. */
+  payee_key?: string | null;
 };
 
-export type AdvanceRead = AdvanceIn & { id: string; monthly_payment: number | null; origin: string; editable: boolean; source: string };
+export type Obligation = {
+  id: string;
+  kind: "row" | "document" | "payee";
+  lender: string;
+  category: string;
+  is_mca: boolean;
+  monthly: number | null;
+  balance: number | null;
+  payoff: number | null;
+  in_debt_service: boolean;
+  count_in_dscr: boolean;
+  linked_payee_key: string | null;
+  linked_payee: string | null;
+  observed_monthly: number | null;
+  cadence: string | null;
+  source: string;
+  origin: string | null;
+};
+
+export type FinancialPlanRecord = {
+  retire: string[];
+  exclude: string[];
+  new_payment_monthly: number | null;
+  new_payment_source: string | null;
+  new_loan_amount: number | null;
+  new_loan_rate_pct: number | null;
+  new_loan_term_months: number | null;
+  note: string | null;
+  updated_at?: string | null;
+  updated_by?: string | null;
+};
+
+export type PlanReplayRow = {
+  month: string;
+  label: string;
+  deposits: number | null;
+  withdrawals: number | null;
+  withdrawals_after: number | null;
+  net: number | null;
+  net_after: number | null;
+  ending: number | null;
+  ending_after: number | null;
+  lowest: number | null;
+  lowest_after: number | null;
+  removed: number;
+  added: number;
+  cumulative: number;
+};
+
+export type PlanCandidate = { key: string; label: string; numerator_before: number; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean };
+
+export type PlanEvaluation = {
+  active: boolean;
+  retired_ids: string[];
+  excluded_ids: string[];
+  retired_monthly: number;
+  retired_count: number;
+  payoff_total: number | null;
+  payoff_unknown: number;
+  excluded_monthly: number;
+  new_payment_monthly: number | null;
+  new_payment_source: string | null;
+  loan_amount_needed: number | null;
+  debt_service_before_monthly: number | null;
+  debt_service_before_new_payment_monthly: number;
+  debt_service_after_monthly: number;
+  debt_service_after_annual: number | null;
+  candidates: PlanCandidate[];
+  headline_before: number | null;
+  headline_after: number | null;
+  headline_after_status: DscrStatus;
+  headline_key: string | null;
+  no_debt_left: boolean;
+  replay: PlanReplayRow[];
+  net_before_avg: number | null;
+  net_after_avg: number | null;
+  ending_before_last: number | null;
+  ending_after_last: number | null;
+  months_dipping_negative_before: number;
+  months_dipping_negative_after: number;
+  cash_kept: number;
+};
+
+export type PlanLever = { key: string; label: string; detail: string; dscr_after: number | null; status_after: DscrStatus; apply: Partial<FinancialPlanRecord> | null; improves: boolean };
+
+export type FinancialPlanWrite = {
+  retire: string[];
+  exclude: string[];
+  new_payment_monthly: number | null;
+  new_payment_source: "manual" | "term_sheet" | "offer" | "manual_terms" | null;
+  new_loan_amount: number | null;
+  new_loan_rate_pct: number | null;
+  new_loan_term_months: number | null;
+  note: string | null;
+};
+
+export type FinancialPlanRead = { profile_id: string; record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; obligations: Obligation[] };
+
+export type AdvanceRead = AdvanceIn & { id: string; monthly_payment: number | null; origin: string; editable: boolean; source: string; payee_key?: string | null };
 export type AdvancesRead = { profile_id: string; rows: AdvanceRead[]; origin: string };
 export type StatementRereadResult = { queued: number; file_ids: string[] };
 
@@ -452,7 +552,9 @@ export type FinancialCockpit = {
     document: { total_monthly_debt_service: number | null; total_outstanding_balance: number | null; debts: Record<string, unknown>[] } | null;
     service: CockpitDebtService;
     reconciliation: CockpitReconciliation;
+    obligations: Obligation[];
   };
+  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[] };
   dscr: CockpitDscr;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];

@@ -6733,3 +6733,9 @@ a.pick { color: inherit; text-decoration: none; }
 .fc-sim-pick-name { font-weight: 600; color: var(--ink); }
 .fc-sim-pick .cellchip { justify-self: start; }
 .fc-sim-pick .sub { grid-column: 2; }
+.fc-obligations tr.is-on td { background: var(--accent-100); }
+.fc-levers { display: grid; gap: 8px; }
+.fc-lever { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: var(--r-sm); padding: 10px 12px; background: var(--surface); }
+.fc-lever.is-good { border-color: var(--ok); background: var(--ok-tint); }
+.fc-lever-side { display: flex; gap: 8px; align-items: center; white-space: nowrap; }
+.linky { appearance: none; border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }

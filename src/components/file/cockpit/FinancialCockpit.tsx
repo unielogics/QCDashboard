@@ -41,8 +41,8 @@ import {
 } from "@/lib/financialCockpit";
 import { AdvancesCard } from "./AdvancesCard";
 import { OfferPanel } from "./OfferPanel";
+import { CoverageCard } from "./CoverageCard";
 import { OverdraftCard } from "./OverdraftCard";
-import { SimulatorCard } from "./SimulatorCard";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { RecurringCard } from "./RecurringCard";
 
@@ -399,89 +399,6 @@ function DebtCard({ cockpit }: { cockpit: Cockpit }) {
   );
 }
 
-function CandidateRows({ candidates }: { candidates: CockpitDscrCandidate[] }) {
-  return (
-    <table className="tbl fc-candidates">
-      <thead>
-        <tr>
-          <th>Basis</th>
-          <th className="r">Income figure</th>
-          <th className="r">Debt service</th>
-          <th className="r">DSCR</th>
-          <th className="r">With the new loan</th>
-          <th>Confidence</th>
-        </tr>
-      </thead>
-      <tbody>
-        {candidates.map((c) => (
-          <tr key={c.key}>
-            <td>
-              {c.label}
-              <small>{c.numerator_label}{c.period ? ` · ${c.period}` : ""}</small>
-              {c.note ? <small>{c.note}</small> : null}
-            </td>
-            <td className="r num">{money(c.numerator)}</td>
-            <td className="r num">{money(c.annual_debt_service)}</td>
-            <td className="r num">
-              {multiple(c.value)} {c.value != null ? <CellChip tone={dscrTone(c.status)}>{dscrLabel(c.status).split(" (")[0]}</CellChip> : null}
-            </td>
-            <td className="r num">{multiple(c.pro_forma_value)}</td>
-            <td>
-              <CellChip tone={confidenceTone(c.confidence)}>{confidenceLabel(c.confidence)}</CellChip>
-            </td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  );
-}
-
-function DscrCard({ cockpit, canRecordTerms, onRecordTerms }: { cockpit: Cockpit; canRecordTerms: boolean; onRecordTerms: () => void }) {
-  const { headline, pro_forma_headline, candidates, proposed, thresholds, reason, annual_debt_service, debt_service_source } = cockpit.dscr;
-  const tone = dscrTone(headline?.status);
-  const marks = [
-    { at: thresholds.acceptable, label: `${thresholds.acceptable.toFixed(2)}x` },
-    { at: thresholds.healthy, label: `${thresholds.healthy.toFixed(2)}x` },
-    { at: thresholds.very_strong, label: `${thresholds.very_strong.toFixed(2)}x` },
-  ];
-  return (
-    <Card title="Debt service coverage" wide sub="Income available for debt payments against the payments due. Below 1.00x the business does not cover its debt; lenders usually look for 1.25x.">
-      <div className="fc-grid">
-        <div className="grid g8">
-          <div className="fc-hero">
-            {multiple(headline?.value)}
-            <small>{headline ? headline.label : "not available"}</small>
-          </div>
-          <div className="fc-chips">
-            <CellChip tone={tone}>{dscrLabel(headline?.status)}</CellChip>
-            {headline ? <CellChip tone={confidenceTone(headline.confidence)}>{confidenceLabel(headline.confidence)}</CellChip> : null}
-            <CellChip tone={debt_service_source === "none" ? "warn" : "mut"}>Debt service: {sourceLabel(debt_service_source)}{annual_debt_service != null ? ` · ${compactMoney(annual_debt_service)} a year` : ""}</CellChip>
-          </div>
-          <Meter value={headline?.value ?? null} tone={tone === "acc" ? "mut" : tone} marks={marks} label="Debt service coverage" />
-          {reason ? <StatusLine tone="warn">{reason}</StatusLine> : null}
-          {headline?.note ? <div className="sub">{headline.note}</div> : null}
-        </div>
-        <div className="grid g8">
-          <Lbl>With the loan on record</Lbl>
-          {proposed ? (
-            <>
-              <div className="fc-stat-list">
-                <Stat label={proposed.label ?? sourceLabel(proposed.source)}>{`${money(proposed.amount)}${proposed.rate_pct != null ? ` at ${proposed.rate_pct}%` : ""}${proposed.term_months ? ` for ${proposed.term_months} mo` : ""}`}</Stat>
-                <Stat label="Payment it adds">{`${money(proposed.monthly_payment)} / mo · ${money(proposed.annual_payment)} a year`}</Stat>
-                <Stat label="Coverage with that payment">{pro_forma_headline ? <>{multiple(pro_forma_headline.pro_forma_value)} <CellChip tone={dscrTone(pro_forma_headline.pro_forma_status)}>{dscrLabel(pro_forma_headline.pro_forma_status).split(" (")[0]}</CellChip></> : "—"}</Stat>
-              </div>
-              {canRecordTerms ? <Btn size="sm" onClick={onRecordTerms}>Update loan terms</Btn> : null}
-            </>
-          ) : (
-            <Empty action={canRecordTerms ? <Btn size="sm" variant="pri" onClick={onRecordTerms}>Record loan terms</Btn> : null}>No loan terms recorded yet, so the coverage with the new payment is not shown.{cockpit.requested_amount != null ? ` The client asked for ${money(cockpit.requested_amount)}.` : ""}</Empty>
-          )}
-        </div>
-      </div>
-      {candidates.length ? <CandidateRows candidates={candidates} /> : null}
-    </Card>
-  );
-}
-
 function ProfitRow({ candidate, lead }: { candidate: CockpitProfitCandidate; lead?: boolean }) {
   return (
     <div className="fc-stat">
@@ -568,7 +485,6 @@ export function FinancialCockpit(props: Props) {
         ? { months: chosen.series, summary: chosen.summary, label: chosen.label, accountLabel: chosen.label as string | null }
         : { months: cockpit.bank.months, summary: cockpit.bank.summary, label: narrowed ? "Counted accounts" : "All accounts", accountLabel: null as string | null };
   const summary = selection.summary;
-  const payeesForSelection = selection.accountLabel ? cockpit.bank.recurring.payees.filter((p) => p.accounts.includes(selection.accountLabel as string)) : cockpit.bank.recurring.payees;
   const headline = cockpit.dscr.headline;
   const conclusion = cockpit.net_profit.conclusion;
   const generated = new Date(cockpit.generated_at);
@@ -640,17 +556,13 @@ export function FinancialCockpit(props: Props) {
       </div>
 
       <div className="fc-grid">
-        <SimulatorCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} payees={payeesForSelection} />
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} canEdit={props.canRecordTerms || props.canPublish} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} />
       </div>
 
       <div className="fc-grid fc-grid-charts">
         <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
         <ProfitAndLossCard cockpit={cockpit} />
         <BalanceSheetCard cockpit={cockpit} />
-      </div>
-
-      <div className="fc-grid">
-        <DscrCard cockpit={cockpit} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} />
       </div>
 
       <div className="fc-grid">
