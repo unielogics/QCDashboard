@@ -126,6 +126,15 @@ describe("LeadCockpit outstanding documents", () => {
     expect(leadCockpitOutstandingDocuments(documents, [], canonical).map((item) => item.id)).toEqual(["debt-1", "pfs"]);
   });
 
+  it("leaves a closed ask (a merged duplicate, an archived room's) off the outstanding list", () => {
+    const documents = [
+      doc("bank", "Last 6 months bank statements"),
+      doc("merged", "Last 6 months business bank statements", "closed"),
+      doc("skipped", "Debt schedule", "not_applicable"),
+    ];
+    expect(leadCockpitOutstandingDocuments(documents, [], null).map((item) => item.id)).toEqual(["bank"]);
+  });
+
   it("creates a clickable document from an incomplete canonical requirement when the intake row is absent", () => {
     const canonical = readiness([
       requirement("canonical-id", "Personal financial statement", { allow_multiple_files: true, state_reason: "Needs an accepted copy." }),

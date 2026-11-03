@@ -149,6 +149,9 @@ export function leadCockpitOutstandingDocuments(
 
   for (const document of documents) {
     if (!document.required || document.request_kind?.trim().toLocaleLowerCase() === "unlocked_copy") continue;
+    // A closed ask (a merged duplicate, an archived room's) is history; an
+    // older API may still send it.
+    if (document.status === "closed" || document.status === "not_applicable") continue;
     // A canonical entry is authoritative even when the legacy intake row says
     // "uploaded" or still says "requested". Do not add it through fallback.
     if (readiness && canonicalByDocumentId.has(document.id)) continue;
