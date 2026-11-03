@@ -316,6 +316,7 @@ type Copy = {
   errEmail: string;
   errPhoneRequired: string;
   errPhoneIncomplete: string;
+  errCountRequired: string;
   errTermsCheckbox: string;
   errCode: string;
   errThrottled: string;
@@ -451,6 +452,7 @@ const COPY: Record<Lang, Copy> = {
     errEmail: "Enter a valid email address.",
     errPhoneRequired: "A mobile number is required so we can reach you about your file.",
     errPhoneIncomplete: "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number.",
+    errCountRequired: "Tell us how many merchant cash advances are active today: 1, 2, or 3 or more. It decides which program fits your refinance.",
     errTermsCheckbox: "Please accept the Terms and Privacy Policy.",
     errCode: "Enter the code from your email.",
     errThrottled: "Too many attempts — wait a minute and try again.",
@@ -581,6 +583,7 @@ const COPY: Record<Lang, Copy> = {
     errEmail: "Ingresa un correo electrónico válido.",
     errPhoneRequired: "Se requiere un número de móvil para poder comunicarnos contigo sobre tu expediente.",
     errPhoneIncomplete: "Ese número no parece completo. Ingresa un móvil de 10 dígitos de EE. UU., o incluye el código de país para un número internacional.",
+    errCountRequired: "Indique cuántos adelantos (MCA) están vigentes hoy: 1, 2 o 3 o más. Define el programa que corresponde a su refinanciamiento.",
     errTermsCheckbox: "Acepta los Términos y la Política de Privacidad.",
     errCode: "Ingresa el código de tu correo.",
     errThrottled: "Demasiados intentos — espera un minuto e inténtalo de nuevo.",
@@ -903,6 +906,12 @@ export default function McaRefinanceIntakePage() {
     const requestedAmount = parseMcaRefinanceAmount(qualificationForm.requestedAmount);
     if ((qualificationForm.activeCount.trim() && activeCount === null) || (qualificationForm.requestedAmount.trim() && requestedAmount === null)) {
       setStartError(c.qualificationError);
+      return;
+    }
+    // Whether two or more advances are active decides the program, so the
+    // file does not open without the answer.
+    if (activeCount === null) {
+      setStartError(c.errCountRequired);
       return;
     }
     setStartBusy(true);
@@ -1462,7 +1471,8 @@ export default function McaRefinanceIntakePage() {
               onChange={(value) => changeQualification("activeCount", value)}
               inputMode="numeric"
               type="number"
-              placeholder="0–50"
+              placeholder="1, 2, 3…"
+              required
             />
             <Field
               label={c.qualificationAmount}

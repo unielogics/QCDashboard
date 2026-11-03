@@ -1653,6 +1653,11 @@ export function LeadDetailPanel({
             Processing offer: {merchantOfferStatus}
           </CellChip>
         ) : null}
+        {detail && mcaReview?.activeAdvances ? (
+          <CellChip tone={mcaReview.activeAdvances.tone} title="Active merchant cash advances: declared by the client, and what the documents or chat showed">
+            Active MCAs: {mcaReview.activeAdvances.text}
+          </CellChip>
+        ) : null}
         {detail ? <Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select> : null}
         <PageActionMenu items={[
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },

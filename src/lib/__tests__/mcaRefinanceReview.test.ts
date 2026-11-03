@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcaRefinanceReviewState } from "../mcaRefinanceReview";
+import { mcaActiveAdvanceSummary, mcaRefinanceReviewState } from "../mcaRefinanceReview";
 import { preferredIntakeReviewResult } from "../leadCockpitDocuments";
 import type { McaRefinancePolicy } from "../mcaRefinancePolicy";
 
@@ -45,5 +45,19 @@ describe("MCA refinance desk presentation", () => {
       latest_review: { status: "completed", result: { summary: "Latest review" } },
     });
     expect(result?.summary).toBe("Latest review");
+  });
+});
+
+describe("active advances as the desk reads them", () => {
+  const base = { review_mode: "automated_review" as const, auto_underwriting_allowed: true, reason_codes: [], requested_amount: 70000, max_amount: 350000, max_term_months: 120, max_active_mcas: 2 };
+  it("shows the declaration, and the documented count when it differs", () => {
+    expect(mcaActiveAdvanceSummary({ ...base, active_mca_count: 8, declared_active_mca_count: 2, documented_active_mca_count: 8, two_or_more_active: true, active_mca_count_conflict: true }))
+      .toEqual({ text: "2 declared · 8 on documents — mismatch", tone: "bad", twoOrMore: true });
+    expect(mcaActiveAdvanceSummary({ ...base, active_mca_count: 2, declared_active_mca_count: 2, documented_active_mca_count: null, two_or_more_active: true, active_mca_count_conflict: false }))
+      .toEqual({ text: "2 declared", tone: "ok", twoOrMore: true });
+  });
+  it("says so when nobody has declared anything yet", () => {
+    expect(mcaActiveAdvanceSummary({ ...base, active_mca_count: null })).toEqual({ text: "not declared yet", tone: "warn", twoOrMore: null });
+    expect(mcaActiveAdvanceSummary(null)).toBeNull();
   });
 });

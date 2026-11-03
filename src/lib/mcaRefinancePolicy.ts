@@ -5,6 +5,11 @@ export type McaRefinancePolicy = {
   auto_underwriting_allowed: boolean;
   reason_codes: string[];
   active_mca_count: number | null;
+  /** What the borrower declared or typed, against what documents and chat showed. */
+  declared_active_mca_count?: number | null;
+  documented_active_mca_count?: number | null;
+  two_or_more_active?: boolean | null;
+  active_mca_count_conflict?: boolean;
   requested_amount: number | null;
   requested_term_months?: number | null;
   max_amount: number;
@@ -17,6 +22,8 @@ export const MCA_REFINANCE_LIMITS = { amount: 350_000, termMonths: 120, activeCo
 
 export function parseMcaRefinanceCount(input: string): number | null {
   if (!input.trim()) return null;
+  // The marketing calculator bands the answer; "3 or more" is a count of at least three.
+  if (/^3[\s_]*(\+|plus)$/i.test(input.trim())) return 3;
   const value = Number(input);
   return Number.isInteger(value) && value >= 0 && value <= MCA_REFINANCE_LIMITS.declarationCount ? value : null;
 }

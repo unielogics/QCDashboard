@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { mcaRefinanceReviewMode, parseMcaRefinanceQualification, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
+import { mcaRefinanceReviewMode, parseMcaRefinanceCount, parseMcaRefinanceQualification, type McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 
 const policy = (patch: Partial<McaRefinancePolicy> = {}): McaRefinancePolicy => ({
   review_mode: "automated_review", auto_underwriting_allowed: true, reason_codes: [],
@@ -38,7 +38,20 @@ describe("MCA refinance intake routing", () => {
     expect(mcaRefinanceReviewMode(value)).toBe("information_required");
   });
 
-  it.each([["", ""], ["3_plus", "100000"], ["2.5", "100000"], ["-1", "100000"], ["51", "100000"], ["2", ""], ["2", "0"], ["2", "Infinity"]])("requires complete, valid declarations: %s / %s", (count, amount) => {
+  it.each([["", ""], ["three", "100000"], ["2.5", "100000"], ["-1", "100000"], ["51", "100000"], ["2", ""], ["2", "0"], ["2", "Infinity"]])("requires complete, valid declarations: %s / %s", (count, amount) => {
     expect(parseMcaRefinanceQualification(count, amount)).toBeNull();
+  });
+
+  it("accepts the calculator's three-or-more band as a declaration of three", () => {
+    expect(parseMcaRefinanceQualification("3_plus", "100000")).toEqual({ active_mca_count: 3, requested_amount: 100000 });
+  });
+});
+
+describe("the marketing calculator's banded count", () => {
+  it("records three or more as a count of three, not as nothing", () => {
+    expect(parseMcaRefinanceCount("3_plus")).toBe(3);
+    expect(parseMcaRefinanceCount("3+")).toBe(3);
+    expect(parseMcaRefinanceCount("2")).toBe(2);
+    expect(parseMcaRefinanceCount("")).toBeNull();
   });
 });
