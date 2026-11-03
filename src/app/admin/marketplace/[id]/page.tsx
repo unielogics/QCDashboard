@@ -24,6 +24,7 @@ import {
   type CpDocumentKind, type CpListing, type CpListingPatch, type CpParticipation, type CpServicerStatus, type CpSubscription,
 } from "@/hooks/useCapitalPartners";
 import { DOC_KINDS, FREQ_LABEL, LIEN_LABEL, LISTING_TONE, SERVICER_TONE, SUB_TONE, Status, SuperAdminOnly, VERTICAL_LABEL, day, errorMessage, label, money, pct, when } from "@/components/marketplace/shared";
+import { SourceSnapshotCard } from "@/components/marketplace/SourceSnapshotCard";
 
 export default function ListingEditorPage() {
   return (
@@ -231,11 +232,7 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
         <F k="title_status" label="Title" hint="Lien search clear…" />
         <F k="servicer_label" label="Servicer, as shown" />
       </Panel>
-      {listing.source_snapshot && Object.keys(listing.source_snapshot).length ? (
-        <Panel title="Where the draft came from">
-          <pre className="msg-b" style={{ fontSize: 12, overflow: "auto" }}>{JSON.stringify(listing.source_snapshot, null, 2)}</pre>
-        </Panel>
-      ) : null}
+      <SourceSnapshotCard snapshot={listing.source_snapshot} />
       {!readOnly ? <div className="row"><Btn variant="pri" onClick={() => void save()} disabled={patch.isPending}>{patch.isPending ? "Saving…" : "Save"}</Btn><span className="sub">Saving a published listing changes what members see at once.</span></div> : null}
     </div>
   );

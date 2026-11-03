@@ -44,6 +44,7 @@ import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOver
 import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
+import { FinancialCockpit } from "@/components/file/cockpit/FinancialCockpit";
 import type { IntakeResponse } from "@/lib/intake";
 import { leadCockpitNonDocumentMissingRows, leadCockpitOutstandingDocuments, preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
 import { mcaRefinanceReviewState } from "@/lib/mcaRefinanceReview";
@@ -648,6 +649,9 @@ export function LeadDetailPanel({
   const [submissionStep, setSubmissionStep] = useState(initialSubmissionStep ?? 1);
   const [evidenceTab, setEvidenceTab] = useState<"requirements" | "banking" | "files">(initialEvidenceTab);
   const [evidenceFocus, setEvidenceFocus] = useState<{ query: string; requestId: number } | null>(null);
+  // "Publish to marketplace" in the action menu lands on the Financials tab's
+  // capital-partners panel, which reads readiness before cutting a listing.
+  const [cockpitFocus, setCockpitFocus] = useState<"marketplace" | null>(null);
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
   const headerUploadRef = useRef<HTMLInputElement>(null);
@@ -1670,6 +1674,7 @@ export function LeadDetailPanel({
           { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
+          { label: "Publish to marketplace", onSelect: () => { setPrototypeView("financials"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
           { label: "Archive lead", onSelect: () => setConfirmDeleteOpen(true), hidden: !detail || !canGovern },
         ]} />
         {onMinimize ? <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
@@ -1687,6 +1692,7 @@ export function LeadDetailPanel({
             {[
               ["workspace", "File workspace"],
               ...(canUnderwrite ? [["underwriting", "Underwriting"] as const] : []),
+              ...(canUnderwrite ? [["financials", "Financials"] as const] : []),
               ...(canViewPayments ? [["payments", "Payments"] as const] : []),
               ...(canUnderwrite ? [["reviewer", "Reviewer controls"] as const] : []),
               ...(canUnderwrite && isDealerFile ? [["production", "Production Package"] as const] : []),
@@ -1818,6 +1824,29 @@ export function LeadDetailPanel({
                 </Panel>
               ) : null}
 
+              {prototypeView === "financials" && canUnderwrite ? (
+                profileId ? (
+                  <FinancialCockpit
+                    profileId={profileId}
+                    businessName={detail.intake.business_name || detail.intake.full_name}
+                    canPublish={currentUser?.role === Role.SUPER_ADMIN}
+                    canRecordTerms={isDealerFile && canUnderwrite}
+                    programReadiness={programReadiness}
+                    termSheet={termSheet}
+                    packageState={{
+                      generated: Boolean(summary && packet),
+                      inSync: packageInSync,
+                      summaryVersion: summary ? artifactVersion(summary, summaryHistory.length) : null,
+                      packetVersion: packet ? artifactVersion(packet, packetHistory.length) : null,
+                    }}
+                    focus={cockpitFocus}
+                    onFocusHandled={() => setCockpitFocus(null)}
+                    onRecordTerms={openTermSheet}
+                    onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
+                    onOpenPackage={() => { setPrototypeView("workspace"); setSubmissionStep(5); }}
+                  />
+                ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
+              ) : null}
               {prototypeView === "underwriting" && canUnderwrite ? (
                 <div className="grid g12">
                 <Panel

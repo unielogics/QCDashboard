@@ -5,6 +5,7 @@ import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
+import type { FinancialCockpit } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -1071,6 +1072,19 @@ export function useLeadProgramFit(intakeId: string | null | undefined) {
     queryKey: ["lead-program-fit", intakeId, devUser],
     queryFn: () => apiCall<LeadProgramFitResponse>(`/admin/ai-underwriter-leads/${intakeId}/program-fit`),
     enabled: !!intakeId,
+  });
+}
+
+/** The file's numbers, read deterministically: bank months, tax years,
+ *  expenses, debt service, DSCR and the net-profit conclusion. */
+export function useFinancialCockpit(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["financial-cockpit", profileId, devUser],
+    queryFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/financial-cockpit`),
+    enabled: !!profileId && enabled,
+    staleTime: 30_000,
   });
 }
 

@@ -45,6 +45,9 @@ export interface CpSourceRow {
   approved_amount: string | null; funded_amount: string | null; status: string | null; loan_id: string | null; profile_id: string | null;
   updated_at: string | null; already_listed_ref: string | null;
 }
+export interface CpListingRef { id: string; ref: string; status: CpListingStatus; name: string }
+/** What the file page asks before offering "Publish to marketplace". */
+export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean }
 export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string }
 export interface CpListingCard {
   id: string; ref: string; name: string; vertical: CpVertical; vertical_label: string; program_label: string; city: string | null; state: string | null;
@@ -181,9 +184,21 @@ export function useCpSources(params: { q?: string; vertical?: string; include_al
   const api = useAuthedApi();
   return useQuery({ enabled, queryKey: [...KEYS.sources, params.q ?? "", params.vertical ?? "all", params.include_all ?? false], queryFn: () => api<CpSourceRow[]>(`/capital/admin/sources${qs({ q: params.q, vertical: params.vertical ?? "all", include_all: params.include_all ?? false })}`), staleTime: 30_000 });
 }
+export type CpPrefillBody = { loan_id?: string | null; profile_id?: string | null; intake_id?: string | null };
+export type CpPrefillDraft = CpListingPatch & { source_snapshot?: Record<string, unknown>; existing_listing?: CpListingRef | null };
 export function useCpPrefill() {
   const api = useAuthedApi();
-  return useMutation({ mutationFn: (body: { loan_id?: string | null; profile_id?: string | null }) => api<CpListingPatch & { source_snapshot?: Record<string, unknown> }>("/capital/admin/listings/prefill", { method: "POST", body: JSON.stringify(body) }) });
+  return useMutation({ mutationFn: (body: CpPrefillBody) => api<CpPrefillDraft>("/capital/admin/listings/prefill", { method: "POST", body: JSON.stringify(body) }) });
+}
+export function useCpSourceLookup(params: { profile_id?: string | null; loan_id?: string | null }, enabled = true) {
+  const api = useAuthedApi();
+  const ready = enabled && !!(params.profile_id || params.loan_id);
+  return useQuery({
+    enabled: ready,
+    queryKey: [...KEYS.sources, "lookup", params.profile_id ?? "", params.loan_id ?? ""],
+    queryFn: () => api<CpSourceLookup>(`/capital/admin/sources/lookup${qs({ profile_id: params.profile_id ?? undefined, loan_id: params.loan_id ?? undefined })}`),
+    staleTime: 15_000,
+  });
 }
 export function useCpListings(status?: string) {
   const api = useAuthedApi();

@@ -3,11 +3,12 @@
 // Marketplace > New listing: pick a funded file, prefill a draft, open the editor.
 //
 //   GET  /capital/admin/sources?q=&vertical=&include_all=
-//   POST /capital/admin/listings/prefill  {loan_id | profile_id}
+//   POST /capital/admin/listings/prefill  {loan_id | profile_id | intake_id}
 //   POST /capital/admin/listings          (the prefilled draft)
 //
-// Also reached from a loan or file page with ?loan_id= / ?profile_id=, in
-// which case the picker is skipped.
+// Also reached from a loan or file page with ?loan_id= / ?profile_id= /
+// ?intake_id=, in which case the picker is skipped. A file that already has a
+// live listing is sent to that listing instead of getting a duplicate draft.
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -30,6 +31,7 @@ function NewListing() {
   const params = useSearchParams();
   const presetLoan = params.get("loan_id");
   const presetProfile = params.get("profile_id");
+  const presetIntake = params.get("intake_id");
   const [q, setQ] = useState("");
   const [vertical, setVertical] = useState<"all" | "real_estate" | "auto" | "business">("all");
   const [includeAll, setIncludeAll] = useState(false);
@@ -37,14 +39,19 @@ function NewListing() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const prefill = useCpPrefill();
   const create = useCpCreateListing();
-  const { data: rows = [], isLoading } = useCpSources({ q: q.trim() || undefined, vertical, include_all: includeAll }, !presetLoan && !presetProfile);
+  const { data: rows = [], isLoading } = useCpSources({ q: q.trim() || undefined, vertical, include_all: includeAll }, !presetLoan && !presetProfile && !presetIntake);
 
-  const start = async (source: { loan_id?: string | null; profile_id?: string | null; key: string }) => {
+  const start = async (source: { loan_id?: string | null; profile_id?: string | null; intake_id?: string | null; key: string }) => {
     setErr(null);
     setBusyId(source.key);
     try {
-      const draft = await prefill.mutateAsync({ loan_id: source.loan_id ?? null, profile_id: source.profile_id ?? null });
-      const body: CpListingPatch = { ...draft };
+      const draft = await prefill.mutateAsync({ loan_id: source.loan_id ?? null, profile_id: source.profile_id ?? null, intake_id: source.intake_id ?? null });
+      if (draft.existing_listing) {
+        router.replace(`/admin/marketplace/${draft.existing_listing.id}`);
+        return;
+      }
+      const { existing_listing: _existing, ...rest } = draft;
+      const body: CpListingPatch = { ...rest };
       const created = await create.mutateAsync(body);
       router.replace(`/admin/marketplace/${created.id}`);
     } catch (e) {
@@ -54,17 +61,17 @@ function NewListing() {
   };
 
   useEffect(() => {
-    if (presetLoan || presetProfile) void start({ loan_id: presetLoan, profile_id: presetProfile, key: "preset" });
+    if (presetLoan || presetProfile || presetIntake) void start({ loan_id: presetLoan, profile_id: presetProfile, intake_id: presetIntake, key: "preset" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [presetLoan, presetProfile]);
+  }, [presetLoan, presetProfile, presetIntake]);
 
   const sorted = useMemo(() => [...rows].sort((a, b) => (b.updated_at ?? "").localeCompare(a.updated_at ?? "")), [rows]);
 
-  if (presetLoan || presetProfile) {
+  if (presetLoan || presetProfile || presetIntake) {
     return (
       <div className="grid">
         <PageHeader title="New listing" lede="Cutting a draft from the file you came from." />
-        {err ? <StatusLine tone="bad">{err}</StatusLine> : <Card><Loading>Prefilling from the loan, the profile and the current term sheet…</Loading></Card>}
+        {err ? <StatusLine tone="bad">{err}</StatusLine> : <Card><Loading>Prefilling from the loan, the profile, the file's readiness and the current term sheet…</Loading></Card>}
       </div>
     );
   }
@@ -115,7 +122,7 @@ function NewListing() {
                     {r.already_listed_ref ? (
                       <CellChip tone="warn">Listed as {r.already_listed_ref}</CellChip>
                     ) : (
-                      <Btn size="sm" variant="pri" disabled={busyId !== null || (!r.loan_id && !r.profile_id)} onClick={() => void start({ loan_id: r.loan_id, profile_id: r.profile_id, key })}>
+                      <Btn size="sm" variant="pri" disabled={busyId !== null || (!r.loan_id && !r.profile_id && r.kind !== "intake")} onClick={() => void start({ loan_id: r.loan_id, profile_id: r.profile_id, intake_id: r.kind === "intake" && !r.profile_id ? r.id.split(":")[1] ?? null : null, key })}>
                         {busyId === key ? "Prefilling…" : "Start listing"}
                       </Btn>
                     )}

@@ -162,7 +162,7 @@ export type UnderwritingDraft = {
   funded_amount: string;
 };
 
-export type LeadDetailView = "workspace" | "underwriting" | "payments" | "reviewer" | "production" | "communications" | "audit";
+export type LeadDetailView = "workspace" | "underwriting" | "financials" | "payments" | "reviewer" | "production" | "communications" | "audit";
 
 export type Artifact = {
   id: string;

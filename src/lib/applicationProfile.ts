@@ -141,6 +141,12 @@ export type ProgramFitCandidate = {
   preference_score?: number;
   preference_reasons?: string[];
   reasons: string[];
+  // Sent by the backend since the rule gate opened to estimates (2026-11-03);
+  // optional here because older snapshots in tests omit them.
+  scope_status?: "matched" | "unknown" | "outside_scope";
+  rule_state?: "pass" | "fail" | "unknown" | "unavailable";
+  requires_review?: boolean;
+  evidence_gaps?: string[];
 };
 
 export type ApplicationProgramSelection = {
