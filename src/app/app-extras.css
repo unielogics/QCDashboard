@@ -6654,6 +6654,8 @@ a.pick { color: inherit; text-decoration: none; }
 .fc-coverage { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
 .fc-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 12px; align-items: start; }
 .fc-grid > .fc-wide { grid-column: 1 / -1; }
+/* Chart rows: two cards across at desk widths so a six-month chart gets real room; four across made the month axis unreadable. */
+.fc-grid.fc-grid-charts { grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); }
 .fc-card { border: 1px solid var(--line); border-radius: var(--r); background: var(--surface); padding: 14px; display: grid; gap: 10px; min-width: 0; box-shadow: var(--sh1); align-content: start; }
 .fc-card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
 .fc-card-h h4 { margin: 0; font-size: 14px; font-weight: 650; font-family: var(--fh); letter-spacing: -0.01em; }

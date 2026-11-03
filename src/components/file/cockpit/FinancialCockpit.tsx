@@ -722,11 +722,11 @@ export function FinancialCockpit(props: Props) {
         <Kpi label="Net profit" value={money(conclusion?.value)} sub={conclusion ? `${conclusion.label}${conclusion.period && conclusion.key !== "tax_return" ? ` · ${conclusion.period}` : ""}` : "No income figure yet"} tone={toneForSign(conclusion?.value)} />
       </KpiRow>
 
-      <div className="fc-grid">
+      <div className="fc-grid fc-grid-charts">
         <BankCards cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
       </div>
 
-      <div className="fc-grid">
+      <div className="fc-grid fc-grid-charts">
         <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
         <ProfitAndLossCard cockpit={cockpit} />
         <BalanceSheetCard cockpit={cockpit} />
