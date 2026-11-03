@@ -189,6 +189,14 @@ export type CockpitDebtRow = {
   id: string;
   lender: string;
   category: string;
+  /** The type as a person reads it (`debt_types.debt_type_label`). */
+  category_label?: string | null;
+  payment_status?: string | null;
+  secured?: string | null;
+  collateral?: string | null;
+  originated_on?: string | null;
+  mca_modified?: boolean | null;
+  mca_modification_note?: string | null;
   is_mca: boolean;
   balance: number | null;
   monthly_payment: number | null;

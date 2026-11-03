@@ -24,6 +24,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi, useFinancialFormPdf } from "@/hooks/useApi";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -243,6 +244,9 @@ export function FinancialFormsPanel({
   const [editing, setEditing] = useState<FormKind | null>(null);
   const [pfsBody, setPfsBody] = useState<PfsBody>({});
   const [debtBody, setDebtBody] = useState<DebtBody>({});
+  // Once the desk has tried to save the schedule, the card outlines the
+  // required answers still missing. Reset each time the editor opens.
+  const [debtProblems, setDebtProblems] = useState(false);
   const [statementBody, setStatementBody] = useState<StatementBody>({});
   const [statementId, setStatementId] = useState<string | null>(null);
   const [busy, setBusy] = useState("");
@@ -428,6 +432,7 @@ export function FinancialFormsPanel({
           return;
         }
         setDebtBody({ debts: rows.debts ?? [] });
+        setDebtProblems(false);
         setEditing("debt_schedule");
         return;
       }
@@ -683,20 +688,34 @@ export function FinancialFormsPanel({
       {editing === "debt_schedule" ? (
         <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title="Business debt schedule" sub="Complete the schedule in a focused workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
         <div className="pfs-editor financial-form-modal-editor">
-          <DebtScheduleForm value={debtBody} onChange={setDebtBody} disabled={busy !== ""} />
+          <DebtScheduleForm value={debtBody} onChange={setDebtBody} disabled={busy !== ""} showProblems={debtProblems} />
+          {/* The panel's own status line sits under this fullscreen drawer, so
+              the message is repeated here where the person can see it. */}
+          {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
           <Row>
             <Btn
               variant="pri"
               disabled={busy !== ""}
-              onClick={() =>
+              onClick={() => {
+                // The owner's required answers — lender, type, original amount,
+                // balance, rate, monthly payment, current or delinquent, and the
+                // advance question on an MCA — checked here so the card shows
+                // which are missing; the server refuses the same list with a 422.
+                const problems = debtRowProblems(debtBody.debts ?? []);
+                if (problems.length) {
+                  setDebtProblems(true);
+                  setError(describeDebtProblems(problems));
+                  focusFirstProblem(problems);
+                  return;
+                }
                 void run("save", async () => {
                   await api(
                     `/application-profiles/${fileId}/financial-forms/debt-schedule`,
                     { method: "PUT", body: JSON.stringify({ body: debtBody, submit: true }) },
                   );
                   setEditing(null);
-                })
-              }
+                });
+              }}
             >
               {busy === "save" ? "Saving…" : "Save the schedule"}
             </Btn>

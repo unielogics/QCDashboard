@@ -20,6 +20,7 @@ import { errorMessage } from "@/components/marketplace/shared";
 import { Drawer } from "@/components/ds/Drawer";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import {
@@ -45,6 +46,7 @@ import {
   declaredBy,
   scheduleStatusShort,
   scheduleStatusTone,
+  type CockpitDebtRow,
 } from "@/lib/financialCockpit";
 import { AdvancesCard } from "./AdvancesCard";
 import { OfferPanel } from "./OfferPanel";
@@ -370,6 +372,26 @@ function ExpensesCard({ cockpit }: { cockpit: Cockpit }) {
 // Debt, DSCR, net profit
 // ---------------------------------------------------------------------------
 
+/** The type as the schedule PDF prints it — the label when the file knows one,
+ *  the slug's words otherwise — with the advance answer beside an advance. */
+function debtTypeCell(r: CockpitDebtRow): string {
+  const label = r.category_label || (r.is_mca ? "Advance" : r.category.replace(/_/g, " "));
+  if (r.mca_modified === true) return `${label} · modified for lower sales${r.mca_modification_note ? `: ${r.mca_modification_note}` : ""}`;
+  if (r.mca_modified === false) return `${label} · not modified`;
+  return label;
+}
+
+function statusCell(r: CockpitDebtRow): string {
+  if (!r.payment_status) return "—";
+  return r.payment_status.charAt(0).toUpperCase() + r.payment_status.slice(1);
+}
+
+/** An ISO date the way a US lender reads one. */
+function usDate(value: string | null | undefined): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ""));
+  return match ? `${match[2]}/${match[3]}/${match[1]}` : value ?? "—";
+}
+
 function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit; profileId: string; canEdit: boolean; onRefresh: () => void }) {
   const { rows, documented, document, service } = cockpit.debt;
   const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
@@ -398,8 +420,19 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit
       setBusy("");
     }
   };
+  const [showProblems, setShowProblems] = useState(false);
   const saveForm = async () => {
     setError(null);
+    // The same required answers the borrower's link and the desk panel hold a
+    // save to; checked here so the cards outline what is missing before the
+    // server refuses it.
+    const problems = debtRowProblems(body.debts ?? []);
+    if (problems.length) {
+      setShowProblems(true);
+      setError(describeDebtProblems(problems));
+      focusFirstProblem(problems);
+      return;
+    }
     setBusy("save");
     try {
       await api(`/application-profiles/${profileId}/financial-forms/debt-schedule`, { method: "PUT", body: JSON.stringify({ body, submit: true }) });
@@ -455,11 +488,20 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit
   const scheduleTable: ChartTable | null = rows.length
     ? {
         caption: "Debt schedule rows on the file",
-        cols: ["Lender", "Type", "Balance", "Monthly", "Rate / factor", "Maturity", "In DSCR"],
+        cols: ["Lender", "Type", "Balance", "Monthly", "Rate / factor", "Status", "Maturity", "In DSCR"],
         rows: rows.map((r) => ({
           key: r.id || r.lender,
           muted: !r.count_in_dscr,
-          cells: [r.lender, r.is_mca ? "Advance" : r.category.replace(/_/g, " "), money(r.balance), money(r.monthly_payment), r.factor_rate != null ? `${r.factor_rate.toFixed(2)} factor` : r.rate != null ? `${r.rate}%` : "—", r.maturity_on ?? "—", yesNo(r.count_in_dscr)],
+          cells: [
+            r.lender,
+            debtTypeCell(r),
+            money(r.balance),
+            money(r.monthly_payment),
+            r.factor_rate != null ? `${r.factor_rate.toFixed(2)} factor` : r.rate != null ? `${r.rate}%` : "—",
+            statusCell(r),
+            usDate(r.maturity_on),
+            yesNo(r.count_in_dscr),
+          ],
         })),
       }
     : null;
@@ -532,7 +574,7 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit
           }
         >
           <div className="pfs-editor financial-form-modal-editor">
-            <DebtScheduleForm value={body} onChange={setBody} disabled={busy !== ""} />
+            <DebtScheduleForm value={body} onChange={setBody} disabled={busy !== ""} showProblems={showProblems} />
           </div>
         </Drawer>
       ) : null}

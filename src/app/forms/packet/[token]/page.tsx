@@ -54,6 +54,7 @@ import {
 } from "@/lib/worksheetApi";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -110,6 +111,9 @@ type Child = {
   savedAt: string | null;
   submitting: boolean;
   error: string | null;
+  /** True once a send of the debt schedule has been refused for missing
+   *  answers: the cards outline what is still needed. */
+  problems?: boolean;
 };
 
 const NO_STORE: RequestInit = { cache: "no-store" };
@@ -388,13 +392,37 @@ export default function FinancialPacketPage() {
   const submit = async (kind: Kind) => {
     const child = children[kind];
     if (!child) return;
-    patch(kind, { submitting: true, error: null });
+    if (kind === "debt_schedule") {
+      // The owner's required answers — lender, type, original amount, balance,
+      // rate, monthly payment, current or delinquent, and the advance question
+      // on an MCA — checked before the send so the gap is fixed in place; the
+      // server holds the send to the same list.
+      const problems = debtRowProblems((child.body as DebtBody).debts ?? []);
+      if (problems.length) {
+        patch(kind, { error: describeDebtProblems(problems), problems: true });
+        focusFirstProblem(problems);
+        return;
+      }
+    }
+    patch(kind, { submitting: true, error: null, problems: false });
     try {
       const response = await fetch(`${childUrl(kind)}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body: child.body, owners: [] }),
       });
+      if (response.status === 422) {
+        // The server named what is still missing; that is a sentence for this
+        // form, not a dead link.
+        const data: unknown = await response.json().catch(() => null);
+        const detail = data && typeof data === "object" ? (data as { detail?: unknown }).detail : null;
+        patch(kind, {
+          submitting: false,
+          error: typeof detail === "string" && detail.trim() ? detail : "We could not send that. Please check the form and try again.",
+          problems: true,
+        });
+        return;
+      }
       if (!response.ok) {
         setStatus("gone");
         return;
@@ -614,6 +642,7 @@ export default function FinancialPacketPage() {
                 value={child.body}
                 onChange={(next) => setBody("debt_schedule", next)}
                 disabled={child.submitting}
+                showProblems={Boolean(child.problems)}
               />
             ) : active === "pfs" ? (
               <Pfs413Form

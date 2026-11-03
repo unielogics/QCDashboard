@@ -5146,6 +5146,59 @@ a.pick { color: inherit; text-decoration: none; }
 .fp-autosave { font-size: 13px; color: var(--fp-muted); display: inline-flex; align-items: center; gap: 8px; }
 .fp-error { margin: 0; color: var(--fp-danger); font-size: 14px; font-weight: 550; }
 
+/* ---- required answers ----------------------------------------------------
+   Seven of the schedule's fields are required for a submit and the advance
+   question makes eight. The asterisk is always on; the outline and the word
+   "Required" appear only once a submit has been tried, so a half-typed draft is
+   not shouted at. The MCA block sits inside the card's grid and spans it. */
+.fp-legend { margin: -4px 0 0; font-size: 12.5px; color: var(--fp-muted); }
+.fp-req { color: var(--fp-danger); font-style: normal; font-weight: 700; margin-left: 3px; }
+.fp-field.is-invalid input,
+.fp-field.is-invalid select {
+  border-color: var(--fp-danger);
+  box-shadow: 0 0 0 3px rgba(180, 35, 24, 0.12);
+}
+.fp-field-problem { font-size: 12px; color: var(--fp-danger); font-weight: 550; }
+.fp-mca {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--fp-line);
+  border-radius: var(--fp-r-sm);
+  background: var(--fp-accent-soft);
+}
+.fp-mca > p { grid-column: 1 / -1; margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--fp-ink); }
+.fp-mca > p strong { font-weight: 600; }
+
+/* The form's tokens are light by design (it is the borrower's page). Inside
+   the console — the room modal, the desk's drawers — it inherits the console's
+   dark theme instead, so labels keep their contrast on the dark surface. */
+.app[data-dark="1"] .fp-stack {
+  --fp-ground: var(--bg);
+  --fp-ground-2: var(--bg);
+  --fp-card: var(--surface);
+  --fp-field: var(--sunken);
+  --fp-field-line: var(--line2);
+  --fp-line: var(--line);
+  --fp-ink: var(--ink);
+  --fp-ink-2: var(--ink2);
+  --fp-muted: var(--muted);
+  --fp-accent: var(--accent);
+  --fp-accent-deep: var(--accent-700);
+  --fp-accent-soft: var(--accent-100);
+  --fp-ok: var(--ok);
+  --fp-danger: var(--danger);
+}
+.app[data-dark="1"] .fp-stack .fp-field input,
+.app[data-dark="1"] .fp-stack .fp-field select,
+.app[data-dark="1"] .fp-stack .fp-disclosure-body textarea { background: var(--sunken); color: var(--ink); }
+.app[data-dark="1"] .fp-stack .fp-field input:disabled,
+.app[data-dark="1"] .fp-stack .fp-field select:disabled { background: var(--surface); color: var(--muted); }
+.app[data-dark="1"] .fp-stack .fp-empty { background: var(--sunken); border-color: var(--line2); }
+.app[data-dark="1"] .fp-stack .fp-row { background: var(--surface); border-color: var(--line); }
+
 /* ---- motion ------------------------------------------------------------- */
 
 .fp-spinner {
