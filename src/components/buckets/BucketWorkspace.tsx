@@ -30,7 +30,7 @@ import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
 import type { BucketIntakeLinkRead } from "@/lib/unifiedOperator";
 import type { UnifiedFilePage } from "@/lib/unifiedOperator";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, apiBase } from "@/lib/api";
 import { OPERATOR_BUCKET_TYPES, bucketTypeLabel, isBucketType } from "@/lib/bucketTypes";
 import { validPhone } from "@/lib/formCoerce";
 import { Role } from "@/lib/enums.generated";
@@ -40,6 +40,7 @@ import { semanticStatusClass } from "@/lib/semanticStatus";
 import { bucketArchiveLabel, bucketListPath, isBucketArchived, type BucketArchiveFilter } from "@/lib/bucketArchive";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
 import { bucketFileRemovalError, bucketFileRetentionPresentation } from "@/lib/bucketRetention";
+import { archiveFileName, attachmentFileName, fileNamesPreview, removalSummary, saveBlobAs, type BucketFilesRemoveResult } from "@/lib/bucketFileSelection";
 import { bucketUploadIssue, type BucketUploadIssue } from "@/lib/bucketUploadError";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
@@ -323,6 +324,7 @@ const ACTIVITY_ACTION_OPTIONS = [
   "file_review_opened",
   "file_preview_url_created",
   "file_download_url_created",
+  "file_archive_downloaded",
   "file_annotation_created",
   "ai_action_created",
   "ai_action_proposed",
@@ -522,6 +524,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
   const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
+  const [archivingSelection, setArchivingSelection] = useState(false);
+  const [removingSelection, setRemovingSelection] = useState(false);
   const [sharePopupOpen, setSharePopupOpen] = useState(false);
   const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
   const [sharePasscodes, setSharePasscodes] = useState<Record<string, string>>({});
@@ -617,6 +621,41 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     }
     assertScope();
     return result;
+  }
+
+  // Binary responses (the zip of checked files) bypass the JSON-typed `api`
+  // helper but keep its token refresh and the room-scope check.
+  async function callBlob(path: string, body: unknown): Promise<{ blob: Blob; filename: string | null }> {
+    const bucketId = embeddedBucketId;
+    const requestVersion = requestVersionRef.current;
+    const assertScope = () => {
+      if (embedded && (!bucketId || !currentBucketRequest(bucketId, requestVersion))) {
+        throw new DOMException("Room closed or changed.", "AbortError");
+      }
+    };
+    const send = (token: string | null) => fetch(`${apiBase}/api/v1${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    assertScope();
+    let token = await getToken();
+    if (!token && !isVisualQa) throw bucketSessionUnavailableError();
+    let res = await send(token);
+    if (res.status === 401) {
+      token = await getToken({ skipCache: true });
+      if (!token && !isVisualQa) throw bucketSessionUnavailableError();
+      assertScope();
+      res = await send(token);
+    }
+    assertScope();
+    if (!res.ok) {
+      let payload: unknown = null;
+      try { payload = await res.json(); } catch { /* not JSON */ }
+      const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : null;
+      throw new ApiError(res.status, typeof detail === "string" && detail.trim() ? detail : `${res.status} ${res.statusText}`, payload);
+    }
+    return { blob: await res.blob(), filename: attachmentFileName(res.headers.get("Content-Disposition")) };
   }
 
   async function loadBuckets(signal?: AbortSignal) {
@@ -1071,6 +1110,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const selectedFiles = useMemo(() => visibleFiles.filter((file) => shareFiles[file.id]), [visibleFiles, shareFiles]);
   const detailArchived = Boolean(detail && isBucketArchived(detail));
   const reviewFileRetention = useMemo(
     () => reviewFile ? bucketFileRetentionPresentation(reviewFile) : null,
@@ -1104,6 +1144,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     });
     return sortBucketFiles(filtered, bucketFileSort);
   }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileSort, bucketFileStatus, requestedDocNameById, visibleFiles]);
+  const allShownChecked = filteredBucketFiles.length > 0 && filteredBucketFiles.every((file) => shareFiles[file.id]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -2046,6 +2087,72 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       setNotice(bucketFileRemovalError(error, retention));
     } finally {
       setDeletingFileId(null);
+    }
+  }
+
+  async function downloadSelectedFiles() {
+    if (!detail || archivingSelection || !selectedFiles.length) return;
+    const total = selectedFiles.length;
+    setArchivingSelection(true);
+    try {
+      const { blob, filename } = await callBlob(`/buckets/admin/${detail.id}/selected-files/archive`, {
+        file_ids: selectedFiles.map((file) => file.id),
+      });
+      saveBlobAs(blob, filename || archiveFileName(detail.name));
+      setNotice(`${total} file${total === 1 ? "" : "s"} downloaded as one zip.`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setNotice(error instanceof Error ? error.message : "The zip could not be prepared. Try again in a moment.");
+    } finally {
+      setArchivingSelection(false);
+    }
+  }
+
+  async function removeSelectedFiles() {
+    if (!detail || removingSelection || detailArchived || !selectedFiles.length) return;
+    const isProtected = (file: BucketFile) => Boolean(bucketFileRetentionPresentation(file)?.isRemovalBlocked);
+    const protectedNames = selectedFiles.filter(isProtected).map((file) => file.file_name);
+    const removable = selectedFiles.filter((file) => !isProtected(file));
+    if (!removable.length) {
+      setNotice("Every checked file is protected by retention or legal hold. Archive the room instead if they should leave the active workspace.");
+      return;
+    }
+    const total = removable.length;
+    const stays = protectedNames.length
+      ? ` ${protectedNames.length} protected file${protectedNames.length === 1 ? " stays" : "s stay"}.`
+      : "";
+    const confirmed = await confirmAction({
+      title: `Remove ${total} file${total === 1 ? "" : "s"} from active evidence`,
+      body: `${fileNamesPreview(removable.map((file) => file.file_name))} will move to Removed files and lose share access. The stored documents are kept and can be restored.${stays}`,
+      confirmLabel: `Remove ${total} file${total === 1 ? "" : "s"}`,
+      tone: "danger",
+      reversible: true,
+    });
+    if (!confirmed) return;
+    setRemovingSelection(true);
+    try {
+      const result = await call<BucketFilesRemoveResult>(`/buckets/admin/${detail.id}/selected-files/remove`, {
+        method: "POST",
+        body: JSON.stringify({ file_ids: removable.map((file) => file.id) }),
+      });
+      const gone = new Set([...result.removed, ...result.missing]);
+      setShareFiles((current) => {
+        const next = { ...current };
+        for (const id of gone) delete next[id];
+        return next;
+      });
+      if (reviewFile && gone.has(reviewFile.id)) {
+        setReviewMinimized(false);
+        setReviewFile(null);
+      }
+      setNotice(removalSummary(result, protectedNames));
+      await loadBucket(detail.id);
+      await loadBuckets();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setNotice(error instanceof Error ? error.message : "The files could not be removed.");
+    } finally {
+      setRemovingSelection(false);
     }
   }
 
@@ -3205,6 +3312,54 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     ))}
                   </Select>
                 </div>
+                {visibleFiles.length ? (
+                  <div className={cx("bucket-file-selection", selectedFiles.length > 0 && "on")} role="group" aria-label="Checked files">
+                    <label className="bucket-file-share-toggle" title={allShownChecked ? "Uncheck every file shown" : "Check every file shown"}>
+                      <input
+                        type="checkbox"
+                        checked={allShownChecked}
+                        disabled={!filteredBucketFiles.length}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setShareFiles((current) => {
+                            const next = { ...current };
+                            for (const file of filteredBucketFiles) {
+                              if (checked) next[file.id] = true;
+                              else delete next[file.id];
+                            }
+                            return next;
+                          });
+                        }}
+                        aria-label={allShownChecked ? "Uncheck every file shown" : "Check every file shown"}
+                      />
+                    </label>
+                    {selectedFiles.length ? (
+                      <>
+                        <strong>{selectedFiles.length} checked</strong>
+                        <span className="sub trunc grow">{fileNamesPreview(selectedFiles.map((file) => file.file_name))}</span>
+                        <Btn size="sm" onClick={() => downloadSelectedFiles().catch(() => undefined)} disabled={archivingSelection} title="Download the checked files as one zip">
+                          <Icon name="download" size={13} />
+                          {archivingSelection ? "Preparing zip..." : "Download zip"}
+                        </Btn>
+                        {!detailArchived ? (
+                          <Btn
+                            size="sm"
+                            className="danger"
+                            onClick={() => removeSelectedFiles().catch(() => undefined)}
+                            disabled={removingSelection}
+                            title="Move the checked files to Removed files; the stored documents are kept"
+                          >
+                            <Icon name="trash" size={13} />
+                            {removingSelection ? "Removing..." : "Remove"}
+                          </Btn>
+                        ) : null}
+                        <Btn size="sm" onClick={() => setShareFiles({})}>Clear</Btn>
+                      </>
+                    ) : (
+                      <span className="sub grow">Check files to download them as one zip, share them, or remove them together.</span>
+                    )}
+                  </div>
+                ) : null}
                 <div className="bucket-file-list">
                   {visibleFiles.length === 0 ? (
                     <EmptyInline icon="file" title="No files uploaded yet" body="Upload files or send an invite; documents will appear here first." />
@@ -3214,14 +3369,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     const retention = bucketFileRetentionPresentation(file);
                     return (
                     <div key={file.id} className={`itemrow bucket-file-row ${semanticStatusClass(file.status)}`}>
-                      {!detailArchived ? <label className="bucket-file-share-toggle" title={`Select ${file.file_name} for sharing`}>
+                      <label className="bucket-file-share-toggle" title={`Check ${file.file_name} to download, share or remove it with others`}>
                         <input
                           type="checkbox"
                           checked={!!shareFiles[file.id]}
                           onChange={(event) => setShareFiles((current) => ({ ...current, [file.id]: event.target.checked }))}
-                          aria-label={`Select ${file.file_name} for sharing`}
+                          aria-label={`Check ${file.file_name}`}
                         />
-                      </label> : null}
+                      </label>
                       <button
                         type="button"
                         className="bucket-file-open grow"
@@ -4870,6 +5025,7 @@ function activityLabel(action: string) {
     file_review_opened: "Admin preview opened",
     file_preview_url_created: "Admin preview URL created",
     file_download_url_created: "Admin download URL created",
+    file_archive_downloaded: "Admin downloaded in a zip",
     file_annotation_created: "Admin annotation created",
     ai_action_created: "Action task created",
     ai_action_proposed: "Action task proposed",
