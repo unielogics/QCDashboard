@@ -41,14 +41,14 @@ export function ClosingStipulationsPanel({ profileId, canEdit, onOpenEconomics }
     <div className="grid g10 closing-stipulations" aria-label="Stipulations to close">
       {!block.accepted ? (
         <Callout tone="mut">
-          <b>Stipulations open once the client accepts.</b> Record the accepted amount under Offer accepted{onOpenEconomics ? <> (<button type="button" className="linklike" onClick={onOpenEconomics}>open it</button>)</> : null}; the conditions on the accepted terms then seed this list.
+          <b>Stipulations open once the client accepts.</b> Record the accepted amount in the Accepted step{onOpenEconomics ? <> (<button type="button" className="linklike" onClick={onOpenEconomics}>open it</button>)</> : null}; the conditions on the accepted terms then seed this list.
         </Callout>
       ) : (
         <div className="closing-stipulations-head">
           <div className="closing-stipulations-chips">
             <CellChip tone={block.ready_to_close && !dirty ? "ok" : open ? "warn" : "mut"}>{draft.length ? `${open} open · ${draft.filter((d) => d.status === "received").length} received · ${draft.filter((d) => d.status === "waived").length} waived` : "No stipulations yet"}</CellChip>
             {block.ready_to_close && !dirty ? <CellChip tone="ok">Ready to close</CellChip> : null}
-            {block.estimated_close_date ? <CellChip tone="mut">Estimated close {block.estimated_close_date}</CellChip> : <CellChip tone="mut">No estimated close date yet{onOpenEconomics ? " · set it under Offer accepted" : ""}</CellChip>}
+            {block.estimated_close_date ? <CellChip tone="mut">Estimated close {block.estimated_close_date}</CellChip> : <CellChip tone="mut">No estimated close date yet · set it in the Accepted step</CellChip>}
           </div>
           {unseeded.length && editable ? <Btn size="sm" onClick={() => seed.mutate()} disabled={seed.isPending}><Icon name="docCheck" size={14} />{seed.isPending ? "Adding…" : `Add the ${unseeded.length} condition${unseeded.length === 1 ? "" : "s"} from the accepted terms`}</Btn> : null}
         </div>
