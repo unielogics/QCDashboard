@@ -521,8 +521,60 @@ export type FileOwner = {
   credit_required: boolean;
   credit_complete: boolean;
   credit_contact_complete: boolean;
+  // How the owner's credit was linked (services/credit_links.py): the pull
+  // behind the step, where its number came from, and the words to show when
+  // the bureau returned nothing.
+  credit_pull_id: string | null;
+  credit_fico_source: string | null;
+  credit_score_verified: boolean;
+  credit_report_available: boolean;
+  credit_link_how: string | null;
+  credit_attention: string | null;
+  credit_expires_at: string | null;
   backfill_needs_review: boolean;
   source: "application" | "dealer";
+};
+
+export type OwnerCreditCandidate = {
+  pull_id: string;
+  status: string;
+  score: number | null;
+  fico_source: string | null;
+  score_verified: boolean;
+  report_available: boolean;
+  attention: string | null;
+  pulled_at: string | null;
+  expires_at: string | null;
+  expired: boolean;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  dob_on_file: boolean;
+  client_id: string | null;
+  evidence: { name_match?: boolean; dob_match?: boolean | null; email_match?: boolean; same_client?: boolean };
+  confidence: "exact" | "likely" | "weak";
+  why: string;
+  linked_to_this_owner: boolean;
+  linked_elsewhere: boolean;
+};
+
+export type CreditLinkEntry = {
+  owner_id: string;
+  owner_name: string;
+  profile_id: string;
+  intake_id: string | null;
+  how: string;
+  words: string;
+  pull_id: string;
+  score: number | null;
+  fico_source: string | null;
+  pulled_at: string | null;
+};
+
+export type ProfileCreditLinkReport = {
+  profile_id: string;
+  linked: CreditLinkEntry[];
+  waiting: { owner_id: string; owner_name: string; reason: string }[];
 };
 
 export type FileOwnerRequirementState = {

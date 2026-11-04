@@ -75,6 +75,7 @@ import { DealAnalyzerSection } from "./DealAnalyzerSection";
 import { BookingPageSettingsSection } from "@/components/settings/BookingPageSettingsSection";
 import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
 import { FundingProgramsSection } from "@/components/settings/FundingProgramsSection";
+import { CreditLinkingSection } from "@/components/settings/CreditLinkingSection";
 import { usePinnedRows } from "@/lib/tablePinning";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
@@ -87,6 +88,7 @@ const SECTIONS = [
   { id: "client_access", label: "Client access", icon: "shield" as const, hidden: false },
   { id: "funding_programs", label: "Funding programs", icon: "vault" as const, hidden: false },
   { id: "file_updates", label: "File updates", icon: "bell" as const, hidden: false },
+  { id: "credit_linking", label: "Credit pulls", icon: "shield" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
@@ -439,6 +441,8 @@ export default function SettingsPage() {
         {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
         {section === "funding_programs" && canEdit ? <FundingProgramsSection /> : null}
         {section === "funding_programs" && !canEdit ? <WarnLine>Super-admin access is required to publish funding criteria.</WarnLine> : null}
+        {section === "credit_linking" && canEdit ? <CreditLinkingSection /> : null}
+        {section === "credit_linking" && !canEdit ? <WarnLine>Super-admin access is required to decide how credit pulls link to owners.</WarnLine> : null}
 
         {section === "checklists" && (
           <ChecklistsSection

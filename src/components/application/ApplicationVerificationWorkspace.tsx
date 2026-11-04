@@ -12,6 +12,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
+import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDrawer";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
@@ -23,6 +24,7 @@ import type {
   FileCreditInvite,
   FileOwner,
   FileOwnerRequirementState,
+  ProfileCreditLinkReport,
   RoomDeliveryReceipt,
   RoomRequestResult,
 } from "@/lib/applicationProfile";
@@ -37,6 +39,7 @@ import {
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { validateOwnerField, type EditableOwnerField } from "@/lib/ownerFieldValidation";
+import { ownerCreditWords, reportWords } from "@/lib/creditLinks";
 
 type OwnerDraft = {
   key: string;
@@ -63,6 +66,7 @@ function maskPhone(value: string | null) {
 }
 
 function creditStatus(owner: FileOwner): { label: string; tone: "ok" | "acc" | "warn" | "bad" | "mut" } {
+  if (owner.credit_complete && owner.credit_score == null) return { label: "Returned, no score", tone: "warn" };
   if (owner.credit_complete) return { label: "Completed", tone: "ok" };
   if (owner.invite_opened_at) return { label: "Opened", tone: "acc" };
   if (owner.invite_sent_at) return { label: "Sent", tone: "warn" };
@@ -373,6 +377,31 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
   const [links, setLinks] = useState<Record<string, string>>({});
   const [alsoText, setAlsoText] = useState(false);
   const [error, setError] = useState("");
+  const [linkOwner, setLinkOwner] = useState<FileOwner | null>(null);
+  const [linkNotice, setLinkNotice] = useState("");
+  const unlink = useMutation({
+    mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileOwner>(`/application-profiles/${profileId}/owners/${ownerId}/credit-link`, { method: "DELETE" }),
+    onSuccess: async (updated) => {
+      setError("");
+      setLinkNotice(`${updated.full_name}'s credit step is pending again; the pull itself stays on record.`);
+      await onRefresh();
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The pull could not be unlinked."),
+  });
+  const autoLink = useMutation({
+    mutationFn: () => apiCall<ProfileCreditLinkReport>(`/application-profiles/${profileId}/credit-links/auto`, { method: "POST" }),
+    onSuccess: async (result) => {
+      setError("");
+      const lines = [
+        `${reportWords(result)}.`,
+        ...result.linked.map((item) => `${item.words}.`),
+        ...result.waiting.map((item) => `${item.owner_name}: ${item.reason}.`),
+      ];
+      setLinkNotice(lines.join(" "));
+      await onRefresh();
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The pulls could not be matched."),
+  });
 
   const invite = useMutation({
     mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileCreditInvite>(`/application-profiles/${profileId}/owners/${ownerId}/credit-invite`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }) }),
@@ -402,7 +431,7 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
         <header className="verification-section-head">
           <div><span className="lbl">Step 3</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
           <CellChip tone={state?.credit_returned ? "ok" : "warn"}>{state?.completed_credit_owner_count ?? 0} of {state?.required_credit_owner_count ?? 0} completed</CellChip>
-          <Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
+          <Btn disabled={autoLink.isPending || !requiredOwners.length} onClick={() => autoLink.mutate()} title="Match each owner to a completed pull under the same name on this client"><Icon name="link" size={14} />{autoLink.isPending ? "Matching..." : "Link automatically"}</Btn><Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
         </header>
         <div className="credit-owner-grid">
           {requiredOwners.map((owner) => {
@@ -411,8 +440,9 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
             return (
               <article key={owner.id} className={cx("credit-owner-box", owner.credit_complete && "complete")}>
                 <header><span className="credit-owner-avatar">{owner.first_name.slice(0, 1)}{owner.last_name.slice(0, 1)}</span><div className="grow"><b>{owner.full_name}</b><Sub>{Number(owner.ownership_pct ?? 0).toFixed(2)}% ownership</Sub></div><CellChip tone={status.tone}>{status.label}</CellChip></header>
-                <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_tier ? <div><dt>Result</dt><dd>{owner.credit_tier}</dd></div> : null}</dl>
-                <footer><Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}</footer>
+                <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_pulled_at ? <div><dt>Result</dt><dd>{owner.credit_tier ? `${owner.credit_tier} · ` : ""}{ownerCreditWords(owner)}</dd></div> : null}</dl>
+                {owner.credit_attention ? <div className="warnline credit-owner-attention">{owner.credit_attention}</div> : null}
+                <footer><Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn onClick={() => setLinkOwner(owner)} title={owner.credit_complete ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_complete ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
               </article>
             );
           })}
@@ -420,6 +450,18 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
         </div>
         <label className="verification-sms"><input type="checkbox" checked={alsoText} onChange={(event) => setAlsoText(event.target.checked)} />Also send by SMS when the exact owner has transactional consent</label>
       </section>
+
+      {linkNotice ? <Callout tone="acc" icon={<Icon name="link" size={16} />}>{linkNotice}</Callout> : null}
+      <CreditPullLinkDrawer
+        profileId={profileId}
+        owner={linkOwner}
+        open={Boolean(linkOwner)}
+        onClose={() => setLinkOwner(null)}
+        onLinked={async (updated) => {
+          setLinkNotice(`${updated.full_name}: ${ownerCreditWords(updated)}.`);
+          await onRefresh();
+        }}
+      />
 
       {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
     </div>
