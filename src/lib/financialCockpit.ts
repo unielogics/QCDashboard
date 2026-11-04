@@ -410,6 +410,22 @@ export type Obligation = {
   origin: string | null;
 };
 
+export type PlanAddBackKind = "owner_salary" | "interest_refinanced" | "depreciation" | "one_time_expense" | "rent_to_owner" | "other";
+export const ADD_BACK_KINDS: Record<PlanAddBackKind, string> = {
+  owner_salary: "Owner salary / officer compensation",
+  interest_refinanced: "Interest on the debt the loan refinances",
+  depreciation: "Depreciation and amortization",
+  one_time_expense: "One-time or non-recurring expense",
+  rent_to_owner: "Rent paid to the owner",
+  other: "Other add-back",
+};
+/** One amount the desk adds back to the income available for debt service. */
+export type PlanAddBack = { id?: string | null; kind: PlanAddBackKind; label?: string | null; amount_monthly: number; note?: string | null; source?: string | null };
+/** Figures the desk sets outright, each with the reason. */
+export type PlanOverrides = { income_annual: number | null; income_note: string | null; debt_service_monthly: number | null; debt_service_note: string | null };
+export const EMPTY_OVERRIDES: PlanOverrides = { income_annual: null, income_note: null, debt_service_monthly: null, debt_service_note: null };
+export type PlanLoanTerms = { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean };
+
 export type FinancialPlanRecord = {
   retire: string[];
   exclude: string[];
@@ -418,9 +434,32 @@ export type FinancialPlanRecord = {
   new_loan_amount: number | null;
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
+  new_loan_interest_only?: boolean;
+  add_backs?: PlanAddBack[];
+  overrides?: PlanOverrides | null;
   note: string | null;
   updated_at?: string | null;
   updated_by?: string | null;
+};
+
+/** One line of the plan in plain words, for the package, the listing and the review. */
+export type PlanModification = { kind: string; label: string; detail: string | null; monthly_effect: number | null; annual_effect: number | null };
+export type PlanPair = { before: number | null; after: number | null; change: number | null };
+/** Original, with the plan, and the difference. */
+export type PlanImpact = {
+  active: boolean;
+  dscr: PlanPair & { basis: string | null; status_before: DscrStatus; status_after: DscrStatus; no_debt_left: boolean };
+  income_annual: PlanPair;
+  debt_service_monthly: PlanPair;
+  net_cash_flow_monthly: PlanPair;
+  ending_balance: PlanPair;
+  months_negative: PlanPair;
+  cash_kept: number | null;
+  add_backs_monthly: number | null;
+  retired_monthly: number | null;
+  excluded_monthly: number | null;
+  loan: (PlanLoanTerms & { payment_monthly: number | null; source: string | null }) | null;
+  accounts: { counted: string[]; not_counted: string[] } | null;
 };
 
 export type PlanReplayRow = {
@@ -440,7 +479,7 @@ export type PlanReplayRow = {
   cumulative: number;
 };
 
-export type PlanCandidate = { key: string; label: string; numerator_before: number; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean };
+export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
 export type PlanEvaluation = {
   active: boolean;
@@ -451,6 +490,14 @@ export type PlanEvaluation = {
   payoff_total: number | null;
   payoff_unknown: number;
   excluded_monthly: number;
+  add_backs_monthly?: number;
+  add_backs_annual?: number;
+  income_override_annual?: number | null;
+  debt_service_override_monthly?: number | null;
+  interest_only?: boolean;
+  loan_terms?: PlanLoanTerms | null;
+  income_before_annual?: number | null;
+  income_after_annual?: number | null;
   new_payment_monthly: number | null;
   new_payment_source: string | null;
   loan_amount_needed: number | null;
@@ -484,6 +531,9 @@ export type FinancialPlanWrite = {
   new_loan_amount: number | null;
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
+  new_loan_interest_only: boolean;
+  add_backs: PlanAddBack[];
+  overrides: PlanOverrides | null;
   note: string | null;
 };
 
@@ -634,7 +684,7 @@ export type FinancialCockpit = {
     obligations: Obligation[];
     schedule: CockpitDebtSchedule;
   };
-  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[] };
+  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact };
   dscr: CockpitDscr;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];
@@ -885,6 +935,13 @@ export function amortizedPayment(principal: number | null | undefined, ratePct: 
   const rate = (ratePct ?? 0) / 100 / 12;
   if (rate <= 0) return Math.round((principal / months) * 100) / 100;
   return Math.round((principal * rate / (1 - Math.pow(1 + rate, -months))) * 100) / 100;
+}
+
+/** The new loan's monthly payment: interest alone when interest-only (principal at maturity), else the level payment. */
+export function loanPayment(principal: number | null | undefined, ratePct: number | null | undefined, months: number | null | undefined, interestOnly: boolean, factorRate?: number | null): number | null {
+  if (principal == null || !Number.isFinite(principal) || principal <= 0) return null;
+  if (interestOnly && !(factorRate != null && factorRate > 0)) return Math.round((principal * ((ratePct ?? 0) / 100 / 12)) * 100) / 100;
+  return amortizedPayment(principal, ratePct, months, factorRate);
 }
 
 /** Coverage once a new monthly payment is added to today's debt service. */

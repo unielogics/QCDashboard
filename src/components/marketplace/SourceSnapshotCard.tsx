@@ -22,6 +22,11 @@ function num(value: unknown): number | null {
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
+function pair(value: unknown): { before: number | null; after: number | null; change: number | null } {
+  const record = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  return { before: num(record.before), after: num(record.after), change: num(record.change) };
+}
+const signed = (value: number | null, render: (v: number) => string): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${render(Math.abs(value))}`);
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -77,6 +82,34 @@ export function SourceSnapshotCard({ snapshot }: { snapshot: Snapshot | null | u
             </div>
           </Item>
         ) : null}
+        {financials && section(financials, "plan")?.active ? (() => {
+          const plan = section(financials, "plan") as Record<string, unknown>;
+          const impact = section(plan, "impact") ?? {};
+          const mods = Array.isArray(plan.modifications) ? (plan.modifications as Record<string, unknown>[]) : [];
+          const dscrPair = pair(impact.dscr);
+          const rows: Array<[string, { before: number | null; after: number | null; change: number | null }, (v: number) => string]> = [
+            ["Income available for debt service, a year", pair(impact.income_annual), (v) => money(v)],
+            ["Debt service, a month", pair(impact.debt_service_monthly), (v) => money(v)],
+            ["Net cash flow, a month", pair(impact.net_cash_flow_monthly), (v) => money(v)],
+            ["Ending balance, last month", pair(impact.ending_balance), (v) => money(v)],
+            ["Months dipping below zero", pair(impact.months_negative), (v) => String(v)],
+          ];
+          return (
+            <Item label="The desk's plan: original, modification, impact">
+              {mods.length ? <ul className="fc-notes">{mods.map((m, i) => <li key={i}><strong>{text(m.label)}</strong>{text(m.detail) ? ` — ${text(m.detail)}` : ""}</li>)}</ul> : null}
+              <div className="tbl-wrap">
+                <table className="tbl fc-impact">
+                  <thead><tr><th>Figure</th><th className="r">Original</th><th className="r">With the plan</th><th className="r">Change</th></tr></thead>
+                  <tbody>
+                    <tr><td>Debt service coverage ({sourceLabel(text(impact && (impact as Record<string, unknown>).dscr && ((impact as Record<string, unknown>).dscr as Record<string, unknown>).basis))})</td><td className="r num">{multiple(dscrPair.before)}</td><td className="r num">{multiple(dscrPair.after)}</td><td className="r num">{signed(dscrPair.change, (v) => `${v.toFixed(2)}x`)}</td></tr>
+                    {rows.map(([label, p, render]) => <tr key={label}><td>{label}</td><td className="r num">{p.before == null ? "—" : render(p.before)}</td><td className="r num">{p.after == null ? "—" : render(p.after)}</td><td className="r num">{signed(p.change, render)}</td></tr>)}
+                  </tbody>
+                </table>
+              </div>
+              {text(plan.note) ? <div className="sub">{text(plan.note)}</div> : null}
+            </Item>
+          );
+        })() : null}
         {sheet ? (
           <Item label="Recorded loan terms">
             <strong>{money(num(sheet.approved_amount))}</strong> at {num(sheet.rate_pct) ?? "—"}% for {num(sheet.term_months) ?? "—"} months

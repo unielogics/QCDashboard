@@ -27,7 +27,7 @@ import {
   type CpOfferSuggestions,
 } from "@/hooks/useCapitalPartners";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
-import { amortizedPayment, compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
+import { compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, loanPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
 import type { CockpitPackageState } from "./FinancialCockpit";
 
 type Props = {
@@ -50,6 +50,7 @@ type ProductDraft = {
   rate_pct: string;
   factor_rate: number | null;
   term_months: string;
+  interest_only: boolean;
   primary: boolean;
   notes: string | null;
   eligible: boolean | null;
@@ -65,10 +66,10 @@ const num = (value: string | number | null | undefined): number | null => {
 const text = (value: number | string | null | undefined) => (value == null ? "" : String(value));
 
 function fromListing(product: CpListingProduct): ProductDraft {
-  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), primary: product.primary, notes: product.notes, eligible: null };
+  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, primary: product.primary, notes: product.notes, eligible: null };
 }
 function fromSuggestion(item: CpOfferSuggestion, primary: boolean): ProductDraft {
-  return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), primary, notes: item.reading, eligible: item.eligible };
+  return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, primary, notes: item.reading, eligible: item.eligible };
 }
 function toProduct(draft: ProductDraft, payment: number | null, dscr: number | null): CpListingProduct {
   return {
@@ -78,6 +79,7 @@ function toProduct(draft: ProductDraft, payment: number | null, dscr: number | n
     rate_pct: num(draft.rate_pct),
     factor_rate: draft.factor_rate,
     term_months: num(draft.term_months) == null ? null : Math.round(num(draft.term_months) as number),
+    interest_only: draft.interest_only,
     payment_frequency: "monthly",
     monthly_payment: payment,
     dscr,
@@ -117,20 +119,34 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
     }
   }, [dirty, listing.data, listingId, suggestions.data]);
 
-  const income = suggestions.data?.income_annual ?? cockpit.dscr.headline?.numerator ?? cockpit.dscr.candidates[0]?.numerator ?? null;
-  const existingMonthly = suggestions.data?.existing_debt_service_monthly ?? cockpit.debt.service.monthly ?? 0;
-  const incomeLabel = suggestions.data?.income_label ?? cockpit.dscr.headline?.numerator_label ?? null;
+  // The plan's income (add-backs, exclusions, overrides) and its debt service after retirements are what the offer stands on.
+  const evaluation = cockpit.plan?.evaluation;
+  const planIncome = evaluation?.active && evaluation.income_after_annual != null ? evaluation.income_after_annual : null;
+  const income = suggestions.data?.income_annual ?? planIncome ?? cockpit.dscr.headline?.numerator ?? cockpit.dscr.candidates[0]?.numerator ?? null;
+  const existingMonthly = suggestions.data?.existing_debt_service_monthly ?? evaluation?.debt_service_before_new_payment_monthly ?? cockpit.debt.service.monthly ?? 0;
+  const incomeLabel = suggestions.data?.income_label ?? (planIncome != null ? `${cockpit.dscr.headline?.numerator_label ?? "Income"} with the desk's plan` : cockpit.dscr.headline?.numerator_label ?? null);
   const incomeBasis = suggestions.data?.income_basis ?? cockpit.dscr.headline?.key ?? null;
+  const planLoan = cockpit.plan?.impact?.loan ?? null;
 
   const computed = useMemo(
     () =>
       products.map((draft) => {
-        const payment = amortizedPayment(num(draft.amount), num(draft.rate_pct), num(draft.term_months), draft.factor_rate);
+        const payment = loanPayment(num(draft.amount), num(draft.rate_pct), num(draft.term_months), draft.interest_only, draft.factor_rate);
         const dscr = dscrWithPayment(income, existingMonthly, payment);
         return { draft, payment, dscr };
       }),
     [products, income, existingMonthly],
   );
+  const usePlanLoan = () => {
+    if (!planLoan) return;
+    setDirty(true);
+    setProducts((current) => {
+      const index = current.findIndex((p) => p.primary);
+      const base = index >= 0 ? current[index] : { key: nextKey(), program_key: null, label: "Loan", amount: "", rate_pct: "", factor_rate: null, term_months: "", interest_only: false, primary: true, notes: null, eligible: null };
+      const next = { ...base, amount: text(planLoan.amount), rate_pct: text(planLoan.rate_pct), term_months: text(planLoan.term_months), interest_only: planLoan.interest_only, factor_rate: null, notes: "From the desk's plan on the file." };
+      return index >= 0 ? current.map((p, i) => (i === index ? next : p)) : [...current, next];
+    });
+  };
 
   const candidates = useMemo(() => {
     const seen = new Set<string>();
@@ -181,7 +197,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
       ...current,
       suggestion
         ? { ...fromSuggestion(suggestion, current.length === 0), eligible }
-        : { key: nextKey(), program_key: programKey, label: name, amount: "", rate_pct: "16", factor_rate: null, term_months: "120", primary: current.length === 0, notes: null, eligible },
+        : { key: nextKey(), program_key: programKey, label: name, amount: "", rate_pct: "16", factor_rate: null, term_months: "120", interest_only: false, primary: current.length === 0, notes: null, eligible },
     ]);
   };
   const suggestAll = async () => {
@@ -195,7 +211,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
         current.map((p) => {
           const item = fetched.products.find((s) => s.program_key === p.program_key);
           if (!item) return p;
-          return { ...p, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), notes: item.reading, eligible: item.eligible };
+          return { ...p, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, notes: item.reading, eligible: item.eligible };
         }),
       );
       setNotice("Suggested terms applied. Each line reads the amount the income supports at 1.25x on the program's longest term, capped by the program and the request.");
@@ -348,6 +364,11 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
               <Btn size="sm" variant="pri" onClick={() => void suggestAll()} disabled={!products.length || !editable || suggestions.isLoading}>
                 <Icon name="sparkles" size={12} /> Suggest terms
               </Btn>
+              {planLoan ? (
+                <Btn size="sm" onClick={usePlanLoan} disabled={!editable}>
+                  <Icon name="copy" size={12} /> Use the plan's loan: {money(planLoan.amount)} at {planLoan.rate_pct}%{planLoan.interest_only ? " interest-only" : ` over ${planLoan.term_months} mo`}
+                </Btn>
+              ) : null}
             </div>
           </div>
           {computed.length ? (
@@ -360,6 +381,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
                     <th className="r">Amount</th>
                     <th className="r">{computed.some(({ draft }) => draft.factor_rate) ? "Rate % / factor" : "Rate %"}</th>
                     <th className="r">Term (mo)</th>
+                    <th>Structure</th>
                     <th className="r">Payment / mo</th>
                     <th>Coverage</th>
                     <th aria-label="Remove" />
@@ -379,7 +401,15 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
                         <td className="r num"><Input aria-label="Amount" inputMode="decimal" value={draft.amount} disabled={!editable} onChange={(e) => update(draft.key, { amount: e.target.value })} /></td>
                         <td className="r num">{draft.factor_rate ? <span>{draft.factor_rate.toFixed(2)} factor</span> : <Input aria-label="Rate percent" inputMode="decimal" value={draft.rate_pct} disabled={!editable} onChange={(e) => update(draft.key, { rate_pct: e.target.value })} />}</td>
                         <td className="r num"><Input aria-label="Term in months" inputMode="numeric" value={draft.term_months} disabled={!editable} onChange={(e) => update(draft.key, { term_months: e.target.value })} /></td>
-                        <td className="r num"><strong>{money(payment)}</strong></td>
+                        <td>
+                          {draft.factor_rate ? <span className="sub">Factor</span> : (
+                            <label className={cx("fc-sim-pick", draft.interest_only && "on")}>
+                              <input type="checkbox" checked={draft.interest_only} disabled={!editable} onChange={(e) => update(draft.key, { interest_only: e.target.checked })} />
+                              <span className="fc-sim-pick-name">{draft.interest_only ? "Interest-only" : "Amortizing"}</span>
+                            </label>
+                          )}
+                        </td>
+                        <td className="r num"><strong>{money(payment)}</strong>{draft.interest_only ? <small className="sub" style={{ display: "block" }}>interest; principal at maturity</small> : null}</td>
                         <td>
                           <span className={cx("fc-chips")}>
                             <strong className="num">{multiple(dscr)}</strong>

@@ -6741,3 +6741,12 @@ a.pick { color: inherit; text-decoration: none; }
 .linky { appearance: none; border: 0; background: none; color: var(--accent); cursor: pointer; font: inherit; padding: 0; text-decoration: underline; }
 .intake-file-body.no-context { grid-template-columns: minmax(0, 1fr); }
 .intake-file-body.no-context > .intake-file-context, .intake-file-body.no-context > .intake-file-context-collapsed { display: none; }
+
+/* Financial plan adjustments: add-back rows, loan terms and the impact table. */
+.fc-adjust-row { display: grid; grid-template-columns: minmax(150px, 0.9fr) minmax(140px, 1.1fr) 120px minmax(160px, 1.3fr) auto; gap: 6px; align-items: center; }
+.fc-loan-terms { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; align-items: end; }
+.fc-impact td:first-child { color: var(--ink); }
+@media (max-width: 760px) {
+  .fc-adjust-row { grid-template-columns: 1fr 1fr; }
+  .fc-adjust-row > :last-child { justify-self: end; }
+}

@@ -10,12 +10,14 @@
 // and one click to apply.
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Btn, CellChip, Input, Lbl, StatusLine, cx } from "@/components/ds";
+import { Btn, CellChip, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useSaveFinancialPlan } from "@/hooks/useApi";
 import { evaluatePlanLocally } from "@/lib/cockpitSimulation";
 import {
+  ADD_BACK_KINDS,
+  EMPTY_OVERRIDES,
   cadenceLabel,
   compactMoney,
   confidenceLabel,
@@ -34,6 +36,9 @@ import {
   type FinancialCockpit as Cockpit,
   type FinancialPlanWrite,
   type PayeeKind,
+  type PlanAddBack,
+  type PlanAddBackKind,
+  type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
 
@@ -43,11 +48,12 @@ const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad
   return tone === "acc" ? "mut" : tone;
 };
 
-const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, note: null };
+const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, add_backs: [], overrides: null, note: null };
 
 function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
   const r = cockpit.plan?.record;
   if (!r) return EMPTY_PLAN;
+  const overrides = r.overrides && (r.overrides.income_annual != null || r.overrides.debt_service_monthly != null || r.overrides.income_note || r.overrides.debt_service_note) ? { ...EMPTY_OVERRIDES, ...r.overrides } : null;
   return {
     retire: [...r.retire],
     exclude: [...r.exclude],
@@ -56,9 +62,16 @@ function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
     new_loan_amount: r.new_loan_amount,
     new_loan_rate_pct: r.new_loan_rate_pct,
     new_loan_term_months: r.new_loan_term_months,
+    new_loan_interest_only: !!r.new_loan_interest_only,
+    add_backs: (r.add_backs ?? []).map((a) => ({ ...a })),
+    overrides,
     note: r.note,
   };
 }
+const numberValue = (value: number | null | undefined): string => (value == null || !Number.isFinite(value) ? "" : String(value));
+const change = (before: number | null | undefined, after: number | null | undefined): number | null => (before == null || after == null ? null : Math.round((after - before) * 100) / 100);
+const signedMoney = (value: number | null): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`);
+const signedMultiple = (value: number | null): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}x`);
 const same = (a: FinancialPlanWrite, b: FinancialPlanWrite) => JSON.stringify(a) === JSON.stringify(b);
 const num = (value: string): number | null => {
   const cleaned = value.replace(/[^0-9.]/g, "");
@@ -121,7 +134,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
     setSaved(null);
     setPlan((p) => {
       const next = { ...p, ...apply } as FinancialPlanWrite;
-      if (apply.new_loan_amount != null) {
+      if (apply.new_loan_amount != null || apply.new_loan_interest_only) {
         next.new_payment_monthly = null;
         next.new_payment_source = "manual_terms";
       }
@@ -129,6 +142,47 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
     });
     if (apply.new_loan_amount != null || apply.new_payment_monthly === null) setPaymentText("");
   };
+  // The new loan's terms: amount, rate, term and whether it is interest-only. Typing a term wipes a typed payment.
+  const setLoan = (field: "amount" | "rate" | "term" | "interest_only", raw: string | boolean) => {
+    setSaved(null);
+    setPaymentText("");
+    setPlan((p) => {
+      const value = typeof raw === "boolean" ? null : num(raw);
+      const next: FinancialPlanWrite = { ...p, new_payment_monthly: null };
+      if (field === "amount") next.new_loan_amount = value;
+      else if (field === "rate") next.new_loan_rate_pct = value;
+      else if (field === "term") next.new_loan_term_months = value == null ? null : Math.max(1, Math.round(value));
+      else next.new_loan_interest_only = raw === true;
+      next.new_payment_source = next.new_loan_amount ? "manual_terms" : null;
+      return next;
+    });
+  };
+  const updateAddBack = (index: number, patch: Partial<PlanAddBack>) => {
+    setSaved(null);
+    setPlan((p) => ({ ...p, add_backs: p.add_backs.map((a, i) => (i === index ? { ...a, ...patch } : a)) }));
+  };
+  const addAddBack = (seed: Partial<PlanAddBack> = {}) => {
+    setSaved(null);
+    setPlan((p) => ({ ...p, add_backs: [...p.add_backs, { kind: "other", label: null, amount_monthly: 0, note: null, source: "desk", ...seed }] }));
+  };
+  const removeAddBack = (index: number) => {
+    setSaved(null);
+    setPlan((p) => ({ ...p, add_backs: p.add_backs.filter((_a, i) => i !== index) }));
+  };
+  const setOverride = (patch: Partial<PlanOverrides>) => {
+    setSaved(null);
+    setPlan((p) => {
+      const next = { ...(p.overrides ?? EMPTY_OVERRIDES), ...patch };
+      const empty = next.income_annual == null && next.debt_service_monthly == null && !next.income_note && !next.debt_service_note;
+      return { ...p, overrides: empty ? null : next };
+    });
+  };
+  const latestTax = [...(cockpit.tax?.years ?? [])].reverse();
+  const officerYear = latestTax.find((y) => (y.officer_compensation ?? 0) > 0) ?? null;
+  const interestYear = latestTax.find((y) => (y.interest ?? 0) > 0) ?? null;
+  const hasKind = (kind: PlanAddBackKind) => plan.add_backs.some((a) => a.kind === kind);
+  const overrides = plan.overrides ?? EMPTY_OVERRIDES;
+  const serviceOriginal = cockpit.debt.service.monthly ?? 0;
   const clearPlan = () => {
     setSaved(null);
     setPlan(EMPTY_PLAN);
@@ -155,7 +209,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
     cols: ["Month", "Deposits", "Withdrawals", "With the plan", "Net", "Net with the plan", "Ending", "Ending with the plan", "Lowest", "Lowest with the plan (est.)"],
     rows: local.rows.map((r) => ({ key: r.month, cells: [r.label, money(r.deposits), money(r.withdrawals), money(r.withdrawalsAfter), money(r.net), money(r.netAfter), money(r.ending), money(r.endingAfter), money(r.lowest), money(r.lowestAfter)] })),
   };
-  const loanTerms = plan.new_loan_amount ? `${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}% over ${plan.new_loan_term_months} mo` : null;
+  const loanTerms = plan.new_loan_amount ? `${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}%${plan.new_loan_interest_only ? " interest-only" : ` over ${plan.new_loan_term_months ?? "—"} mo`}` : null;
+  const savedModifications = cockpit.plan?.modifications ?? [];
 
   return (
     <section className="fc-card fc-wide fc-coverage">
@@ -285,12 +340,21 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
           ) : null}
         </div>
         <div className="grid g8">
-          <Lbl>The new loan's payment</Lbl>
-          <Input aria-label="New monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Term sheet: ${money(cockpit.dscr.proposed.monthly_payment)}` : "0"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
+          <Lbl>The new loan</Lbl>
+          <div className="fc-loan-terms">
+            <label className="grid g2"><span className="sub">Amount, $</span><Input aria-label="New loan amount" type="number" inputMode="decimal" min={0} step="any" value={numberValue(plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => setLoan("amount", e.target.value)} /></label>
+            <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
+            <label className="grid g2"><span className="sub">Term, months</span><Input aria-label="New loan term in months" type="number" inputMode="numeric" min={1} max={600} step={1} value={numberValue(plan.new_loan_term_months)} disabled={!canEdit || plan.new_loan_interest_only} onChange={(e) => setLoan("term", e.target.value)} /></label>
+            <label className={cx("fc-sim-pick", plan.new_loan_interest_only && "on")} style={{ alignSelf: "end" }}>
+              <input type="checkbox" checked={plan.new_loan_interest_only} disabled={!canEdit} onChange={(e) => setLoan("interest_only", e.target.checked)} />
+              <span className="fc-sim-pick-name">Interest-only</span>
+            </label>
+          </div>
           <span className="sub">
-            {loanTerms ? `From loan terms: ${loanTerms}.` : plan.new_payment_monthly != null ? "Typed by the desk." : cockpit.dscr.proposed ? `Recorded loan terms: ${money(cockpit.dscr.proposed.monthly_payment)} a month.` : "No loan terms recorded; type the payment or apply a lever."}
+            {loanTerms ? `${loanTerms}: ${money(local.newPayment)} a month${plan.new_loan_interest_only ? " of interest; the principal is due at maturity" : ""}.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms: ${money(cockpit.dscr.proposed.monthly_payment)} a month.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
             {canRecordTerms ? <> <button type="button" className="linky" onClick={onRecordTerms}>Record loan terms</button></> : null}
           </span>
+          <Input aria-label="Or type the new monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Or type the payment (term sheet: ${money(cockpit.dscr.proposed.monthly_payment)})` : "Or type the payment"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
           <Lbl>Ways to raise coverage</Lbl>
           {levers.length ? (
             <div className="fc-levers">
@@ -311,6 +375,83 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
             <div className="sub">Levers appear once an income figure and the statements' payees are on file.</div>
           )}
         </div>
+      </div>
+
+      <div className="fc-grid">
+        <div className="grid g8">
+          <Lbl>Add-backs: income the documents understate</Lbl>
+          <span className="sub">Owner pay that is discretionary, interest the refinance removes, depreciation, one-time costs: each raises the income available for debt service on every basis, with a note that says why.</span>
+          {plan.add_backs.length ? (
+            <div className="grid g6">
+              {plan.add_backs.map((item, index) => (
+                <div key={item.id ?? index} className="fc-adjust-row">
+                  <Select aria-label="Add-back kind" value={item.kind} disabled={!canEdit} onChange={(e) => updateAddBack(index, { kind: e.target.value as PlanAddBackKind, label: item.label && item.label !== ADD_BACK_KINDS[item.kind] ? item.label : null })}>
+                    {(Object.keys(ADD_BACK_KINDS) as PlanAddBackKind[]).map((kind) => <option key={kind} value={kind}>{ADD_BACK_KINDS[kind]}</option>)}
+                  </Select>
+                  <Input aria-label="Add-back label" placeholder={ADD_BACK_KINDS[item.kind]} value={item.label ?? ""} disabled={!canEdit} onChange={(e) => updateAddBack(index, { label: e.target.value || null })} />
+                  <Input aria-label="Add-back amount per month" type="number" inputMode="decimal" min={0} step="any" placeholder="$ / month" value={numberValue(item.amount_monthly)} disabled={!canEdit} onChange={(e) => updateAddBack(index, { amount_monthly: num(e.target.value) ?? 0 })} />
+                  <Input aria-label="Add-back note" placeholder="Why it is added back" value={item.note ?? ""} disabled={!canEdit} onChange={(e) => updateAddBack(index, { note: e.target.value || null })} />
+                  {canEdit ? <button type="button" className="fc-adv-remove" aria-label="Remove this add-back" onClick={() => removeAddBack(index)}><Icon name="x" size={13} /></button> : <span />}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="fc-empty">No add-backs. The income figure is what the documents show.</div>
+          )}
+          {canEdit ? (
+            <div className="fc-chips">
+              {officerYear && !hasKind("owner_salary") ? <Btn size="sm" onClick={() => addAddBack({ kind: "owner_salary", label: `Officer compensation (tax return ${officerYear.year})`, amount_monthly: Math.round(((officerYear.officer_compensation ?? 0) / 12) * 100) / 100, source: "tax_return" })}><Icon name="plus" size={12} /> Officer compensation {money(officerYear.officer_compensation)} a year</Btn> : null}
+              {interestYear && plan.retire.length && !hasKind("interest_refinanced") ? <Btn size="sm" onClick={() => addAddBack({ kind: "interest_refinanced", label: `Interest on refinanced debt (tax return ${interestYear.year})`, amount_monthly: Math.round(((interestYear.interest ?? 0) / 12) * 100) / 100, source: "tax_return" })}><Icon name="plus" size={12} /> Interest {money(interestYear.interest)} a year</Btn> : null}
+              <Btn size="sm" onClick={() => addAddBack()}><Icon name="plus" size={12} /> Add an add-back</Btn>
+              {local.addBacksMonthly ? <CellChip tone="ok">+{money(local.addBacksMonthly)} / mo · {money(local.addBacksMonthly * 12)} a year</CellChip> : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="grid g8">
+          <Lbl>Overrides: set a figure outright</Lbl>
+          <span className="sub">Banking control: when the desk knows better than the documents, set the income available for debt service or the existing debt service, and say why. An override replaces the computed figure, add-backs included.</span>
+          <div className="fc-loan-terms">
+            <label className="grid g2"><span className="sub">Income available for debt service, $ a year</span><Input aria-label="Income override per year" type="number" inputMode="decimal" min={0} step="any" placeholder={money(headline?.numerator ?? null)} value={numberValue(overrides.income_annual)} disabled={!canEdit} onChange={(e) => setOverride({ income_annual: num(e.target.value) })} /></label>
+            <label className="grid g2"><span className="sub">Why</span><Input aria-label="Income override note" placeholder="Per the CPA letter…" value={overrides.income_note ?? ""} disabled={!canEdit} onChange={(e) => setOverride({ income_note: e.target.value || null })} /></label>
+            <label className="grid g2"><span className="sub">Existing debt service, $ a month</span><Input aria-label="Existing debt service override per month" type="number" inputMode="decimal" min={0} step="any" placeholder={money(serviceOriginal)} value={numberValue(overrides.debt_service_monthly)} disabled={!canEdit} onChange={(e) => setOverride({ debt_service_monthly: num(e.target.value) })} /></label>
+            <label className="grid g2"><span className="sub">Why</span><Input aria-label="Debt service override note" placeholder="Includes the truck lease…" value={overrides.debt_service_note ?? ""} disabled={!canEdit} onChange={(e) => setOverride({ debt_service_note: e.target.value || null })} /></label>
+          </div>
+          {overrides.income_annual != null || overrides.debt_service_monthly != null ? <StatusLine tone="acc">Overrides in force{overrides.income_annual != null ? `: income ${money(overrides.income_annual)} a year` : ""}{overrides.debt_service_monthly != null ? `${overrides.income_annual != null ? "," : ":"} existing debt service ${money(overrides.debt_service_monthly)} a month` : ""}. They print on the package and the listing with the note.</StatusLine> : null}
+        </div>
+      </div>
+
+      <div className="grid g6">
+        <Lbl>Original, with the plan, and the difference</Lbl>
+        <div className="tbl-wrap">
+          <table className="tbl fc-impact">
+            <thead>
+              <tr>
+                <th>Figure</th>
+                <th className="r">Original</th>
+                <th className="r">With the plan</th>
+                <th className="r">Change</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td>Debt service coverage{headline ? ` · ${headline.label}` : ""}</td><td className="r num">{multiple(headline?.value)}</td><td className="r num">{local.noDebtLeft ? "No debt left" : multiple(local.headlineAfter)}</td><td className="r num">{signedMultiple(change(headline?.value, local.headlineAfter))}</td></tr>
+              <tr><td>Income available for debt service, a year</td><td className="r num">{money(local.incomeBefore)}</td><td className="r num">{money(local.incomeAfter)}</td><td className="r num">{signedMoney(change(local.incomeBefore, local.incomeAfter))}</td></tr>
+              <tr><td>Debt service, a month</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfter)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfter))}</td></tr>
+              <tr><td>Net cash flow, a month ({accountLabel})</td><td className="r num">{money(summary.avg_net)}</td><td className="r num">{money(local.netAfterAverage)}</td><td className="r num">{signedMoney(change(summary.avg_net, local.netAfterAverage))}</td></tr>
+              <tr><td>Ending balance, last month</td><td className="r num">{money(summary.ending_balance)}</td><td className="r num">{money(local.endingAfterLast)}</td><td className="r num">{signedMoney(change(summary.ending_balance, local.endingAfterLast))}</td></tr>
+              <tr><td>Months dipping below zero</td><td className="r num">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td><td className="r num">{local.monthsDippingNegativeAfter}</td><td className="r num">{local.monthsDippingNegativeAfter - local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td></tr>
+            </tbody>
+          </table>
+        </div>
+        {savedModifications.length && !dirty ? (
+          <div className="grid g4">
+            <span className="sub">Saved plan, as the package, the listing and the review read it:</span>
+            <ul className="fc-notes">
+              {savedModifications.map((m, i) => <li key={`${m.kind}-${i}`}><strong>{m.label}</strong>{m.detail ? ` — ${m.detail}` : ""}</li>)}
+            </ul>
+          </div>
+        ) : dirty ? (
+          <span className="sub">Save the plan to carry these figures to the production package, the marketplace listing and the AI review.</span>
+        ) : null}
       </div>
 
       {candidates.length ? (

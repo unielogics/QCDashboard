@@ -113,14 +113,18 @@ export function simulateRemovals(months: CockpitMonth[], payees: RecurringPayee[
 // the server and replace these).
 // ---------------------------------------------------------------------------
 
-import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanCandidate } from "@/lib/financialCockpit";
-import { amortizedPayment, dscrStatusOf } from "@/lib/financialCockpit";
+import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanCandidate, PlanLoanTerms } from "@/lib/financialCockpit";
+import { dscrStatusOf, loanPayment } from "@/lib/financialCockpit";
 
 export type LocalPlanEvaluation = {
   retiredMonthly: number;
   payoffTotal: number | null;
   payoffUnknown: number;
   excludedMonthly: number;
+  addBacksMonthly: number;
+  incomeBefore: number | null;
+  incomeAfter: number | null;
+  loanTerms: PlanLoanTerms | null;
   newPayment: number | null;
   newPaymentSource: string | null;
   loanAmountNeeded: number | null;
@@ -156,26 +160,41 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const payoffs = retired.map((o) => o.payoff).filter((v): v is number => v != null);
   const payoffTotal = payoffs.length ? r2(payoffs.reduce((a, b) => a + b, 0)) : null;
   const excludedMonthly = r2(payees.filter((p) => exclude.has(`payee:${p.key}`)).reduce((s, p) => s + (p.monthly_average ?? 0), 0));
+  const addBacksMonthly = r2((plan.add_backs ?? []).reduce((s, a) => s + (Number.isFinite(a.amount_monthly) ? a.amount_monthly : 0), 0));
+  const addBacksAnnual = r2(addBacksMonthly * 12);
+  const incomeOverride = plan.overrides?.income_annual ?? null;
+  const serviceOverride = plan.overrides?.debt_service_monthly ?? null;
+  const interestOnly = !!plan.new_loan_interest_only;
+  const loanTerms: PlanLoanTerms | null =
+    plan.new_loan_amount && (plan.new_loan_term_months || interestOnly)
+      ? { amount: plan.new_loan_amount, rate_pct: plan.new_loan_rate_pct ?? 0, term_months: plan.new_loan_term_months ?? null, interest_only: interestOnly }
+      : null;
   let newPayment = plan.new_payment_monthly;
   let source: string | null = plan.new_payment_source;
-  if (newPayment == null && plan.new_loan_amount && plan.new_loan_term_months) {
-    newPayment = amortizedPayment(plan.new_loan_amount, plan.new_loan_rate_pct ?? 0, plan.new_loan_term_months);
+  if (newPayment == null && loanTerms) {
+    newPayment = loanPayment(loanTerms.amount, loanTerms.rate_pct, loanTerms.term_months, interestOnly);
     source = source ?? "manual_terms";
   }
   if (newPayment == null && cockpit.dscr.proposed) {
     newPayment = cockpit.dscr.proposed.monthly_payment;
     source = "term_sheet";
   }
-  const serviceBefore = cockpit.debt.service.monthly ?? 0;
+  const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? 0;
   const serviceBeforeNewPayment = r2(Math.max(0, serviceBefore - retiredMonthly));
   const serviceAfter = r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
   const candidates: PlanCandidate[] = cockpit.dscr.candidates
     .filter((c) => c.numerator != null)
     .map((c) => {
-      const numeratorAfter = r2((c.numerator as number) + (c.key === "bank_cash_flow" ? excludedMonthly * 12 : 0));
+      // Add-backs raise every basis; a payee that is not spend raises the bank proxy only; an income override replaces the lot.
+      const adjusted = r2((c.numerator as number) + addBacksAnnual + (c.key === "bank_cash_flow" ? excludedMonthly * 12 : 0));
+      const numeratorAfter = incomeOverride != null ? r2(incomeOverride) : adjusted;
       const valueAfter = serviceAfter > 0 ? r2(numeratorAfter / (serviceAfter * 12)) : null;
-      return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfter <= 0 && numeratorAfter > 0 };
+      return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfter <= 0 && numeratorAfter > 0, overridden: incomeOverride != null };
     });
+  if (incomeOverride != null && !candidates.length) {
+    const valueAfter = serviceAfter > 0 ? r2(incomeOverride / (serviceAfter * 12)) : null;
+    candidates.push({ key: "desk_override", label: "Desk override", numerator_before: null, numerator_after: r2(incomeOverride), value_before: null, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfter <= 0 && incomeOverride > 0, overridden: true });
+  }
   const headlineKey = cockpit.dscr.headline?.key ?? candidates[0]?.key ?? null;
   const headline = candidates.find((c) => c.key === headlineKey) ?? candidates[0] ?? null;
   // Replay with the retired obligations taken out, month by month.
@@ -210,6 +229,10 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     payoffTotal,
     payoffUnknown: retired.filter((o) => o.payoff == null).length,
     excludedMonthly,
+    addBacksMonthly,
+    incomeBefore: cockpit.dscr.headline?.numerator ?? null,
+    incomeAfter: headline?.numerator_after ?? null,
+    loanTerms,
     newPayment: newPayment == null ? null : r2(newPayment),
     newPaymentSource: newPayment == null ? null : source,
     loanAmountNeeded: Math.max(payoffTotal ?? 0, cockpit.requested_amount ?? 0) || null,
