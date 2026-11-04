@@ -41,7 +41,7 @@ import {
   type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
-import { STRUCTURE_LABELS, defaultStructure, type LoanStructure } from "@/lib/loanSchedule";
+import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
 const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad" | "mut" => {
@@ -210,7 +210,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
     ...plan.add_backs.filter((a) => a.amount_monthly > 0).map((a) => `Add back ${a.label || ADD_BACK_KINDS[a.kind]} (+${money(a.amount_monthly)} / mo)`),
     ...(plan.overrides?.income_annual != null ? [`Income available for debt service set to ${money(plan.overrides.income_annual)} a year`] : []),
     ...(plan.overrides?.debt_service_monthly != null ? [`Existing debt service set to ${money(plan.overrides.debt_service_monthly)} a month`] : []),
-    ...(local.newPayment ? [local.newPaymentSource === "term_sheet" ? `New payment ${money(local.newPayment)} / mo from the recorded loan terms${cockpit.dscr.proposed?.label ? ` (${cockpit.dscr.proposed.label})` : ""}` : plan.new_loan_amount ? `New loan ${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}%${plan.new_loan_interest_only ? " interest-only" : ` over ${plan.new_loan_term_months ?? "—"} months`}: ${money(local.newPayment)} / mo` : `New payment ${money(local.newPayment)} / mo, typed by the desk`] : []),
+    ...(local.newPayment ? [local.newPaymentSource === "term_sheet" ? `New payment ${money(local.newPayment)} / mo from the recorded loan terms${cockpit.dscr.proposed?.label ? ` (${cockpit.dscr.proposed.label})` : ""}` : plan.new_loan_amount ? `New loan ${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}% ${local.schedule ? describeSchedule(local.schedule) : plan.new_loan_interest_only ? "interest-only" : `over ${plan.new_loan_term_months ?? "—"} months`}: ${local.schedule?.payment_io_monthly != null && local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_io_monthly)} / mo for ${local.schedule.interest_only_months} months, then ${money(local.schedule.payment_after_monthly)} / mo` : `${money(local.newPayment)} / mo`}` : `New payment ${money(local.newPayment)} / mo, typed by the desk`] : []),
   ];
   const termsAdopted = (plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && !plan.new_loan_amount) || (plan.new_payment_source === "recorded_terms" && !!plan.terms_ref);
   const link = cockpit.plan?.terms_link ?? null;
