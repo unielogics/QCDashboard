@@ -15,7 +15,7 @@ import type {
   ClientTermsRepaymentFrequency,
 } from "@/lib/applicationProfile";
 import { useActiveProfile } from "@/store/role";
-import { STRUCTURE_LABELS, buildSchedule, defaultStructure, describeSchedule, type LoanStructure } from "@/lib/loanSchedule";
+import { STRUCTURE_LABELS, buildSchedule, defaultStructure, describeSchedule, riskProfile, type LoanStructure } from "@/lib/loanSchedule";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
@@ -430,6 +430,7 @@ export function ApplicationClientTermsPanel({
         <div className="terms-preview-hero"><span>Proposed amount</span><strong>{money(finite(draft.amount), 0)}</strong><div><b>{finite(draft.apr_pct) == null ? "—" : `${finite(draft.apr_pct)!.toFixed(2)}%`}</b><small>APR</small><b>{finite(draft.term_months) == null ? "—" : `${Math.round(finite(draft.term_months)!)} mo`}</b><small>Time</small></div></div>
         <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? `${money(preview.schedule.payment_io, 2)} for ${preview.schedule.interest_only_months} interest-only months, then ${money(preview.schedule.payment_after, 2)} · ` : ""}${preview.count} payments · ${preview.schedule.structure_label.toLowerCase()} · ${money(preview.annual, 0)} annual debt service${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? " once principal starts" : ""}${preview.schedule.balloon ? ` · ${money(preview.schedule.balloon, 0)} due at maturity` : ""}` : "Enter amount, APR, and time to calculate"}</small></div>
         {preview ? <LoanScheduleTable schedule={preview.schedule} title={`Schedule: ${describeSchedule(preview.schedule)}`} /> : null}
+        {preview ? <p className="terms-preview-source terms-preview-risk"><strong>Principal at risk.</strong> {riskProfile(preview.schedule, terms.calculation.cash_flow_value != null ? terms.calculation.cash_flow_value / 12 : null, (draft.debt_service_treatment === "refinance" ? (finite(draft.retained_annual_debt_service) ?? 0) : (terms.calculation.current_annual_debt_service ?? 0)) / 12)?.words}</p> : null}
         <div className="terms-preview-dscr"><div><span>Before acceptance</span><strong>{ratio(terms.calculation.dscr_before)}</strong></div><i>→</i><div className="after"><span>After acceptance</span><strong>{ratio(afterDscr)}</strong></div></div>
         <p className="terms-preview-source">{terms.calculation.dscr_explanation}<br />{terms.calculation.source}</p>
         {terms.plan ? (

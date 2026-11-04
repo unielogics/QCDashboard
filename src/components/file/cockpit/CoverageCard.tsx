@@ -41,7 +41,7 @@ import {
   type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
-import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule } from "@/lib/loanSchedule";
+import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
 const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad" | "mut" => {
@@ -122,6 +122,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const obligations = cockpit.debt.obligations;
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
+  const economics = cockpit.plan?.economics ?? null;
+  const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter != null ? local.incomeAfter / 12 : null, Math.max(0, local.serviceBefore - local.retiredMonthly)), [local.schedule, local.incomeAfter, local.serviceBefore, local.retiredMonthly]);
+  const structureRate = useMemo(() => (local.schedule ? effectiveRatePct(local.schedule.amount, local.schedule.rows.map((r) => r.payment), local.schedule.balloon, local.schedule.periods_per_year) : null), [local.schedule]);
+  const effectiveRate = useMemo(() => (local.schedule && economics ? effectiveRatePct(local.schedule.amount - economics.total_fees, local.schedule.rows.map((r) => r.payment), local.schedule.balloon, local.schedule.periods_per_year) : null), [local.schedule, economics]);
   const headlineKey = headline?.key ?? candidates[0]?.key ?? null;
   const headlineConfidence = headline?.confidence ?? candidates[0]?.confidence ?? null;
   const afterStatus = local.noDebtLeft ? "very_strong" : local.headlineAfter == null ? "unavailable" : local.headlineAfter < 1 ? "concerning" : local.headlineAfter < 1.25 ? "acceptable" : local.headlineAfter < 1.5 ? "healthy" : "very_strong";
@@ -512,11 +516,14 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
         <ChartCard
           plain
           title={`Amortization schedule: ${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}`}
-          sub={`${local.schedule.payment_io_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ` : ""}${local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_after_monthly)} a month` : `${money(local.schedule.payment_io_monthly)} a month of interest`} · first year ${money(local.schedule.annual_debt_service)} · total interest ${money(local.schedule.total_interest)} · total paid ${money(local.schedule.total_paid)}${local.schedule.balloon ? ` · ${money(local.schedule.balloon)} due at maturity` : ""}.`}
+          sub={<>
+            {`${local.schedule.payment_io_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ` : ""}${local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_after_monthly)} a month` : `${money(local.schedule.payment_io_monthly)} a month of interest`} · first year ${money(local.schedule.annual_debt_service)} · total interest ${money(local.schedule.total_interest)} · total paid ${money(local.schedule.total_paid)}${local.schedule.balloon ? ` · ${money(local.schedule.balloon)} due at maturity` : ""}.`}
+            {risk ? <><br /><strong>Principal at risk.</strong> {risk.words}</> : null}
+          </>}
           table={{
             caption: "Payment by period",
-            cols: ["Period", "Phase", "Payment", "Interest", "Principal", "Balance"],
-            rows: local.schedule.rows.map((r) => ({ key: String(r.period), muted: r.phase === "interest_only", cells: [String(r.period), r.phase === "interest_only" ? "Interest-only" : r.phase === "amortizing" ? "Amortizing" : "Simple interest", money(r.payment), money(r.interest), money(r.principal), r.balloon ? `${money(r.balance)} · ${money(r.balloon)} due` : money(r.balance)] })),
+            cols: ["Period", "Phase", "Payment", "Interest", "Principal", "Balance", "Still out", "Coverage"],
+            rows: local.schedule.rows.map((r, i) => ({ key: String(r.period), muted: r.phase === "interest_only", cells: [String(r.period), r.phase === "interest_only" ? "Interest-only" : r.phase === "amortizing" ? "Amortizing" : "Simple interest", money(r.payment), money(r.interest), money(r.principal), r.balloon ? `${money(r.balance)} · ${money(r.balloon)} due` : money(r.balance), `${r.exposure_pct}%`, risk?.coverage_by_period[i]?.coverage != null ? `${risk.coverage_by_period[i].coverage!.toFixed(2)}x` : "—"] })),
           }}
           chart={
             <div className="grid g8">
@@ -530,13 +537,47 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                 height={180}
               />
               <LineChart
-                ariaLabel="Balance by period"
+                ariaLabel="Principal still out, as a share of the loan, by period"
                 bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period) }))}
-                series={[{ key: "balance", label: "Balance", color: SERIES.one, values: local.schedule.rows.map((r) => r.balance), emphasis: true }]}
+                series={[{ key: "exposure", label: "Principal still out", color: SERIES.two, values: local.schedule.rows.map((r) => r.exposure_pct), emphasis: true }]}
+                format={(v) => (v == null ? "—" : `${v}%`)}
+                height={150}
               />
+              {risk && risk.coverage_by_period.length ? (
+                <LineChart
+                  ariaLabel="Coverage on each payment by period"
+                  bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period) }))}
+                  series={[{ key: "coverage", label: "Coverage on the payment", color: SERIES.one, values: risk.coverage_by_period.map((c) => c.coverage), emphasis: true }]}
+                  format={(v) => (v == null ? "—" : `${v.toFixed(2)}x`)}
+                  height={150}
+                />
+              ) : null}
             </div>
           }
         />
+      ) : null}
+
+      {local.schedule && economics ? (
+        <div className="fc-economics" aria-label="Deal economics, internal">
+          <div className="fc-economics-head">
+            <Lbl>What the money really costs, with QC&apos;s fees in</Lbl>
+            <CellChip tone="warn">Internal · desk and underwriters only · not in the package or the listing</CellChip>
+          </div>
+          <div className="fc-economics-grid">
+            <div><span className="sub">Loan</span><strong>{money(local.schedule.amount)}</strong></div>
+            <div><span className="sub">Origination{economics.origination_points != null ? ` (${economics.origination_points} pts${economics.origination_basis === "proposed_amount" ? ", on the proposed amount" : ""})` : ""}</span><strong>{economics.origination_fee != null ? money(economics.origination_fee) : "—"}</strong></div>
+            <div><span className="sub">Consulting fee</span><strong>{economics.consulting_fee != null ? money(economics.consulting_fee) : "—"}</strong></div>
+            <div><span className="sub">Fees, % of the loan</span><strong>{local.schedule.amount ? `${(Math.round((economics.total_fees / local.schedule.amount) * 1000) / 10).toFixed(1)}%` : "—"}</strong></div>
+            <div><span className="sub">Net to the client</span><strong>{money(local.schedule.amount - economics.total_fees)}</strong></div>
+            <div><span className="sub">Interest over the term</span><strong>{money(local.schedule.total_interest)}</strong></div>
+            <div><span className="sub">Client&apos;s total cost</span><strong>{money(local.schedule.total_interest + economics.total_fees)}</strong></div>
+            <div><span className="sub">Stated · structure · with fees</span><strong>{local.schedule.rate_pct}% · {structureRate != null ? `${structureRate}%` : "—"} · {effectiveRate != null ? `${effectiveRate}%` : "—"}</strong></div>
+          </div>
+          <div className="fc-economics-bar" role="img" aria-label={`Of ${money(local.schedule.amount)}, ${money(economics.total_fees)} in fees and ${money(local.schedule.amount - economics.total_fees)} to the client`}>
+            <span className="fees" style={{ width: `${Math.min(100, (economics.total_fees / Math.max(1, local.schedule.amount)) * 100)}%` }} />
+          </div>
+          <p className="sub">{economics.total_fees ? `${money(economics.total_fees)} comes off the proceeds at funding, so the client nets ${money(local.schedule.amount - economics.total_fees)}; the rate that equates what the client receives with what the client pays back is ${effectiveRate != null ? `${effectiveRate}%` : "—"} against the stated ${local.schedule.rate_pct}%${structureRate != null && Math.abs(structureRate - local.schedule.rate_pct) > 0.5 ? ` (the structure itself costs ${structureRate}%: interest on the original principal)` : ""}.` : "No origination points or consulting fee recorded yet (Deal economics on the Underwriting tab): the client nets the full loan."}{economics.qc_earnings != null ? ` QC earns ${money(economics.qc_earnings)}.` : ""}</p>
+        </div>
       ) : null}
 
       <div className="grid g6">

@@ -43,3 +43,27 @@ describe("loan schedule", () => {
     expect(buildSchedule(52000, 10, 12, { periodsPerYear: 51.96, structure: "amortizing" })!.periods).toBe(52);
   });
 });
+
+describe("principal at risk", () => {
+  it("says how long the principal is at risk and the coverage on every payment, like the server", async () => {
+    const { riskProfile, effectiveRatePct } = await import("../loanSchedule");
+    const s = buildSchedule(200000, 12, 24, { interestOnlyMonths: 6 })!;
+    expect(s.full_exposure_months).toBe(6);
+    expect(s.rows[5].exposure_pct).toBe(100);
+    expect(s.rows[6].exposure_pct).toBe(94.4);
+    expect(s.rows[23].exposure_pct).toBe(0);
+    expect(s.weighted_average_life_months).toBe(15.5);
+    expect(s.recovery_milestones).toEqual({ "25": 11, "50": 15, "75": 20, "100": 24 });
+    const risk = riskProfile(s, 20000, 2000)!;
+    expect(risk.coverage_during_interest_only).toBe(5);
+    expect(risk.coverage_after_interest_only).toBe(1.32);
+    expect(risk.lowest_coverage).toBe(1.32);
+    expect(risk.lowest_coverage_month).toBe(7);
+    expect(risk.words).toContain("fully exposed for the first 6 months");
+    expect(risk.words).toContain("half by month 15");
+    expect(risk.words).toContain("5.00x during the interest-only months, 1.32x once principal starts");
+    expect(riskProfile(s)!.coverage_by_period).toEqual([]);
+    expect(effectiveRatePct(100000, Array(12).fill(8791.59))).toBe(10);
+    expect(effectiveRatePct(200000 - 5500, s.rows.map((r) => r.payment))!).toBeGreaterThan(16);
+  });
+});

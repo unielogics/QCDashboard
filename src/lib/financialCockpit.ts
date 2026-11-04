@@ -432,6 +432,23 @@ export type PlanAddBack = { id?: string | null; kind: PlanAddBackKind; label?: s
 /** Figures the desk sets outright, each with the reason. */
 export type PlanOverrides = { income_annual: number | null; income_note: string | null; debt_service_monthly: number | null; debt_service_note: string | null };
 export const EMPTY_OVERRIDES: PlanOverrides = { income_annual: null, income_note: null, debt_service_monthly: null, debt_service_note: null };
+/** Principal at risk and the coverage on every payment, as the server reads it (loan_schedule.risk_profile). */
+export type PlanRisk = {
+  weighted_average_life_months: number | null; recovery_milestones: Record<string, number | null>; full_exposure_months: number | null; balloon: number; balloon_pct: number;
+  income_monthly: number | null; existing_service_monthly: number; coverage_by_period: Array<{ period: number; month: number; phase: string; payment_monthly: number; coverage: number | null }>;
+  coverage_during_interest_only: number | null; coverage_after_interest_only: number | null; lowest_coverage: number | null; lowest_coverage_month: number | null; words: string;
+};
+/** Desk only: the fees off the proceeds and the true cost of the money. Never on the package or the listing. */
+export type PlanEconomics = {
+  audience: "desk"; loan_amount: number | null; accepted_amount: number | null; origination_points: number | null; origination_fee: number | null; origination_basis: string | null;
+  consulting_fee: number | null; total_fees: number; qc_earnings: number | null; net_to_client: number | null; fees_pct_of_loan: number | null; total_interest: number | null;
+  client_total_cost: number | null; stated_rate_pct: number | null; structure_rate_pct: number | null; effective_rate_pct: number | null; words: string;
+};
+export type ProposedTerms = {
+  source: "term_sheet" | "plan"; label: string | null; amount: number | null; rate_pct: number | null; term_months: number | null; monthly_payment: number | null; structure?: string | null; structure_label?: string | null;
+  interest_only: boolean; interest_only_months: number; payment_io_monthly?: number | null; payment_after_monthly?: number | null; describe?: string; payment_note?: string | null;
+  schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; month: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number; exposure_pct: number; recovered_pct: number }>; risk?: PlanRisk | null;
+};
 export type PlanLoanTerms = { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; structure?: string | null; interest_only_months?: number; payment_io?: number | null; payment_after?: number | null; annual_debt_service?: number | null; total_interest?: number | null; total_paid?: number | null; balloon?: number | null; describe?: string };
 
 export type FinancialPlanRecord = {
@@ -711,7 +728,9 @@ export type FinancialCockpit = {
     obligations: Obligation[];
     schedule: CockpitDebtSchedule;
   };
-  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null; schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number }> };
+  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null; schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number; exposure_pct?: number; recovered_pct?: number }>; risk?: PlanRisk | null; economics?: PlanEconomics | null };
+  /** The terms the package and the listing speak of (recorded term sheet, else the plan's loan) with the schedule and the principal at risk. */
+  proposed_terms?: ProposedTerms | null;
   dscr: CockpitDscr;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];

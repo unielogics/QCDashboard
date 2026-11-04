@@ -6830,3 +6830,12 @@ a.pick { color: inherit; text-decoration: none; }
 .terms-preview-schedule th:first-child, .terms-preview-schedule td:first-child, .terms-preview-schedule th:nth-child(2), .terms-preview-schedule td:nth-child(2) { text-align: left; }
 .terms-preview-schedule th { color: #718096; font-size: 9px; text-transform: uppercase; letter-spacing: .06em; font-weight: 800; }
 .terms-preview-schedule tr.io td { color: #52637a; }
+.terms-preview-risk { margin: -6px 16px 14px; }
+/* Desk-only deal economics under the schedule on the coverage card: fees off the proceeds, the true cost of the money. */
+.fc-economics { display: grid; gap: 10px; padding: 12px 14px; border: 1px dashed var(--warn, #b7791f); border-radius: 10px; background: color-mix(in srgb, var(--warn, #b7791f) 6%, transparent); }
+.fc-economics-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; flex-wrap: wrap; }
+.fc-economics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px 14px; }
+.fc-economics-grid > div { display: grid; gap: 2px; }
+.fc-economics-grid strong { font-variant-numeric: tabular-nums; font-size: 14px; }
+.fc-economics-bar { height: 10px; border-radius: 999px; background: var(--accent); overflow: hidden; }
+.fc-economics-bar .fees { display: block; height: 100%; background: var(--warn, #b7791f); }
