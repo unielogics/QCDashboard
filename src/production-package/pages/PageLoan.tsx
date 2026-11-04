@@ -2,15 +2,85 @@
 // puts on top of it when the loan is carried by the policies. Stage one is
 // indicative: the desk keeps a working rate and term so the spread can be
 // tested, and the dealer's paper says the terms are set at closing.
-import { money, num, pct } from "../format";
+import { errorMessage, money, num, pct } from "../format";
 import { SIZING_MODES } from "../options";
 import { useState } from "react";
+import type { PackageClient } from "../client";
+import type { ProductionPackage } from "../types";
 import { Callout, Derived, Disclosure, Field, KV, LockedChip, PBtn, PChip, PPanel, Picks, type StepCtx } from "../ui";
+
+// The desk's financial plan on the file, as the cockpit computed it:
+// original, modification, impact. Prefilled, never typed; the button re-reads it.
+const PLAN_KEYS = [
+  "plan_dscr_before", "plan_dscr_after", "plan_dscr_basis", "plan_income_before", "plan_income_after", "plan_debt_service_before",
+  "plan_debt_service_after", "plan_net_cash_before", "plan_net_cash_after", "plan_ending_before", "plan_ending_after", "plan_loan",
+  "plan_modifications", "plan_note", "plan_as_of",
+];
+const present = (v: unknown) => v !== "" && v != null && !(typeof v === "number" && Number.isNaN(v));
+const asX = (v: unknown) => (present(v) ? `${Number(v).toFixed(2)}x` : "—");
+const asMoney = (v: unknown) => (present(v) ? money(Number(v)) : "—");
+const delta = (before: unknown, after: unknown, render: (n: number) => string) => {
+  if (!present(before) || !present(after)) return "";
+  const change = Math.round((Number(after) - Number(before)) * 100) / 100;
+  return ` (${change > 0 ? "+" : change < 0 ? "−" : ""}${render(Math.abs(change))})`;
+};
+
+function PlanPanel({ ctx, client, onPackage }: { ctx: StepCtx; client?: PackageClient; onPackage?: (p: ProductionPackage) => void }) {
+  const { draft, mode, readOnly } = ctx;
+  const uw = mode === "operator";
+  const [busy, setBusy] = useState(false);
+  const lines = String(draft.plan_modifications ?? "").split("\n").map((s) => s.trim()).filter(Boolean);
+  const has = lines.length > 0 || present(draft.plan_dscr_after);
+  const refresh = async () => {
+    if (!client?.prefill) return;
+    setBusy(true);
+    try {
+      const out = await client.prefill({ fields: PLAN_KEYS, force: true, apply: true });
+      if (onPackage) onPackage(await client.load());
+      ctx.notify(out.applied.length ? "The plan's figures were re-read from the file." : "The file carries no plan right now; nothing to bring over.", out.applied.length ? "ok" : "mut");
+    } catch (err) {
+      ctx.notify(errorMessage(err, "The plan could not be re-read from the file."), "bad");
+    } finally { setBusy(false); }
+  };
+  const rows: Array<[string, unknown, unknown, (n: number) => string, (v: unknown) => string]> = [
+    [`Debt service coverage${present(draft.plan_dscr_basis) ? ` · ${String(draft.plan_dscr_basis)}` : ""}`, draft.plan_dscr_before, draft.plan_dscr_after, (n) => `${n.toFixed(2)}x`, asX],
+    ["Income available for debt service, a year", draft.plan_income_before, draft.plan_income_after, money, asMoney],
+    ["Debt service, a month", draft.plan_debt_service_before, draft.plan_debt_service_after, money, asMoney],
+    ["Net cash flow, a month", draft.plan_net_cash_before, draft.plan_net_cash_after, money, asMoney],
+    ["Ending balance, last month", draft.plan_ending_before, draft.plan_ending_after, money, asMoney],
+  ];
+  return (
+    <PPanel
+      title="The business after the plan"
+      sub={has ? "Underwriting's plan on the file: what changes at funding and what it does to the figures. Original is the file as read; the plan is an assumption until funding, and it prints on the presentation as such." : "No plan on the file yet. The desk builds it on the file's Financials tab (payoffs, add-backs, overrides, the new loan); once saved there it prints here and on the presentation."}
+      right={uw && client?.prefill && !readOnly ? <PBtn size="sm" onClick={() => void refresh()} busy={busy} disabled={busy}>Refresh from the file</PBtn> : <PChip tone="mut">Set by underwriting</PChip>}
+    >
+      {has ? (
+        <>
+          <div className="pp-grid">
+            {rows.filter(([, before, after]) => present(before) || present(after)).map(([label, before, after, render, show]) => (
+              <KV key={label} label={label} value={<>{show(before)} → <b>{show(after)}</b><span className="pp-sub">{delta(before, after, render)}</span></>} />
+            ))}
+          </div>
+          {lines.length ? (
+            <div className="pp-field" style={{ marginTop: 10 }}>
+              <span className="pp-lbl">What changes</span>
+              <ul className="pp-sub" style={{ margin: "4px 0 0", paddingLeft: 18 }}>{lines.map((line, i) => <li key={i}>{line}</li>)}</ul>
+            </div>
+          ) : null}
+          {present(draft.plan_loan) ? <p className="pp-sub" style={{ marginTop: 8 }}><b>New loan in the plan.</b> {String(draft.plan_loan)}.</p> : null}
+          {present(draft.plan_note) ? <p className="pp-sub">{String(draft.plan_note)}</p> : null}
+          {present(draft.plan_as_of) ? <p className="pp-sub">Figures as read from the file on {String(draft.plan_as_of)}.</p> : null}
+        </>
+      ) : null}
+    </PPanel>
+  );
+}
 
 const LOAN_KEYS = ["requested", "term", "dealer_cof", "exclusivity", "min_activation"] as const;
 const COST_KEYS = new Set(["bank_cof", "orig_cost", "prof_fees", "mgmt_fee", "loss_prov", "debt_service", "sizing", "facility_type", "written_approval_date", "outside_funding_date"]);
 
-export function PageLoan({ ctx }: { ctx: StepCtx }) {
+export function PageLoan({ ctx, client, onPackage }: { ctx: StepCtx; client?: PackageClient; onPackage?: (p: ProductionPackage) => void }) {
   const { draft, prov, computed, saving, readOnly, set, pkg, mode, focusKey } = ctx;
   const uw = mode === "operator";
   const two = pkg.stage === 2;
@@ -59,6 +129,7 @@ export function PageLoan({ ctx }: { ctx: StepCtx }) {
         {!uw ? <p className="pp-sub" style={{ marginTop: 10 }}>Set by Qualified Commercial underwriting. If the dealer needs different terms, ask underwriting — everything below updates on its own.</p> : null}
         {!LOAN_KEYS.every((k) => draft[k] !== "" && draft[k] !== undefined) && uw ? <Callout tone="warn">The loan is not sized yet. Nothing can be built until it is.</Callout> : null}
       </PPanel>
+      <PlanPanel ctx={ctx} client={client} onPackage={onPackage} />
       <div className="pp-cols three">
         <div className="pp-tile"><b className="pp-tile-k">{money(pay)}</b>the dealer owes every month for {num(term)} months{two ? "" : " at underwriting's working rate and term — the terms are set in the term sheet at closing"}.</div>
         <div className="pp-tile"><b className="pp-tile-k">{money(minimum)}</b>is what the agreement requires the policies to remit when the loan is built in — the payment plus a 25% cushion.</div>
