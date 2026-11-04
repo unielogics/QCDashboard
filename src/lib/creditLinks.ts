@@ -38,7 +38,7 @@ export function shortDate(value: string | null | undefined): string {
 }
 
 export function scoreWords(score: number | null | undefined, ficoSource: string | null | undefined): string {
-  if (score == null) return "No score returned";
+  if (score == null) return "Score not yet imported";
   if (ficoSource === "intelligence-proxy") return `${score} estimated from the identity check, not a bureau score`;
   return `Score ${score}`;
 }
@@ -65,6 +65,14 @@ export function ownerCreditWords(
   if (owner.credit_pulled_at) parts.push(`pulled ${shortDate(owner.credit_pulled_at)}`);
   if (owner.credit_link_how) parts.push(howWords(owner.credit_link_how));
   return parts.join(" · ");
+}
+
+export function ownerCreditStatus(owner: Pick<FileOwner, "credit_complete" | "credit_score" | "credit_fico_source" | "invite_opened_at" | "invite_sent_at">): { label: string; tone: "ok" | "acc" | "warn" | "mut" } {
+  if (owner.credit_complete && owner.credit_score != null && owner.credit_fico_source !== "intelligence-proxy") return { label: `Score ${owner.credit_score}`, tone: "ok" };
+  if (owner.credit_complete) return { label: owner.credit_fico_source === "intelligence-proxy" ? "Bureau score needed" : "Report linked · import pending", tone: "warn" };
+  if (owner.invite_opened_at) return { label: "Opened", tone: "acc" };
+  if (owner.invite_sent_at) return { label: "Sent", tone: "warn" };
+  return { label: "Not sent", tone: "mut" };
 }
 
 export function confidenceTone(level: "exact" | "likely" | "weak"): "ok" | "warn" | "mut" {

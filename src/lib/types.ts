@@ -994,6 +994,7 @@ export interface ParsedIdentityRisk {
   fraud_shield: Record<string, string>;
 }
 export interface ParsedReport {
+  additional_sections?: Record<string, unknown>;
   personal_info: Record<string, string>;
   addresses: ParsedAddressOrEmployment[];
   employment: ParsedAddressOrEmployment[];
@@ -1004,6 +1005,7 @@ export interface ParsedReport {
   public_records: Record<string, string>[];
   collections: Record<string, string>[];
   fico_8: number | null;
+  fico_4?: number | null;
   fico_2: number | null;
   vantage_4: number | null;
   best_score: number | null;

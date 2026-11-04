@@ -355,7 +355,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .credit-owner-box dl div { min-width: 0; }
 .credit-owner-box dt { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .credit-owner-box dd { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 700; }
-.credit-owner-box > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--sunken2); }
+.credit-owner-box > footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--sunken2); }
 .verification-sms { display: flex; align-items: center; gap: 8px; padding: 0 16px 14px; color: var(--muted); font-size: 11.5px; }
 .bank-connection-list { display: grid; }
 .bank-connection-row { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 16px; border-bottom: 1px solid var(--line); }

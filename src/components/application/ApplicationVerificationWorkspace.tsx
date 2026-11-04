@@ -13,6 +13,7 @@ import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
 import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDrawer";
+import { OwnerCreditReportDrawer } from "@/components/application/OwnerCreditReportDrawer";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
@@ -39,7 +40,7 @@ import {
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { validateOwnerField, type EditableOwnerField } from "@/lib/ownerFieldValidation";
-import { ownerCreditWords, reportWords } from "@/lib/creditLinks";
+import { ownerCreditStatus, ownerCreditWords, reportWords } from "@/lib/creditLinks";
 
 type OwnerDraft = {
   key: string;
@@ -63,14 +64,6 @@ function maskEmail(value: string | null) {
 function maskPhone(value: string | null) {
   const digits = (value ?? "").replace(/\D/g, "");
   return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : "Phone missing";
-}
-
-function creditStatus(owner: FileOwner): { label: string; tone: "ok" | "acc" | "warn" | "bad" | "mut" } {
-  if (owner.credit_complete && owner.credit_score == null) return { label: "Returned, no score", tone: "warn" };
-  if (owner.credit_complete) return { label: "Completed", tone: "ok" };
-  if (owner.invite_opened_at) return { label: "Opened", tone: "acc" };
-  if (owner.invite_sent_at) return { label: "Sent", tone: "warn" };
-  return { label: "Not sent", tone: "mut" };
 }
 
 function when(value: string | null) {
@@ -328,7 +321,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
                     <td><Input aria-label={`${owner.full_name} ownership percentage`} className="num owner-percent" inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(event) => save(owner, "ownership_pct", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal email`} type="email" defaultValue={owner.email ?? ""} onBlur={(event) => save(owner, "email", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal phone`} type="tel" defaultValue={owner.phone ?? ""} onBlur={(event) => save(owner, "phone", event.target.value)} /></td>
-                    <td><CellChip tone={owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
+                    <td><CellChip tone={owner.credit_complete ? ownerCreditStatus(owner).tone : owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_complete ? ownerCreditStatus(owner).label : owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
                     <td><CellChip tone={saveState === "saved" ? "ok" : saveState === "invalid" ? "bad" : "mut"}>{saveState === "saving" ? "Saving..." : saveState === "invalid" ? "Fix row" : "Saved"}</CellChip></td>
                     <td className="r"><IconBtn aria-label={`Remove ${owner.full_name}`} title={locked ? "Credit activity preserves this owner" : "Remove owner"} disabled={locked || deleteOwner.isPending} onClick={() => deleteOwner.mutate(owner.id)}><Icon name="trash" size={14} /></IconBtn></td>
                   </tr>
@@ -374,10 +367,12 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
 }) {
   const apiCall = useAuthedApi();
   const requiredOwners = owners.filter((owner) => owner.credit_required);
+  const scoredOwners = requiredOwners.filter((owner) => ownerCreditStatus(owner).tone === "ok");
   const [links, setLinks] = useState<Record<string, string>>({});
   const [alsoText, setAlsoText] = useState(false);
   const [error, setError] = useState("");
   const [linkOwner, setLinkOwner] = useState<FileOwner | null>(null);
+  const [reportOwnerId, setReportOwnerId] = useState<string | null>(null);
   const [linkNotice, setLinkNotice] = useState("");
   const unlink = useMutation({
     mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileOwner>(`/application-profiles/${profileId}/owners/${ownerId}/credit-link`, { method: "DELETE" }),
@@ -430,19 +425,19 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
       <section className="verification-section">
         <header className="verification-section-head">
           <div><span className="lbl">Step 3</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
-          <CellChip tone={state?.credit_returned ? "ok" : "warn"}>{state?.completed_credit_owner_count ?? 0} of {state?.required_credit_owner_count ?? 0} completed</CellChip>
+          <CellChip tone={scoredOwners.length === requiredOwners.length && scoredOwners.length > 0 ? "ok" : "warn"}>{scoredOwners.length} of {requiredOwners.length} scores imported</CellChip>
           <Btn disabled={autoLink.isPending || !requiredOwners.length} onClick={() => autoLink.mutate()} title="Match each owner to a completed pull under the same name on this client"><Icon name="link" size={14} />{autoLink.isPending ? "Matching..." : "Link automatically"}</Btn><Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
         </header>
         <div className="credit-owner-grid">
           {requiredOwners.map((owner) => {
-            const status = creditStatus(owner);
+            const status = ownerCreditStatus(owner);
             const freshLink = links[owner.id];
             return (
-              <article key={owner.id} className={cx("credit-owner-box", owner.credit_complete && "complete")}>
+              <article key={owner.id} className={cx("credit-owner-box", status.tone === "ok" && "complete")}>
                 <header><span className="credit-owner-avatar">{owner.first_name.slice(0, 1)}{owner.last_name.slice(0, 1)}</span><div className="grow"><b>{owner.full_name}</b><Sub>{Number(owner.ownership_pct ?? 0).toFixed(2)}% ownership</Sub></div><CellChip tone={status.tone}>{status.label}</CellChip></header>
                 <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_pulled_at ? <div><dt>Result</dt><dd>{owner.credit_tier ? `${owner.credit_tier} · ` : ""}{ownerCreditWords(owner)}</dd></div> : null}</dl>
                 {owner.credit_attention ? <div className="warnline credit-owner-attention">{owner.credit_attention}</div> : null}
-                <footer><Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn onClick={() => setLinkOwner(owner)} title={owner.credit_complete ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_complete ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
+                <footer>{owner.credit_pull_id ? <Btn onClick={() => setReportOwnerId(owner.id)}><Icon name="doc" size={13} />View credit report</Btn> : null}<Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn onClick={() => setLinkOwner(owner)} title={owner.credit_complete ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_complete ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
               </article>
             );
           })}
@@ -452,6 +447,7 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
       </section>
 
       {linkNotice ? <Callout tone="acc" icon={<Icon name="link" size={16} />}>{linkNotice}</Callout> : null}
+      <OwnerCreditReportDrawer key={reportOwnerId ?? "closed"} profileId={profileId} owner={owners.find((owner) => owner.id === reportOwnerId) ?? null} onClose={() => setReportOwnerId(null)} onImported={onRefresh} />
       <CreditPullLinkDrawer
         profileId={profileId}
         owner={linkOwner}
