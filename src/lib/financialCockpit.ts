@@ -445,9 +445,23 @@ export type FinancialPlanRecord = {
   new_loan_interest_only?: boolean;
   add_backs?: PlanAddBack[];
   overrides?: PlanOverrides | null;
+  terms_ref?: PlanTermsRef | null;
   note: string | null;
   updated_at?: string | null;
   updated_by?: string | null;
+};
+/** Which recorded terms the plan's loan was adopted from. */
+export type PlanTermsRef = { kind: "client_terms" | "production_term_sheet" | string; id: string; version: number; label: string; adopted_at?: string | null };
+/** The recorded terms as the plan reads them (the Underwriting tab's client terms or the dealer's term sheet). */
+export type RecordedTerms = { kind: string; id: string; version: number; label: string; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; payment_monthly: number | null; treatment: string; retained_annual_debt_service: number | null };
+/** Does the plan's loan mirror the recorded terms? */
+export type PlanTermsLink = {
+  state: "none" | "plan_only" | "recorded_not_in_plan" | "mirrored" | "differs";
+  recorded: RecordedTerms | null;
+  plan_loan: { amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; payment_monthly: number | null } | null;
+  adopted_from: PlanTermsRef | null;
+  differences: string[];
+  summary: string;
 };
 
 /** One line of the plan in plain words, for the package, the listing and the review. */
@@ -535,13 +549,14 @@ export type FinancialPlanWrite = {
   retire: string[];
   exclude: string[];
   new_payment_monthly: number | null;
-  new_payment_source: "manual" | "term_sheet" | "offer" | "manual_terms" | null;
+  new_payment_source: "manual" | "term_sheet" | "offer" | "manual_terms" | "recorded_terms" | null;
   new_loan_amount: number | null;
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
   new_loan_interest_only: boolean;
   add_backs: PlanAddBack[];
   overrides: PlanOverrides | null;
+  terms_ref?: PlanTermsRef | null;
   note: string | null;
 };
 
@@ -692,7 +707,7 @@ export type FinancialCockpit = {
     obligations: Obligation[];
     schedule: CockpitDebtSchedule;
   };
-  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact };
+  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null };
   dscr: CockpitDscr;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];

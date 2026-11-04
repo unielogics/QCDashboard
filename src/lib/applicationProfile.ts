@@ -452,6 +452,16 @@ export type ApplicationClientTerms = {
   direct_client_contact_suppressed: boolean;
   loan_type_options: Array<{ value: string; label: string; description: string | null }>;
   calculation: ClientTermsCalculation;
+  /** What the Financials tab says: the plan in words, coverage today and with the plan, and whether its loan mirrors these terms. */
+  plan?: {
+    active: boolean;
+    modifications: string[];
+    dscr?: { before: number | null; after: number | null; basis?: string | null } | null;
+    debt_service_monthly?: { before: number | null; after: number | null } | null;
+    income_annual?: { before: number | null; after: number | null } | null;
+    loan?: { amount?: number | null; rate_pct?: number | null; term_months?: number | null; interest_only?: boolean; payment_monthly?: number | null; source?: string | null } | null;
+    terms_link?: { state: string; summary: string; differences: string[] } | null;
+  } | null;
 };
 
 export type ApplicationClientTermsWrite = {

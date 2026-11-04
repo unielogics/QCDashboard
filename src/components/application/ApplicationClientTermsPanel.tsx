@@ -412,6 +412,21 @@ export function ApplicationClientTermsPanel({
         <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.count} payments · ${money(preview.annual, 0)} annual debt service` : "Enter amount, APR, and time to calculate"}</small></div>
         <div className="terms-preview-dscr"><div><span>Before acceptance</span><strong>{ratio(terms.calculation.dscr_before)}</strong></div><i>→</i><div className="after"><span>After acceptance</span><strong>{ratio(afterDscr)}</strong></div></div>
         <p className="terms-preview-source">{terms.calculation.dscr_explanation}<br />{terms.calculation.source}</p>
+        {terms.plan ? (
+          <div className="terms-preview-plan">
+            <span className="lbl">Financials tab</span>
+            <p className="terms-preview-source">
+              {terms.plan.terms_link?.summary ?? "No link to the plan yet."}
+              {terms.plan.dscr ? ` Coverage today ${ratio(terms.plan.dscr.before)}${terms.plan.active ? ` → with the plan ${ratio(terms.plan.dscr.after)}` : ""}.` : ""}
+            </p>
+            {terms.plan.active && terms.plan.modifications.length ? <ul className="terms-preview-plan-list">{terms.plan.modifications.map((m) => <li key={m}>{m}</li>)}</ul> : null}
+            {terms.plan.loan?.amount && (terms.plan.terms_link?.state === "plan_only" || terms.plan.terms_link?.state === "differs") ? (
+              <Btn size="sm" onClick={() => { const loan = terms.plan!.loan!; setDraft((d) => ({ ...d, amount: String(loan.amount ?? ""), apr_pct: loan.rate_pct == null ? d.apr_pct : String(loan.rate_pct), term_months: loan.term_months == null ? d.term_months : String(loan.term_months) })); }}>
+                Use the plan's loan: {money(terms.plan.loan.amount ?? null, 0)}{terms.plan.loan.rate_pct != null ? ` at ${terms.plan.loan.rate_pct}%` : ""}{terms.plan.loan.interest_only ? " interest-only" : terms.plan.loan.term_months ? ` over ${terms.plan.loan.term_months} mo` : ""}
+              </Btn>
+            ) : null}
+          </div>
+        ) : null}
         <div className="terms-preview-timing"><span><small>Valid for</small><b>{draft.expiration_days || "—"} days</b></span><span><small>Estimated close</small><b>{draft.closing_estimate_days || "—"} business days</b></span></div>
         <p className="terms-preview-disclaimer">Indicative terms only. Subject to final underwriting, documentation, and funding-source approval.</p>
       </aside>

@@ -48,7 +48,7 @@ const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad
   return tone === "acc" ? "mut" : tone;
 };
 
-const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, add_backs: [], overrides: null, note: null };
+const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, add_backs: [], overrides: null, terms_ref: null, note: null };
 
 function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
   const r = cockpit.plan?.record;
@@ -65,6 +65,7 @@ function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
     new_loan_interest_only: !!r.new_loan_interest_only,
     add_backs: (r.add_backs ?? []).map((a) => ({ ...a })),
     overrides,
+    terms_ref: r.terms_ref ?? null,
     note: r.note,
   };
 }
@@ -186,12 +187,33 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
     ...(plan.overrides?.debt_service_monthly != null ? [`Existing debt service set to ${money(plan.overrides.debt_service_monthly)} a month`] : []),
     ...(local.newPayment ? [local.newPaymentSource === "term_sheet" ? `New payment ${money(local.newPayment)} / mo from the recorded loan terms${cockpit.dscr.proposed?.label ? ` (${cockpit.dscr.proposed.label})` : ""}` : plan.new_loan_amount ? `New loan ${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}%${plan.new_loan_interest_only ? " interest-only" : ` over ${plan.new_loan_term_months ?? "—"} months`}: ${money(local.newPayment)} / mo` : `New payment ${money(local.newPayment)} / mo, typed by the desk`] : []),
   ];
-  const termsAdopted = plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && !plan.new_loan_amount;
+  const termsAdopted = (plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && !plan.new_loan_amount) || (plan.new_payment_source === "recorded_terms" && !!plan.terms_ref);
+  const link = cockpit.plan?.terms_link ?? null;
+  const recorded = link?.recorded ?? null;
   const adoptTerms = (on: boolean) => {
     setSaved(null);
     setPaymentText("");
-    setPlan((p) => ({ ...p, new_payment_monthly: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, new_payment_source: on ? "term_sheet" : null }));
+    if (on && recorded) {
+      // The recorded terms as the plan's loan, field for field, with where they came from.
+      setPlan((p) => ({ ...p, new_payment_monthly: recorded.payment_monthly, new_loan_amount: recorded.amount, new_loan_rate_pct: recorded.rate_pct, new_loan_term_months: recorded.term_months, new_loan_interest_only: recorded.interest_only, new_payment_source: "recorded_terms", terms_ref: { kind: recorded.kind, id: recorded.id, version: recorded.version, label: recorded.label } }));
+      return;
+    }
+    setPlan((p) => ({ ...p, new_payment_monthly: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, new_payment_source: on ? "term_sheet" : null, terms_ref: null }));
   };
+  // Does the loan on screen still mirror the recorded terms? Checked live, field for field.
+  const mirrorNow = (() => {
+    if (!recorded) return null;
+    const loanAmount = plan.new_loan_amount ?? (termsAdopted ? recorded.amount : null);
+    if (!local.newPayment) return "recorded_not_in_plan";
+    const diffs: string[] = [];
+    const near = (a: number | null | undefined, b: number | null | undefined, tol: number) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) <= tol);
+    if (!near(loanAmount, recorded.amount, 0.5)) diffs.push("amount");
+    if (!near(plan.new_loan_rate_pct ?? (termsAdopted ? recorded.rate_pct : null), recorded.rate_pct, 0.005)) diffs.push("rate");
+    if (!near(plan.new_loan_term_months ?? (termsAdopted ? recorded.term_months : null), recorded.term_months, 0)) diffs.push("term");
+    if (!!plan.new_loan_interest_only !== !!recorded.interest_only && !termsAdopted) diffs.push("structure");
+    if (!near(local.newPayment, recorded.payment_monthly, 0.5)) diffs.push("payment");
+    return diffs.length ? `differs:${diffs.join(", ")}` : "mirrored";
+  })();
   const latestTax = [...(cockpit.tax?.years ?? [])].reverse();
   const officerYear = latestTax.find((y) => (y.officer_compensation ?? 0) > 0) ?? null;
   const interestYear = latestTax.find((y) => (y.interest ?? 0) > 0) ?? null;
@@ -377,13 +399,17 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
             {loanTerms && !termsAdopted ? `${loanTerms}: ${money(local.newPayment)} a month${plan.new_loan_interest_only ? " of interest; the principal is due at maturity" : ""}.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
             {canRecordTerms ? <> <button type="button" className="linky" onClick={onRecordTerms}>Record loan terms</button></> : null}
           </span>
-          {cockpit.dscr.proposed && canEdit ? (
-            <div className="fc-chips">
-              {termsAdopted ? (
-                <Btn size="sm" onClick={() => adoptTerms(false)}>Take the recorded loan terms out of the plan</Btn>
-              ) : (
-                <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Add the recorded loan terms ({money(cockpit.dscr.proposed.monthly_payment)} / mo) to the plan</Btn>
-              )}
+          {recorded ? (
+            <div className="fc-chips" style={{ alignItems: "center" }}>
+              {mirrorNow === "mirrored" ? <CellChip tone="ok">Mirrors {recorded.label}</CellChip> : mirrorNow === "recorded_not_in_plan" ? <CellChip tone="mut">{recorded.label} is recorded, not in the plan</CellChip> : mirrorNow ? <CellChip tone="warn">Differs from {recorded.label}: {mirrorNow.slice("differs:".length)}</CellChip> : null}
+              {canEdit && mirrorNow !== "mirrored" ? <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Use the recorded terms ({money(recorded.payment_monthly)} / mo)</Btn> : null}
+              {canEdit && termsAdopted ? <Btn size="sm" onClick={() => adoptTerms(false)}>Take them out of the plan</Btn> : null}
+              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={onRecordTerms}>Record these terms on the Underwriting tab</Btn> : null}
+            </div>
+          ) : local.newPayment && canRecordTerms ? (
+            <div className="fc-chips" style={{ alignItems: "center" }}>
+              <CellChip tone="mut">Not recorded on the Underwriting tab yet</CellChip>
+              <Btn size="sm" onClick={onRecordTerms}>Record these terms</Btn>
             </div>
           ) : null}
           <Input aria-label="Or type the new monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Or type the payment (term sheet: ${money(cockpit.dscr.proposed.monthly_payment)})` : "Or type the payment"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
