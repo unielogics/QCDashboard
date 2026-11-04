@@ -6839,6 +6839,12 @@ a.pick { color: inherit; text-decoration: none; }
 .fc-economics-grid strong { font-variant-numeric: tabular-nums; font-size: 14px; }
 .fc-economics-bar { height: 10px; border-radius: 999px; background: var(--accent); overflow: hidden; }
 .fc-economics-bar .fees { display: block; height: 100%; background: var(--warn, #b7791f); }
+.fc-cell-input { width: 110px; text-align: right; padding: 4px 6px; font-size: 12px; }
+.fc-cell-select { font-size: 12px; padding: 2px 6px; max-width: 220px; }
+.fc-cell-pair { display: grid; gap: 4px; justify-items: end; }
+.fc-cell-check { display: inline-flex; gap: 6px; align-items: center; font-size: 12px; }
+.fc-row-remove { font-size: 11px; color: var(--muted); }
+.fc-payees-hint { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; padding: 8px 10px; margin-top: 8px; border: 1px dashed var(--line); border-radius: 8px; }
 .fc-empty-actions { display: grid; gap: 10px; justify-items: start; text-align: left; }
 .fc-schedule-controls { display: grid; gap: 6px; }
 .fc-schedule-controls-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }

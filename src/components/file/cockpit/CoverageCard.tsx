@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Btn, CellChip, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
-import { useSaveFinancialPlan, useSaveFileEconomics } from "@/hooks/useApi";
+import { useSaveFinancialPlan, useSaveFileEconomics, useRereadStatements } from "@/hooks/useApi";
 import { evaluatePlanLocally } from "@/lib/cockpitSimulation";
 import {
   ADD_BACK_KINDS,
@@ -43,6 +43,7 @@ import {
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
 import { ClientTermsStrip } from "./ClientTermsStrip";
 import { DebtScheduleControls } from "./DebtScheduleControls";
+import { ObligationEditableRow, ReadPayeesHint, useObligationEditor } from "./ObligationRowEditor";
 import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
@@ -125,6 +126,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
   const economics = cockpit.plan?.economics ?? null;
+  const rowEditor = useObligationEditor(profileId);
+  const reread = useRereadStatements(profileId);
   // The fees are set against the loan in the plan; with no loan in the plan, against the recorded terms
   // (the term sheet or the client terms), which is what the package and the offering print.
   const proposedTerms = cockpit.proposed_terms ?? null;
@@ -387,27 +390,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                   </tr>
                 </thead>
                 <tbody>
-                  {obligations.map((o) => {
-                    const on = plan.retire.includes(o.id);
-                    return (
-                      <tr key={o.id} className={cx(!o.in_debt_service && "is-muted", on && "is-on")}>
-                        <td><input type="checkbox" checked={on} disabled={!canEdit} aria-label={`Pay off ${o.lender} with the new loan`} onChange={() => toggleRetire(o.id)} /></td>
-                        <td>
-                          <strong>{o.lender}</strong>
-                          <div className="fc-chips" style={{ marginTop: 2 }}>
-                            <CellChip tone={payeeKindTone(o.category as PayeeKind)}>{o.is_mca ? "Merchant cash advance" : o.category.replace(/_/g, " ")}</CellChip>
-                            <CellChip tone="mut">{o.kind === "row" ? (o.origin === "admin" ? "Recorded by the desk" : o.origin === "borrower" || o.origin === "client" ? "Typed by the client" : "On the schedule") : o.kind === "document" ? "Advance terms" : o.kind === "schedule_document" ? "Read off the uploaded schedule" : "Seen in statements"}</CellChip>
-                          </div>
-                        </td>
-                        <td className="r num">{money(o.monthly)}{o.cadence ? <small className="sub" style={{ display: "block" }}>{cadenceLabel(o.cadence)}</small> : null}</td>
-                        <td className="r num">{o.payoff != null ? money(o.payoff) : o.balance != null ? money(o.balance) : <span className="sub">unknown</span>}</td>
-                        <td>{o.linked_payee ? <span className="sub">{o.linked_payee} · {money(o.observed_monthly)} / mo</span> : <span className="sub">not seen</span>}</td>
-                        <td>{o.in_debt_service ? <CellChip tone="ok">Yes</CellChip> : <CellChip tone="mut">No</CellChip>}</td>
-                      </tr>
-                    );
-                  })}
+                  {obligations.map((o) => (
+                    <ObligationEditableRow key={o.id} o={o} canEdit={canEdit} editor={rowEditor} payees={cockpit.bank.recurring.payees} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} />
+                  ))}
                 </tbody>
               </table>
+              {rowEditor.error ? <StatusLine tone="bad">{rowEditor.error}</StatusLine> : null}
+              {!cockpit.bank.recurring.payees.length && months.length ? <ReadPayeesHint onReread={() => reread.mutate()} pending={reread.isPending} /> : null}
             </div>
           ) : (
             <div className="fc-empty fc-empty-actions">

@@ -202,6 +202,7 @@ export function ApplicationClientTermsPanel({
   onCompose,
   compact = false,
   onEdit,
+  prefillLoan,
 }: {
   profileId: string;
   onSaved?: () => void;
@@ -212,12 +213,15 @@ export function ApplicationClientTermsPanel({
   /** The Underwriting tab's view: what is on file, select it for delivery, and a way to the editor on Financials. */
   compact?: boolean;
   onEdit?: () => void;
+  /** The loan typed in the plan column: laid over the saved terms once, as unsaved edits, when the editor opens from there. */
+  prefillLoan?: { amount: number | null; aprPct: number | null; termMonths: number | null; structure: LoanStructure; interestOnlyMonths: number | null } | null;
 }) {
   const api = useAuthedApi();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = visualQaUser(useActiveProfile().email);
   const [draft, setDraft] = useState<Draft>(() => emptyDraft());
   const draftRef = useRef<Draft>(draft);
+  const prefillAppliedRef = useRef(false);
   const [savedFingerprint, setSavedFingerprint] = useState("");
   const savedFingerprintRef = useRef("");
   const [draftVersion, setDraftVersion] = useState(0);
@@ -240,15 +244,28 @@ export function ApplicationClientTermsPanel({
       }
       return;
     }
-    const next = draftFromTerms(query.data);
-    const fingerprint = JSON.stringify(next);
+    const saved = draftFromTerms(query.data);
+    const fingerprint = JSON.stringify(saved);
+    let next = saved;
+    if (prefillLoan && !prefillAppliedRef.current && prefillLoan.amount) {
+      // The loan typed in the plan column arrives as unsaved edits over the saved terms.
+      prefillAppliedRef.current = true;
+      next = {
+        ...saved,
+        amount: String(prefillLoan.amount),
+        apr_pct: prefillLoan.aprPct == null ? saved.apr_pct : String(prefillLoan.aprPct),
+        term_months: prefillLoan.termMonths == null ? saved.term_months : String(prefillLoan.termMonths),
+        loan_structure: prefillLoan.structure === defaultStructure(prefillLoan.termMonths) ? "" : prefillLoan.structure,
+        interest_only_months: prefillLoan.structure === "interest_only" || !prefillLoan.interestOnlyMonths ? "" : String(prefillLoan.interestOnlyMonths),
+      };
+    }
     draftRef.current = next;
     savedFingerprintRef.current = fingerprint;
     draftVersionRef.current = query.data.version;
     setDraft(next);
     setSavedFingerprint(fingerprint);
     setDraftVersion(query.data.version);
-  }, [query.data]);
+  }, [query.data, prefillLoan]);
 
   const preview = useMemo(() => paymentPreview(draft), [draft]);
   const afterDscr = useMemo(() => {

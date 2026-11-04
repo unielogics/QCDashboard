@@ -65,10 +65,11 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
           </Btn>
         ) : null}
         <Btn size="sm" onClick={() => setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn>
+        {planHasLoan && !mirrored ? <span className="sub">The loan above goes into the editor as unsaved edits.</span> : null}
         {saveFromPlan.error ? <span className="sub">{errorMessage(saveFromPlan.error, "The client terms could not be saved.")}</span> : saveFromPlan.isSuccess ? <span className="sub">Saved; the plan reads the terms.</span> : !planHasLoan && !onFile ? <span className="sub">Enter the loan above, then save it as the client terms.</span> : null}
       </div>
       <Drawer open={open} onClose={() => setOpen(false)} title="Client terms" sub="The full record behind the loan in the plan: funder, repayment, timing, co-branding and conditions; the report is the client's PDF." width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
-        {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={refresh} /> : null}
+        {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={refresh} prefillLoan={planHasLoan && !mirrored ? { amount: loan.amount, aprPct: loan.ratePct, termMonths: loan.termMonths, structure: loan.structure, interestOnlyMonths: loan.interestOnlyMonths } : null} /> : null}
       </Drawer>
     </div>
   );

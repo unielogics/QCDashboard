@@ -1245,6 +1245,21 @@ export function useAdoptUploadedDebtSchedule(profileId: string | null | undefine
   });
 }
 
+export type DebtRowPatch = { lender?: string; category?: string; monthly_payment?: number | null; balance?: number | null; payoff_amount?: number | null; payment_amount?: number | null; payment_frequency?: "daily" | "weekly" | "biweekly" | "monthly" | null; count_in_dscr?: boolean; vendor_key?: string; status?: "active" | "dismissed" };
+
+/** One schedule row edited in place on the coverage card; the cockpit comes back as edited. */
+export function usePatchDebtRow(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, patch }: { rowId: string; patch: DebtRowPatch }) => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/rows/${rowId}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
 /** Puts the debt schedule on the borrower's checklist. */
 export function useRequestDebtSchedule(profileId: string | null | undefined) {
   const apiCall = useAuthedApi();
