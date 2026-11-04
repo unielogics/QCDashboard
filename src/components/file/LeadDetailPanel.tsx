@@ -1714,7 +1714,7 @@ export function LeadDetailPanel({
           )}>
             {prototypeView === "workspace" ? (
               <aside className="submission-rail">
-                <Panel title="Submission sequence" sub={`Step ${submissionStep} of 5`}>
+                <Panel title="Submission sequence" sub={`Step ${submissionStep} of ${workflowSteps.length}`}>
                   <div className="submission-steps submission-steps-rail">
                     {workflowSteps.map((step) => (
                       <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
