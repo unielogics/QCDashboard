@@ -41,7 +41,7 @@ import {
   type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
-import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
+import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
 const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad" | "mut" => {
@@ -123,6 +123,12 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
   const economics = cockpit.plan?.economics ?? null;
+  // The fees are set against the loan in the plan; with no loan in the plan, against the recorded terms
+  // (the term sheet or the client terms), which is what the package and the offering print.
+  const proposedTerms = cockpit.proposed_terms ?? null;
+  const proposedSchedule = useMemo(() => (proposedTerms?.amount && proposedTerms.rate_pct != null ? buildSchedule(proposedTerms.amount, proposedTerms.rate_pct, proposedTerms.term_months, { structure: proposedTerms.structure ?? null, interestOnlyMonths: proposedTerms.interest_only_months ?? 0 }) : null), [proposedTerms]);
+  const economicsSchedule = local.schedule ?? proposedSchedule;
+  const economicsBasis = local.schedule ? "the loan in the plan" : proposedTerms?.label ? `the recorded terms (${proposedTerms.label})` : "the recorded terms";
   const saveEconomics = useSaveFileEconomics(profileId);
   const [feeDraft, setFeeDraft] = useState<{ points: string; consulting: string }>({ points: "", consulting: "" });
   const [feeDraftKey, setFeeDraftKey] = useState("");
@@ -136,11 +142,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const feeConsulting = feeDraft.consulting.trim() === "" ? null : Number(feeDraft.consulting);
   const feeValid = (feePoints == null || (Number.isFinite(feePoints) && feePoints >= 0 && feePoints <= 100)) && (feeConsulting == null || (Number.isFinite(feeConsulting) && feeConsulting >= 0));
   // The strip prices on what is typed, so the true cost moves as the fee is set, before the save.
-  const liveFees = (feeValid ? ((feePoints ?? 0) / 100) * (local.schedule?.amount ?? 0) + (feeConsulting ?? 0) : null);
+  const liveFees = (feeValid ? ((feePoints ?? 0) / 100) * (economics?.accepted_amount ?? economicsSchedule?.amount ?? 0) + (feeConsulting ?? 0) : null);
   const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter != null ? local.incomeAfter / 12 : null, Math.max(0, local.serviceBefore - local.retiredMonthly)), [local.schedule, local.incomeAfter, local.serviceBefore, local.retiredMonthly]);
-  const structureRate = useMemo(() => (local.schedule ? effectiveRatePct(local.schedule.amount, local.schedule.rows.map((r) => r.payment), local.schedule.balloon, local.schedule.periods_per_year) : null), [local.schedule]);
+  const structureRate = useMemo(() => (economicsSchedule ? effectiveRatePct(economicsSchedule.amount, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule]);
   const totalFees = liveFees ?? economics?.total_fees ?? 0;
-  const effectiveRate = useMemo(() => (local.schedule && economics ? effectiveRatePct(local.schedule.amount - totalFees, local.schedule.rows.map((r) => r.payment), local.schedule.balloon, local.schedule.periods_per_year) : null), [local.schedule, economics, totalFees]);
+  const effectiveRate = useMemo(() => (economicsSchedule && economics ? effectiveRatePct(economicsSchedule.amount - totalFees, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule, economics, totalFees]);
   const headlineKey = headline?.key ?? candidates[0]?.key ?? null;
   const headlineConfidence = headline?.confidence ?? candidates[0]?.confidence ?? null;
   const afterStatus = local.noDebtLeft ? "very_strong" : local.headlineAfter == null ? "unavailable" : local.headlineAfter < 1 ? "concerning" : local.headlineAfter < 1.25 ? "acceptable" : local.headlineAfter < 1.5 ? "healthy" : "very_strong";
@@ -577,26 +583,26 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
         />
       ) : null}
 
-      {local.schedule && economics ? (
+      {economicsSchedule && economics ? (
         <div className="fc-economics" aria-label="Deal economics, internal">
           <div className="fc-economics-head">
-            <Lbl>What the money really costs, with QC&apos;s fees in</Lbl>
+            <Lbl>What the money really costs, with QC&apos;s fees in · on {economicsBasis}</Lbl>
             <CellChip tone="warn">Internal · desk and underwriters only · not in the package or the listing</CellChip>
           </div>
           <div className="fc-economics-grid">
-            <div><span className="sub">Loan</span><strong>{money(local.schedule.amount)}</strong></div>
-            <div><span className="sub">Origination{feePoints != null ? ` (${feePoints} pts${economics.accepted_amount == null ? ", on the proposed amount" : ""})` : ""}</span><strong>{feePoints != null && local.schedule.amount ? money((feePoints / 100) * (economics.accepted_amount ?? local.schedule.amount)) : "—"}</strong></div>
+            <div><span className="sub">Loan</span><strong>{money(economicsSchedule.amount)}</strong></div>
+            <div><span className="sub">Origination{feePoints != null ? ` (${feePoints} pts${economics.accepted_amount == null ? ", on the proposed amount" : ""})` : ""}</span><strong>{feePoints != null && economicsSchedule.amount ? money((feePoints / 100) * (economics.accepted_amount ?? economicsSchedule.amount)) : "—"}</strong></div>
             <div><span className="sub">Consulting fee</span><strong>{feeConsulting != null ? money(feeConsulting) : "—"}</strong></div>
-            <div><span className="sub">Fees, % of the loan</span><strong>{local.schedule.amount ? `${(Math.round((totalFees / local.schedule.amount) * 1000) / 10).toFixed(1)}%` : "—"}</strong></div>
-            <div><span className="sub">Net to the client</span><strong>{money(local.schedule.amount - totalFees)}</strong></div>
-            <div><span className="sub">Interest over the term</span><strong>{money(local.schedule.total_interest)}</strong></div>
-            <div><span className="sub">Client&apos;s total cost</span><strong>{money(local.schedule.total_interest + totalFees)}</strong></div>
-            <div><span className="sub">Stated · structure · with fees</span><strong>{local.schedule.rate_pct}% · {structureRate != null ? `${structureRate}%` : "—"} · {effectiveRate != null ? `${effectiveRate}%` : "—"}</strong></div>
+            <div><span className="sub">Fees, % of the loan</span><strong>{economicsSchedule.amount ? `${(Math.round((totalFees / economicsSchedule.amount) * 1000) / 10).toFixed(1)}%` : "—"}</strong></div>
+            <div><span className="sub">Net to the client</span><strong>{money(economicsSchedule.amount - totalFees)}</strong></div>
+            <div><span className="sub">Interest over the term</span><strong>{money(economicsSchedule.total_interest)}</strong></div>
+            <div><span className="sub">Client&apos;s total cost</span><strong>{money(economicsSchedule.total_interest + totalFees)}</strong></div>
+            <div><span className="sub">Stated · structure · with fees</span><strong>{economicsSchedule.rate_pct}% · {structureRate != null ? `${structureRate}%` : "—"} · {effectiveRate != null ? `${effectiveRate}%` : "—"}</strong></div>
           </div>
-          <div className="fc-economics-bar" role="img" aria-label={`Of ${money(local.schedule.amount)}, ${money(totalFees)} in fees and ${money(local.schedule.amount - totalFees)} to the client`}>
-            <span className="fees" style={{ width: `${Math.min(100, (totalFees / Math.max(1, local.schedule.amount)) * 100)}%` }} />
+          <div className="fc-economics-bar" role="img" aria-label={`Of ${money(economicsSchedule.amount)}, ${money(totalFees)} in fees and ${money(economicsSchedule.amount - totalFees)} to the client`}>
+            <span className="fees" style={{ width: `${Math.min(100, (totalFees / Math.max(1, economicsSchedule.amount)) * 100)}%` }} />
           </div>
-          <p className="sub">{totalFees ? `${money(totalFees)} comes off the proceeds at funding, so the client nets ${money(local.schedule.amount - totalFees)}; the rate that equates what the client receives with what the client pays back is ${effectiveRate != null ? `${effectiveRate}%` : "—"} against the stated ${local.schedule.rate_pct}%${structureRate != null && Math.abs(structureRate - local.schedule.rate_pct) > 0.5 ? ` (the structure itself costs ${structureRate}%: interest on the original principal)` : ""}.` : "No origination points or consulting fee yet: the client nets the full loan."}{!feeDirty && economics.qc_earnings != null ? ` QC earns ${money(economics.qc_earnings)}.` : ""}</p>
+          <p className="sub">{totalFees ? `${money(totalFees)} comes off the proceeds at funding, so the client nets ${money(economicsSchedule.amount - totalFees)}; the rate that equates what the client receives with what the client pays back is ${effectiveRate != null ? `${effectiveRate}%` : "—"} against the stated ${economicsSchedule.rate_pct}%${structureRate != null && Math.abs(structureRate - economicsSchedule.rate_pct) > 0.5 ? ` (the structure itself costs ${structureRate}%: interest on the original principal)` : ""}.` : "No origination points or consulting fee yet: the client nets the full loan."}{!feeDirty && economics.qc_earnings != null ? ` QC earns ${money(economics.qc_earnings)}.` : ""}</p>
           <div className="fc-economics-inputs">
             <label className="grid g2"><span className="sub">Origination fee, % of the accepted amount</span><Input aria-label="Origination fee percentage" type="number" inputMode="decimal" min={0} max={100} step="any" placeholder="For example, 2.5" value={feeDraft.points} disabled={!canEdit} onChange={(e) => setFeeDraft((d) => ({ ...d, points: e.target.value }))} /></label>
             <label className="grid g2"><span className="sub">Consulting fee, $</span><Input aria-label="Consulting fee" type="number" inputMode="decimal" min={0} step="any" placeholder="Fixed fee, blank for none" value={feeDraft.consulting} disabled={!canEdit} onChange={(e) => setFeeDraft((d) => ({ ...d, consulting: e.target.value }))} /></label>
