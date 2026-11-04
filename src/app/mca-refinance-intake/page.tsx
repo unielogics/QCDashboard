@@ -1420,11 +1420,11 @@ export default function McaRefinanceIntakePage() {
 
   // --- render ---------------------------------------------------------------
   const brandHeader = (
-    <header className="vm-brand">
-      <QCMark size={36} />
-      <div>
-        <div className="vm-brand-n">Qualified Commercial</div>
-        <div className="vm-brand-t">{c.eyebrow}</div>
+    <header className="vm-top">
+      <div className="vm-top-in">
+        <QCMark size={34} />
+        <span className="vm-brand-n">Qualified Commercial</span>
+        <span className="vm-brand-t">{c.eyebrow}</span>
       </div>
     </header>
   );
@@ -1435,7 +1435,7 @@ export default function McaRefinanceIntakePage() {
   } else if (phase === "language") {
     content = (
       <div className="vm-mid lang">
-        <LanguagePickerScreen onPick={pickLanguage} />
+        <LanguagePickerScreen onPick={pickLanguage} variant="institutional" />
       </div>
     );
   } else if (phase === "start") {
@@ -1489,6 +1489,10 @@ export default function McaRefinanceIntakePage() {
               autoComplete="tel"
               required
             />
+          </div>
+          <h3 className="vm-grp-t">{c.qualificationTitle}</h3>
+          <p className="vm-sub">{c.qualificationIntro}</p>
+          <div className="vm-fg2">
             <Field
               label={c.qualificationCount}
               value={qualificationForm.activeCount}
@@ -1514,7 +1518,6 @@ export default function McaRefinanceIntakePage() {
               placeholder="100000"
             />
           </div>
-          <p className="vm-sub">{c.qualificationIntro}</p>
           <label className="vm-check">
             <input
               type="checkbox"
@@ -1538,7 +1541,7 @@ export default function McaRefinanceIntakePage() {
               {startError}
             </div>
           ) : null}
-          <button type="button" onClick={startIntake} disabled={startBusy} className="vm-gold">
+          <button type="button" onClick={startIntake} disabled={startBusy} className="vm-primary">
             {startBusy ? c.startBusy : c.startButton}
           </button>
           <button
@@ -1584,14 +1587,14 @@ export default function McaRefinanceIntakePage() {
               {codeError}
             </div>
           ) : null}
-          <button type="button" onClick={verifyLoginCode} disabled={codeBusy} className="vm-gold">
+          <button type="button" onClick={verifyLoginCode} disabled={codeBusy} className="vm-primary">
             {codeBusy ? c.codeVerifyBusy : c.codeVerify}
           </button>
           <div className="vm-btnrow">
-            <button type="button" onClick={sendLoginCode} disabled={codeBusy} className="vm-ghost">
+            <button type="button" onClick={sendLoginCode} disabled={codeBusy} className="vm-secondary">
               {codeSent ? c.codeResend : c.codeSend}
             </button>
-            <button type="button" onClick={() => setPhase("start")} disabled={codeBusy} className="vm-ghost">
+            <button type="button" onClick={() => setPhase("start")} disabled={codeBusy} className="vm-secondary">
               {c.codeBack}
             </button>
           </div>
@@ -1644,7 +1647,7 @@ export default function McaRefinanceIntakePage() {
             onChange={(event) => setChatText(event.target.value)}
             disabled={chatBusy}
           />
-          <button type="submit" disabled={chatBusy || !chatText.trim()} className="vm-gold sm">
+          <button type="submit" disabled={chatBusy || !chatText.trim()} className="vm-primary sm">
             {c.chatSend}
           </button>
         </form>
@@ -1674,7 +1677,7 @@ export default function McaRefinanceIntakePage() {
             <Field label={c.qualificationYears} value={qualificationForm.yearsInBusiness} onChange={(value) => changeQualification("yearsInBusiness", value)} inputMode="decimal" />
             <Field label={c.qualificationAmount} value={qualificationForm.requestedAmount} onChange={(value) => changeQualification("requestedAmount", value)} inputMode="decimal" />
           </div>
-          <button type="button" className="vm-ghost" disabled={qualificationBusy} onClick={saveQualification}>
+          <button type="button" className="vm-secondary" disabled={qualificationBusy} onClick={saveQualification}>
             {qualificationBusy ? c.qualificationBusy : c.qualificationSave}
           </button>
           {qualificationError ? <div role="alert" className="vm-err">{qualificationError}</div> : null}
@@ -1690,7 +1693,7 @@ export default function McaRefinanceIntakePage() {
           </div>
           {manualReview ? <div className="vm-note" role="status"><strong>{c.manualTitle}</strong><p>{manualReviewRequested ? c.manualRequested : c.manualBody}</p></div> : null}
           {reviewMode === "information_required" || qualificationDirty.current ? <div className="vm-calm" role="status"><strong>{c.informationTitle}</strong><p>{c.informationBody}</p></div> : null}
-          {manualReview && !manualReviewRequested ? <div className="grid g8"><button type="button" onClick={runReview} disabled={reviewBusy || qualificationDirty.current} className="vm-gold">{reviewBusy ? c.manualBusy : c.manualRequest}</button>{reviewError ? <div role="alert" className="vm-err">{reviewError}</div> : null}</div> : null}
+          {manualReview && !manualReviewRequested ? <div className="grid g8"><button type="button" onClick={runReview} disabled={reviewBusy || qualificationDirty.current} className="vm-primary">{reviewBusy ? c.manualBusy : c.manualRequest}</button>{reviewError ? <div role="alert" className="vm-err">{reviewError}</div> : null}</div> : null}
           {booked ? (
             <div className="vm-ok">{c.booked}</div>
           ) : bookingSlots.length ? (
@@ -1722,7 +1725,7 @@ export default function McaRefinanceIntakePage() {
             </div>
           ) : manualReview || reviewMode === "information_required" || qualificationDirty.current ? null : allDone ? (
             <div className="grid g8">
-              <button type="button" onClick={runReview} disabled={reviewBusy} className="vm-gold">
+              <button type="button" onClick={runReview} disabled={reviewBusy} className="vm-primary">
                 {reviewBusy ? c.reviewRunning : c.runReview}
               </button>
               {reviewError ? (
@@ -1781,7 +1784,7 @@ export default function McaRefinanceIntakePage() {
                       type="button"
                       onClick={runCreditPull}
                       disabled={pullBusy || (needSsn && onlyDigits(ssn).length < 9)}
-                      className="vm-gold sm"
+                      className="vm-primary sm"
                     >
                       {pullBusy ? c.softCheckBusy : needSsn ? c.retrySsn : c.runSoftCheck}
                     </button>
@@ -1795,7 +1798,7 @@ export default function McaRefinanceIntakePage() {
               </div>
             ) : (
               <div className="grid g8">
-                <button type="button" onClick={() => setSigningDoc(creditDoc)} className="vm-gold sm">
+                <button type="button" onClick={() => setSigningDoc(creditDoc)} className="vm-primary sm">
                   {c.readSign}
                 </button>
               </div>
@@ -1898,7 +1901,7 @@ export default function McaRefinanceIntakePage() {
                       </fieldset>
                     ))}
                     {advances.length < 50 ? (
-                      <button type="button" className="vm-ghost" onClick={() => setAdvances((current) => [...current, blankAdvance()])}>
+                      <button type="button" className="vm-secondary" onClick={() => setAdvances((current) => [...current, blankAdvance()])}>
                         {c.addAdvance}
                       </button>
                     ) : null}
@@ -1915,7 +1918,7 @@ export default function McaRefinanceIntakePage() {
                         {termsError}
                       </div>
                     ) : null}
-                    <button type="button" onClick={submitTypedTerms} disabled={termsBusy} className="vm-gold sm">
+                    <button type="button" onClick={submitTypedTerms} disabled={termsBusy} className="vm-primary sm">
                       {termsBusy ? c.submitTermsBusy : c.submitTerms}
                     </button>
                   </div>
@@ -1968,7 +1971,7 @@ export default function McaRefinanceIntakePage() {
             <div className="vm-card-t">{c.roomTitle}</div>
             <div className="vm-card-s">{c.roomSub}</div>
           </div>
-          <button type="button" onClick={openSecureRoom} disabled={roomBusy} className="vm-gold sm">
+          <button type="button" onClick={openSecureRoom} disabled={roomBusy} className="vm-primary sm">
             {roomBusy ? c.roomCtaBusy : c.roomCta}
           </button>
           {roomNotice ? <div className="vm-calm">{roomNotice}</div> : null}
@@ -2000,10 +2003,8 @@ export default function McaRefinanceIntakePage() {
 
   return (
     <div className="v-mca">
-      <div className="vm-shell">
-        {brandHeader}
-        {content}
-      </div>
+      {brandHeader}
+      <div className="vm-shell">{content}</div>
 
       {signingDoc ? (
         <div className="vm-scrim" role="dialog" aria-modal="true" aria-label={signingDoc.name}>

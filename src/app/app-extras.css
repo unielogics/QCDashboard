@@ -3142,6 +3142,12 @@ a.pick { color: inherit; text-decoration: none; }
    Values are carried over verbatim from the factories they replace: this is a
    migration of where the declarations live, not a redesign of a live public
    funnel.
+
+   Since then `/mca-refinance-intake` (`.v-mca`) has moved to the light
+   institutional system the marketing site uses, so it no longer carries the dark
+   ground or the gold described above; `/funding-review` and
+   `/dealer-ai-underwriter` still do. The scoping argument is unchanged: nothing
+   in the console can reach `.v-mca`, and it takes no colour from a console class.
    ══════════════════════════════════════════════════════════════════════════ */
 
 /* Completes the `.grid.g4 / .g6 / .g8 / .g10` family above. Three stacks in the
@@ -3151,258 +3157,341 @@ a.pick { color: inherit; text-decoration: none; }
 
 /* ---------- /mca-refinance-intake — the slim MCA room ----------
    A borrower refinancing merchant cash advances. Deliberately the narrowest of
-   the three: one chat column, one rail, three things to collect. Its own gold
-   (#D9B64A) and its own near-black (#0B0F17), a shade warmer and lighter than
-   the funding-review room's, which is why it is a second scope rather than a
-   modifier on the first. */
+   the three rooms: one chat column, one rail, three things to collect.
+
+   Light-first institutional, the same language as the marketing site and as the
+   public Equipment Financing room (`.qc-public-intake-theme--equipment`): cool
+   paper ground, white documents with a hairline border and a shallow shadow,
+   one deep blue doing the primary work, 8px controls, Inter Tight over Inter.
+   No glow, no gradient fills, no pill buttons, no serif.
+
+   The palette is declared here as literals, with the `--qci-*` names the
+   institutional language gate already reads, so an operator theme can never
+   reach a page a stranger is looking at. `LanguagePickerScreen` takes its
+   `institutional` variant for the same reason. */
 .v-mca {
-  --vm-gold: #D9B64A;
-  --vm-gold-ink: #E8CE7A;
-  --vm-ink: #E5EAF3;
-  --vm-ink-hi: #F8FAFC;
-  --vm-mut: #94A3B8;
-  --vm-mut2: #8A99B0;
-  --vm-line: rgba(148, 163, 184, 0.16);
+  --qci-bg: #f5f7fa;
+  --qci-surface: #ffffff;
+  --qci-sunken: #eef1f6;
+  --qci-border: #dfe4ec;
+  --qci-border-strong: #cbd3df;
+  --qci-ink: #0f1720;
+  --qci-ink-2: #263445;
+  --qci-muted: #5a6675;
+  --qci-faint: #778397;
+  --qci-blue: #1b4b9e;
+  --qci-blue-dark: #153c7e;
+  --qci-blue-soft: #eef3fb;
+  --qci-green: #257449;
+  --qci-green-soft: #eaf6ef;
+  --qci-gold: #8a6a1f;
+  --qci-gold-soft: #fbf6e8;
+  /* Only this room needs these. */
+  --vm-blue-ink: #112e60;
+  --vm-blue-line: #c9d7ed;
+  --vm-blue-ring: #d6e3f6;
+  --vm-paper: #f8fafc;
+  --vm-neutral: #b0b9c5;
+  --vm-ok: #0f7b4f;
+  --vm-ok-soft: #e6f4ec;
+  --vm-danger: #b42318;
+  --vm-danger-soft: #fdeceb;
+  --vm-sh1: 0 1px 2px rgba(15, 23, 32, 0.06), 0 1px 1px rgba(15, 23, 32, 0.04);
+  --vm-sh2: 0 4px 12px rgba(15, 23, 32, 0.08);
+  --vm-sh3: 0 12px 32px rgba(15, 23, 32, 0.1);
+  --vm-fh: var(--font-inter-tight), "Inter Tight", Inter, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --vm-fb: var(--font-inter), Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
   min-height: 100vh;
-  background:
-    radial-gradient(circle at 16% 0%, rgba(217, 182, 74, 0.1), transparent 30%),
-    radial-gradient(circle at 92% 4%, rgba(33, 211, 199, 0.07), transparent 26%),
-    #0B0F17;
-  color: var(--vm-ink);
-  padding: 20px 18px 40px;
+  background: var(--qci-bg);
+  color: var(--qci-ink);
+  font-family: var(--vm-fb);
   font-size: 14px;
+  line-height: 1.55;
+  color-scheme: light;
+  -webkit-font-smoothing: antialiased;
+}
+.v-mca h1, .v-mca h2, .v-mca h3 { font-family: var(--vm-fh); color: var(--qci-ink); text-wrap: balance; }
+.v-mca :focus-visible { outline: 2px solid var(--qci-blue); outline-offset: 2px; }
+
+/* Every control in the room dims the same way. */
+.v-mca button:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* The header bar: white, one hairline under it, brand on the left. Full-bleed;
+   its content shares the page's measure. */
+.vm-top { background: var(--qci-surface); border-bottom: 1px solid var(--qci-border); }
+.vm-top-in { max-width: 1180px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 10px; }
+.vm-brand-n { font-family: var(--vm-fh); font-weight: 700; font-size: 17px; letter-spacing: -0.02em; color: var(--qci-blue); }
+.vm-brand-t {
+  margin-left: 6px; padding-left: 16px; border-left: 1px solid var(--qci-border-strong);
+  font-size: 13px; font-weight: 600; color: var(--qci-muted);
 }
 
-/* Every control in the room dims the same way. Was a `<style>` tag injected
-   into the body on every render, alongside two `.mcaR-input` rules. */
-.v-mca button:disabled { opacity: 0.55; cursor: default; }
-
-.vm-shell { max-width: 1120px; margin: 0 auto; display: grid; gap: 22px; }
+/* The page's measure. */
+.vm-shell { max-width: 1180px; margin: 0 auto; padding: 36px 24px 64px; display: grid; gap: 24px; }
 
 /* A centred measure. Three screens, three different reading widths — the
-   language picker is the widest, the login-code card the narrowest. */
+   language picker is the widest of the two narrow ones, the login-code card the
+   narrowest, and the start screen is the room's one two-column spread. */
 .vm-mid { margin: 0 auto; width: 100%; }
 .vm-mid.lang { max-width: 720px; }
-/* The start screen is also the room's own stack: hero, then the one card. */
-.vm-mid.start { max-width: 640px; display: grid; gap: 22px; }
 .vm-mid.code { max-width: 460px; }
+/* Hero on the left, the one card on the right — the marketing site's own
+   composition, so the step from the website to here does not change the page. */
+.vm-mid.start { max-width: none; display: grid; gap: 40px; align-items: start; }
+@media (min-width: 960px) {
+  .vm-mid.start { grid-template-columns: minmax(0, 1fr) minmax(420px, 500px); gap: 64px; padding-top: 12px; }
+}
+/* The language gate carries its own brand lockup for the pages that have no
+   header bar. This room has one. */
+.v-mca .v-gate-brand { display: none; }
+/* …and its buttons take the room's own, not the dark gate's heavy weight. */
+.v-mca .v-gate--institutional { min-height: 0; padding: 56px 32px; }
+.v-mca .v-gate--institutional .v-gate-b { font-family: var(--vm-fb); font-weight: 600; font-size: 15px; }
 
-.vm-brand { display: flex; align-items: center; gap: 12px; }
-.vm-brand-n { font-weight: 800; font-size: 15px; color: var(--vm-ink-hi); letter-spacing: 0.2px; }
-.vm-brand-t { font-size: 11.5px; color: var(--vm-gold); font-weight: 700; text-transform: uppercase; letter-spacing: 1px; }
+.vm-loading { min-height: 40vh; display: grid; place-items: center; color: var(--qci-muted); }
 
-.vm-loading { min-height: 40vh; display: grid; place-items: center; color: var(--vm-mut); }
-
-.vm-herostack { display: grid; gap: 10px; text-align: center; }
+.vm-herostack { display: grid; gap: 16px; justify-items: start; text-align: left; }
+@media (min-width: 960px) { .vm-mid.start .vm-herostack { position: sticky; top: 32px; } }
 .vm-hero-t {
-  margin: 0; font-family: Georgia, "Times New Roman", serif;
-  font-size: clamp(26px, 4vw, 38px); font-weight: 600; color: var(--vm-ink-hi); line-height: 1.15;
+  margin: 0; font-size: clamp(32px, 4.4vw, 48px); font-weight: 700; line-height: 1.08;
+  letter-spacing: -0.028em; color: var(--qci-ink);
 }
-.vm-hero-l { margin: 0 auto; max-width: 560px; color: var(--vm-mut); font-size: 14.5px; line-height: 1.6; }
+.vm-hero-l { margin: 0; max-width: 520px; color: var(--qci-muted); font-size: 17px; line-height: 1.6; }
 
-.vm-pillrow { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 4px; }
-.vm-pill {
-  border: 1px solid rgba(217, 182, 74, 0.35); border-radius: 999px; padding: 5px 12px;
-  font-size: 11.5px; font-weight: 700; color: var(--vm-gold-ink); background: rgba(217, 182, 74, 0.08);
+/* Reassurances, as the website's hero carries them: a tick and a plain line. */
+.vm-pillrow { display: flex; gap: 8px 22px; flex-wrap: wrap; margin-top: 4px; }
+.vm-pill { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; font-weight: 500; color: var(--qci-muted); }
+.vm-pill::before {
+  content: ""; width: 15px; height: 15px; flex: none; background: var(--qci-blue);
+  -webkit-mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E") center / contain no-repeat;
 }
 
-/* The room's one surface. Everything that is a block of content is this. */
+/* The room's one surface. Everything that is a block of content is this: a
+   white document, a hairline border, a shadow that only confirms the edge. */
 .vm-card {
-  background: rgba(17, 24, 39, 0.72); border: 1px solid var(--vm-line); border-radius: 16px;
-  padding: 18px; display: grid; gap: 14px; box-shadow: 0 18px 60px rgba(0, 0, 0, 0.3);
+  background: var(--qci-surface); border: 1px solid var(--qci-border); border-radius: 12px;
+  padding: 22px; display: grid; gap: 14px; box-shadow: var(--vm-sh1);
 }
-.vm-card.chat { gap: 12px; min-height: 320px; }
-.vm-card.railhead { gap: 10px; }
+.vm-mid.start .vm-card { box-shadow: var(--vm-sh2); padding: 26px; gap: 16px; }
+.vm-card.chat { gap: 14px; min-height: 320px; }
+/* The rail runs longer than the conversation. On a wide screen the chat stays in
+   view beside it while the borrower works down the checklist. */
+@media (min-width: 881px) { .vm-card.chat { position: sticky; top: 20px; } }
+.vm-card.railhead { gap: 12px; }
 
-.vm-sect-t { margin: 0; font-size: 18px; font-weight: 700; color: var(--vm-ink-hi); }
-.vm-sub { margin: 0; font-size: 12.5px; color: var(--vm-mut); line-height: 1.55; }
+.vm-sect-t { margin: 0; font-size: 20px; font-weight: 650; letter-spacing: -0.02em; line-height: 1.2; }
+.vm-grp-t { margin: 6px 0 0; padding-top: 18px; border-top: 1px solid var(--qci-border); font-size: 15px; font-weight: 650; letter-spacing: -0.015em; }
+.vm-sub { margin: 0; font-size: 13px; color: var(--qci-muted); line-height: 1.55; }
 
-/* Two tinted advisory blocks. `.vm-note` is the gold one — "we already have
-   some of this"; `.vm-calm` is the neutral one — "nothing is wrong, this step
-   simply is not needed". */
-.vm-note {
-  font-size: 12.5px; color: var(--vm-gold-ink); background: rgba(217, 182, 74, 0.08);
-  border: 1px solid rgba(217, 182, 74, 0.25); border-radius: 10px; padding: 8px 10px;
+/* Two tinted advisory blocks, the marketing site's `.notice`: a quiet ground and
+   a 3px rule. `.vm-note` is the blue one — "we already have some of this";
+   `.vm-calm` is the neutral one — "nothing is wrong, this step simply is not
+   needed". */
+.vm-note, .vm-calm {
+  margin: 0; font-size: 13px; line-height: 1.55; padding: 10px 14px;
+  border-left: 3px solid var(--qci-blue); border-radius: 4px; text-align: left;
 }
-.vm-calm {
-  font-size: 12.5px; color: #A5B4CB; background: rgba(148, 163, 184, 0.08);
-  border: 1px solid rgba(148, 163, 184, 0.2); border-radius: 10px; padding: 8px 10px; line-height: 1.5;
-}
+.vm-note { color: var(--vm-blue-ink); background: var(--qci-blue-soft); }
+.vm-note p, .vm-calm p { margin: 4px 0 0; }
+.vm-calm { color: var(--qci-ink-2); background: var(--qci-sunken); border-left-color: var(--vm-neutral); }
 
-/* Form rows. Two-across on a desktop, one-across in the room's compact mode —
-   which used to be a JS `matchMedia` branch picking between two objects, so the
-   first server-rendered paint was always the wide one. */
-.vm-fg2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+/* Form rows. Two-across on a desktop, one-across in the room's compact mode.
+   An odd last field takes the whole row rather than sitting alone beside a gap. */
+.vm-fg2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 12px; }
+.vm-fg2 > :last-child:nth-child(odd) { grid-column: 1 / -1; }
 .vm-fg1 { display: grid; grid-template-columns: 1fr; gap: 12px; }
 @media (max-width: 880px) { .vm-fg2 { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .vm-mid.start .vm-fg2 { grid-template-columns: 1fr; } }
 
-.vm-fld { display: grid; gap: 5px; }
-.vm-fld-l { font-size: 10.5px; font-weight: 700; color: var(--vm-mut2); text-transform: uppercase; letter-spacing: 0.6px; }
-/* Required marker beside a field label. `.reqtag` says REQUIRED and belongs to
-   the requirement engine; this is plain form validation, so it is the same red
-   asterisk the public booking page uses, in this room's own danger tone. */
-.vm-req { color: #FCA5A5; margin-left: 3px; }
+.vm-fld { display: grid; gap: 6px; }
+.vm-fld-l { font-size: 13px; font-weight: 500; color: var(--qci-ink); }
+/* Required marker beside a field label: plain form validation, so the same red
+   asterisk the public booking page uses. */
+.vm-req { color: var(--vm-danger); margin-left: 3px; }
 
 .vm-in {
-  width: 100%; box-sizing: border-box; background: rgba(11, 15, 23, 0.65);
-  border: 1px solid rgba(148, 163, 184, 0.28); border-radius: 10px;
-  color: var(--vm-ink); padding: 10px 11px; font-size: 14px;
+  width: 100%; box-sizing: border-box; min-height: 44px; padding: 10px 12px;
+  font: inherit; font-size: 14px; color: var(--qci-ink); caret-color: var(--qci-blue);
+  background: var(--qci-surface); border: 1px solid var(--qci-border-strong); border-radius: 8px;
+  transition: border-color 140ms ease-out, box-shadow 140ms ease-out;
 }
-.vm-in::placeholder { color: #5B6B82; }
-.vm-in:focus { outline: 2px solid rgba(217, 182, 74, 0.55); outline-offset: 1px; }
-
-/* A consent row: a checkbox beside a sentence that wraps. The box is nudged
-   down to sit on the first line's baseline rather than in the middle of the
-   paragraph — the same problem `.row.top` and `.pick.top` solve upstream. */
-.vm-check { display: flex; gap: 9px; align-items: flex-start; font-size: 12.5px; color: #B6C4D7; line-height: 1.5; cursor: pointer; }
-.vm-check > input { margin-top: 3px; }
-
-.vm-link { color: var(--vm-gold); text-decoration: underline; }
-
-/* The room's primary action. Gold, full-width by default because on a phone it
-   is the only thing to press. */
-.vm-gold {
-  border: 0; border-radius: 999px; min-height: 48px; padding: 0 20px;
-  background: linear-gradient(135deg, #F2E58F, #D8B533); color: #081122;
-  font-weight: 900; font-size: 14.5px; cursor: pointer;
+.vm-in::placeholder { color: var(--qci-faint); }
+.vm-in:hover { border-color: #8b97a6; }
+.vm-in:focus, .vm-in:focus-visible { outline: none; border-color: var(--qci-blue); box-shadow: 0 0 0 3px var(--vm-blue-ring); }
+.vm-in:disabled { background: var(--qci-sunken); color: var(--qci-muted); }
+select.vm-in {
+  appearance: none; padding-right: 36px;
+  background-image: linear-gradient(45deg, transparent 50%, #6b7787 50%), linear-gradient(135deg, #6b7787 50%, transparent 50%);
+  background-position: calc(100% - 18px) 50%, calc(100% - 13px) 50%;
+  background-size: 5px 5px, 5px 5px; background-repeat: no-repeat;
 }
-.vm-gold.sm { min-height: 38px; font-size: 13px; padding: 0 16px; }
 
-.vm-ghost {
-  border: 1px solid rgba(148, 163, 184, 0.3); border-radius: 999px; min-height: 36px; padding: 0 14px;
-  background: none; color: #B6C4D7; font-weight: 600; font-size: 12.5px; cursor: pointer;
+/* A consent row: a checkbox beside a sentence that wraps, the box nudged down to
+   the first line rather than the middle of the paragraph. */
+.vm-check { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; color: var(--qci-ink-2); line-height: 1.5; cursor: pointer; }
+.vm-check > input { margin-top: 3px; width: 16px; height: 16px; flex: none; accent-color: var(--qci-blue); }
+
+.vm-link { color: var(--qci-blue); text-decoration: underline; text-underline-offset: 3px; }
+
+/* The room's primary action: the one solid blue object. Full-width by default
+   because on a phone it is the only thing to press. */
+.vm-primary {
+  min-height: 48px; padding: 0 22px; border: 1px solid var(--qci-blue); border-radius: 8px;
+  background: var(--qci-blue); color: #fff; font: inherit; font-weight: 600; font-size: 15px; line-height: 1.2; cursor: pointer;
+  transition: background 140ms ease-out, border-color 140ms ease-out;
 }
-.vm-btnrow { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+.vm-primary:hover:not(:disabled) { background: var(--qci-blue-dark); border-color: var(--qci-blue-dark); }
+.vm-primary:active:not(:disabled) { background: var(--vm-blue-ink); border-color: var(--vm-blue-ink); }
+.vm-primary.sm { min-height: 40px; font-size: 13.5px; padding: 0 16px; }
+
+.vm-secondary {
+  min-height: 40px; padding: 0 16px; border: 1px solid var(--qci-border-strong); border-radius: 8px;
+  background: var(--qci-surface); color: var(--qci-ink); font: inherit; font-weight: 600; font-size: 13.5px; line-height: 1.2; cursor: pointer;
+  transition: background 140ms ease-out, border-color 140ms ease-out;
+}
+.vm-secondary:hover:not(:disabled) { background: #f4f6f8; border-color: var(--vm-neutral); }
+.vm-btnrow { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
 
 /* Text-weight action. `.linky` is the console's word for this and is scoped to
-   the console palette; this is the same idea on the dark ground. */
+   the console palette; this is the same idea on the room's own ground. */
 .vm-linkbtn {
-  border: 0; background: none; color: var(--vm-mut2); font-size: 12.5px;
-  text-decoration: underline; cursor: pointer; justify-self: center;
+  border: 0; background: none; color: var(--qci-blue); font: inherit; font-size: 13px; font-weight: 500;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer; justify-self: center;
 }
-.vm-linkbtn.inline { color: var(--vm-gold); font-size: 13px; padding: 0; justify-self: auto; }
+.vm-linkbtn:hover:not(:disabled) { color: var(--qci-blue-dark); }
+.vm-linkbtn.inline { font-size: 13px; padding: 0; justify-self: auto; }
 
-.vm-err { color: #FCA5A5; font-size: 12.5px; line-height: 1.45; }
-.vm-ok { color: #6EE7B7; font-size: 12.5px; font-weight: 700; }
+.vm-err { color: var(--vm-danger); font-size: 13px; line-height: 1.45; }
+.vm-ok { color: var(--vm-ok); font-size: 13px; font-weight: 600; }
 
 /* ---------- the chat column ---------- */
-.vm-chat-h { font-size: 12px; font-weight: 800; color: var(--vm-mut2); text-transform: uppercase; letter-spacing: 1px; }
+.vm-chat-h { font-size: 12px; font-weight: 600; color: var(--qci-blue); text-transform: uppercase; letter-spacing: 0.1em; }
 .vm-chat-s {
   overflow-y: auto; display: grid; gap: 10px; align-content: start;
   padding-right: 4px; min-height: 200px; max-height: min(62vh, 640px);
 }
 @media (max-width: 880px) { .vm-chat-s { max-height: 340px; } }
 .vm-bub {
-  border-radius: 14px; padding: 10px 13px; font-size: 13.5px; line-height: 1.55;
-  white-space: pre-wrap; max-width: 88%; word-break: break-word;
-  background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(148, 163, 184, 0.14);
-  color: var(--vm-ink); justify-self: start;
+  border-radius: 12px 12px 12px 4px; padding: 10px 14px; font-size: 14px; line-height: 1.55;
+  white-space: pre-wrap; max-width: 88%; word-break: break-word; justify-self: start;
+  background: var(--qci-sunken); border: 1px solid var(--qci-border); color: var(--qci-ink);
 }
-.vm-bub.me {
-  background: rgba(217, 182, 74, 0.14); border-color: rgba(217, 182, 74, 0.3);
-  color: #F4E9C8; justify-self: end;
-}
+.vm-bub.me { border-radius: 12px 12px 4px 12px; background: var(--qci-blue); border-color: var(--qci-blue); color: #fff; justify-self: end; }
 /* A person from the desk. Incoming like the assistant, so it stays on the left,
-   but solid and named against the assistant's translucent slate so the borrower
+   but tinted blue and named against the assistant's neutral grey so the borrower
    can tell a human apart from the AI. */
-.vm-bub.desk {
-  background: rgba(51, 65, 85, 0.92); border-color: rgba(226, 232, 240, 0.26);
-  color: var(--vm-ink-hi);
-}
+.vm-bub.desk { background: var(--qci-blue-soft); border-color: var(--vm-blue-line); color: var(--qci-ink); }
 .vm-bub-who {
-  display: block; margin-bottom: 5px; font-size: 10.5px; font-weight: 800;
-  letter-spacing: 0.6px; text-transform: uppercase; color: #D9E5F5;
+  display: block; margin-bottom: 4px; font-size: 11px; font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--vm-blue-ink);
 }
 /* The assistant's turn is being generated. */
 .vm-bub.pending { opacity: 0.6; }
 /* The desk has taken the conversation over and the assistant is standing by. */
 .vm-sys {
   justify-self: center; max-width: 90%; text-align: center; padding: 8px 14px;
-  border-radius: 12px; border: 1px solid var(--vm-line);
-  background: rgba(148, 163, 184, 0.06); color: var(--vm-mut2);
-  font-size: 12px; line-height: 1.5;
+  border-radius: 8px; border: 1px solid var(--qci-border);
+  background: var(--vm-paper); color: var(--qci-muted); font-size: 12.5px; line-height: 1.5;
 }
 .vm-chat-f { display: flex; gap: 8px; align-items: center; }
+/* The assistant's buttons hang off its bubble instead of opening a new block. */
+.v-mca .intake-chat-actions { margin-top: -4px; padding-top: 0; border-top: 0; }
+.v-mca .intake-chat-actions button { min-height: 36px; border-radius: 8px; font-size: 12.5px; font-weight: 600; }
 
 /* ---------- the rail ---------- */
-.vm-rail { display: grid; gap: 14px; align-content: start; }
+.vm-rail { display: grid; gap: 16px; align-content: start; }
 .vm-prog-r { display: flex; justify-content: space-between; align-items: baseline; }
-.vm-prog-l { font-size: 13px; font-weight: 800; color: var(--vm-ink-hi); }
-.vm-prog-t { height: 6px; border-radius: 999px; background: rgba(148, 163, 184, 0.15); overflow: hidden; }
+.vm-prog-l { font-size: 14px; font-weight: 650; color: var(--qci-ink); }
+.vm-prog-t { height: 8px; border-radius: 999px; background: #e6eaef; overflow: hidden; }
 /* `width` is the progress figure itself and stays with the caller. */
-.vm-prog-f {
-  height: 100%; border-radius: 999px;
-  background: linear-gradient(90deg, #D9B64A, #F2E58F); transition: width 0.3s ease;
-}
-@media (prefers-reduced-motion: reduce) { .vm-prog-f { transition: none; } }
+.vm-prog-f { height: 100%; border-radius: 999px; background: var(--qci-blue); transition: width 0.3s ease; }
+@media (prefers-reduced-motion: reduce) { .vm-prog-f, .vm-in, .vm-primary, .vm-secondary { transition: none; } }
 
-.vm-rev-t { font-size: 14px; font-weight: 800; color: var(--vm-ink-hi); }
-.vm-card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.vm-card-t { font-size: 14.5px; font-weight: 800; color: var(--vm-ink-hi); }
-.vm-card-s { font-size: 12px; color: var(--vm-mut2); margin-top: 2px; line-height: 1.45; }
+.vm-rev-t { font-size: 14px; font-weight: 650; color: var(--qci-ink); }
+.vm-card-h { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.vm-card-t { font-family: var(--vm-fh); font-size: 16px; font-weight: 650; letter-spacing: -0.015em; color: var(--qci-ink); }
+.vm-card-s { font-size: 13px; color: var(--qci-muted); margin-top: 3px; line-height: 1.5; }
 
-/* Open / done stamp on a rail card. Uppercase because it is a stamp, the same
-   reasoning as `.cellchip.caps` in the console. */
+/* Open / done stamp on a rail card — the marketing site's `.tag`: an outline
+   while there is something to do, a success tint once it is done. */
 .vm-chip {
-  border-radius: 999px; padding: 3px 10px; font-size: 10.5px; font-weight: 800;
-  text-transform: uppercase; letter-spacing: 0.6px; white-space: nowrap; flex-shrink: 0;
-  color: var(--vm-gold-ink); border: 1px solid rgba(217, 182, 74, 0.45); background: rgba(217, 182, 74, 0.08);
+  border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.01em;
+  white-space: nowrap; flex-shrink: 0; color: var(--qci-muted); border: 1px solid var(--qci-border-strong); background: var(--qci-surface);
 }
-.vm-chip.done { color: #6EE7B7; border-color: rgba(52, 211, 153, 0.45); background: rgba(16, 185, 129, 0.1); }
+.vm-chip.done { color: var(--vm-ok); border-color: transparent; background: var(--vm-ok-soft); }
 
 .vm-drop {
-  border: 1.5px dashed rgba(148, 163, 184, 0.35); border-radius: 12px;
-  padding: 18px 14px; text-align: center; font-size: 13px; color: var(--vm-mut);
+  border: 1.5px dashed var(--qci-border-strong); border-radius: 8px; background: var(--vm-paper);
+  padding: 20px 14px; text-align: center; font-size: 13px; color: var(--qci-muted);
+  transition: border-color 140ms ease-out, background 140ms ease-out;
 }
 /* A file is over the target. */
-.vm-drop.on { border-color: var(--vm-gold); background: rgba(217, 182, 74, 0.06); color: var(--vm-gold-ink); }
+.vm-drop.on { border-color: var(--qci-blue); background: var(--qci-blue-soft); color: var(--vm-blue-ink); }
 
 .vm-file {
   display: flex; justify-content: space-between; align-items: baseline; gap: 10px;
-  font-size: 12.5px; padding: 6px 10px; border-radius: 8px;
-  background: rgba(11, 15, 23, 0.5); border: 1px solid rgba(148, 163, 184, 0.12);
+  font-size: 13px; padding: 8px 12px; border-radius: 8px;
+  background: var(--vm-paper); border: 1px solid var(--qci-border);
 }
-.vm-file-n { color: #DDE5F0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.vm-file-m { color: var(--vm-mut2); font-size: 11.5px; flex-shrink: 0; }
+.vm-file-n { color: var(--qci-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vm-file-m { color: var(--qci-muted); font-size: 12px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
 
-.vm-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+/* Two paths to the same answer, as the marketing site's segmented control. */
+.vm-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; background: var(--qci-sunken); border: 1px solid var(--qci-border); border-radius: 8px; }
 .vm-tab {
-  border: 1px solid rgba(148, 163, 184, 0.25); border-radius: 10px; min-height: 34px;
-  background: none; color: var(--vm-mut); font-weight: 700; font-size: 12.5px; cursor: pointer;
+  border: 0; border-radius: 5px; min-height: 34px; background: none; color: var(--qci-muted);
+  font: inherit; font-weight: 600; font-size: 13px; cursor: pointer;
 }
-.vm-tab.on { border-color: var(--vm-gold); background: rgba(217, 182, 74, 0.1); color: var(--vm-gold-ink); }
+.vm-tab:not(.on):hover { color: var(--qci-ink); }
+.vm-tab.on { background: var(--qci-surface); color: var(--qci-blue-dark); box-shadow: var(--vm-sh1); }
 
 /* One merchant advance, as a real <fieldset> — the legend is what tells a
    screen-reader user which advance the four fields under it belong to. */
-.vm-adv { border: 1px solid rgba(148, 163, 184, 0.18); border-radius: 12px; padding: 10px 12px 12px; margin: 0; }
-.vm-adv-l { font-size: 11px; font-weight: 800; color: var(--vm-gold-ink); text-transform: uppercase; letter-spacing: 0.6px; padding: 0 6px; }
+.vm-adv { border: 1px solid var(--qci-border); border-radius: 8px; background: var(--vm-paper); padding: 10px 14px 14px; margin: 0; }
+.vm-adv-l { font-size: 12px; font-weight: 600; color: var(--qci-blue); text-transform: uppercase; letter-spacing: 0.08em; padding: 0 6px; }
 
 .vm-rm {
-  border: 1px solid rgba(252, 165, 165, 0.3); border-radius: 8px; background: none;
-  color: #FCA5A5; font-size: 11.5px; font-weight: 700; padding: 5px 10px; cursor: pointer; justify-self: start;
+  border: 1px solid #e6c1bd; border-radius: 8px; background: var(--qci-surface);
+  color: var(--vm-danger); font: inherit; font-size: 12.5px; font-weight: 600; padding: 6px 12px; cursor: pointer; justify-self: start;
 }
+.vm-rm:hover { background: var(--vm-danger-soft); }
 
 .vm-slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; }
 .vm-slot {
-  border: 1px solid rgba(217, 182, 74, 0.4); border-radius: 10px; min-height: 40px;
-  background: rgba(217, 182, 74, 0.08); color: #F4E9C8; font-weight: 700; font-size: 12.5px;
-  cursor: pointer; padding: 6px 8px;
+  border: 1px solid var(--vm-blue-line); border-radius: 8px; min-height: 42px;
+  background: var(--qci-blue-soft); color: var(--vm-blue-ink); font: inherit; font-weight: 600; font-size: 13px;
+  cursor: pointer; padding: 6px 8px; transition: background 140ms ease-out, border-color 140ms ease-out;
 }
+.vm-slot:hover:not(:disabled) { background: var(--vm-blue-ring); border-color: var(--qci-blue); }
 
 /* The room is chat-first on a wide screen and rail-first on a narrow one; the
    two children swap order in the markup, so this only owns the track. */
-.vm-room { display: grid; gap: 18px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
+.vm-room { display: grid; gap: 20px; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); align-items: start; }
 @media (max-width: 880px) { .vm-room { grid-template-columns: 1fr; } }
 
-/* The signing overlay. Its card is deliberately WHITE on this dark page: it
-   holds the text of a document the borrower is about to put their name to, and
-   a signature surface reads as paper. */
-.vm-scrim { position: fixed; inset: 0; background: rgba(3, 6, 12, 0.72); display: grid; place-items: center; padding: 16px; z-index: 60; }
+@media (max-width: 640px) {
+  .vm-top-in { padding: 12px 16px; }
+  .vm-brand-t { padding-left: 12px; font-size: 12px; }
+  .vm-shell { padding: 22px 16px 48px; }
+  .vm-card { padding: 18px; }
+  .vm-mid.start .vm-card { padding: 20px; }
+}
+
+/* The dialog hosts the shared signing form, which speaks the console's small
+   uppercase labels; here its labels read like the rest of the room's. */
+.vm-modal .lbl { font-size: 13px; font-weight: 500; letter-spacing: 0; text-transform: none; color: var(--qci-ink); }
+
+/* The signing overlay. Its card is paper, like the dialog on the marketing site:
+   it holds the text of a document the borrower is about to put their name to. */
+.vm-scrim {
+  position: fixed; inset: 0; display: grid; place-items: center; padding: 16px; z-index: 60;
+  background: rgba(31, 38, 47, 0.45); backdrop-filter: blur(3px);
+}
 .vm-modal {
-  background: #FFFFFF; color: #111827; border-radius: 16px; padding: 20px;
-  width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto;
-  box-shadow: 0 30px 100px rgba(0, 0, 0, 0.5);
+  background: var(--qci-surface); color: var(--qci-ink); border-radius: 12px; padding: 24px;
+  width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; box-shadow: 0 24px 64px rgba(15, 23, 32, 0.12);
 }
 
 /* ---------- client search ----------

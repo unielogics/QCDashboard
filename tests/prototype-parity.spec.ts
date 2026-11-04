@@ -2946,6 +2946,12 @@ test("public client intake entry points retain the language and secure-start gat
       await expect(gate).toHaveClass(/v-gate--institutional/);
       await expect(gate).toHaveCSS("background-color", "rgb(255, 255, 255)");
       await expect(gate.locator(".v-gate-brand")).toBeVisible();
+    } else if (route === "/mca-refinance-intake") {
+      // The MCA room wears the marketing site's light institutional language, like the
+      // equipment room: a white gate under a header bar that carries the brand.
+      await expect(gate).toHaveClass(/v-gate--institutional/);
+      await expect(gate).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      await expect(page.locator(".v-mca .vm-top")).toBeVisible();
     } else {
       await expect(gate).not.toHaveClass(/v-gate--institutional/);
     }
