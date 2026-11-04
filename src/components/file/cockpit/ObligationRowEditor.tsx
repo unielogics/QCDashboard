@@ -55,7 +55,8 @@ export function ObligationEditableRow({ o, canEdit, editor, payees, on, onToggle
         <strong>{o.lender}</strong>
         <div className="fc-chips" style={{ marginTop: 2, alignItems: "center" }}>
           {editable && rowId ? (
-            <Select aria-label={`Type of ${o.lender}`} className="fc-cell-select" value={DEBT_TYPES.some((t) => t.value === o.category) ? o.category : "other"} disabled={editor.pending} onChange={(e) => void editor.save(rowId, { category: e.target.value })}>
+            <Select aria-label={`Type of ${o.lender}`} className="fc-cell-select" value={DEBT_TYPES.some((t) => t.value === o.category) ? o.category : o.category || "other"} disabled={editor.pending} onChange={(e) => void editor.save(rowId, { category: e.target.value })}>
+              {!DEBT_TYPES.some((t) => t.value === o.category) && o.category ? <option value={o.category}>{o.category === "loan" ? "Loan (type not stated)" : o.category.replace(/_/g, " ")}</option> : null}
               {DEBT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
             </Select>
           ) : <CellChip tone="mut">{o.is_mca ? "Merchant cash advance" : o.category.replace(/_/g, " ")}</CellChip>}
