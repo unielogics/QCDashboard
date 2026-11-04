@@ -541,6 +541,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                 bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period) }))}
                 series={[{ key: "exposure", label: "Principal still out", color: SERIES.two, values: local.schedule.rows.map((r) => r.exposure_pct), emphasis: true }]}
                 format={(v) => (v == null ? "—" : `${v}%`)}
+                axisFormat={(v) => `${Math.round(v)}%`}
                 height={150}
               />
               {risk && risk.coverage_by_period.length ? (
@@ -549,6 +550,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                   bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period) }))}
                   series={[{ key: "coverage", label: "Coverage on the payment", color: SERIES.one, values: risk.coverage_by_period.map((c) => c.coverage), emphasis: true }]}
                   format={(v) => (v == null ? "—" : `${v.toFixed(2)}x`)}
+                  axisFormat={(v) => `${v.toFixed(2)}x`}
                   height={150}
                 />
               ) : null}

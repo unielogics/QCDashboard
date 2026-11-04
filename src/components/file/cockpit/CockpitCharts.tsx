@@ -80,14 +80,14 @@ function barPath(x: number, top: number, bottom: number, w: number, positive: bo
   return `M${x},${top} L${x + w},${top} L${x + w},${bottom - r} Q${x + w},${bottom} ${x + w - r},${bottom} L${x + r},${bottom} Q${x},${bottom} ${x},${bottom - r} Z`;
 }
 
-function GridLines({ ticks, y, right }: { ticks: number[]; y: (v: number) => number; right: number }) {
+function GridLines({ ticks, y, right, axisFormat = compactMoney }: { ticks: number[]; y: (v: number) => number; right: number; axisFormat?: (v: number) => string }) {
   return (
     <>
       {ticks.map((tick) => (
         <g key={tick}>
           <line className="fc-grid-line" x1={PAD.left} x2={right} y1={y(tick)} y2={y(tick)} />
           <text className="fc-axis-text" x={PAD.left - 8} y={y(tick) + 3.5} textAnchor="end">
-            {compactMoney(tick)}
+            {axisFormat(tick)}
           </text>
         </g>
       ))}
@@ -119,6 +119,7 @@ export function ColumnChart({
   series,
   height = 210,
   format = money,
+  axisFormat = compactMoney,
   ariaLabel,
   diverging = null,
   emptyLabel = "Nothing to chart yet.",
@@ -127,6 +128,8 @@ export function ColumnChart({
   series: ChartSeries[];
   height?: number;
   format?: Formatter;
+  /** Axis ticks and the end label: compact money unless the series is a percent or a ratio. */
+  axisFormat?: (v: number) => string;
   ariaLabel: string;
   /** Colour by sign instead of by series: positive in the first series' hue, negative in the second slot. */
   diverging?: { positive: string; negative: string } | null;
@@ -156,7 +159,7 @@ export function ColumnChart({
   return (
     <div className="fc-chart">
       <svg viewBox={`0 0 ${VIEW_W} ${height}`} role="img" aria-label={ariaLabel}>
-        <GridLines ticks={ticks} y={y} right={right} />
+        <GridLines ticks={ticks} y={y} right={right} axisFormat={axisFormat} />
         {bands.map((band, i) => {
           const x0 = PAD.left + bandW * i + (bandW - groupW) / 2;
           return (
@@ -177,7 +180,7 @@ export function ColumnChart({
               })}
               {i === last && latest != null ? (
                 <text className="fc-label" x={x0 + barW / 2} y={latest >= 0 ? y(latest) - 6 : y(latest) + 13} textAnchor="middle">
-                  {compactMoney(latest)}
+                  {axisFormat(latest)}
                 </text>
               ) : null}
               <text className="fc-axis-text" x={PAD.left + bandW * i + bandW / 2} y={height - 9} textAnchor="middle">
@@ -206,6 +209,7 @@ export function LineChart({
   series,
   height = 210,
   format = money,
+  axisFormat = compactMoney,
   ariaLabel,
   emptyLabel = "Nothing to chart yet.",
 }: {
@@ -213,6 +217,8 @@ export function LineChart({
   series: ChartSeries[];
   height?: number;
   format?: Formatter;
+  /** Axis ticks and the end label: compact money unless the series is a percent or a ratio. */
+  axisFormat?: (v: number) => string;
   ariaLabel: string;
   emptyLabel?: string;
 }) {
@@ -230,7 +236,7 @@ export function LineChart({
     .map((s, si) => {
       for (let i = s.values.length - 1; i >= 0; i--) {
         const v = s.values[i];
-        if (v != null) return { si, x: centre(i), y: y(v), text: compactMoney(v), emphasis: !!s.emphasis };
+        if (v != null) return { si, x: centre(i), y: y(v), text: axisFormat(v), emphasis: !!s.emphasis };
       }
       return null;
     })
@@ -242,7 +248,7 @@ export function LineChart({
   return (
     <div className="fc-chart">
       <svg viewBox={`0 0 ${VIEW_W} ${height}`} role="img" aria-label={ariaLabel}>
-        <GridLines ticks={ticks} y={y} right={right} />
+        <GridLines ticks={ticks} y={y} right={right} axisFormat={axisFormat} />
         {bands.map((band, i) => (
           <text key={band.key} className="fc-axis-text" x={centre(i)} y={height - 9} textAnchor="middle">
             {band.short}
