@@ -72,9 +72,11 @@ export type CockpitBankSummary = {
   estimates_available: boolean;
 };
 
-export type CockpitAccount = { key: string; label: string; months: string[]; accepted_months: string[]; series: CockpitMonth[]; summary: CockpitBankSummary; counted: boolean };
+/** An account a statement lists beside its own (a savings, an empty share account): named, never an account of its own. */
+export type CockpitSubAccount = { last4: string; label?: string; ending_balance?: number | null };
+export type CockpitAccount = { key: string; label: string; months: string[]; accepted_months: string[]; series: CockpitMonth[]; summary: CockpitBankSummary; counted: boolean; sub_accounts?: CockpitSubAccount[] };
 
-export type BankAccountRead = { key: string; label: string; months: string[]; accepted_months: string[]; counted: boolean; latest_month: string | null; members: string[] };
+export type BankAccountRead = { key: string; label: string; months: string[]; accepted_months: string[]; counted: boolean; latest_month: string | null; members: string[]; sub_accounts?: CockpitSubAccount[] };
 export type BankAccountsRead = { profile_id: string; accounts: BankAccountRead[]; counted: string[]; aliases: Record<string, string> };
 export type BankAccountsWrite = { counted: string[]; aliases?: Record<string, string> | null };
 

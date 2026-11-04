@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Btn, CellChip, Panel, Select, StatusLine } from "@/components/ds";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useBankAccounts, useSaveBankAccounts } from "@/hooks/useApi";
-import { monthShort } from "@/lib/financialCockpit";
+import { money, monthShort } from "@/lib/financialCockpit";
 
 export function BankAccountsCard({ profileId, canEdit, onSaved, compact = false }: { profileId: string; canEdit: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean }) {
   const accounts = useBankAccounts(profileId);
@@ -75,7 +75,7 @@ export function BankAccountsCard({ profileId, canEdit, onSaved, compact = false 
   return (
     <Panel
       title="Checking accounts the AI found"
-      sub={everything ? "Every account counts toward the statement months until you choose. Untick a savings or secondary account so its statements stop filling the requirement; fold an account the reader split in two back into one with \"Same account as\"." : "Only the ticked accounts count toward the statement months and open the cockpit by default."}
+      sub={everything ? "One statement file is one account, named by the account the statement is issued for; the other accounts a consolidated statement lists are named below it, never counted as accounts. Every account counts toward the statement months until you choose. Untick a savings or secondary account so its statements stop filling the requirement; use \"Same account as\" only when the reader printed one account's digits two ways." : "Only the ticked accounts count toward the statement months and open the cockpit by default."}
       actions={canEdit ? <Btn size="sm" variant="pri" disabled={!dirty || save.isPending} onClick={() => void submit()}>{save.isPending ? "Saving…" : "Save accounts"}</Btn> : null}
     >
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
@@ -95,6 +95,11 @@ export function BankAccountsCard({ profileId, canEdit, onSaved, compact = false 
                 {account.months.length} month{account.months.length === 1 ? "" : "s"} on file{account.months.length ? ` (${monthShort(account.months[0])} to ${monthShort(account.months[account.months.length - 1])})` : ""} · {account.accepted_months.length} accepted
                 {folded.length ? ` · includes ${folded.map(labelFor).join(", ")}` : ""}
               </span>
+              {account.sub_accounts?.length ? (
+                <span className="sub">
+                  Also listed on these statements, not accounts of their own: {account.sub_accounts.map((s) => `${s.label ? `${s.label} ` : ""}••${s.last4}${s.ending_balance != null ? ` (${money(s.ending_balance)})` : ""}`).join(", ")}
+                </span>
+              ) : null}
               {canEdit && rows.length > 1 ? (
                 <label className="sub" style={{ display: "grid", gap: 2 }}>
                   Same account as
