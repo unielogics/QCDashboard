@@ -19,7 +19,7 @@ import { STRUCTURE_LABELS, buildSchedule, defaultStructure, describeSchedule, ri
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
-type Draft = {
+export type Draft = {
   loan_type: string;
   amount: string;
   apr_pct: string;
@@ -69,7 +69,7 @@ const PERIODS: Record<Exclude<ClientTermsRepaymentFrequency, "custom">, number> 
   monthly: 12,
 };
 
-function emptyDraft(): Draft {
+export function emptyDraft(): Draft {
   return {
     loan_type: "",
     amount: "",
@@ -93,7 +93,7 @@ function emptyDraft(): Draft {
   };
 }
 
-function draftFromTerms(terms: ApplicationClientTerms): Draft {
+export function draftFromTerms(terms: ApplicationClientTerms): Draft {
   return {
     loan_type: terms.loan_type ?? terms.loan_type_options[0]?.value ?? "",
     amount: terms.amount == null ? "" : String(terms.amount),
@@ -154,7 +154,7 @@ function paymentPreview(draft: Draft) {
   return { payment, count: schedule.periods, periods, annual: schedule.coverage_annual_debt_service, total: schedule.total_paid, schedule };
 }
 
-function payloadFromDraft(draft: Draft, expectedVersion: number): ApplicationClientTermsWrite {
+export function payloadFromDraft(draft: Draft, expectedVersion: number): ApplicationClientTermsWrite {
   const amount = finite(draft.amount);
   const apr = finite(draft.apr_pct);
   const term = finite(draft.term_months);

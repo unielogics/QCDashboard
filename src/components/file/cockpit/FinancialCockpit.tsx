@@ -74,6 +74,8 @@ type Props = {
   onOpenPackage: () => void;
   /** The fees were saved on the coverage card; the file page re-reads the underwriting state. */
   onEconomicsSaved?: () => void;
+  /** Which record the loan in the plan becomes. */
+  termsKind?: "production" | "client";
 };
 
 const toneForSign = (value: number | null | undefined): ChipTone => (value == null ? "mut" : value < 0 ? "bad" : "ok");
@@ -745,7 +747,7 @@ export function FinancialCockpit(props: Props) {
       </div>
 
       <div className="fc-grid">
-        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} canEdit={props.canRecordTerms || props.canPublish} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} />
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} canEdit={props.canRecordTerms || props.canPublish} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} />
       </div>
 
       <div className="fc-grid fc-grid-charts">

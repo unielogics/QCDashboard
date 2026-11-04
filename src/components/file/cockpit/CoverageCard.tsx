@@ -41,6 +41,7 @@ import {
   type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
+import { ClientTermsStrip } from "./ClientTermsStrip";
 import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
@@ -98,7 +99,7 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; canEdit: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; /** The fees were saved from here: the Underwriting tab's offer acceptance and the fee allocation should re-read. */ onEconomicsSaved?: () => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client" }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; canEdit: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; /** The fees were saved from here: the Underwriting tab's offer acceptance and the fee allocation should re-read. */ onEconomicsSaved?: () => void; /** Which record the loan in the plan becomes: the dealer's production term sheet, or the client terms. */ termsKind?: "production" | "client" }) {
   const save = useSaveFinancialPlan(profileId);
   const [plan, setPlan] = useState<FinancialPlanWrite>(() => fromRecord(cockpit));
   const [paymentText, setPaymentText] = useState<string>(() => (cockpit.plan.record.new_payment_monthly == null ? "" : String(cockpit.plan.record.new_payment_monthly)));
@@ -459,13 +460,22 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
               {mirrorNow === "mirrored" ? <CellChip tone="ok">Mirrors {recorded.label}</CellChip> : mirrorNow === "recorded_not_in_plan" ? <CellChip tone="mut">{recorded.label} is recorded, not in the plan</CellChip> : mirrorNow ? <CellChip tone="warn">Differs from {recorded.label}: {mirrorNow.slice("differs:".length)}</CellChip> : null}
               {canEdit && mirrorNow !== "mirrored" ? <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Use the recorded terms ({money(recorded.payment_monthly)} / mo)</Btn> : null}
               {canEdit && termsAdopted ? <Btn size="sm" onClick={() => adoptTerms(false)}>Take them out of the plan</Btn> : null}
-              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={onRecordTerms}>Record these terms on the Underwriting tab</Btn> : null}
+              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={onRecordTerms}>Record the term sheet from this loan</Btn> : null}
             </div>
           ) : local.newPayment && canRecordTerms ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               <CellChip tone="mut">Not recorded on the Underwriting tab yet</CellChip>
               <Btn size="sm" onClick={onRecordTerms}>Record these terms</Btn>
             </div>
+          ) : null}
+          {termsKind === "client" ? (
+            <ClientTermsStrip
+              profileId={profileId}
+              loan={{ amount: plan.new_loan_amount ?? null, ratePct: plan.new_loan_rate_pct ?? null, termMonths: plan.new_loan_term_months ?? null, structure: structureNow as LoanStructure, interestOnlyMonths: plan.new_loan_interest_only_months ?? null }}
+              linkSummary={link?.summary ?? null}
+              linkState={link?.state ?? null}
+              canEdit={canEdit}
+            />
           ) : null}
           <Input aria-label="Or type the new monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Or type the payment (term sheet: ${money(cockpit.dscr.proposed.monthly_payment)})` : "Or type the payment"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
           <Lbl>Ways to raise coverage</Lbl>

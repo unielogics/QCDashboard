@@ -1852,62 +1852,11 @@ export function LeadDetailPanel({
                     onFocusHandled={() => setCockpitFocus(null)}
                     onRecordTerms={openTermSheet}
                     onEconomicsSaved={() => { void loadUnderwritingState(); }}
+                    termsKind={isDealerFile ? "production" : "client"}
                     onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
                     onOpenPackage={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
                   />
                 ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
-              ) : null}
-              {prototypeView === "financials" && canUnderwrite && underwriting?.profile_id ? (
-                <Panel
-                  title={isDealerFile ? "Loan terms" : "Client terms"}
-                  sub={isDealerFile ? "The term sheet on file. Record or edit it here; the report is its PDF, and the client accepts on the Underwriting tab." : "Structure the terms here; the report is the client's PDF, and the client accepts on the Underwriting tab."}
-                >
-                  {isDealerFile ? (
-                          <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
-                            <div>
-                              <span className="lbl">Loan terms</span>
-                              <b>
-                                {termSheet?.current
-                                  ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}`
-                                  : "No loan terms recorded"}
-                              </b>
-                              <span className="sub">
-                                {termSheet?.current
-                                  ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · recorded ${formatDateTime(termSheet.current.entered_at)}.`
-                                  : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
-                              </span>
-                            </div>
-                            <div className="underwriting-term-sheet-actions">
-                              {termSheet?.current && underwriting?.profile_id ? (
-                                <DealerTermSheetDocumentActions
-                                  profileId={underwriting.profile_id}
-                                  terms={termSheet.current}
-                                  contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
-                                  onEdit={openTermSheet}
-                                  selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
-                                  onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
-                                  onCompose={() => openOfferComposer(productionTermSelection)}
-                                />
-                              ) : (
-                                <Btn variant="pri" size="sm" onClick={openTermSheet}>
-                                  <Icon name="pencil" size={14} />
-                                  Record terms
-                                </Btn>
-                              )}
-                            </div>
-                          </div>
-                  ) : (
-                    <ApplicationClientTermsPanel
-                      key={underwriting.profile_id}
-                      profileId={underwriting.profile_id}
-                      onSaved={refreshUnderwritingFromTerms}
-                      selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
-                      onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
-                      onOfferReady={handleApplicationTermReady}
-                      onCompose={() => openOfferComposer(applicationTermSelection)}
-                    />
-                  )}
-                </Panel>
               ) : null}
               {prototypeView === "financials" && canUnderwrite && profileId ? (
                 <Panel

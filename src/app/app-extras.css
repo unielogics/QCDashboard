@@ -6839,6 +6839,9 @@ a.pick { color: inherit; text-decoration: none; }
 .fc-economics-grid strong { font-variant-numeric: tabular-nums; font-size: 14px; }
 .fc-economics-bar { height: 10px; border-radius: 999px; background: var(--accent); overflow: hidden; }
 .fc-economics-bar .fees { display: block; height: 100%; background: var(--warn, #b7791f); }
+.fc-client-terms { display: grid; gap: 8px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--accent) 4%, transparent); }
+.fc-client-terms-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.fc-client-terms-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .fc-economics-inputs { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 8px 14px; align-items: end; }
 .fc-economics-inputs .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 /* A button that reads as a link, for "Edit in Financials" beside a reflected field. */
