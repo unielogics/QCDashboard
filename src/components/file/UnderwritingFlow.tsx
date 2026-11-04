@@ -199,7 +199,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
           <label className="grid g2">
             <span className="sub">Accepted amount</span>
             <Input aria-label="Accepted amount" type="number" inputMode="decimal" min={0} step="0.01" placeholder={terms?.amount != null ? String(terms.amount) : "Client-accepted amount"} value={draft.accepted_amount} disabled={!canUnderwrite} onChange={(e) => onDraftChange({ accepted_amount: e.target.value })} />
-            {terms?.amount != null && (amountDiffers || draft.accepted_amount.trim() === "") ? <button type="button" className="linklike" onClick={() => onDraftChange({ accepted_amount: String(terms.amount) })}>Use the terms&apos; amount, {money(terms.amount)}</button> : amountDiffers ? null : <span className="sub">Matches the terms on file.</span>}
+            {terms?.amount != null && (amountDiffers || draft.accepted_amount.trim() === "") ? <button type="button" className="linklike" onClick={() => onDraftChange({ accepted_amount: String(terms.amount) })}>Use the terms&apos; amount, {money(terms.amount)}</button> : terms?.amount != null && !amountDiffers ? <span className="sub">Matches the terms on file.</span> : terms ? null : <span className="sub">The terms on file fill this in once they exist.</span>}
           </label>
           <label className="grid g2">
             <span className="sub">Estimated closing</span>
