@@ -596,6 +596,10 @@ export type ApplicationBankState = {
   evidence_summary?: ApplicationEvidenceSummary;
   assets_enabled: boolean;
   statements_enabled: boolean;
+  /** The file's own setting for statement PDFs, before the deployment allowlist:
+   *  true with `statements_enabled` false means the Plaid account is not yet
+   *  enabled for the product. */
+  statements_preferred?: boolean;
   selected_products: string[];
   available_products: string[];
   consent_product_scope: string[];

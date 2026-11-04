@@ -608,7 +608,9 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   const manualUnassignedCount = statementFiles.filter((file) => !file.ai_decision && file.analysis_status === "completed").length;
   const hasManualEvidence = manualFileCount > 0;
   const needsClientBankRequest = !state?.business_banking_complete;
-  const bankDeliveries = (deliveries.data ?? []).filter((receipt) => receipt.action_kind === "business_banking_reminder");
+  // Both kinds of bank request count as the latest ask: the neutral one this
+  // panel sends and the Plaid-named one the bar above it sends.
+  const bankDeliveries = (deliveries.data ?? []).filter((receipt) => receipt.action_kind === "business_banking_reminder" || receipt.action_kind === "bank_connect_reminder");
   const latestActivity = bankDeliveries[0];
   const latestEmail = bankDeliveries.find((receipt) => receipt.channel === "email");
   const laterUnsentActivity = latestActivity?.channel === "none" && latestEmail && new Date(latestActivity.created_at).getTime() > new Date(latestEmail.created_at).getTime();
@@ -643,10 +645,16 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
         ], [
           "statements",
           "Statement PDFs",
-          banks?.statements_enabled ?? false,
+          // The file's own setting; the deployment decides whether Plaid is asked.
+          banks?.statements_preferred ?? banks?.statements_enabled ?? false,
         ]] as const).map(([product, label, checked]) => {
           const available = availableProducts.includes(product);
           const lastSelected = checked && selectedProducts.length === 1;
+          // On for the file, not yet on the Plaid account: say so instead of
+          // showing a switch that reads "off".
+          if (product === "statements" && !available && banks?.statements_preferred) {
+            return <CellChip key={product} tone="warn" title="This file wants statement PDFs; the Plaid account is not enabled for the Statements product yet.">Statement PDFs on · awaiting Plaid</CellChip>;
+          }
           return isSuperAdmin ? <button
             key={product}
             type="button"
@@ -662,7 +670,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     </div>
     {(banks?.connections_requiring_client_authorization ?? 0) > 0 ? <Callout tone="warn" icon={<Icon name="alert" size={16} />}><b>Client authorization required.</b> {banks?.connections_requiring_client_authorization} connected bank{banks?.connections_requiring_client_authorization === 1 ? "" : "s"} must approve the selected products from the secure room. No reminder is sent automatically.</Callout> : null}
     {needsClientBankRequest ? <div className="bank-request-toolbar">
-      <div><b>{manualMonths.length ? `Request ${Math.max(0, requiredMonths - manualMonths.length)} missing statement month${requiredMonths - manualMonths.length === 1 ? "" : "s"}` : "Client bank request"}</b><Sub>{hasManualEvidence ? "Uploaded statements already count. Request only the missing periods; Plaid remains optional." : "Email the secure room so the client can upload statements or authorize Plaid. The PIN is shared separately."}</Sub></div>
+      <div><b>{manualMonths.length ? `Request ${Math.max(0, requiredMonths - manualMonths.length)} missing statement month${requiredMonths - manualMonths.length === 1 ? "" : "s"}` : "Client bank request"}</b><Sub>{hasManualEvidence ? "Uploaded statements already count. Request only the missing periods; a Plaid connection also completes banking." : "Email the secure room: it opens on banking, where the client connects their bank through Plaid first or uploads statements. The PIN is shared separately."}</Sub></div>
       <div className="bank-request-actions"><Btn variant="pri" disabled={invite.isPending} onClick={() => invite.mutate("email")}><Icon name="send" size={14} />{latestEmail ? "Resend bank request" : "Send bank request"}</Btn><Btn disabled={invite.isPending} onClick={() => secureLink ? void navigator.clipboard.writeText(secureLink) : invite.mutate("none")}><Icon name={secureLink ? "copy" : "link"} size={14} />{secureLink ? "Copy room link" : "Create room link"}</Btn></div>
     </div> : hasManualEvidence ? <Callout tone="ok" icon={<Icon name="check" size={16} />}>Uploaded statements provide six accepted months. Business banking is complete and the client does not need to connect Plaid.</Callout> : null}
     {deliveryResult ? <div className="bank-delivery-result"><Callout tone={deliveryResult.overall_status === "success" ? "ok" : deliveryResult.overall_status === "created" ? "mut" : deliveryResult.overall_status === "partial" ? "warn" : "bad"} icon={<Icon name={deliveryResult.overall_status === "success" ? "check" : deliveryResult.overall_status === "created" ? "link" : "alert"} size={16} />}>{deliveryResult.overall_status === "created" ? "Room link created. No email or SMS was sent." : deliveryResult.deliveries.map((row) => row.detail).filter(Boolean).join(" ") || "The bank request was processed."}</Callout></div> : null}

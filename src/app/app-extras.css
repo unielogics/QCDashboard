@@ -292,11 +292,16 @@
 .application-room-todo-list article { display: grid; grid-template-columns: 36px minmax(0, 1fr) auto auto; gap: 12px; align-items: center; padding: 14px; border: 1px solid var(--room-line); border-left: 3px solid var(--room-warn); border-radius: 6px; background: var(--room-surface); }
 .application-room-todo-list article.complete { border-left-color: var(--room-good); }
 .application-room-todo-list article.highlighted { outline: 2px solid var(--room-accent); outline-offset: 2px; }
+/* The bank-statement row leads with the connection: Plaid first, the upload
+   beside it as the fallback. Both sit in the row's last grid cell. */
+.application-room-task-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.application-room-todo-list article button.application-room-task-primary { display: inline-flex; align-items: center; gap: 6px; background: var(--room-accent); color: #fff; border-color: var(--room-accent); }
+.application-room-todo-list article button.application-room-task-primary:hover { filter: brightness(1.06); }
 .application-room-task-icon { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 999px; color: var(--room-warn); background: var(--room-warn-soft); }
 .application-room-todo-list .complete .application-room-task-icon { color: var(--room-good); background: var(--room-good-soft); }
 .application-room-todo-list p { margin: 3px 0 0; color: var(--room-muted); }
 .application-room-task-state { color: var(--room-muted); font-size: 12px; font-weight: 750; }
-.application-room-task-state + button { min-height: 34px; padding: 0 11px; border: 1px solid var(--room-line); background: var(--room-surface); color: var(--room-text); }
+.application-room-task-state + button, .application-room-task-actions button { min-height: 34px; padding: 0 11px; border: 1px solid var(--room-line); background: var(--room-surface); color: var(--room-text); }
 .application-room-footer { display: flex; justify-content: space-between; gap: 14px; padding: 18px 2px; border-top: 1px solid var(--room-line); color: var(--room-muted); font-size: 12px; }
 .application-room-footer span { display: inline-flex; align-items: center; gap: 6px; }
 .application-room .panel { border: 1px solid var(--room-line); border-radius: 8px; background: var(--room-surface); color: var(--room-text); box-shadow: none; }
@@ -318,6 +323,13 @@
 .request-delivery-results b, .request-delivery-results span { overflow-wrap: anywhere; }
 .request-delivery-icon { display: grid; place-items: center; width: 30px; height: 30px; flex: 0 0 30px; border-radius: 999px; background: var(--surface-2); }
 .bank-request-toolbar { display: grid; grid-template-columns: minmax(240px, 1fr) auto; align-items: center; gap: 16px; min-width: 0; padding: 13px 16px; border-bottom: 1px solid var(--line); }
+/* The first thing on the Banking sub-tab: ask for the Plaid connection by name. */
+.plaid-request-bar { display: grid; gap: 10px; padding: 14px 16px; border: 1px solid var(--accent-200); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--accent-100); margin-bottom: 14px; }
+.plaid-request-bar-main { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.plaid-request-bar-main > .grow { min-width: 240px; display: grid; gap: 4px; }
+.plaid-request-bar-icon { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 999px; color: var(--accent-700); background: var(--surface); flex: none; }
+.plaid-request-bar-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-left: auto; }
+@media (max-width: 720px) { .plaid-request-bar-actions { margin-left: 0; width: 100%; } }
 .bank-request-toolbar > div:first-child { min-width: 0; display: grid; gap: 3px; }
 .plaid-product-policy { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; padding: 13px 16px; border-bottom: 1px solid var(--line); }
 .plaid-product-policy > div:first-child { min-width: 210px; display: grid; gap: 3px; }
@@ -351,7 +363,7 @@
   .application-room-queue > div { grid-template-columns: 34px minmax(0, 1fr) auto; }
   .application-room-queue select { grid-column: 2 / -1; }
   .application-room-todo-list article { grid-template-columns: 36px minmax(0, 1fr) auto; }
-  .application-room-task-state + button { grid-column: 2 / -1; justify-self: start; }
+  .application-room-task-state + button, .application-room-task-actions { grid-column: 2 / -1; justify-self: start; }
   .application-room-upload-target { width: 100%; grid-template-columns: 32px minmax(0, 1fr); }
   .application-room-upload-target button { grid-column: 2; justify-self: start; }
 }

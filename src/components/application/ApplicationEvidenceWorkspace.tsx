@@ -6,6 +6,7 @@ import { ApplicationProgramReadiness } from "@/components/application/Applicatio
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
 import { BankAccountsCard } from "@/components/application/BankAccountsCard";
+import { PlaidRequestBar } from "@/components/application/PlaidRequestBar";
 import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
@@ -552,6 +553,8 @@ export function ApplicationEvidenceWorkspace({
       intakeVariant={intakeVariant}
     /> : null}
 
+    {/* Plaid first: the request sits above everything else on the Banking sub-tab. */}
+    {tab === "banking" ? <PlaidRequestBar profileId={profileId} state={data.verification} banks={data.banking} onSent={refresh} /> : null}
     {tab === "banking" ? <BankAccountsCard profileId={profileId} canEdit={canCreatePrograms || true} onSaved={refresh} /> : null}
     {tab === "banking" ? <BankingPanel
       profileId={profileId}

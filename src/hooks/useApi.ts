@@ -452,7 +452,7 @@ export function useSendRoomReminder() {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ profileId, purpose = "room" }: { profileId: string; purpose?: "documents" | "business_banking" | "room" }) =>
+    mutationFn: ({ profileId, purpose = "room" }: { profileId: string; purpose?: "documents" | "business_banking" | "bank_connect" | "room" }) =>
       apiCall<{ overall_status: string; room_url: string }>(`/application-profiles/${profileId}/room/reminders`, {
         method: "POST",
         body: JSON.stringify({ purpose, email_room_link: true, sms_reminder: false }),
