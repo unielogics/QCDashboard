@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Btn, CellChip, Input, Lbl, StatusLine, Textarea, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LISTING_TONE, errorMessage } from "@/components/marketplace/shared";
+import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
 import { useAuthedApi } from "@/hooks/useApi";
 import {
   useCpCreateListing,
@@ -444,6 +445,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
             <Lbl>Summary members read</Lbl>
             <Textarea rows={2} aria-label="Listing summary" value={head.summary} disabled={!editable} placeholder="Operating business and what the statements show; the prefill writes a first line." onChange={(e) => { setDirty(true); setHead({ ...head, summary: e.target.value }); }} />
           </div>
+          {listingId ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || (!!listingId && !dirty)}>
               {busy ? "Saving…" : listingId ? "Save terms to the listing" : "Start the listing draft with these terms"}

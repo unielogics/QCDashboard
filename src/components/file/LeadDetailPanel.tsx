@@ -17,6 +17,7 @@ import { api } from "@/lib/api";
 import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
+import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
 import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
@@ -1179,7 +1180,7 @@ export function LeadDetailPanel({
     initializedLeadIdRef.current = detail.intake.id;
     const rows = detail.artifacts ?? [];
     if (initialSubmissionStep) setSubmissionStep(initialSubmissionStep);
-    else if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(5);
+    else if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(4);
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
     else if (detail.files.some(isSourceEvidenceFile)) setSubmissionStep(2);
     else setSubmissionStep(1);
@@ -1611,7 +1612,6 @@ export function LeadDetailPanel({
     { id: 2, label: "Evidence & banking", sub: "Files, forms, AI decisions and bank coverage", status: evidenceAndBankingComplete ? "complete" : hasEvidence || hasBankingActivity ? "partial" : "not-started" },
     { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
     { id: 4, label: mcaAutoReviewBlocked ? mcaReview?.mode === "manual_review" ? "Manual desk review" : "Confirm MCA details" : "AI review", sub: mcaAutoReviewBlocked ? "Accepted application; automatic underwriting disabled" : "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
-    { id: 5, label: "Package readiness", sub: "Summary, package and delivery", status: sentCount > 0 ? "complete" : packageInSync ? "partial" : packet || summary ? "partial" : "not-started" },
   ];
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -1796,13 +1796,39 @@ export function LeadDetailPanel({
                   </section>
                 </Panel>
               ) : null}
-              {prototypeView === "workspace" && submissionStep === 5 ? (
+              {prototypeView === "financials" && canUnderwrite ? (
+                profileId ? (
+                  <FinancialCockpit
+                    profileId={profileId}
+                    businessName={detail.intake.business_name || detail.intake.full_name}
+                    canPublish={currentUser?.role === Role.SUPER_ADMIN}
+                    canRecordTerms={isDealerFile && canUnderwrite}
+                    canUnderwrite={canUnderwrite}
+                    programReadiness={programReadiness}
+                    termSheet={termSheet}
+                    packageState={{
+                      generated: Boolean(summary && packet),
+                      inSync: packageInSync,
+                      summaryVersion: summary ? artifactVersion(summary, summaryHistory.length) : null,
+                      packetVersion: packet ? artifactVersion(packet, packetHistory.length) : null,
+                    }}
+                    focus={cockpitFocus}
+                    onFocusHandled={() => setCockpitFocus(null)}
+                    onRecordTerms={openTermSheet}
+                    onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
+                    onOpenPackage={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
+                  />
+                ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
+              ) : null}
+              {prototypeView === "financials" && canUnderwrite && profileId ? (
                 <Panel
-                  title="Package readiness"
-                  sub="One refresh creates both branded PDFs, saves them to the room, and supersedes the prior package."
+                  id="package-readiness"
+                  title="Build the package"
+                  sub="Every client: one refresh creates the executive credit brief and the lender package from the file (figures, program readiness, proposed terms and the desk's plan), saves them to the room, and supersedes the prior pair. Download them for your investors; push them to the marketplace from here."
                   actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => void refreshFullPackage(true)}><Icon name="refresh" size={14} />{busy === "package-all" ? "Building both PDFs..." : summary && packet ? "Refresh package + preview" : "Generate package + preview"}</Btn>}
                 >
                   <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Overview'], ['package', 'PDF versions'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary && packet ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="docCheck" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
+                  <MarketplacePublishStrip profileId={profileId} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onStartListing={() => { setCockpitFocus("marketplace"); }} />
                   {packageTab === "summary" ? summary && packet ? <div className="package-readiness-overview">
                     {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild both PDFs from the current Package Readiness snapshot.</Callout> : null}
                     <div className="package-readiness-status">
@@ -1825,31 +1851,6 @@ export function LeadDetailPanel({
                   </div> : null}
                   {packageTab === "delivery" ? <div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild both PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
                 </Panel>
-              ) : null}
-
-              {prototypeView === "financials" && canUnderwrite ? (
-                profileId ? (
-                  <FinancialCockpit
-                    profileId={profileId}
-                    businessName={detail.intake.business_name || detail.intake.full_name}
-                    canPublish={currentUser?.role === Role.SUPER_ADMIN}
-                    canRecordTerms={isDealerFile && canUnderwrite}
-                    canUnderwrite={canUnderwrite}
-                    programReadiness={programReadiness}
-                    termSheet={termSheet}
-                    packageState={{
-                      generated: Boolean(summary && packet),
-                      inSync: packageInSync,
-                      summaryVersion: summary ? artifactVersion(summary, summaryHistory.length) : null,
-                      packetVersion: packet ? artifactVersion(packet, packetHistory.length) : null,
-                    }}
-                    focus={cockpitFocus}
-                    onFocusHandled={() => setCockpitFocus(null)}
-                    onRecordTerms={openTermSheet}
-                    onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
-                    onOpenPackage={() => { setPrototypeView("workspace"); setSubmissionStep(5); }}
-                  />
-                ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
               ) : null}
               {prototypeView === "underwriting" && canUnderwrite ? (
                 <div className="grid g12">

@@ -25,6 +25,7 @@ import {
 } from "@/hooks/useCapitalPartners";
 import { DOC_KINDS, FREQ_LABEL, LIEN_LABEL, LISTING_TONE, SERVICER_TONE, SUB_TONE, Status, SuperAdminOnly, VERTICAL_LABEL, day, errorMessage, label, money, pct, when } from "@/components/marketplace/shared";
 import { SourceSnapshotCard } from "@/components/marketplace/SourceSnapshotCard";
+import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
 
 export default function ListingEditorPage() {
   return (
@@ -166,17 +167,6 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
   const dirtyRef = useRef(false);
   useEffect(() => { if (!dirtyRef.current) setD(toDraft(listing)); }, [listing]);
   const patch = useCpPatchListing();
-  const reread = useCpListingAction();
-  const [rereadNote, setRereadNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
-  const refreshFromFile = async () => {
-    setRereadNote(null);
-    try {
-      await reread.mutateAsync({ listingId: listing.id, path: `/capital/admin/listings/${listing.id}/refresh-snapshot` });
-      setRereadNote({ tone: "ok", text: "Re-read from the file: readiness, the cockpit's figures and the desk's plan are current. Members see them at once on a published listing." });
-    } catch (e) {
-      setRereadNote({ tone: "bad", text: errorMessage(e) });
-    }
-  };
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => { dirtyRef.current = true; setD((p) => ({ ...p, [k]: v })); };
   const readOnly = listing.status === "repaid" || listing.status === "withdrawn";
   const num = (v: string) => (v.trim() === "" ? null : v.trim());
@@ -259,13 +249,7 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
         <F k="title_status" label="Title" hint="Lien search clear…" />
         <F k="servicer_label" label="Servicer, as shown" />
       </Panel>
-      {listing.profile_id ? (
-        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <Btn size="sm" onClick={() => void refreshFromFile()} disabled={reread.isPending}>{reread.isPending ? "Re-reading the file…" : "Refresh from the file"}</Btn>
-          <span className="sub">Pulls the file's current readiness, figures and the desk's plan (original, modification, impact) into this listing.</span>
-        </div>
-      ) : null}
-      {rereadNote ? <StatusLine tone={rereadNote.tone}>{rereadNote.text}</StatusLine> : null}
+      {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish /> : null}
       <SourceSnapshotCard snapshot={listing.source_snapshot} />
       {!readOnly ? <div className="row"><Btn variant="pri" onClick={() => void save()} disabled={patch.isPending}>{patch.isPending ? "Saving…" : "Save"}</Btn><span className="sub">Saving a published listing changes what members see at once.</span></div> : null}
     </div>

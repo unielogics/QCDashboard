@@ -66,8 +66,14 @@ export interface CpOfferSuggestions {
   /** The loan the desk's plan carries: amount, rate, term, interest-only and its payment. */
   plan_loan?: { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; payment_monthly: number | null; source: string | null } | null;
 }
+/** What the listing carries against the file now: published, up to date, and which sections moved since the last push. */
+export interface CpSyncState {
+  published: boolean; published_at: string | null; published_by?: string | null; up_to_date: boolean;
+  changed: { key: string; label: string }[]; listing_status?: string;
+  package?: { generation_id?: string | null; at?: string | null; documents?: { kind: string; document_id: string; version: number }[] } | null;
+}
 /** What the file page asks before offering "Publish to marketplace". */
-export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean }
+export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean; sync?: CpSyncState | null }
 export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string }
 export interface CpListingCard {
   id: string; ref: string; name: string; vertical: CpVertical; vertical_label: string; program_label: string; city: string | null; state: string | null;
@@ -94,7 +100,7 @@ export interface CpListingEvent { id: string; kind: string; actor_user_id: strin
 export interface CpListing extends CpListingCard {
   summary: string | null; guarantee_text: string | null; borrower_track_record: string | null; exit_plan: string | null; valuation_amount: string | null;
   valuation_source: string | null; title_status: string | null; servicer_label: string | null; documents: CpDocument[]; can_subscribe: boolean;
-  source_kind: string; loan_id: string | null; profile_id: string | null; first_sale_at: string | null; published_by_id: string | null; publish_reason: string | null;
+  source_kind: string; loan_id: string | null; profile_id: string | null; first_sale_at: string | null; published_by_id: string | null; publish_reason: string | null; sync?: CpSyncState | null;
   withdrawn_at: string | null; withdrawn_reason: string | null; source_snapshot: Record<string, unknown>; created_by_id: string | null; created_at: string;
   updated_at: string; investor_count: number; subscriptions: CpSubscription[]; participations: CpParticipation[]; events: CpListingEvent[]; publish_blockers: string[];
 }
