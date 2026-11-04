@@ -12,7 +12,7 @@ export const STRUCTURE_LABELS: Record<LoanStructure, string> = { amortizing: "Am
 export const AMORTIZING_FROM_MONTHS = 36;
 const MAX_PERIODS = 600;
 
-export type ScheduleRow = { period: number; month: number; phase: "interest_only" | "amortizing" | "simple_interest"; payment: number; interest: number; principal: number; balance: number; balloon?: number; cumulative_principal: number; cumulative_interest: number; exposure_pct: number; recovered_pct: number };
+export type ScheduleRow = { period: number; month: number; phase: "interest_only" | "amortizing" | "simple_interest"; payment: number; interest: number; principal: number; balance: number; balloon?: number; cumulative_principal: number; cumulative_interest: number; cumulative_paid: number; exposure_pct: number; recovered_pct: number; /** Counting every dollar received, interest included: what is still out until the payments return the investment. */ cash_at_risk_pct: number };
 export type LoanScheduleSummary = {
   structure: LoanStructure; structure_label: string; amount: number; rate_pct: number; term_months: number | null; interest_only_months: number;
   periods: number; periods_per_year: number; payment_io: number | null; payment_after: number | null; payment_io_monthly: number | null; payment_after_monthly: number | null;
@@ -23,11 +23,13 @@ export type LoanScheduleSummary = {
   recovery_milestones: Record<"25" | "50" | "75" | "100", number | null>;
   /** Months the balance stays at 100%: the interest-only months, or the whole term when principal is due at maturity. */
   full_exposure_months: number;
+  /** The month by which the payments received, interest included, add up to the investment. */
+  breakeven_month: number | null;
   rows: ScheduleRow[];
 };
 export type CoverageRow = { period: number; month: number; phase: ScheduleRow["phase"]; payment_monthly: number; coverage: number | null };
 export type RiskProfile = {
-  weighted_average_life_months: number; recovery_milestones: LoanScheduleSummary["recovery_milestones"]; full_exposure_months: number; balloon: number; balloon_pct: number;
+  weighted_average_life_months: number; recovery_milestones: LoanScheduleSummary["recovery_milestones"]; full_exposure_months: number; breakeven_month: number | null; balloon: number; balloon_pct: number;
   income_monthly: number | null; existing_service_monthly: number; coverage_by_period: CoverageRow[];
   coverage_during_interest_only: number | null; coverage_after_interest_only: number | null; lowest_coverage: number | null; lowest_coverage_month: number | null; words: string;
 };
@@ -89,19 +91,22 @@ export function buildSchedule(amount: number | null | undefined, ratePct: number
       interest = r2(interestFlat); principalPaid = last ? balance : Math.min(balance, r2(principal / remaining)); payment = r2(principalPaid + interest); phase = "simple_interest";
     }
     balance = r2(Math.max(0, balance - principalPaid));
-    rows.push({ period: index, month: Math.round((index * 12 / ppy) * 100) / 100, phase, payment, interest, principal: r2(principalPaid), balance, cumulative_principal: 0, cumulative_interest: 0, exposure_pct: 0, recovered_pct: 0 });
+    rows.push({ period: index, month: Math.round((index * 12 / ppy) * 100) / 100, phase, payment, interest, principal: r2(principalPaid), balance, cumulative_principal: 0, cumulative_interest: 0, cumulative_paid: 0, exposure_pct: 0, recovered_pct: 0, cash_at_risk_pct: 0 });
   }
   const balloon = balance > 0.005 ? r2(balance) : 0;
   if (balloon && rows.length) rows[rows.length - 1].balloon = balloon;
   // Principal at risk, period by period: the balance still out as a share of the loan, and how much is back.
-  let cumPrincipal = 0; let cumInterest = 0;
+  let cumPrincipal = 0; let cumInterest = 0; let cumPaid = 0; let breakeven: number | null = null;
   for (const r of rows) {
-    cumPrincipal = r2(cumPrincipal + r.principal); cumInterest = r2(cumInterest + r.interest);
-    r.cumulative_principal = cumPrincipal; r.cumulative_interest = cumInterest;
+    cumPrincipal = r2(cumPrincipal + r.principal); cumInterest = r2(cumInterest + r.interest); cumPaid = r2(cumPaid + r.payment);
+    r.cumulative_principal = cumPrincipal; r.cumulative_interest = cumInterest; r.cumulative_paid = cumPaid;
     r.exposure_pct = Math.round((r.balance / principal) * 1000) / 10;
     r.recovered_pct = Math.round((cumPrincipal / principal) * 1000) / 10;
+    r.cash_at_risk_pct = Math.round((Math.max(0, principal - cumPaid) / principal) * 1000) / 10;
+    if (breakeven == null && cumPaid >= principal - 0.005) breakeven = Math.ceil(r.month - 1e-9);
   }
   const termMonth = rows.length ? rows[rows.length - 1].month : 0;
+  if (breakeven == null && balloon && rows.length && cumPaid + balloon >= principal - 0.005) breakeven = Math.ceil(termMonth - 1e-9);
   const weightedLife = (rows.reduce((s, r) => s + r.principal * r.month, 0) + balloon * termMonth) / principal;
   const milestones = { "25": null, "50": null, "75": null, "100": null } as LoanScheduleSummary["recovery_milestones"];
   for (const threshold of [25, 50, 75, 100] as const) {
@@ -122,7 +127,7 @@ export function buildSchedule(amount: number | null | undefined, ratePct: number
     coverage_annual_debt_service: r2(Math.max(paymentAfter ?? 0, paymentIo ?? 0) * Math.min(periods, halfUp(ppy))), annual_debt_service: annual,
     total_interest: r2(rows.reduce((s, r) => s + r.interest, 0)), total_paid: r2(rows.reduce((s, r) => s + r.payment, 0) + balloon), balloon,
     balloon_pct: balloon ? Math.round((balloon / principal) * 1000) / 10 : 0,
-    weighted_average_life_months: Math.round(weightedLife * 10) / 10, recovery_milestones: milestones, full_exposure_months: halfUp((ioPeriods * 12) / ppy),
+    weighted_average_life_months: Math.round(weightedLife * 10) / 10, recovery_milestones: milestones, full_exposure_months: halfUp((ioPeriods * 12) / ppy), breakeven_month: breakeven,
     rows,
   };
 }
@@ -143,7 +148,7 @@ export function riskProfile(summary: LoanScheduleSummary | null | undefined, inc
   const ioCov = withCov.find((c) => c.phase === "interest_only")?.coverage ?? null;
   const afterCov = withCov.find((c) => c.phase !== "interest_only")?.coverage ?? null;
   return {
-    weighted_average_life_months: summary.weighted_average_life_months, recovery_milestones: summary.recovery_milestones, full_exposure_months: summary.full_exposure_months,
+    weighted_average_life_months: summary.weighted_average_life_months, recovery_milestones: summary.recovery_milestones, full_exposure_months: summary.full_exposure_months, breakeven_month: summary.breakeven_month,
     balloon: summary.balloon, balloon_pct: summary.balloon_pct, income_monthly: income == null ? null : r2(income), existing_service_monthly: r2(existing), coverage_by_period: coverage,
     coverage_during_interest_only: ioCov, coverage_after_interest_only: afterCov, lowest_coverage: lowest?.coverage ?? null, lowest_coverage_month: lowest?.month ?? null,
     words: riskWords(summary, lowest, ioCov, afterCov),
@@ -163,6 +168,7 @@ export function riskWords(summary: LoanScheduleSummary, lowest?: { coverage: num
     if (summary.balloon) parts.push(`${Math.round(summary.balloon).toLocaleString()} (${summary.balloon_pct}% of the loan) is due at maturity.`);
   }
   parts.push(`Weighted average life ${summary.weighted_average_life_months} months.`);
+  if (summary.breakeven_month) parts.push(`Counting the interest received, the capital is back by month ${summary.breakeven_month}; nothing is at risk after that.`);
   if (lowest && lowest.coverage != null) {
     if (ioCov != null && afterCov != null && ioCov !== afterCov) parts.push(`Coverage on each payment: ${ioCov.toFixed(2)}x during the interest-only months, ${afterCov.toFixed(2)}x once principal starts; the lowest, ${lowest.coverage.toFixed(2)}x, is what underwriting stands on.`);
     else parts.push(`Coverage on each payment ${lowest.coverage.toFixed(2)}x.`);

@@ -1088,6 +1088,54 @@ export function useFinancialCockpit(profileId: string | null | undefined, enable
   });
 }
 
+export type ClosingStipulationItem = { id?: string | null; text: string; source?: "term_sheet" | "desk" | null; status: "open" | "received" | "waived"; note?: string | null; updated_at?: string | null; updated_by?: string | null; created_at?: string | null };
+export type ClosingStipulationsRead = { profile_id: string; accepted: boolean; accepted_amount: number | null; estimated_close_date: string | null; items: ClosingStipulationItem[]; open_count: number; received_count: number; waived_count: number; terms_conditions: string[]; ready_to_close: boolean };
+
+/** Stipulations to close and the estimated close date, once the client has accepted. */
+export function useClosingStipulations(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["closing-stipulations", profileId, devUser],
+    queryFn: () => apiCall<ClosingStipulationsRead>(`/application-profiles/${profileId}/closing-stipulations`),
+    enabled: !!profileId && enabled,
+  });
+}
+
+/** The list as the desk keeps it; an item left out is kept as waived on the server. */
+export function useSaveClosingStipulations(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (items: ClosingStipulationItem[]) => apiCall<ClosingStipulationsRead>(`/application-profiles/${profileId}/closing-stipulations`, { method: "PUT", body: JSON.stringify({ items }) }),
+    onSuccess: (block) => { queryClient.setQueriesData({ queryKey: ["closing-stipulations", profileId] }, block); },
+  });
+}
+
+/** Adds the conditions on the accepted terms as open stipulations, once each. */
+export function useSeedClosingStipulations(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<ClosingStipulationsRead>(`/application-profiles/${profileId}/closing-stipulations/seed`, { method: "POST" }),
+    onSuccess: (block) => { queryClient.setQueriesData({ queryKey: ["closing-stipulations", profileId] }, block); },
+  });
+}
+
+/** The fees the desk sets from the Financials tab (origination points, consulting fee): the same
+ *  profile fields the Underwriting tab's offer acceptance and the fee allocation read. */
+export function useSaveFileEconomics(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: { forecast_fee_points?: number | null; forecast_consulting_fee?: number | null }) => apiCall<unknown>(`/application-profiles/${profileId}/underwriting`, { method: "PATCH", body: JSON.stringify(patch) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["closing-stipulations", profileId] });
+    },
+  });
+}
+
 /** The merchant cash advances on the file's debt schedule, whoever wrote them. */
 export function useAdvances(profileId: string | null | undefined, enabled = true) {
   const devUser = useDevUser();

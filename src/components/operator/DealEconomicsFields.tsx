@@ -23,6 +23,12 @@ export type DealEconomicsFieldsProps = {
   qcFeeReviewReason?: string | null;
   feeLabel?: string | null;
   autoFocus?: boolean;
+  /** The fees are set on the Financials tab and only reflected here; the inputs read-only and a way there. */
+  feesReadOnly?: boolean;
+  onEditFees?: () => void;
+  /** The estimated close date is set once the client has accepted. */
+  closeDateDisabled?: boolean;
+  closeDateHint?: string;
 };
 
 export function DealEconomicsFields({
@@ -42,6 +48,10 @@ export function DealEconomicsFields({
   qcFeeReviewReason,
   feeLabel,
   autoFocus = false,
+  feesReadOnly = false,
+  onEditFees,
+  closeDateDisabled = false,
+  closeDateHint,
 }: DealEconomicsFieldsProps) {
   const effectiveFeeCap = vertical === "mca" ? 3 : qcFeeCapPercent ?? 100;
   const parsed = parseDealEconomicsDraft(
@@ -88,7 +98,7 @@ export function DealEconomicsFields({
         <Field
           className="s6"
           label={feeLabel || "QC origination/success fee"}
-          hint={`Percentage charged on the accepted amount. Current file cap: ${effectiveFeeCap.toFixed(2)}%.`}
+          hint={feesReadOnly ? `Set on the Financials tab, with the loan's true cost beside it. Current file cap: ${effectiveFeeCap.toFixed(2)}%.` : `Percentage charged on the accepted amount. Current file cap: ${effectiveFeeCap.toFixed(2)}%.`}
           error={originationFeePoints.trim() !== "" && !parsed.originationFeePointsValid ? `Enter a percentage from 0 to ${effectiveFeeCap.toFixed(2)}.` : pointsNeedAcceptedAmount ? "Add the accepted amount to calculate percentage earnings." : undefined}
         >
           <div className="field box file-economics-points">
@@ -102,14 +112,16 @@ export function DealEconomicsFields({
               onChange={(event) => onOriginationFeePointsChange(event.target.value)}
               placeholder="For example, 2.5"
               aria-label="Origination fee percentage"
+              disabled={feesReadOnly}
             />
             <CellChip tone="mut">%</CellChip>
+            {feesReadOnly && onEditFees ? <button type="button" className="linklike" onClick={onEditFees}>Edit in Financials</button> : null}
           </div>
         </Field>
         <Field
           className="s6"
           label="Consulting fee"
-          hint="Fixed QC fee added to percentage earnings. Leave blank when none applies."
+          hint={feesReadOnly ? "Set on the Financials tab; reflected here and in the fee allocation below." : "Fixed QC fee added to percentage earnings. Leave blank when none applies."}
           error={consultingFee.trim() !== "" && !parsed.consultingFeeValid ? "Enter a valid amount of zero or more." : undefined}
         >
           <div className="field box file-economics-points">
@@ -123,16 +135,19 @@ export function DealEconomicsFields({
               onChange={(event) => onConsultingFeeChange(event.target.value)}
               placeholder="Fixed consulting fee"
               aria-label="Consulting fee"
+              disabled={feesReadOnly}
             />
+            {feesReadOnly && onEditFees ? <button type="button" className="linklike" onClick={onEditFees}>Edit in Financials</button> : null}
           </div>
         </Field>
-        <Field className="s6" label="Expected closing" hint="Internal milestone shown on the Field Desk calendar.">
+        <Field className="s6" label="Estimated closing" hint={closeDateHint ?? "Internal milestone shown on the Field Desk calendar."}>
           <input
             className="field"
             type="date"
             value={estimatedCloseDate}
             onChange={(event) => onEstimatedCloseDateChange(event.target.value)}
             aria-label="Expected closing date"
+            disabled={closeDateDisabled}
           />
         </Field>
       </div>

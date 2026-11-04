@@ -434,7 +434,7 @@ export type PlanOverrides = { income_annual: number | null; income_note: string 
 export const EMPTY_OVERRIDES: PlanOverrides = { income_annual: null, income_note: null, debt_service_monthly: null, debt_service_note: null };
 /** Principal at risk and the coverage on every payment, as the server reads it (loan_schedule.risk_profile). */
 export type PlanRisk = {
-  weighted_average_life_months: number | null; recovery_milestones: Record<string, number | null>; full_exposure_months: number | null; balloon: number; balloon_pct: number;
+  weighted_average_life_months: number | null; recovery_milestones: Record<string, number | null>; full_exposure_months: number | null; breakeven_month?: number | null; balloon: number; balloon_pct: number;
   income_monthly: number | null; existing_service_monthly: number; coverage_by_period: Array<{ period: number; month: number; phase: string; payment_monthly: number; coverage: number | null }>;
   coverage_during_interest_only: number | null; coverage_after_interest_only: number | null; lowest_coverage: number | null; lowest_coverage_month: number | null; words: string;
 };

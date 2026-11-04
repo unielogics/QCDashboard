@@ -200,6 +200,8 @@ export function ApplicationClientTermsPanel({
   onSelectedChange,
   onOfferReady,
   onCompose,
+  compact = false,
+  onEdit,
 }: {
   profileId: string;
   onSaved?: () => void;
@@ -207,6 +209,9 @@ export function ApplicationClientTermsPanel({
   onSelectedChange?: (selected: boolean) => void;
   onOfferReady?: (selection: OfferSelection | null) => void;
   onCompose?: () => void;
+  /** The Underwriting tab's view: what is on file, select it for delivery, and a way to the editor on Financials. */
+  compact?: boolean;
+  onEdit?: () => void;
 }) {
   const api = useAuthedApi();
   const { getToken, isSignedIn } = useConsoleAuth();
@@ -359,6 +364,24 @@ export function ApplicationClientTermsPanel({
   const terms = query.data;
   const loanLabel = terms.loan_type_options.find((option) => option.value === draft.loan_type)?.label ?? "Select a loan type";
   const cadenceLabel = FREQUENCY_OPTIONS.find(([value]) => value === draft.repayment_frequency)?.[1] ?? "Repayment";
+
+  if (compact) {
+    const onFile = Boolean(terms.version);
+    return <section className="client-terms-shell client-terms-compact" aria-label="Client financing terms on file">
+      <div className="client-terms-heading">
+        <div>
+          <span className="lbl">Client terms on file</span>
+          <h3>{onFile ? `${terms.loan_type_label ?? loanLabel}: ${money(terms.amount, 0)}${terms.apr_pct != null ? ` at ${terms.apr_pct}%` : ""}${terms.term_months ? ` over ${terms.term_months} months` : ""}${terms.calculation?.structure_label ? ` · ${terms.calculation.structure_label.toLowerCase()}${terms.interest_only_months ? `, ${terms.interest_only_months} interest-only months first` : ""}` : ""}` : "No client terms yet"}</h3>
+          <p className="sub">{onFile ? `${terms.status === "issued" ? "Issued" : "Draft"} v${terms.version}${terms.calculation?.periodic_payment != null ? ` · ${money(terms.calculation.periodic_payment, 2)} per payment` : ""}${terms.calculation?.dscr_after != null ? ` · coverage after acceptance ${ratio(terms.calculation.dscr_after)}` : ""}. Structured on the Financials tab; the client accepts here.` : "Structure the terms on the Financials tab; the report is the client's PDF, and the client accepts here."}</p>
+        </div>
+        <div className="client-terms-heading-actions">
+          <CellChip tone={terms.status === "issued" ? "ok" : terms.version ? "warn" : "mut"}>{terms.version ? `${terms.status === "issued" ? "Issued" : "Draft"} · v${terms.version}` : "Not started"}</CellChip>
+          {onSelectedChange && onFile ? <button type="button" className={cx("offer-row-select", selected && "on")} role="checkbox" aria-checked={selected} aria-label={`${selected ? "Remove" : "Select"} financing terms for client email`} title={`${selected ? "Remove" : "Select"} financing terms`} onClick={() => onSelectedChange(!selected)}><Icon name={selected ? "check" : "plus"} size={14} /></button> : null}
+          {onEdit ? <Btn size="sm" onClick={onEdit}><Icon name="pencil" size={14} />{onFile ? "Edit in Financials" : "Structure in Financials"}</Btn> : null}
+        </div>
+      </div>
+    </section>;
+  }
 
   return <section className="client-terms-shell" aria-label="Client financing terms">
     <header className="client-terms-heading">

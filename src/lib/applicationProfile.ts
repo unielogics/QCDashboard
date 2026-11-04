@@ -402,6 +402,11 @@ export type ClientTermsRepaymentFrequency = "daily" | "weekly" | "biweekly" | "m
 export type ClientTermsDebtTreatment = "additive" | "refinance";
 
 export type ClientTermsCalculation = {
+  /** The structure the payment stands on, the interest-only months first and the payment during them. */
+  loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
+  interest_only_months?: number;
+  interest_only_payment?: number | null;
+  structure_label?: string | null;
   periodic_payment: number | null;
   payment_count: number | null;
   payments_per_year: number | null;

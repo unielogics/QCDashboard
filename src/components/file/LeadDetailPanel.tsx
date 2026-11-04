@@ -36,6 +36,7 @@ import { ApplicationAuditTimeline } from "@/components/application/ApplicationAu
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
 import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
+import { ClosingStipulationsPanel } from "@/components/file/ClosingStipulationsPanel";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
@@ -1815,10 +1816,63 @@ export function LeadDetailPanel({
                     focus={cockpitFocus}
                     onFocusHandled={() => setCockpitFocus(null)}
                     onRecordTerms={openTermSheet}
+                    onEconomicsSaved={() => { void loadUnderwritingState(); }}
                     onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
                     onOpenPackage={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
                   />
                 ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
+              ) : null}
+              {prototypeView === "financials" && canUnderwrite && underwriting?.profile_id ? (
+                <Panel
+                  title={isDealerFile ? "Loan terms" : "Client terms"}
+                  sub={isDealerFile ? "The term sheet on file. Record or edit it here; the report is its PDF, and the client accepts on the Underwriting tab." : "Structure the terms here; the report is the client's PDF, and the client accepts on the Underwriting tab."}
+                >
+                  {isDealerFile ? (
+                          <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
+                            <div>
+                              <span className="lbl">Loan terms</span>
+                              <b>
+                                {termSheet?.current
+                                  ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}`
+                                  : "No loan terms recorded"}
+                              </b>
+                              <span className="sub">
+                                {termSheet?.current
+                                  ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · recorded ${formatDateTime(termSheet.current.entered_at)}.`
+                                  : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
+                              </span>
+                            </div>
+                            <div className="underwriting-term-sheet-actions">
+                              {termSheet?.current && underwriting?.profile_id ? (
+                                <DealerTermSheetDocumentActions
+                                  profileId={underwriting.profile_id}
+                                  terms={termSheet.current}
+                                  contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
+                                  onEdit={openTermSheet}
+                                  selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
+                                  onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
+                                  onCompose={() => openOfferComposer(productionTermSelection)}
+                                />
+                              ) : (
+                                <Btn variant="pri" size="sm" onClick={openTermSheet}>
+                                  <Icon name="pencil" size={14} />
+                                  Record terms
+                                </Btn>
+                              )}
+                            </div>
+                          </div>
+                  ) : (
+                    <ApplicationClientTermsPanel
+                      key={underwriting.profile_id}
+                      profileId={underwriting.profile_id}
+                      onSaved={refreshUnderwritingFromTerms}
+                      selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
+                      onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
+                      onOfferReady={handleApplicationTermReady}
+                      onCompose={() => openOfferComposer(applicationTermSelection)}
+                    />
+                  )}
+                </Panel>
               ) : null}
               {prototypeView === "financials" && canUnderwrite && profileId ? (
                 <Panel
@@ -1896,8 +1950,8 @@ export function LeadDetailPanel({
                       </FileSection>
                       <FileSection
                         id="economics"
-                        title="Deal economics"
-                        summary={underwriting?.accepted_amount != null ? `${formatMoney(underwriting.accepted_amount)} accepted${forecastEarnings != null ? ` · ${formatMoney(forecastEarnings)} expected earnings` : ""}` : "Record what the client accepted and QC revenue"}
+                        title="Offer accepted"
+                        summary={underwriting?.accepted_amount != null ? `${formatMoney(underwriting.accepted_amount)} accepted${forecastEarnings != null ? ` · ${formatMoney(forecastEarnings)} expected earnings` : ""}${underwriting?.estimated_close_date ? ` · closing ${underwriting.estimated_close_date}` : ""}` : "Record what the client accepted; the fees come from the Financials tab"}
                         status={underwriting?.accepted_amount != null ? { label: "Recorded", tone: "ok" } : { label: "Not recorded", tone: "warn" }}
                         actions={<Btn variant="pri" size="sm" onClick={saveDealEconomics} disabled={underwritingSaving || !draftEconomics.valid}>{underwritingSaving ? "Saving..." : "Save deal economics"}</Btn>}
                         open={uwSections.isOpen("economics", underwriting?.accepted_amount == null)}
@@ -1920,53 +1974,59 @@ export function LeadDetailPanel({
                           onOriginationFeePointsChange={(value) => setUnderwritingDraft((current) => ({ ...current, forecast_fee_points: value }))}
                           onConsultingFeeChange={(value) => setUnderwritingDraft((current) => ({ ...current, forecast_consulting_fee: value }))}
                           onEstimatedCloseDateChange={(value) => setUnderwritingDraft((current) => ({ ...current, estimated_close_date: value }))}
+                          feesReadOnly
+                          onEditFees={() => setPrototypeView("financials")}
+                          closeDateDisabled={underwriting?.accepted_amount == null && underwritingDraft.accepted_amount.trim() === ""}
+                          closeDateHint={underwriting?.accepted_amount == null && underwritingDraft.accepted_amount.trim() === "" ? "Set once the client has accepted (enter the accepted amount first)." : "Set once the client has accepted; the stipulations to close follow."}
                         />
                       </section>
                       </FileSection>
+                      {underwriting?.profile_id ? (
+                      <FileSection
+                        id="stipulations"
+                        title="Stipulations to close"
+                        summary={underwriting?.accepted_amount == null ? "Opens once the client accepts" : "What must be in hand before funding"}
+                        status={underwriting?.accepted_amount == null ? null : { label: "After acceptance", tone: "acc" }}
+                        open={uwSections.isOpen("stipulations", underwriting?.accepted_amount != null)}
+                        onToggle={() => uwSections.toggle("stipulations", underwriting?.accepted_amount != null)}
+                      >
+                        <ClosingStipulationsPanel profileId={underwriting.profile_id} canEdit={canUnderwrite} />
+                      </FileSection>
+                      ) : null}
                       {isDealerFile ? (
                       <FileSection
                           id="terms"
-                          title="Loan terms"
-                          summary={termSheet?.current ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)}` : "No loan terms recorded yet"}
-                          status={termSheet?.current ? { label: "Recorded", tone: "ok" } : { label: "Needed for the package", tone: "warn" }}
-                          open={uwSections.isOpen("terms", !termSheet?.current)}
-                          onToggle={() => uwSections.toggle("terms", !termSheet?.current)}
+                          title="Loan terms on file"
+                          summary={termSheet?.current ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · structured on the Financials tab` : "No loan terms recorded yet · structure them on the Financials tab"}
+                          status={termSheet?.current ? { label: "Recorded", tone: "ok" } : { label: "Needed before acceptance", tone: "warn" }}
+                          open={uwSections.isOpen("terms", false)}
+                          onToggle={() => uwSections.toggle("terms", false)}
                         >
-                        {isDealerFile ? (
-                          <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
-                            <div>
-                              <span className="lbl">Loan terms</span>
-                              <b>
-                                {termSheet?.current
-                                  ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}`
-                                  : "No loan terms recorded"}
-                              </b>
-                              <span className="sub">
-                                {termSheet?.current
-                                  ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind} · recorded ${formatDateTime(termSheet.current.entered_at)}.`
-                                  : "The final (Program Activation) package can only be drafted once the loan terms are recorded on this file."}
-                              </span>
-                            </div>
-                            <div className="underwriting-term-sheet-actions">
-                              {termSheet?.current && underwriting?.profile_id ? (
-                                <DealerTermSheetDocumentActions
-                                  profileId={underwriting.profile_id}
-                                  terms={termSheet.current}
-                                  contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
-                                  onEdit={openTermSheet}
-                                  selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
-                                  onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
-                                  onCompose={() => openOfferComposer(productionTermSelection)}
-                                />
-                              ) : (
-                                <Btn variant="pri" size="sm" onClick={openTermSheet}>
-                                  <Icon name="pencil" size={14} />
-                                  Record terms
-                                </Btn>
-                              )}
-                            </div>
+                        <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
+                          <div>
+                            <span className="lbl">Loan terms</span>
+                            <b>{termSheet?.current ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}` : "No loan terms recorded"}</b>
+                            <span className="sub">{termSheet?.current ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind}. The client accepts here; the terms are structured on the Financials tab.` : "Structure the loan terms on the Financials tab; the client accepts them here."}</span>
                           </div>
-                        ) : null}
+                          <div className="underwriting-term-sheet-actions">
+                            {termSheet?.current && underwriting?.profile_id ? (
+                              <DealerTermSheetDocumentActions
+                                profileId={underwriting.profile_id}
+                                terms={termSheet.current}
+                                contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
+                                onEdit={() => setPrototypeView("financials")}
+                                selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
+                                onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
+                                onCompose={() => openOfferComposer(productionTermSelection)}
+                              />
+                            ) : (
+                              <Btn size="sm" onClick={() => setPrototypeView("financials")}>
+                                <Icon name="pencil" size={14} />
+                                Structure in Financials
+                              </Btn>
+                            )}
+                          </div>
+                        </div>
                         </FileSection>
                       ) : null}
                       <FileSection
@@ -2014,20 +2074,22 @@ export function LeadDetailPanel({
                       {!isDealerFile && underwriting?.profile_id ? (
                       <FileSection
                           id="client-terms"
-                          title="Client terms"
-                          summary={"Terms the client sees and can accept"}
+                          title="Client terms on file"
+                          summary={"What the client sees and accepts; structured on the Financials tab"}
                           status={null}
                           open={uwSections.isOpen("client-terms", false)}
                           onToggle={() => uwSections.toggle("client-terms", false)}
                         >
                         <ApplicationClientTermsPanel
-                          key={underwriting.profile_id}
+                          key={`${underwriting.profile_id}-compact`}
+                          compact
                           profileId={underwriting.profile_id}
                           onSaved={refreshUnderwritingFromTerms}
                           selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
                           onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
                           onOfferReady={handleApplicationTermReady}
                           onCompose={() => openOfferComposer(applicationTermSelection)}
+                          onEdit={() => setPrototypeView("financials")}
                         />
                         </FileSection>
                       ) : null}
