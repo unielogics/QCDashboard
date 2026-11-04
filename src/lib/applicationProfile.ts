@@ -351,6 +351,9 @@ export type ApplicationRequirementAIReviewResult = {
   analysis_required_count: number;
 };
 
+/** The terms an acceptance answers: enough to say "accepted v1" and to notice when the terms moved on. */
+export type AcceptedTermsRef = { kind: "production_term_sheet" | "application_term_sheet"; id: string; version: number; amount: number | null; rate_pct: number | null; term_months: number | null; label: string };
+
 export type ApplicationUnderwritingState = {
   profile_id: string;
   source_kind: ApplicationSourceKind | null;
@@ -375,6 +378,9 @@ export type ApplicationUnderwritingState = {
   qc_fee_review_reason: string | null;
   fee_label: string;
   estimated_close_date: string | null;
+  /** When the acceptance was recorded and which terms it answered. */
+  accepted_at: string | null;
+  accepted_terms_ref: AcceptedTermsRef | null;
   funded_amount: number | null;
   updated_by_user_id: string | null;
   updated_at: string | null;
@@ -394,6 +400,7 @@ export type ApplicationUnderwritingPatch = Partial<{
   accepted_amount: number | null;
   forecast_consulting_fee: number | null;
   estimated_close_date: string | null;
+  accepted_terms_ref: AcceptedTermsRef | null;
   funded_amount: number | null;
 }>;
 

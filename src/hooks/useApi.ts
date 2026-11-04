@@ -1,5 +1,6 @@
 "use client";
 
+import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import { useCallback, useRef } from "react";
 import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -1085,6 +1086,17 @@ export function useFinancialCockpit(profileId: string | null | undefined, enable
     queryFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/financial-cockpit`),
     enabled: !!profileId && enabled,
     staleTime: 30_000,
+  });
+}
+
+/** The client terms as saved on the Financials tab, on the editor's own query key so both stay one read. */
+export function useClientTermsSummary(profileId: string | null | undefined, enabled = true) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["application-client-terms", profileId],
+    queryFn: () => apiCall<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`),
+    enabled: !!profileId && enabled,
+    staleTime: 15_000,
   });
 }
 

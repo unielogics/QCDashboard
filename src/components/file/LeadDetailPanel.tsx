@@ -18,7 +18,7 @@ import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
-import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
@@ -36,7 +36,7 @@ import { ApplicationAuditTimeline } from "@/components/application/ApplicationAu
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
 import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
-import { ClosingStipulationsPanel } from "@/components/file/ClosingStipulationsPanel";
+import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
@@ -810,6 +810,41 @@ export function LeadDetailPanel({
     }
   }
 
+  const clientTermsQuery = useClientTermsSummary(underwriting?.profile_id, !isDealerFile && canUnderwrite);
+  const clientTermsOnFile = clientTermsQuery.data ?? null;
+  const clientTermsSelection = useMemo<OfferSelection | null>(() => {
+    const t = clientTermsOnFile;
+    if (!t?.term_sheet_id || !t.version) return null;
+    return {
+      key: `application_term_sheet:${t.term_sheet_id}:${t.version}`,
+      ref: { kind: "application_term_sheet", term_sheet_id: t.term_sheet_id, expected_version: t.version },
+      label: "Financing terms",
+      description: `${formatMoney(t.amount ?? 0)} at ${t.apr_pct == null ? "—" : `${t.apr_pct}% APR`} for ${t.term_months || "—"} months · version ${t.version}`,
+      fileName: `financing-terms-v${t.version}.pdf`,
+    };
+  }, [clientTermsOnFile]);
+  const termsOnFile = useMemo<TermsOnFile | null>(() => {
+    if (isDealerFile) {
+      const current = termSheet?.current;
+      if (!current || current.status !== "current") return null;
+      return {
+        kind: "production_term_sheet", id: current.id, version: current.version, status: "recorded", label: `Term sheet v${current.version} · ${current.funding_party_name || current.funding_party_kind}`,
+        amount: current.approved_amount ?? null, ratePct: current.rate_pct ?? null, termMonths: current.term_months ?? null,
+        structureLabel: productionTermLabel(current.repayment_structure ?? current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded"),
+        interestOnlyMonths: Number(current.extra?.interest_only_months ?? 0) || 0,
+        paymentMonthly: current.monthly_equivalent_payment ?? current.extra?.monthly_equivalent_payment ?? current.monthly_debt_service ?? null,
+        coverageAfter: null, recordedAt: current.entered_at ?? null, sentToClient: false,
+      };
+    }
+    const t = clientTermsOnFile;
+    if (!t?.term_sheet_id || !t.version) return null;
+    return {
+      kind: "application_term_sheet", id: t.term_sheet_id, version: t.version, status: t.status, label: `Client terms v${t.version}${t.loan_type_label ? ` · ${t.loan_type_label}` : ""}`,
+      amount: t.amount, ratePct: t.apr_pct, termMonths: t.term_months, structureLabel: t.calculation?.structure_label ?? null, interestOnlyMonths: t.interest_only_months ?? 0,
+      paymentMonthly: t.calculation?.periodic_payment != null && t.repayment_frequency === "monthly" ? t.calculation.periodic_payment : null,
+      coverageAfter: t.calculation?.dscr_after ?? null, recordedAt: t.updated_at ?? null, sentToClient: t.status === "issued",
+    };
+  }, [isDealerFile, termSheet, clientTermsOnFile]);
   const productionTermSelection = useMemo<OfferSelection | null>(() => {
     const current = termSheet?.current;
     if (!current || current.status !== "current") return null;
@@ -827,8 +862,8 @@ export function LeadDetailPanel({
   }, [termSheet]);
 
   const availableOfferSelections = useMemo(
-    () => [productionTermSelection, applicationTermSelection, merchantOfferSelection].filter((item): item is OfferSelection => Boolean(item)),
-    [applicationTermSelection, merchantOfferSelection, productionTermSelection],
+    () => [productionTermSelection, applicationTermSelection ?? clientTermsSelection, merchantOfferSelection].filter((item): item is OfferSelection => Boolean(item)),
+    [applicationTermSelection, clientTermsSelection, merchantOfferSelection, productionTermSelection],
   );
   const selectedOfferSelections = useMemo(
     () => availableOfferSelections.filter((item) => selectedOfferKeys.includes(item.key)),
@@ -1906,194 +1941,83 @@ export function LeadDetailPanel({
                   {packageTab === "delivery" ? <div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild both PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
                 </Panel>
               ) : null}
+              {prototypeView === "financials" && canUnderwrite && profileId ? (
+                <div className="grid g12">
+                  <FileSection
+                    id="readiness"
+                    title="Capital readiness"
+                    summary={"Financial intelligence, score and policy for this file"}
+                    status={null}
+                    open={uwSections.isOpen("readiness", false)}
+                    onToggle={() => uwSections.toggle("readiness", false)}
+                  >
+                    <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} />
+                  </FileSection>
+                </div>
+              ) : null}
               {prototypeView === "underwriting" && canUnderwrite ? (
                 <div className="grid g12">
                 <Panel
                   title="Underwriting"
-                  sub="Build and review the client-ready financial offers for this file."
+                  sub="Terms on file, offer sent, accepted, close: one flow, reading the terms the Financials tab saved."
                   actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}</Row>}
                 >
-                  {underwritingError ? <WarnLine>{underwritingError}</WarnLine> : null}
-                  {underwritingLoading ? <div className="empty">Loading underwriting controls...</div> : (
-                    <div className="underwriting-workspace">
-                      <div className="underwriting-status-strip">
-                        <div>
-                          <span className="lbl">Current lifecycle</span>
-                          <b>{underwritingStatusLabel(underwriting?.underwriting_status ?? underwritingDraft.underwriting_status)}</b>
-                          <span className="sub">{underwriting?.loan_id ? "Linked to a funding loan." : "No funding loan has been created yet."}</span>
-                        </div>
-                        <div>
-                          <span className="lbl">Last update</span>
-                          <b>{underwriting?.updated_at ? formatDateTime(underwriting.updated_at) : "No saved update"}</b>
-                          <span className="sub">Actor and effects are recorded in audit.</span>
-                        </div>
-                        <div>
-                          <span className="lbl">Deal economics</span>
-                          <b>{forecastEarnings != null ? `${formatMoney(forecastEarnings)} expected earnings` : "Not configured"}</b>
-                          <span className="sub">
-                            {underwriting?.accepted_amount != null ? `${formatMoney(underwriting.accepted_amount)} accepted` : "Accepted amount not recorded"}
-                            {underwriting?.forecast_fee_points != null ? ` / ${underwriting.forecast_fee_points.toFixed(2)}% origination` : ""}
-                            {underwriting?.forecast_consulting_fee != null ? ` / ${formatMoney(underwriting.forecast_consulting_fee)} consulting` : ""}
-                            {underwriting?.estimated_close_date ? ` · closing ${new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString()}` : " · no closing date"}
-                          </span>
-                        </div>
-                      </div>
-                      <FileSection
-                        id="readiness"
-                        title="Capital readiness"
-                        summary={"Financial intelligence, score and policy for this file"}
-                        status={null}
-                        open={uwSections.isOpen("readiness", false)}
-                        onToggle={() => uwSections.toggle("readiness", false)}
-                      >
-                      {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
-                      </FileSection>
-                      <FileSection
-                        id="economics"
-                        title="Offer accepted"
-                        summary={underwriting?.accepted_amount != null ? `${formatMoney(underwriting.accepted_amount)} accepted${forecastEarnings != null ? ` · ${formatMoney(forecastEarnings)} expected earnings` : ""}${underwriting?.estimated_close_date ? ` · closing ${underwriting.estimated_close_date}` : ""}` : "Record what the client accepted; the fees come from the Financials tab"}
-                        status={underwriting?.accepted_amount != null ? { label: "Recorded", tone: "ok" } : { label: "Not recorded", tone: "warn" }}
-                        actions={<Btn variant="pri" size="sm" onClick={saveDealEconomics} disabled={underwritingSaving || !draftEconomics.valid}>{underwritingSaving ? "Saving..." : "Save deal economics"}</Btn>}
-                        open={uwSections.isOpen("economics", underwriting?.accepted_amount == null)}
-                        onToggle={() => uwSections.toggle("economics", underwriting?.accepted_amount == null)}
-                      >
-                      <section className="deal-economics-panel">
-                        <DealEconomicsFields
-                          profileId={profileId}
-                          vertical={dealEconomicsVertical}
-                          qcFeeCapPercent={underwriting?.qc_fee_cap_percent}
-                          qcFeeReviewRequired={underwriting?.qc_fee_review_required}
-                          qcFeeReviewReason={underwriting?.qc_fee_review_reason}
-                          feeLabel={underwriting?.fee_label}
-                          approvedAmount={underwriting?.approved_amount}
-                          acceptedAmount={underwritingDraft.accepted_amount}
-                          originationFeePoints={underwritingDraft.forecast_fee_points}
-                          consultingFee={underwritingDraft.forecast_consulting_fee}
-                          estimatedCloseDate={underwritingDraft.estimated_close_date}
-                          onAcceptedAmountChange={(value) => setUnderwritingDraft((current) => ({ ...current, accepted_amount: value }))}
-                          onOriginationFeePointsChange={(value) => setUnderwritingDraft((current) => ({ ...current, forecast_fee_points: value }))}
-                          onConsultingFeeChange={(value) => setUnderwritingDraft((current) => ({ ...current, forecast_consulting_fee: value }))}
-                          onEstimatedCloseDateChange={(value) => setUnderwritingDraft((current) => ({ ...current, estimated_close_date: value }))}
-                          feesReadOnly
-                          onEditFees={() => setPrototypeView("financials")}
-                          closeDateDisabled={underwriting?.accepted_amount == null && underwritingDraft.accepted_amount.trim() === ""}
-                          closeDateHint={underwriting?.accepted_amount == null && underwritingDraft.accepted_amount.trim() === "" ? "Set once the client has accepted (enter the accepted amount first)." : "Set once the client has accepted; the stipulations to close follow."}
-                        />
-                      </section>
-                      </FileSection>
-                      {underwriting?.profile_id ? (
-                      <FileSection
-                        id="stipulations"
-                        title="Stipulations to close"
-                        summary={underwriting?.accepted_amount == null ? "Opens once the client accepts" : "What must be in hand before funding"}
-                        status={underwriting?.accepted_amount == null ? null : { label: "After acceptance", tone: "acc" }}
-                        open={uwSections.isOpen("stipulations", underwriting?.accepted_amount != null)}
-                        onToggle={() => uwSections.toggle("stipulations", underwriting?.accepted_amount != null)}
-                      >
-                        <ClosingStipulationsPanel profileId={underwriting.profile_id} canEdit={canUnderwrite} />
-                      </FileSection>
-                      ) : null}
-                      {isDealerFile ? (
-                      <FileSection
-                          id="terms"
-                          title="Loan terms on file"
-                          summary={termSheet?.current ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · structured on the Financials tab` : "No loan terms recorded yet · structure them on the Financials tab"}
-                          status={termSheet?.current ? { label: "Recorded", tone: "ok" } : { label: "Needed before acceptance", tone: "warn" }}
-                          open={uwSections.isOpen("terms", false)}
-                          onToggle={() => uwSections.toggle("terms", false)}
-                        >
-                        <div className="underwriting-status-strip underwriting-term-sheet-strip" style={{ gridTemplateColumns: "minmax(0, 1fr) auto", alignItems: "center" }}>
-                          <div>
-                            <span className="lbl">Loan terms</span>
-                            <b>{termSheet?.current ? `Term sheet v${termSheet.current.version} · ${termSheet.current.facility_type} · ${formatMoney(termSheet.current.approved_amount)} · ${productionTermLabel(termSheet.current.repayment_structure ?? termSheet.current.extra?.repayment_structure, PRODUCTION_REPAYMENT_LABELS, "Repayment not recorded")}` : "No loan terms recorded"}</b>
-                            <span className="sub">{termSheet?.current ? `${termSheet.current.rate_pct}% · ${productionTermLabel(termSheet.current.payment_frequency ?? termSheet.current.extra?.payment_frequency, PRODUCTION_CADENCE_LABELS, "Monthly")} payments · ${formatMoney(termSheet.current.monthly_equivalent_payment ?? termSheet.current.extra?.monthly_equivalent_payment ?? termSheet.current.monthly_debt_service)} monthly equivalent · ${termSheet.current.funding_party_name || termSheet.current.funding_party_kind}. The client accepts here; the terms are structured on the Financials tab.` : "Structure the loan terms on the Financials tab; the client accepts them here."}</span>
-                          </div>
-                          <div className="underwriting-term-sheet-actions">
-                            {termSheet?.current && underwriting?.profile_id ? (
-                              <DealerTermSheetDocumentActions
-                                profileId={underwriting.profile_id}
-                                terms={termSheet.current}
-                                contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
-                                onEdit={() => setPrototypeView("financials")}
-                                selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
-                                onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
-                                onCompose={() => openOfferComposer(productionTermSelection)}
-                              />
-                            ) : (
-                              <Btn size="sm" onClick={() => setPrototypeView("financials")}>
-                                <Icon name="pencil" size={14} />
-                                Structure in Financials
-                              </Btn>
-                            )}
-                          </div>
-                        </div>
-                        </FileSection>
-                      ) : null}
-                      <FileSection
-                        id="merchant"
-                        title="Merchant processing offer"
-                        summary={merchantOfferStatus ? `Offer ${merchantOfferStatus.replaceAll("_", " ")}` : "Read a partner terms PDF and offer processing savings"}
-                        status={merchantOfferStatus ? { label: merchantOfferStatus.replaceAll("_", " "), tone: merchantOfferStatus === "accepted" ? "ok" : "acc" } : null}
-                        open={uwSections.isOpen("merchant", false)}
-                        onToggle={() => uwSections.toggle("merchant", false)}
-                      >
-                      <MerchantOfferStrip
-                        profileId={underwriting?.profile_id}
-                        onStatus={setMerchantOfferStatus}
-                        selected={Boolean(merchantOfferSelection && selectedOfferKeys.includes(merchantOfferSelection.key))}
-                        onSelectedChange={(selected) => setOfferSelected(merchantOfferSelection, selected)}
-                        onOfferReady={handleMerchantOfferReady}
-                        onCompose={() => openOfferComposer(merchantOfferSelection)}
-                        onTargetDscr={(value) => {
-                          setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }));
-                          setPrototypeView("reviewer");
-                        }}
-                      />
-                      </FileSection>
-                      <FileSection
-                        id="offers"
-                        title="Offer delivery"
-                        summary={offerDeliveryReceipt ? `Sent ${formatDateTime(offerDeliveryReceipt.sent_at)}` : selectedOfferSelections.length ? `${selectedOfferSelections.length} selected, not yet sent` : "Select loan terms or an offer above to send them together"}
-                        status={selectedOfferSelections.length ? { label: `${selectedOfferSelections.length} selected`, tone: "acc" } : null}
-                        open={uwSections.isOpen("offers", selectedOfferSelections.length > 0)}
-                        onToggle={() => uwSections.toggle("offers", selectedOfferSelections.length > 0)}
-                      >
-                      {selectedOfferSelections.length ? <div className="offer-delivery-bar" role="region" aria-label="Selected client offers" aria-live="polite">
-                        <div className="offer-delivery-bar-copy">
-                          <span className="offer-delivery-bar-icon"><Icon name="mail" size={16} /></span>
-                          <div><b>{selectedOfferSelections.length === 2 ? "Loan terms + merchant offer" : selectedOfferSelections[0].label}</b><small>Ready for one customized email with client PDFs and a 48-hour response window.</small></div>
-                        </div>
-                        <div className="offer-delivery-bar-actions">
-                          <IconBtn onClick={() => setSelectedOfferKeys([])} aria-label="Clear selected offers" title="Clear selection"><Icon name="close" size={14} /></IconBtn>
-                          <Btn variant="pri" onClick={() => openOfferComposer()} disabled={Boolean(detail.intake.client_contact_suppressed)} title={detail.intake.client_contact_suppressed ? "Direct client contact is suppressed on this file" : undefined}><Icon name="spark" size={14} />Draft client email</Btn>
-                        </div>
-                      </div> : null}
-                      {offerDeliveryReceipt ? <Callout tone="ok"><b>Offer package sent.</b> The exact PDFs are in the client inbox until and after the {formatDateTime(offerDeliveryReceipt.expires_at)} response deadline.</Callout> : null}
-                      {underwriting?.profile_id ? <OfferDeliveryHistory profileId={underwriting.profile_id} refreshKey={offerDeliveryReceipt?.id} /> : null}
-                      </FileSection>
-                      {!isDealerFile && underwriting?.profile_id ? (
-                      <FileSection
-                          id="client-terms"
-                          title="Client terms on file"
-                          summary={"What the client sees and accepts; structured on the Financials tab"}
-                          status={null}
-                          open={uwSections.isOpen("client-terms", false)}
-                          onToggle={() => uwSections.toggle("client-terms", false)}
-                        >
-                        <ApplicationClientTermsPanel
-                          key={`${underwriting.profile_id}-compact`}
-                          compact
+                  {underwritingLoading || !underwriting?.profile_id ? <div className="empty">Loading underwriting…</div> : (
+                    <UnderwritingFlow
+                      profileId={underwriting.profile_id}
+                      terms={termsOnFile}
+                      termsLoading={!isDealerFile && clientTermsQuery.isLoading}
+                      termsActions={isDealerFile && termSheet?.current ? (
+                        <DealerTermSheetDocumentActions
                           profileId={underwriting.profile_id}
-                          onSaved={refreshUnderwritingFromTerms}
-                          selected={Boolean(applicationTermSelection && selectedOfferKeys.includes(applicationTermSelection.key))}
-                          onSelectedChange={(selected) => setOfferSelected(applicationTermSelection, selected)}
-                          onOfferReady={handleApplicationTermReady}
-                          onCompose={() => openOfferComposer(applicationTermSelection)}
+                          terms={termSheet.current}
+                          contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
                           onEdit={() => setPrototypeView("financials")}
+                          selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
+                          onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
+                          onCompose={() => openOfferComposer(productionTermSelection)}
                         />
-                        </FileSection>
                       ) : null}
-                    </div>
+                      onEditTerms={() => setPrototypeView("financials")}
+                      underwriting={underwriting}
+                      statusLabel={underwritingStatusLabel(underwriting?.underwriting_status ?? underwritingDraft.underwriting_status)}
+                      draft={underwritingDraft}
+                      onDraftChange={(patch) => setUnderwritingDraft((current) => ({ ...current, ...patch }))}
+                      saving={underwritingSaving}
+                      error={underwritingError}
+                      onRecordAcceptance={(patch) => { void saveUnderwritingPatch(patch); }}
+                      onStatusChange={changeUnderwritingStatus}
+                      onEditFees={() => setPrototypeView("financials")}
+                      forecastEarnings={forecastEarnings}
+                      feeInfo={{ vertical: dealEconomicsVertical, capPercent: underwriting?.qc_fee_cap_percent, reviewRequired: underwriting?.qc_fee_review_required, reviewReason: underwriting?.qc_fee_review_reason, label: underwriting?.fee_label }}
+                      offer={{
+                        termsSelection: productionTermSelection ?? applicationTermSelection ?? clientTermsSelection,
+                        merchantSelection: merchantOfferSelection,
+                        merchantStatus: merchantOfferStatus,
+                        merchantStrip: (
+                          <MerchantOfferStrip
+                            profileId={underwriting.profile_id}
+                            onStatus={setMerchantOfferStatus}
+                            selected={Boolean(merchantOfferSelection && selectedOfferKeys.includes(merchantOfferSelection.key))}
+                            onSelectedChange={(selected) => setOfferSelected(merchantOfferSelection, selected)}
+                            onOfferReady={handleMerchantOfferReady}
+                            onCompose={() => openOfferComposer(merchantOfferSelection)}
+                            onTargetDscr={(value) => {
+                              setUnderwritingDraft((current) => ({ ...current, target_dscr: value.toFixed(2) }));
+                              setPrototypeView("reviewer");
+                            }}
+                          />
+                        ),
+                        selectedKeys: selectedOfferKeys,
+                        onSelectedKeys: setSelectedOfferKeys,
+                        onCompose: () => openOfferComposer(),
+                        receipt: offerDeliveryReceipt,
+                        contactSuppressed: Boolean(detail.intake.client_contact_suppressed),
+                      }}
+                      loanId={underwriting?.loan_id ?? null}
+                      onCreateFundingFile={() => changeUnderwritingStatus("in_underwriting")}
+                      canUnderwrite={canUnderwrite}
+                    />
                   )}
                 </Panel>
                 </div>
