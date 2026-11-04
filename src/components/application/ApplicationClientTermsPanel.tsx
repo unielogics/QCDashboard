@@ -15,6 +15,8 @@ import type {
   ClientTermsRepaymentFrequency,
 } from "@/lib/applicationProfile";
 import { useActiveProfile } from "@/store/role";
+import { STRUCTURE_LABELS, buildSchedule, defaultStructure, describeSchedule, type LoanStructure } from "@/lib/loanSchedule";
+import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
 type Draft = {
@@ -29,6 +31,9 @@ type Draft = {
   custom_repayment_label: string;
   debt_service_treatment: ClientTermsDebtTreatment;
   retained_annual_debt_service: string;
+  /** "" = the house default for the term (simple interest under 3 years, amortizing from 3). */
+  loan_structure: LoanStructure | "";
+  interest_only_months: string;
   expiration_days: string;
   closing_estimate_days: string;
   co_brand_enabled: boolean;
@@ -77,6 +82,8 @@ function emptyDraft(): Draft {
     custom_repayment_label: "",
     debt_service_treatment: "additive",
     retained_annual_debt_service: "",
+    loan_structure: "",
+    interest_only_months: "",
     expiration_days: "7",
     closing_estimate_days: "5",
     co_brand_enabled: true,
@@ -99,6 +106,9 @@ function draftFromTerms(terms: ApplicationClientTerms): Draft {
     custom_repayment_label: terms.custom_repayment_label ?? "",
     debt_service_treatment: terms.debt_service_treatment ?? "additive",
     retained_annual_debt_service: terms.retained_annual_debt_service == null ? "" : String(terms.retained_annual_debt_service),
+    // A saved structure that is the term's default reads as "default", so the select says what the house rule would say anyway.
+    loan_structure: terms.loan_structure && terms.loan_structure !== defaultStructure(terms.term_months) ? terms.loan_structure : "",
+    interest_only_months: terms.interest_only_months ? String(terms.interest_only_months) : "",
     expiration_days: String(terms.expiration_days ?? 7),
     closing_estimate_days: String(terms.closing_estimate_days ?? 5),
     co_brand_enabled: terms.co_brand_enabled,
@@ -135,10 +145,13 @@ function paymentPreview(draft: Draft) {
       })()
     : PERIODS[draft.repayment_frequency];
   if (amount == null || amount <= 0 || apr == null || apr < 0 || months == null || months <= 0 || periods == null || periods <= 0) return null;
-  const count = Math.max(1, Math.round((months * periods) / 12));
-  const rate = (apr / 100) / periods;
-  const payment = rate === 0 ? amount / count : (amount * rate) / (1 - Math.pow(1 + rate, -count));
-  return { payment, count, periods, annual: payment * Math.min(count, periods), total: payment * count };
+  // The same schedule the server prices on save (app/services/loan_schedule.py): the payment and the annual
+  // service are the ones coverage stands on, after any interest-only months, so the preview, the saved
+  // terms and the Financials tab agree.
+  const schedule = buildSchedule(amount, apr, months, { structure: draft.loan_structure || null, interestOnlyMonths: finite(draft.interest_only_months) ?? 0, periodsPerYear: periods });
+  if (!schedule) return null;
+  const payment = schedule.payment_after ?? schedule.payment_io ?? 0;
+  return { payment, count: schedule.periods, periods, annual: schedule.coverage_annual_debt_service, total: schedule.total_paid, schedule };
 }
 
 function payloadFromDraft(draft: Draft, expectedVersion: number): ApplicationClientTermsWrite {
@@ -154,6 +167,8 @@ function payloadFromDraft(draft: Draft, expectedVersion: number): ApplicationCli
   if (draft.repayment_frequency === "custom" && (custom == null || custom < 1)) throw new Error("Enter how many payments occur per year for the custom schedule.");
   const retained = finite(draft.retained_annual_debt_service);
   if (draft.debt_service_treatment === "refinance" && retained == null) throw new Error("Enter the annual debt service that remains after payoff. Enter 0 for a full payoff.");
+  const ioMonths = finite(draft.interest_only_months);
+  if (draft.loan_structure !== "interest_only" && ioMonths != null && (ioMonths < 0 || ioMonths >= Math.round(term))) throw new Error("Interest-only months must be fewer than the term. For interest-only to maturity, choose that structure.");
   return {
     expected_version: expectedVersion,
     loan_type: draft.loan_type,
@@ -167,6 +182,8 @@ function payloadFromDraft(draft: Draft, expectedVersion: number): ApplicationCli
     custom_repayment_label: draft.repayment_frequency === "custom" ? draft.custom_repayment_label.trim() || null : null,
     debt_service_treatment: draft.debt_service_treatment,
     retained_annual_debt_service: draft.debt_service_treatment === "refinance" ? retained : null,
+    loan_structure: draft.loan_structure || null,
+    interest_only_months: draft.loan_structure === "interest_only" ? null : Math.max(0, Math.round(finite(draft.interest_only_months) ?? 0)) || null,
     expiration_days: Math.round(expiration),
     closing_estimate_days: Math.round(close),
     co_brand_enabled: draft.co_brand_enabled,
@@ -388,6 +405,8 @@ export function ApplicationClientTermsPanel({
             <Field label="Funder name (optional)"><Input aria-label="Funder name" value={draft.funder_name} onChange={(event) => patch("funder_name", event.target.value)} placeholder="Capital source or bank" /></Field>
             <Field label="Repayment"><Select aria-label="Repayment frequency" value={draft.repayment_frequency} onChange={(event) => patch("repayment_frequency", event.target.value as ClientTermsRepaymentFrequency)}>{FREQUENCY_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field>
             <Field label="Debt-service impact"><Select aria-label="Debt-service impact" value={draft.debt_service_treatment} onChange={(event) => patch("debt_service_treatment", event.target.value as ClientTermsDebtTreatment)}><option value="additive">Add to current obligations</option><option value="refinance">Refinance / payoff current obligations</option></Select></Field>
+            <Field label="Structure"><Select aria-label="Loan structure" value={draft.loan_structure} onChange={(event) => patch("loan_structure", event.target.value as LoanStructure | "")}><option value="">{`Default for this term: ${STRUCTURE_LABELS[defaultStructure(finite(draft.term_months))].toLowerCase()}`}</option><option value="simple_interest">Simple interest (default under 3 years)</option><option value="amortizing">Amortizing (default from 3 years)</option><option value="interest_only">Interest-only to maturity</option></Select></Field>
+            {draft.loan_structure !== "interest_only" ? <Field label="Interest-only months first"><Input aria-label="Interest-only months first" inputMode="numeric" value={draft.interest_only_months} onChange={(event) => patch("interest_only_months", event.target.value)} placeholder="0" /></Field> : null}
             {draft.repayment_frequency === "custom" ? <><Field label="Payments per year"><Input aria-label="Payments per year" inputMode="numeric" value={draft.custom_payments_per_year} onChange={(event) => patch("custom_payments_per_year", event.target.value)} placeholder="18" /></Field><Field label="Custom schedule label"><Input aria-label="Custom schedule label" value={draft.custom_repayment_label} onChange={(event) => patch("custom_repayment_label", event.target.value)} placeholder="Every 20 days" /></Field></> : null}
             {draft.debt_service_treatment === "refinance" ? <Field label="Annual debt service remaining after payoff"><Input aria-label="Annual debt service remaining after payoff" inputMode="decimal" value={draft.retained_annual_debt_service} onChange={(event) => patch("retained_annual_debt_service", event.target.value)} placeholder="0 for a full payoff" /></Field> : null}
           </div>
@@ -409,7 +428,8 @@ export function ApplicationClientTermsPanel({
         <div className="terms-preview-brand"><div className="qc-mini">QC</div><div><b>Qualified Commercial</b><span>Financing terms</span></div>{draft.co_brand_enabled ? <div className="terms-preview-sponsor"><small>with</small><b>{draft.sponsor_name || "UrChoice"}</b></div> : null}</div>
         <div className="terms-preview-title"><span>Prepared structure</span><h4>{loanLabel}</h4></div>
         <div className="terms-preview-hero"><span>Proposed amount</span><strong>{money(finite(draft.amount), 0)}</strong><div><b>{finite(draft.apr_pct) == null ? "—" : `${finite(draft.apr_pct)!.toFixed(2)}%`}</b><small>APR</small><b>{finite(draft.term_months) == null ? "—" : `${Math.round(finite(draft.term_months)!)} mo`}</b><small>Time</small></div></div>
-        <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.count} payments · ${money(preview.annual, 0)} annual debt service` : "Enter amount, APR, and time to calculate"}</small></div>
+        <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? `${money(preview.schedule.payment_io, 2)} for ${preview.schedule.interest_only_months} interest-only months, then ${money(preview.schedule.payment_after, 2)} · ` : ""}${preview.count} payments · ${preview.schedule.structure_label.toLowerCase()} · ${money(preview.annual, 0)} annual debt service${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? " once principal starts" : ""}${preview.schedule.balloon ? ` · ${money(preview.schedule.balloon, 0)} due at maturity` : ""}` : "Enter amount, APR, and time to calculate"}</small></div>
+        {preview ? <LoanScheduleTable schedule={preview.schedule} title={`Schedule: ${describeSchedule(preview.schedule)}`} /> : null}
         <div className="terms-preview-dscr"><div><span>Before acceptance</span><strong>{ratio(terms.calculation.dscr_before)}</strong></div><i>→</i><div className="after"><span>After acceptance</span><strong>{ratio(afterDscr)}</strong></div></div>
         <p className="terms-preview-source">{terms.calculation.dscr_explanation}<br />{terms.calculation.source}</p>
         {terms.plan ? (
@@ -421,8 +441,8 @@ export function ApplicationClientTermsPanel({
             </p>
             {terms.plan.active && terms.plan.modifications.length ? <ul className="terms-preview-plan-list">{terms.plan.modifications.map((m) => <li key={m}>{m}</li>)}</ul> : null}
             {terms.plan.loan?.amount && (terms.plan.terms_link?.state === "plan_only" || terms.plan.terms_link?.state === "differs") ? (
-              <Btn size="sm" onClick={() => { const loan = terms.plan!.loan!; setDraft((d) => ({ ...d, amount: String(loan.amount ?? ""), apr_pct: loan.rate_pct == null ? d.apr_pct : String(loan.rate_pct), term_months: loan.term_months == null ? d.term_months : String(loan.term_months) })); }}>
-                Use the plan's loan: {money(terms.plan.loan.amount ?? null, 0)}{terms.plan.loan.rate_pct != null ? ` at ${terms.plan.loan.rate_pct}%` : ""}{terms.plan.loan.interest_only ? " interest-only" : terms.plan.loan.term_months ? ` over ${terms.plan.loan.term_months} mo` : ""}
+              <Btn size="sm" onClick={() => { const loan = terms.plan!.loan!; setDraft((d) => ({ ...d, amount: String(loan.amount ?? ""), apr_pct: loan.rate_pct == null ? d.apr_pct : String(loan.rate_pct), term_months: loan.term_months == null ? d.term_months : String(loan.term_months), loan_structure: (loan.structure === "amortizing" || loan.structure === "simple_interest" || loan.structure === "interest_only" ? loan.structure : loan.interest_only ? "interest_only" : "") as LoanStructure | "", interest_only_months: loan.interest_only_months ? String(loan.interest_only_months) : "" })); }}>
+                Use the plan's loan: {money(terms.plan.loan.amount ?? null, 0)}{terms.plan.loan.rate_pct != null ? ` at ${terms.plan.loan.rate_pct}%` : ""}{terms.plan.loan.describe ? ` ${terms.plan.loan.describe}` : terms.plan.loan.interest_only ? " interest-only" : terms.plan.loan.term_months ? ` over ${terms.plan.loan.term_months} mo` : ""}
               </Btn>
             ) : null}
           </div>

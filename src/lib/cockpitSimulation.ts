@@ -114,7 +114,8 @@ export function simulateRemovals(months: CockpitMonth[], payees: RecurringPayee[
 // ---------------------------------------------------------------------------
 
 import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanCandidate, PlanLoanTerms } from "@/lib/financialCockpit";
-import { dscrStatusOf, loanPayment } from "@/lib/financialCockpit";
+import { dscrStatusOf } from "@/lib/financialCockpit";
+import { buildSchedule, describeSchedule, type LoanScheduleSummary } from "@/lib/loanSchedule";
 
 export type LocalPlanEvaluation = {
   retiredMonthly: number;
@@ -125,6 +126,7 @@ export type LocalPlanEvaluation = {
   incomeBefore: number | null;
   incomeAfter: number | null;
   loanTerms: PlanLoanTerms | null;
+  schedule: LoanScheduleSummary | null;
   newPayment: number | null;
   newPaymentSource: string | null;
   loanAmountNeeded: number | null;
@@ -164,18 +166,21 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const addBacksAnnual = r2(addBacksMonthly * 12);
   const incomeOverride = plan.overrides?.income_annual ?? null;
   const serviceOverride = plan.overrides?.debt_service_monthly ?? null;
-  const interestOnly = !!plan.new_loan_interest_only;
+  const interestOnly = !!plan.new_loan_interest_only || plan.new_loan_structure === "interest_only";
   const proposed = cockpit.dscr.proposed;
-  const loanTerms: PlanLoanTerms | null =
+  const schedule: LoanScheduleSummary | null =
     plan.new_loan_amount && (plan.new_loan_term_months || interestOnly)
-      ? { amount: plan.new_loan_amount, rate_pct: plan.new_loan_rate_pct ?? 0, term_months: plan.new_loan_term_months ?? null, interest_only: interestOnly }
-      : plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount
-        ? { amount: proposed.amount, rate_pct: proposed.rate_pct ?? 0, term_months: proposed.term_months ?? null, interest_only: false }
-        : null;
+      ? buildSchedule(plan.new_loan_amount, plan.new_loan_rate_pct ?? 0, plan.new_loan_term_months ?? 0, { structure: interestOnly ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months ?? 0 })
+      : null;
+  const loanTerms: PlanLoanTerms | null = schedule
+    ? { amount: schedule.amount, rate_pct: schedule.rate_pct, term_months: schedule.term_months, interest_only: schedule.structure === "interest_only", structure: schedule.structure, interest_only_months: schedule.interest_only_months, payment_io: schedule.payment_io_monthly, payment_after: schedule.payment_after_monthly, annual_debt_service: schedule.annual_debt_service, total_interest: schedule.total_interest, total_paid: schedule.total_paid, balloon: schedule.balloon, describe: describeSchedule(schedule) }
+    : plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount
+      ? { amount: proposed.amount, rate_pct: proposed.rate_pct ?? 0, term_months: proposed.term_months ?? null, interest_only: false }
+      : null;
   let newPayment = plan.new_payment_monthly;
   let source: string | null = plan.new_payment_source;
-  if (newPayment == null && loanTerms) {
-    newPayment = loanPayment(loanTerms.amount, loanTerms.rate_pct, loanTerms.term_months, interestOnly);
+  if (newPayment == null && schedule) {
+    newPayment = schedule.coverage_payment_monthly;
     source = source ?? "manual_terms";
   }
   // The recorded loan terms join the plan only when the desk adopted them.
@@ -238,6 +243,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     incomeBefore: cockpit.dscr.headline?.numerator ?? null,
     incomeAfter: headline?.numerator_after ?? null,
     loanTerms,
+    schedule,
     newPayment: newPayment == null ? null : r2(newPayment),
     newPaymentSource: newPayment == null ? null : source,
     loanAmountNeeded: Math.max(payoffTotal ?? 0, cockpit.requested_amount ?? 0) || null,

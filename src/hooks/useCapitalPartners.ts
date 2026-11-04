@@ -49,12 +49,12 @@ export interface CpListingRef { id: string; ref: string; status: CpListingStatus
 /** One product offered on a listing: a program with suggested amount, rate and term; the primary one supplies the headline terms. */
 export interface CpListingProduct {
   program_key: string | null; label: string; amount: number | string | null; rate_pct: number | string | null; factor_rate?: number | string | null;
-  term_months: number | null; interest_only?: boolean; payment_frequency: "monthly" | "weekly" | "daily" | null; monthly_payment: number | string | null; dscr: number | string | null;
+  term_months: number | null; interest_only?: boolean; structure?: "amortizing" | "simple_interest" | "interest_only" | null; interest_only_months?: number | null; payment_frequency: "monthly" | "weekly" | "daily" | null; monthly_payment: number | string | null; dscr: number | string | null;
   notes: string | null; primary: boolean;
 }
 export interface CpOfferSuggestion {
   program_key: string | null; label: string; eligible: boolean | null; amount: number | null; rate_pct: number | null; factor_rate: number | null; term_months: number;
-  interest_only?: boolean; payment_frequency: string; monthly_payment: number | null; dscr: number | null; dscr_status: string; affordable_amount: number | null; room_monthly: number | null;
+  interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; payment_frequency: string; monthly_payment: number | null; dscr: number | null; dscr_status: string; affordable_amount: number | null; room_monthly: number | null;
   requested_amount: number | null; requested_monthly_payment: number | null; requested_dscr: number | null; requested_dscr_status: string;
   bounds: { min_amount: number | null; max_amount: number | null; min_term: number | null; max_term: number | null; pricing_basis: string | null; published: boolean };
   reason: string | null; reading: string;

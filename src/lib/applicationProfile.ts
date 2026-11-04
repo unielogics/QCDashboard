@@ -438,6 +438,9 @@ export type ApplicationClientTerms = {
   custom_repayment_label: string | null;
   debt_service_treatment: ClientTermsDebtTreatment;
   retained_annual_debt_service: number | null;
+  /** amortizing | simple_interest | interest_only (rows saved before the structure existed read as amortizing) and the interest-only months before principal starts. */
+  loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
+  interest_only_months?: number | null;
   expiration_days: number | null;
   closing_estimate_days: number | null;
   co_brand_enabled: boolean;
@@ -459,7 +462,7 @@ export type ApplicationClientTerms = {
     dscr?: { before: number | null; after: number | null; basis?: string | null } | null;
     debt_service_monthly?: { before: number | null; after: number | null } | null;
     income_annual?: { before: number | null; after: number | null } | null;
-    loan?: { amount?: number | null; rate_pct?: number | null; term_months?: number | null; interest_only?: boolean; payment_monthly?: number | null; source?: string | null } | null;
+    loan?: { amount?: number | null; rate_pct?: number | null; term_months?: number | null; interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; payment_monthly?: number | null; payment_io?: number | null; payment_after?: number | null; source?: string | null; describe?: string | null } | null;
     terms_link?: { state: string; summary: string; differences: string[] } | null;
   } | null;
 };
@@ -477,6 +480,8 @@ export type ApplicationClientTermsWrite = {
   custom_repayment_label: string | null;
   debt_service_treatment: ClientTermsDebtTreatment;
   retained_annual_debt_service: number | null;
+  loan_structure: "amortizing" | "simple_interest" | "interest_only" | null;
+  interest_only_months: number | null;
   expiration_days: number;
   closing_estimate_days: number;
   co_brand_enabled: boolean;

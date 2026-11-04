@@ -432,7 +432,7 @@ export type PlanAddBack = { id?: string | null; kind: PlanAddBackKind; label?: s
 /** Figures the desk sets outright, each with the reason. */
 export type PlanOverrides = { income_annual: number | null; income_note: string | null; debt_service_monthly: number | null; debt_service_note: string | null };
 export const EMPTY_OVERRIDES: PlanOverrides = { income_annual: null, income_note: null, debt_service_monthly: null, debt_service_note: null };
-export type PlanLoanTerms = { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean };
+export type PlanLoanTerms = { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; structure?: string | null; interest_only_months?: number; payment_io?: number | null; payment_after?: number | null; annual_debt_service?: number | null; total_interest?: number | null; total_paid?: number | null; balloon?: number | null; describe?: string };
 
 export type FinancialPlanRecord = {
   retire: string[];
@@ -443,6 +443,8 @@ export type FinancialPlanRecord = {
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
   new_loan_interest_only?: boolean;
+  new_loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
+  new_loan_interest_only_months?: number | null;
   add_backs?: PlanAddBack[];
   overrides?: PlanOverrides | null;
   terms_ref?: PlanTermsRef | null;
@@ -453,7 +455,7 @@ export type FinancialPlanRecord = {
 /** Which recorded terms the plan's loan was adopted from. */
 export type PlanTermsRef = { kind: "client_terms" | "production_term_sheet" | string; id: string; version: number; label: string; adopted_at?: string | null };
 /** The recorded terms as the plan reads them (the Underwriting tab's client terms or the dealer's term sheet). */
-export type RecordedTerms = { kind: string; id: string; version: number; label: string; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; payment_monthly: number | null; treatment: string; retained_annual_debt_service: number | null };
+export type RecordedTerms = { kind: string; id: string; version: number; label: string; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; structure?: string; interest_only_months?: number; payment_monthly: number | null; treatment: string; retained_annual_debt_service: number | null };
 /** Does the plan's loan mirror the recorded terms? */
 export type PlanTermsLink = {
   state: "none" | "plan_only" | "recorded_not_in_plan" | "mirrored" | "differs";
@@ -554,6 +556,8 @@ export type FinancialPlanWrite = {
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
   new_loan_interest_only: boolean;
+  new_loan_structure: "amortizing" | "simple_interest" | "interest_only" | null;
+  new_loan_interest_only_months: number | null;
   add_backs: PlanAddBack[];
   overrides: PlanOverrides | null;
   terms_ref?: PlanTermsRef | null;
@@ -707,7 +711,7 @@ export type FinancialCockpit = {
     obligations: Obligation[];
     schedule: CockpitDebtSchedule;
   };
-  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null };
+  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null; schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number }> };
   dscr: CockpitDscr;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];

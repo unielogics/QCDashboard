@@ -10,7 +10,7 @@
 // package sit above the products so nothing is sent out blind.
 
 import { useEffect, useMemo, useState } from "react";
-import { Btn, CellChip, Input, Lbl, StatusLine, Textarea, cx, type ChipTone } from "@/components/ds";
+import { Btn, CellChip, Input, Lbl, Select, StatusLine, Textarea, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LISTING_TONE, errorMessage } from "@/components/marketplace/shared";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
@@ -28,7 +28,8 @@ import {
   type CpOfferSuggestions,
 } from "@/hooks/useCapitalPartners";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
-import { compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, loanPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
+import { compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
+import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure } from "@/lib/loanSchedule";
 import type { CockpitPackageState } from "./FinancialCockpit";
 
 type Props = {
@@ -52,6 +53,8 @@ type ProductDraft = {
   factor_rate: number | null;
   term_months: string;
   interest_only: boolean;
+  structure: LoanStructure | null;
+  interest_only_months: string;
   primary: boolean;
   notes: string | null;
   eligible: boolean | null;
@@ -67,10 +70,10 @@ const num = (value: string | number | null | undefined): number | null => {
 const text = (value: number | string | null | undefined) => (value == null ? "" : String(value));
 
 function fromListing(product: CpListingProduct): ProductDraft {
-  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, primary: product.primary, notes: product.notes, eligible: null };
+  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, structure: (product.structure as LoanStructure | null) ?? (product.interest_only ? "interest_only" : null), interest_only_months: text(product.interest_only_months ?? null), primary: product.primary, notes: product.notes, eligible: null };
 }
 function fromSuggestion(item: CpOfferSuggestion, primary: boolean): ProductDraft {
-  return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, primary, notes: item.reading, eligible: item.eligible };
+  return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? null, interest_only_months: text(item.interest_only_months ?? null), primary, notes: item.reading, eligible: item.eligible };
 }
 function toProduct(draft: ProductDraft, payment: number | null, dscr: number | null): CpListingProduct {
   return {
@@ -80,7 +83,9 @@ function toProduct(draft: ProductDraft, payment: number | null, dscr: number | n
     rate_pct: num(draft.rate_pct),
     factor_rate: draft.factor_rate,
     term_months: num(draft.term_months) == null ? null : Math.round(num(draft.term_months) as number),
-    interest_only: draft.interest_only,
+    interest_only: draft.interest_only || draft.structure === "interest_only",
+    structure: draft.structure ?? defaultStructure(num(draft.term_months)),
+    interest_only_months: draft.structure === "interest_only" ? null : (num(draft.interest_only_months) == null ? null : Math.round(num(draft.interest_only_months) as number)),
     payment_frequency: "monthly",
     monthly_payment: payment,
     dscr,
@@ -132,7 +137,9 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
   const computed = useMemo(
     () =>
       products.map((draft) => {
-        const payment = loanPayment(num(draft.amount), num(draft.rate_pct), num(draft.term_months), draft.interest_only, draft.factor_rate);
+        const amount = num(draft.amount);
+        const term = num(draft.term_months);
+        const payment = draft.factor_rate && amount && term ? Math.round(((amount * draft.factor_rate) / term) * 100) / 100 : buildSchedule(amount, num(draft.rate_pct), term, { structure: draft.interest_only ? "interest_only" : draft.structure, interestOnlyMonths: num(draft.interest_only_months) })?.coverage_payment_monthly ?? null;
         const dscr = dscrWithPayment(income, existingMonthly, payment);
         return { draft, payment, dscr };
       }),
@@ -144,7 +151,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
     setProducts((current) => {
       const index = current.findIndex((p) => p.primary);
       const base = index >= 0 ? current[index] : { key: nextKey(), program_key: null, label: "Loan", amount: "", rate_pct: "", factor_rate: null, term_months: "", interest_only: false, primary: true, notes: null, eligible: null };
-      const next = { ...base, amount: text(planLoan.amount), rate_pct: text(planLoan.rate_pct), term_months: text(planLoan.term_months), interest_only: planLoan.interest_only, factor_rate: null, notes: "From the desk's plan on the file." };
+      const next = { ...base, amount: text(planLoan.amount), rate_pct: text(planLoan.rate_pct), term_months: text(planLoan.term_months), interest_only: planLoan.interest_only, structure: ((planLoan as { structure?: string | null }).structure as LoanStructure | null) ?? (planLoan.interest_only ? "interest_only" : null), interest_only_months: text((planLoan as { interest_only_months?: number | null }).interest_only_months ?? null), factor_rate: null, notes: "From the desk's plan on the file." };
       return index >= 0 ? current.map((p, i) => (i === index ? next : p)) : [...current, next];
     });
   };
@@ -198,7 +205,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
       ...current,
       suggestion
         ? { ...fromSuggestion(suggestion, current.length === 0), eligible }
-        : { key: nextKey(), program_key: programKey, label: name, amount: "", rate_pct: "16", factor_rate: null, term_months: "120", interest_only: false, primary: current.length === 0, notes: null, eligible },
+        : { key: nextKey(), program_key: programKey, label: name, amount: "", rate_pct: "16", factor_rate: null, term_months: "120", interest_only: false, structure: null, interest_only_months: "", primary: current.length === 0, notes: null, eligible },
     ]);
   };
   const suggestAll = async () => {
@@ -212,7 +219,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
         current.map((p) => {
           const item = fetched.products.find((s) => s.program_key === p.program_key);
           if (!item) return p;
-          return { ...p, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, notes: item.reading, eligible: item.eligible };
+          return { ...p, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? p.structure, interest_only_months: text(item.interest_only_months ?? null) || p.interest_only_months, notes: item.reading, eligible: item.eligible };
         }),
       );
       setNotice("Suggested terms applied. Each line reads the amount the income supports at 1.25x on the program's longest term, capped by the program and the request.");
@@ -404,10 +411,12 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
                         <td className="r num"><Input aria-label="Term in months" inputMode="numeric" value={draft.term_months} disabled={!editable} onChange={(e) => update(draft.key, { term_months: e.target.value })} /></td>
                         <td>
                           {draft.factor_rate ? <span className="sub">Factor</span> : (
-                            <label className={cx("fc-sim-pick", draft.interest_only && "on")}>
-                              <input type="checkbox" checked={draft.interest_only} disabled={!editable} onChange={(e) => update(draft.key, { interest_only: e.target.checked })} />
-                              <span className="fc-sim-pick-name">{draft.interest_only ? "Interest-only" : "Amortizing"}</span>
-                            </label>
+                            <div className="grid g2">
+                              <Select aria-label="Loan structure" value={draft.interest_only ? "interest_only" : (draft.structure ?? defaultStructure(num(draft.term_months)))} disabled={!editable} onChange={(e) => update(draft.key, { structure: e.target.value as LoanStructure, interest_only: e.target.value === "interest_only" })}>
+                                {(Object.keys(STRUCTURE_LABELS) as LoanStructure[]).map((k) => <option key={k} value={k}>{STRUCTURE_LABELS[k]}</option>)}
+                              </Select>
+                              {!(draft.interest_only || draft.structure === "interest_only") ? <Input aria-label="Interest-only months first" inputMode="numeric" placeholder="IO months first" value={draft.interest_only_months} disabled={!editable} onChange={(e) => update(draft.key, { interest_only_months: e.target.value })} /> : null}
+                            </div>
                           )}
                         </td>
                         <td className="r num"><strong>{money(payment)}</strong>{draft.interest_only ? <small className="sub" style={{ display: "block" }}>interest; principal at maturity</small> : null}</td>

@@ -40,7 +40,8 @@ import {
   type PlanAddBackKind,
   type PlanOverrides,
 } from "@/lib/financialCockpit";
-import { ChartCard, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
+import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
+import { STRUCTURE_LABELS, defaultStructure, type LoanStructure } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
 const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad" | "mut" => {
@@ -48,7 +49,7 @@ const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad
   return tone === "acc" ? "mut" : tone;
 };
 
-const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, add_backs: [], overrides: null, terms_ref: null, note: null };
+const EMPTY_PLAN: FinancialPlanWrite = { retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, new_loan_structure: null, new_loan_interest_only_months: null, add_backs: [], overrides: null, terms_ref: null, note: null };
 
 function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
   const r = cockpit.plan?.record;
@@ -63,6 +64,8 @@ function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
     new_loan_rate_pct: r.new_loan_rate_pct,
     new_loan_term_months: r.new_loan_term_months,
     new_loan_interest_only: !!r.new_loan_interest_only,
+    new_loan_structure: r.new_loan_structure ?? null,
+    new_loan_interest_only_months: r.new_loan_interest_only_months ?? null,
     add_backs: (r.add_backs ?? []).map((a) => ({ ...a })),
     overrides,
     terms_ref: r.terms_ref ?? null,
@@ -70,6 +73,11 @@ function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
   };
 }
 const numberValue = (value: number | null | undefined): string => (value == null || !Number.isFinite(value) ? "" : String(value));
+const describeOf = (s: { structure: string; term_months: number | null; interest_only_months: number }): string => {
+  if (s.structure === "interest_only") return `interest-only${s.term_months ? ` over ${s.term_months} months` : ""}, principal due at maturity`;
+  const label = (STRUCTURE_LABELS[s.structure as LoanStructure] ?? s.structure).toLowerCase();
+  return s.interest_only_months ? `over ${s.term_months} months, ${s.interest_only_months} interest-only then ${label}` : `over ${s.term_months} months, ${label}`;
+};
 const change = (before: number | null | undefined, after: number | null | undefined): number | null => (before == null || after == null ? null : Math.round((after - before) * 100) / 100);
 const signedMoney = (value: number | null): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`);
 const signedMultiple = (value: number | null): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}x`);
@@ -144,7 +152,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
     if (apply.new_loan_amount != null || apply.new_payment_monthly === null) setPaymentText("");
   };
   // The new loan's terms: amount, rate, term and whether it is interest-only. Typing a term wipes a typed payment.
-  const setLoan = (field: "amount" | "rate" | "term" | "interest_only", raw: string | boolean) => {
+  const setLoan = (field: "amount" | "rate" | "term" | "interest_only" | "structure" | "io_months", raw: string | boolean) => {
     setSaved(null);
     setPaymentText("");
     setPlan((p) => {
@@ -152,12 +160,29 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
       const next: FinancialPlanWrite = { ...p, new_payment_monthly: null };
       if (field === "amount") next.new_loan_amount = value;
       else if (field === "rate") next.new_loan_rate_pct = value;
-      else if (field === "term") next.new_loan_term_months = value == null ? null : Math.max(1, Math.round(value));
-      else next.new_loan_interest_only = raw === true;
+      else if (field === "term") {
+        const term = value == null ? null : Math.max(1, Math.round(value));
+        // The house default follows the term: simple interest under three years, amortizing from three.
+        if (p.new_loan_structure !== "interest_only" && (p.new_loan_structure == null || p.new_loan_structure === defaultStructure(p.new_loan_term_months))) next.new_loan_structure = defaultStructure(term);
+        next.new_loan_term_months = term;
+        if (next.new_loan_interest_only_months != null && term != null) next.new_loan_interest_only_months = Math.min(next.new_loan_interest_only_months, term);
+      } else if (field === "structure") {
+        const structure = String(raw) as LoanStructure;
+        next.new_loan_structure = structure;
+        next.new_loan_interest_only = structure === "interest_only";
+        if (structure === "interest_only") next.new_loan_interest_only_months = null;
+      } else if (field === "io_months") {
+        const months = value == null ? null : Math.max(0, Math.round(value));
+        next.new_loan_interest_only_months = months != null && p.new_loan_term_months ? Math.min(months, p.new_loan_term_months) : months;
+      } else {
+        next.new_loan_interest_only = raw === true;
+        next.new_loan_structure = raw === true ? "interest_only" : defaultStructure(p.new_loan_term_months);
+      }
       next.new_payment_source = next.new_loan_amount ? "manual_terms" : null;
       return next;
     });
   };
+  const structureNow: LoanStructure = plan.new_loan_interest_only ? "interest_only" : (plan.new_loan_structure ?? defaultStructure(plan.new_loan_term_months));
   const updateAddBack = (index: number, patch: Partial<PlanAddBack>) => {
     setSaved(null);
     setPlan((p) => ({ ...p, add_backs: p.add_backs.map((a, i) => (i === index ? { ...a, ...patch } : a)) }));
@@ -389,14 +414,19 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
           <div className="fc-loan-terms">
             <label className="grid g2"><span className="sub">Amount, $</span><Input aria-label="New loan amount" type="number" inputMode="decimal" min={0} step="any" value={numberValue(plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => setLoan("amount", e.target.value)} /></label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
-            <label className="grid g2"><span className="sub">Term, months</span><Input aria-label="New loan term in months" type="number" inputMode="numeric" min={1} max={600} step={1} value={numberValue(plan.new_loan_term_months)} disabled={!canEdit || plan.new_loan_interest_only} onChange={(e) => setLoan("term", e.target.value)} /></label>
-            <label className={cx("fc-sim-pick", plan.new_loan_interest_only && "on")} style={{ alignSelf: "end" }}>
-              <input type="checkbox" checked={plan.new_loan_interest_only} disabled={!canEdit} onChange={(e) => setLoan("interest_only", e.target.checked)} />
-              <span className="fc-sim-pick-name">Interest-only</span>
+            <label className="grid g2"><span className="sub">Term, months</span><Input aria-label="New loan term in months" type="number" inputMode="numeric" min={1} max={600} step={1} value={numberValue(plan.new_loan_term_months)} disabled={!canEdit} onChange={(e) => setLoan("term", e.target.value)} /></label>
+            <label className="grid g2"><span className="sub">Structure</span>
+              <Select aria-label="New loan structure" value={structureNow} disabled={!canEdit} onChange={(e) => setLoan("structure", e.target.value)}>
+                {(Object.keys(STRUCTURE_LABELS) as LoanStructure[]).map((k) => <option key={k} value={k}>{STRUCTURE_LABELS[k]}{k === defaultStructure(plan.new_loan_term_months) && k !== "interest_only" ? " (default for this term)" : ""}</option>)}
+              </Select>
             </label>
+            {structureNow !== "interest_only" ? (
+              <label className="grid g2"><span className="sub">Interest-only months first</span><Input aria-label="Interest-only months at the start of the term" type="number" inputMode="numeric" min={0} max={plan.new_loan_term_months ?? 600} step={1} placeholder="0" value={numberValue(plan.new_loan_interest_only_months)} disabled={!canEdit} onChange={(e) => setLoan("io_months", e.target.value)} /></label>
+            ) : null}
           </div>
+          <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
-            {loanTerms && !termsAdopted ? `${loanTerms}: ${money(local.newPayment)} a month${plan.new_loan_interest_only ? " of interest; the principal is due at maturity" : ""}.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
+            {local.schedule && !termsAdopted ? `${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}: ${local.schedule.payment_io_monthly != null && local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ${money(local.schedule.payment_after_monthly)}` : `${money(local.newPayment)} a month${local.schedule.structure === "interest_only" ? " of interest; the principal is due at maturity" : ""}`}. Coverage stands on ${money(local.newPayment)} a month.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
             {canRecordTerms ? <> <button type="button" className="linky" onClick={onRecordTerms}>Record loan terms</button></> : null}
           </span>
           {recorded ? (
@@ -477,6 +507,37 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
           {overrides.income_annual != null || overrides.debt_service_monthly != null ? <StatusLine tone="acc">Overrides in force{overrides.income_annual != null ? `: income ${money(overrides.income_annual)} a year` : ""}{overrides.debt_service_monthly != null ? `${overrides.income_annual != null ? "," : ":"} existing debt service ${money(overrides.debt_service_monthly)} a month` : ""}. They print on the package and the listing with the note.</StatusLine> : null}
         </div>
       </div>
+
+      {local.schedule ? (
+        <ChartCard
+          plain
+          title={`Amortization schedule: ${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}`}
+          sub={`${local.schedule.payment_io_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ` : ""}${local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_after_monthly)} a month` : `${money(local.schedule.payment_io_monthly)} a month of interest`} · first year ${money(local.schedule.annual_debt_service)} · total interest ${money(local.schedule.total_interest)} · total paid ${money(local.schedule.total_paid)}${local.schedule.balloon ? ` · ${money(local.schedule.balloon)} due at maturity` : ""}.`}
+          table={{
+            caption: "Payment by period",
+            cols: ["Period", "Phase", "Payment", "Interest", "Principal", "Balance"],
+            rows: local.schedule.rows.map((r) => ({ key: String(r.period), muted: r.phase === "interest_only", cells: [String(r.period), r.phase === "interest_only" ? "Interest-only" : r.phase === "amortizing" ? "Amortizing" : "Simple interest", money(r.payment), money(r.interest), money(r.principal), r.balloon ? `${money(r.balance)} · ${money(r.balloon)} due` : money(r.balance)] })),
+          }}
+          chart={
+            <div className="grid g8">
+              <ColumnChart
+                ariaLabel="Interest and principal by period"
+                bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period), muted: r.phase === "interest_only" }))}
+                series={[
+                  { key: "interest", label: "Interest", color: SERIES.two, values: local.schedule.rows.map((r) => r.interest) },
+                  { key: "principal", label: "Principal", color: SERIES.one, values: local.schedule.rows.map((r) => r.principal), emphasis: true },
+                ]}
+                height={180}
+              />
+              <LineChart
+                ariaLabel="Balance by period"
+                bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period) }))}
+                series={[{ key: "balance", label: "Balance", color: SERIES.one, values: local.schedule.rows.map((r) => r.balance), emphasis: true }]}
+              />
+            </div>
+          }
+        />
+      ) : null}
 
       <div className="grid g6">
         <Lbl>Original, with the plan, and the difference</Lbl>
