@@ -165,19 +165,24 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const incomeOverride = plan.overrides?.income_annual ?? null;
   const serviceOverride = plan.overrides?.debt_service_monthly ?? null;
   const interestOnly = !!plan.new_loan_interest_only;
+  const proposed = cockpit.dscr.proposed;
   const loanTerms: PlanLoanTerms | null =
     plan.new_loan_amount && (plan.new_loan_term_months || interestOnly)
       ? { amount: plan.new_loan_amount, rate_pct: plan.new_loan_rate_pct ?? 0, term_months: plan.new_loan_term_months ?? null, interest_only: interestOnly }
-      : null;
+      : plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount
+        ? { amount: proposed.amount, rate_pct: proposed.rate_pct ?? 0, term_months: proposed.term_months ?? null, interest_only: false }
+        : null;
   let newPayment = plan.new_payment_monthly;
   let source: string | null = plan.new_payment_source;
   if (newPayment == null && loanTerms) {
     newPayment = loanPayment(loanTerms.amount, loanTerms.rate_pct, loanTerms.term_months, interestOnly);
     source = source ?? "manual_terms";
   }
-  if (newPayment == null && cockpit.dscr.proposed) {
+  // The recorded loan terms join the plan only when the desk adopted them.
+  if (newPayment == null && source === "term_sheet" && cockpit.dscr.proposed?.monthly_payment != null) {
     newPayment = cockpit.dscr.proposed.monthly_payment;
-    source = "term_sheet";
+  } else if (newPayment == null && source === "term_sheet") {
+    source = null;
   }
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? 0;
   const serviceBeforeNewPayment = r2(Math.max(0, serviceBefore - retiredMonthly));

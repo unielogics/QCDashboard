@@ -177,6 +177,21 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
       return { ...p, overrides: empty ? null : next };
     });
   };
+  // The plan in words, as it stands on screen (saved or not).
+  const planLines: string[] = [
+    ...plan.retire.map((id) => { const o = cockpit.debt.obligations.find((x) => x.id === id); return o ? `Pay off ${o.lender} with the new loan (${money(o.monthly)} / mo stops)` : null; }).filter((x): x is string => !!x),
+    ...plan.exclude.map((id) => { const p = cockpit.bank.recurring.payees.find((x) => `payee:${x.key}` === id); return p ? `${p.payee} is not operating spend (+${money(p.monthly_average)} / mo income on the bank basis)` : null; }).filter((x): x is string => !!x),
+    ...plan.add_backs.filter((a) => a.amount_monthly > 0).map((a) => `Add back ${a.label || ADD_BACK_KINDS[a.kind]} (+${money(a.amount_monthly)} / mo)`),
+    ...(plan.overrides?.income_annual != null ? [`Income available for debt service set to ${money(plan.overrides.income_annual)} a year`] : []),
+    ...(plan.overrides?.debt_service_monthly != null ? [`Existing debt service set to ${money(plan.overrides.debt_service_monthly)} a month`] : []),
+    ...(local.newPayment ? [local.newPaymentSource === "term_sheet" ? `New payment ${money(local.newPayment)} / mo from the recorded loan terms${cockpit.dscr.proposed?.label ? ` (${cockpit.dscr.proposed.label})` : ""}` : plan.new_loan_amount ? `New loan ${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}%${plan.new_loan_interest_only ? " interest-only" : ` over ${plan.new_loan_term_months ?? "—"} months`}: ${money(local.newPayment)} / mo` : `New payment ${money(local.newPayment)} / mo, typed by the desk`] : []),
+  ];
+  const termsAdopted = plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && !plan.new_loan_amount;
+  const adoptTerms = (on: boolean) => {
+    setSaved(null);
+    setPaymentText("");
+    setPlan((p) => ({ ...p, new_payment_monthly: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, new_payment_source: on ? "term_sheet" : null }));
+  };
   const latestTax = [...(cockpit.tax?.years ?? [])].reverse();
   const officerYear = latestTax.find((y) => (y.officer_compensation ?? 0) > 0) ?? null;
   const interestYear = latestTax.find((y) => (y.interest ?? 0) > 0) ?? null;
@@ -261,7 +276,15 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
             <CellChip tone="mut">Debt service {money(local.serviceAfter)} / mo</CellChip>
             {local.retiredMonthly ? <CellChip tone="ok">{money(local.retiredMonthly)} / mo stops</CellChip> : null}
             {local.excludedMonthly ? <CellChip tone="acc">{money(local.excludedMonthly)} / mo not spend</CellChip> : null}
-            {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo new payment{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (term sheet)" : ""}</CellChip> : null}
+            {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo new payment{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (recorded loan terms)" : ""}</CellChip> : null}
+          </div>
+          <div className="fc-plan-words">
+            <span className="lbl">The plan</span>
+            {planLines.length ? (
+              <ul className="fc-notes">{planLines.map((line) => <li key={line}>{line}</li>)}</ul>
+            ) : (
+              <span className="sub">No plan yet: these are today's figures. Tick what the new loan pays off, enter the new loan or add the recorded loan terms, add back income the documents understate, or apply a lever on the right. Nothing is assumed until you choose it.</span>
+            )}
           </div>
           <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" />
           <div className="fc-stat-list">
@@ -351,9 +374,18 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
             </label>
           </div>
           <span className="sub">
-            {loanTerms ? `${loanTerms}: ${money(local.newPayment)} a month${plan.new_loan_interest_only ? " of interest; the principal is due at maturity" : ""}.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms: ${money(cockpit.dscr.proposed.monthly_payment)} a month.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
+            {loanTerms && !termsAdopted ? `${loanTerms}: ${money(local.newPayment)} a month${plan.new_loan_interest_only ? " of interest; the principal is due at maturity" : ""}.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
             {canRecordTerms ? <> <button type="button" className="linky" onClick={onRecordTerms}>Record loan terms</button></> : null}
           </span>
+          {cockpit.dscr.proposed && canEdit ? (
+            <div className="fc-chips">
+              {termsAdopted ? (
+                <Btn size="sm" onClick={() => adoptTerms(false)}>Take the recorded loan terms out of the plan</Btn>
+              ) : (
+                <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Add the recorded loan terms ({money(cockpit.dscr.proposed.monthly_payment)} / mo) to the plan</Btn>
+              )}
+            </div>
+          ) : null}
           <Input aria-label="Or type the new monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Or type the payment (term sheet: ${money(cockpit.dscr.proposed.monthly_payment)})` : "Or type the payment"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
           <Lbl>Ways to raise coverage</Lbl>
           {levers.length ? (

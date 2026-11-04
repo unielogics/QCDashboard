@@ -6803,3 +6803,6 @@ a.pick { color: inherit; text-decoration: none; }
   .fc-adjust-row { grid-template-columns: 1fr 1fr; }
   .fc-adjust-row > :last-child { justify-self: end; }
 }
+
+.fc-plan-words { display: grid; gap: 4px; padding: 8px 10px; border: 1px dashed var(--line); border-radius: 8px; }
+.fc-plan-words .fc-notes { margin: 0; padding-left: 18px; }
