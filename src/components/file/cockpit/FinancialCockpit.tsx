@@ -54,6 +54,7 @@ import { CoverageCard } from "./CoverageCard";
 import { OverdraftCard } from "./OverdraftCard";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { RecurringCard } from "./RecurringCard";
+import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
 
 export type CockpitPackageState = { generated: boolean; inSync: boolean; summaryVersion: number | null; packetVersion: number | null };
 
@@ -396,7 +397,7 @@ function usDate(value: string | null | undefined): string {
   return match ? `${match[2]}/${match[3]}/${match[1]}` : value ?? "—";
 }
 
-function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit; profileId: string; canEdit: boolean; onRefresh: () => void }) {
+function DebtCard({ cockpit, profileId, canEdit, onRefresh, onOpenEvidence }: { cockpit: Cockpit; profileId: string; canEdit: boolean; onRefresh: () => void; onOpenEvidence?: () => void }) {
   const { rows, documented, document, service } = cockpit.debt;
   const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
   const voided = schedule.voided;
@@ -410,6 +411,12 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
+  useEffect(() => {
+    const handler = () => { void openForm(); };
+    window.addEventListener(OPEN_DEBT_SCHEDULE_EVENT, handler);
+    return () => window.removeEventListener(OPEN_DEBT_SCHEDULE_EVENT, handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profileId]);
   const openForm = async () => {
     setError(null);
     setBusy("open");
@@ -516,6 +523,14 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit
         rows: documented.map((d, i) => ({ key: `${d.lender}-${i}`, cells: [d.lender, money(d.balance), money(d.monthly_payment), d.payment_frequency ? `${money(d.payment_amount)} ${d.payment_frequency}` : "monthly", d.maturity_on ?? "—"] })),
       }
     : null;
+  const uploadedLines = (document?.debts ?? []).filter((d) => d && d.lender);
+  const uploadedTable: ChartTable | null = uploadedLines.length && !rows.length
+    ? {
+        caption: "Lines read off the uploaded schedule",
+        cols: ["Lender", "Type", "Balance", "Monthly", "Rate", "Maturity", "Secured by"],
+        rows: uploadedLines.map((d, i) => ({ key: `${d.lender}-${i}`, cells: [String(d.lender), String(d.debt_type ?? "—"), money(d.current_balance ?? d.balance ?? null), money(d.monthly_payment ?? null), d.rate_pct != null ? `${d.rate_pct}%` : "—", usDate(d.maturity_date ?? null), String(d.secured_by ?? "—")] })),
+      }
+    : null;
   const canRequest = !voided && !schedule.requested_at && !["rows", "document", "received"].includes(schedule.status);
   const actions = canEdit ? (
     <>
@@ -558,8 +573,10 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh }: { cockpit: Cockpit
           {service.observed_monthly != null ? <Stat label="Lender and funder debits seen in the statements">{`${money(service.observed_monthly)} / mo${service.unexplained_observed_monthly ? ` · ${money(service.unexplained_observed_monthly)} not on any row` : ""}`}</Stat> : null}
         </div>
         {scheduleTable ? <ChartCard plain title="Schedule rows" table={scheduleTable} chart={<HBarList rows={rows.map((r) => ({ key: r.id || r.lender, label: r.lender, value: r.monthly_payment, muted: !r.count_in_dscr, sub: `${r.is_mca ? "Advance" : r.category.replace(/_/g, " ")}${r.balance != null ? ` · ${compactMoney(r.balance)} owed` : ""}${r.count_in_dscr ? "" : " · excluded from DSCR"}` }))} />} /> : null}
+        {uploadedTable ? <ChartCard plain title="Read off the uploaded schedule" sub="The AI read these lines; adopt them so the file carries them as its own rows, then edit from there." table={uploadedTable} chart={<HBarList rows={uploadedLines.map((d, i) => ({ key: `${d.lender}-${i}`, label: String(d.lender), value: d.monthly_payment ?? null, sub: `${d.debt_type ?? "Loan"}${d.current_balance != null ? ` · ${compactMoney(d.current_balance)} owed` : ""}` }))} />} /> : null}
         {documentedTable ? <ChartCard plain title="Read off documents" table={documentedTable} chart={<HBarList rows={documented.map((d, i) => ({ key: `${d.lender}-${i}`, label: d.lender, value: d.monthly_payment, sub: `${d.is_mca ? "Advance" : "Loan"}${d.balance != null ? ` · ${compactMoney(d.balance)} owed` : ""}${d.payment_frequency ? ` · ${d.payment_frequency}` : ""}` }))} />} /> : null}
-        {!scheduleTable && !documentedTable ? <Empty>{emptyText}</Empty> : null}
+        {!scheduleTable && !documentedTable && !uploadedTable ? <Empty>{emptyText}</Empty> : null}
+        {canEdit && (!rows.length || voided) ? <DebtScheduleControls cockpit={cockpit} profileId={profileId} canEdit={canEdit} onOpenEvidence={onOpenEvidence} /> : null}
       </Card>
       {editing ? (
         <Drawer
@@ -747,7 +764,7 @@ export function FinancialCockpit(props: Props) {
       </div>
 
       <div className="fc-grid">
-        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} canEdit={props.canRecordTerms || props.canPublish} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} />
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} canEdit={props.canRecordTerms || props.canPublish} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} />
       </div>
 
       <div className="fc-grid fc-grid-charts">
@@ -764,7 +781,7 @@ export function FinancialCockpit(props: Props) {
       <div className="fc-grid">
         <NetProfitCard cockpit={cockpit} />
         <ExpensesCard cockpit={cockpit} />
-        <DebtCard cockpit={cockpit} profileId={props.profileId} canEdit={props.canUnderwrite} onRefresh={() => void query.refetch()} />
+        <DebtCard cockpit={cockpit} profileId={props.profileId} canEdit={props.canUnderwrite} onRefresh={() => void query.refetch()}  onOpenEvidence={props.onOpenEvidence} />
       </div>
 
       <div className="fc-grid">

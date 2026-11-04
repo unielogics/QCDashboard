@@ -42,6 +42,7 @@ import {
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
 import { ClientTermsStrip } from "./ClientTermsStrip";
+import { DebtScheduleControls } from "./DebtScheduleControls";
 import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
@@ -99,7 +100,7 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client" }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; canEdit: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; /** The fees were saved from here: the Underwriting tab's offer acceptance and the fee allocation should re-read. */ onEconomicsSaved?: () => void; /** Which record the loan in the plan becomes: the dealer's production term sheet, or the client terms. */ termsKind?: "production" | "client" }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; canEdit: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; /** The fees were saved from here: the Underwriting tab's offer acceptance and the fee allocation should re-read. */ onEconomicsSaved?: () => void; /** Which record the loan in the plan becomes: the dealer's production term sheet, or the client terms. */ termsKind?: "production" | "client"; /** Opens the evidence upload. */ onOpenEvidence?: () => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [plan, setPlan] = useState<FinancialPlanWrite>(() => fromRecord(cockpit));
   const [paymentText, setPaymentText] = useState<string>(() => (cockpit.plan.record.new_payment_monthly == null ? "" : String(cockpit.plan.record.new_payment_monthly)));
@@ -395,7 +396,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                           <strong>{o.lender}</strong>
                           <div className="fc-chips" style={{ marginTop: 2 }}>
                             <CellChip tone={payeeKindTone(o.category as PayeeKind)}>{o.is_mca ? "Merchant cash advance" : o.category.replace(/_/g, " ")}</CellChip>
-                            <CellChip tone="mut">{o.kind === "row" ? (o.origin === "admin" ? "Recorded by the desk" : o.origin === "borrower" || o.origin === "client" ? "Typed by the client" : "On the schedule") : o.kind === "document" ? "Advance terms" : "Seen in statements"}</CellChip>
+                            <CellChip tone="mut">{o.kind === "row" ? (o.origin === "admin" ? "Recorded by the desk" : o.origin === "borrower" || o.origin === "client" ? "Typed by the client" : "On the schedule") : o.kind === "document" ? "Advance terms" : o.kind === "schedule_document" ? "Read off the uploaded schedule" : "Seen in statements"}</CellChip>
                           </div>
                         </td>
                         <td className="r num">{money(o.monthly)}{o.cadence ? <small className="sub" style={{ display: "block" }}>{cadenceLabel(o.cadence)}</small> : null}</td>
@@ -409,10 +410,15 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
               </table>
             </div>
           ) : (
-            <div className="fc-empty">
-              {schedule.status === "voided"
-                ? `No debt on the business: the desk voided the debt schedule, ${declaredBy(schedule.voided)}.`
-                : `No obligations found yet. Debt schedule: ${schedule.label.toLowerCase()}. Record the advances, enter the schedule below, or re-read the statements.`}
+            <div className="fc-empty fc-empty-actions">
+              <span>
+                {schedule.status === "voided"
+                  ? `No debt reported: the business is debt free, ${declaredBy(schedule.voided)}.`
+                  : schedule.status === "document"
+                    ? "The uploaded schedule was read but none of its lines could be listed. Adopt it, enter the schedule, or ask again."
+                    : `No obligations on file. Debt schedule: ${schedule.label.toLowerCase()}. Confirm the business is debt free, or get the schedule on the file.`}
+              </span>
+              <DebtScheduleControls cockpit={cockpit} profileId={profileId} canEdit={canEdit} onOpenEvidence={onOpenEvidence} compact />
             </div>
           )}
           {excludable.length ? (

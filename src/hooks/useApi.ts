@@ -1232,6 +1232,29 @@ export function useVoidDebtSchedule(profileId: string | null | undefined) {
   });
 }
 
+/** The lines the AI read off the uploaded debt schedule become the file's own rows. */
+export function useAdoptUploadedDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/adopt-document`, { method: "POST" }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+/** Puts the debt schedule on the borrower's checklist. */
+export function useRequestDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<{ requested: boolean; already: boolean }>(`/application-profiles/${profileId}/financial-forms/debt_schedule/request`, { method: "POST" }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] }); },
+  });
+}
+
 export function useRestoreDebtSchedule(profileId: string | null | undefined) {
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();

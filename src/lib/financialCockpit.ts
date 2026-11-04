@@ -401,7 +401,7 @@ export type AdvanceIn = {
 
 export type Obligation = {
   id: string;
-  kind: "row" | "document" | "payee";
+  kind: "row" | "document" | "schedule_document" | "payee";
   lender: string;
   category: string;
   is_mca: boolean;
@@ -691,6 +691,9 @@ export type CockpitCoverage = {
   bank_files_need_reread: string[];
 };
 
+/** One line the AI read off an uploaded debt schedule (field names as the reader prints them). */
+export type UploadedScheduleLine = { lender?: string | null; debt_type?: string | null; current_balance?: number | null; balance?: number | null; monthly_payment?: number | null; rate_pct?: number | null; maturity_date?: string | null; original_amount?: number | null; secured_by?: string | null; current?: boolean | null; payment_frequency?: string | null } & Record<string, unknown>;
+
 export type FinancialCockpit = {
   profile_id: string;
   generated_at: string;
@@ -722,7 +725,7 @@ export type FinancialCockpit = {
   debt: {
     rows: CockpitDebtRow[];
     documented: CockpitDocumentedDebt[];
-    document: { total_monthly_debt_service: number | null; total_outstanding_balance: number | null; debts: Record<string, unknown>[] } | null;
+    document: { total_monthly_debt_service: number | null; total_outstanding_balance: number | null; debts: UploadedScheduleLine[] } | null;
     service: CockpitDebtService;
     reconciliation: CockpitReconciliation;
     obligations: Obligation[];
