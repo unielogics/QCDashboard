@@ -24,6 +24,8 @@ export function ActionIcon({
   pressed,
   busy,
   className,
+  href,
+  target,
 }: {
   icon: string;
   /** What it does, in a few words. Shown on hover and read aloud. */
@@ -34,7 +36,20 @@ export function ActionIcon({
   pressed?: boolean;
   busy?: boolean;
   className?: string;
+  /** Makes it a link (opening a file, downloading) instead of a button. */
+  href?: string;
+  target?: string;
 }) {
+  const classes = cx("btn", "sm", "iconbtn", tone === "pri" && "pri", tone === "danger" && "danger", tone === "ok" && "ok", className);
+  if (href && !disabled) {
+    return (
+      <span className="action-icon" title={label}>
+        <a className={classes} href={href} target={target} rel={target === "_blank" ? "noopener noreferrer" : undefined} aria-label={label}>
+          <Icon name={icon} size={14} />
+        </a>
+      </span>
+    );
+  }
   return (
     <span className="action-icon" title={label}>
       <IconBtn

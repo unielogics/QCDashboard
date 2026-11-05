@@ -18,8 +18,9 @@ import {
 } from "@/components/buckets/BucketFileReviewPanel";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
-import { Btn, Callout, CellChip, Field, IconBtn, Select, Sub, Textarea, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, Field, Select, Sub, Textarea, cx } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import type {
@@ -649,12 +650,14 @@ export function ApplicationEvidenceWorkspace({
         {selectedLockedEvidence ? <LockedEvidenceBadge presentation={selectedLockedEvidence} /> : <CellChip tone={evidenceDecisionTone(assignmentAggregate.decision)}>{assignmentSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(assignmentAggregate.decision, aggregateDecision?.decision_actor)}</CellChip>}
         {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} /> : null}
         {assignments.length > 1 ? <CellChip tone="mut">{assignments.length} requirements</CellChip> : null}
-        {!selectedLockedEvidence && (currentDecision?.ai_decision === "failed" || (!currentDecision && selectedFile.analysis_status === "failed")) ? <Btn disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)}><Icon name="refresh" size={14} />Retry AI</Btn> : null}
-        {!selectedLockedEvidence && currentDecision && currentDecision.ai_decision !== "accepted" ? <Btn disabled={actionBusy} onClick={() => startAction("override")}>Override AI</Btn> : null}
-        <Btn disabled={actionBusy} onClick={() => startAction("reassign")}>{assignments.length ? "Reassign" : "Assign"}</Btn>
-        {currentAssignment ? <Btn disabled={actionBusy} onClick={() => startAction("unlink")}>Unlink</Btn> : null}
-        {currentAssignment?.verification_required ? <Btn disabled={actionBusy} onClick={() => startAction(currentDecision?.verified ? "unverify" : "verify")}>{currentDecision?.verified ? "Remove verification" : "Human verify"}</Btn> : null}
-        {currentAssignment ? <IconBtn className="danger" disabled={actionBusy} aria-label={`Reject evidence ${selectedFile.file_name}`} title="Reject evidence" onClick={() => startAction("reject")}><Icon name="x" size={14} /></IconBtn> : null}
+        {!selectedLockedEvidence && (currentDecision?.ai_decision === "failed" || (!currentDecision && selectedFile.analysis_status === "failed")) ? <ActionIcon icon="refresh" label="Retry the AI's reading of this file" disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)} /> : null}
+        {!selectedLockedEvidence && currentDecision && currentDecision.ai_decision !== "accepted" ? <ActionIcon icon="check" tone="ok" label="Accept this file anyway (override the AI)" disabled={actionBusy} onClick={() => startAction("override")} /> : null}
+        {currentAssignment?.verification_required ? <ActionIcon icon="shieldChk" tone={currentDecision?.verified ? "ok" : undefined} pressed={Boolean(currentDecision?.verified)} label={currentDecision?.verified ? "Remove human verification" : "Sign off: confirm the AI's acceptance"} disabled={actionBusy} onClick={() => startAction(currentDecision?.verified ? "unverify" : "verify")} /> : null}
+        {currentAssignment ? <ActionIcon icon="thumbsDown" tone="danger" label="Reject this file" disabled={actionBusy} onClick={() => startAction("reject")} /> : null}
+        <PageActionMenu label={`More actions for ${selectedFile.file_name}`} items={[
+          { label: assignments.length ? "Move to another requirement..." : "Assign to a requirement...", onSelect: () => startAction("reassign") },
+          { label: "Unlink from this requirement", hidden: !currentAssignment, onSelect: () => startAction("unlink") },
+        ]} />
       </>}
     /> : null}
 

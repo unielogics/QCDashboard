@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { destroyPdfResource } from "@/lib/pdfLifecycle";
 import { scrollToPdfSourcePage, validPdfSourcePage } from "@/lib/pdfSourceNavigation";
@@ -438,28 +439,16 @@ export function BucketFileReviewPanel({
           </div>
           <div className="row">
           {onDownload ? (
-            <Btn variant="pri" onClick={onDownload}>
-              <Icon name="download" size={14} />
-              Download
-            </Btn>
+            <ActionIcon icon="download" tone="pri" label="Download this file" onClick={onDownload} />
           ) : downloadUrl ? (
-            <BtnLink variant="pri" href={downloadUrl} target="_blank" rel="noopener noreferrer">
-              <Icon name="download" size={14} />
-              Download
-            </BtnLink>
+            <ActionIcon icon="download" tone="pri" label="Download this file" href={downloadUrl} target="_blank" />
           ) : null}
           {review?.preview_url ? (
-            <BtnLink href={review.preview_url} target="_blank" rel="noopener noreferrer">
-              <Icon name="external" size={14} />
-              Open original
-            </BtnLink>
+            <ActionIcon icon="external" label="Open the original in a new tab" href={review.preview_url} target="_blank" />
           ) : null}
           {headerActions}
           {onDelete ? (
-            <Btn className="danger" onClick={onDelete} disabled={deleteDisabled} title={deleteTitle}>
-              <Icon name={deleteDisabled ? "lock" : "x"} size={14} />
-              {deleteLabel}
-            </Btn>
+            <ActionIcon icon={deleteDisabled ? "lock" : "trash"} tone="danger" label={deleteTitle || deleteLabel || "Delete this file"} disabled={deleteDisabled} onClick={onDelete} />
           ) : null}
           {onMinimize ? (
             <IconBtn onClick={onMinimize} aria-label="Minimize review" title="Minimize">
@@ -518,12 +507,12 @@ export function BucketFileReviewPanel({
                     background: "var(--surface)", boxShadow: "var(--sh2)",
                   }}
                 >
-                  <Btn onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)}>Maximize</Btn>
+                  <ActionIcon icon="maximize" label="Zoom to fill the width" onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)} />
                   <Btn onClick={() => setPdfZoom((zoom) => Math.max(0.55, Number((zoom - 0.15).toFixed(2))))} aria-label="Zoom out" title="Zoom out">-</Btn>
                   {/* Fixed width so the row does not shuffle between 90% and 100%. */}
                   <span className="num" style={{ minWidth: 54, textAlign: "center" }}>{Math.round(pdfZoom * 100)}%</span>
                   <Btn onClick={() => setPdfZoom((zoom) => Math.min(2.4, Number((zoom + 0.15).toFixed(2))))} aria-label="Zoom in" title="Zoom in">+</Btn>
-                  <Btn onClick={() => setPdfZoom(1)}>Reset</Btn>
+                  <ActionIcon icon="refresh" label="Reset the zoom to 100%" onClick={() => setPdfZoom(1)} />
                   <span className="sub">{pageCount} page{pageCount === 1 ? "" : "s"}</span>
                 </div>
                 {/* Bespoke: a centred column of rendered pages. */}

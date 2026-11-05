@@ -7198,3 +7198,13 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .requirement-table.compact .requirement-evidence-file { align-items: center; }
 .requirement-table.compact .requirement-evidence-file > span:not(:first-child),
 .requirement-table.compact .requirement-evidence-file > .action-icon { flex: 0 0 auto; }
+
+/* A requirement row shows what to do and the files first; the rest is one click away. */
+.ev-more { padding-top: 8px; border-top: 1px solid var(--line); }
+.ev-more > summary { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 12px; font-weight: 600; list-style: none; cursor: pointer; }
+.ev-more > summary::-webkit-details-marker { display: none; }
+.ev-more > summary::before { content: "▸"; font-size: 10px; transition: transform 0.12s ease; }
+.ev-more[open] > summary::before { transform: rotate(90deg); }
+.ev-more > summary:hover { color: var(--ink); }
+.ev-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.ev-more-body { display: grid; gap: 12px; padding-top: 10px; }
