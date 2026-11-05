@@ -993,7 +993,14 @@ export interface ParsedIdentityRisk {
   mla: Record<string, string>;
   fraud_shield: Record<string, string>;
 }
+export type CreditRiskReview = {
+  version: number; as_of: string; flag_count: number; high_count: number; level: string;
+  flags: { id: string; code: string; title: string; severity: "high" | "warning"; source: string; evidence: Record<string, unknown>; detail: string }[];
+  limitations: string[]; advisory: string;
+};
+
 export interface ParsedReport {
+  intelligence?: CreditRiskReview;
   additional_sections?: Record<string, unknown>;
   personal_info: Record<string, string>;
   addresses: ParsedAddressOrEmployment[];

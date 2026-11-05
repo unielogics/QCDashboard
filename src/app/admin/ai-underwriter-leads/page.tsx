@@ -6,7 +6,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Btn, Callout, CellChip, cx, Input, Select, WarnLine } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
-import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
+import { TableWorkspace } from "@/components/ds/TableWorkspace";
 import { Icon } from "@/components/design-system/Icon";
 import { api, ApiError } from "@/lib/api";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
@@ -299,14 +299,13 @@ export default function AdminAIUnderwriterLeadsPage() {
       tabIndex={-1}
       aria-label="File list"
       className="ai-intake-list-shell"
-      style={{ maxWidth: 1480, margin: "0 auto", display: "flex", flexDirection: "column", gap: 12, minHeight: "calc(100dvh - 95px - var(--pad-y))" }}
+      style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12, minHeight: "calc(100dvh - 95px - var(--pad-y))" }}
     >
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow">
           <h1>Files</h1>
           <CellChip tone="mut">{counts.total} files</CellChip>
           <span className="sp" />
-          <span className="sub">Operational view across evidence, underwriting, ownership, and next actions.</span>
           {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> New file</Btn> : null}
           <PageActionMenu label="File actions" items={[
             { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
@@ -336,7 +335,7 @@ export default function AdminAIUnderwriterLeadsPage() {
       </div>
 
       <div className="panel" style={{ flexShrink: 0 }}>
-        <form className="panel-h" onSubmit={submitSearch} style={{ display: "grid", gridTemplateColumns: "minmax(240px,1fr) repeat(3, minmax(160px, 220px)) auto", gap: 10, alignItems: "center" }}>
+        <form className="panel-h file-list-filters" onSubmit={submitSearch}>
           <Input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
@@ -420,7 +419,6 @@ export default function AdminAIUnderwriterLeadsPage() {
 
       <TableWorkspace
         title="Files"
-        description="Scroll the page to give the file list the full workspace, or focus the table for concentrated review."
         storageKey={aiIntakeTableStorageKey ?? undefined}
         actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
         footer={(
@@ -446,11 +444,12 @@ export default function AdminAIUnderwriterLeadsPage() {
         )}
       >
         <div className="tblwrap">
-          <table className="tbl">
+          <table className="tbl file-list-table">
+            <colgroup>{[21, 15, 11, 16, 11, 11, 8, 7].map((width, i) => <col key={i} style={{ width: `${width}%` }} />)}</colgroup>
             <caption className="sr-only">AI intake files</caption>
-            <thead><tr><th>File</th><th>Contact</th><th>Opened by</th><th>Referral</th><th>Vertical</th><th>Capital readiness</th><th>Probability</th><th>Status</th><th>Deal economics</th><th>Evidence</th><th>Missing</th><th className="r">Actions</th></tr></thead>
+            <thead><tr><th>File / Owner</th><th>Contact</th><th>Origin / Referral</th><th>Readiness / Review</th><th>Status</th><th>Economics</th><th>Evidence</th><th className="r">Actions</th></tr></thead>
             <tbody>
-              {loading ? <tr><td colSpan={12}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
+              {loading ? <tr><td colSpan={8}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
                 const unified = unifiedByIntake.get(row.id);
                 const readiness = listReadinessSummary(unified);
                 const mcaReview = mcaRefinanceReviewState({ intake: row });
@@ -487,6 +486,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td className="lead-file-cell">
                       <button type="button" className="linky" disabled={manuallyArchived} onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>{row.business_name || row.full_name}</button>
                       <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
+                      <CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip>
                       {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
                       {manuallyArchived ? <CellChip tone="mut">Archived{row.archived_at ? ` ${new Date(row.archived_at).toLocaleDateString()}` : ""}</CellChip> : null}
                     </td>
@@ -494,11 +494,8 @@ export default function AdminAIUnderwriterLeadsPage() {
                       <div className="lead-contact-line">{presentContact(row.email)}</div>
                       <div className="lead-contact-line sub">{presentContact(row.phone)}</div>
                     </td>
-                    <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || unified?.case_ref || "Internal"}</div></td>
-                    <td className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</td>
-                    <td><CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip></td>
-                    <td>{readiness ? <div className="capital-readiness-list-summary"><div><b>{readiness.score == null ? "—" : Math.round(readiness.score)}</b><CellChip tone={capitalReadinessBandTone(readiness.band)}>{capitalReadinessBandLabel(readiness.band)}</CellChip></div><small>{readiness.evidence_coverage_pct == null ? "Coverage unavailable" : `${Math.round(readiness.evidence_coverage_pct)}% evidence coverage`}</small></div> : <span className="sub">Not calculated</span>}</td>
-                    <td><CellChip tone={mcaReview && mcaReview.mode !== "automated_review" ? "warn" : probabilityTone(row.probability_status)}>{mcaReview && mcaReview.mode !== "automated_review" ? mcaReview.title : row.probability_status || "Awaiting review"}</CellChip></td>
+                    <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || "Internal"}</div><div className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</div>{unified?.case_ref ? <small>{unified.case_ref}</small> : null}</td>
+                    <td>{readiness ? <div className="capital-readiness-list-summary"><div><b>{readiness.score == null ? "—" : Math.round(readiness.score)}</b><CellChip tone={capitalReadinessBandTone(readiness.band)}>{capitalReadinessBandLabel(readiness.band)}</CellChip></div><small>{readiness.evidence_coverage_pct == null ? "Coverage unavailable" : `${Math.round(readiness.evidence_coverage_pct)}% evidence coverage`}</small></div> : <span className="sub">Not calculated</span>}<div className="sub">{mcaReview && mcaReview.mode !== "automated_review" ? mcaReview.title : row.probability_status || "Awaiting review"}</div></td>
                     <td><CellChip tone={manuallyArchived ? "mut" : statusPresentation.tone}>{manuallyArchived ? "Archived" : statusPresentation.label}</CellChip></td>
                     <td>
                       {unified && hasEconomics ? (
@@ -507,27 +504,21 @@ export default function AdminAIUnderwriterLeadsPage() {
                           <span className="sub" style={{ display: "block" }}>{unified.forecast_earnings == null ? "Earnings not configured" : `${formatMoney(unified.forecast_earnings)} expected earnings`}</span>
                           <span className="sub" style={{ display: "block" }}>{unified.estimated_close_date ? `Est. ${new Date(`${unified.estimated_close_date}T12:00:00`).toLocaleDateString()}` : "Add closing date"}</span>
                         </button>
-                      ) : unified ? <Btn size="sm" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>Set deal economics</Btn> : <span className="sub">Not configured</span>}
+                      ) : unified ? <button type="button" className="linky" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>Set economics</button> : <span className="sub">Not configured</span>}
                     </td>
-                    <td>{manuallyArchived ? <span className="cellchip c-mut">{row.file_count} retained files</span> : <button type="button" className="cellchip c-pet" onClick={(event) => { event.stopPropagation(); router.push(fileHref(row.id, "documents")); }}>{row.file_count} files · {row.bucket_name || "Room"}</button>}</td>
-                    <td className="num">{row.missing_required_count}</td>
+                    <td>{manuallyArchived ? <span className="cellchip c-mut">{row.file_count} retained</span> : <button type="button" className="cellchip c-pet" title={row.bucket_name || "Evidence room"} onClick={(event) => { event.stopPropagation(); router.push(fileHref(row.id, "documents")); }}>{row.file_count} files</button>}<div className={row.missing_required_count ? "sub file-list-missing" : "sub"}>{row.missing_required_count} missing</div></td>
                     <td className="r">
                       <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
-                        <PinRowButton pinned={pinned} onToggle={() => togglePin(row.id)} label={row.business_name || row.full_name} />
-                        {manuallyArchived ? (
-                          <Btn size="sm" variant="pri" onClick={(event) => { event.stopPropagation(); void restoreLead(row.id); }}>Restore</Btn>
-                        ) : (
-                          <>
-                            <Btn size="sm" onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>Open</Btn>
-                            {canDelete ? <Btn size="sm" title="Archive this file and retain its documents" onClick={(event) => { event.stopPropagation(); setDeleteRow(row); }}>Archive</Btn> : null}
-                          </>
-                        )}
+                        <span onClick={(event) => event.stopPropagation()}><PageActionMenu label={`Actions for ${row.business_name || row.full_name}`} items={[
+                          { label: pinned ? "Unpin file" : "Pin file", onSelect: () => togglePin(row.id) },
+                          ...(manuallyArchived ? [{ label: "Restore file", onSelect: () => void restoreLead(row.id) }] : [{ label: "Open file", onSelect: () => void openLead(row.id) }, ...(canDelete ? [{ label: "Archive file", tone: "danger" as const, onSelect: () => setDeleteRow(row) }] : [])]),
+                        ]} /></span>
                       </div>
                     </td>
                   </tr>
                 );
               })}
-              {!loading && !orderedRows.length ? <tr><td colSpan={12}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
+              {!loading && !orderedRows.length ? <tr><td colSpan={8}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
             </tbody>
           </table>
         </div>

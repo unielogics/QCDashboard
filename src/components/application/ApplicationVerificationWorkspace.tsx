@@ -80,7 +80,7 @@ export function ApplicationVerificationWorkspace({
 }: {
   sourceKind: ApplicationSourceKind;
   sourceId: string;
-  mode?: "full" | "owners" | "credit" | "banking" | "verification";
+  mode?: "full" | "owners" | "owners-credit" | "credit" | "banking" | "verification";
   onReadyForStep2?: () => void;
   onStateChange?: (state: FileOwnerRequirementState) => void;
 }) {
@@ -88,6 +88,7 @@ export function ApplicationVerificationWorkspace({
   const qc = useQueryClient();
   const initialView = mode === "banking" ? "banking" : mode === "credit" || mode === "verification" ? "credit" : "owners";
   const [view, setView] = useState<"owners" | "credit" | "banking">(initialView);
+  const [ownershipReady, setOwnershipReady] = useState(false);
   const profileQuery = useQuery({
     queryKey: ["application-profile", sourceKind, sourceId],
     queryFn: () => apiCall<ApplicationProfile>("/application-profiles/resolve", {
@@ -111,7 +112,7 @@ export function ApplicationVerificationWorkspace({
   const banks = useQuery({
     queryKey: ["application-profile-banks", profileId],
     queryFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks`),
-    enabled: Boolean(profileId) && mode !== "owners" && mode !== "credit",
+    enabled: Boolean(profileId) && mode !== "owners" && mode !== "owners-credit" && mode !== "credit",
     refetchInterval: (query) => (
       (query.state.data?.manual_statement_pending_count ?? 0)
       + (query.state.data?.evidence_processing_count ?? 0)
@@ -153,25 +154,26 @@ export function ApplicationVerificationWorkspace({
     <div className="application-verification">
       {mode === "full" ? (
         <div className="application-verification-tabs" role="tablist" aria-label="Verification steps">
-          <button type="button" className={view === "owners" ? "on" : undefined} onClick={() => setView("owners")}><span>1</span>Ownership</button>
-          <button type="button" className={view === "credit" ? "on" : undefined} onClick={() => setView("credit")} disabled={!verification.data?.ready_for_step_2}><span>2</span>Owner credit</button>
-          <button type="button" className={view === "banking" ? "on" : undefined} onClick={() => setView("banking")}><span>3</span>Business banking</button>
+          <button type="button" className={view === "owners" ? "on" : undefined} onClick={() => setView("owners")}><span>1</span>Ownership &amp; credit</button>
+          <button type="button" className={view === "banking" ? "on" : undefined} onClick={() => setView("banking")}><span>2</span>Business banking</button>
         </div>
       ) : null}
-      {(mode === "owners" || (mode === "full" && view === "owners")) ? (
+      {(mode === "owners" || mode === "owners-credit" || (mode === "full" && view === "owners")) ? (
         <OwnershipTable
           profileId={profileId}
           owners={owners.data ?? []}
           state={verification.data}
           loading={owners.isLoading || verification.isLoading}
           onRefresh={refresh}
+          showContinue={mode === "owners"}
+          onReadinessChange={setOwnershipReady}
           onContinue={() => {
             if (mode === "full") setView("credit");
             onReadyForStep2?.();
           }}
         />
       ) : null}
-      {(mode === "credit" || mode === "verification" || (mode === "full" && view === "credit")) ? (
+      {(mode === "owners-credit" || mode === "credit" || mode === "verification" || (mode === "full" && view === "owners")) ? (
         <CreditPanel
           profileId={profileId}
           owners={owners.data ?? []}
@@ -180,18 +182,21 @@ export function ApplicationVerificationWorkspace({
           onRefresh={refresh}
         />
       ) : null}
+      {mode === "owners-credit" || (mode === "full" && view === "owners") ? <div className="row" style={{ justifyContent: "flex-end" }}><Btn variant="pri" disabled={!ownershipReady} onClick={() => { if (mode === "full") setView("banking"); else onReadyForStep2?.(); }}>{mode === "full" ? "Continue to banking" : "Continue to evidence"}<Icon name="arrowR" size={14} /></Btn></div> : null}
       {(mode === "banking" || (mode === "full" && view === "banking")) ? <BankingPanel profileId={profileId} sourceKind={sourceKind} sourceId={sourceId} state={verification.data} banks={banks.data} loading={verification.isLoading || banks.isLoading} onRefresh={refresh} /> : null}
     </div>
   );
 }
 
-function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue }: {
+function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue, showContinue = true, onReadinessChange }: {
   profileId: string;
   owners: FileOwner[];
   state?: FileOwnerRequirementState;
   loading: boolean;
   onRefresh: () => Promise<void>;
   onContinue: () => void;
+  showContinue?: boolean;
+  onReadinessChange?: (ready: boolean) => void;
 }) {
   const apiCall = useAuthedApi();
   const [drafts, setDrafts] = useState<OwnerDraft[]>([]);
@@ -247,6 +252,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   const total = Math.round((serverTotal + draftTotal) * 100) / 100;
   const rowsSettled = drafts.length === 0 && !Object.values(saveStates).includes("saving") && !Object.values(saveStates).includes("invalid");
   const ready = Boolean(state?.ready_for_step_2) && rowsSettled;
+  useEffect(() => { onReadinessChange?.(ready); }, [ready, onReadinessChange]);
 
   function addOwner() {
     if (owners.length + drafts.length >= 5) return;
@@ -353,7 +359,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
         <div className="verification-blockers">
           {state?.ownership_blockers.length ? state.ownership_blockers.map((blocker) => <span key={blocker}><Icon name="x" size={12} />{blocker}</span>) : <span className="ready"><Icon name="check" size={12} />Ownership is ready. Evidence can be collected next.</span>}
         </div>
-        <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to evidence<Icon name="arrowR" size={14} /></Btn>
+        {showContinue ? <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to evidence<Icon name="arrowR" size={14} /></Btn> : null}
       </footer>
     </section>
   );
@@ -425,7 +431,7 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
     <div className="verification-stack">
       <section className="verification-section">
         <header className="verification-section-head">
-          <div><span className="lbl">Step 3</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
+          <div><h3>Owner credit</h3><Sub>Link an existing report or request authorization for each required owner.</Sub></div>
           <CellChip tone={scoredOwners.length === requiredOwners.length && scoredOwners.length > 0 ? "ok" : "warn"}>{scoredOwners.length} of {requiredOwners.length} scores imported</CellChip>
           <Btn disabled={autoLink.isPending || !requiredOwners.length} onClick={() => autoLink.mutate()} title="Match each owner to a completed pull under the same name on this client"><Icon name="link" size={14} />{autoLink.isPending ? "Matching..." : "Link automatically"}</Btn><Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
         </header>
@@ -438,6 +444,7 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
                 <header><span className="credit-owner-avatar">{owner.first_name.slice(0, 1)}{owner.last_name.slice(0, 1)}</span><div className="grow"><b>{owner.full_name}</b><Sub>{Number(owner.ownership_pct ?? 0).toFixed(2)}% ownership</Sub></div><CellChip tone={status.tone}>{status.label}</CellChip></header>
                 <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_pulled_at ? <div><dt>Result</dt><dd>{owner.credit_tier ? `${owner.credit_tier} · ` : ""}{ownerCreditWords(owner)}</dd></div> : null}</dl>
                 {owner.credit_attention ? <div className="warnline credit-owner-attention">{owner.credit_attention}</div> : null}
+                {owner.credit_risk ? <button type="button" className={`credit-risk-link ${owner.credit_risk.high_count ? "is-high" : ""}`} onClick={() => setReportOwnerId(owner.id)}><Icon name="alert" size={14} />{owner.credit_risk.flag_count ? `${owner.credit_risk.flag_count} review flags · ${owner.credit_risk.high_count} high priority` : "No supported risk flags detected"}<Icon name="arrowR" size={13} /></button> : null}
                 <footer>{owner.credit_pull_id ? <Btn onClick={() => setReportOwnerId(owner.id)}><Icon name="doc" size={13} />View credit report</Btn> : null}<Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn onClick={() => setLinkOwner(owner)} title={owner.credit_complete ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_complete ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
               </article>
             );

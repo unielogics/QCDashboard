@@ -5,7 +5,8 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, Sub, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { useAuthedApi } from "@/hooks/useApi";
+import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
+import { ProviderCreditPicker } from "./ProviderCreditPicker";
 import type { FileOwner, OwnerCreditCandidate } from "@/lib/applicationProfile";
 import { confidenceTone, scoreWords, shortDate } from "@/lib/creditLinks";
 
@@ -28,6 +29,9 @@ export function CreditPullLinkDrawer({
 }) {
   const apiCall = useAuthedApi();
   const [error, setError] = useState("");
+  const [source, setSource] = useState<"matches" | "provider">("matches");
+  const { data: user } = useCurrentUser();
+  const canBrowseProvider = user?.role === "super_admin" || user?.role === "loan_exec";
   const candidates = useQuery({
     queryKey: ["owner-credit-candidates", profileId, owner?.id],
     queryFn: () => apiCall<OwnerCreditCandidate[]>(`/application-profiles/${profileId}/owners/${owner?.id}/credit-candidates`),
@@ -54,11 +58,13 @@ export function CreditPullLinkDrawer({
       open={open}
       onClose={onClose}
       title={`Link a credit pull to ${owner.full_name}`}
-      sub="Completed pulls on this client, and any pull under this owner's exact name. Linking counts the pull for the owner's credit step."
+      sub="Link an existing report. This does not request a new credit check."
       ariaLabel={`Link a credit pull to ${owner.full_name}`}
-      width="md"
+      width="lg"
     >
       <div className="grid g10">
+        {canBrowseProvider ? <div className="application-verification-tabs" role="tablist" aria-label="Credit source"><button type="button" role="tab" aria-selected={source === "matches"} className={source === "matches" ? "on" : undefined} onClick={() => setSource("matches")}>On file / Matches</button><button type="button" role="tab" aria-selected={source === "provider"} className={source === "provider" ? "on" : undefined} onClick={() => setSource("provider")}>All iSoftPull applicants</button></div> : null}
+        {source === "provider" && canBrowseProvider ? <ProviderCreditPicker key={owner.id} profileId={profileId} owner={owner} onLinked={async (updated) => { await onLinked(updated); onClose(); }} /> : <>
         {candidates.isLoading ? <div className="empty"><span className="spinner solo" />Looking for pulls...</div> : null}
         {candidates.isError ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>The pulls could not be loaded. Close and try again.</Callout> : null}
         {!candidates.isLoading && !candidates.isError && !rows.length ? (
@@ -99,6 +105,7 @@ export function CreditPullLinkDrawer({
           );
         })}
         {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
+        </>}
       </div>
     </Drawer>
   );

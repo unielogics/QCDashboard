@@ -529,6 +529,7 @@ export type FileOwner = {
   credit_score_verified: boolean;
   credit_report_available: boolean;
   credit_report_import_status?: "completed" | "pending" | null;
+  credit_risk?: import("./types").CreditRiskReview | null;
   credit_link_how: string | null;
   credit_attention: string | null;
   credit_expires_at: string | null;

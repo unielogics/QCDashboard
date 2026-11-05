@@ -648,7 +648,7 @@ export function LeadDetailPanel({
   // Underwriting strip. Recorded through the drawer, read here.
   const [termSheet, setTermSheet] = useState<ApplicationTermSheetState | null>(null);
   const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "email" | "partner" | "internal">("underwriter");
-  const [submissionStep, setSubmissionStep] = useState(initialSubmissionStep ?? 1);
+  const [submissionStep, setSubmissionStep] = useState(initialSubmissionStep === 3 ? 1 : initialSubmissionStep ?? 1);
   const [evidenceTab, setEvidenceTab] = useState<"requirements" | "banking" | "files">(initialEvidenceTab);
   const [evidenceFocus, setEvidenceFocus] = useState<{ query: string; requestId: number } | null>(null);
   // "Publish to marketplace" in the action menu lands on the Financials tab's
@@ -1215,7 +1215,7 @@ export function LeadDetailPanel({
     if (initializedLeadIdRef.current === detail.intake.id) return;
     initializedLeadIdRef.current = detail.intake.id;
     const rows = detail.artifacts ?? [];
-    if (initialSubmissionStep) setSubmissionStep(initialSubmissionStep);
+    if (initialSubmissionStep) setSubmissionStep(initialSubmissionStep === 3 ? 1 : initialSubmissionStep);
     else if (rows.some((item) => item.artifact_type === "lender_packet")) setSubmissionStep(4);
     else if (detail.latest_review?.status === "completed" || detail.intake.status === "reviewed") setSubmissionStep(4);
     else if (detail.files.some(isSourceEvidenceFile)) setSubmissionStep(2);
@@ -1504,7 +1504,7 @@ export function LeadDetailPanel({
       return;
     }
     if (destination.kind === "credit") {
-      setSubmissionStep(3);
+      setSubmissionStep(1);
       return;
     }
     setSubmissionStep(2);
@@ -1644,9 +1644,8 @@ export function LeadDetailPanel({
   const reviewActive = !mcaAutoReviewBlocked && Boolean(detail && (rerunning || ["queued", "running"].includes(detail.latest_review?.status || "")));
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
-    { id: 1, label: "Profile & ownership", sub: "Identity, owners and allocation", status: profileVerification?.ready_for_step_2 ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
+    { id: 1, label: "Ownership & credit", sub: "Identity, allocation and owner reports", status: profileVerification?.ready_for_step_2 && profileVerification?.owner_credit_complete ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
     { id: 2, label: "Evidence & banking", sub: "Files, forms, AI decisions and bank coverage", status: evidenceAndBankingComplete ? "complete" : hasEvidence || hasBankingActivity ? "partial" : "not-started" },
-    { id: 3, label: "Owner credit", sub: "Individual 20%+ iSoftPulls", status: profileVerification?.owner_credit_complete ? "complete" : profileVerification?.completed_credit_owner_count || profileVerification?.ready_for_step_2 ? "partial" : "not-started" },
     { id: 4, label: mcaAutoReviewBlocked ? mcaReview?.mode === "manual_review" ? "Manual desk review" : "Confirm MCA details" : "AI review", sub: mcaAutoReviewBlocked ? "Accepted application; automatic underwriting disabled" : "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
   ];
 
@@ -1750,7 +1749,7 @@ export function LeadDetailPanel({
           )}>
             {prototypeView === "workspace" ? (
               <aside className="submission-rail">
-                <Panel title="Submission sequence" sub={`Step ${submissionStep} of ${workflowSteps.length}`}>
+                <Panel title="Submission sequence" sub={`Step ${Math.max(1, workflowSteps.findIndex((step) => step.id === submissionStep) + 1)} of ${workflowSteps.length}`}>
                   <div className="submission-steps submission-steps-rail">
                     {workflowSteps.map((step) => (
                       <button key={step.id} type="button" className={cx("submission-step", `status-${step.status}`, submissionStep === step.id && "on")} onClick={() => { setSubmissionStep(step.id); setPrototypeView("workspace"); }}>
@@ -1765,7 +1764,7 @@ export function LeadDetailPanel({
             ) : null}
 
             <main className="grid intake-file-primary">
-              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
+              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 profileId ? <ApplicationEvidenceWorkspace
                   profileId={profileId}
@@ -1788,7 +1787,6 @@ export function LeadDetailPanel({
                   intakeVariant={detail.intake.variant}
                 /> : <div className="empty">{underwritingLoading ? "Loading the unified evidence workspace..." : "The application profile could not be resolved."}</div>
               ) : null}
-              {prototypeView === "workspace" && submissionStep === 3 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="credit" onStateChange={setProfileVerification} /> : null}
               {prototypeView === "workspace" && submissionStep === 4 ? (
                 <Panel title={mcaAutoReviewBlocked ? mcaReview?.title ?? "MCA refinance review" : "AI review"} actions={<Btn variant="pri" onClick={onRerun} disabled={rerunning || mcaAutoReviewBlocked}>{mcaAutoReviewBlocked ? "Automatic review disabled" : rerunning ? "Reviewing..." : reviewComplete ? "Re-run review" : "Run AI review"}</Btn>}>
                   <section className="ai-review-overview" aria-label="AI review overview">

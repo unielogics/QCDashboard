@@ -17,6 +17,7 @@
 // prevent.
 
 import { Icon } from "@/components/design-system/Icon";
+import { CreditRiskReview } from "@/components/CreditRiskReview";
 import { BtnLink, CellChip, Empty, Panel, Sub, Tag } from "@/components/ds";
 import type { ParsedReport, ParsedTradeAccount, ParsedInquiry } from "@/lib/types";
 
@@ -50,6 +51,7 @@ export function CreditReportDetail({
 
   return (
     <div className="grid">
+      {report.intelligence ? <CreditRiskReview review={report.intelligence} /> : null}
       {/* Score models */}
       <Panel
         title="Credit scores"
