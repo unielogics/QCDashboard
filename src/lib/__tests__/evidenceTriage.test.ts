@@ -97,6 +97,28 @@ describe("who acts next on a requirement", () => {
     expect(result.short).toBe("Your team asked for another copy");
   });
 
+  it("tells the underwriter to fill in the table when a schedule was read and answers are missing, whatever the PDF's own status", () => {
+    const rejected = requirement({ evidence_files: [file("rejected", { decision_actor: "staff" })] });
+    const result = triageRequirement(rejected, { fillTable: { read: 7, onSchedule: 0, missing: 38 } });
+    expect(result).toMatchObject({ group: "you", kind: "fill", label: "Fill in the table", owner: "you" });
+    expect(result.short).toBe("We read 7 lines from the file · 38 answers missing");
+    expect(result.next).toContain("Fill in the cells marked needed");
+    const onSchedule = triageRequirement(requirement({ evidence_files: [file("accepted")] }), { fillTable: { read: 0, onSchedule: 5, missing: 2 } });
+    expect(onSchedule.short).toBe("On the schedule: 5 lines · 2 answers missing");
+  });
+
+  it("leaves a complete requirement, a file still being read, and an empty table alone", () => {
+    expect(triageRequirement(requirement({ status: "verified", evidence_files: [file("accepted", { verified: true })] }), { fillTable: { read: 3, onSchedule: 0, missing: 4 } }).group).toBe("done");
+    expect(triageRequirement(requirement({ evidence_files: [file("processing")] }), { fillTable: { read: 3, onSchedule: 0, missing: 4 } }).kind).toBe("reading");
+    expect(triageRequirement(requirement({ status: "requested", evidence_files: [] }), { fillTable: { read: 0, onSchedule: 0, missing: 0 } }).kind).toBe("waiting");
+  });
+
+  it("counts a debt schedule with table work as needing the underwriter", () => {
+    const rows = [DEBT_SCHEDULE, BANK_STATEMENTS];
+    const counts = triageCounts(rows, (row) => (row === DEBT_SCHEDULE ? { fillTable: { read: 7, onSchedule: 0, missing: 38 } } : undefined));
+    expect(counts).toEqual({ you: 1, client: 0, ai: 0, done: 1, total: 2 });
+  });
+
   it("still asks the underwriter to look when the AI flagged a file, even if a person rejected another", () => {
     const mixed = requirement({ evidence_files: [file("needs_more"), file("rejected", { decision_actor: "staff" })] });
     expect(triageRequirement(mixed)).toMatchObject({ group: "you", kind: "review" });

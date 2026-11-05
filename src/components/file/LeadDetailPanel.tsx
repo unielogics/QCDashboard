@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
 import { Btn, Callout, CellChip, cx, Field, IconBtn, Input, Lbl, Linky, Panel, Row, Seg, Select, StatusLine, Textarea, WarnLine } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { Icon } from "@/components/design-system/Icon";
@@ -1687,15 +1688,15 @@ export function LeadDetailPanel({
           </div>
         </div>
         <span className="sp" />
-        {detail ? (
-          <Btn variant="pri" onClick={submissionStep === 2 ? () => headerUploadRef.current?.click() : submissionStep === 4 ? onRerun : submissionStep === 5 ? () => void refreshFullPackage(true) : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 2 && headerUploading) || (submissionStep === 4 && mcaAutoReviewBlocked)}>
-            {submissionStep === 2 ? (headerUploading ? "Uploading..." : "Add evidence") : submissionStep === 4 ? (mcaAutoReviewBlocked ? "Desk review required" : rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? (busy === "package-all" ? "Refreshing package..." : summary && packet ? "Refresh package" : "Generate package") : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
+        {detail && submissionStep !== 2 ? (
+          <Btn variant="pri" onClick={submissionStep === 4 ? onRerun : submissionStep === 5 ? () => void refreshFullPackage(true) : () => setPrototypeView("workspace")} disabled={busy !== "" || rerunning || (submissionStep === 4 && mcaAutoReviewBlocked)}>
+            {submissionStep === 4 ? (mcaAutoReviewBlocked ? "Desk review required" : rerunning ? "Reviewing..." : "Run AI review") : submissionStep === 5 ? (busy === "package-all" ? "Refreshing package..." : summary && packet ? "Refresh package" : "Generate package") : submissionStep === 3 ? "Open owner credit" : "Open ownership"}
           </Btn>
         ) : null}
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
-        {detail ? <Btn disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()}><Icon name="upload" size={14} />{headerUploading ? "Uploading..." : "Upload"}</Btn> : null}
-        {detail ? <Btn onClick={openDocumentRequest}><Icon name="send" size={14} />Request</Btn> : null}
-        {detail && canUnderwrite ? <Btn onClick={() => setNotificationRoutingOpen(true)}><Icon name="bell" size={14} />Notifications</Btn> : null}
+        {detail ? <ActionIcon icon="upload" tone={submissionStep === 2 ? "pri" : "default"} busy={headerUploading} label={headerUploading ? "Uploading..." : "Add evidence: upload files from this computer"} disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()} /> : null}
+        {detail ? <ActionIcon icon="send" label="Request a document from the client" onClick={openDocumentRequest} /> : null}
+        {detail && canUnderwrite ? <ActionIcon icon="bell" label="Choose who is notified about this file" onClick={() => setNotificationRoutingOpen(true)} /> : null}
         {detail && canUnderwrite ? (
           <Select
             value={underwritingDraft.underwriting_status}
@@ -1718,8 +1719,9 @@ export function LeadDetailPanel({
             Active MCAs: {mcaReview.activeAdvances.text}
           </CellChip>
         ) : null}
-        {detail ? <Select value={detail.intake.preferred_language} disabled={languageBusy} onChange={(event) => changeLanguage(event.target.value)} aria-label="Client language"><option value="en">English</option><option value="es">Español</option></Select> : null}
-        <PageActionMenu items={[
+        {detail && detail.intake.preferred_language === "es" ? <CellChip tone="acc" title="This client is written to in Spanish">Spanish client</CellChip> : null}
+        <PageActionMenu label="More actions for this file" items={[
+          { label: detail?.intake.preferred_language === "es" ? "Write to this client in English" : "Write to this client in Español", onSelect: () => changeLanguage(detail?.intake.preferred_language === "es" ? "en" : "es"), hidden: !detail || languageBusy },
           { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
           { label: "View client conversation", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("client"); }, hidden: !detail },
           { label: "Attach another room", onSelect: onLinkBucketIntake, hidden: !detail },

@@ -30,7 +30,7 @@ import type {
   UnlockedCopyRequestState,
 } from "@/lib/applicationProfile";
 import type { CollectionTask } from "@/lib/applicationCollection";
-import { groupRequirements, isDocumentRequirement, requirementIsComplete, type Triage, type TriageGroup } from "@/lib/evidenceTriage";
+import { groupRequirements, isDocumentRequirement, requirementIsComplete, type Triage, type TriageExtra, type TriageGroup } from "@/lib/evidenceTriage";
 import { formKindsOf, formLabel, type FormKind } from "@/lib/formAnswers";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
@@ -260,6 +260,12 @@ export function ApplicationProgramReadiness({
   const [addOpen, setAddOpen] = useState(false);
   const hasDebtRow = (readiness?.requirements ?? []).some((item) => formKindsOf(item).includes("debt_schedule"));
   const debtSummary = useDebtScheduleReviewSummary(profileId, section === "documents" && hasDebtRow);
+  const extrasFor = useCallback((requirement: ApplicationRequirement): TriageExtra | undefined => (
+    !debtSummary.loading && formKindsOf(requirement).includes("debt_schedule")
+      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers } }
+      : undefined
+  ), [debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read]);
+  const debtAutoExpanded = useRef(false);
   const expansionSeeded = useRef(false);
   const lastGroupRequestRef = useRef(0);
 
@@ -270,6 +276,15 @@ export function ApplicationProgramReadiness({
     const needsYou = groupRequirements(readiness.requirements.filter(isDocumentRequirement)).find((item) => item.group === "you");
     if (needsYou) setExpandedRequirements(needsYou.items.slice(0, 3).map((item) => item.requirement.requirement_key));
   }, [readiness, section]);
+
+  useEffect(() => {
+    if (!readiness || section !== "documents" || debtAutoExpanded.current || debtSummary.loading) return;
+    if (debtSummary.read <= 0 && debtSummary.missingAnswers <= 0) return;
+    const debtRow = readiness.requirements.find((item) => !requirementIsComplete(item) && formKindsOf(item).includes("debt_schedule"));
+    if (!debtRow) return;
+    debtAutoExpanded.current = true;
+    setExpandedRequirements((current) => current.includes(debtRow.requirement_key) ? current : [...current, debtRow.requirement_key]);
+  }, [readiness, section, debtSummary.loading, debtSummary.read, debtSummary.missingAnswers]);
 
   useEffect(() => {
     if (!focusGroup || focusGroup.requestId === lastGroupRequestRef.current) return;
@@ -785,7 +800,7 @@ export function ApplicationProgramReadiness({
 
 
   const documentRequirements = readiness.requirements.filter(isDocumentRequirement);
-  const triageSections = groupRequirements(documentRequirements);
+  const triageSections = groupRequirements(documentRequirements, extrasFor);
   const shownKeys = new Set(documentRequirements.map((item) => item.requirement_key));
   const openTasks = taskController.tasks.filter((task) => !["completed", "cancelled"].includes(task.status));
   const tasksByRequirement = new Map<string, CollectionTask>();
@@ -815,16 +830,12 @@ export function ApplicationProgramReadiness({
     const askClient = triage.group === "client";
     const isDebt = formKinds.includes("debt_schedule");
     const debtHasWork = isDebt && (linkedEvidence.length > 0 || debtSummary.hasSource || debtSummary.onSchedule > 0);
-    const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
-    const debtShort = isDebt && !debtSummary.loading && (debtSummary.read > 0 || debtSummary.onSchedule > 0)
-      ? `${debtSummary.read > 0 ? `We read ${plural(debtSummary.read, "line")} from the file` : `${plural(debtSummary.onSchedule, "line")} on the schedule`} · ${debtSummary.missingAnswers > 0 ? `${plural(debtSummary.missingAnswers, "answer")} missing` : "nothing missing"}`
-      : null;
     const reasonNote = (requirement.state_reason ?? "").trim();
     const showReason = Boolean(reasonNote) && !/^AI accepted \d+ of \d+/i.test(reasonNote) && !/^Accepted by /i.test(reasonNote) && !/^Awaiting client evidence/i.test(reasonNote);
     return <div key={requirement.requirement_key} className={cx("requirement-row", "ev-row", expanded && "expanded", focusedRequirementKey === requirement.requirement_key && "navigation-target", dragTarget === requirement.requirement_key && "drop-target")} data-group={triage.group} onDragEnter={(event) => { if (onUploadFiles) { event.preventDefault(); setDragTarget(requirement.requirement_key); } }} onDragOver={(event) => { if (onUploadFiles) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTarget(null); }} onDrop={(event) => { if (onUploadFiles) { event.preventDefault(); void upload(Array.from(event.dataTransfer.files), requirement.requested_document_id || undefined); } }}>
       <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
         <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={triage.tone} title={triage.next}>{triage.label}</CellChip></span>
-        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}</strong><small>{debtShort ?? triage.short}</small></span>
+        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}</strong><small>{triage.short}</small></span>
         <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
       </button>
       {expanded ? <div className="requirement-expanded-body ev-row-body">

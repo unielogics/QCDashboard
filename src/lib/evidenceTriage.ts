@@ -27,6 +27,7 @@ export type TriageKind =
   | "not_run"
   | "checking"
   | "partial"
+  | "fill"
   | "replace"
   | "waiting"
   | "not_asked"
@@ -63,6 +64,12 @@ export type TriageInput = Pick<ApplicationRequirement, "status" | "verification_
 
 const FLAGGED = new Set(["needs_more", "rejected", "failed"]);
 
+/** What the rest of the page knows that the requirement itself does not. */
+export type TriageExtra = {
+  /** A schedule read from a file (or already on the file) whose table still has work in it. */
+  fillTable?: { read: number; onSchedule: number; missing: number };
+};
+
 export const GROUP_ORDER: TriageGroup[] = ["you", "client", "ai", "done"];
 
 export const GROUPS: Record<TriageGroup, { title: string; blurb: string; empty: string }> = {
@@ -91,6 +98,7 @@ export const GROUPS: Record<TriageGroup, { title: string; blurb: string; empty: 
 /** The same words as the pills, for the "what do these mean?" panel. */
 export const LEGEND: { label: string; group: TriageGroup; means: string }[] = [
   { label: "Needs your review", group: "you", means: "A file came in and the AI could not accept it (wrong document, unreadable, or not sure). Preview it, then accept it anyway, move it to the right item, or ask the client for another." },
+  { label: "Fill in the table", group: "you", means: "We read the client's debt schedule into a table. Fill in the cells marked needed (interest, original amount, balance and so on), take off anything that is not a loan, then save." },
   { label: "Ready for your sign-off", group: "you", means: "The AI read the file and it looks right, but this item needs a person to confirm it before it counts." },
   { label: "Waiting on the client", group: "client", means: "We have asked and nothing has arrived yet. Partly received items say how much is in, for example 4 of 6 months." },
   { label: "New file needed", group: "client", means: "Your team rejected the file and asked for another copy. The client needs to send a replacement, or you can fill the form in yourself." },
@@ -158,7 +166,7 @@ function askedOn(value: string | null | undefined): string {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function triageRequirement(requirement: TriageInput): Triage {
+export function triageRequirement(requirement: TriageInput, extra?: TriageExtra): Triage {
   const files = requirement.evidence_files ?? [];
   const status = requirement.status;
 
@@ -180,6 +188,21 @@ export function triageRequirement(requirement: TriageInput): Triage {
       progress: progressOf(readCoverage(requirement.verified_coverage) ?? readCoverage(requirement.coverage)),
       next: overridden ? "Accepted by your team as an override." : signedOff ? "Signed off by a person." : "Accepted by the AI.",
       short: overridden ? "Accepted by your team (override)" : signedOff ? "Signed off by a person" : "Accepted by the AI",
+    };
+  }
+
+  const fill = extra?.fillTable;
+  if (fill && (fill.read > 0 || fill.missing > 0) && !files.some((file) => file.ai_decision === "processing")) {
+    const lines = fill.read > 0 ? fill.read : fill.onSchedule;
+    const missing = fill.missing;
+    const where = fill.read > 0 ? "We read" : "On the schedule:";
+    return {
+      group: "you", kind: "fill", label: "Fill in the table", tone: "warn", owner: "you",
+      progress: progressOf(readCoverage(requirement.verified_coverage)),
+      short: `${where} ${lines} ${plural(lines, "line")}${fill.read > 0 ? " from the file" : ""} · ${missing > 0 ? `${missing} ${plural(missing, "answer")} missing` : "nothing missing"}`,
+      next: fill.read > 0
+        ? "We read the file into a table. Fill in the cells marked needed, take off anything that is not a loan, then save."
+        : "The schedule still has answers missing. Fill in the cells marked needed, then save.",
     };
   }
 
@@ -296,17 +319,17 @@ export function triageRequirement(requirement: TriageInput): Triage {
 
 export type TriageGroupCounts = Record<TriageGroup, number> & { total: number };
 
-export function triageCounts(requirements: TriageInput[]): TriageGroupCounts {
+export function triageCounts<T extends TriageInput>(requirements: T[], extras?: (requirement: T) => TriageExtra | undefined): TriageGroupCounts {
   const counts: TriageGroupCounts = { you: 0, client: 0, ai: 0, done: 0, total: 0 };
   for (const requirement of requirements) {
-    counts[triageRequirement(requirement).group] += 1;
+    counts[triageRequirement(requirement, extras?.(requirement)).group] += 1;
     counts.total += 1;
   }
   return counts;
 }
 
 const KIND_URGENCY: TriageKind[] = [
-  "review", "not_accepted", "signoff", "not_run", "out_of_date", "replace", "partial", "waiting", "not_asked", "reading", "checking", "complete", "overridden", "not_needed",
+  "fill", "review", "not_accepted", "signoff", "not_run", "out_of_date", "replace", "partial", "waiting", "not_asked", "reading", "checking", "complete", "overridden", "not_needed",
 ];
 
 const LEVEL_ORDER: Record<string, number> = { required: 0, recommended: 1, optional: 2 };
@@ -321,8 +344,8 @@ export type TriageSection<T extends TriageInput> = {
 };
 
 /** The requirements in the four groups, most urgent first within each. Empty groups are dropped. */
-export function groupRequirements<T extends TriageInput>(requirements: T[]): TriageSection<T>[] {
-  const triaged = requirements.map((requirement) => ({ requirement, triage: triageRequirement(requirement) }));
+export function groupRequirements<T extends TriageInput>(requirements: T[], extras?: (requirement: T) => TriageExtra | undefined): TriageSection<T>[] {
+  const triaged = requirements.map((requirement) => ({ requirement, triage: triageRequirement(requirement, extras?.(requirement)) }));
   return GROUP_ORDER.map((group) => ({
     group,
     title: GROUPS[group].title,

@@ -42,7 +42,9 @@ import {
   evidenceReasonLabel,
   evidenceUsabilityLabel,
 } from "@/lib/evidenceDecision";
-import { isDocumentRequirement, triageCounts, type TriageGroup } from "@/lib/evidenceTriage";
+import { isDocumentRequirement, triageCounts, type TriageExtra, type TriageGroup } from "@/lib/evidenceTriage";
+import { formKindsOf } from "@/lib/formAnswers";
+import { useDebtScheduleReviewSummary } from "@/hooks/useDebtScheduleReview";
 import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { useProductionCall } from "@/lib/productionTrainingCall";
@@ -217,7 +219,13 @@ export function ApplicationEvidenceWorkspace({
     [data?.program_readiness.requirements],
   );
   const documentRequirements = useMemo(() => requirements.filter(isDocumentRequirement), [requirements]);
-  const documentCounts = useMemo(() => triageCounts(documentRequirements), [documentRequirements]);
+  const hasDebtRow = documentRequirements.some((item) => formKindsOf(item).includes("debt_schedule"));
+  const debtSummary = useDebtScheduleReviewSummary(profileId, hasDebtRow);
+  const documentCounts = useMemo(() => triageCounts(documentRequirements, (item: ApplicationRequirement): TriageExtra | undefined => (
+    !debtSummary.loading && formKindsOf(item).includes("debt_schedule")
+      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers } }
+      : undefined
+  )), [documentRequirements, debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read]);
   const files = useMemo(() => data?.evidence.files ?? [], [data?.evidence.files]);
   const lockedEvidenceByFileId = useMemo(() => {
     const result = new Map<string, ReturnType<typeof lockedEvidencePresentation>>();
