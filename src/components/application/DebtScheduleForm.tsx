@@ -19,8 +19,9 @@
 // really being asked to confirm, and because a number that does not look right
 // is easier to spot against a running total than by re-reading nine rows.
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { Icon } from "@/components/design-system/Icon";
+import { DEBT_MONTHLY_FACTORS, debtMonthlyEquivalent, updateDebtPaymentTerms, type DebtPaymentFrequency } from "@/lib/debtPaymentTerms";
 
 export type DebtRow = {
   /** The stored row this line came from. Sent back so a save updates the
@@ -39,6 +40,10 @@ export type DebtRow = {
   balance?: string;
   rate?: string;
   monthly_payment?: string;
+  factor_rate?: string;
+  payment_amount?: string;
+  payment_frequency?: DebtPaymentFrequency | "";
+  monthly_payment_source?: "native_terms" | "stated" | null;
   originated_on?: string;
   maturity_on?: string;
   secured?: string;
@@ -47,7 +52,7 @@ export type DebtRow = {
   notes?: string;
 };
 
-export type DebtBody = { business_name?: string; debts?: DebtRow[] };
+export type DebtBody = { business_name?: string; debts?: DebtRow[]; no_debt?: boolean };
 
 /** Who a locked row belongs to, in words either reader understands. */
 const OWNER_LABELS: Record<string, string> = {
@@ -77,7 +82,7 @@ function rowTitle(row: DebtRow, index: number): string {
 function rowAside(row: DebtRow): string {
   const parts: string[] = [];
   if (money(row.balance)) parts.push(`${currency(money(row.balance))} owed`);
-  if (money(row.monthly_payment)) parts.push(`${currency(money(row.monthly_payment))}/mo`);
+  if (money(row.monthly_payment)) parts.push(`${row.monthly_payment_source === "native_terms" ? "≈ " : ""}${currency(money(row.monthly_payment))}/mo`);
   return parts.join(" · ");
 }
 
@@ -85,19 +90,24 @@ export function DebtScheduleForm({
   value,
   onChange,
   disabled = false,
+  singleRow = false,
+  renderFieldSource,
 }: {
   value: DebtBody;
   onChange: (next: DebtBody) => void;
   disabled?: boolean;
+  /** The staff workspace edits one selected obligation and owns the schedule totals. */
+  singleRow?: boolean;
+  renderFieldSource?: (row: DebtRow, field: keyof DebtRow) => ReactNode;
 }) {
   const rows = value.debts ?? [];
-  const setRows = (next: DebtRow[]) => onChange({ ...value, debts: next });
+  const setRows = (next: DebtRow[]) => onChange({ ...value, debts: next, ...(next.length ? { no_debt: false } : {}) });
   // Which cards have their notes open. Index-keyed like the rows themselves.
   const [openNotes, setOpenNotes] = useState<number[]>([]);
 
   const patch = (index: number, changes: Partial<DebtRow>) => {
     const next = [...rows];
-    next[index] = { ...next[index], ...changes };
+    next[index] = updateDebtPaymentTerms(next[index], changes);
     setRows(next);
   };
 
@@ -134,6 +144,18 @@ export function DebtScheduleForm({
             currently paying.
           </p>
         </div>
+      ) : null}
+
+      {!singleRow && rows.length === 0 ? (
+        <label className="checkline">
+          <input
+            type="checkbox"
+            checked={value.no_debt === true}
+            disabled={disabled}
+            onChange={(event) => onChange({ ...value, no_debt: event.target.checked })}
+          />
+          I confirm this business has no outstanding debt.
+        </label>
       ) : null}
 
       {rows.map((row, index) => {
@@ -179,6 +201,7 @@ export function DebtScheduleForm({
                   value={row.lender ?? ""}
                   onChange={(event) => patch(index, { lender: event.target.value })}
                 />
+                {renderFieldSource?.(row, "lender")}
               </div>
               <div className="fp-field">
                 <label htmlFor={`type-${index}`}>Type of debt</label>
@@ -189,6 +212,7 @@ export function DebtScheduleForm({
                   value={row.debt_type ?? ""}
                   onChange={(event) => patch(index, { debt_type: event.target.value })}
                 />
+                {renderFieldSource?.(row, "debt_type")}
               </div>
               <div className="fp-field">
                 <label htmlFor={`original-${index}`}>Original amount</label>
@@ -199,6 +223,7 @@ export function DebtScheduleForm({
                   value={row.original_amount ?? ""}
                   onChange={(event) => patch(index, { original_amount: event.target.value })}
                 />
+                {renderFieldSource?.(row, "original_amount")}
               </div>
               <div className="fp-field">
                 <label htmlFor={`balance-${index}`}>Current balance</label>
@@ -209,9 +234,10 @@ export function DebtScheduleForm({
                   value={row.balance ?? ""}
                   onChange={(event) => patch(index, { balance: event.target.value })}
                 />
+                {renderFieldSource?.(row, "balance")}
               </div>
               <div className="fp-field">
-                <label htmlFor={`rate-${index}`}>Interest rate (%)</label>
+                <label htmlFor={`rate-${index}`}>Annual interest rate (%)</label>
                 <input
                   id={`rate-${index}`}
                   inputMode="decimal"
@@ -219,9 +245,28 @@ export function DebtScheduleForm({
                   value={row.rate ?? ""}
                   onChange={(event) => patch(index, { rate: event.target.value })}
                 />
+                {renderFieldSource?.(row, "rate")}
               </div>
               <div className="fp-field">
-                <label htmlFor={`monthly-${index}`}>Monthly payment</label>
+                <label htmlFor={`factor-${index}`}>Factor rate (×)</label>
+                <input id={`factor-${index}`} inputMode="decimal" disabled={locked} value={row.factor_rate ?? ""} placeholder="1.35" onChange={(event) => patch(index, { factor_rate: event.target.value })} />
+                <small className="sub">The agreement's payback multiplier.</small>
+                {renderFieldSource?.(row, "factor_rate")}
+              </div>
+              <div className="fp-field">
+                <label htmlFor={`payment-amount-${index}`}>Payment amount</label>
+                <input id={`payment-amount-${index}`} inputMode="decimal" disabled={locked} value={row.payment_amount ?? ""} onChange={(event) => patch(index, { payment_amount: event.target.value })} />
+                {renderFieldSource?.(row, "payment_amount")}
+              </div>
+              <div className="fp-field">
+                <label htmlFor={`payment-frequency-${index}`}>Payment frequency</label>
+                <select id={`payment-frequency-${index}`} disabled={locked} value={row.payment_frequency ?? ""} onChange={(event) => patch(index, { payment_frequency: event.target.value as DebtPaymentFrequency | "" })}>
+                  <option value="">Choose frequency…</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
+                </select>
+                {renderFieldSource?.(row, "payment_frequency")}
+              </div>
+              <div className="fp-field">
+                <label htmlFor={`monthly-${index}`}>{row.monthly_payment_source === "native_terms" ? "≈ Monthly payment" : "Monthly payment"}</label>
                 <input
                   id={`monthly-${index}`}
                   inputMode="decimal"
@@ -229,6 +274,8 @@ export function DebtScheduleForm({
                   value={row.monthly_payment ?? ""}
                   onChange={(event) => patch(index, { monthly_payment: event.target.value })}
                 />
+                {row.monthly_payment_source === "native_terms" && debtMonthlyEquivalent(row.payment_amount, row.payment_frequency) !== null ? <small className="sub">Payment amount × {DEBT_MONTHLY_FACTORS[row.payment_frequency as DebtPaymentFrequency]} per month.</small> : null}
+                {renderFieldSource?.(row, "monthly_payment")}
               </div>
               <div className="fp-field">
                 <label htmlFor={`origin-${index}`}>Origin date</label>
@@ -239,6 +286,7 @@ export function DebtScheduleForm({
                   value={row.originated_on ?? ""}
                   onChange={(event) => patch(index, { originated_on: event.target.value })}
                 />
+                {renderFieldSource?.(row, "originated_on")}
               </div>
               <div className="fp-field">
                 <label htmlFor={`maturity-${index}`}>Maturity date</label>
@@ -249,6 +297,7 @@ export function DebtScheduleForm({
                   value={row.maturity_on ?? ""}
                   onChange={(event) => patch(index, { maturity_on: event.target.value })}
                 />
+                {renderFieldSource?.(row, "maturity_on")}
               </div>
               <div className="fp-field">
                 <label htmlFor={`secured-${index}`}>Secured or unsecured</label>
@@ -285,6 +334,7 @@ export function DebtScheduleForm({
                   value={row.collateral ?? ""}
                   onChange={(event) => patch(index, { collateral: event.target.value })}
                 />
+                {renderFieldSource?.(row, "collateral")}
               </div>
             </div>
 
@@ -321,16 +371,16 @@ export function DebtScheduleForm({
         );
       })}
 
-      <button
+      {!singleRow ? <button
         type="button"
         className="fp-add"
         disabled={disabled}
         onClick={() => setRows([...rows, {}])}
       >
         <Icon name="plus" size={14} /> Add an obligation
-      </button>
+      </button> : null}
 
-      {rows.length > 0 ? (
+      {!singleRow && rows.length > 0 ? (
         <div className="fp-totals">
           <div>
             <span>Obligations</span>

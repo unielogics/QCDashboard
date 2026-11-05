@@ -5,7 +5,8 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
-import { FinancialFormsPanel } from "@/components/application/FinancialFormsPanel";
+import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
+import { ApplicationDebtPayees } from "@/components/application/ApplicationDebtPayees";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
 import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
@@ -546,7 +547,7 @@ export function ApplicationEvidenceWorkspace({
       intakeVariant={intakeVariant}
     /> : null}
 
-    {tab === "banking" ? <BankingPanel
+    {tab === "banking" ? <><BankingPanel
       profileId={profileId}
       sourceKind="intake"
       sourceId={intakeId}
@@ -559,7 +560,7 @@ export function ApplicationEvidenceWorkspace({
       onPreviewEvidence={(fileId) => openEvidenceFile(fileId, bankRequirement?.requirement_key)}
       onRequestUnlockedCopy={(fileId, fileName, retryFailed, copyRoomLink) => requestUnlockedCopy(fileId, fileName, retryFailed, copyRoomLink, bankRequirement?.requirement_key)}
       unlockedCopyRequestingFileId={requestingUnlockedCopyFileId}
-    /> : null}
+    /><ApplicationDebtPayees profileId={profileId} refreshKey={workspace.dataUpdatedAt} onChanged={refresh} /></> : null}
 
     {tab === "files" ? <div className="evidence-workspace-files">
       <div className="supporting-document-group">
@@ -592,9 +593,7 @@ export function ApplicationEvidenceWorkspace({
       </div>
     </div> : null}
 
-    <Drawer open={formsOpen} fullscreen closeOnBackdrop={false} onClose={() => setFormsOpen(false)} title="Financial forms" sub="Complete the form in this focused workspace. Evidence refreshes after every save." footer={<Btn onClick={() => setFormsOpen(false)}>Close</Btn>}>
-      <FinancialFormsPanel profileId={profileId} intakeId={intakeId} nested onChange={() => void refresh()} />
-    </Drawer>
+    {formsOpen ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" onClose={() => setFormsOpen(false)} onPublished={refresh} onUploadFiles={async (files) => { await upload(files); }} /> : null}
 
     {selectedFile ? <BucketFileReviewPanel
       title="Evidence review"

@@ -31,7 +31,7 @@
 // lost PIN is reset, never read. So the dialog says so, in those words, beside
 // the number.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { Btn, CellChip, Row, StatusLine } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
@@ -98,6 +98,16 @@ export function WorksheetModal({
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const controller = useRef<{ flush: () => Promise<void> } | null>(null);
+  const captureController = useCallback((value: { flush: () => Promise<void> } | null) => { controller.current = value; }, []);
+  const close = useCallback(async () => {
+    if (closing) return;
+    setClosing(true);
+    try { await controller.current?.flush(); onClose(); }
+    catch (reason) { setError(message(reason, "Changes could not be saved. Keep this worksheet open and retry.")); }
+    finally { setClosing(false); }
+  }, [closing, onClose]);
 
   const load = useCallback(async () => {
     setError(null);
@@ -146,8 +156,10 @@ export function WorksheetModal({
         // rather than showing a figure nobody entered.
         if ((result.resync ?? []).length > 0) await load();
         setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+        return result;
       } catch (reason) {
         setError(message(reason, "That change was not saved."));
+        throw reason;
       } finally {
         setSaving(false);
       }
@@ -179,7 +191,7 @@ export function WorksheetModal({
         return result;
       } catch (reason) {
         setError(message(reason, "That row could not be changed."));
-        return undefined;
+        throw reason;
       }
     },
     [api, profileId],
@@ -188,7 +200,7 @@ export function WorksheetModal({
   return (
     <Drawer
       open={open}
-      onClose={onClose}
+      onClose={() => void close()}
       fullscreen
       title={`Worksheet${businessName ? ` — ${businessName}` : ""}`}
       sub="The four financial forms as one workbook. Figures save a cell at a time."
@@ -198,7 +210,7 @@ export function WorksheetModal({
           {saving ? "Saving…" : savedAt ? `Saved at ${savedAt}` : "Saves as you type"}
         </span>
       }
-      footer={<Btn onClick={onClose}>Close</Btn>}
+      footer={<Btn onClick={() => void close()} disabled={closing}>{closing ? "Saving changes…" : "Close"}</Btn>}
     >
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       {payload ? (
@@ -207,6 +219,7 @@ export function WorksheetModal({
           scope={payload.scope}
           onSave={onSave}
           onRowOp={onRowOp}
+          onController={captureController}
         />
       ) : error ? null : (
         <div className="sub">Opening the worksheet…</div>

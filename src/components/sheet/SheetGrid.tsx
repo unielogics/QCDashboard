@@ -81,6 +81,8 @@ export type SheetGridProps = {
    *  is nothing to remove — a fixed statement, a view-only link, or a
    *  container with no row transport — and the gutter is not drawn at all. */
   onRemoveRow?: (row: { rowKey: string; block: string; label: string }) => void;
+  /** An optional row-level reference column, separate from editable financial cells. */
+  rowDetails?: { label: string; width?: number; render: (row: SheetRow) => ReactNode };
 };
 
 const MIN_COL = 72;
@@ -103,9 +105,9 @@ function columnPx(width: number | undefined): number {
  *  floor under the grid (below it the box scrolls sideways, which is what the
  *  twelve-column debt schedule needs) and it is what the scroll box's
  *  document cap is measured against. */
-function naturalPx(layout: SheetLayout, rowEnd: boolean): number {
+function naturalPx(layout: SheetLayout, rowEnd: boolean, detailsWidth = 0): number {
   const columns = layout.columns.reduce((total, column) => total + columnPx(column.width), 0);
-  return columns + (rowEnd ? ROW_END_PX : 0);
+  return columns + (rowEnd ? ROW_END_PX : 0) + detailsWidth;
 }
 
 /** The column template. The label column is `minmax(natural, 1fr)` and every
@@ -115,7 +117,7 @@ function naturalPx(layout: SheetLayout, rowEnd: boolean): number {
  *  monitor. When the sheet is wider than the box there is no free space to
  *  hand out and `1fr` resolves to exactly the natural width, so the scrolling
  *  sheets render as they always did. */
-function columnTemplate(layout: SheetLayout, rowEnd: boolean): string {
+function columnTemplate(layout: SheetLayout, rowEnd: boolean, detailsWidth = 0): string {
   const tracks = layout.columns.map((column, index) =>
     index === 0 ? `minmax(${columnPx(column.width)}px, 1fr)` : `${columnPx(column.width)}px`,
   );
@@ -123,6 +125,7 @@ function columnTemplate(layout: SheetLayout, rowEnd: boolean): string {
   // that use it, because `--sg-cols` is the whole grid's template: a row with
   // one track fewer would put its own columns out of step with the headings.
   if (rowEnd) tracks.push(`${ROW_END_PX}px`);
+  if (detailsWidth) tracks.push(`${detailsWidth}px`);
   return tracks.join(" ");
 }
 
@@ -302,6 +305,7 @@ export function SheetGrid({
   onCursor,
   onNotice,
   onRemoveRow,
+  rowDetails,
 }: SheetGridProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const catcherRef = useRef<HTMLTextAreaElement | null>(null);
@@ -606,13 +610,14 @@ export function SheetGrid({
 
   // ── render ──────────────────────────────────────────────────────────────
 
-  const template = useMemo(() => columnTemplate(layout, rowEnd), [layout, rowEnd]);
+  const detailsWidth = rowDetails ? rowDetails.width ?? 170 : 0;
+  const template = useMemo(() => columnTemplate(layout, rowEnd, detailsWidth), [detailsWidth, layout, rowEnd]);
   // The sheet's own width, for the CSS: the floor the grid never goes under
   // (below it the box scrolls sideways) and the width a short sheet is
   // measured against before the page cap centres it.
   const wrapStyle = useMemo(
-    () => ({ ["--sg-natural" as string]: `${naturalPx(layout, rowEnd)}px` }) as CSSProperties,
-    [layout, rowEnd],
+    () => ({ ["--sg-natural" as string]: `${naturalPx(layout, rowEnd, detailsWidth)}px` }) as CSSProperties,
+    [detailsWidth, layout, rowEnd],
   );
   const bounds = useMemo(() => normalizeRange(state.anchor, state.active), [state.anchor, state.active]);
 
@@ -631,7 +636,7 @@ export function SheetGrid({
         role="grid"
         aria-label={layout.title}
         aria-rowcount={layout.rows.length}
-        aria-colcount={layout.columns.length + (rowEnd ? 1 : 0)}
+        aria-colcount={layout.columns.length + (rowEnd ? 1 : 0) + (rowDetails ? 1 : 0)}
         aria-readonly={canEdit ? undefined : true}
         style={{ ["--sg-cols" as string]: template }}
         onMouseDown={onMouseDown}
@@ -735,6 +740,11 @@ export function SheetGrid({
           }
         />,
       );
+    }
+    if (rowDetails) {
+      out.push(<div key={`${row.r}:details`} role="gridcell" className="sg-cell sg-row-details" aria-rowindex={rowIndex + 1} aria-colindex={layout.columns.length + (rowEnd ? 1 : 0) + 1} onKeyDown={(event) => event.stopPropagation()}>
+        {row.kind === "colhead" ? rowDetails.label : isListRow(row) ? rowDetails.render(row) : null}
+      </div>);
     }
     return out;
   }

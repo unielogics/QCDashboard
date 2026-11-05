@@ -1,4 +1,17 @@
 export type ClientRequestedDocumentState = "needed" | "checking" | "accepted";
+export type ClientRequirementCoverage = { current?: number; required?: number; unit?: string; complete?: boolean };
+
+/** Counts come from canonical accepted coverage, never the number of uploaded files. */
+export function clientRequirementProgress(coverage?: ClientRequirementCoverage | null, processing = 0): string | null {
+  if (!coverage || !Number.isFinite(coverage.required) || (coverage.required ?? 0) < 1) return null;
+  const current = Math.max(0, Math.trunc(coverage.current ?? 0));
+  const required = Math.trunc(coverage.required!);
+  const unit = coverage.unit || "documents";
+  return `${current} of ${required} ${required === 1 ? unit.replace(/s$/, "") : unit} accepted${processing > 0 ? ` · ${processing} processing` : ""}`;
+}
+export function clientCoverageNeedsAnotherFile(coverage?: ClientRequirementCoverage | null, processing = 0): boolean {
+  return Boolean(coverage && !coverage.complete && Number.isFinite(coverage.required) && (coverage.required ?? 0) > (coverage.current ?? 0) + Math.max(0, processing));
+}
 export type ClientUploadedAnalysisSignal = {
   analysisReviewState?: string | null;
   analysisStatus?: string | null;
