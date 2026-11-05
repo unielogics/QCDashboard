@@ -23,6 +23,7 @@ import {
   loadStored,
   looksUnconfirmed,
   monthlyFrom,
+  neededAnswers,
   neededCells,
   neededFields,
   newLineDraft,
@@ -532,6 +533,17 @@ describe("the summary", () => {
     expect(summarize(rows)).toMatchObject({ read: 3, keeping: 2, removing: 1, missing: 3, invalid: 0, unsavedPayments: 0, changed: true });
     const unsaid = [draftFromLine(line({ payment_frequency: null, monthly_payment: null })), draftFromLine(line({ key: "x" }))];
     expect(summarize(unsaid).unsavedPayments).toBe(1);
+  });
+
+  it("counts a payment as one answer though it is two cells, as the server and the row do", () => {
+    const noPayment = draftFromLine(line({ payment_amount: null, payment_frequency: null, monthly_payment: null, from_file: { lender: { value: "Alpha", wording: null, note: null, derived: false } } as never }));
+    const cells = neededFields(noPayment).filter((field) => field === "paymentAmount" || field === "paymentCadence");
+    expect(cells).toEqual(["paymentAmount", "paymentCadence"]);
+    const answers = neededAnswers(noPayment);
+    expect(answers).toBe(neededFields(noPayment).length - 1); // two payment cells are one answer
+    expect(summarize([noPayment]).missing).toBe(answers);
+    expect(totals([noPayment]).needed).toBe(answers);
+    expect(neededAnswers({ ...noPayment, keep: false })).toBe(0);
   });
 
   it("warns about a payment only when saving would drop one the person typed", () => {

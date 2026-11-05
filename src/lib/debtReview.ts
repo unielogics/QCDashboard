@@ -552,6 +552,14 @@ export function neededFields(draft: LineDraft): FieldKey[] {
   return needed;
 }
 
+/** How many answers the schedule form still wants of a kept line. A payment is ONE
+ *  answer (an amount and how often) though it is two cells, so this is the number the
+ *  server, the row's summary and the form itself all say; `neededFields` is the cells. */
+export function neededAnswers(draft: LineDraft): number {
+  if (!draft.keep) return 0;
+  return debtRowProblems([formRow(draft)])[0]?.missing.length ?? 0;
+}
+
 /** A payment amount typed or read with no "how often" beside it. It cannot be
  *  saved as it stands (the cockpit would read it as a month and understate a daily
  *  advance twenty-fold), so it waits: the line is saved without it, and the file
@@ -747,7 +755,7 @@ export function totals(drafts: LineDraft[]): Totals {
   for (const draft of drafts) {
     if (!draft.keep) continue;
     rows += 1;
-    needed += neededFields(draft).length;
+    needed += neededAnswers(draft);
     const original = blank(draft.originalAmount) ? null : figure(draft.originalAmount);
     const balance = blank(draft.balance) ? null : figure(draft.balance);
     if (original != null) figures.original.push(original);
@@ -828,7 +836,7 @@ export function summarize(drafts: LineDraft[]): ReviewSummary {
     if (draft.state === "read") summary.read += 1;
     if (draft.keep) {
       summary.keeping += 1;
-      summary.missing += neededFields(draft).length;
+      summary.missing += neededAnswers(draft);
       if (hasErrors(draft)) summary.invalid += 1;
       if (unsavedPayment(draft)) summary.unsavedPayments += 1;
       if (droppedPayment(draft)) summary.droppedPayments += 1;
