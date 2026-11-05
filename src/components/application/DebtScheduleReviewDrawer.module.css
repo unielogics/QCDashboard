@@ -3,7 +3,7 @@
    the totals stay at the foot, and on a phone each line stacks as a card.
    Tokens only; nothing here knows a colour. */
 
-.layout { display: grid; gap: 14px; min-width: 0; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; }
 
 /* ── what the review is reading ─────────────────────────────────────────── */
 .sources { display: grid; gap: 8px; }
@@ -20,7 +20,11 @@
 .sourceTitle b { overflow-wrap: anywhere; }
 .sourceMeta { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 0; }
 
-.panel { display: grid; gap: 14px; min-width: 0; }
+/* A grid column will not shrink below its content unless told it may, and the table
+   is much wider than any panel: without minmax(0, 1fr) the whole panel (and the
+   drawer body around it) grows to the table's width instead of the table scrolling
+   inside its own box. */
+.panel { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-width: 0; max-width: 100%; }
 
 /* The header: what the file gave and what is still missing, in one line. Inline
    it is a card; inside the drawer it sticks to the top edge, cancelling the
@@ -84,6 +88,8 @@
 /* ── the table ──────────────────────────────────────────────────────────── */
 .gridWrap {
   position: relative;
+  min-width: 0;
+  max-width: 100%;
   overflow: auto;
   max-height: min(66vh, 820px);
   border: 1px solid var(--line2);
@@ -137,11 +143,14 @@
   font-variant-numeric: tabular-nums;
 }
 
-.lenderCol { position: sticky; left: 0; z-index: 2; box-shadow: 1px 0 0 var(--line2); }
+/* The Lender column and the row actions stay put while the rest scrolls sideways. The
+   selectors are doubled up on purpose: `.cell` (position: relative) comes later in this
+   file and would otherwise win over a bare class. */
+.grid td.lenderCol, .grid th.lenderCol { position: sticky; left: 0; z-index: 2; box-shadow: 1px 0 0 var(--line2); }
 .grid thead th.lenderCol { z-index: 5; }
-.actionsCol { position: sticky; right: 0; z-index: 2; box-shadow: -1px 0 0 var(--line2); }
+.grid td.actionsCol, .grid th.actionsCol { position: sticky; right: 0; z-index: 2; box-shadow: -1px 0 0 var(--line2); }
 .grid thead th.actionsCol { z-index: 5; }
-.dataRow:focus-within > .lenderCol { box-shadow: 1px 0 0 var(--line2), inset 4px 0 0 var(--accent); }
+.grid .dataRow:focus-within > td.lenderCol { box-shadow: 1px 0 0 var(--line2), inset 4px 0 0 var(--accent); }
 
 .cell { position: relative; }
 .cellBox { position: relative; display: flex; align-items: center; min-width: 0; }
@@ -176,10 +185,13 @@
 .control::placeholder { color: var(--faint); }
 .control:focus { outline: 2px solid var(--accent); outline-offset: 0; border-color: var(--accent); }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* An empty figure box shows "needed", which reads from the left (right-aligned, the italic
+   last letter was clipped by the box's edge). */
+.control.num:placeholder-shown { text-align: left; }
 
 /* The cell's state, in colour and in a word, never colour alone: needed cells
    say "needed" in their own box. */
-.cell[data-mood="needed"] { background: var(--warn-tint); }
+.cell[data-mood="needed"] { background: var(--warn-tint); border-bottom-color: var(--line2); }
 .cell[data-mood="needed"] .control { border-style: dashed; border-color: var(--warn); }
 .cell[data-mood="needed"] .control::placeholder { color: var(--warn); font-style: italic; opacity: 1; }
 .cell[data-mood="invalid"] { background: var(--danger-tint); }
@@ -247,8 +259,7 @@
   font-variant-numeric: tabular-nums;
   vertical-align: middle;
 }
-.grid tfoot td.lenderCol { z-index: 5; }
-.grid tfoot td.actionsCol { z-index: 5; }
+.grid tfoot td.lenderCol, .grid tfoot td.actionsCol { z-index: 5; }
 .totalLabel { display: grid; gap: 2px; }
 .totalLabel small { font-weight: 500; color: var(--muted); font-size: 12px; }
 .totalFigure { text-align: right; }
@@ -334,9 +345,9 @@
   .grid td[data-mood="needed"] { background: var(--warn-tint); }
   .grid td[data-mood="invalid"] { background: var(--danger-tint); }
   .grid td::before { content: attr(data-label); font-size: 12px; font-weight: 600; color: var(--muted); }
-  .grid td.lenderCol, .grid td.actionsCol { grid-template-columns: minmax(0, 1fr); background: var(--sunken); }
+  .grid td.lenderCol, .grid td.actionsCol { grid-template-columns: minmax(0, 1fr); background: var(--sunken); position: static; box-shadow: none; }
   .grid td.lenderCol::before, .grid td.actionsCol::before, .grid td.fullRow::before { content: none; }
-  .dataRow:focus-within > .lenderCol { box-shadow: inset 4px 0 0 var(--accent); }
+  .grid .dataRow:focus-within > td.lenderCol { box-shadow: inset 4px 0 0 var(--accent); }
   .removedRow { margin: 0 0 12px; border: 1px dashed var(--line2); border-radius: 12px; }
   .removedInner { position: static; width: 100%; }
   .grid tfoot tr { border: 1px solid var(--line2); border-radius: 12px; background: var(--sunken); overflow: hidden; }

@@ -235,7 +235,7 @@ export type ColumnSpec = {
  *  schedule form requires it of every advance. */
 export const COLUMNS: readonly ColumnSpec[] = [
   { key: "lender", label: "Lender", group: "lender", kind: "text", width: 250, help: "Who the debt is owed to.", max: 180 },
-  { key: "debtType", label: "Type of debt", group: "lender", kind: "type", width: 200, help: "What kind of obligation it is. An advance is asked its factor rate and whether it was modified." },
+  { key: "debtType", label: "Type of debt", group: "lender", kind: "type", width: 230, help: "What kind of obligation it is. An advance is asked its factor rate and whether it was modified." },
   { key: "originalAmount", label: "Original amount approved", group: "three", kind: "money", width: 160, help: "What the lender approved or funded at the start." },
   { key: "balance", label: "Current balance", group: "three", kind: "money", width: 150, help: "What is still owed today." },
   { key: "rate", label: "Interest rate (%) · factor for advances", group: "three", kind: "rate", width: 150, help: "Percent a year for a loan; the factor (such as 1.35) for a merchant cash advance or revenue-based financing." },
