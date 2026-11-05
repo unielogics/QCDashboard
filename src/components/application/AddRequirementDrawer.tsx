@@ -9,7 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Btn, Callout, CellChip, Field, Input, Select, Sub, Textarea, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, Field, Input, Seg, Select, Sub, Textarea, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -120,11 +120,7 @@ export function AddRequirementDrawer({
           <>
             <div className="ev-lib-tools">
               <Input autoFocus aria-label="Search the library" placeholder="Search documents and forms" value={query} onChange={(event) => setQuery(event.target.value)} />
-              <div className="seg" role="group" aria-label="Show">
-                {([["all", "Everything"], ["document", "Documents"], ["form", "Forms"]] as const).map(([value, label]) => (
-                  <button key={value} type="button" className={cx(kind === value && "on")} aria-pressed={kind === value} onClick={() => setKind(value)}>{label}</button>
-                ))}
-              </div>
+              <Seg as="filter" ariaLabel="Show" value={kind} onChange={setKind} options={[{ value: "all", label: "Everything" }, { value: "document", label: "Documents" }, { value: "form", label: "Forms" }]} />
             </div>
             {!custom ? (
               <div className="ev-lib-list" role="radiogroup" aria-label="Requirements you can add">

@@ -620,7 +620,7 @@ export function ApplicationEvidenceWorkspace({
             {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decision ? evidenceDecisionTone(decision.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{decision ? decisionSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(decision.ai_decision, decision.decision_actor) : analysisLabel}</CellChip>}
             {!locked ? <EvidenceIdentityWarning reasonCode={decision?.ai_reason_code} decision={decision?.ai_decision} /> : null}
             {locked ? <UnlockedCopyRequestControl request={unlockedCopyRequestState} busy={requestingUnlockedCopyFileId === file.id} onRequest={(retryFailed) => requestUnlockedCopy(file.id, file.file_name, retryFailed, false, unlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(file.id, file.file_name, unlockedCopyRequirement?.requirement_key)} /> : null}
-            <Btn onClick={() => openEvidenceFile(file.id, fileAssignments[0]?.requirement_key)}><Icon name="eye" size={14} />Preview</Btn>
+            <ActionIcon icon="eye" label={`Preview ${file.file_name}`} onClick={() => openEvidenceFile(file.id, fileAssignments[0]?.requirement_key)} />
           </article>;
         })}
         {!files.length ? <div className="empty">No evidence files have been uploaded.</div> : null}

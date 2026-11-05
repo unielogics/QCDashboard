@@ -15,6 +15,7 @@ import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdenti
 import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDrawer";
 import { OwnerCreditReportDrawer } from "@/components/application/OwnerCreditReportDrawer";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
   ApplicationBankState,
@@ -746,7 +747,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
           {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={hasDecision ? evidenceDecisionTone(file.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{hasDecision ? evidenceDecisionLabel(file.ai_decision, file.decision_actor) : analysisLabel}</CellChip>}
           {!locked ? <EvidenceIdentityWarning reasonCode={file.ai_reason_code} decision={file.ai_decision} /> : null}
           {locked ? <UnlockedCopyRequestControl request={file.unlocked_copy_request} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, file.file_name, false, true) : undefined} /> : null}
-          <Btn onClick={() => previewStatement(file.file_id)}><Icon name="eye" size={14} />Preview</Btn>
+          <ActionIcon icon="eye" label={`Preview ${file.file_name}`} onClick={() => previewStatement(file.file_id)} />
         </article>;
       })}</div> : null}
       {manualMonths.length ? <><div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="ok">{month}</CellChip>)}</div><Sub>{manualMonths.length} of {requiredMonths} distinct statement months accepted after evidence review.</Sub></> : hasManualEvidence ? <div className="empty">{manualPendingCount ? `AI is analyzing ${manualPendingCount} statement file${manualPendingCount === 1 ? "" : "s"} for entity and period coverage.` : "Statement evidence is present, but no accepted month could be established."}</div> : <div className="empty">No uploaded statement periods have been identified.</div>}
