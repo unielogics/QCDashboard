@@ -41,6 +41,9 @@ export type SheetCell = {
   /** The text of a label cell. */
   label?: string | null;
   options?: string[] | null;
+  /** What to show for an option whose stored value is a slug (the debt type
+   *  list, a yes/no). The value is kept; a person reads the label. */
+  option_labels?: Record<string, string> | null;
   /** The `totals` entry a formula cell shows. */
   compute?: string | null;
   /** An input key a formula cell merely echoes (the P&L memo lines). */

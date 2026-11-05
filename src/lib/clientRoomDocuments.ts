@@ -104,6 +104,28 @@ export function isValidRoomPin(value: string): boolean {
   return /^\d{6}$/.test(value);
 }
 
+export type RoomPinSetupMode = "required" | "offered" | "hidden";
+
+/**
+ * Whether the room asks the client to choose their own PIN, and how firmly.
+ *
+ * A client handed in from their intake arrives with the generated code in the
+ * link and has never had to know it, so choosing one is the first thing the
+ * room asks of them. A client who typed the PIN we sent is offered the change
+ * and may put it off for this visit. Once a PIN is chosen, or on an
+ * offer-only visit that is not really the room, nothing is asked.
+ */
+export function roomPinSetupMode({ needsSetup, arrivedWithCode, dismissed, offerOnly = false }: {
+  needsSetup: boolean;
+  arrivedWithCode: boolean;
+  dismissed: boolean;
+  offerOnly?: boolean;
+}): RoomPinSetupMode {
+  if (!needsSetup || offerOnly) return "hidden";
+  if (arrivedWithCode) return "required";
+  return dismissed ? "hidden" : "offered";
+}
+
 export function clientActionNeeded(state: ClientRequestedDocumentState): boolean {
   return state === "needed";
 }
@@ -240,6 +262,7 @@ export function clientRequestedDocumentState({
   documentStatus,
   hasUploadedFile,
   requirementComplete,
+  coverageComplete,
   processingEvidenceCount,
   uploadedEvidence = [],
   replacementReviewState,
@@ -248,6 +271,8 @@ export function clientRequestedDocumentState({
   documentStatus?: string | null;
   hasUploadedFile: boolean;
   requirementComplete?: boolean;
+  /** The requirement has every document it asked for; verification may still be pending. */
+  coverageComplete?: boolean;
   processingEvidenceCount?: number;
   uploadedEvidence?: ClientUploadedAnalysisSignal[];
   replacementReviewState?: string | null;
@@ -279,7 +304,9 @@ export function clientRequestedDocumentState({
   // "everything is accepted on upload" defect.
   if (typeof requirementComplete === "boolean") {
     if (requirementComplete) return "accepted";
-    return (processingEvidenceCount ?? 0) > 0 ? "checking" : "needed";
+    // Everything asked for has arrived and is awaiting review: the client is
+    // not asked for it again while the desk verifies it.
+    return (processingEvidenceCount ?? 0) > 0 || coverageComplete === true ? "checking" : "needed";
   }
   if (documentStatus === "uploaded" || hasUploadedFile) return "accepted";
   return (processingEvidenceCount ?? 0) > 0 ? "checking" : "needed";

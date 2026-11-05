@@ -17,7 +17,7 @@ import {
   useUploadLeadCreditTemplate,
 } from "@/hooks/useApi";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
-import { ApiError } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 
 export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
   const status = useLeadCreditStatus(intakeId);
@@ -29,7 +29,22 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [ssn, setSsn] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
   const fileInputKey = useRef(0);
+
+  async function openArchivedReport() {
+    setReportBusy(true);
+    setError(null);
+    try {
+      // The link lives for a minute; it is fetched on the click, not on load.
+      const { url } = await api<{ url: string }>(`/admin/ai-underwriter-leads/${intakeId}/credit-report`);
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "The archived report could not be opened.");
+    } finally {
+      setReportBusy(false);
+    }
+  }
 
   if (status.isLoading) {
     return (
@@ -136,7 +151,9 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
       {authorizationRequested ? (
         <Panel
           title="Run credit pull"
-          actions={data?.fico != null ? <CellChip tone="ok">FICO {data.fico}</CellChip> : null}
+          actions={data?.fico != null
+            ? <CellChip tone={data.score_verified === false ? "warn" : "ok"}>FICO {data.fico}{data.score_verified === false ? " · estimated" : ""}</CellChip>
+            : data?.pull_id ? <CellChip tone="warn">No bureau score</CellChip> : null}
         >
           <div className="grid g10">
             <p className="sub">
@@ -161,11 +178,18 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
                 {runPull.isPending ? "Pulling…" : data?.pull_id ? "Re-run credit pull" : "Run credit pull"}
               </Btn>
             </div>
+            {data?.attention ? <StatusLine tone="warn">{data.attention}</StatusLine> : null}
             {data?.pulled_at ? (
               <Sub>
                 Last pulled {new Date(data.pulled_at).toLocaleString()}
                 {data.expires_at ? ` · valid through ${new Date(data.expires_at).toLocaleDateString()}` : ""}
+                {data.fico_source ? ` · source: ${data.fico_source}` : ""}
               </Sub>
+            ) : null}
+            {data?.report_available ? (
+              <div>
+                <Btn onClick={() => void openArchivedReport()} disabled={reportBusy}>{reportBusy ? "Opening…" : "Open archived bureau report"}</Btn>
+              </div>
             ) : null}
           </div>
         </Panel>

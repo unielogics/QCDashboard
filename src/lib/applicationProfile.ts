@@ -92,6 +92,27 @@ export type RequirementStateStatus =
   | "stale"
   | "failed";
 
+/**
+ * A requirement's state in the words the desk uses. The raw tokens
+ * ("received_unverified") said what the machine knew, not what to do next.
+ */
+export function requirementStatusLabel(
+  status: RequirementStateStatus | string | null | undefined,
+  options: { needsPerson?: boolean } = {},
+): string {
+  switch (status) {
+    case "missing": return "Not received";
+    case "requested": return "Waiting on client";
+    case "received_unverified": return options.needsPerson ? "Needs your review" : "Received · under review";
+    case "verified": return "Accepted";
+    case "waived": return "Waived";
+    case "not_applicable": return "Not needed";
+    case "stale": return "Received · out of date";
+    case "failed": return "Not accepted";
+    default: return String(status ?? "").replaceAll("_", " ") || "Unknown";
+  }
+}
+
 export type ProgramRecommendationStatus =
   | "recommended"
   | "needs_information"
@@ -120,6 +141,12 @@ export type ProgramFitCandidate = {
   preference_score?: number;
   preference_reasons?: string[];
   reasons: string[];
+  // Sent by the backend since the rule gate opened to estimates (2026-11-03);
+  // optional here because older snapshots in tests omit them.
+  scope_status?: "matched" | "unknown" | "outside_scope";
+  rule_state?: "pass" | "fail" | "unknown" | "unavailable";
+  requires_review?: boolean;
+  evidence_gaps?: string[];
 };
 
 export type ApplicationProgramSelection = {
@@ -134,6 +161,9 @@ export type ApplicationProgramSelection = {
   fit_reasons: string[];
   selected_at: string;
   needs_scope_review: boolean;
+  /** The catalog row behind this selection has been retired. The file keeps
+   *  working off its pinned playbook version; the desk decides what to do. */
+  program_retired?: boolean;
 };
 
 export type EvidencePolicySelection = {
@@ -184,6 +214,11 @@ export type ApplicationRequirementEvidence = {
   evidence_claims?: { capability: string; confidence: string; page_start?: number | null; page_end?: number | null; period_start?: string | null; period_end?: string | null; entity?: string | null }[];
   is_password_protected?: boolean;
   unlocked_copy_request?: UnlockedCopyRequestState | null;
+  /** A document somebody uploaded, a form somebody filled in (the PDF is our
+   *  rendering of their answers), or a certificate generated when they signed. */
+  origin?: "uploaded" | "filled_form" | "signed";
+  /** For a filled form, which one. */
+  form_kind?: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | null;
 };
 
 export type ApplicationBankEvidenceFile = {
@@ -321,6 +356,9 @@ export type ApplicationRequirementAIReviewResult = {
   analysis_required_count: number;
 };
 
+/** The terms an acceptance answers: enough to say "accepted v1" and to notice when the terms moved on. */
+export type AcceptedTermsRef = { kind: "production_term_sheet" | "application_term_sheet"; id: string; version: number; amount: number | null; rate_pct: number | null; term_months: number | null; label: string };
+
 export type ApplicationUnderwritingState = {
   profile_id: string;
   source_kind: ApplicationSourceKind | null;
@@ -345,6 +383,9 @@ export type ApplicationUnderwritingState = {
   qc_fee_review_reason: string | null;
   fee_label: string;
   estimated_close_date: string | null;
+  /** When the acceptance was recorded and which terms it answered. */
+  accepted_at: string | null;
+  accepted_terms_ref: AcceptedTermsRef | null;
   funded_amount: number | null;
   updated_by_user_id: string | null;
   updated_at: string | null;
@@ -364,6 +405,7 @@ export type ApplicationUnderwritingPatch = Partial<{
   accepted_amount: number | null;
   forecast_consulting_fee: number | null;
   estimated_close_date: string | null;
+  accepted_terms_ref: AcceptedTermsRef | null;
   funded_amount: number | null;
 }>;
 
@@ -372,6 +414,11 @@ export type ClientTermsRepaymentFrequency = "daily" | "weekly" | "biweekly" | "m
 export type ClientTermsDebtTreatment = "additive" | "refinance";
 
 export type ClientTermsCalculation = {
+  /** The structure the payment stands on, the interest-only months first and the payment during them. */
+  loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
+  interest_only_months?: number;
+  interest_only_payment?: number | null;
+  structure_label?: string | null;
   periodic_payment: number | null;
   payment_count: number | null;
   payments_per_year: number | null;
@@ -408,6 +455,9 @@ export type ApplicationClientTerms = {
   custom_repayment_label: string | null;
   debt_service_treatment: ClientTermsDebtTreatment;
   retained_annual_debt_service: number | null;
+  /** amortizing | simple_interest | interest_only (rows saved before the structure existed read as amortizing) and the interest-only months before principal starts. */
+  loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
+  interest_only_months?: number | null;
   expiration_days: number | null;
   closing_estimate_days: number | null;
   co_brand_enabled: boolean;
@@ -422,6 +472,16 @@ export type ApplicationClientTerms = {
   direct_client_contact_suppressed: boolean;
   loan_type_options: Array<{ value: string; label: string; description: string | null }>;
   calculation: ClientTermsCalculation;
+  /** What the Financials tab says: the plan in words, coverage today and with the plan, and whether its loan mirrors these terms. */
+  plan?: {
+    active: boolean;
+    modifications: string[];
+    dscr?: { before: number | null; after: number | null; basis?: string | null } | null;
+    debt_service_monthly?: { before: number | null; after: number | null } | null;
+    income_annual?: { before: number | null; after: number | null } | null;
+    loan?: { amount?: number | null; rate_pct?: number | null; term_months?: number | null; interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; payment_monthly?: number | null; payment_io?: number | null; payment_after?: number | null; source?: string | null; describe?: string | null } | null;
+    terms_link?: { state: string; summary: string; differences: string[] } | null;
+  } | null;
 };
 
 export type ApplicationClientTermsWrite = {
@@ -437,6 +497,8 @@ export type ApplicationClientTermsWrite = {
   custom_repayment_label: string | null;
   debt_service_treatment: ClientTermsDebtTreatment;
   retained_annual_debt_service: number | null;
+  loan_structure: "amortizing" | "simple_interest" | "interest_only" | null;
+  interest_only_months: number | null;
   expiration_days: number;
   closing_estimate_days: number;
   co_brand_enabled: boolean;
@@ -464,8 +526,62 @@ export type FileOwner = {
   credit_required: boolean;
   credit_complete: boolean;
   credit_contact_complete: boolean;
+  // How the owner's credit was linked (services/credit_links.py): the pull
+  // behind the step, where its number came from, and the words to show when
+  // the bureau returned nothing.
+  credit_pull_id: string | null;
+  credit_fico_source: string | null;
+  credit_score_verified: boolean;
+  credit_report_available: boolean;
+  credit_report_import_status?: "completed" | "pending" | null;
+  credit_risk?: import("./types").CreditRiskReview | null;
+  credit_link_how: string | null;
+  credit_attention: string | null;
+  credit_expires_at: string | null;
   backfill_needs_review: boolean;
   source: "application" | "dealer";
+};
+
+export type OwnerCreditCandidate = {
+  pull_id: string;
+  status: string;
+  score: number | null;
+  fico_source: string | null;
+  score_verified: boolean;
+  report_available: boolean;
+  attention: string | null;
+  pulled_at: string | null;
+  expires_at: string | null;
+  expired: boolean;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  dob_on_file: boolean;
+  client_id: string | null;
+  evidence: { name_match?: boolean; dob_match?: boolean | null; email_match?: boolean; same_client?: boolean };
+  confidence: "exact" | "likely" | "weak";
+  why: string;
+  linked_to_this_owner: boolean;
+  linked_elsewhere: boolean;
+};
+
+export type CreditLinkEntry = {
+  owner_id: string;
+  owner_name: string;
+  profile_id: string;
+  intake_id: string | null;
+  how: string;
+  words: string;
+  pull_id: string;
+  score: number | null;
+  fico_source: string | null;
+  pulled_at: string | null;
+};
+
+export type ProfileCreditLinkReport = {
+  profile_id: string;
+  linked: CreditLinkEntry[];
+  waiting: { owner_id: string; owner_name: string; reason: string }[];
 };
 
 export type FileOwnerRequirementState = {
@@ -556,6 +672,10 @@ export type ApplicationBankState = {
   evidence_summary?: ApplicationEvidenceSummary;
   assets_enabled: boolean;
   statements_enabled: boolean;
+  /** The file's own setting for statement PDFs, before the deployment allowlist:
+   *  true with `statements_enabled` false means the Plaid account is not yet
+   *  enabled for the product. */
+  statements_preferred?: boolean;
   selected_products: string[];
   available_products: string[];
   consent_product_scope: string[];
@@ -647,6 +767,8 @@ export type BusinessBankEvidence = {
   processing_files: number;
   needs_attention_files: number;
   reconnect_required: boolean;
+  /** Account keys the desk chose to count toward the statement requirement; empty when every account counts. */
+  counted_accounts?: string[];
 };
 
 export type ApplicationEvidenceWorkspace = {

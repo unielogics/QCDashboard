@@ -3,6 +3,19 @@
 import type { IntakeChatAction } from "@/lib/intake";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 
+// `open_worksheet` opens the full four-sheet worksheet in a new tab, so it
+// reads differently from the per-requirement buttons: an accent outline on a
+// light accent tint (between the neutral default and the filled-accent
+// `email_template`), plus an outward arrow. Same tokens as the
+// .intake-chat-actions rules in app-extras.css; kept inline here so that
+// stylesheet and the other three buttons stay exactly as they are.
+
+function variantClass(actionType: IntakeChatAction["action_type"]): string {
+  if (actionType === "email_template") return "primary ";
+  if (actionType === "open_worksheet") return "worksheet ";
+  return "";
+}
+
 export function IntakeChatActions({
   actions,
   sourceMessageId,
@@ -20,15 +33,18 @@ export function IntakeChatActions({
     <div className="intake-chat-actions" aria-label="Secure document actions">
       {visible.map((action) => {
         const unavailable = action.status === "expired" || action.status === "disabled";
+        const busy = busyActionId === action.id;
+        const worksheet = action.action_type === "open_worksheet";
         return (
           <button
             key={action.id}
             type="button"
-            className={`${action.action_type === "email_template" ? "primary " : ""}${semanticStatusClass(action.status)}`}
-            disabled={unavailable || busyActionId === action.id}
+            className={`${variantClass(action.action_type)}${semanticStatusClass(action.status)}`}
+            disabled={unavailable || busy}
             onClick={() => onAction(action)}
           >
-            {busyActionId === action.id ? "Working..." : unavailable ? "No longer available" : action.label}
+            {busy ? "Working..." : unavailable ? "No longer available" : action.label}
+            {worksheet && !busy && !unavailable ? <span aria-hidden="true"> ↗</span> : null}
           </button>
         );
       })}

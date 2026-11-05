@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ThemeProvider } from "@/components/design-system/ThemeProvider";
 import { ConfirmationProvider } from "@/components/design-system/ConfirmationProvider";
 import { AIReviewProvider } from "@/components/admin/AIReviewProvider";
+import StaleBuildReload from "@/components/shell/StaleBuildReload";
 
 export default function Providers({ children }: { children: ReactNode }) {
   const [qc] = useState(() => new QueryClient({
@@ -14,7 +15,10 @@ export default function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={qc}>
       <ThemeProvider>
         <ConfirmationProvider>
-          <AIReviewProvider>{children}</AIReviewProvider>
+          <AIReviewProvider>
+            <StaleBuildReload />
+            {children}
+          </AIReviewProvider>
         </ConfirmationProvider>
       </ThemeProvider>
     </QueryClientProvider>

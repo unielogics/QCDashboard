@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, Field, Input, Select } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
@@ -39,6 +40,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   onPublished?: () => void | Promise<void>; onUploadFiles?: (files: File[]) => Promise<void>;
 }) {
   const api = useAuthedApi();
+  const queryClient = useQueryClient();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
   const [snapshot, setSnapshot] = useState<FinancialWorkspaceSnapshot | null>(null);
@@ -166,6 +168,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     setSavedReceipt(saved); setSavedCompletion(accepted); setSharedPdf(null);
     const isCurrent = saved?.id === next.current_version_id;
     setNotice(`Version ${saved?.version_number ?? "saved"} saved${isCurrent && (submit || next.kind === "debt_schedule" && accepted?.complete) ? " and filed on the checklist" : ""}. ${isCurrent ? "The financial interface and AI now use this version." : "This saved version is available in history; the latest version is shown in the sidebar."}`);
+    for (const key of ["financial-workspace-summary", "debt-schedule-review", "financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
     await onPublished?.();
   }); };
   const debtAction = (action: DebtAction) => { void run("row", async () => {

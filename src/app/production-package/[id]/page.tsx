@@ -10,6 +10,7 @@
 // /production-package/link/[token] instead.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { fileHref as fileRouteHref } from "@/lib/fileRoutes";
 import Link from "next/link";
 import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { IconBtn, PageHeader } from "@/components/ds";
@@ -30,7 +31,7 @@ function stageLabel(pkg: ProductionPackage): string {
 function fileHref(pkg: ProductionPackage): string | null {
   if (!pkg.intake_id) return null;
   if (pkg.mode === "partner") return `/broker/ai-underwriter-leads?lead=${pkg.intake_id}`;
-  if (pkg.mode === "operator") return `/admin/ai-underwriter-leads?lead=${pkg.intake_id}&view=production`;
+  if (pkg.mode === "operator") return fileRouteHref(pkg.intake_id, "package");
   return null;
 }
 

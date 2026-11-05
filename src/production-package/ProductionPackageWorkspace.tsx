@@ -344,7 +344,7 @@ export const ProductionPackageWorkspace = forwardRef<WorkspaceHandle, WorkspaceP
           </header>
           <Meters pkg={pkg} prov={prov} term={term} />
           {current === "today" ? <PageToday ctx={ctx} /> : null}
-          {current === "loan" ? <PageLoan ctx={ctx} /> : null}
+          {current === "loan" ? <PageLoan ctx={ctx} client={client} onPackage={adopt} /> : null}
           {current === "build" ? <PageBuild ctx={ctx} /> : null}
           {current === "changes" ? <PageChanges ctx={ctx} onPresentation={generatePresentation} busy={busy === "presentation"} /> : null}
           {current === "agreement" ? <PageAgreement ctx={ctx} client={client} sponsors={sponsors} onPackage={adopt} onPresentation={generatePresentation} /> : null}

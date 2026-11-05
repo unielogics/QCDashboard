@@ -81,8 +81,12 @@ export function ApplicationClassificationPanel({ sourceKind, sourceId }: { sourc
   function submitReview(action: "approve" | "edit" | "reject" | "map") { if (!reviewEntry) return; taxonomyReview.mutate({ id: reviewEntry.id, body: { action, note: reviewNote.trim() || null, ...(action === "edit" ? { label: reviewLabel.trim(), code: reviewCode.trim() || null } : {}), ...(action === "map" ? { canonical_entry_id: canonicalEntry?.id } : {}) } }); }
   const verticalOptions = VERTICALS.map(([id, label]) => ({ id, label }));
   const entityOptions = ENTITY_TYPES.map((label) => ({ id: label.toLocaleLowerCase().replaceAll(" ", "_"), label }));
-  const fundingOptions = (funding.data ?? []).map((row) => ({ id: row.id, label: row.label, meta: row.status === "needs_configuration" ? "Needs program configuration" : null }));
-  const fundingValue = draft?.funding_category ? fundingOptions.find((row) => row.label === draft.funding_category) ?? { id: draft.funding_category, label: draft.funding_category } : null;
+  const fundingOptions = (funding.data ?? []).map((row) => ({ id: row.id, label: row.label, slug: row.slug, meta: row.status === "needs_configuration" ? "Needs program configuration" : null }));
+  // Stored values are canonical keys (lower snake_case) while options carry
+  // labels, so match on the normalised form of either; the label is what shows.
+  const fundingValue = draft?.funding_category
+    ? fundingOptions.find((row) => row.label === draft.funding_category || fundingKey(row.label) === fundingKey(draft.funding_category) || fundingKey(row.slug) === fundingKey(draft.funding_category)) ?? { id: draft.funding_category, label: draft.funding_category }
+    : null;
 
   return <>
     <Panel title="Classification" actions={<Row>{currentUser.data?.role === "super_admin" ? <Btn onClick={() => { setQueueOpen(true); setError(""); }}>Taxonomy queue</Btn> : null}<IconBtn onClick={startEdit} aria-label="Edit file classification" title="Edit file classification" disabled={!current}><Icon name="pencil" size={14} /></IconBtn></Row>}>
@@ -115,4 +119,9 @@ export function ApplicationClassificationPanel({ sourceKind, sourceId }: { sourc
       </div>}
     </Drawer>
   </>;
+}
+
+/** The backend's canonical form for a funding category: lower snake_case. */
+function fundingKey(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase().replace(/[\s-]+/g, "_");
 }

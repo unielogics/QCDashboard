@@ -138,7 +138,7 @@ export default function GlobalSearch() {
           {isDealerPartner ? (
             <div className="grid" style={{ padding: 14 }}>
               <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/ai-underwriter-leads"); }}><Icon name="spark" size={15} /><span className="grow"><b>Auto AI Intake</b><span className="sub">Dealer leads, uploads, and AI review</span></span><Icon name="chevR" size={13} /></button>
-              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/buckets"); }}><Icon name="lock" size={15} /><span className="grow"><b>Document rooms</b><span className="sub">Your assigned dealer files only</span></span><Icon name="chevR" size={13} /></button>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/buckets"); }}><Icon name="lock" size={15} /><span className="grow"><b>Documents</b><span className="sub">Your assigned dealer files only</span></span><Icon name="chevR" size={13} /></button>
             </div>
           ) : q.trim().length < 2 && (
             <div className="cmdk-empty">

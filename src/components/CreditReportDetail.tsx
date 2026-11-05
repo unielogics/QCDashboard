@@ -17,6 +17,7 @@
 // prevent.
 
 import { Icon } from "@/components/design-system/Icon";
+import { CreditRiskReview } from "@/components/CreditRiskReview";
 import { BtnLink, CellChip, Empty, Panel, Sub, Tag } from "@/components/ds";
 import type { ParsedReport, ParsedTradeAccount, ParsedInquiry } from "@/lib/types";
 
@@ -50,6 +51,7 @@ export function CreditReportDetail({
 
   return (
     <div className="grid">
+      {report.intelligence ? <CreditRiskReview review={report.intelligence} /> : null}
       {/* Score models */}
       <Panel
         title="Credit scores"
@@ -201,8 +203,17 @@ export function CreditReportDetail({
           </div>
         </Panel>
       )}
+      {Object.entries(report.additional_sections ?? {}).map(([title, value]) => (
+        <Panel key={title} title={pretty(title)}><ReportFields value={value} /></Panel>
+      ))}
     </div>
   );
+}
+
+function ReportFields({ value }: { value: unknown }) {
+  if (Array.isArray(value)) return <div className="grid g12">{value.map((item, index) => <ReportFields key={index} value={item} />)}</div>;
+  if (value && typeof value === "object") return <dl className="grid g8">{Object.entries(value).map(([key, item]) => <div key={key}><dt className="lbl">{pretty(key)}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}><ReportFields value={item} /></dd></div>)}</dl>;
+  return <span>{value == null ? "Not provided" : String(value)}</span>;
 }
 
 /** Stacked label-over-value. Distinct from the `.kv` class, which is the

@@ -102,6 +102,7 @@ export type Widget = {
 
 export type IntakeResponse = {
   intake: Intake;
+  mca_refinance_policy?: import("@/lib/mcaRefinancePolicy").McaRefinancePolicy | null;
   token?: string | null;
   session_token?: string | null;
   resume_url?: string | null;
@@ -130,7 +131,7 @@ export type IntakeChatAction = {
   source_message_id: string;
   requested_document_id?: string | null;
   requirement_key: string;
-  action_type: "upload_own" | "complete_now" | "download_template" | "email_template";
+  action_type: "upload_own" | "complete_now" | "download_template" | "email_template" | "open_worksheet";
   template_kind?: string | null;
   label: string;
   status: "available" | "executed" | "failed" | "expired" | "disabled" | string;
@@ -144,6 +145,10 @@ export type IntakeChatActionResult = {
   detail: string;
   download_url?: string | null;
   room_url?: string | null;
+  /** Direct form link (kind page or worksheet) minted for complete_now / open_worksheet. */
+  form_url?: string | null;
+  /** Worksheet PIN when the minted link requires one; shown once in the status line. */
+  access_code?: string | null;
   delivery?: {
     id?: string;
     status?: string;

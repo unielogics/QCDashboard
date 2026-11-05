@@ -57,9 +57,9 @@ describe("funding program selection", () => {
   it("prevents applying an override without a reviewed reason", () => {
     const html = renderToStaticMarkup(createElement(FundingProgramPicker, { ...props, requiresOverride: true }));
     expect(html).toContain("Required review reason");
-    expect(html).toMatch(/<button[^>]+disabled=""[^>]*>Apply selection<\/button>/);
+    expect(html).toMatch(/<button[^>]+disabled=""[^>]*>Apply (?:manual )?selection<\/button>/);
     const valid = renderToStaticMarkup(createElement(FundingProgramPicker, { ...props, requiresOverride: true, reason: "Reviewed exception with supporting evidence" }));
-    expect(valid).not.toMatch(/<button[^>]+disabled=""[^>]*>Apply selection<\/button>/);
+    expect(valid).not.toMatch(/<button[^>]+disabled=""[^>]*>Apply (?:manual )?selection<\/button>/);
   });
 
   it("keeps historical selections available when they no longer appear in the candidate list", () => {

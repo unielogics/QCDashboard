@@ -13,10 +13,11 @@
 // sit below this strip.
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { Btn, CellChip, cx, Field, IconBtn, Input, Row, Select, Textarea, WarnLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
-import { assertPdfUploadUnlocked, documentUploadErrorMessage } from "@/lib/documentUpload";
+import { documentUploadErrorMessage } from "@/lib/documentUpload";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
 type OfferOption = { label: string | null; effective_rate_pct: number | null; monthly_fees: number | null; monthly_savings: number | null };
@@ -226,16 +227,19 @@ export function MerchantOfferStrip({
     setError(null);
     setUploadStatus(`Uploading ${file.name}…`);
     try {
-      await assertPdfUploadUnlocked(file);
-      const init = await post<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>("/upload-init", {
-        file_name: file.name,
-        content_type: file.type || "application/pdf",
-        size_bytes: file.size,
-      });
-      const put = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
-      if (!put.ok) throw new Error(`${file.name} could not be uploaded.`);
-      setUploadStatus("Reading the terms…");
-      const next = await post<OfferPanel>("/upload-complete", { file_id: init.file_id });
+      const { complete: next } = await uploadFile<OfferPanel>(
+        {
+          initPath: "/upload-init",
+          completePath: "/upload-complete",
+          // The strip's `post` takes a body object; the protocol speaks RequestInit.
+          call: <T,>(path: string, init?: RequestInit) => post<T>(path, init?.body ? (JSON.parse(String(init.body)) as unknown) : undefined),
+        },
+        file,
+        {
+          storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded.`,
+          onStage: (stage) => { if (stage === "confirming") setUploadStatus("Reading the terms…"); },
+        },
+      );
       setPanel(next);
       setDirty(false);
       setDraft(draftFromOffer(next.offer));

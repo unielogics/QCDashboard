@@ -17,9 +17,9 @@ import {
   cx,
   type ChipTone,
 } from "@/components/ds";
-import { useAITasks, useAITaskDecision, useCurrentUser } from "@/hooks/useApi";
+import { useAITasks, useAITaskDecision, useCurrentUser, useDecideActionItem, useProposedActionItems } from "@/hooks/useApi";
 import { FeedbackOutputType } from "@/lib/enums.generated";
-import type { AITask } from "@/lib/types";
+import type { AITask, BucketAIActionItemQueueItem } from "@/lib/types";
 import { FeedbackWidget } from "@/components/FeedbackWidget";
 import { AIInboxCard } from "@/components/AIInboxCard";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
@@ -33,6 +33,9 @@ type PriorityFilter = (typeof PRIORITY_FILTERS)[number];
 
 type ActiveTab = "inbox" | "rules";
 
+const ROUTE_FILTERS = ["all", "admin", "uploader", "share", "vendor"] as const;
+type RouteFilter = (typeof ROUTE_FILTERS)[number];
+
 /** high → red, medium → amber, everything else → neutral. */
 function priorityTone(priority: string): ChipTone {
   return priority === "high" ? "bad" : priority === "medium" ? "warn" : "mut";
@@ -40,6 +43,15 @@ function priorityTone(priority: string): ChipTone {
 
 export default function AIInboxPage() {
   const { data: tasks = [] } = useAITasks();
+  const { data: actionItems = [], isLoading: itemsLoading } = useProposedActionItems();
+  const [routeFilter, setRouteFilter] = useState<RouteFilter>("all");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [showLegacy, setShowLegacy] = useState(false);
+  const visibleItems = useMemo(
+    () => actionItems.filter((item) => routeFilter === "all" || item.route === routeFilter),
+    [actionItems, routeFilter],
+  );
+  const selectedItem = visibleItems.find((item) => item.id === selectedItemId) ?? visibleItems[0] ?? null;
   const [tab, setTab] = useState<ActiveTab>("inbox");
   const [filter, setFilter] = useState<SourceFilter>("all");
   const [priority, setPriority] = useState<PriorityFilter>("all");
@@ -74,79 +86,67 @@ export default function AIInboxPage() {
     <div style={{ display: "flex", flexDirection: "column", gap: 14, height: "100%" }}>
       <div className="ckhead">
         <div className="ckrow">
-          <h1>AI</h1>
-          <CellChip tone={filtered.length ? "warn" : "ok"}>{filtered.length} pending</CellChip>
+          <h1>Elara inbox</h1>
+          <CellChip tone={visibleItems.length ? "warn" : "ok"}>{itemsLoading ? "…" : `${visibleItems.length} waiting`}</CellChip>
           <span className="sp" />
-          <span className="sub">Nothing here has been sent. Every item waits for a person.</span>
-          <Btn variant="pri" size="sm" onClick={() => filtered[0] && setSelectedId(filtered[0].id)} disabled={!filtered.length}>Review next</Btn>
+          <span className="sub">AI suggestions from every live room. Nothing here has been sent; every item waits for a person.</span>
+          <Btn variant="pri" size="sm" onClick={() => visibleItems[0] && setSelectedItemId(visibleItems[0].id)} disabled={!visibleItems.length}>Review next</Btn>
           <PageActionMenu label="AI queue actions" items={[
             { label: "Open pipeline", href: "/pipeline" },
-            { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
+            { label: "Open files", href: "/admin/ai-underwriter-leads" },
           ]} />
         </div>
         <div className="cktabs" role="tablist" aria-label="AI section">
-          <button type="button" role="tab" aria-selected={tab === "inbox"} className={tab === "inbox" ? "on" : undefined} onClick={() => setTab("inbox")}>Inbox <span className="tag">{filtered.length}</span></button>
+          <button type="button" role="tab" aria-selected={tab === "inbox"} className={tab === "inbox" ? "on" : undefined} onClick={() => setTab("inbox")}>Inbox <span className="tag">{visibleItems.length}</span></button>
           <button type="button" role="tab" aria-selected={tab === "rules"} className={tab === "rules" ? "on" : undefined} onClick={() => setTab("rules")}>Rules</button>
         </div>
         {tab === "inbox" ? <div className="pagebar" style={{ paddingBottom: 10 }}>
-          <Lbl>Priority</Lbl>
-          <Seg<PriorityFilter> value={priority} onChange={setPriority} ariaLabel="Filter by priority" as="filter" options={PRIORITY_FILTERS.map((p) => ({ value: p, label: humanLabel(p) }))} />
-          <Lbl>Source</Lbl>
-          {SOURCE_FILTERS.map((source) => <Btn key={source} size="sm" variant={filter === source ? "pri" : "default"} aria-pressed={filter === source} onClick={() => setFilter(source)}>{humanLabel(source)}</Btn>)}
+          <Lbl>Who acts</Lbl>
+          {ROUTE_FILTERS.map((route) => <Btn key={route} size="sm" variant={routeFilter === route ? "pri" : "default"} aria-pressed={routeFilter === route} onClick={() => setRouteFilter(route)}>{routeLabel(route)}</Btn>)}
         </div> : null}
       </div>
 
       {tab === "inbox" ? (
-        <div className="daily-split" style={{ flex: 1, minHeight: 0 }}>
-          {/* Master list */}
-          <Panel title="Queue" sub={`${filtered.length} pending`} noPad>
-            <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
-              {filtered.map((task) => (
-                <button
-                  key={task.id}
-                  onClick={() => setSelectedId(task.id)}
-                  className={cx("pick", selected?.id === task.id && "on")}
-                  aria-current={selected?.id === task.id}
-                  style={{ width: "100%", textAlign: "left" }}
-                >
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="row">
-                      {task.source === "broker_suggestion" ? (
-                        <CellChip tone="gold">
-                          <Icon name="user" size={9} stroke={2.4} /> broker suggestion
-                        </CellChip>
-                      ) : (
-                        <CellChip tone="mut">{task.source}</CellChip>
-                      )}
-                      <CellChip tone={priorityTone(task.priority)}>{task.priority}</CellChip>
-                      {task.loan_id && (
-                        <>
-                          <span className="sp" />
-                          <span className="sub num">{task.loan_id.slice(0, 8)}</span>
-                        </>
-                      )}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1, minHeight: 0 }}>
+          <div className="daily-split" style={{ flex: 1, minHeight: 0 }}>
+            <Panel title="Queue" sub={`${visibleItems.length} waiting`} noPad>
+              <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
+                {itemsLoading ? <div className="grid g8" aria-live="polite" aria-label="Loading suggestions">{[0, 1, 2, 3].map((row) => <span key={row} className="skeleton" style={{ height: 52, borderRadius: 6 }} />)}</div> : null}
+                {visibleItems.map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedItemId(item.id)}
+                    className={cx("pick", selectedItem?.id === item.id && "on")}
+                    aria-current={selectedItem?.id === item.id}
+                    style={{ width: "100%", textAlign: "left" }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="row">
+                        <CellChip tone="mut">{routeLabel(item.route)}</CellChip>
+                        <CellChip tone={ageTone(item.created_at)}>{ageLabel(item.created_at)}</CellChip>
+                        <span className="sp" />
+                        <span className="sub">{item.client_name || item.bucket_name}</span>
+                      </div>
+                      <div><b>{item.title}</b></div>
                     </div>
-                    <div>
-                      <b>{task.title}</b>
-                    </div>
-                    <div className="sub num">
-                      conf {(task.confidence * 100).toFixed(0)}% · {task.agent}
-                    </div>
-                  </div>
-                </button>
-              ))}
-              {filtered.length === 0 && <div className="sub">No pending tasks.</div>}
-            </div>
-          </Panel>
+                  </button>
+                ))}
+                {!itemsLoading && visibleItems.length === 0 && <div className="sub">No suggestions are waiting.</div>}
+              </div>
+            </Panel>
 
-          {/* Detail */}
-          {selected ? (
-            <Detail task={selected} key={selected.id} />
-          ) : (
-            <div className="panel">
-              <div className="panel-b sub">Select a task to view details.</div>
-            </div>
-          )}
+            {selectedItem ? (
+              <ActionItemDetail item={selectedItem} key={selectedItem.id} canApprove={currentUser.role === "super_admin"} />
+            ) : (
+              <div className="panel">
+                <div className="panel-b sub">Select a suggestion to review it.</div>
+              </div>
+            )}
+          </div>
+
+          {tasks.length ? (
+            <LegacyLoanSuggestions tasks={tasks} open={showLegacy} onToggle={() => setShowLegacy((value) => !value)} filter={filter} priority={priority} selectedId={selectedId} onSelect={setSelectedId} />
+          ) : null}
         </div>
       ) : (
         <RulesPanel />
@@ -557,6 +557,142 @@ function DraftedArtifactView({
         <summary className="linky">View raw payload</summary>
         <pre className="msg-b mt">{JSON.stringify(payload, null, 2)}</pre>
       </details>
+    </div>
+  );
+}
+
+
+function routeLabel(route: string): string {
+  switch (route) {
+    case "all": return "Everyone";
+    case "admin": return "Desk";
+    case "uploader": return "Client";
+    case "share": return "Shared recipient";
+    case "vendor": return "Vendor";
+    default: return route;
+  }
+}
+
+function ageDays(iso: string): number {
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000));
+}
+
+function ageLabel(iso: string): string {
+  const days = ageDays(iso);
+  return days === 0 ? "today" : `${days}d waiting`;
+}
+
+function ageTone(iso: string): ChipTone {
+  const days = ageDays(iso);
+  return days >= 14 ? "bad" : days >= 7 ? "warn" : "mut";
+}
+
+/**
+ * One AI suggestion from a room. Approving an item routed to a client, shared
+ * recipient or vendor needs a recipient chosen in the room itself, so those
+ * open the file instead of approving here.
+ */
+function ActionItemDetail({ item, canApprove }: { item: BucketAIActionItemQueueItem; canApprove: boolean }) {
+  const decide = useDecideActionItem();
+  const [pending, setPending] = useState<"approved" | "rejected" | null>(null);
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  async function confirm() {
+    if (!pending) return;
+    try {
+      await decide.mutateAsync({ bucketId: item.bucket_id, itemId: item.id, status: pending });
+      setFeedback(pending === "approved" ? "Approved. The room will carry it out." : "Dismissed.");
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : "Could not update this suggestion.");
+    } finally {
+      setPending(null);
+    }
+  }
+
+  return (
+    <>
+      <Panel
+        title={item.title}
+        sub={`${item.client_name || item.bucket_name} · ${ageLabel(item.created_at)}`}
+        noPad
+        actions={<Link href={item.href} className="btn sm pri">Open file <Icon name="chevR" size={12} /></Link>}
+      >
+        <div className="panel-b" style={{ overflowY: "auto", minHeight: 0 }}>
+          <div className="row">
+            <CellChip tone="mut">{routeLabel(item.route)} acts</CellChip>
+            <CellChip tone="mut">{item.created_by === "ai" ? "Proposed by Elara" : `Proposed by ${item.created_by}`}</CellChip>
+          </div>
+          <p className="mt">{item.instructions}</p>
+          {item.rationale ? <Note><div><b>Why:</b> {item.rationale}</div></Note> : null}
+          {!item.approvable_here ? <WarnLine>This suggestion is routed to a {routeLabel(item.route).toLowerCase()}. Open the file to choose the recipient and approve it there.</WarnLine> : null}
+          {feedback ? <div role="status" className="mt sub">{feedback}</div> : null}
+        </div>
+        <div className="panel-f row" style={{ justifyContent: "flex-end", gap: 8 }}>
+          <Btn onClick={() => setPending("rejected")} disabled={decide.isPending || !canApprove}>Dismiss</Btn>
+          <Btn variant="pri" onClick={() => setPending("approved")} disabled={decide.isPending || !canApprove || !item.approvable_here}>Approve</Btn>
+        </div>
+      </Panel>
+      <ConfirmDialog
+        open={pending !== null}
+        onClose={() => setPending(null)}
+        title={pending === "approved" ? `Approve “${item.title}”?` : `Dismiss “${item.title}”?`}
+        body={pending === "approved" ? "The room records your approval and carries the suggestion out. Nothing is sent to the client without the room's own confirmations." : "The suggestion is marked rejected and leaves the queue. It stays on the room's record."}
+        confirmLabel={pending === "approved" ? "Approve" : "Dismiss"}
+        tone={pending === "approved" ? "default" : "danger"}
+        busy={decide.isPending}
+        onConfirm={() => void confirm()}
+      />
+    </>
+  );
+}
+
+/**
+ * The loan-task queue this page used to show. It has not been written to since
+ * June 2026 and nothing in it ever left pending, so it is kept reachable rather
+ * than shown: nothing is deleted, nothing pretends to be current.
+ */
+function LegacyLoanSuggestions({ tasks, open, onToggle, filter, priority, selectedId, onSelect }: {
+  tasks: AITask[];
+  open: boolean;
+  onToggle: () => void;
+  filter: SourceFilter;
+  priority: PriorityFilter;
+  selectedId: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const filtered = tasks.filter((task) => (filter === "all" || task.source === filter) && (priority === "all" || task.priority === priority) && task.status === "pending");
+  const selected = filtered.find((task) => task.id === selectedId) ?? filtered[0] ?? null;
+  const newest = tasks.reduce<string | null>((top, task) => (!top || task.created_at > top ? task.created_at : top), null);
+  return (
+    <div className="panel">
+      <button type="button" className="panel-h row" style={{ width: "100%", textAlign: "left" }} onClick={onToggle} aria-expanded={open}>
+        <b>Legacy loan suggestions</b>
+        <span className="sub">{filtered.length} pending · last written {newest ? new Date(newest).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "—"}</span>
+        <span className="sp" />
+        <Icon name={open ? "chevU" : "chevD"} size={14} />
+      </button>
+      {open ? (
+        <div className="daily-split" style={{ minHeight: 0 }}>
+          <Panel title="Queue" sub={`${filtered.length} pending`} noPad>
+            <div className="panel-b" style={{ overflowY: "auto", minHeight: 0, maxHeight: 360 }}>
+              {filtered.map((task) => (
+                <button key={task.id} onClick={() => onSelect(task.id)} className={cx("pick", selected?.id === task.id && "on")} aria-current={selected?.id === task.id} style={{ width: "100%", textAlign: "left" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="row">
+                      <CellChip tone="mut">{task.source}</CellChip>
+                      <CellChip tone={priorityTone(task.priority)}>{task.priority}</CellChip>
+                      {task.loan_id ? <><span className="sp" /><span className="sub num">{task.loan_id.slice(0, 8)}</span></> : null}
+                    </div>
+                    <div><b>{task.title}</b></div>
+                  </div>
+                </button>
+              ))}
+              {filtered.length === 0 && <div className="sub">No pending tasks.</div>}
+            </div>
+          </Panel>
+          {selected ? <Detail task={selected} key={selected.id} /> : <div className="panel"><div className="panel-b sub">Select a task to view details.</div></div>}
+        </div>
+      ) : null}
     </div>
   );
 }

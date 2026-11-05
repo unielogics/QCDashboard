@@ -274,6 +274,25 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .lead-file-cell,
 .lead-contact-cell { min-width: 150px; max-width: 240px; }
 .lead-contact-line { overflow-wrap: anywhere; line-height: 1.35; }
+.panel-h.file-list-filters { display: grid; grid-template-columns: minmax(200px, 1fr) repeat(3, minmax(120px, 170px)) auto; gap: 10px; align-items: center; }
+.file-list-filters .field { width: 100%; min-width: 0; }
+.file-list-table { width: 100%; min-width: 920px; table-layout: fixed; }
+.file-list-table th, .file-list-table td { padding: 10px 8px; overflow-wrap: anywhere; white-space: normal; }
+.file-list-table th { font-size: 10px; letter-spacing: 0; }
+.file-list-table td { font-size: 12px; }
+.file-list-table .lead-file-cell, .file-list-table .lead-contact-cell { min-width: 0; max-width: none; }
+.file-list-table .cellchip { max-width: 100%; white-space: normal; text-align: left; border-radius: 5px; }
+.file-list-table .capital-readiness-list-summary > div { flex-wrap: wrap; }
+.file-list-table .linky { max-width: 100%; text-align: left; white-space: normal; }
+.file-list-table .sub { margin-top: 3px; font-size: 11px; }
+.file-list-missing { color: var(--warn); }
+@media (max-width: 1050px) {
+  .panel-h.file-list-filters { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
+  .file-list-filters > :first-child { grid-column: 1 / -1; }
+}
+@media (max-width: 600px) {
+  .panel-h.file-list-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 .cellchip { display: inline-flex; align-items: center; gap: 5px; padding: 2px 8px; border-radius: 99px; font-size: 10.8px; font-weight: 750; white-space: nowrap; }
 .c-ok { background: var(--ok-tint); color: var(--ok); }
 .c-warn { background: var(--warn-tint); color: var(--warn); }
@@ -334,12 +353,51 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .ownership-meter span { color: var(--muted); font-size: 11px; }
 .ownership-meter.complete strong { color: var(--ok); }
 .ownership-meter.over strong { color: var(--danger); }
-.ownership-table { min-width: 1160px; }
+.ownership-table { min-width: 800px; width: 100%; table-layout: fixed; }
 .ownership-table td { vertical-align: top; }
-.ownership-table .field { width: 100%; min-width: 120px; height: 34px; }
-.ownership-table td:nth-child(4) .field { min-width: 190px; }
-.ownership-table td:nth-child(5) .field { min-width: 150px; }
-.ownership-table .owner-percent { min-width: 92px; width: 92px; }
+.ownership-table th, .ownership-table td { padding: 8px; white-space: normal; overflow-wrap: anywhere; }
+.ownership-table th { letter-spacing: 0; }
+.ownership-table .field { width: 100%; min-width: 0; height: 34px; }
+.ownership-table td:nth-child(4), .ownership-table td:nth-child(5) { width: 18%; }
+.ownership-table td:nth-child(6) { width: 15%; }
+.ownership-table td:nth-child(7) { width: 8%; }
+.ownership-table td:last-child { width: 44px; }
+.ownership-table .owner-percent { min-width: 0; width: 100%; }
+.ownership-table .cellchip { white-space: normal; }
+.credit-risk-link { display: flex; align-items: center; gap: 7px; width: 100%; padding: 10px 12px; border: 0; border-top: 1px solid var(--line); background: var(--sunken2); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; text-align: left; }
+.credit-risk-link.is-high { color: var(--danger); background: var(--danger-tint); }
+.credit-risk-link > svg:last-child { margin-left: auto; }
+.credit-risk-review { min-width: 0; padding: 14px 0; border-bottom: 1px solid var(--line); }
+.credit-risk-review > header { display: flex; gap: 12px; align-items: start; flex-wrap: wrap; justify-content: space-between; }
+.credit-risk-review h3, .credit-risk-review p { margin: 0 0 8px; }
+.credit-risk-review header p, .credit-risk-review > small { color: var(--muted); font-size: 12px; }
+.credit-risk-findings details { border-top: 1px solid var(--line); }
+.credit-risk-findings summary { display: flex; gap: 8px; align-items: baseline; cursor: pointer; padding: 12px 0; }
+.credit-risk-findings summary strong { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+.credit-risk-findings summary > span:last-child { color: var(--warn); font-size: 11px; flex-shrink: 0; }
+.credit-risk-dot { width: 7px; height: 7px; flex-shrink: 0; border-radius: 50%; background: var(--warn); }
+.credit-risk-findings .is-high .credit-risk-dot { background: var(--danger); }
+.credit-risk-findings .is-high summary > span:last-child { color: var(--danger); }
+.credit-risk-findings details > div { padding: 0 15px 14px; font-size: 12px; }
+.credit-risk-findings dl { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.credit-risk-findings dt { color: var(--muted); text-transform: capitalize; }
+.credit-risk-findings dd { margin: 3px 0 0; overflow-wrap: anywhere; }
+.credit-risk-limitations { color: var(--warn); padding-left: 18px; font-size: 12px; }
+.provider-credit-picker { display: grid; gap: 12px; min-width: 0; }
+.provider-credit-search { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; gap: 8px; }
+.provider-credit-applicants { display: grid; max-height: 300px; overflow-y: auto; }
+.provider-credit-applicants > button { display: grid; gap: 4px; border: 0; border-bottom: 1px solid var(--line); background: transparent; padding: 12px; color: var(--ink); font: inherit; cursor: pointer; text-align: left; overflow-wrap: anywhere; }
+.provider-credit-applicants > button[aria-pressed="true"] { background: var(--accent-100); box-shadow: inset 3px 0 var(--accent); }
+.provider-credit-applicants > button span { color: var(--muted); font-size: 12px; }
+.provider-credit-selection { border-top: 1px solid var(--line); padding-top: 12px; display: grid; gap: 12px; min-width: 0; }
+.provider-credit-selection h3 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.provider-report-option, .provider-credit-confirm { display: flex; gap: 9px; align-items: flex-start; font-size: 12px; }
+.provider-report-option input, .provider-credit-confirm input { margin-top: 3px; flex-shrink: 0; }
+.provider-report-option small { display: block; margin-top: 5px; color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 500px) {
+  .provider-credit-search { grid-template-columns: minmax(0, 1fr) auto; }
+  .provider-credit-search > :first-child { grid-column: 1 / -1; }
+}
 .owner-draft-row td { background: var(--sunken2); }
 .owner-row-warning { display: block; margin-top: 5px; color: var(--danger); white-space: nowrap; }
 .verification-section-footer { display: flex; align-items: center; gap: 16px; min-height: 64px; padding: 11px 16px; border-top: 1px solid var(--line); }
@@ -355,7 +413,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .credit-owner-box dl div { min-width: 0; }
 .credit-owner-box dt { color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .credit-owner-box dd { margin: 3px 0 0; overflow: hidden; text-overflow: ellipsis; font-size: 12px; font-weight: 700; }
-.credit-owner-box > footer { display: flex; justify-content: flex-end; gap: 7px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--sunken2); }
+.credit-owner-box > footer { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 7px; padding: 10px 12px; border-top: 1px solid var(--line); background: var(--sunken2); }
 .verification-sms { display: flex; align-items: center; gap: 8px; padding: 0 16px 14px; color: var(--muted); font-size: 11.5px; }
 .bank-connection-list { display: grid; }
 .bank-connection-row { display: flex; align-items: center; gap: 10px; min-height: 64px; padding: 10px 16px; border-bottom: 1px solid var(--line); }

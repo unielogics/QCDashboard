@@ -16,17 +16,51 @@ export class ApiError extends Error {
 export interface ApiOptions extends RequestInit {
   devUser?: string;
   authToken?: string;
+  /** Waits between transparent retries of an idempotent request; tests pass zeros. */
+  retryDelaysMs?: number[];
+}
+
+// A read that fails for a reason the next attempt may not share — the
+// connection dropped, or the API answered 5xx (an edge 502/503/504, or a 500
+// or 503 from a transaction Postgres aborted for a deadlock) — is sent again
+// before anyone sees an error. Only idempotent methods, only server-side
+// failures, at most two more tries: a 4xx is an answer, not an outage.
+const RETRY_DELAYS_MS = [350, 1000];
+const RETRYABLE_STATUSES = new Set([500, 502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(["GET", "HEAD"]);
+
+const pause = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+async function fetchWithRetry(url: string, init: RequestInit, delays: number[]): Promise<Response> {
+  const method = String(init.method ?? "GET").toUpperCase();
+  const retries = IDEMPOTENT_METHODS.has(method) ? delays : [];
+  for (let attempt = 0; ; attempt += 1) {
+    const canRetry = attempt < retries.length && !init.signal?.aborted;
+    let res: Response;
+    try {
+      res = await fetch(url, init);
+    } catch (error) {
+      if (!canRetry) throw error;
+      await pause(retries[attempt]);
+      continue;
+    }
+    if (canRetry && RETRYABLE_STATUSES.has(res.status)) {
+      await pause(retries[attempt]);
+      continue;
+    }
+    return res;
+  }
 }
 
 export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
-  const { devUser, authToken, headers, cache, ...rest } = opts;
+  const { devUser, authToken, headers, cache, retryDelaysMs, ...rest } = opts;
   // Sanitize X-Dev-User: HTTP header values can't contain `[]`/`()` or other
   // separators. If a stored user.email or display string ever leaks through
   // with markdown-link formatting like `[a@b.com](mailto:a@b.com)`, extract
   // the actual email so we don't blow up Chrome's header validator.
   const safeDevUser = sanitizeDevUser(devUser);
   const method = String(rest.method ?? "GET").toUpperCase();
-  const res = await fetch(`${API_URL}/api/v1${path}`, {
+  const res = await fetchWithRetry(`${API_URL}/api/v1${path}`, {
     ...rest,
     // Authenticated API reads are mutable application state. Browser or edge
     // caching here makes a live thread look frozen until a hard refresh even
@@ -38,7 +72,7 @@ export async function api<T>(path: string, opts: ApiOptions = {}): Promise<T> {
       ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
       ...headers,
     },
-  });
+  }, retryDelaysMs ?? RETRY_DELAYS_MS);
   if (!res.ok) {
     let body: unknown = null;
     try { body = await res.json(); } catch { /* ignore */ }

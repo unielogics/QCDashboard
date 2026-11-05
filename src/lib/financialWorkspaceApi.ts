@@ -105,7 +105,7 @@ export function financialValues(body: FinancialBody, layout: SheetLayout): Sheet
 export function financialLayout(body: FinancialBody, source: SheetLayout): SheetLayout {
   if (source.kind !== "debt_schedule" && source.kind !== "pfs") return source;
   if (source.kind === "debt_schedule") {
-    const fields = ["lender", "debt_type", "original_amount", "balance", "rate", "monthly_payment", "originated_on", "maturity_on", "secured", "payment_status", "collateral", "notes", "factor_rate", "payment_amount", "payment_frequency"];
+    const fields = ["lender", "debt_type", "original_amount", "balance", "rate", "monthly_payment", "originated_on", "maturity_on", "secured", "payment_status", "collateral", "mca_modified", "mca_modification_note", "notes", "factor_rate", "payment_amount", "payment_frequency"];
     const old = source.rows.filter((row) => row.kind === "data" && row.block === "debts");
     const template = old[0];
     const first = template?.r ?? (source.rows.find((row) => row.kind === "colhead")?.r ?? 5) + 2;
@@ -191,6 +191,19 @@ export function clearEditedDebtSources(previous: FinancialBody, next: FinancialB
 }
 export function activeFinancialDebts(body: FinancialBody): FinancialDebtRow[] {
   return ((body.debts as FinancialDebtRow[] | undefined) ?? []).filter((row) => row.status !== "dismissed" && row.status !== "duplicate" && !row.duplicate_of_id);
+}
+/** Published checklist figures remain authoritative while a newer draft is edited. */
+export function financialDebtReviewSummary(workspace: FinancialWorkspaceSnapshot) {
+  const rows = activeFinancialDebts(workspace.body);
+  const completion = workspace.current_version_id ? workspace.accepted_completion : workspace.completion;
+  return {
+    read: workspace.current_version_id ? 0 : rows.length,
+    onSchedule: workspace.current_version_id ? completion?.active_rows ?? rows.length : 0,
+    removed: ((workspace.body.debts as unknown[] | undefined)?.length ?? 0) - rows.length,
+    missingAnswers: completion?.complete ? 0 : completion?.missing_fields.length ?? 0,
+    hasSource: workspace.evidence.some((file) => file.classification === "business_debt_schedule"),
+    loading: false,
+  };
 }
 export function financialDebtTotals(body: FinancialBody): { total_balance: number | null; total_monthly_payment: number | null } {
   const rows = activeFinancialDebts(body);

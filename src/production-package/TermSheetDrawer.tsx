@@ -15,7 +15,9 @@ import {
   REPAYMENT_STRUCTURES,
   USE_OF_FUNDS_KEYS,
 } from "./options";
-import { computePaymentSummary, defaultProgramCoverage, effectiveAnnualRate } from "./termSheetStructure";
+import { computePaymentSummary, defaultProgramCoverage, effectiveAnnualRate, periodsPerYear } from "./termSheetStructure";
+import { buildSchedule } from "@/lib/loanSchedule";
+import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { Callout, KV, MoneySplit, Overlay, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
 import type {
   DebtServiceTreatment,
@@ -403,6 +405,21 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     amortizationMonths: maybeNumber(form.amortization_months),
     periodicPaymentOverride: form.lender_payment_override || form.repayment_structure === "fixed_payment" || form.repayment_structure === "custom" ? maybeNumber(form.periodic_payment) : null,
   }) : null, [annualRate, approved, form, paymentBasis]);
+  // The period-by-period schedule, on the same engine as the Financials tab and the client terms, for the
+  // structures it can express: amortizing over the term, interest-only months then amortizing over the rest,
+  // or interest-only to maturity. A separate amortization period (a balloon) or a lender-stated payment has
+  // no schedule to show.
+  const schedule = useMemo(() => {
+    if (!form || form.lender_payment_override) return null;
+    const term = toNumber(form.term_months);
+    const io = maybeNumber(form.interest_only_months) ?? 0;
+    const amortization = maybeNumber(form.amortization_months);
+    const structure = form.repayment_structure === "fully_amortizing" && (amortization == null || amortization === term) ? "amortizing"
+      : form.repayment_structure === "interest_only_then_amortizing" && (amortization == null || amortization === term - io) ? "amortizing"
+      : form.repayment_structure === "interest_only" ? "interest_only" : null;
+    if (!structure) return null;
+    return buildSchedule(paymentBasis || approved, annualRate, term, { structure, interestOnlyMonths: form.repayment_structure === "interest_only_then_amortizing" ? io : 0, periodsPerYear: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) ?? 12 });
+  }, [annualRate, approved, form, paymentBasis]);
 
   const programCoverage = useMemo(() => {
     if (!form || !summary) return 0;
@@ -755,6 +772,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
                   </div>
                   {summary.lines.length ? <ul>{summary.lines.map((line) => <li key={line}>{line}</li>)}</ul> : <p>Complete the amount, rate, term and payment fields to calculate.</p>}
                   {summary.assumptions.map((assumption) => <p className="pp-ts-assumption" key={assumption}>{assumption}</p>)}
+                  {schedule ? <LoanScheduleTable schedule={schedule} title="Amortization schedule" /> : null}
                 </div>
 
                 <div className="pp-ts-coverage">

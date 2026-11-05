@@ -1,9 +1,12 @@
 "use client";
 
+import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import { useCallback, useRef } from "react";
+import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
+import type { AdvanceIn, AdvancesRead, BankAccountsRead, BankAccountsWrite, DebtScheduleVoidWrite, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
 import { useActiveProfile } from "@/store/role";
@@ -399,6 +402,63 @@ export function useAITasks() {
   return useQuery({
     queryKey: ["aiTasks", devUser],
     queryFn: () => apiCall<AITask[]>("/ai-tasks"),
+  });
+}
+
+/** What is stalling on the desk, each row with the link that opens its file. */
+export function useAttentionQueue(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["attention-queue", devUser],
+    queryFn: () => apiCall<AttentionQueue>("/operator-files/attention"),
+    enabled,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+/** AI suggestions across every live room, oldest first — the Elara inbox. */
+export function useProposedActionItems(enabled = true, status: "proposed" | "approved" | "rejected" | "completed" = "proposed") {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["ai-action-items", status, devUser],
+    queryFn: () => apiCall<BucketAIActionItemQueueItem[]>(`/buckets/admin/ai-action-items?status=${status}`),
+    enabled,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useDecideActionItem() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    // invalidates: ["ai-action-items"], ["attention-queue"]
+    mutationFn: ({ bucketId, itemId, status }: { bucketId: string; itemId: string; status: "approved" | "rejected" }) =>
+      apiCall<BucketAIActionItemQueueItem>(`/buckets/admin/${bucketId}/ai-action-items/${itemId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["ai-action-items"] });
+      qc.invalidateQueries({ queryKey: ["attention-queue"] });
+    },
+  });
+}
+
+/** Re-send the client their room link; the one-click nudge for a file that never received a document. */
+export function useSendRoomReminder() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ profileId, purpose = "room" }: { profileId: string; purpose?: "documents" | "business_banking" | "bank_connect" | "room" }) =>
+      apiCall<{ overall_status: string; room_url: string }>(`/application-profiles/${profileId}/room/reminders`, {
+        method: "POST",
+        body: JSON.stringify({ purpose, email_room_link: true, sms_reminder: false }),
+      }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["attention-queue"] }),
   });
 }
 
@@ -1013,6 +1073,212 @@ export function useLeadProgramFit(intakeId: string | null | undefined) {
     queryKey: ["lead-program-fit", intakeId, devUser],
     queryFn: () => apiCall<LeadProgramFitResponse>(`/admin/ai-underwriter-leads/${intakeId}/program-fit`),
     enabled: !!intakeId,
+  });
+}
+
+/** The file's numbers, read deterministically: bank months, tax years,
+ *  expenses, debt service, DSCR and the net-profit conclusion. */
+export function useFinancialCockpit(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["financial-cockpit", profileId, devUser],
+    queryFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/financial-cockpit`),
+    enabled: !!profileId && enabled,
+    staleTime: 30_000,
+  });
+}
+
+/** The client terms as saved on the Financials tab, on the editor's own query key so both stay one read. */
+export function useClientTermsSummary(profileId: string | null | undefined, enabled = true) {
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["application-client-terms", profileId],
+    queryFn: () => apiCall<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`),
+    enabled: !!profileId && enabled,
+    staleTime: 15_000,
+  });
+}
+
+export type ClosingStipulationItem = { id?: string | null; text: string; source?: "term_sheet" | "desk" | null; status: "open" | "received" | "waived"; note?: string | null; updated_at?: string | null; updated_by?: string | null; created_at?: string | null };
+export type ClosingStipulationsRead = { profile_id: string; accepted: boolean; accepted_amount: number | null; estimated_close_date: string | null; items: ClosingStipulationItem[]; open_count: number; received_count: number; waived_count: number; terms_conditions: string[]; ready_to_close: boolean };
+
+/** Stipulations to close and the estimated close date, once the client has accepted. */
+export function useClosingStipulations(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["closing-stipulations", profileId, devUser],
+    queryFn: () => apiCall<ClosingStipulationsRead>(`/application-profiles/${profileId}/closing-stipulations`),
+    enabled: !!profileId && enabled,
+  });
+}
+
+/** The list as the desk keeps it; an item left out is kept as waived on the server. */
+export function useSaveClosingStipulations(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (items: ClosingStipulationItem[]) => apiCall<ClosingStipulationsRead>(`/application-profiles/${profileId}/closing-stipulations`, { method: "PUT", body: JSON.stringify({ items }) }),
+    onSuccess: (block) => { queryClient.setQueriesData({ queryKey: ["closing-stipulations", profileId] }, block); },
+  });
+}
+
+/** Adds the conditions on the accepted terms as open stipulations, once each. */
+export function useSeedClosingStipulations(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<ClosingStipulationsRead>(`/application-profiles/${profileId}/closing-stipulations/seed`, { method: "POST" }),
+    onSuccess: (block) => { queryClient.setQueriesData({ queryKey: ["closing-stipulations", profileId] }, block); },
+  });
+}
+
+/** The fees the desk sets from the Financials tab (origination points, consulting fee): the same
+ *  profile fields the Underwriting tab's offer acceptance and the fee allocation read. */
+export function useSaveFileEconomics(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (patch: { forecast_fee_points?: number | null; forecast_consulting_fee?: number | null }) => apiCall<unknown>(`/application-profiles/${profileId}/underwriting`, { method: "PATCH", body: JSON.stringify(patch) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["closing-stipulations", profileId] });
+    },
+  });
+}
+
+/** The merchant cash advances on the file's debt schedule, whoever wrote them. */
+export function useAdvances(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["advances", profileId, devUser],
+    queryFn: () => apiCall<AdvancesRead>(`/application-profiles/${profileId}/advances`),
+    enabled: !!profileId && enabled,
+  });
+}
+
+/** Records the desk's advance rows (from the client's verbal breakdown) and refreshes the cockpit. */
+export function useSaveAdvances(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (rows: AdvanceIn[]) => apiCall<AdvancesRead>(`/application-profiles/${profileId}/advances`, { method: "PUT", body: JSON.stringify({ rows }) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+    },
+  });
+}
+
+/** Queues every bank statement on the file for a fresh AI read (recurring payees). */
+export function useRereadStatements(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  return useMutation({
+    mutationFn: () => apiCall<StatementRereadResult>(`/application-profiles/${profileId}/financial-cockpit/reread-statements`, { method: "POST" }),
+  });
+}
+
+/** The checking accounts the AI found on the statements and which ones count. */
+export function useBankAccounts(profileId: string | null | undefined, enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["bank-accounts", profileId, devUser],
+    queryFn: () => apiCall<BankAccountsRead>(`/application-profiles/${profileId}/bank-accounts`),
+    enabled: !!profileId && enabled,
+  });
+}
+
+/** Chooses which accounts count; readiness, the evidence workspace and the cockpit all re-read. */
+export function useSaveBankAccounts(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: BankAccountsWrite) => apiCall<BankAccountsRead>(`/application-profiles/${profileId}/bank-accounts`, { method: "PUT", body: JSON.stringify(body) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["bank-accounts", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["application-evidence-workspace", profileId] });
+    },
+  });
+}
+
+/** Saves the file's financial plan; coverage, the offer and the debt service all re-read it. */
+export function useSaveFinancialPlan(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (plan: FinancialPlanWrite) => apiCall<FinancialPlanRead>(`/application-profiles/${profileId}/financial-plan`, { method: "PUT", body: JSON.stringify(plan) }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+/** The desk declares the business carries no debt: the standing debt schedule
+ *  requirement is set aside and the cockpit comes back re-read. */
+export function useVoidDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: DebtScheduleVoidWrite) => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/void`, { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+/** The lines the AI read off the uploaded debt schedule become the file's own rows. */
+export function useAdoptUploadedDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/adopt-document`, { method: "POST" }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+export type DebtRowPatch = { lender?: string; category?: string; monthly_payment?: number | null; balance?: number | null; payoff_amount?: number | null; payment_amount?: number | null; payment_frequency?: "daily" | "weekly" | "biweekly" | "monthly" | null; count_in_dscr?: boolean; vendor_key?: string; status?: "active" | "dismissed" };
+
+/** One schedule row edited in place on the coverage card; the cockpit comes back as edited. */
+export function usePatchDebtRow(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ rowId, patch }: { rowId: string; patch: DebtRowPatch }) => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/rows/${rowId}`, { method: "PATCH", body: JSON.stringify(patch) }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
+  });
+}
+
+/** Puts the debt schedule on the borrower's checklist. */
+export function useRequestDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<{ requested: boolean; already: boolean }>(`/application-profiles/${profileId}/financial-forms/debt_schedule/request`, { method: "POST" }),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] }); },
+  });
+}
+
+export function useRestoreDebtSchedule(profileId: string | null | undefined) {
+  const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/debt-schedule/restore`, { method: "POST" }),
+    onSuccess: (cockpit) => {
+      queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, cockpit);
+      void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+    },
   });
 }
 

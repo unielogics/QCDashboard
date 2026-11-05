@@ -18,16 +18,16 @@ export async function loadFinancialSourcePreview(
   const file = workspace.evidence.files.find((item) => item.id === request.fileId);
   if (!file) throw new Error("Source reference needs review. The cited document is no longer available in this profile.");
   const expectedHash = request.expectedContentHash ? `?expected_content_hash=${encodeURIComponent(request.expectedContentHash)}` : "";
-  let signed: { url: string };
+  let signed: { url: string; sheets?: BucketFileReview["sheets"] };
   try {
-    signed = await api<{ url: string }>(`/application-profiles/${encodeURIComponent(request.profileId)}/evidence/files/${encodeURIComponent(request.fileId)}/url${expectedHash}`);
+    signed = await api<{ url: string; sheets?: BucketFileReview["sheets"] }>(`/application-profiles/${encodeURIComponent(request.profileId)}/evidence/files/${encodeURIComponent(request.fileId)}/url${expectedHash}`);
   } catch (error) {
     if (error instanceof ApiError && error.status === 409) throw new Error("Source file changed. Review its current version and refresh the analysis before using this reference.");
     throw error;
   }
   assertCurrentProfile();
   const files = workspace.evidence.files.map((item) => ({ id: item.id, file_name: item.file_name, content_type: item.content_type, size_bytes: item.size_bytes, is_password_protected: item.is_password_protected }));
-  return { files, review: { file: files.find((item) => item.id === file.id)!, preview_url: signed.url, annotations: [] } };
+  return { files, review: { file: files.find((item) => item.id === file.id)!, preview_url: signed.url, annotations: [], sheets: signed.sheets ?? null } };
 }
 
 export function restoreFinancialSourceFocus(sourceButton: Pick<HTMLElement, "isConnected" | "focus"> | null): void {

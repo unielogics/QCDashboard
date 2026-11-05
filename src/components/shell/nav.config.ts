@@ -105,13 +105,25 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
       },
       {
         id: "intake",
-        label: "Intake and evidence",
+        label: "Files and documents",
         items: [
-          { label: "Buckets", href: "/admin/buckets", icon: "lock" },
-          { label: "AI intake", href: "/admin/ai-underwriter-leads", icon: "spark" },
+          { label: "Files", href: "/admin/ai-underwriter-leads", icon: "spark" },
+          { label: "Documents", href: "/admin/buckets", icon: "lock" },
           { label: "Foreclosure rescues", href: "/foreclosure-rescues", icon: "bolt" },
-          { label: "Vault", href: "/vault", icon: "vault" },
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
+        ],
+      },
+      {
+        // The Rule 506(b) loan-participation program: publish a funded file
+        // as a listing, review members, keep the Form D clock. Super admin
+        // only; the middleware and each page enforce it.
+        id: "marketplace",
+        label: "Marketplace",
+        items: [
+          { label: "Listings", href: "/admin/marketplace", icon: "layers", match: "exact" },
+          { label: "Members", href: "/admin/marketplace/members", icon: "clients" },
+          { label: "Compliance", href: "/admin/marketplace/compliance", icon: "shieldChk" },
+          { label: "Transfers", href: "/admin/marketplace/transfers", icon: "trend" },
         ],
       },
       COMMS,
@@ -122,6 +134,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         label: "Underwriting",
         items: [
           { label: "Lenders", href: "/admin/lenders", icon: "building", desc: "Directory and appetite" },
+          { label: "Vault", href: "/vault", icon: "vault", desc: "Loan documents by file" },
         ],
       },
       ANALYSIS_TOOLS,
@@ -159,17 +172,23 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
       },
       {
         id: "uw",
-        label: "Underwriting",
+        label: "Files",
         items: [
-          { label: "AI intake", href: "/admin/ai-underwriter-leads", icon: "spark" },
+          { label: "Files", href: "/admin/ai-underwriter-leads", icon: "spark" },
           { label: "Foreclosure rescues", href: "/foreclosure-rescues", icon: "bolt" },
-          { label: "Vault", href: "/vault", icon: "vault" },
           { label: "Prequalifications", href: "/admin/prequal-requests", icon: "docCheck" },
         ],
       },
       COMMS,
     ],
     tools: [
+      {
+        id: "uw-tools",
+        label: "Underwriting",
+        items: [
+          { label: "Vault", href: "/vault", icon: "vault", desc: "Loan documents by file" },
+        ],
+      },
       ANALYSIS_TOOLS,
       {
         id: "admin",
@@ -300,7 +319,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         id: "vendor",
         label: "Vendor access",
         items: [
-          { label: "Buckets", href: "/vendor/buckets", icon: "lock", badge: "vendorBuckets" },
+          { label: "Documents", href: "/vendor/buckets", icon: "lock", badge: "vendorBuckets" },
           { label: "Profile", href: "/profile", icon: "user" },
         ],
       },
@@ -318,8 +337,8 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         id: "referrals",
         label: "Referrals",
         items: [
-          { label: "Auto AI intake", href: "/broker/ai-underwriter-leads", icon: "spark", badge: "myLeads" },
-          { label: "Document rooms", href: "/broker/buckets", icon: "lock" },
+          { label: "My files", href: "/broker/ai-underwriter-leads", icon: "spark", badge: "myLeads" },
+          { label: "Documents", href: "/broker/buckets", icon: "lock" },
           { label: "Messages", href: "/broker/messages", icon: "chat", badge: "dealerUnread" },
           { label: "Programs and resources", href: "/broker/programs", icon: "docCheck" },
           { label: "Profile", href: "/profile", icon: "user" },

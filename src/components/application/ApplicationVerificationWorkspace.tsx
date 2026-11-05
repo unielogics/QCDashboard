@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BucketFileReviewPanel,
@@ -11,7 +12,10 @@ import { Icon } from "@/components/design-system/Icon";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
+import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDrawer";
+import { OwnerCreditReportDrawer } from "@/components/application/OwnerCreditReportDrawer";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type {
   ApplicationBankState,
@@ -22,6 +26,7 @@ import type {
   FileCreditInvite,
   FileOwner,
   FileOwnerRequirementState,
+  ProfileCreditLinkReport,
   RoomDeliveryReceipt,
   RoomRequestResult,
 } from "@/lib/applicationProfile";
@@ -36,6 +41,7 @@ import {
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { validateOwnerField, type EditableOwnerField } from "@/lib/ownerFieldValidation";
+import { ownerCreditStatus, ownerCreditWords, reportWords } from "@/lib/creditLinks";
 
 type OwnerDraft = {
   key: string;
@@ -61,13 +67,6 @@ function maskPhone(value: string | null) {
   return digits.length >= 4 ? `••• ••• ${digits.slice(-4)}` : "Phone missing";
 }
 
-function creditStatus(owner: FileOwner): { label: string; tone: "ok" | "acc" | "warn" | "bad" | "mut" } {
-  if (owner.credit_complete) return { label: "Completed", tone: "ok" };
-  if (owner.invite_opened_at) return { label: "Opened", tone: "acc" };
-  if (owner.invite_sent_at) return { label: "Sent", tone: "warn" };
-  return { label: "Not sent", tone: "mut" };
-}
-
 function when(value: string | null) {
   if (!value) return "Never";
   return new Date(value).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
@@ -82,7 +81,7 @@ export function ApplicationVerificationWorkspace({
 }: {
   sourceKind: ApplicationSourceKind;
   sourceId: string;
-  mode?: "full" | "owners" | "credit" | "banking" | "verification";
+  mode?: "full" | "owners" | "owners-credit" | "credit" | "banking" | "verification";
   onReadyForStep2?: () => void;
   onStateChange?: (state: FileOwnerRequirementState) => void;
 }) {
@@ -90,6 +89,7 @@ export function ApplicationVerificationWorkspace({
   const qc = useQueryClient();
   const initialView = mode === "banking" ? "banking" : mode === "credit" || mode === "verification" ? "credit" : "owners";
   const [view, setView] = useState<"owners" | "credit" | "banking">(initialView);
+  const [ownershipReady, setOwnershipReady] = useState(false);
   const profileQuery = useQuery({
     queryKey: ["application-profile", sourceKind, sourceId],
     queryFn: () => apiCall<ApplicationProfile>("/application-profiles/resolve", {
@@ -103,6 +103,7 @@ export function ApplicationVerificationWorkspace({
     queryKey: ["application-profile-owners", profileId],
     queryFn: () => apiCall<FileOwner[]>(`/application-profiles/${profileId}/owners`),
     enabled: Boolean(profileId),
+    refetchInterval: (query) => query.state.data?.some((owner) => owner.credit_report_import_status === "pending" || (owner.credit_pull_id && !owner.credit_report_available)) ? 15000 : false,
   });
   const verification = useQuery({
     queryKey: ["application-profile-verification", profileId],
@@ -112,7 +113,7 @@ export function ApplicationVerificationWorkspace({
   const banks = useQuery({
     queryKey: ["application-profile-banks", profileId],
     queryFn: () => apiCall<ApplicationBankState>(`/application-profiles/${profileId}/banks`),
-    enabled: Boolean(profileId) && mode !== "owners" && mode !== "credit",
+    enabled: Boolean(profileId) && mode !== "owners" && mode !== "owners-credit" && mode !== "credit",
     refetchInterval: (query) => (
       (query.state.data?.manual_statement_pending_count ?? 0)
       + (query.state.data?.evidence_processing_count ?? 0)
@@ -154,25 +155,26 @@ export function ApplicationVerificationWorkspace({
     <div className="application-verification">
       {mode === "full" ? (
         <div className="application-verification-tabs" role="tablist" aria-label="Verification steps">
-          <button type="button" className={view === "owners" ? "on" : undefined} onClick={() => setView("owners")}><span>1</span>Ownership</button>
-          <button type="button" className={view === "credit" ? "on" : undefined} onClick={() => setView("credit")} disabled={!verification.data?.ready_for_step_2}><span>2</span>Owner credit</button>
-          <button type="button" className={view === "banking" ? "on" : undefined} onClick={() => setView("banking")}><span>3</span>Business banking</button>
+          <button type="button" className={view === "owners" ? "on" : undefined} onClick={() => setView("owners")}><span>1</span>Ownership &amp; credit</button>
+          <button type="button" className={view === "banking" ? "on" : undefined} onClick={() => setView("banking")}><span>2</span>Business banking</button>
         </div>
       ) : null}
-      {(mode === "owners" || (mode === "full" && view === "owners")) ? (
+      {(mode === "owners" || mode === "owners-credit" || (mode === "full" && view === "owners")) ? (
         <OwnershipTable
           profileId={profileId}
           owners={owners.data ?? []}
           state={verification.data}
           loading={owners.isLoading || verification.isLoading}
           onRefresh={refresh}
+          showContinue={mode === "owners"}
+          onReadinessChange={setOwnershipReady}
           onContinue={() => {
             if (mode === "full") setView("credit");
             onReadyForStep2?.();
           }}
         />
       ) : null}
-      {(mode === "credit" || mode === "verification" || (mode === "full" && view === "credit")) ? (
+      {(mode === "owners-credit" || mode === "credit" || mode === "verification" || (mode === "full" && view === "owners")) ? (
         <CreditPanel
           profileId={profileId}
           owners={owners.data ?? []}
@@ -181,18 +183,21 @@ export function ApplicationVerificationWorkspace({
           onRefresh={refresh}
         />
       ) : null}
+      {mode === "owners-credit" || (mode === "full" && view === "owners") ? <div className="row" style={{ justifyContent: "flex-end" }}><Btn variant="pri" disabled={!ownershipReady} onClick={() => { if (mode === "full") setView("banking"); else onReadyForStep2?.(); }}>{mode === "full" ? "Continue to banking" : "Continue to evidence"}<Icon name="arrowR" size={14} /></Btn></div> : null}
       {(mode === "banking" || (mode === "full" && view === "banking")) ? <BankingPanel profileId={profileId} sourceKind={sourceKind} sourceId={sourceId} state={verification.data} banks={banks.data} loading={verification.isLoading || banks.isLoading} onRefresh={refresh} /> : null}
     </div>
   );
 }
 
-function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue }: {
+function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue, showContinue = true, onReadinessChange }: {
   profileId: string;
   owners: FileOwner[];
   state?: FileOwnerRequirementState;
   loading: boolean;
   onRefresh: () => Promise<void>;
   onContinue: () => void;
+  showContinue?: boolean;
+  onReadinessChange?: (ready: boolean) => void;
 }) {
   const apiCall = useAuthedApi();
   const [drafts, setDrafts] = useState<OwnerDraft[]>([]);
@@ -248,6 +253,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   const total = Math.round((serverTotal + draftTotal) * 100) / 100;
   const rowsSettled = drafts.length === 0 && !Object.values(saveStates).includes("saving") && !Object.values(saveStates).includes("invalid");
   const ready = Boolean(state?.ready_for_step_2) && rowsSettled;
+  useEffect(() => { onReadinessChange?.(ready); }, [ready, onReadinessChange]);
 
   function addOwner() {
     if (owners.length + drafts.length >= 5) return;
@@ -323,7 +329,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
                     <td><Input aria-label={`${owner.full_name} ownership percentage`} className="num owner-percent" inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(event) => save(owner, "ownership_pct", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal email`} type="email" defaultValue={owner.email ?? ""} onBlur={(event) => save(owner, "email", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal phone`} type="tel" defaultValue={owner.phone ?? ""} onBlur={(event) => save(owner, "phone", event.target.value)} /></td>
-                    <td><CellChip tone={owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
+                    <td><CellChip tone={owner.credit_complete ? ownerCreditStatus(owner).tone : owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_complete ? ownerCreditStatus(owner).label : owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
                     <td><CellChip tone={saveState === "saved" ? "ok" : saveState === "invalid" ? "bad" : "mut"}>{saveState === "saving" ? "Saving..." : saveState === "invalid" ? "Fix row" : "Saved"}</CellChip></td>
                     <td className="r"><IconBtn aria-label={`Remove ${owner.full_name}`} title={locked ? "Credit activity preserves this owner" : "Remove owner"} disabled={locked || deleteOwner.isPending} onClick={() => deleteOwner.mutate(owner.id)}><Icon name="trash" size={14} /></IconBtn></td>
                   </tr>
@@ -354,7 +360,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
         <div className="verification-blockers">
           {state?.ownership_blockers.length ? state.ownership_blockers.map((blocker) => <span key={blocker}><Icon name="x" size={12} />{blocker}</span>) : <span className="ready"><Icon name="check" size={12} />Ownership is ready. Evidence can be collected next.</span>}
         </div>
-        <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to evidence<Icon name="arrowR" size={14} /></Btn>
+        {showContinue ? <Btn variant="pri" disabled={!ready} onClick={onContinue}>Continue to evidence<Icon name="arrowR" size={14} /></Btn> : null}
       </footer>
     </section>
   );
@@ -369,9 +375,36 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
 }) {
   const apiCall = useAuthedApi();
   const requiredOwners = owners.filter((owner) => owner.credit_required);
+  const scoredOwners = requiredOwners.filter((owner) => ownerCreditStatus(owner).tone === "ok");
   const [links, setLinks] = useState<Record<string, string>>({});
   const [alsoText, setAlsoText] = useState(false);
   const [error, setError] = useState("");
+  const [linkOwner, setLinkOwner] = useState<FileOwner | null>(null);
+  const [reportOwnerId, setReportOwnerId] = useState<string | null>(null);
+  const [linkNotice, setLinkNotice] = useState("");
+  const unlink = useMutation({
+    mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileOwner>(`/application-profiles/${profileId}/owners/${ownerId}/credit-link`, { method: "DELETE" }),
+    onSuccess: async (updated) => {
+      setError("");
+      setLinkNotice(`${updated.full_name}'s credit step is pending again; the pull itself stays on record.`);
+      await onRefresh();
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The pull could not be unlinked."),
+  });
+  const autoLink = useMutation({
+    mutationFn: () => apiCall<ProfileCreditLinkReport>(`/application-profiles/${profileId}/credit-links/auto`, { method: "POST" }),
+    onSuccess: async (result) => {
+      setError("");
+      const lines = [
+        `${reportWords(result)}.`,
+        ...result.linked.map((item) => `${item.words}.`),
+        ...result.waiting.map((item) => `${item.owner_name}: ${item.reason}.`),
+      ];
+      setLinkNotice(lines.join(" "));
+      await onRefresh();
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The pulls could not be matched."),
+  });
 
   const invite = useMutation({
     mutationFn: ({ ownerId }: { ownerId: string }) => apiCall<FileCreditInvite>(`/application-profiles/${profileId}/owners/${ownerId}/credit-invite`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }) }),
@@ -399,19 +432,21 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
     <div className="verification-stack">
       <section className="verification-section">
         <header className="verification-section-head">
-          <div><span className="lbl">Step 3</span><h3>Owner iSoftPull authorizations</h3><Sub>Each 20%+ owner receives a private, one-time link tied only to their identity.</Sub></div>
-          <CellChip tone={state?.credit_returned ? "ok" : "warn"}>{state?.completed_credit_owner_count ?? 0} of {state?.required_credit_owner_count ?? 0} completed</CellChip>
-          <Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
+          <div><h3>Owner credit</h3><Sub>Link an existing report or request authorization for each required owner.</Sub></div>
+          <CellChip tone={scoredOwners.length === requiredOwners.length && scoredOwners.length > 0 ? "ok" : "warn"}>{scoredOwners.length} of {requiredOwners.length} scores imported</CellChip>
+          <Btn disabled={autoLink.isPending || !requiredOwners.length} onClick={() => autoLink.mutate()} title="Match each owner to a completed pull under the same name on this client"><Icon name="link" size={14} />{autoLink.isPending ? "Matching..." : "Link automatically"}</Btn><Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
         </header>
         <div className="credit-owner-grid">
           {requiredOwners.map((owner) => {
-            const status = creditStatus(owner);
+            const status = ownerCreditStatus(owner);
             const freshLink = links[owner.id];
             return (
-              <article key={owner.id} className={cx("credit-owner-box", owner.credit_complete && "complete")}>
+              <article key={owner.id} className={cx("credit-owner-box", status.tone === "ok" && "complete")}>
                 <header><span className="credit-owner-avatar">{owner.first_name.slice(0, 1)}{owner.last_name.slice(0, 1)}</span><div className="grow"><b>{owner.full_name}</b><Sub>{Number(owner.ownership_pct ?? 0).toFixed(2)}% ownership</Sub></div><CellChip tone={status.tone}>{status.label}</CellChip></header>
-                <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_tier ? <div><dt>Result</dt><dd>{owner.credit_tier}</dd></div> : null}</dl>
-                <footer><Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}</footer>
+                <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_pulled_at ? <div><dt>Result</dt><dd>{owner.credit_tier ? `${owner.credit_tier} · ` : ""}{ownerCreditWords(owner)}</dd></div> : null}</dl>
+                {owner.credit_attention ? <div className="warnline credit-owner-attention">{owner.credit_attention}</div> : null}
+                {owner.credit_risk ? <button type="button" className={`credit-risk-link ${owner.credit_risk.high_count ? "is-high" : ""}`} onClick={() => setReportOwnerId(owner.id)}><Icon name="alert" size={14} />{owner.credit_risk.flag_count ? `${owner.credit_risk.flag_count} review flags · ${owner.credit_risk.high_count} high priority` : "No supported risk flags detected"}<Icon name="arrowR" size={13} /></button> : null}
+                <footer>{owner.credit_pull_id ? <Btn onClick={() => setReportOwnerId(owner.id)}><Icon name="doc" size={13} />View credit report</Btn> : null}<Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn onClick={() => setLinkOwner(owner)} title={owner.credit_complete ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_complete ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
               </article>
             );
           })}
@@ -419,6 +454,19 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
         </div>
         <label className="verification-sms"><input type="checkbox" checked={alsoText} onChange={(event) => setAlsoText(event.target.checked)} />Also send by SMS when the exact owner has transactional consent</label>
       </section>
+
+      {linkNotice ? <Callout tone="acc" icon={<Icon name="link" size={16} />}>{linkNotice}</Callout> : null}
+      <OwnerCreditReportDrawer key={reportOwnerId ?? "closed"} profileId={profileId} owner={owners.find((owner) => owner.id === reportOwnerId) ?? null} onClose={() => setReportOwnerId(null)} onImported={onRefresh} />
+      <CreditPullLinkDrawer
+        profileId={profileId}
+        owner={linkOwner}
+        open={Boolean(linkOwner)}
+        onClose={() => setLinkOwner(null)}
+        onLinked={async (updated) => {
+          setLinkNotice(`${updated.full_name}: ${ownerCreditWords(updated)}.`);
+          await onRefresh();
+        }}
+      />
 
       {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
     </div>
@@ -503,8 +551,8 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   }) : null, [selectedReviewContentType, selectedReviewCreatedAt, selectedReviewId, selectedReviewName, selectedReviewSize, selectedStatementPasswordProtected]);
   const loadStatementReview = useCallback(async (): Promise<BucketFileReview> => {
     if (!selectedStatementReviewFile) throw new Error("Bank statement file is no longer available.");
-    const signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedStatementReviewFile.id}/url`);
-    return { file: selectedStatementReviewFile, preview_url: signed.url, annotations: [] };
+    const signed = await apiCall<{ url: string; expires_in: number; sheets?: BucketFileReview["sheets"] }>(`/application-profiles/${profileId}/evidence/files/${selectedStatementReviewFile.id}/url`);
+    return { file: selectedStatementReviewFile, preview_url: signed.url, annotations: [], sheets: signed.sheets ?? null };
   }, [apiCall, profileId, selectedStatementReviewFile]);
   const previewStatement = useCallback((fileId: string) => {
     if (onPreviewEvidence) onPreviewEvidence(fileId);
@@ -574,10 +622,11 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
       const screened = await screenPdfUploads(files);
       for (const file of screened.uploadable) {
         setUploadState(`Uploading ${file.name} · ${uploaded + 1} of ${files.length}`);
-        const init = await apiCall<{ file_id: string; upload_url: string; required_headers: Record<string, string> }>(`/admin/ai-underwriter-leads/${sourceId}/files/upload-init`, { method: "POST", body: JSON.stringify({ requested_document_id: null, file_name: file.name, content_type: file.type || "application/octet-stream", size_bytes: file.size }) });
-        const response = await fetch(init.upload_url, { method: "PUT", body: file, headers: init.required_headers });
-        if (!response.ok) throw new Error(`${file.name} could not be uploaded.`);
-        await apiCall(`/admin/ai-underwriter-leads/${sourceId}/files/complete`, { method: "POST", body: JSON.stringify({ file_id: init.file_id }) });
+        await uploadFile(
+          { initPath: `/admin/ai-underwriter-leads/${sourceId}/files/upload-init`, completePath: `/admin/ai-underwriter-leads/${sourceId}/files/complete`, call: apiCall },
+          file,
+          { requestedDocumentId: null, storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded.` },
+        );
         uploaded += 1;
       }
       setUploadState(uploaded ? `${uploaded} statement file${uploaded === 1 ? "" : "s"} uploaded and queued for extraction.` : "");
@@ -606,7 +655,9 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   const manualUnassignedCount = statementFiles.filter((file) => !file.ai_decision && file.analysis_status === "completed").length;
   const hasManualEvidence = manualFileCount > 0;
   const needsClientBankRequest = !state?.business_banking_complete;
-  const bankDeliveries = (deliveries.data ?? []).filter((receipt) => receipt.action_kind === "business_banking_reminder");
+  // Both kinds of bank request count as the latest ask: the neutral one this
+  // panel sends and the Plaid-named one the bar above it sends.
+  const bankDeliveries = (deliveries.data ?? []).filter((receipt) => receipt.action_kind === "business_banking_reminder" || receipt.action_kind === "bank_connect_reminder");
   const latestActivity = bankDeliveries[0];
   const latestEmail = bankDeliveries.find((receipt) => receipt.channel === "email");
   const laterUnsentActivity = latestActivity?.channel === "none" && latestEmail && new Date(latestActivity.created_at).getTime() > new Date(latestEmail.created_at).getTime();
@@ -627,7 +678,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   };
   return <><section className="verification-section bank-evidence-workspace">
     <header className="verification-section-head">
-      <div><span className="lbl">Evidence &amp; banking</span><h3>Business bank evidence</h3><Sub>AI-accepted uploaded statements and client-authorized Plaid data are alternative evidence sources. Staff only override exceptions.</Sub></div>
+      <div><span className="lbl">Banking</span><h3>Business bank evidence</h3><Sub>AI-accepted uploaded statements and client-authorized Plaid data are alternative evidence sources. Staff only override exceptions.</Sub></div>
       <CellChip tone={state?.business_banking_complete ? "ok" : manualFailedCount || manualRejectedCount ? "bad" : manualAcceptedCount || manualPendingCount ? "acc" : "warn"}>{state?.business_banking_complete ? "Complete" : manualFailedCount ? "Analysis failed" : manualRejectedCount ? "Needs attention" : manualPendingCount ? "AI review in progress" : manualAcceptedCount ? `${manualMonths.length} of ${requiredMonths} months accepted` : manualUnassignedCount ? "Evidence needs mapping" : "Awaiting applicant"}</CellChip>
     </header>
     <div className="bank-evidence-stats"><div><span>Connected institutions</span><b className="num">{connected.length}</b></div><div><span>Evidence source</span><b>{hasManualEvidence ? "Uploaded statements" : connected.length ? "Plaid" : "-"}</b></div><div><span>Accepted coverage</span><b className="num">{manualMonths.length ? `${manualMonths.length} / ${requiredMonths}` : state?.bank_statement_months || (manualPendingCount ? "Analyzing" : "-")}</b></div></div>
@@ -641,10 +692,16 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
         ], [
           "statements",
           "Statement PDFs",
-          banks?.statements_enabled ?? false,
+          // The file's own setting; the deployment decides whether Plaid is asked.
+          banks?.statements_preferred ?? banks?.statements_enabled ?? false,
         ]] as const).map(([product, label, checked]) => {
           const available = availableProducts.includes(product);
           const lastSelected = checked && selectedProducts.length === 1;
+          // On for the file, not yet on the Plaid account: say so instead of
+          // showing a switch that reads "off".
+          if (product === "statements" && !available && banks?.statements_preferred) {
+            return <CellChip key={product} tone="warn" title="This file wants statement PDFs; the Plaid account is not enabled for the Statements product yet.">Statement PDFs on · awaiting Plaid</CellChip>;
+          }
           return isSuperAdmin ? <button
             key={product}
             type="button"
@@ -660,7 +717,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
     </div>
     {(banks?.connections_requiring_client_authorization ?? 0) > 0 ? <Callout tone="warn" icon={<Icon name="alert" size={16} />}><b>Client authorization required.</b> {banks?.connections_requiring_client_authorization} connected bank{banks?.connections_requiring_client_authorization === 1 ? "" : "s"} must approve the selected products from the secure room. No reminder is sent automatically.</Callout> : null}
     {needsClientBankRequest ? <div className="bank-request-toolbar">
-      <div><b>{manualMonths.length ? `Request ${Math.max(0, requiredMonths - manualMonths.length)} missing statement month${requiredMonths - manualMonths.length === 1 ? "" : "s"}` : "Client bank request"}</b><Sub>{hasManualEvidence ? "Uploaded statements already count. Request only the missing periods; Plaid remains optional." : "Email the secure room so the client can upload statements or authorize Plaid. The PIN is shared separately."}</Sub></div>
+      <div><b>{manualMonths.length ? `Request ${Math.max(0, requiredMonths - manualMonths.length)} missing statement month${requiredMonths - manualMonths.length === 1 ? "" : "s"}` : "Client bank request"}</b><Sub>{hasManualEvidence ? "Uploaded statements already count. Request only the missing periods; a Plaid connection also completes banking." : "Email the secure room: it opens on banking, where the client connects their bank through Plaid first or uploads statements. The PIN is shared separately."}</Sub></div>
       <div className="bank-request-actions"><Btn variant="pri" disabled={invite.isPending} onClick={() => invite.mutate("email")}><Icon name="send" size={14} />{latestEmail ? "Resend bank request" : "Send bank request"}</Btn><Btn disabled={invite.isPending} onClick={() => secureLink ? void navigator.clipboard.writeText(secureLink) : invite.mutate("none")}><Icon name={secureLink ? "copy" : "link"} size={14} />{secureLink ? "Copy room link" : "Create room link"}</Btn></div>
     </div> : hasManualEvidence ? <Callout tone="ok" icon={<Icon name="check" size={16} />}>Uploaded statements provide six accepted months. Business banking is complete and the client does not need to connect Plaid.</Callout> : null}
     {deliveryResult ? <div className="bank-delivery-result"><Callout tone={deliveryResult.overall_status === "success" ? "ok" : deliveryResult.overall_status === "created" ? "mut" : deliveryResult.overall_status === "partial" ? "warn" : "bad"} icon={<Icon name={deliveryResult.overall_status === "success" ? "check" : deliveryResult.overall_status === "created" ? "link" : "alert"} size={16} />}>{deliveryResult.overall_status === "created" ? "Room link created. No email or SMS was sent." : deliveryResult.deliveries.map((row) => row.detail).filter(Boolean).join(" ") || "The bank request was processed."}</Callout></div> : null}
@@ -690,7 +747,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
           {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={hasDecision ? evidenceDecisionTone(file.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{hasDecision ? evidenceDecisionLabel(file.ai_decision, file.decision_actor) : analysisLabel}</CellChip>}
           {!locked ? <EvidenceIdentityWarning reasonCode={file.ai_reason_code} decision={file.ai_decision} /> : null}
           {locked ? <UnlockedCopyRequestControl request={file.unlocked_copy_request} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, file.file_name, false, true) : undefined} /> : null}
-          <Btn onClick={() => previewStatement(file.file_id)}><Icon name="eye" size={14} />Preview</Btn>
+          <ActionIcon icon="eye" label={`Preview ${file.file_name}`} onClick={() => previewStatement(file.file_id)} />
         </article>;
       })}</div> : null}
       {manualMonths.length ? <><div className="bank-coverage-chips">{manualMonths.map((month) => <CellChip key={month} tone="ok">{month}</CellChip>)}</div><Sub>{manualMonths.length} of {requiredMonths} distinct statement months accepted after evidence review.</Sub></> : hasManualEvidence ? <div className="empty">{manualPendingCount ? `AI is analyzing ${manualPendingCount} statement file${manualPendingCount === 1 ? "" : "s"} for entity and period coverage.` : "Statement evidence is present, but no accepted month could be established."}</div> : <div className="empty">No uploaded statement periods have been identified.</div>}

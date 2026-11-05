@@ -16,6 +16,7 @@
 import type { PfsBody, PfsSchema } from "@/components/application/Pfs413Form";
 import type { DebtBody, DebtRow } from "@/components/application/DebtScheduleForm";
 import type { StatementBody, StatementSchema } from "@/components/application/BusinessStatementForm";
+import { debtTypeLabel, isAdvanceType, isBlankDebtRow } from "@/lib/debtTypes";
 
 export type ReviewKind = "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet";
 
@@ -192,10 +193,32 @@ const DEBT_FIELDS: [keyof DebtRow, string][] = [
   ["collateral", "Collateral"],
 ];
 
+/** A stored value in the words the form showed: the type's label, a choice
+ *  capitalised, a date as mm/dd/yyyy. */
+export function debtFieldText(key: keyof DebtRow, value: string): string {
+  if (key === "debt_type") return debtTypeLabel(value) || value;
+  if (key === "secured" || key === "payment_status") return value.charAt(0).toUpperCase() + value.slice(1);
+  if (key === "originated_on" || key === "maturity_on") {
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+    return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
+  }
+  return value;
+}
+
+/** The advance question's answer, for a row that is a merchant cash advance. */
+export function advanceAnswer(row: DebtRow): string {
+  if (row.mca_modified === "yes") {
+    const note = String(row.mca_modification_note ?? "").trim();
+    return note ? `Yes — ${note}` : "Yes";
+  }
+  if (row.mca_modified === "no") return "No";
+  return "Not answered";
+}
+
 function DebtReview({ body }: { body: DebtBody }) {
-  const rows = (body.debts ?? []).filter(
-    (row) => String(row.lender ?? "").trim() || num(row.balance) || num(row.monthly_payment),
-  );
+  // Every line someone typed on, the way the backend keeps them; a line with
+  // only a type or an amount is an obligation they started, not nothing.
+  const rows = (body.debts ?? []).filter((row) => !isBlankDebtRow(row));
   const totalBalance = rows.reduce((sum, row) => sum + num(row.balance), 0);
   const totalMonthly = rows.reduce((sum, row) => sum + num(row.monthly_payment), 0);
 
@@ -222,10 +245,15 @@ function DebtReview({ body }: { body: DebtBody }) {
           <div className="fpr-sub">
             {DEBT_FIELDS.filter(([key]) => String(row[key] ?? "").trim()).map(([key, label]) => (
               <span key={String(key)}>
-                <em>{label}</em> {String(row[key])}
+                <em>{label}</em> {debtFieldText(key, String(row[key]))}
                 {key === "rate" ? "%" : ""}
               </span>
             ))}
+            {isAdvanceType(row.debt_type) ? (
+              <span>
+                <em>Modified for lower sales</em> {advanceAnswer(row)}
+              </span>
+            ) : null}
           </div>
           {String(row.notes ?? "").trim() ? <p className="fpr-note">{row.notes}</p> : null}
         </Section>

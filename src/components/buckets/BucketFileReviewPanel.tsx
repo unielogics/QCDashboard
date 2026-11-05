@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import type { PDFDocumentLoadingTask } from "pdfjs-dist";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, BtnLink, Callout, cx, Empty, IconBtn, Input, Panel, StatusLine, Sub, Textarea } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { destroyPdfResource } from "@/lib/pdfLifecycle";
 import { scrollToPdfSourcePage, validPdfSourcePage } from "@/lib/pdfSourceNavigation";
@@ -33,10 +34,35 @@ export type BucketFileAnnotation = {
   created_at: string;
 };
 
+export type BucketSheetPreview = {
+  name: string;
+  rows: string[][];
+  total_rows: number;
+  total_cols: number;
+  truncated_rows?: boolean;
+  truncated_cols?: boolean;
+  warnings?: string[];
+};
+
+/** A spreadsheet's sheets as rows, parsed by the API with the same reader the
+ * AI uses, so the screen shows what the AI read. `error_code` names why a file
+ * could not be read (locked, not_a_workbook, empty, parse_failed, too_large). */
+export type BucketFileSheets = {
+  kind?: "xlsx" | "xls" | "csv" | string | null;
+  sheet_names?: string[];
+  sheets?: BucketSheetPreview[];
+  warnings?: string[];
+  encoding?: string | null;
+  delimiter?: string | null;
+  error_code?: string | null;
+  error_message?: string | null;
+};
+
 export type BucketFileReview = {
   file: BucketReviewFile;
   preview_url: string | null;
   annotations: BucketFileAnnotation[];
+  sheets?: BucketFileSheets | null;
 };
 
 type DraftRect = { page_number: number; x: number; y: number; width: number; height: number };
@@ -274,9 +300,10 @@ export function BucketFileReviewPanel({
     };
   }, [fileType, lockedPresentation, previewUrl]);
 
+  const parsedSheets = review?.sheets ?? null;
   useEffect(() => {
     let cancelled = false;
-    if (!previewUrl || (fileType !== "csv" && fileType !== "text")) {
+    if (!previewUrl || (fileType !== "csv" && fileType !== "text") || (fileType === "csv" && parsedSheets && !parsedSheets.error_code)) {
       setTextPreview("");
       return;
     }
@@ -296,7 +323,7 @@ export function BucketFileReviewPanel({
     return () => {
       cancelled = true;
     };
-  }, [fileType, previewUrl]);
+  }, [fileType, parsedSheets, previewUrl]);
 
   function stagePoint(event: MouseEvent<HTMLDivElement>, stage: HTMLDivElement | null) {
     const rect = stage?.getBoundingClientRect();
@@ -412,28 +439,16 @@ export function BucketFileReviewPanel({
           </div>
           <div className="row">
           {onDownload ? (
-            <Btn variant="pri" onClick={onDownload}>
-              <Icon name="download" size={14} />
-              Download
-            </Btn>
+            <ActionIcon icon="download" tone="pri" label="Download this file" onClick={onDownload} />
           ) : downloadUrl ? (
-            <BtnLink variant="pri" href={downloadUrl} target="_blank" rel="noopener noreferrer">
-              <Icon name="download" size={14} />
-              Download
-            </BtnLink>
+            <ActionIcon icon="download" tone="pri" label="Download this file" href={downloadUrl} target="_blank" />
           ) : null}
           {review?.preview_url ? (
-            <BtnLink href={review.preview_url} target="_blank" rel="noopener noreferrer">
-              <Icon name="external" size={14} />
-              Open original
-            </BtnLink>
+            <ActionIcon icon="external" label="Open the original in a new tab" href={review.preview_url} target="_blank" />
           ) : null}
           {headerActions}
           {onDelete ? (
-            <Btn className="danger" onClick={onDelete} disabled={deleteDisabled} title={deleteTitle}>
-              <Icon name={deleteDisabled ? "lock" : "x"} size={14} />
-              {deleteLabel}
-            </Btn>
+            <ActionIcon icon={deleteDisabled ? "lock" : "trash"} tone="danger" label={deleteTitle || deleteLabel || "Delete this file"} disabled={deleteDisabled} onClick={onDelete} />
           ) : null}
           {onMinimize ? (
             <IconBtn onClick={onMinimize} aria-label="Minimize review" title="Minimize">
@@ -492,12 +507,12 @@ export function BucketFileReviewPanel({
                     background: "var(--surface)", boxShadow: "var(--sh2)",
                   }}
                 >
-                  <Btn onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)}>Maximize</Btn>
+                  <ActionIcon icon="maximize" label="Zoom to fill the width" onClick={() => setPdfZoom(MAXIMIZED_PDF_ZOOM)} />
                   <Btn onClick={() => setPdfZoom((zoom) => Math.max(0.55, Number((zoom - 0.15).toFixed(2))))} aria-label="Zoom out" title="Zoom out">-</Btn>
                   {/* Fixed width so the row does not shuffle between 90% and 100%. */}
                   <span className="num" style={{ minWidth: 54, textAlign: "center" }}>{Math.round(pdfZoom * 100)}%</span>
                   <Btn onClick={() => setPdfZoom((zoom) => Math.min(2.4, Number((zoom + 0.15).toFixed(2))))} aria-label="Zoom in" title="Zoom in">+</Btn>
-                  <Btn onClick={() => setPdfZoom(1)}>Reset</Btn>
+                  <ActionIcon icon="refresh" label="Reset the zoom to 100%" onClick={() => setPdfZoom(1)} />
                   <span className="sub">{pageCount} page{pageCount === 1 ? "" : "s"}</span>
                 </div>
                 {/* Bespoke: a centred column of rendered pages. */}
@@ -539,6 +554,10 @@ export function BucketFileReviewPanel({
                 <img src={review.preview_url} alt={review.file.file_name} style={{ display: "block", maxWidth: "min(100%, 1200px)", maxHeight: "78vh", objectFit: "contain" }} />
                 <RectLayer annotations={(review.annotations ?? []).filter((annotation) => annotation.page_number === 1)} draftRect={draftRect?.page_number === 1 ? draftRect : null} activeId={activeAnnotationId} onSelect={setActiveAnnotationId} />
               </ReviewStage>
+            ) : review && (fileType === "csv" || fileType === "spreadsheet") && review.sheets && !review.sheets.error_code ? (
+              <SheetsPreview sheets={review.sheets} fileName={review.file.file_name} previewUrl={review.preview_url} />
+            ) : review && fileType === "spreadsheet" && review.sheets?.error_code ? (
+              <UnreadableSheetsPreview sheets={review.sheets} previewUrl={review.preview_url} />
             ) : review?.preview_url && fileType === "csv" ? (
               <CsvPreview text={textPreview} />
             ) : review?.preview_url && fileType === "text" ? (
@@ -776,7 +795,86 @@ function CsvPreview({ text }: { text: string }) {
   const rows = parsed.slice(0, 200);
   if (!text) return <div className="hintbox"><Sub>Loading CSV preview...</Sub></div>;
   if (!rows.length) return <div className="hintbox"><Sub>No CSV rows found.</Sub></div>;
+  return <RowsTable rows={rows} caption="CSV preview" footer={parsed.length > 200 ? "Showing first 200 rows." : null} />;
+}
+
+const SHEET_PREVIEW_ROW_CAP = 500;
+
+/** One workbook: a tab per sheet, each a bounded table, with what was cut said under it. */
+function SheetsPreview({ sheets, fileName, previewUrl }: { sheets: BucketFileSheets; fileName: string; previewUrl: string | null }) {
+  const list = sheets.sheets ?? [];
+  const [activeIndex, setActiveIndex] = useState(0);
+  const active = list[Math.min(activeIndex, Math.max(0, list.length - 1))];
+  if (!list.length) return <div className="hintbox"><Sub>No sheets could be read from {fileName}.</Sub></div>;
+  const notes = [...(sheets.warnings ?? []), ...(active?.warnings ?? [])];
+  const rows = (active?.rows ?? []).slice(0, SHEET_PREVIEW_ROW_CAP);
+  const kindLabel = sheets.kind === "csv" ? "CSV" : sheets.kind === "xls" ? "Excel 97-2003 workbook" : "Excel workbook";
+  return (
+    <div className="grid g8">
+      {list.length > 1 ? (
+        <div className="row" role="tablist" aria-label="Sheets" style={{ gap: 6, flexWrap: "wrap" }}>
+          {list.map((sheet, index) => (
+            <Btn key={`${sheet.name}-${index}`} size="sm" variant={index === activeIndex ? "pri" : undefined} role="tab" aria-selected={index === activeIndex} onClick={() => setActiveIndex(index)}>
+              {sheet.name || `Sheet ${index + 1}`}
+            </Btn>
+          ))}
+          {sheets.sheet_names && sheets.sheet_names.length > list.length ? <Sub>{sheets.sheet_names.length - list.length} more sheet{sheets.sheet_names.length - list.length === 1 ? "" : "s"} not shown</Sub> : null}
+        </div>
+      ) : null}
+      {active && rows.length ? (
+        <RowsTable
+          rows={rows}
+          caption={`${active.name || "Sheet"} preview`}
+          footer={`${kindLabel} · ${active.total_rows.toLocaleString()} row${active.total_rows === 1 ? "" : "s"} · ${active.total_cols} column${active.total_cols === 1 ? "" : "s"}${active.rows.length < active.total_rows ? ` · showing first ${rows.length.toLocaleString()}` : ""}`}
+        />
+      ) : (
+        <div className="hintbox"><Sub>{active?.name || "This sheet"} is empty.</Sub></div>
+      )}
+      {notes.length ? <Callout tone="warn"><div className="grid g4">{notes.map((note) => <span key={note}>{note}</span>)}<Sub>The AI review read this file with the same limits.</Sub></div></Callout> : null}
+      {previewUrl ? (
+        <div>
+          <BtnLink size="sm" href={previewUrl} target="_blank" rel="noopener noreferrer"><Icon name="external" size={14} />Open original file</BtnLink>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+const SHEET_ERROR_COPY: Record<string, { title: string; detail?: string }> = {
+  locked: { title: "This spreadsheet is password protected.", detail: "The AI cannot read it either. Ask for an unprotected copy or a PDF export." },
+  // The server's message says which kind of non-spreadsheet this is.
+  not_a_workbook: { title: "This is not a spreadsheet." },
+  empty: { title: "This spreadsheet has no readable rows.", detail: "The file was saved before any data was entered, or every sheet is hidden." },
+  too_large: { title: "This spreadsheet is too large to preview here.", detail: "Download it to open it locally." },
+  unavailable: { title: "The file could not be read from storage right now.", detail: "Retry in a moment or download it." },
+  parse_failed: { title: "This spreadsheet could not be parsed.", detail: "Open it locally; if it opens there, re-save it as .xlsx or CSV and upload again." },
+};
+
+function UnreadableSheetsPreview({ sheets, previewUrl }: { sheets: BucketFileSheets; previewUrl: string | null }) {
+  const known = SHEET_ERROR_COPY[sheets.error_code ?? ""];
+  const copy = known
+    ? { title: known.title, detail: known.detail ?? sheets.error_message ?? "Download it to open it locally." }
+    : { title: "This spreadsheet could not be read.", detail: sheets.error_message || "Download it to open it locally." };
+  return (
+    <div className="hintbox" style={{ minHeight: 360 }}>
+      <span className="hintbox-i"><Icon name="doc" size={18} /></span>
+      <div className="grid g6">
+        <b>{copy.title}</b>
+        <Sub>{copy.detail}</Sub>
+        {previewUrl ? (
+          <div>
+            <BtnLink variant="pri" href={previewUrl} target="_blank" rel="noopener noreferrer"><Icon name="external" size={14} />Download file</BtnLink>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function RowsTable({ rows, caption, footer }: { rows: string[][]; caption: string; footer: string | null }) {
   const [head, ...bodyRows] = rows;
+  const width = Math.max(head.length, ...bodyRows.map((row) => row.length));
+  const columns = Array.from({ length: width }, (_, index) => head[index] ?? "");
   return (
     <Panel noPad>
       {/* Bespoke: the preview scrolls in both directions inside a bounded box,
@@ -785,10 +883,10 @@ function CsvPreview({ text }: { text: string }) {
           does not add a nested TableWorkspace/modal focus layer. */}
       <div className="tblwrap" style={{ maxHeight: "76vh", overflowY: "auto" }}>
         <table className="tbl nowrap">
-          <caption className="sr-only">CSV preview</caption>
+          <caption className="sr-only">{caption}</caption>
           <thead>
             <tr>
-              {head.map((cell, index) => (
+              {columns.map((cell, index) => (
                 <th key={`${cell}-${index}`} scope="col" style={{ position: "sticky", top: 0, zIndex: 1 }}>
                   {cell || `Column ${index + 1}`}
                 </th>
@@ -798,15 +896,15 @@ function CsvPreview({ text }: { text: string }) {
           <tbody>
             {bodyRows.map((row, rowIndex) => (
               <tr key={rowIndex}>
-                {head.map((_, cellIndex) => <td key={cellIndex}>{row[cellIndex] ?? ""}</td>)}
+                {columns.map((_, cellIndex) => <td key={cellIndex}>{row[cellIndex] ?? ""}</td>)}
               </tr>
             ))}
           </tbody>
         </table>
       </div>
-      {parsed.length > 200 ? (
+      {footer ? (
         <div className="panel-b">
-          <Sub>Showing first 200 rows.</Sub>
+          <Sub>{footer}</Sub>
         </div>
       ) : null}
     </Panel>
@@ -824,7 +922,7 @@ function UnsupportedPreview({ review, fileType, onRetry }: { review: BucketFileR
         <Icon name={isSpreadsheet ? "doc" : "file"} size={18} />
       </span>
       <div className="grid g6">
-        <b>{loadFailed ? "Preview could not be loaded." : isSpreadsheet ? "Spreadsheet preview requires download." : "Preview is not available for this file type."}</b>
+        <b>{loadFailed ? "Preview could not be loaded." : isSpreadsheet ? "Spreadsheet preview is not available for this file." : "Preview is not available for this file type."}</b>
         <Sub>{loadFailed ? "The file remains available in this bucket. Retry or download it when storage is available." : isSpreadsheet ? "Open Excel files locally to preserve formulas, tabs, and formatting." : "Open the original file to review it locally."}</Sub>
         {loadFailed ? <div><Btn onClick={onRetry}><Icon name="refresh" size={14} />Retry preview</Btn></div> : null}
         {review?.preview_url ? (
@@ -860,9 +958,10 @@ function reviewFileType(contentType: string, fileName: string): ReviewFileType {
   const lower = `${contentType} ${fileName}`.toLowerCase();
   if (lower.includes("application/pdf") || lower.endsWith(".pdf")) return "pdf";
   if (lower.includes("image/") || /\.(png|jpe?g|webp|gif)$/i.test(fileName)) return "image";
-  if (lower.includes("text/csv") || lower.endsWith(".csv")) return "csv";
+  if (lower.includes("text/csv") || lower.includes("application/csv") || /\.(csv|tsv)$/i.test(fileName)) return "csv";
+  const declared = contentType.toLowerCase();
+  if (/\.(xlsx?|xlsm)$/i.test(fileName) || declared.includes("spreadsheet") || declared.includes("application/vnd.ms-excel")) return "spreadsheet";
   if (lower.includes("text/") || /\.(txt|md|log)$/i.test(fileName)) return "text";
-  if (/\.(xlsx?|xlsm)$/i.test(fileName) || lower.includes("spreadsheet")) return "spreadsheet";
   return "unsupported";
 }
 

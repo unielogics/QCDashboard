@@ -55,6 +55,12 @@ export const ROLE_ACCESS: Record<string, RoleAccessProfile> = {
     scope: "Only appointments and dealer files owned by this representative.",
     kind: "internal",
   },
+  [Role.CAPITAL_PARTNER]: {
+    label: "Capital Partner",
+    workspace: "Capital Partners portal",
+    scope: "Only the member portal at capital.qualifiedcommercial.com: their own questionnaire, subscriptions and participations. No funding files.",
+    kind: "partner",
+  },
   [Role.CLIENT]: {
     label: "Client",
     workspace: "Borrower Portal",

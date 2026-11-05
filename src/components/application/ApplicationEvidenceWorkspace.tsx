@@ -3,10 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
-import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
+import { EvidenceOverview, type OverviewTarget } from "@/components/application/EvidenceOverview";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
 import { ApplicationDebtPayees } from "@/components/application/ApplicationDebtPayees";
+import { BankAccountsCard } from "@/components/application/BankAccountsCard";
+import { PlaidRequestBar } from "@/components/application/PlaidRequestBar";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
 import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
@@ -17,7 +19,9 @@ import {
 } from "@/components/buckets/BucketFileReviewPanel";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
-import { Btn, Callout, CellChip, Field, IconBtn, Select, Sub, Textarea, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, Field, Select, Sub, Textarea, cx } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import type {
@@ -39,6 +43,9 @@ import {
   evidenceReasonLabel,
   evidenceUsabilityLabel,
 } from "@/lib/evidenceDecision";
+import { isDocumentRequirement, triageCounts, type TriageExtra, type TriageGroup } from "@/lib/evidenceTriage";
+import { formKindsOf } from "@/lib/formAnswers";
+import { useDebtScheduleReviewSummary } from "@/hooks/useDebtScheduleReview";
 import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { useProductionCall } from "@/lib/productionTrainingCall";
@@ -107,12 +114,15 @@ export function ApplicationEvidenceWorkspace({
   aiReviewRunning = false,
   onAddFromDrive,
   onAttachBucket,
+  onRequestDocument,
   onVerificationChange,
   onProgramReadinessChange,
   focusRequirement,
   canCreatePrograms = false,
   programVertical = "main_street",
   intakeVariant,
+  onOpenFinancials,
+  canAddRequirements = false,
 }: {
   profileId: string;
   intakeId: string;
@@ -125,12 +135,18 @@ export function ApplicationEvidenceWorkspace({
   aiReviewRunning?: boolean;
   onAddFromDrive?: () => void;
   onAttachBucket?: () => void;
+  /** Ask the client for something the checklist does not list yet (a custom request on the room). */
+  onRequestDocument?: () => void;
   onVerificationChange?: (state: EvidenceWorkspace["verification"]) => void;
   onProgramReadinessChange?: (readiness: Readiness) => void;
   focusRequirement?: RequirementFocus | null;
   canCreatePrograms?: boolean;
   programVertical?: FundingProgramVertical;
   intakeVariant?: string | null;
+  /** Programs are chosen on the Financials tab; this opens it. */
+  onOpenFinancials?: () => void;
+  /** Underwriting roles may add requirements from the library. */
+  canAddRequirements?: boolean;
 }) {
   const apiCall = useAuthedApi();
   const productionCall = useProductionCall();
@@ -151,6 +167,7 @@ export function ApplicationEvidenceWorkspace({
   const [actionBusy, setActionBusy] = useState(false);
   const [requestingUnlockedCopyFileId, setRequestingUnlockedCopyFileId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [groupFocus, setGroupFocus] = useState<{ group: TriageGroup; requestId: number } | null>(null);
 
   const workspace = useQuery({
     queryKey,
@@ -202,8 +219,14 @@ export function ApplicationEvidenceWorkspace({
     () => data?.program_readiness.requirements ?? [],
     [data?.program_readiness.requirements],
   );
-  const requiredRequirements = requirements.filter((item) => item.required_level === "required");
-  const completeRequirements = requiredRequirements.filter(requirementComplete);
+  const documentRequirements = useMemo(() => requirements.filter(isDocumentRequirement), [requirements]);
+  const hasDebtRow = documentRequirements.some((item) => formKindsOf(item).includes("debt_schedule"));
+  const debtSummary = useDebtScheduleReviewSummary(profileId, hasDebtRow);
+  const documentCounts = useMemo(() => triageCounts(documentRequirements, (item: ApplicationRequirement): TriageExtra | undefined => (
+    !debtSummary.loading && formKindsOf(item).includes("debt_schedule")
+      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers } }
+      : undefined
+  )), [documentRequirements, debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read]);
   const files = useMemo(() => data?.evidence.files ?? [], [data?.evidence.files]);
   const lockedEvidenceByFileId = useMemo(() => {
     const result = new Map<string, ReturnType<typeof lockedEvidencePresentation>>();
@@ -442,9 +465,9 @@ export function ApplicationEvidenceWorkspace({
   const loadSelectedReview = useCallback(async (): Promise<BucketFileReview> => {
     if (!selectedReviewFile) throw new Error("Evidence file is no longer available.");
     const expectedHash = selectedPreviewHash ? `?expected_content_hash=${encodeURIComponent(selectedPreviewHash)}` : "";
-    let signed: { url: string; expires_in: number };
+    let signed: { url: string; expires_in: number; sheets?: BucketFileReview["sheets"] };
     try {
-      signed = await apiCall<{ url: string; expires_in: number }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url${expectedHash}`);
+      signed = await apiCall<{ url: string; expires_in: number; sheets?: BucketFileReview["sheets"] }>(`/application-profiles/${profileId}/evidence/files/${selectedReviewFile.id}/url${expectedHash}`);
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) throw new Error("Source file changed. Review its current version and refresh the analysis before using this reference.");
       throw error;
@@ -453,6 +476,7 @@ export function ApplicationEvidenceWorkspace({
       file: selectedReviewFile,
       preview_url: signed.url,
       annotations: [],
+      sheets: signed.sheets ?? null,
     };
   }, [apiCall, profileId, selectedReviewFile, selectedPreviewHash]);
 
@@ -472,20 +496,21 @@ export function ApplicationEvidenceWorkspace({
       <div>
         <span className="lbl">Step 2</span>
         <h2>Evidence &amp; banking</h2>
-        <Sub>One live snapshot controls evidence decisions, statement coverage, Plaid, forms, and readiness.</Sub>
+        <Sub>Everything the client has sent, what the AI made of it, and what is still needed.</Sub>
       </div>
       <div className="evidence-workspace-actions">
-        {onAddFromDrive ? <Btn onClick={onAddFromDrive}><Icon name="upload" size={14} />Add from Drive</Btn> : null}
-        {onAttachBucket ? <Btn onClick={onAttachBucket}><Icon name="link" size={14} />Attach bucket</Btn> : null}
-        {data.primary_bucket_id ? <Btn onClick={() => setOpenBucketId(data.primary_bucket_id)}><Icon name="vault" size={14} />Open bucket</Btn> : null}
-        <Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn>
+        {onAddFromDrive ? <ActionIcon icon="upload" label="Add files from Google Drive" onClick={onAddFromDrive} /> : null}
+        {onAttachBucket ? <ActionIcon icon="link" label="Attach an existing bucket to this file" onClick={onAttachBucket} /> : null}
+        {onRequestDocument ? <ActionIcon icon="send" label="Request a document from the client" onClick={onRequestDocument} /> : null}
+        {data.primary_bucket_id ? <ActionIcon icon="vault" label="Open the file room" onClick={() => setOpenBucketId(data.primary_bucket_id)} /> : null}
+        <span title="Fill in, share or download the PDS, debt schedule, P&L and balance sheet"><Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn></span>
       </div>
     </header>
 
     <input ref={uploadRef} type="file" hidden multiple accept={ACCEPTED_UPLOADS} aria-label="Upload evidence files" onChange={(event) => void upload(Array.from(event.target.files ?? []))} />
     <button
       type="button"
-      className={cx("evidence-workspace-dropzone", dragging && "dragging")}
+      className={cx("evidence-workspace-dropzone", "compact", dragging && "dragging")}
       disabled={!data.can_upload || uploadBusy}
       onClick={() => uploadRef.current?.click()}
       onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
@@ -494,29 +519,44 @@ export function ApplicationEvidenceWorkspace({
       onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}
     >
       <span className="evidence-workspace-drop-icon"><Icon name="upload" size={22} /></span>
-      <span><strong>{uploadBusy ? uploadStatus || "Uploading evidence..." : "Drop files or ZIP archives here"}</strong><small>PDFs, spreadsheets, documents, images, CSV files, and ZIP archives are sent to Supporting / Other, classified, and reviewed by AI.</small></span>
+      <span><strong>{uploadBusy ? uploadStatus || "Uploading evidence..." : "Drop files or ZIP archives here"}</strong><small>PDFs, spreadsheets, images, CSV and ZIP files are classified and read by the AI.</small></span>
       <span className="btn sm">{uploadBusy ? "Uploading" : "Browse"}</span>
     </button>
 
-    <div className="evidence-workspace-metrics" aria-label="Evidence and banking status">
-      <div><span>Requirements</span><b>{completeRequirements.length} / {requiredRequirements.length}</b><small>accepted or overridden</small></div>
-      <div><span>Bank statements</span><b>{data.bank_evidence.accepted_statement_months.length} / {data.bank_evidence.required_statement_months}</b><small>{data.bank_evidence.statement_coverage_complete ? "coverage complete" : "distinct months accepted"}</small></div>
-      <div><span>Plaid</span><b>{data.bank_evidence.connected_institutions}</b><small>{data.bank_evidence.connected_institutions ? "connected institutions" : data.bank_evidence.statement_coverage_complete ? "optional" : "not connected"}</small></div>
-      <div><span>Processing</span><b>{data.processing.analyzing_files}</b><small>{data.processing.failed_files || data.processing.skipped_files ? [data.processing.failed_files ? `${data.processing.failed_files} failed` : "", data.processing.skipped_files ? `${data.processing.skipped_files} skipped` : ""].filter(Boolean).join(" · ") : `${data.processing.total_files} total files`}</small></div>
-    </div>
+    <EvidenceOverview
+      counts={documentCounts}
+      aiFiles={data.processing.analyzing_files}
+      bank={{
+        accepted: data.bank_evidence.accepted_statement_months.length,
+        required: data.bank_evidence.required_statement_months,
+        complete: Boolean(data.bank_evidence.statement_coverage_complete),
+        institutions: data.bank_evidence.connected_institutions,
+        counted: data.bank_evidence.counted_accounts?.length ?? 0,
+      }}
+      onJump={(target: OverviewTarget) => {
+        if (target === "banking") { setTab("banking"); return; }
+        setTab("requirements");
+        setGroupFocus({ group: target, requestId: Date.now() });
+      }}
+    />
 
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {data.processing.has_processing ? <Callout tone="acc"><span className="spinner" />AI is processing {data.processing.analyzing_files} file{data.processing.analyzing_files === 1 ? "" : "s"}. This workspace refreshes automatically.</Callout> : null}
 
-    <ApplicationLenderSubmissions key={profileId} profileId={profileId} />
-
     <div className="evidence-workspace-tabs" role="tablist" aria-label="Evidence workspace sections">
-      {([[
-        "requirements", "Requirements",
-      ], ["banking", "Banking"], ["files", `All files (${data.evidence.total_files})`]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : undefined} onClick={() => setTab(id)}>{label}</button>)}
+      {([
+        ["requirements", "Documents", documentCounts.you],
+        ["banking", "Banking", data.bank_evidence.statement_coverage_complete ? 0 : 1],
+        ["files", `All files (${data.evidence.total_files})`, 0],
+      ] as const).map(([id, label, attention]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : undefined} onClick={() => setTab(id)}>{label}{attention ? <span className="ev-tab-badge" aria-label={id === "requirements" ? `${attention} need you` : "needs attention"}>{id === "requirements" ? attention : "!"}</span> : null}</button>)}
     </div>
 
     {tab === "requirements" ? <ApplicationProgramReadiness
+      section="documents"
+      focusGroup={groupFocus}
+      onOpenFinancials={onOpenFinancials}
+      canAddRequirements={canAddRequirements}
+      onOpenForms={() => setFormsOpen(true)}
       profileId={profileId}
       files={files.map((file) => ({
         id: file.id,
@@ -547,6 +587,9 @@ export function ApplicationEvidenceWorkspace({
       intakeVariant={intakeVariant}
     /> : null}
 
+    {/* Plaid first: the request sits above everything else on the Banking sub-tab. */}
+    {tab === "banking" ? <PlaidRequestBar profileId={profileId} state={data.verification} banks={data.banking} onSent={refresh} /> : null}
+    {tab === "banking" ? <BankAccountsCard profileId={profileId} canEdit={canCreatePrograms || true} onSaved={refresh} /> : null}
     {tab === "banking" ? <><BankingPanel
       profileId={profileId}
       sourceKind="intake"
@@ -586,7 +629,7 @@ export function ApplicationEvidenceWorkspace({
             {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decision ? evidenceDecisionTone(decision.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{decision ? decisionSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(decision.ai_decision, decision.decision_actor) : analysisLabel}</CellChip>}
             {!locked ? <EvidenceIdentityWarning reasonCode={decision?.ai_reason_code} decision={decision?.ai_decision} /> : null}
             {locked ? <UnlockedCopyRequestControl request={unlockedCopyRequestState} busy={requestingUnlockedCopyFileId === file.id} onRequest={(retryFailed) => requestUnlockedCopy(file.id, file.file_name, retryFailed, false, unlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(file.id, file.file_name, unlockedCopyRequirement?.requirement_key)} /> : null}
-            <Btn onClick={() => openEvidenceFile(file.id, fileAssignments[0]?.requirement_key)}><Icon name="eye" size={14} />Preview</Btn>
+            <ActionIcon icon="eye" label={`Preview ${file.file_name}`} onClick={() => openEvidenceFile(file.id, fileAssignments[0]?.requirement_key)} />
           </article>;
         })}
         {!files.length ? <div className="empty">No evidence files have been uploaded.</div> : null}
@@ -619,12 +662,14 @@ export function ApplicationEvidenceWorkspace({
         {selectedLockedEvidence ? <LockedEvidenceBadge presentation={selectedLockedEvidence} /> : <CellChip tone={evidenceDecisionTone(assignmentAggregate.decision)}>{assignmentSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(assignmentAggregate.decision, aggregateDecision?.decision_actor)}</CellChip>}
         {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} /> : null}
         {assignments.length > 1 ? <CellChip tone="mut">{assignments.length} requirements</CellChip> : null}
-        {!selectedLockedEvidence && (currentDecision?.ai_decision === "failed" || (!currentDecision && selectedFile.analysis_status === "failed")) ? <Btn disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)}><Icon name="refresh" size={14} />Retry AI</Btn> : null}
-        {!selectedLockedEvidence && currentDecision && currentDecision.ai_decision !== "accepted" ? <Btn disabled={actionBusy} onClick={() => startAction("override")}>Override AI</Btn> : null}
-        <Btn disabled={actionBusy} onClick={() => startAction("reassign")}>{assignments.length ? "Reassign" : "Assign"}</Btn>
-        {currentAssignment ? <Btn disabled={actionBusy} onClick={() => startAction("unlink")}>Unlink</Btn> : null}
-        {currentAssignment?.verification_required ? <Btn disabled={actionBusy} onClick={() => startAction(currentDecision?.verified ? "unverify" : "verify")}>{currentDecision?.verified ? "Remove verification" : "Human verify"}</Btn> : null}
-        {currentAssignment ? <IconBtn className="danger" disabled={actionBusy} aria-label={`Reject evidence ${selectedFile.file_name}`} title="Reject evidence" onClick={() => startAction("reject")}><Icon name="x" size={14} /></IconBtn> : null}
+        {!selectedLockedEvidence && (currentDecision?.ai_decision === "failed" || (!currentDecision && selectedFile.analysis_status === "failed")) ? <ActionIcon icon="refresh" label="Retry the AI's reading of this file" disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)} /> : null}
+        {!selectedLockedEvidence && currentDecision && currentDecision.ai_decision !== "accepted" ? <ActionIcon icon="check" tone="ok" label="Accept this file anyway (override the AI)" disabled={actionBusy} onClick={() => startAction("override")} /> : null}
+        {currentAssignment?.verification_required ? <ActionIcon icon="shieldChk" tone={currentDecision?.verified ? "ok" : undefined} pressed={Boolean(currentDecision?.verified)} label={currentDecision?.verified ? "Remove human verification" : "Sign off: confirm the AI's acceptance"} disabled={actionBusy} onClick={() => startAction(currentDecision?.verified ? "unverify" : "verify")} /> : null}
+        {currentAssignment ? <ActionIcon icon="thumbsDown" tone="danger" label="Reject this file" disabled={actionBusy} onClick={() => startAction("reject")} /> : null}
+        <PageActionMenu label={`More actions for ${selectedFile.file_name}`} items={[
+          { label: assignments.length ? "Move to another requirement..." : "Assign to a requirement...", onSelect: () => startAction("reassign") },
+          { label: "Unlink from this requirement", hidden: !currentAssignment, onSelect: () => startAction("unlink") },
+        ]} />
       </>}
     /> : null}
 

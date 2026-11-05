@@ -26,6 +26,7 @@ import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import { FormReview } from "@/components/application/FormReview";
 import {
   BusinessStatementForm,
@@ -93,6 +94,9 @@ export default function FinancialFormPage() {
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Once a submit has been tried, the schedule outlines the required answers
+  // still missing. Off while drafting: a half-typed row is not shouted at.
+  const [showProblems, setShowProblems] = useState(false);
 
   // `apiBase` is the bare origin — `api<T>()` appends /api/v1 itself, and every
   // hand-written fetch in this app has to add it too. This one did not, so every
@@ -153,6 +157,22 @@ export default function FinancialFormPage() {
    *  review is of something already safely stored, not of state held in a tab. */
   const review = () => {
     setError(null);
+    if (state?.kind === "debt_schedule") {
+      // The owner's required answers: lender, type, original amount, balance,
+      // rate, monthly payment, current or delinquent — and the advance question
+      // on an MCA. Checked before the review so the borrower fixes the row
+      // while it is in front of them; the server holds the submit to the same list.
+      const problems = debtRowProblems((body as DebtBody).debts ?? []);
+      if (problems.length) {
+        setShowProblems(true);
+        setError(describeDebtProblems(problems));
+        // The Save bar is fixed to the bottom and the message sits under the
+        // form, so bring the first gap into view rather than seem to do nothing.
+        focusFirstProblem(problems);
+        return;
+      }
+      setShowProblems(false);
+    }
     void saveDraft();
     setStatus("review");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -169,19 +189,36 @@ export default function FinancialFormPage() {
     const previous = status === "done" ? "done" : "review";
     setStatus("saving");
     setError(null);
+    // A 422 carries the server's own sentence about what is still missing;
+    // anything else is a generic failure.
+    let serverMessage = "";
     try {
       const response = await fetch(`${base}/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ body, owners: [] }),
       });
-      if (!response.ok) throw new Error("That did not save.");
+      if (!response.ok) {
+        if (response.status === 422) {
+          const data: unknown = await response.json().catch(() => null);
+          const detail = data && typeof data === "object" ? (data as { detail?: unknown }).detail : null;
+          if (typeof detail === "string" && detail.trim()) serverMessage = detail;
+        }
+        throw new Error("That did not save.");
+      }
       setStatus("done");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
-      setError("We could not save that. Please try again in a moment.");
-      // Back where they were, not to the top of a long form they had finished.
-      setStatus(previous);
+      setError(serverMessage || "We could not save that. Please try again in a moment.");
+      if (serverMessage) {
+        // The server named the missing answers: back to the form with them outlined.
+        setShowProblems(true);
+        setStatus("ready");
+        window.setTimeout(() => focusFirstProblem(debtRowProblems((body as DebtBody).debts ?? [])), 0);
+      } else {
+        // Back where they were, not to the top of a long form they had finished.
+        setStatus(previous);
+      }
     }
   };
 
@@ -388,7 +425,7 @@ export default function FinancialFormPage() {
 
         <div className="fp-card">
           {state?.kind === "debt_schedule" ? (
-            <DebtScheduleForm value={body} onChange={setBody} disabled={status === "saving"} />
+            <DebtScheduleForm value={body} onChange={setBody} disabled={status === "saving"} showProblems={showProblems} />
           ) : state?.kind === "p_and_l" || state?.kind === "balance_sheet" ? (
             <BusinessStatementForm
               schema={state.schema}

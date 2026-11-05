@@ -477,7 +477,7 @@ export function BucketIntakeLinkDrawer({
           variant="pri"
           onClick={() => {
             onClose();
-            requestReview({ intakeId, leadName: intake?.label || "AI intake", reviewId: completed?.reviewId });
+            requestReview({ intakeId, leadName: intake?.label || "File", reviewId: completed?.reviewId });
           }}
         >
           <Icon name="spark" size={14} />
@@ -499,9 +499,9 @@ export function BucketIntakeLinkDrawer({
     <Drawer
       open={open}
       onClose={onClose}
-      ariaLabel="Link bucket and AI intake"
-      title={step === 4 ? completed?.unlinked ? "Evidence unlinked" : "Evidence linked" : existing ? "Update linked evidence" : title || "Link bucket and AI intake"}
-      sub={step === 4 ? "The audit trail is updated. Run the AI review now or return to it from the intake file." : "Selected files remain in their source bucket. Elara receives read access by reference."}
+      ariaLabel="Link room and file"
+      title={step === 4 ? completed?.unlinked ? "Evidence unlinked" : "Evidence linked" : existing ? "Update linked evidence" : title || "Link room and file"}
+      sub={step === 4 ? "The audit trail is updated. Run the AI review now or return to it from the file." : "Selected files remain in their source room. Elara receives read access by reference."}
       width="lg"
       closeOnBackdrop={!busy}
       footer={footer}
@@ -510,8 +510,8 @@ export function BucketIntakeLinkDrawer({
       {error ? <div className="warnline" style={{ marginBottom: 14 }}>{error}</div> : null}
       {step === 1 ? (
         <div className="cg">
-          <div className="s6"><Field label="Document bucket"><Select aria-label="Document bucket" value={bucketId} onChange={(event) => { setBucketId(event.target.value); setSelectionKey(""); }} disabled={Boolean(initialBucketId)}><option value="">Choose bucket</option>{options.data?.buckets.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.file_count} files</option>)}</Select></Field></div>
-          <div className="s6"><Field label="AI intake"><Select aria-label="AI intake" value={intakeId} onChange={(event) => { setIntakeId(event.target.value); setSelectionKey(""); }} disabled={Boolean(initialIntakeId)}><option value="">Choose intake</option>{options.data?.intakes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field></div>
+          <div className="s6"><Field label="Document room"><Select aria-label="Document room" value={bucketId} onChange={(event) => { setBucketId(event.target.value); setSelectionKey(""); }} disabled={Boolean(initialBucketId)}><option value="">Choose bucket</option>{options.data?.buckets.map((item) => <option key={item.id} value={item.id}>{item.label} · {item.file_count} files</option>)}</Select></Field></div>
+          <div className="s6"><Field label="File"><Select aria-label="File" value={intakeId} onChange={(event) => { setIntakeId(event.target.value); setSelectionKey(""); }} disabled={Boolean(initialIntakeId)}><option value="">Choose intake</option>{options.data?.intakes.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field></div>
           <div className="s12"><Field label="Relationship"><Select aria-label="Relationship" value={relationship} onChange={(event) => setRelationship(event.target.value as BucketIntakeLinkPayload["relationship"])}><option value="supporting">Supporting evidence</option><option value="source">Source documents</option><option value="primary">Primary relationship</option></Select></Field></div>
         </div>
       ) : null}

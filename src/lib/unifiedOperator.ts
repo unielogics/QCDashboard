@@ -1,4 +1,5 @@
 import type { ChipTone } from "@/components/ds";
+import { fileHref } from "@/lib/fileRoutes";
 import { calculateDealEarnings } from "@/lib/dealEconomics";
 import type { CapitalReadinessBand, CapitalReadinessListSummary, CapitalReadinessReviewStatus } from "@/lib/capitalReadiness";
 
@@ -606,7 +607,7 @@ export function forecastAmountBasisLabel(basis: string | null | undefined): stri
 export function operatorFileHref(row: UnifiedFileRow): string {
   if (row.loan_id) return `/loans/${row.loan_id}`;
   if (row.deal_id) return `/deals/${row.deal_id}`;
-  if (row.intake_id) return `/admin/ai-underwriter-leads?lead=${row.intake_id}`;
+  if (row.intake_id) return fileHref(row.intake_id);
   if (row.bucket_id) return `/admin/buckets?bucket=${row.bucket_id}`;
   return row.source_url || "/pipeline";
 }

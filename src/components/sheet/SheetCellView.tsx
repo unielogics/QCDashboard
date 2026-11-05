@@ -79,6 +79,10 @@ export function cellDisplay(
     }
     return { text: formatRatio(parsed.value), warn: false };
   }
+  if (cell.type === "select" && cell.option_labels) {
+    // A slug is what the file stores; the label is what the grid shows.
+    return { text: cell.option_labels[raw] ?? raw, warn: false };
+  }
   return { text: raw, warn: false };
 }
 
@@ -312,7 +316,7 @@ function CellEditor({
         <option value="" />
         {cell.options.map((option) => (
           <option key={option} value={option}>
-            {option}
+            {cell.option_labels?.[option] ?? option}
           </option>
         ))}
       </select>

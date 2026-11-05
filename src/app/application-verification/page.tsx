@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { uploadFile } from "@/lib/fileUpload";
 import { usePlaidLink } from "react-plaid-link";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
@@ -268,30 +269,14 @@ export default function ApplicationVerificationPage() {
       const lockedNotice = screened.rejected.length ? passwordProtectedPdfUploadNotice(screened.rejected) : "";
       for (const file of screened.uploadable) {
         setMessage(`Uploading ${file.name} (${count + 1} of ${files.length})`);
-        const init = await publicCall<{
-          file_id: string;
-          upload_url: string;
-          required_headers: Record<string, string>;
-        }>(
-          `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/files/upload-init`,
+        await uploadFile(
           {
-            method: "POST",
-            body: JSON.stringify({
-              file_name: file.name,
-              content_type: file.type || "application/octet-stream",
-              size_bytes: file.size,
-            }),
+            initPath: `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/files/upload-init`,
+            completePath: `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/files/complete`,
+            call: publicCall,
           },
-        );
-        const upload = await fetch(init.upload_url, {
-          method: "PUT",
-          headers: init.required_headers,
-          body: file,
-        });
-        if (!upload.ok) throw new Error(`${file.name} could not be uploaded.`);
-        await publicCall(
-          `/application-profiles/public/bank-verification/${encodeURIComponent(token)}/files/complete`,
-          { method: "POST", body: JSON.stringify({ file_id: init.file_id }) },
+          file,
+          { storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded.` },
         );
         count += 1;
       }

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { activeFinancialDebts, actOnFinancialDebt, applyFinancialCells, applyFinancialImport, financialValues, financialLayout, financialDebtTotals, readFinancialWorkspace, restoreFinancialVersion, saveFinancialDraft, saveFinancialVersion, financialMappingConfidence, financialMappingConflict, clearEditedDebtSources, stageDebtDocumentImport, savedFinancialCompletion, type FinancialWorkspaceSnapshot } from "../financialWorkspaceApi";
+import { activeFinancialDebts, financialDebtReviewSummary, actOnFinancialDebt, applyFinancialCells, applyFinancialImport, financialValues, financialLayout, financialDebtTotals, readFinancialWorkspace, restoreFinancialVersion, saveFinancialDraft, saveFinancialVersion, financialMappingConfidence, financialMappingConflict, clearEditedDebtSources, stageDebtDocumentImport, savedFinancialCompletion, type FinancialWorkspaceSnapshot } from "../financialWorkspaceApi";
 import type { SheetLayout } from "@/components/sheet/types";
 
 const layout: SheetLayout = {
@@ -20,6 +20,22 @@ const body = {
 const snapshot = { kind: "debt_schedule", family_id: "family-a", body, draft: { revision: 7, base_version_id: "version-2" } } as unknown as FinancialWorkspaceSnapshot;
 
 describe("the shared financial draft", () => {
+  it("keeps the accepted schedule complete while an incomplete working draft is edited", () => {
+    const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 2 };
+    const pending = { ...complete, complete: false, missing_fields: ["debt-a.monthly_payment"], active_rows: 1 };
+    const saved = { ...snapshot, current_version_id: "version-2", evidence: [], completion: pending, accepted_completion: complete };
+    expect(financialDebtReviewSummary(saved)).toMatchObject({ onSchedule: 2, missingAnswers: 0, read: 0 });
+    expect(financialDebtReviewSummary({ ...saved, completion: complete, accepted_completion: pending })).toMatchObject({ onSchedule: 1, missingAnswers: 1 });
+    expect(financialDebtReviewSummary({ ...saved, current_version_id: null, accepted_completion: null })).toMatchObject({ onSchedule: 0, read: 1, missingAnswers: 1 });
+  });
+  it("keeps MCA answers before the appended contract terms when building an empty 17-column layout", () => {
+    const empty = { ...layout, columns: Array.from({ length: 17 }, (_, index) => ({ c: index + 1 })), rows: [{ r: 1, kind: "colhead" as const, cells: [] }] };
+    const sheet = financialLayout({ debts: [{ id: "new", mca_modified: "yes", mca_modification_note: "Reduced daily pull", factor_rate: "1.375", payment_amount: "100", payment_frequency: "daily" }] }, empty);
+    const cells = sheet.rows.find((row) => row.kind === "data")!.cells!;
+    expect(cells.slice(11).map((cell) => cell.path?.at(-1))).toEqual(["mca_modified", "mca_modification_note", "notes", "factor_rate", "payment_amount", "payment_frequency"]);
+    expect(financialValues({ debts: [{ id: "new", factor_rate: "1.375" }] }, sheet)["new.factor_rate"]).toBe("1.375");
+  });
+
   it("requires explicit review before a mapping replaces an existing answer", () => {
     expect(financialMappingConflict("100", "120")).toBe(true);
     expect(financialMappingConflict("0", "120")).toBe(true);

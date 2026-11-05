@@ -34,7 +34,7 @@ export default function DealerPartnerBucketsPage() {
     setLoading(true);
     call<DealerRoomPage>("/broker/ai-underwriter-leads?limit=100&offset=0")
       .then((response) => { if (!cancelled) setRooms(response.items); })
-      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Document rooms are unavailable."); })
+      .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Documents are unavailable."); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [call, user?.role, userLoading]);
@@ -53,7 +53,7 @@ export default function DealerPartnerBucketsPage() {
   return <div className="grid">
     <PageHeader
       eyebrow="Dealer AI Intake"
-      title="Document rooms"
+      title="Documents"
       lede="Only the auto-industry leads assigned to your account"
       actions={<Link className="btn pri" href="/broker/ai-underwriter-leads">Open AI intake</Link>}
     />

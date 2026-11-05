@@ -13,6 +13,8 @@ import { FundingProgramCriteriaEditor } from "./FundingProgramCriteriaEditor";
 import { FundingProgramScopeEditor } from "./FundingProgramScopeEditor";
 import { FundingProgramEffectSummary } from "./FundingProgramEffectSummary";
 import { FundingProgramLogicWarnings } from "./FundingProgramLogicWarnings";
+import { FundingProgramCreateDrawer } from "./FundingProgramCreateDrawer";
+import { nextDisplayOrder, type FundingProgramDraftInput } from "./fundingProgramCreateModel";
 import { programLogicWarnings, type ProgramLogicAction } from "./fundingProgramConsistencyModel";
 import { fundingProgramStatusBadges, programSaveEffect, summarizeProgramEffects } from "./fundingProgramSummaryModel";
 import { applySharedIndustryExclusions, baselineNoteGroups, baselineReferenceFromRules, industryPrefixes, jsonEquivalent, sharedIndustryExclusions, validateEditorContent } from "./fundingProgramEditorModel";
@@ -81,6 +83,8 @@ export function FundingProgramsSection() {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState("");
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
   const [suggestedBaseline, setSuggestedBaseline] = useState<FundingProgramBaseline | null>(null);
   const [validationAction, setValidationAction] = useState<ProgramValidationAction | null>(null);
   const [requestedRoute, setRequestedRoute] = useState<{ index: number; sequence: number } | null>(null);
@@ -298,11 +302,47 @@ export function FundingProgramsSection() {
     } finally { setBusy(""); saveInFlight.current = false; }
   }
   async function setRetired(retired: boolean) {
-    if (!selected || busy || !checkAction("status")) return;
-    if (!await confirmAction({ title: `${retired ? "Retire" : "Restore"} ${selected.name}?`, body: retired ? "The program will be unavailable for new selections. Existing files retain their program history." : "The program returns to the catalog. Published eligibility checks are needed for fit recommendations.", confirmLabel: retired ? "Retire program" : "Restore program", tone: retired ? "danger" : "default" })) return;
+    if (!selected) return;
+    // Only the open program can be holding unsaved edits worth guarding.
+    if (!checkAction("status")) return;
+    await retireProgram(selected, retired);
+  }
+  async function retireProgram(item: FundingProgramCatalogItem, retired: boolean) {
+    if (busy) return;
+    if (!await confirmAction({ title: `${retired ? "Retire" : "Restore"} ${item.name}?`, body: retired ? "The program will be unavailable for new selections. Existing files keep their program history and are flagged so your team can swap or remove it." : "The program returns to the catalog. Published eligibility checks are needed for fit recommendations.", confirmLabel: retired ? "Retire program" : "Restore program", tone: retired ? "danger" : "default", reversible: true })) return;
     setBusy("retire"); setError(null); setSuccess("");
-    try { setRows(await call<FundingProgramCatalogItem[]>(`/admin/funding-programs/${selected.program_key}/retire`, { method: "POST", body: JSON.stringify({ retired, reason: reason.trim(), confirmed: true }) })); setSuccess(retired ? "Program retired." : "Program restored."); }
+    try { setRows(await call<FundingProgramCatalogItem[]>(`/admin/funding-programs/${item.program_key}/retire`, { method: "POST", body: JSON.stringify({ retired, reason: reason.trim(), confirmed: true }) })); setSuccess(retired ? `${item.name} retired.` : `${item.name} restored.`); }
     catch (cause) { setError(message(cause)); } finally { setBusy(""); }
+  }
+  async function createProgram(draft: FundingProgramDraftInput) {
+    if (busy) return;
+    setBusy("create"); setCreateError(null); setError(null); setSuccess("");
+    try {
+      const next = await call<FundingProgramCatalogItem[]>("/admin/funding-programs", {
+        method: "POST",
+        body: JSON.stringify({
+          program_key: draft.program_key,
+          public_slug: draft.public_slug,
+          name: draft.name.trim(),
+          short_description: draft.short_description.trim() || null,
+          aliases: [],
+          display_order: draft.display_order,
+          scopes: draft.verticals.map((vertical) => ({ vertical, scope_key: "default", intake_variants: [], intent_keys: [], naics_prefixes: [], excluded_naics_prefixes: [], industry_keys: [], required_fact_keys: [] })),
+          reason: draft.reason.trim(),
+          confirmed: true,
+        }),
+      });
+      setRows(next);
+      setCreateOpen(false);
+      setSuccess(`${draft.name.trim()} added to the catalog. Review its eligibility checks and documents, then choose Save & enable.`);
+      await chooseProgram(draft.program_key);
+    } catch (cause) {
+      // A 409 means the key or slug is already taken; the drawer stays open so
+      // the operator can change it rather than losing what they typed.
+      setCreateError(cause instanceof ApiError && cause.status === 409
+        ? "That program key or public slug is already in use. Choose another."
+        : message(cause));
+    } finally { setBusy(""); }
   }
 
   const baselineReference = suggestedBaseline ?? baselineReferenceFromRules(version.rules);
@@ -314,14 +354,14 @@ export function FundingProgramsSection() {
   const actionGuidance = `${programSaveEffect("save", selected?.status === "retired")} Choose Save & enable to publish changed criteria. A review note is optional.`;
   const sectionClass = (section: ProgramValidationIssue["section"]) => visibleIssues.some((issue) => issue.section === section) ? styles.sectionInvalid : undefined;
   return <ProgramValidationContext.Provider value={visibleIssues}><div ref={editorRef} className={cx("funding-program-settings", styles.root)}>
-    <header><div><h2>Funding programs</h2><p>Choose a program, set its eligibility checks, and define the documents your team needs. <a href="/admin/arf">ARF channel permissions and source import</a></p></div><CellChip tone="acc">{rows.filter((item) => item.status === "active").length} active</CellChip></header>
+    <header><div><h2>Funding programs</h2><p>Choose a program, set its eligibility checks, and define the documents your team needs. <a href="/admin/arf">ARF channel permissions and source import</a></p></div><div className={styles.headerActions}><CellChip tone="acc">{rows.filter((item) => item.status === "active").length} active</CellChip><Btn variant="pri" disabled={Boolean(busy)} onClick={() => { setCreateError(null); setCreateOpen(true); }}>New program</Btn></div></header>
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {saveUncertain ? <Btn disabled={Boolean(busy)} onClick={() => void verifySavedState()}>{busy === "verify" ? "Verifying…" : "Verify saved state"}</Btn> : null}
     {success ? <><div role="status"><Callout tone="ok">{success}</Callout></div>{!dirty && !saveUncertain && !error && selected && savedVersion ? <FundingProgramEffectSummary title={`Saved criteria v${savedVersion.version} · ${savedVersion.status === "published" ? selected.status === "retired" ? "published, program retired" : "published" : "draft, not live"}`} effects={summarizeProgramEffects(selected.scopes, JSON.stringify(savedVersion.rules), JSON.stringify(savedVersion.requirements))} note={savedVersion.status === "draft" ? `This saved draft has not replaced ${selected.published_version?.rules.fit ? `published v${selected.published_version.version}` : "the live criteria"}. Program details and availability are saved separately and may already affect the active catalog.` : selected.status === "retired" ? "This version is saved, but the program is retired from new selections." : "These are the saved rules and document instructions used for new program selections."} /> : null}</> : null}
     {selected && catalog ? <ValidationSummary issues={visibleIssues} onSelect={focusIssue} /> : null}
     <div className="funding-program-toolbar"><Input aria-label="Search funding programs" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search funding programs" /><Select aria-label="Filter programs by workspace" value={vertical} onChange={(event) => setVertical(event.target.value as FundingProgramVertical | "all")}><option value="all">All workspaces</option>{VERTICALS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</Select></div>
     <div className="funding-program-layout">
-      <aside className="funding-program-list" aria-label="Funding programs">{filtered.map((item) => <button key={item.program_key} type="button" disabled={Boolean(busy)} aria-pressed={selectedKey === item.program_key} className={cx(selectedKey === item.program_key && "on")} onClick={() => void chooseProgram(item.program_key)}><span><strong>{item.name}</strong><small>{workspaceNames(item)}</small></span><span className={summaryStyles.sidebarBadges}>{fundingProgramStatusBadges(item, selectedKey === item.program_key && dirty).map((badge) => <CellChip key={badge.label} tone={badge.tone}>{badge.label}</CellChip>)}</span></button>)}{!filtered.length ? <div className="empty">{busy === "load" ? "Loading programs…" : "No programs match these filters."}</div> : null}</aside>
+      <aside className="funding-program-list" aria-label="Funding programs">{filtered.map((item) => <div key={item.program_key} className="funding-program-row"><button type="button" disabled={Boolean(busy)} aria-pressed={selectedKey === item.program_key} className={cx("funding-program-pick", selectedKey === item.program_key && "on")} onClick={() => void chooseProgram(item.program_key)}><span><strong>{item.name}</strong><small>{workspaceNames(item)}</small></span><span className={summaryStyles.sidebarBadges}>{fundingProgramStatusBadges(item, selectedKey === item.program_key && dirty).map((badge) => <CellChip key={badge.label} tone={badge.tone}>{badge.label}</CellChip>)}</span></button><button type="button" className={cx("funding-program-retire", item.status === "active" && "danger")} disabled={Boolean(busy)} title={item.status === "active" ? `Retire ${item.name}` : `Restore ${item.name}`} aria-label={item.status === "active" ? `Retire ${item.name}` : `Restore ${item.name}`} onClick={() => void retireProgram(item, item.status === "active")}><Icon name={item.status === "active" ? "trash" : "refresh"} size={14} /></button></div>)}{!filtered.length && busy === "load" ? <div className="funding-program-row-skeleton" aria-live="polite" aria-label="Loading programs">{[0, 1, 2, 3, 4].map((row) => <span key={row} className="skeleton" />)}</div> : null}{!filtered.length && busy !== "load" ? <div className="empty">{rows.length ? "No programs match these filters." : "No funding programs yet. Choose New program to add the first one."}</div> : null}</aside>
       <fieldset className="funding-program-editor" disabled={Boolean(busy) || saveUncertain} aria-label="Edit funding program">{selected && catalog ? <>
         <div className={styles.workspaceActions}><div><div className={summaryStyles.badges}>{fundingProgramStatusBadges(selected, dirty).map((badge) => <CellChip key={badge.label} tone={badge.tone}>{badge.label}</CellChip>)}</div><p>{dirty ? "Save changes keeps changed criteria in draft. Save & enable makes them live." : savedVersion?.status === "draft" ? "Review the saved draft, then enable when ready." : "Changes to published criteria are saved in a new version."}</p></div><div className={styles.actionRow}><Btn onClick={() => void saveProgram(false)}>{busy === "save" ? "Saving…" : "Save changes"}</Btn><Btn variant="pri" onClick={() => void saveProgram(true)}>{busy === "enable" ? "Enabling…" : "Save & enable"}</Btn></div></div>
         <FundingProgramEffectSummary title="What these settings do" effects={effectSummary} note={actionGuidance} />
@@ -351,7 +391,17 @@ export function FundingProgramsSection() {
           </div>
           <p id="program-action-help" className={styles.muted}>If an action needs more information, select it to jump to the first item that needs attention. No changes are submitted until all its checks pass.</p>
         </section>
-      </> : <div className="empty">Select a funding program to get started.</div>}</fieldset>
+      </> : <div className="empty">{rows.length ? "Select a funding program to get started." : "No funding programs yet. Choose New program to add the first one."}</div>}</fieldset>
     </div>
+    <FundingProgramCreateDrawer
+      open={createOpen}
+      busy={busy === "create"}
+      error={createError}
+      takenKeys={rows.map((item) => item.program_key)}
+      takenSlugs={rows.map((item) => item.public_slug).filter((value): value is string => Boolean(value))}
+      nextDisplayOrder={nextDisplayOrder(rows.map((item) => item.display_order))}
+      onClose={() => setCreateOpen(false)}
+      onCreate={(draft) => void createProgram(draft)}
+    />
   </div></ProgramValidationContext.Provider>;
 }

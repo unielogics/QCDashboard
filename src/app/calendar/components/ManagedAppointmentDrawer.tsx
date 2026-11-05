@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { fileHref } from "@/lib/fileRoutes";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, CellChip, Field, Input, Panel, Select, Textarea } from "@/components/ds";
@@ -370,7 +371,7 @@ function AppointmentWorkspaceDrawer({
   });
 
   const applicationHref = workspace?.application
-    ? `/admin/ai-underwriter-leads?lead=${workspace.application.intake_id}&view=underwriting`
+    ? fileHref(workspace.application.intake_id, "evidence")
     : null;
   const selectedCandidate = workspace?.application_candidates.find((row) => row.intake_id === existingIntakeId) ?? null;
   const reopeningNotQualified = active.crm_status === "not_qualified" && crmStatus !== active.crm_status;

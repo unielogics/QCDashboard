@@ -12,44 +12,50 @@
 // sideways: at 380px it is one field per line, at desktop three, and the labels
 // stay next to their inputs at every width in between.
 //
+// The type of debt is a list, not a box to type in. Typed, the same obligation
+// arrived as "LOC", "loc" and "Line of Credit", and nothing downstream could
+// tell a merchant cash advance from a term loan. The advance is the one that
+// matters: when a row says it is one, the card asks whether the funder modified
+// it because sales fell — the owner's question, asked of an MCA and nothing else.
+//
+// Seven answers are required for a submit (lender, type, original amount,
+// balance, rate, monthly payment, current or delinquent — the owner's list) and
+// an advance must also answer its question. The form marks them with an asterisk
+// and, once a submit has been attempted (`showProblems`), outlines what is still
+// missing; drafts save with anything blank, on purpose.
+//
 // Notes sit behind a disclosure. They are the one field most rows do not need,
-// and eleven inputs plus a textarea on every card buries the ones that matter.
+// and a dozen inputs plus a textarea on every card buries the ones that matter.
 //
 // The totals are shown as they type because they are what the borrower is
 // really being asked to confirm, and because a number that does not look right
 // is easier to spot against a running total than by re-reading nine rows.
 
-import { useState, type ReactNode } from "react";
-import { Icon } from "@/components/design-system/Icon";
+import { cloneElement, isValidElement, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { DEBT_MONTHLY_FACTORS, debtMonthlyEquivalent, updateDebtPaymentTerms, type DebtPaymentFrequency } from "@/lib/debtPaymentTerms";
+import { Icon } from "@/components/design-system/Icon";
+import {
+  DEBT_TYPES,
+  debtRowProblems,
+  debtTypeLabel,
+  isAdvanceType,
+  isUnstatedType,
+  missingFieldKeys,
+  type DebtRowFields,
+} from "@/lib/debtTypes";
 
-export type DebtRow = {
-  /** The stored row this line came from. Sent back so a save updates the
-   *  row in place instead of re-creating it — the re-creation was what
-   *  doubled the schedule. Absent on a line added on this page. */
-  id?: string;
-  /** False when another source owns the row (the desk, an AI draft) and this
-   *  form's save will leave it alone. Shown for context, not for editing. */
-  editable?: boolean;
-  /** Which source owns the row (admin, client_form, ai_draft, field_desk), so a
-   *  locked row can say who to ask — from whichever side is reading it. */
-  owner?: string;
-  lender?: string;
-  debt_type?: string;
-  original_amount?: string;
-  balance?: string;
-  rate?: string;
-  monthly_payment?: string;
+export type DebtRow = DebtRowFields & {
   factor_rate?: string;
   payment_amount?: string;
   payment_frequency?: DebtPaymentFrequency | "";
   monthly_payment_source?: "native_terms" | "stated" | null;
-  originated_on?: string;
-  maturity_on?: string;
-  secured?: string;
-  payment_status?: string;
-  collateral?: string;
-  notes?: string;
+  /** The stored row this line came from. Sent back so a save updates the
+   *  row in place instead of re-creating it — the re-creation was what
+   *  doubled the schedule. Absent on a line added on this page. */
+  id?: string;
+  /** Which source owns the row (admin, client_form, ai_draft, field_desk), so a
+   *  locked row can say who to ask — from whichever side is reading it. */
+  owner?: string;
 };
 
 export type DebtBody = { business_name?: string; debts?: DebtRow[]; no_debt?: boolean };
@@ -81,34 +87,104 @@ function rowTitle(row: DebtRow, index: number): string {
 
 function rowAside(row: DebtRow): string {
   const parts: string[] = [];
+  const type = debtTypeLabel(row.debt_type);
+  if (type) parts.push(type);
   if (money(row.balance)) parts.push(`${currency(money(row.balance))} owed`);
-  if (money(row.monthly_payment)) parts.push(`${row.monthly_payment_source === "native_terms" ? "≈ " : ""}${currency(money(row.monthly_payment))}/mo`);
+  if (money(row.monthly_payment)) parts.push(`${currency(money(row.monthly_payment))}/mo`);
   return parts.join(" · ");
+}
+
+/** One labelled input. `required` puts the asterisk on; `invalid` outlines it
+ *  and says so, once a submit has been tried — the control itself is marked
+ *  aria-invalid and described by the message, and the page-level error does
+ *  the announcing, so a dozen gaps are not a dozen alerts. */
+function Field({
+  id,
+  label,
+  required = false,
+  invalid = false,
+  children,
+  source,
+}: {
+  id: string;
+  label: string;
+  required?: boolean;
+  invalid?: boolean;
+  children: ReactNode;
+  source?: ReactNode;
+}) {
+  const problemId = `${id}-problem`;
+  const control =
+    invalid && isValidElement(children)
+      ? cloneElement(children as ReactElement<Record<string, unknown>>, {
+          "aria-invalid": true,
+          "aria-describedby": problemId,
+        })
+      : children;
+  return (
+    <div className={invalid ? "fp-field is-invalid" : "fp-field"}>
+      <label htmlFor={id}>
+        {label}
+        {required ? (
+          <em className="fp-req" aria-hidden="true">
+            *
+          </em>
+        ) : null}
+      </label>
+      {control}
+      {source}
+      {invalid ? (
+        <span className="fp-field-problem" id={problemId}>
+          Required
+        </span>
+      ) : null}
+    </div>
+  );
 }
 
 export function DebtScheduleForm({
   value,
   onChange,
   disabled = false,
+  showProblems = false,
   singleRow = false,
   renderFieldSource,
 }: {
   value: DebtBody;
   onChange: (next: DebtBody) => void;
   disabled?: boolean;
-  /** The staff workspace edits one selected obligation and owns the schedule totals. */
+  /** True once a submit has been attempted: required answers still missing are
+   *  outlined on the card. Off while drafting, so a half-typed row is not shouted at. */
+  showProblems?: boolean;
   singleRow?: boolean;
   renderFieldSource?: (row: DebtRow, field: keyof DebtRow) => ReactNode;
 }) {
-  const rows = value.debts ?? [];
+  const rows = useMemo(() => value.debts ?? [], [value.debts]);
   const setRows = (next: DebtRow[]) => onChange({ ...value, debts: next, ...(next.length ? { no_debt: false } : {}) });
   // Which cards have their notes open. Index-keyed like the rows themselves.
   const [openNotes, setOpenNotes] = useState<number[]>([]);
+
+  const missing = useMemo(
+    () => (showProblems ? missingFieldKeys(debtRowProblems(rows)) : new Set<string>()),
+    [rows, showProblems],
+  );
+  const invalid = (index: number, field: string) => missing.has(`${index}.${field}`);
 
   const patch = (index: number, changes: Partial<DebtRow>) => {
     const next = [...rows];
     next[index] = updateDebtPaymentTerms(next[index], changes);
     setRows(next);
+  };
+
+  /** Choosing a type. Leaving the advance list clears its question — an answer
+   *  left on a row that is no longer an advance is an answer nobody asked for. */
+  const chooseType = (index: number, debtType: string) => {
+    const changes: Partial<DebtRow> = { debt_type: debtType };
+    if (!isAdvanceType(debtType)) {
+      changes.mca_modified = "";
+      changes.mca_modification_note = "";
+    }
+    patch(index, changes);
   };
 
   const remove = (index: number) => {
@@ -134,6 +210,13 @@ export function DebtScheduleForm({
         />
       </div>
 
+      <p className="fp-legend">
+        <em className="fp-req" aria-hidden="true">
+          *
+        </em>{" "}
+        {singleRow ? "Lender, current balance and monthly payment complete a saved schedule. Payment amount and frequency can calculate the monthly payment." : "What a lender needs on every obligation. Dates, collateral and notes can stay blank."}
+      </p>
+
       {rows.length === 0 ? (
         <div className="fp-empty">
           <Icon name="doc" size={20} />
@@ -146,17 +229,7 @@ export function DebtScheduleForm({
         </div>
       ) : null}
 
-      {!singleRow && rows.length === 0 ? (
-        <label className="checkline">
-          <input
-            type="checkbox"
-            checked={value.no_debt === true}
-            disabled={disabled}
-            onChange={(event) => onChange({ ...value, no_debt: event.target.checked })}
-          />
-          I confirm this business has no outstanding debt.
-        </label>
-      ) : null}
+      {!singleRow && rows.length === 0 ? <label className="checkline"><input type="checkbox" checked={value.no_debt === true} disabled={disabled} onChange={(event) => onChange({ ...value, no_debt: event.target.checked })} />I confirm this business has no outstanding debt.</label> : null}
 
       {rows.map((row, index) => {
         const notesOpen = openNotes.includes(index);
@@ -166,6 +239,13 @@ export function DebtScheduleForm({
         // Every control on the card is disabled, but the note stays readable:
         // a locked row's note is still information the reader is owed.
         const locked = disabled || row.editable === false;
+        const advance = isAdvanceType(row.debt_type);
+        const typed = (row.debt_type ?? "").trim();
+        // A value typed before the list existed, and not one of ours: shown as
+        // itself so it is not silently dropped, until somebody picks from the
+        // list. "loan" is the column's old default, not an answer, so it is blank.
+        const legacyType =
+          typed && !isUnstatedType(typed) && !DEBT_TYPES.some((option) => option.value === typed) ? typed : "";
         return (
           // Keyed by the stored row's id when it has one; a line added on this
           // page has none yet and falls back to its position.
@@ -193,29 +273,31 @@ export function DebtScheduleForm({
             </header>
 
             <div className="fp-grid">
-              <div className="fp-field">
-                <label htmlFor={`lender-${index}`}>Lender name</label>
+              <Field id={`lender-${index}`} label="Lender name" required invalid={invalid(index, "lender")} source={renderFieldSource?.(row, "lender")}>
                 <input
                   id={`lender-${index}`}
                   disabled={locked}
                   value={row.lender ?? ""}
                   onChange={(event) => patch(index, { lender: event.target.value })}
                 />
-                {renderFieldSource?.(row, "lender")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`type-${index}`}>Type of debt</label>
-                <input
+              </Field>
+              <Field id={`type-${index}`} label="Type of debt" required={!singleRow} invalid={invalid(index, "debt_type")} source={renderFieldSource?.(row, "debt_type")}>
+                <select
                   id={`type-${index}`}
                   disabled={locked}
-                  placeholder="Term loan, LOC, equipment…"
-                  value={row.debt_type ?? ""}
-                  onChange={(event) => patch(index, { debt_type: event.target.value })}
-                />
-                {renderFieldSource?.(row, "debt_type")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`original-${index}`}>Original amount</label>
+                  value={isUnstatedType(row.debt_type) ? "" : (row.debt_type ?? "")}
+                  onChange={(event) => chooseType(index, event.target.value)}
+                >
+                  <option value="">Choose one…</option>
+                  {legacyType ? <option value={legacyType}>{legacyType} (as typed)</option> : null}
+                  {DEBT_TYPES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+              <Field id={`original-${index}`} label="Original amount" required={!singleRow} invalid={invalid(index, "original_amount")} source={renderFieldSource?.(row, "original_amount")}>
                 <input
                   id={`original-${index}`}
                   inputMode="decimal"
@@ -223,10 +305,8 @@ export function DebtScheduleForm({
                   value={row.original_amount ?? ""}
                   onChange={(event) => patch(index, { original_amount: event.target.value })}
                 />
-                {renderFieldSource?.(row, "original_amount")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`balance-${index}`}>Current balance</label>
+              </Field>
+              <Field id={`balance-${index}`} label="Current balance" required invalid={invalid(index, "balance")} source={renderFieldSource?.(row, "balance")}>
                 <input
                   id={`balance-${index}`}
                   inputMode="decimal"
@@ -234,51 +314,42 @@ export function DebtScheduleForm({
                   value={row.balance ?? ""}
                   onChange={(event) => patch(index, { balance: event.target.value })}
                 />
-                {renderFieldSource?.(row, "balance")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`rate-${index}`}>Annual interest rate (%)</label>
+              </Field>
+              <Field id={`rate-${index}`} label="Annual interest rate (%)" required={!singleRow} invalid={invalid(index, "rate")} source={renderFieldSource?.(row, "rate")}>
                 <input
                   id={`rate-${index}`}
                   inputMode="decimal"
                   disabled={locked}
+                  // A factor rate is not a percentage: the column, the PDF and
+                  // the review all print this as "%", so an advance is asked
+                  // for its cost as a rate, not for "1.25".
+                  placeholder={advance ? "The APR or effective annual rate, not the factor" : undefined}
                   value={row.rate ?? ""}
                   onChange={(event) => patch(index, { rate: event.target.value })}
                 />
-                {renderFieldSource?.(row, "rate")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`factor-${index}`}>Factor rate (×)</label>
+              </Field>
+              <Field id={`factor-${index}`} label="Factor rate (×)" source={renderFieldSource?.(row, "factor_rate")}>
                 <input id={`factor-${index}`} inputMode="decimal" disabled={locked} value={row.factor_rate ?? ""} placeholder="1.35" onChange={(event) => patch(index, { factor_rate: event.target.value })} />
-                <small className="sub">The agreement's payback multiplier.</small>
-                {renderFieldSource?.(row, "factor_rate")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`payment-amount-${index}`}>Payment amount</label>
+              </Field>
+              <Field id={`payment-amount-${index}`} label="Payment amount" source={renderFieldSource?.(row, "payment_amount")}>
                 <input id={`payment-amount-${index}`} inputMode="decimal" disabled={locked} value={row.payment_amount ?? ""} onChange={(event) => patch(index, { payment_amount: event.target.value })} />
-                {renderFieldSource?.(row, "payment_amount")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`payment-frequency-${index}`}>Payment frequency</label>
+              </Field>
+              <Field id={`payment-frequency-${index}`} label="Payment frequency" source={renderFieldSource?.(row, "payment_frequency")}>
                 <select id={`payment-frequency-${index}`} disabled={locked} value={row.payment_frequency ?? ""} onChange={(event) => patch(index, { payment_frequency: event.target.value as DebtPaymentFrequency | "" })}>
-                  <option value="">Choose frequency…</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="monthly">Monthly</option>
+                  <option value="">Choose frequency</option>{Object.keys(DEBT_MONTHLY_FACTORS).map((frequency) => <option key={frequency} value={frequency}>{frequency === "biweekly" ? "Every two weeks" : frequency.charAt(0).toUpperCase() + frequency.slice(1)}</option>)}
                 </select>
-                {renderFieldSource?.(row, "payment_frequency")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`monthly-${index}`}>{row.monthly_payment_source === "native_terms" ? "≈ Monthly payment" : "Monthly payment"}</label>
+              </Field>
+              <Field id={`monthly-${index}`} label="Monthly payment" required invalid={invalid(index, "monthly_payment")} source={<>{row.monthly_payment_source === "native_terms" && debtMonthlyEquivalent(row.payment_amount, row.payment_frequency) != null ? <span className="sub">≈ Monthly: payment amount × {DEBT_MONTHLY_FACTORS[row.payment_frequency as DebtPaymentFrequency]}.</span> : null}{renderFieldSource?.(row, "monthly_payment")}</>}>
                 <input
                   id={`monthly-${index}`}
                   inputMode="decimal"
                   disabled={locked}
+                  placeholder={advance ? "Daily or weekly remittances, as a month" : undefined}
                   value={row.monthly_payment ?? ""}
                   onChange={(event) => patch(index, { monthly_payment: event.target.value })}
                 />
-                {row.monthly_payment_source === "native_terms" && debtMonthlyEquivalent(row.payment_amount, row.payment_frequency) !== null ? <small className="sub">Payment amount × {DEBT_MONTHLY_FACTORS[row.payment_frequency as DebtPaymentFrequency]} per month.</small> : null}
-                {renderFieldSource?.(row, "monthly_payment")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`origin-${index}`}>Origin date</label>
+              </Field>
+              <Field id={`origin-${index}`} label="Origin date" source={renderFieldSource?.(row, "originated_on")}>
                 <input
                   id={`origin-${index}`}
                   type="date"
@@ -286,10 +357,8 @@ export function DebtScheduleForm({
                   value={row.originated_on ?? ""}
                   onChange={(event) => patch(index, { originated_on: event.target.value })}
                 />
-                {renderFieldSource?.(row, "originated_on")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`maturity-${index}`}>Maturity date</label>
+              </Field>
+              <Field id={`maturity-${index}`} label="Maturity date" source={renderFieldSource?.(row, "maturity_on")}>
                 <input
                   id={`maturity-${index}`}
                   type="date"
@@ -297,10 +366,8 @@ export function DebtScheduleForm({
                   value={row.maturity_on ?? ""}
                   onChange={(event) => patch(index, { maturity_on: event.target.value })}
                 />
-                {renderFieldSource?.(row, "maturity_on")}
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`secured-${index}`}>Secured or unsecured</label>
+              </Field>
+              <Field id={`secured-${index}`} label="Secured or unsecured" source={renderFieldSource?.(row, "secured")}>
                 <select
                   id={`secured-${index}`}
                   disabled={locked}
@@ -311,9 +378,8 @@ export function DebtScheduleForm({
                   <option value="secured">Secured</option>
                   <option value="unsecured">Unsecured</option>
                 </select>
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`status-${index}`}>Current or delinquent</label>
+              </Field>
+              <Field id={`status-${index}`} label="Current or delinquent" required={!singleRow} invalid={invalid(index, "payment_status")} source={renderFieldSource?.(row, "payment_status")}>
                 <select
                   id={`status-${index}`}
                   disabled={locked}
@@ -324,9 +390,8 @@ export function DebtScheduleForm({
                   <option value="current">Current</option>
                   <option value="delinquent">Delinquent</option>
                 </select>
-              </div>
-              <div className="fp-field">
-                <label htmlFor={`collateral-${index}`}>Type of collateral</label>
+              </Field>
+              <Field id={`collateral-${index}`} label="Type of collateral" source={renderFieldSource?.(row, "collateral")}>
                 <input
                   id={`collateral-${index}`}
                   disabled={locked}
@@ -334,12 +399,47 @@ export function DebtScheduleForm({
                   value={row.collateral ?? ""}
                   onChange={(event) => patch(index, { collateral: event.target.value })}
                 />
-                {renderFieldSource?.(row, "collateral")}
-              </div>
+              </Field>
+
+              {advance ? (
+                // The owner's question, asked of a merchant cash advance and
+                // nothing else. A funder that lowered the remittance because
+                // sales fell has changed what this row reports.
+                <div className="fp-mca" role="group" aria-labelledby={`mca-q-${index}`}>
+                  <p id={`mca-q-${index}`}>
+                    <strong>This is an advance against future sales.</strong> Has the funder modified it
+                    because of lower sales or revenue — a reduced daily or weekly pull, a pause, a
+                    reconciliation?
+                  </p>
+                  <Field id={`mca-${index}`} label="Modified for lower sales?" required={!singleRow} invalid={invalid(index, "mca_modified")} source={renderFieldSource?.(row, "mca_modified")}>
+                    <select
+                      id={`mca-${index}`}
+                      disabled={locked}
+                      value={row.mca_modified ?? ""}
+                      onChange={(event) => patch(index, { mca_modified: event.target.value })}
+                    >
+                      <option value="">—</option>
+                      <option value="yes">Yes</option>
+                      <option value="no">No</option>
+                    </select>
+                  </Field>
+                  {row.mca_modified === "yes" ? (
+                    <Field id={`mca-note-${index}`} label="What changed" source={renderFieldSource?.(row, "mca_modification_note")}>
+                      <input
+                        id={`mca-note-${index}`}
+                        disabled={locked}
+                        placeholder="e.g. daily pull cut from $500 to $300 in June"
+                        value={row.mca_modification_note ?? ""}
+                        onChange={(event) => patch(index, { mca_modification_note: event.target.value })}
+                      />
+                    </Field>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             {/* Notes behind a disclosure. Most rows do not need one, and a
-                textarea on every card buries the eleven fields that matter. */}
+                textarea on every card buries the fields that matter. */}
             <button
               type="button"
               className="fp-disclosure"

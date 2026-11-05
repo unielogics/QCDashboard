@@ -312,7 +312,7 @@ export interface Document {
 }
 
 export type ProductAccountType = "funding" | "audit";
-export type ClientLoginState = "no_login" | "invited" | "active" | "suspended" | "invite_failed";
+export type ClientLoginState = "no_login" | "invited" | "active" | "suspended" | "invite_failed" | "passcode";
 
 export interface ClientAccessDirectoryRow {
   subject_kind: "client" | "intake" | "user";
@@ -329,6 +329,12 @@ export interface ClientAccessDirectoryRow {
   account_status: string | null;
   file_count: number;
   last_active_at: string | null;
+  // Sign-ins that never involved a login account: this person's own room-PIN
+  // entries plus emailed one-time codes. Clerk sessions are not recorded here.
+  passcode_signin_count?: number;
+  room_pin_signin_count?: number;
+  email_code_signin_count?: number;
+  last_passcode_signin_at?: string | null;
   status: string;
 }
 
@@ -860,6 +866,10 @@ export interface LeadCreditStatusResponse {
   fico: number | null;
   pulled_at: string | null;
   expires_at: string | null;
+  fico_source?: string | null;
+  score_verified?: boolean;
+  report_available?: boolean;
+  attention?: string | null;
 }
 
 // Deterministic (non-AI) program-fit screen for a dealer AI Underwriter Lead
@@ -983,7 +993,15 @@ export interface ParsedIdentityRisk {
   mla: Record<string, string>;
   fraud_shield: Record<string, string>;
 }
+export type CreditRiskReview = {
+  version: number; as_of: string; flag_count: number; high_count: number; level: string;
+  flags: { id: string; code: string; title: string; severity: "high" | "warning"; source: string; evidence: Record<string, unknown>; detail: string }[];
+  limitations: string[]; advisory: string;
+};
+
 export interface ParsedReport {
+  intelligence?: CreditRiskReview;
+  additional_sections?: Record<string, unknown>;
   personal_info: Record<string, string>;
   addresses: ParsedAddressOrEmployment[];
   employment: ParsedAddressOrEmployment[];
@@ -994,6 +1012,7 @@ export interface ParsedReport {
   public_records: Record<string, string>[];
   collections: Record<string, string>[];
   fico_8: number | null;
+  fico_4?: number | null;
   fico_2: number | null;
   vantage_4: number | null;
   best_score: number | null;
@@ -1488,6 +1507,11 @@ export interface AppSettingsData {
   security: SecuritySettings;
   simulator: SimulatorSettings;
   letterhead: LetterheadSettings;
+  // The sign-off appended to email sent from a file's communications tab.
+  // One firm template with the sender substituted in — {name} {title}
+  // {email} {phone}. Optional: rows written before the block existed have
+  // no key, and the settings page backfills the default.
+  email_footer?: { enabled: boolean; text: string };
   dscr_pricing?: DscrPricingSettings;
   // Email switches for a file's timeline (services/file_events.py). Optional:
   // rows persisted before the block existed have no key, and the settings
@@ -1519,7 +1543,7 @@ export interface SignatureUploadInitResponse {
 }
 
 // ── Users (Team) ───────────────────────────────────────────────────────────
-export type OperatorAccountAccessType = "funding" | "field_desk" | "audit";
+export type OperatorAccountAccessType = "funding" | "field_desk" | "audit" | "capital";
 
 export interface UserRow {
   id: string;
@@ -3516,4 +3540,47 @@ export interface PipelineClientSummary {
   // pipeline click opens a "Create file" modal in that case.
   primary_deal_id: string | null;
   primary_deal_title: string | null;
+}
+
+// --- Desk attention queue (GET /operator-files/attention) ---
+export type AttentionItemKind = "intake_no_files" | "no_client_entry" | "request_overdue" | "action_items_stale";
+
+export interface AttentionItem {
+  kind: AttentionItemKind;
+  severity: "warn" | "bad";
+  title: string;
+  detail: string;
+  age_days: number;
+  count: number;
+  href: string;
+  bucket_id: string | null;
+  intake_id: string | null;
+  profile_id: string | null;
+  link_last_sent_at: string | null;
+  actions: Array<"resend_link">;
+}
+
+export interface AttentionQueue {
+  generated_at: string;
+  items: AttentionItem[];
+  counts: Partial<Record<AttentionItemKind, number>>;
+}
+
+// --- AI action items seen from the desk (GET /buckets/admin/ai-action-items) ---
+export interface BucketAIActionItemQueueItem {
+  id: string;
+  bucket_id: string;
+  status: "proposed" | "approved" | "rejected" | "completed" | string;
+  route: "admin" | "uploader" | "share" | "vendor" | string;
+  title: string;
+  instructions: string;
+  rationale: string | null;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  bucket_name: string;
+  client_name: string | null;
+  intake_id: string | null;
+  href: string;
+  approvable_here: boolean;
 }

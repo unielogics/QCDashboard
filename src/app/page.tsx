@@ -32,9 +32,11 @@ import {
   useMyCredit,
   useRefreshFred,
   useUnifiedOperatorFiles,
+  useAttentionQueue,
+  useSendRoomReminder,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
-import type { AITask, Broker, CalendarEvent, DashboardReport, FredSeriesSummary, Loan } from "@/lib/types";
+import type { AITask, AttentionItem, Broker, CalendarEvent, DashboardReport, FredSeriesSummary, Loan } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { RateDetailModal } from "@/components/RateDetailModal";
@@ -492,10 +494,7 @@ function OperatorDashboard({
 
       <div className="cg mt">
         <div className="s8">
-          <Panel title="Needs attention today" actions={<CellChip tone={attention.length ? "bad" : "ok"}>{attention.length} open</CellChip>}>
-            {attention.map((row, index) => <AttentionRow key={row.id} row={row} index={index + 1} />)}
-            {!attention.length ? <div className="empty">No logical files need immediate attention.</div> : null}
-          </Panel>
+          <DeskQueuePanel attention={attention} />
 
           <Panel className="mt" title="Funding band at a glance" actions={<><span className="sub">{rollup?.working ?? 0} more still in the working band</span><Link className="linky" href="/pipeline">View all</Link></>}>
             <div className="funding-summary-grid">
@@ -585,6 +584,66 @@ function CapitalReadinessDashboard({ rows, locale }: { rows: UnifiedFileRow[]; l
         <div><span className="lbl">{es ? "Hitos vencidos" : "Overdue milestones"}</span><strong>{overdueMilestones}</strong><span className="sub">{es ? "Solo expedientes cargados" : "Loaded files only"}</span></div>
       </div>
     </section>
+  );
+}
+
+const QUEUE_KIND_LABEL: Record<AttentionItem["kind"], string> = {
+  intake_no_files: "Client has not uploaded",
+  no_client_entry: "Client has no way in",
+  request_overdue: "Checklist aged out",
+  action_items_stale: "AI suggestions unanswered",
+};
+
+/**
+ * The desk's work queue. Rows come from where files actually stall — a client
+ * who never uploaded, a room with no live link, a checklist past 30 days, AI
+ * suggestions nobody answered — each with the one link that opens the file.
+ * Loan health, which this panel used to show alone, sits underneath.
+ */
+function DeskQueuePanel({ attention }: { attention: UnifiedFileRow[] }) {
+  const { data: queue, isLoading } = useAttentionQueue();
+  const remind = useSendRoomReminder();
+  const [sentFor, setSentFor] = useState<Record<string, string>>({});
+  const items = queue?.items ?? [];
+  const total = items.length;
+
+  async function resend(item: AttentionItem) {
+    if (!item.profile_id) return;
+    try {
+      const result = await remind.mutateAsync({ profileId: item.profile_id });
+      setSentFor((current) => ({ ...current, [item.profile_id as string]: result.overall_status === "failed" ? "Could not send" : "Link sent" }));
+    } catch {
+      setSentFor((current) => ({ ...current, [item.profile_id as string]: "Could not send" }));
+    }
+  }
+
+  return (
+    <Panel title="Needs attention today" actions={<CellChip tone={total ? "bad" : "ok"}>{isLoading ? "…" : `${total} open`}</CellChip>}>
+      {isLoading ? <div className="grid g8" aria-live="polite" aria-label="Loading the work queue">{[0, 1, 2].map((row) => <span key={row} className="skeleton" style={{ height: 44, borderRadius: 6 }} />)}</div> : null}
+      {!isLoading && !total ? <div className="empty">Nothing is stalling. Every collecting file has documents, a live link, and a current checklist.</div> : null}
+      {items.map((item, index) => (
+        <div className="prio" key={`${item.kind}-${item.bucket_id ?? item.intake_id ?? index}`}>
+          <span className="n">{index + 1}</span>
+          <div className="grow">
+            <div className="t">{item.title}</div>
+            <div className="d">{QUEUE_KIND_LABEL[item.kind]} · {item.detail}</div>
+          </div>
+          <CellChip tone={item.severity}>{item.age_days}d</CellChip>
+          {item.actions.includes("resend_link") && item.profile_id ? (
+            <button type="button" className="btn sm" disabled={remind.isPending} onClick={() => void resend(item)}>
+              {sentFor[item.profile_id] ?? (remind.isPending ? "Sending…" : "Resend link")}
+            </button>
+          ) : null}
+          <Link href={item.href} className="btn sm pri">Open</Link>
+        </div>
+      ))}
+      {attention.length ? (
+        <>
+          <div className="dashboard-secondary-heading mt"><span className="lbl">Loan health</span><span className="sub">Files whose evidence or stage reads as at risk.</span></div>
+          {attention.map((row, index) => <AttentionRow key={row.id} row={row} index={index + 1} />)}
+        </>
+      ) : null}
+    </Panel>
   );
 }
 

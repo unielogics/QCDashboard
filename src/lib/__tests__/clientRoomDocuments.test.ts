@@ -1,6 +1,48 @@
 import { describe, expect, it } from "vitest";
 
-import { clientActionableRequestedDocumentUploadTarget, clientActionNeeded, clientApiError, clientApiErrorCode, clientApiErrorDetail, clientMcaRequestedDocumentLayout, clientQueuedUploadCanSubmit, clientRequestedDocumentContextText, clientRequestedDocumentNeedsAction, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isStaleRequestedDocumentError, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin } from "@/lib/clientRoomDocuments";
+import { clientActionableRequestedDocumentUploadTarget, clientActionNeeded, clientApiError, clientApiErrorCode, clientApiErrorDetail, clientMcaRequestedDocumentLayout, clientQueuedUploadCanSubmit, clientRequestedDocumentContextText, clientRequestedDocumentNeedsAction, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isStaleRequestedDocumentError, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
+
+describe("a fully covered requirement awaiting review", () => {
+  it("reads as checking, not as something the client still owes", () => {
+    expect(clientRequestedDocumentState({
+      isUnlockedCopyRequest: false,
+      documentStatus: "requested",
+      hasUploadedFile: true,
+      requirementComplete: false,
+      coverageComplete: true,
+      processingEvidenceCount: 0,
+    })).toBe("checking");
+  });
+
+  it("is still needed while coverage is short and nothing is processing", () => {
+    expect(clientRequestedDocumentState({
+      isUnlockedCopyRequest: false,
+      documentStatus: "requested",
+      hasUploadedFile: true,
+      requirementComplete: false,
+      coverageComplete: false,
+      processingEvidenceCount: 0,
+    })).toBe("needed");
+  });
+});
+
+describe("choosing a room PIN", () => {
+  it("is required the first time the client arrives with the code in the link", () => {
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: true, dismissed: false })).toBe("required");
+    // Dismissal is not on offer when it is required.
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: true, dismissed: true })).toBe("required");
+  });
+
+  it("is offered, and can be put off, when the client typed the PIN we sent", () => {
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: false, dismissed: false })).toBe("offered");
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: false, dismissed: true })).toBe("hidden");
+  });
+
+  it("stays out of the way once the client has chosen a PIN, and on an offer-only visit", () => {
+    expect(roomPinSetupMode({ needsSetup: false, arrivedWithCode: true, dismissed: false })).toBe("hidden");
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: true, dismissed: false, offerOnly: true })).toBe("hidden");
+  });
+});
 
 describe("client requested-document state", () => {
   it("keeps a new unlocked-copy request actionable before upload", () => {

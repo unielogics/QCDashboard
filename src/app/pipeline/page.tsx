@@ -101,8 +101,8 @@ function OperatorPipeline() {
           </Btn>
           <PageActionMenu items={[
             { label: "Open client book", href: "/clients" },
-            { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
-            { label: "Open document buckets", href: "/admin/buckets" },
+            { label: "Open files", href: "/admin/ai-underwriter-leads" },
+            { label: "Open documents", href: "/admin/buckets" },
           ]} label="Pipeline actions" />
         </div>
         <UnifiedOperatorFilters value={filters} onChange={setFilters} rows={allRows} />

@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
+import { uploadFile } from "@/lib/fileUpload";
+import { fileHref } from "@/lib/fileRoutes";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -28,7 +30,8 @@ import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
 import type { BucketIntakeLinkRead } from "@/lib/unifiedOperator";
 import type { UnifiedFilePage } from "@/lib/unifiedOperator";
-import { api, ApiError } from "@/lib/api";
+import { api, ApiError, apiBase } from "@/lib/api";
+import { OPERATOR_BUCKET_TYPES, bucketTypeLabel, isBucketType } from "@/lib/bucketTypes";
 import { validPhone } from "@/lib/formCoerce";
 import { Role } from "@/lib/enums.generated";
 import { APP_ORIGIN, SIGN_IN_URL } from "@/lib/appUrl";
@@ -37,9 +40,10 @@ import { semanticStatusClass } from "@/lib/semanticStatus";
 import { bucketArchiveLabel, bucketListPath, isBucketArchived, type BucketArchiveFilter } from "@/lib/bucketArchive";
 import { sortBucketFiles, type BucketFileSort } from "@/lib/bucketFileOrder";
 import { bucketFileRemovalError, bucketFileRetentionPresentation } from "@/lib/bucketRetention";
+import { archiveFileName, attachmentFileName, fileNamesPreview, removalSummary, saveBlobAs, type BucketFilesRemoveResult } from "@/lib/bucketFileSelection";
 import { bucketUploadIssue, type BucketUploadIssue } from "@/lib/bucketUploadError";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
-import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
+import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { isVisualQa, useConsoleAuth } from "@/lib/consoleAuth";
 
@@ -69,6 +73,8 @@ type Bucket = {
   updated_at: string;
   file_count?: number;
   uploaded_file_count?: number;
+  open_request_count?: number;
+  closed_request_count?: number;
   file_names?: string[];
   vendor_access_count?: number;
   linked_files?: BucketLinkedFile[];
@@ -81,6 +87,9 @@ type RequestedDoc = {
   required: boolean;
   allow_multiple_files?: boolean;
   status: string;
+  source_kind?: "rule" | "system" | "manual";
+  closed_at?: string | null;
+  closed_reason?: string | null;
 };
 type BucketFile = {
   id: string;
@@ -265,7 +274,7 @@ type VendorAccessDraft = {
   expires_days: number;
 };
 
-const BUCKET_TYPES = ["Loan File", "UrChoice Dealer Funding", "Partner Package", "Borrower", "Funding Opportunity"];
+const BUCKET_TYPES = OPERATOR_BUCKET_TYPES;
 const FIELD_DESK_ORIGIN = process.env.NEXT_PUBLIC_FIELD_DESK_URL ?? "https://rep.qualifiedcommercial.com";
 const REQUEST_DOCS_PER_PAGE = 10;
 const ACTIVITY_PAGE_SIZE = 12;
@@ -315,6 +324,7 @@ const ACTIVITY_ACTION_OPTIONS = [
   "file_review_opened",
   "file_preview_url_created",
   "file_download_url_created",
+  "file_archive_downloaded",
   "file_annotation_created",
   "ai_action_created",
   "ai_action_proposed",
@@ -478,7 +488,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const [bucketFileStatus, setBucketFileStatus] = useState("all");
   const [bucketFileSort, setBucketFileSort] = useState<BucketFileSort>("newest");
   const [search, setSearch] = useState("");
-  const [bucketView, setBucketView] = useState<"all" | "collecting" | "review" | "complete">("all");
+  const [bucketView, setBucketView] = useState<"all" | "awaiting" | "collecting" | "ready">("all");
   const [bucketArchiveFilter, setBucketArchiveFilter] = useState<BucketArchiveFilter>("active");
   const [busy, setBusy] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -508,12 +518,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     name: "",
     client_name: "",
     purpose: "",
-    bucket_type: "Loan File",
+    bucket_type: "general",
     description: "",
   });
   const [createInviteDraft, setCreateInviteDraft] = useState({ recipient_name: "", recipient_email: "", passcode: "" });
   const [createInvites, setCreateInvites] = useState<UploadInvite[]>([]);
   const [shareFiles, setShareFiles] = useState<Record<string, boolean>>({});
+  const [archivingSelection, setArchivingSelection] = useState(false);
+  const [removingSelection, setRemovingSelection] = useState(false);
   const [sharePopupOpen, setSharePopupOpen] = useState(false);
   const [shareViewers, setShareViewers] = useState<ShareViewerDraft[]>(() => [emptyShareViewerDraft()]);
   const [sharePasscodes, setSharePasscodes] = useState<Record<string, string>>({});
@@ -585,7 +597,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     const requestVersion = requestVersionRef.current;
     const assertScope = () => {
       if (embedded && (!bucketId || !currentBucketRequest(bucketId, requestVersion))) {
-        throw new DOMException("Bucket workspace closed or changed.", "AbortError");
+        throw new DOMException("Room closed or changed.", "AbortError");
       }
     };
     assertScope();
@@ -609,6 +621,41 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     }
     assertScope();
     return result;
+  }
+
+  // Binary responses (the zip of checked files) bypass the JSON-typed `api`
+  // helper but keep its token refresh and the room-scope check.
+  async function callBlob(path: string, body: unknown): Promise<{ blob: Blob; filename: string | null }> {
+    const bucketId = embeddedBucketId;
+    const requestVersion = requestVersionRef.current;
+    const assertScope = () => {
+      if (embedded && (!bucketId || !currentBucketRequest(bucketId, requestVersion))) {
+        throw new DOMException("Room closed or changed.", "AbortError");
+      }
+    };
+    const send = (token: string | null) => fetch(`${apiBase}/api/v1${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+    assertScope();
+    let token = await getToken();
+    if (!token && !isVisualQa) throw bucketSessionUnavailableError();
+    let res = await send(token);
+    if (res.status === 401) {
+      token = await getToken({ skipCache: true });
+      if (!token && !isVisualQa) throw bucketSessionUnavailableError();
+      assertScope();
+      res = await send(token);
+    }
+    assertScope();
+    if (!res.ok) {
+      let payload: unknown = null;
+      try { payload = await res.json(); } catch { /* not JSON */ }
+      const detail = payload && typeof payload === "object" && "detail" in payload ? (payload as { detail?: unknown }).detail : null;
+      throw new ApiError(res.status, typeof detail === "string" && detail.trim() ? detail : `${res.status} ${res.statusText}`, payload);
+    }
+    return { blob: await res.blob(), filename: attachmentFileName(res.headers.get("Content-Disposition")) };
   }
 
   async function loadBuckets(signal?: AbortSignal) {
@@ -734,7 +781,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     if (!detail) return;
     const name = editBucketForm.name.trim();
     if (!name) {
-      setEditBucketError("Bucket name is required.");
+      setEditBucketError("Room name is required.");
       return;
     }
     setEditBucketSaving(true);
@@ -755,7 +802,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       setActivityRows(updated.activity ?? []);
       setActivityTotal(updated.activity?.length ?? 0);
       setEditBucketOpen(false);
-      setNotice("Bucket details updated.");
+      setNotice("Room details updated.");
     } catch (error) {
       setEditBucketError(readableError(error));
     } finally {
@@ -766,8 +813,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   async function resetBucketNameToLinkedFile() {
     if (!detail?.linked_name) return;
     const confirmed = await confirmAction({
-      title: "Reset bucket name to linked file?",
-      body: `The bucket will use “${detail.linked_name}” and follow later business-name changes on the linked file.`,
+      title: "Reset room name to linked file?",
+      body: `The room will use “${detail.linked_name}” and follow later business-name changes on the linked file.`,
       confirmLabel: "Reset to linked name",
     });
     if (!confirmed) return;
@@ -781,7 +828,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       setDetail(updated);
       setEditBucketForm(bucketEditFormFrom(updated));
       setBuckets((rows) => rows.map((row) => (row.id === updated.id ? { ...row, ...updated } : row)));
-      setNotice("Bucket name now follows the linked file.");
+      setNotice("Room name now follows the linked file.");
     } catch (error) {
       setEditBucketError(readableError(error));
     } finally {
@@ -885,14 +932,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         body: JSON.stringify(payload),
       });
       setConvertLeadBucket(null);
-      router.push(`/admin/ai-underwriter-leads?lead=${res.intake.id}`);
+      router.push(fileHref(res.intake.id));
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         const body = error.body as { detail?: { intake_id?: string; message?: string } } | undefined;
         const intakeId = body?.detail?.intake_id;
         if (intakeId) {
           setConvertLeadBucket(null);
-          router.push(`/admin/ai-underwriter-leads?lead=${intakeId}`);
+          router.push(fileHref(intakeId));
           return;
         }
       }
@@ -942,12 +989,12 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     }
     if (me?.role !== Role.SUPER_ADMIN) {
       setEmbeddedLoading(false);
-      setEmbeddedError("Your role does not have access to this bucket workspace. Your intake remains open.");
+      setEmbeddedError("Your role does not have access to this room. Your file remains open.");
       return;
     }
     if (!embeddedBucketId) {
       setEmbeddedLoading(false);
-      setEmbeddedError("No bucket is linked to this intake.");
+      setEmbeddedError("No room is linked to this file.");
       return;
     }
     const controller = new AbortController();
@@ -1063,6 +1110,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
   const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const selectedFiles = useMemo(() => visibleFiles.filter((file) => shareFiles[file.id]), [visibleFiles, shareFiles]);
   const detailArchived = Boolean(detail && isBucketArchived(detail));
   const reviewFileRetention = useMemo(
     () => reviewFile ? bucketFileRetentionPresentation(reviewFile) : null,
@@ -1096,6 +1144,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     });
     return sortBucketFiles(filtered, bucketFileSort);
   }, [bucketFileAssignment, bucketFileKind, bucketFileQuery, bucketFileSort, bucketFileStatus, requestedDocNameById, visibleFiles]);
+  const allShownChecked = filteredBucketFiles.length > 0 && filteredBucketFiles.every((file) => shareFiles[file.id]);
   const activityPage = Math.floor(activityOffset / ACTIVITY_PAGE_SIZE) + 1;
   const activityPageCount = Math.max(1, Math.ceil(activityTotal / ACTIVITY_PAGE_SIZE));
   const canPageActivityBack = Boolean(detail && activityOffset > 0 && !activityLoading);
@@ -1110,11 +1159,10 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const filteredBuckets = useMemo(() => {
     const q = search.trim().toLowerCase();
     return buckets.filter((bucket) => {
-      const status = bucket.status.toLowerCase();
-      const statusMatches = bucketView === "all"
-        || (bucketView === "collecting" && !status.includes("complete") && !status.includes("review"))
-        || (bucketView === "review" && status.includes("review"))
-        || (bucketView === "complete" && (status.includes("complete") || status.includes("closed")));
+      // Derived from what the room actually holds. The bucket's own status only
+      // ever reads collecting_documents or archived, so chips built on it were dead.
+      const state = roomState(bucket);
+      const statusMatches = bucketView === "all" || bucketView === state;
       if (!statusMatches) return false;
       if (!q) return true;
       return [
@@ -1160,7 +1208,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     return pairs;
   }, [unifiedFiles?.items]);
 
-  if (!embedded && meLoading) return <PanelBox>Loading Buckets...</PanelBox>;
+  if (!embedded && meLoading) return <PanelBox>Loading rooms...</PanelBox>;
   if (!embedded && me && me.role !== Role.SUPER_ADMIN) return null;
 
   async function createBucketWorkflow() {
@@ -1201,9 +1249,9 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         setUploadLinkPasscodes((codes) => ({ ...codes, [uploadLink.id]: uploadPasscode }));
         uploadLinks.push({ id: uploadLink.id, name: invite.recipient_name, email: invite.recipient_email || undefined, url: uploadLink.upload_url || "", passcode: uploadPasscode });
       }
-      setCreateStatus({ kind: "working", message: "Refreshing bucket list..." });
+      setCreateStatus({ kind: "working", message: "Refreshing room list..." });
       await loadBuckets();
-      setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "Loan File", description: "" });
+      setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "general", description: "" });
       setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
       setCreateInvites([]);
       setCreateChecked({});
@@ -1211,12 +1259,12 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
       setCreatePackage("standard");
       if (uploadLinks.length) {
-        setCreateStatus({ kind: "success", message: "Bucket created. Upload invite links are ready below." });
+        setCreateStatus({ kind: "success", message: "Room created. Upload invite links are ready below." });
         setCreateResult({ links: uploadLinks });
       } else {
         setCreateOpen(false);
         setCreateStatus(null);
-        setNotice("Bucket created and added to the table.");
+        setNotice("Room created and added to the table.");
       }
     } catch (error) {
       setCreateStatus({ kind: "error", message: readableError(error) });
@@ -1330,7 +1378,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   async function copyPublicShareLink(share: PublicShare) {
     if (!share.share_url) {
-      setNotice("Public link is not available yet. Refresh the bucket and try again.");
+      setNotice("Public link is not available yet. Refresh the room and try again.");
       return;
     }
     await copyText(share.share_url);
@@ -1392,7 +1440,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   function copyShareLink(share: Share) {
     if (!share.share_url) {
-      setNotice("Share link is not available yet. Refresh the bucket and try again.");
+      setNotice("Share link is not available yet. Refresh the room and try again.");
       return;
     }
     void copyText(share.share_url);
@@ -1442,7 +1490,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   function copyUploadLink(link: UploadLink) {
     if (!link.upload_url) {
-      setNotice("Upload link is not available yet. Refresh the bucket and try again.");
+      setNotice("Upload link is not available yet. Refresh the room and try again.");
       return;
     }
     void copyText(link.upload_url);
@@ -1513,7 +1561,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     if (statusValue === "revoked") {
       const confirmed = await confirmAction({
         title: `Revoke access for ${share.recipient_name}`,
-        body: "The recipient will immediately lose access to the shared bucket files.",
+        body: "The recipient will immediately lose access to the shared room files.",
         confirmLabel: "Revoke access",
         tone: "danger",
         reversible: true,
@@ -1559,7 +1607,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     setVendorDraft(emptyVendorAccessDraft());
     setExpandedVendorAccessId(created.id);
     await loadBuckets();
-    setNotice("Vendor access is active. The vendor can log in to view assigned buckets.");
+    setNotice("Vendor access is active. The vendor can log in to view assigned rooms.");
   }
 
   async function patchVendorAccess(access: VendorAccess, body: Record<string, unknown>) {
@@ -1694,7 +1742,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         `Qualified Commercial assigned you secure vendor access to ${bucketName}.`,
         `Login link: ${link}`,
         "",
-        "Access is tied to your vendor email login. There is no bucket password to copy for vendor access; use the app invite or sign in with the invited email.",
+        "Access is tied to your vendor email login. There is no room password to copy for vendor access; use the app invite or sign in with the invited email.",
       ].join("\n"),
     );
   }
@@ -1844,26 +1892,17 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       for (const queued of queuedFiles) {
         try {
           updateAdminUploadFile(queued.id, { status: "uploading", message: "Preparing upload", errorKind: undefined });
-          await assertPdfUploadUnlocked(queued.file);
-          const init = await call<UploadInitResponse>(`/buckets/admin/${detail.id}/files/upload-init`, {
-            method: "POST",
-            body: JSON.stringify({
-              requested_document_id: queued.requested_document_id || null,
-              file_name: queued.file.name,
-              content_type: queued.file.type || "application/octet-stream",
-              size_bytes: queued.file.size,
-              uploader_name: adminUploadForm.uploader_name.trim(),
-              uploader_email: adminUploadForm.uploader_email.trim() || null,
-            }),
-          });
-          updateAdminUploadFile(queued.id, { message: "Uploading to storage" });
-          const put = await fetch(init.upload_url, { method: "PUT", body: queued.file, headers: init.required_headers });
-          if (!put.ok) throw new Error(`Storage rejected ${queued.file.name} (${put.status}).`);
-          updateAdminUploadFile(queued.id, { message: "Finalizing" });
-          await call<BucketFile>(`/buckets/admin/${detail.id}/files/complete`, {
-            method: "POST",
-            body: JSON.stringify({ file_id: init.file_id, note: !noteSaved ? adminUploadForm.note.trim() || null : null }),
-          });
+          await uploadFile<BucketFile>(
+            { initPath: `/buckets/admin/${detail.id}/files/upload-init`, completePath: `/buckets/admin/${detail.id}/files/complete`, call },
+            queued.file,
+            {
+              requestedDocumentId: queued.requested_document_id || null,
+              extraInit: { uploader_name: adminUploadForm.uploader_name.trim(), uploader_email: adminUploadForm.uploader_email.trim() || null },
+              extraComplete: { note: !noteSaved ? adminUploadForm.note.trim() || null : null },
+              onStage: (stage) => updateAdminUploadFile(queued.id, { message: stage === "uploading" ? "Uploading to storage" : stage === "confirming" ? "Finalizing" : "Preparing upload" }),
+              storageRejectedMessage: (file, status) => `Storage rejected ${file.name} (${status}).`,
+            },
+          );
           noteSaved = noteSaved || !!adminUploadForm.note.trim();
           uploadedCount += 1;
           updateAdminUploadFile(queued.id, { status: "uploaded", message: "Uploaded", errorKind: undefined });
@@ -2010,7 +2049,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     }
     const res = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${file.id}/url?download=${download}`);
     if (!openSignedUrl(res.url)) {
-      setNotice("Download is not available for this file. Refresh the bucket and try again.");
+      setNotice("Download is not available for this file. Refresh the room and try again.");
     }
   }
 
@@ -2018,7 +2057,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     if (!detail || deletingFileId) return;
     const retention = bucketFileRetentionPresentation(file);
     if (retention?.isRemovalBlocked) {
-      setNotice(`Removal blocked: ${retention.detail} Archive the bucket instead if it should leave the active workspace.`);
+      setNotice(`Removal blocked: ${retention.detail} Archive the room instead if it should leave the active workspace.`);
       return;
     }
     const confirmed = await confirmAction({
@@ -2051,6 +2090,72 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     }
   }
 
+  async function downloadSelectedFiles() {
+    if (!detail || archivingSelection || !selectedFiles.length) return;
+    const total = selectedFiles.length;
+    setArchivingSelection(true);
+    try {
+      const { blob, filename } = await callBlob(`/buckets/admin/${detail.id}/selected-files/archive`, {
+        file_ids: selectedFiles.map((file) => file.id),
+      });
+      saveBlobAs(blob, filename || archiveFileName(detail.name));
+      setNotice(`${total} file${total === 1 ? "" : "s"} downloaded as one zip.`);
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setNotice(error instanceof Error ? error.message : "The zip could not be prepared. Try again in a moment.");
+    } finally {
+      setArchivingSelection(false);
+    }
+  }
+
+  async function removeSelectedFiles() {
+    if (!detail || removingSelection || detailArchived || !selectedFiles.length) return;
+    const isProtected = (file: BucketFile) => Boolean(bucketFileRetentionPresentation(file)?.isRemovalBlocked);
+    const protectedNames = selectedFiles.filter(isProtected).map((file) => file.file_name);
+    const removable = selectedFiles.filter((file) => !isProtected(file));
+    if (!removable.length) {
+      setNotice("Every checked file is protected by retention or legal hold. Archive the room instead if they should leave the active workspace.");
+      return;
+    }
+    const total = removable.length;
+    const stays = protectedNames.length
+      ? ` ${protectedNames.length} protected file${protectedNames.length === 1 ? " stays" : "s stay"}.`
+      : "";
+    const confirmed = await confirmAction({
+      title: `Remove ${total} file${total === 1 ? "" : "s"} from active evidence`,
+      body: `${fileNamesPreview(removable.map((file) => file.file_name))} will move to Removed files and lose share access. The stored documents are kept and can be restored.${stays}`,
+      confirmLabel: `Remove ${total} file${total === 1 ? "" : "s"}`,
+      tone: "danger",
+      reversible: true,
+    });
+    if (!confirmed) return;
+    setRemovingSelection(true);
+    try {
+      const result = await call<BucketFilesRemoveResult>(`/buckets/admin/${detail.id}/selected-files/remove`, {
+        method: "POST",
+        body: JSON.stringify({ file_ids: removable.map((file) => file.id) }),
+      });
+      const gone = new Set([...result.removed, ...result.missing]);
+      setShareFiles((current) => {
+        const next = { ...current };
+        for (const id of gone) delete next[id];
+        return next;
+      });
+      if (reviewFile && gone.has(reviewFile.id)) {
+        setReviewMinimized(false);
+        setReviewFile(null);
+      }
+      setNotice(removalSummary(result, protectedNames));
+      await loadBucket(detail.id);
+      await loadBuckets();
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") return;
+      setNotice(error instanceof Error ? error.message : "The files could not be removed.");
+    } finally {
+      setRemovingSelection(false);
+    }
+  }
+
   async function restoreFile(file: BucketFile) {
     if (!detail || restoringFileId) return;
     setRestoringFileId(file.id);
@@ -2067,12 +2172,12 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   }
 
   async function loadAdminReview(file: BucketFile): Promise<BucketFileReview> {
-    if (!detail) throw new Error("Bucket detail is not loaded.");
+    if (!detail) throw new Error("Room detail is not loaded.");
     return call<BucketFileReview>(`/buckets/admin/${detail.id}/files/${file.id}/review`);
   }
 
   async function saveAdminAnnotation(file: BucketFile, payload: { page_number: number; x: number; y: number; width: number; height: number; comment: string }): Promise<BucketFileAnnotation> {
-    if (!detail) throw new Error("Bucket detail is not loaded.");
+    if (!detail) throw new Error("Room detail is not loaded.");
     return call<BucketFileAnnotation>(`/buckets/admin/${detail.id}/files/${file.id}/annotations`, {
       method: "POST",
       body: JSON.stringify(payload),
@@ -2234,9 +2339,9 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     // that zeroes its automatic minimum size and clips its own body.
     <div className="grid">
       {embedded && !embeddedClosed && (embeddedLoading || embeddedError || !detail) ? (
-        <Drawer open onClose={closeBucketDetail} width="xl" fullscreen title="Bucket workspace" ariaLabel="Bucket workspace">
+        <Drawer open onClose={closeBucketDetail} width="xl" fullscreen title="Document room" ariaLabel="Document room">
           {embeddedLoading ? <PanelBox>Loading bucket...</PanelBox> : <div className="grid g12">
-            <Callout tone="warn">{embeddedError || "This bucket is not available. Your intake remains open."}</Callout>
+            <Callout tone="warn">{embeddedError || "This room is not available. Your file remains open."}</Callout>
             <div className="row">
               {me?.role === Role.SUPER_ADMIN && embeddedBucketId ? <Btn onClick={() => setEmbeddedRetry((value) => value + 1)}>Retry</Btn> : null}
               <Btn onClick={closeBucketDetail}>Return to intake</Btn>
@@ -2246,14 +2351,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       ) : null}
       {!embedded ? <div className="ckhead">
         <div className="ckrow">
-          <h1>Buckets</h1>
+          <h1>Documents</h1>
           <CellChip tone="mut">
             {bucketArchiveFilter === "archived"
               ? `${buckets.length} archived`
               : `${buckets.filter((bucket) => !isBucketArchived(bucket) && !bucket.status.toLowerCase().includes("complete")).length} open`}
           </CellChip>
           <span className="sp" />
-          <span className="sub">Secure document rooms. Every bucket can feed an AI intake.</span>
+          <span className="sub">Secure document rooms. Every room can feed a file.</span>
           <Btn variant="pri" size="sm" onClick={() => {
             setCreateResult(null);
             setCreateStatus(null);
@@ -2262,18 +2367,18 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
             setCustomDocs([]);
             setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
             setCreateOpen(true);
-          }}><Icon name="plus" size={13} /> Create bucket</Btn>
-          <PageActionMenu label="Bucket actions" items={[
+          }}><Icon name="plus" size={13} /> New room</Btn>
+          <PageActionMenu label="Document actions" items={[
             { label: "Manage vendor directory", onSelect: () => setVendorDirectoryOpen(true) },
-            { label: "Open AI intake", href: "/admin/ai-underwriter-leads" },
+            { label: "All files", href: "/admin/ai-underwriter-leads" },
           ]} />
         </div>
-        {bucketArchiveFilter !== "archived" ? <div className="cktabs" role="tablist" aria-label="Bucket status">
+        {bucketArchiveFilter !== "archived" ? <div className="cktabs" role="tablist" aria-label="Room state">
           {[
-            { value: "all" as const, label: "All buckets" },
+            { value: "all" as const, label: "All rooms" },
+            { value: "awaiting" as const, label: "Awaiting client" },
             { value: "collecting" as const, label: "Collecting" },
-            { value: "review" as const, label: "In review" },
-            { value: "complete" as const, label: "Complete" },
+            { value: "ready" as const, label: "Ready for review" },
           ].map((item) => <button key={item.value} type="button" role="tab" aria-selected={bucketView === item.value} className={bucketView === item.value ? "on" : undefined} onClick={() => setBucketView(item.value)}>{item.label}</button>)}
         </div> : null}
       </div> : null}
@@ -2295,10 +2400,10 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         onClose={() => setVendorDirectoryOpen(false)}
         width="md"
         title="Vendor directory"
-        sub="Create vendors once, then assign them to buckets from the bucket list."
+        sub="Create vendors once, then assign them to rooms from the room list."
         bodyClass="grid"
       >
-        <Panel title="Create vendor login" sub="Vendors log in with their email and only see buckets you assign to them.">
+        <Panel title="Create vendor login" sub="Vendors log in with their email and only see rooms you assign to them.">
           <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 8 }}>
             <Input
               placeholder="Vendor name"
@@ -2353,7 +2458,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         ) : (
           <>
             <Panel
-              title="Assign vendor to this bucket"
+              title="Assign vendor to this room"
               sub="Choose an existing vendor or create a new one, then decide whether they see all active files or selected files."
               bodyClass="grid g8"
             >
@@ -2448,7 +2553,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     </div>
                   </div>
                 )) : (
-                  <div className="hintbox">No vendors assigned to this bucket yet.</div>
+                  <div className="hintbox">No vendors assigned to this room yet.</div>
                 )}
               </div>
             </Panel>
@@ -2457,8 +2562,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       </Drawer>
 
       {!embedded ? <TableWorkspace
-        title="Bucket list"
-        description="Scroll the page to give the bucket directory more room, or focus the table for full-screen review."
+        title="Room list"
+        description="Scroll the page to give the room list more space, or focus the table for full-screen review."
         storageKey={bucketTableStorageKey ?? undefined}
         actions={
           <>
@@ -2471,7 +2576,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                 placeholder="Search name, email, case, loan..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                aria-label="Search buckets"
+                aria-label="Search rooms"
               />
             </div>
             <Select
@@ -2480,7 +2585,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                 setBucketView("all");
                 setBucketArchiveFilter(event.target.value as BucketArchiveFilter);
               }}
-              aria-label="Bucket visibility"
+              aria-label="Room visibility"
               style={{ minWidth: 150 }}
             >
               <option value="active">Active only</option>
@@ -2527,17 +2632,17 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         open={deleteReviewBucket !== null}
         onClose={() => setDeleteReviewBucket(null)}
         width="md"
-        title="Archive bucket"
+        title="Archive room"
         sub="Remove it from the active workspace without deleting its records."
         closeOnBackdrop={!deletingId}
-        footer={<><Btn onClick={() => setDeleteReviewBucket(null)} disabled={Boolean(deletingId)}>Cancel</Btn><span className="sp" /><Btn onClick={() => deleteReviewBucket && deleteBucket(deleteReviewBucket)} disabled={Boolean(deletingId)} className="danger">{deletingId ? "Archiving..." : "Archive bucket"}</Btn></>}
+        footer={<><Btn onClick={() => setDeleteReviewBucket(null)} disabled={Boolean(deletingId)}>Cancel</Btn><span className="sp" /><Btn onClick={() => deleteReviewBucket && deleteBucket(deleteReviewBucket)} disabled={Boolean(deletingId)} className="danger">{deletingId ? "Archiving..." : "Archive room"}</Btn></>}
       >
         <div className="grid">
-          <div className="warnline"><b>{deleteReviewBucket?.name}</b> will leave the active bucket list. Its files, notes, sharing history, and audit activity are retained.</div>
+          <div className="warnline"><b>{deleteReviewBucket?.name}</b> will leave the active room list. Its files, notes, sharing history, and audit activity are retained.</div>
           <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>
           <div className="kv"><span>Execution</span><b>Immediately after confirmation</b></div>
           <div className="kv"><span>Record deletion</span><b>None — this is archive only</b></div>
-          <div className="kv"><span>Recovery</span><b>Buckets → Archived → Restore bucket</b></div>
+          <div className="kv"><span>Recovery</span><b>Documents → Archived → Restore room</b></div>
         </div>
       </Drawer>
 
@@ -2545,8 +2650,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         open={createOpen}
         onClose={() => setCreateOpen(false)}
         width="xl"
-        title="Create bucket"
-        sub="Set up the bucket, choose requested files, and invite uploaders."
+        title="New room"
+        sub="Set up the room, choose the checklist, and invite uploaders."
         bodyClass="grid"
         // The ModalFrame this replaced had no backdrop-close and no Escape, so
         // adopting Drawer's defaults made a stray click on the scrim discard
@@ -2608,12 +2713,12 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
           <>
             {createStatus ? <CreateStatusBanner status={createStatus} /> : null}
             <Panel>
-              <WorkflowHeader step="1" title="Bucket details" />
+              <WorkflowHeader step="1" title="Room details" />
               <div className="fldgrid two mt">
-                <Input placeholder="Bucket name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
+                <Input placeholder="Room name" value={bucketForm.name} onChange={(e) => setBucketForm({ ...bucketForm, name: e.target.value })} />
                 <Input placeholder="Client / borrower" value={bucketForm.client_name} onChange={(e) => setBucketForm({ ...bucketForm, client_name: e.target.value })} />
                 <Select value={bucketForm.bucket_type} onChange={(e) => setBucketForm({ ...bucketForm, bucket_type: e.target.value })}>
-                  {BUCKET_TYPES.map((type) => <option key={type}>{type}</option>)}
+                  {BUCKET_TYPES.map((type) => <option key={type} value={type}>{bucketTypeLabel(type)}</option>)}
                 </Select>
                 <Input placeholder="Purpose, deal, or package" value={bucketForm.purpose} onChange={(e) => setBucketForm({ ...bucketForm, purpose: e.target.value })} />
                 <Textarea
@@ -2796,14 +2901,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               <span className="trunc">{detail.name}</span>
               {detailArchived ? <CellChip tone="mut">{bucketArchiveLabel(detail) || "Archived"}</CellChip> : <IconBtn
                 onClick={() => openBucketEdit(detail)}
-                aria-label="Edit bucket details"
-                title="Rename bucket"
+                aria-label="Edit room details"
+                title="Rename room"
               >
                 <Icon name="pencil" size={14} />
               </IconBtn>}
             </span>
           }
-          subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${detail.bucket_type || "Bucket"}`}
+          subtitle={`${detail.client_name || "No client"} | ${detail.purpose || "No purpose"} | ${bucketTypeLabel(detail.bucket_type)}`}
           onClose={closeBucketDetail}
           action={
             <div className="row">
@@ -2823,14 +2928,14 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                   disabled={restoringBucketId === detail.id}
                 >
                   <Icon name="refresh" size={15} />
-                  {restoringBucketId === detail.id ? "Restoring..." : "Restore bucket"}
+                  {restoringBucketId === detail.id ? "Restoring..." : "Restore room"}
                 </Btn>
               )}
               {!embedded && !detailArchived ? <><Btn
                 size="sm"
                 onClick={() => detail && setConvertLeadBucket(detail)}
                 aria-label="Convert to AI Underwriter Lead"
-                title="Convert this bucket into an AI Underwriter Lead"
+                title="Create a file from this room"
               >
                 <Icon name="bolt" size={16} />
                 AI Lead
@@ -2838,8 +2943,8 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               <Btn
                 size="sm"
                 onClick={() => detail && setLinkBucket(detail)}
-                aria-label="Link bucket to AI intake"
-                title="Link this bucket to an existing AI intake"
+                aria-label="Link room to file"
+                title="Link this room to an existing file"
               >
                 <Icon name="link" size={16} />
                 Link intake
@@ -3126,7 +3231,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                   </div>
                 ) : null}
               </div> : null}
-              <IconBtn aria-label="Minimize bucket workspace" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
+              <IconBtn aria-label="Minimize room" title="Minimize" onClick={() => setBucketDetailMinimized(true)}>
                 <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
               </IconBtn>
             </div>
@@ -3184,7 +3289,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                       value={bucketFileQuery}
                       onChange={(event) => setBucketFileQuery(event.target.value)}
                       placeholder="Search files, uploader, task..."
-                      aria-label="Search bucket files"
+                      aria-label="Search room files"
                     />
                   </div>
                   <Select value={bucketFileKind} onChange={(event) => setBucketFileKind(event.target.value as BucketFileKind)} aria-label="Filter file type">
@@ -3207,23 +3312,71 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     ))}
                   </Select>
                 </div>
+                {visibleFiles.length ? (
+                  <div className={cx("bucket-file-selection", selectedFiles.length > 0 && "on")} role="group" aria-label="Checked files">
+                    <label className="bucket-file-share-toggle" title={allShownChecked ? "Uncheck every file shown" : "Check every file shown"}>
+                      <input
+                        type="checkbox"
+                        checked={allShownChecked}
+                        disabled={!filteredBucketFiles.length}
+                        onChange={(event) => {
+                          const checked = event.target.checked;
+                          setShareFiles((current) => {
+                            const next = { ...current };
+                            for (const file of filteredBucketFiles) {
+                              if (checked) next[file.id] = true;
+                              else delete next[file.id];
+                            }
+                            return next;
+                          });
+                        }}
+                        aria-label={allShownChecked ? "Uncheck every file shown" : "Check every file shown"}
+                      />
+                    </label>
+                    {selectedFiles.length ? (
+                      <>
+                        <strong>{selectedFiles.length} checked</strong>
+                        <span className="sub trunc grow">{fileNamesPreview(selectedFiles.map((file) => file.file_name))}</span>
+                        <Btn size="sm" onClick={() => downloadSelectedFiles().catch(() => undefined)} disabled={archivingSelection} title="Download the checked files as one zip">
+                          <Icon name="download" size={13} />
+                          {archivingSelection ? "Preparing zip..." : "Download zip"}
+                        </Btn>
+                        {!detailArchived ? (
+                          <Btn
+                            size="sm"
+                            className="danger"
+                            onClick={() => removeSelectedFiles().catch(() => undefined)}
+                            disabled={removingSelection}
+                            title="Move the checked files to Removed files; the stored documents are kept"
+                          >
+                            <Icon name="trash" size={13} />
+                            {removingSelection ? "Removing..." : "Remove"}
+                          </Btn>
+                        ) : null}
+                        <Btn size="sm" onClick={() => setShareFiles({})}>Clear</Btn>
+                      </>
+                    ) : (
+                      <span className="sub grow">Check files to download them as one zip, share them, or remove them together.</span>
+                    )}
+                  </div>
+                ) : null}
                 <div className="bucket-file-list">
                   {visibleFiles.length === 0 ? (
                     <EmptyInline icon="file" title="No files uploaded yet" body="Upload files or send an invite; documents will appear here first." />
                   ) : filteredBucketFiles.length === 0 ? (
-                    <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more bucket files." />
+                    <EmptyInline icon="search" title="No files match" body="Adjust the search or filters to show more files." />
                   ) : filteredBucketFiles.map((file) => {
                     const retention = bucketFileRetentionPresentation(file);
                     return (
                     <div key={file.id} className={`itemrow bucket-file-row ${semanticStatusClass(file.status)}`}>
-                      {!detailArchived ? <label className="bucket-file-share-toggle" title={`Select ${file.file_name} for sharing`}>
+                      <label className="bucket-file-share-toggle" title={`Check ${file.file_name} to download, share or remove it with others`}>
                         <input
                           type="checkbox"
                           checked={!!shareFiles[file.id]}
                           onChange={(event) => setShareFiles((current) => ({ ...current, [file.id]: event.target.checked }))}
-                          aria-label={`Select ${file.file_name} for sharing`}
+                          aria-label={`Check ${file.file_name}`}
                         />
-                      </label> : null}
+                      </label>
                       <button
                         type="button"
                         className="bucket-file-open grow"
@@ -3465,18 +3618,18 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
               <Panel
                 className={cx(!bucketSectionsOpen.tasks && "bucket-panel-collapsed")}
-                title="Tasks"
-                actions={bucketSectionActions("tasks", <span className="tag">{detail.requested_documents.length} items</span>)}
+                title="Checklist"
+                actions={bucketSectionActions("tasks", <span className="tag">{detail.requested_documents.filter((doc) => doc.status === "requested").length} open</span>)}
               >
                 <div className="grid g8">
                   {detail.requested_documents.length === 0 ? (
-                    <EmptyInline icon="docCheck" title="No requested-file tasks" body="Tasks are created from requested documents." />
+                    <EmptyInline icon="docCheck" title="Nothing on the checklist" body="Add the documents the client should send." />
                   ) : detail.requested_documents.map((doc) => (
                     <div key={doc.id} className="itemrow">
                       <div className="grow">
                         <strong>{doc.name}</strong>
                         <div className="sub">
-                          {doc.category || "General"}{doc.required ? " | Required" : ""}{doc.allow_multiple_files ? " | Multiple files" : ""}
+                          {doc.category || "General"}{doc.required ? " | Required" : ""}{doc.allow_multiple_files ? " | Multiple files" : ""}{doc.source_kind === "rule" ? " | From a program rule" : doc.source_kind === "system" ? " | System" : " | Added by staff"}{doc.status === "closed" ? ` | Closed${doc.closed_reason === "bucket_archived" ? " when the room was archived" : ""}` : ""}
                         </div>
                         {doc.description ? <div className="sub" style={{ marginTop: 3 }}>{doc.description}</div> : null}
                       </div>
@@ -4093,7 +4246,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
             setEditBucketOpen(false);
             setEditBucketError(null);
           }}
-          title="Edit bucket details"
+          title="Edit room details"
           sub="A custom name changes only this workspace. Linked mode follows the source file business name."
           width="md"
           closeOnBackdrop={!editBucketSaving}
@@ -4121,11 +4274,11 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               <CellChip tone={detail.name_sync_mode === "linked" ? "ok" : "mut"}>{detail.name_sync_mode === "linked" ? "Following linked file" : "Custom bucket name"}</CellChip>
               {detail.linked_name ? <Sub>Linked file name: {detail.linked_name}</Sub> : <Sub>No canonical linked file name is available.</Sub>}
             </div>
-            <Field label="Bucket name" req>
+            <Field label="Room name" req>
               <Input
                 value={editBucketForm.name}
                 onChange={(event) => setEditBucketForm((form) => ({ ...form, name: event.target.value }))}
-                placeholder="Bucket name"
+                placeholder="Room name"
                 autoFocus
               />
             </Field>
@@ -4138,12 +4291,15 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                   placeholder="Client or borrower"
                 />
               </Field>
-              <Field label="Bucket type">
-                <Input
+              <Field label="Room type">
+                <Select
                   value={editBucketForm.bucket_type}
                   onChange={(event) => setEditBucketForm((form) => ({ ...form, bucket_type: event.target.value }))}
-                  placeholder="Loan File"
-                />
+                >
+                  {/* A room an intake created keeps its own kind; the operator chooses only among the manual ones. */}
+                  {(isBucketType(editBucketForm.bucket_type) && !OPERATOR_BUCKET_TYPES.includes(editBucketForm.bucket_type) ? [editBucketForm.bucket_type] : []).map((type) => <option key={type} value={type}>{bucketTypeLabel(type)}</option>)}
+                  {OPERATOR_BUCKET_TYPES.map((type) => <option key={type} value={type}>{bucketTypeLabel(type)}</option>)}
+                </Select>
               </Field>
             </div>
             <Field label="Purpose">
@@ -4184,7 +4340,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
         onClose={() => setLinkBucket(null)}
         initialBucketId={linkBucket?.id}
         initialIntakeId={linkBucket ? primaryIntakeByBucket.get(linkBucket.id) : undefined}
-        title="Link bucket to AI intake"
+        title="Link room to file"
       /> : null}
       {reviewFile ? (
         <BucketFileReviewPanel
@@ -4632,7 +4788,7 @@ function BucketTable({
   return (
     <div className="tblwrap">
       <table className="tbl bucket-list-table">
-        <thead><tr><th>Bucket</th><th>Client</th><th>Requested / uploaded</th><th>Vendors</th><th>Status</th><th>Connected file</th><th>Updated</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Room</th><th>Client</th><th>Checklist</th><th>Vendors</th><th>Status</th><th>Connected file</th><th>Updated</th><th>Actions</th></tr></thead>
         <tbody>
           {buckets.map((bucket) => {
             const link = links.find((item) => item.bucket_id === bucket.id && item.status === "active");
@@ -4649,11 +4805,11 @@ function BucketTable({
                 className={cx(pinned && "table-row-pinned", archived && semanticStatusClass("archived"))}
                 data-pinned={pinned || undefined}
               >
-                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucket.bucket_type || "Bucket"}{archiveLabel ? ` · ${archiveLabel}` : ""}</div></td>
+                <td><button type="button" className="linky" onClick={(event) => { event.stopPropagation(); onSelect(bucket.id); }}>{bucket.name}</button><div className="sub num">{bucket.id.slice(0, 8)} · {bucketTypeLabel(bucket.bucket_type)}{archiveLabel ? ` · ${archiveLabel}` : ""}</div></td>
                 <td>{bucket.client_name || <span className="sub">No client</span>}</td>
-                <td className="num">{bucket.file_count ?? 0} / {bucket.uploaded_file_count ?? 0}</td>
+                <td className="num">{bucket.open_request_count ?? 0} open · {bucket.file_count ?? 0} files</td>
                 <td className="num">{bucket.vendor_access_count ?? 0}</td>
-                <td><CellChip tone={archived ? "mut" : bucket.status.toLowerCase().includes("complete") ? "ok" : bucket.status.toLowerCase().includes("review") ? "acc" : "warn"}>{archived ? "Archived" : statusLabel(bucket.status)}</CellChip></td>
+                <td><CellChip tone={archived ? "mut" : roomStateTone(roomState(bucket))}>{archived ? "Archived" : roomStateLabel(roomState(bucket))}</CellChip></td>
                 <td>
                   {connected ? (
                     <div className="bucket-list-connected-file">
@@ -4661,9 +4817,9 @@ function BucketTable({
                       <span className="sub">{connected.kind}{connectedDetail ? ` · ${connectedDetail}` : ""}{(bucket.linked_files?.length ?? 0) > 1 ? ` · +${(bucket.linked_files?.length ?? 1) - 1}` : ""}</span>
                     </div>
                   ) : link || primaryIntakeId ? archived ? (
-                    <CellChip tone="mut">AI intake {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</CellChip>
+                    <CellChip tone="mut">File {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</CellChip>
                   ) : (
-                    <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>AI intake {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button>
+                    <button type="button" className="cellchip c-acc" onClick={(event) => { event.stopPropagation(); onLinkIntake(bucket); }}>File {(link?.intake_id || primaryIntakeId || "").slice(0, 8)}</button>
                   ) : <span className="sub">Not connected</span>}
                 </td>
                 <td className="sub">{formatDate(bucket.updated_at)}</td>
@@ -4673,14 +4829,14 @@ function BucketTable({
                     <PageActionMenu label={`Actions for ${bucket.name}`} items={archived ? [
                       { label: "Open retained records", onSelect: () => onSelect(bucket.id) },
                       ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),
-                      { label: restoringId === bucket.id ? "Restoring..." : "Restore bucket", onSelect: () => onRestore(bucket) },
+                      { label: restoringId === bucket.id ? "Restoring..." : "Restore room", onSelect: () => onRestore(bucket) },
                     ] : [
-                      { label: "Open bucket", onSelect: () => onSelect(bucket.id) },
+                      { label: "Open room", onSelect: () => onSelect(bucket.id) },
                       ...(connected ? [{ label: `Open ${connected.kind}`, onSelect: () => onOpenLinkedFile(connected) }] : []),
                       { label: "Vendor access", onSelect: () => onOpenVendors(bucket.id) },
-                      { label: link || primaryIntakeId ? "Manage AI intake link" : "Link AI intake", onSelect: () => onLinkIntake(bucket) },
-                      { label: "Create AI intake", onSelect: () => onConvertToLead(bucket) },
-                      { label: deletingId === bucket.id ? "Archiving..." : "Archive bucket", onSelect: () => onDelete(bucket), tone: "danger" },
+                      { label: link || primaryIntakeId ? "Manage file link" : "Link file", onSelect: () => onLinkIntake(bucket) },
+                      { label: "Create file", onSelect: () => onConvertToLead(bucket) },
+                      { label: deletingId === bucket.id ? "Archiving..." : "Archive room", onSelect: () => onDelete(bucket), tone: "danger" },
                     ]} />
                   </span>
                 </td>
@@ -4812,14 +4968,32 @@ function localFileKey(file: File): string {
   return `${file.name}|${file.size}|${file.lastModified}`;
 }
 
+type RoomState = "awaiting" | "collecting" | "ready";
+
+/** What the room holds decides its state: nothing yet, still collecting, or nothing left to ask for. */
+function roomState(bucket: Bucket): RoomState {
+  const files = bucket.file_count ?? 0;
+  const open = bucket.open_request_count ?? 0;
+  if (files === 0) return "awaiting";
+  return open > 0 ? "collecting" : "ready";
+}
+
+function roomStateLabel(state: RoomState): string {
+  return state === "awaiting" ? "Awaiting client" : state === "collecting" ? "Collecting" : "Ready for review";
+}
+
+function roomStateTone(state: RoomState): "warn" | "acc" | "ok" {
+  return state === "awaiting" ? "warn" : state === "collecting" ? "acc" : "ok";
+}
+
 function statusLabel(status: string) {
   return status.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function activityLabel(action: string) {
   const labels: Record<string, string> = {
-    bucket_created: "Bucket created",
-    bucket_deleted: "Bucket deleted",
+    bucket_created: "Room created",
+    bucket_deleted: "Room archived",
     requested_document_added: "Requested document added",
     upload_link_created: "Upload link created",
     upload_link_passcode_regenerated: "Upload access code regenerated",
@@ -4851,6 +5025,7 @@ function activityLabel(action: string) {
     file_review_opened: "Admin preview opened",
     file_preview_url_created: "Admin preview URL created",
     file_download_url_created: "Admin download URL created",
+    file_archive_downloaded: "Admin downloaded in a zip",
     file_annotation_created: "Admin annotation created",
     ai_action_created: "Action task created",
     ai_action_proposed: "Action task proposed",

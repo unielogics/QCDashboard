@@ -69,6 +69,8 @@ type FormStatus = {
   total_liabilities?: number | null;
   total_equity?: number | null;
   balances?: boolean | null;
+  /** The debt schedule only: the desk declared the business carries no debt. */
+  voided?: { reason: string; by: string | null; by_user_id: string | null; at: string | null } | null;
 };
 
 type Packet = {
@@ -94,6 +96,7 @@ const isStatementKind = (kind: FormKind): kind is StatementKind =>
 
 /** What the desk needs to know at a glance, in words rather than a tick. */
 function statusChip(form: FormStatus) {
+  if (form.voided) return <CellChip tone="ok">Voided · no debt</CellChip>;
   if (form.source === "filled") return <CellChip tone="ok">Filled in</CellChip>;
   if (form.source === "uploaded") return <CellChip tone="ok">Uploaded</CellChip>;
   if (form.requested) return <CellChip tone="warn">Outstanding</CellChip>;
@@ -150,6 +153,12 @@ function summaryLines(form: FormStatus): string[] {
     }
   }
 
+  if (form.kind === "debt_schedule" && form.voided) {
+    const who = form.voided.by ? `by ${form.voided.by}` : "by the desk";
+    const when = form.voided.at ? ` on ${shortDate(form.voided.at)}` : "";
+    return [`No debt on the business, declared ${who}${when}. ${form.voided.reason}`];
+  }
+
   if (form.kind === "debt_schedule" && form.row_count > 0) {
     return [
       `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${form.total_monthly == null ? "monthly payments incomplete" : `${currency(form.total_monthly)} a month`} · ${form.total_balance == null ? "balances incomplete" : `${currency(form.total_balance)} outstanding`}`,
@@ -201,7 +210,7 @@ function summaryLines(form: FormStatus): string[] {
 }
 
 export function FinancialFormsPanel({ profileId, intakeId, nested = false, onChange, onUploadFiles }: {
-  profileId?: string | null; intakeId?: string | null; nested?: boolean; onChange?: () => void; onUploadFiles?: (files: File[]) => Promise<void>;
+  profileId?: string | null; intakeId?: string | null; nested?: boolean; onChange?: () => void; onUploadFiles?: (files: File[]) => Promise<void>; onPreviewFile?: (fileId: string) => void;
 }) {
   const api = useAuthedApi();
   const [resolvedId, setResolvedId] = useState<string | null>(profileId ?? null);
