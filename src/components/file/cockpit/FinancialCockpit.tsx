@@ -17,6 +17,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { Drawer } from "@/components/ds/Drawer";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
@@ -718,10 +719,8 @@ export function FinancialCockpit(props: Props) {
           </div>
         </div>
         <div className="row" style={{ gap: 8 }}>
-          <Btn size="sm" onClick={props.onOpenEvidence}>Evidence room</Btn>
-          <Btn size="sm" onClick={() => void query.refetch()} disabled={query.isFetching}>
-            <Icon name="refresh" size={14} /> {query.isFetching ? "Refreshing…" : "Refresh"}
-          </Btn>
+          <ActionIcon icon="vault" label="Open the evidence room" onClick={props.onOpenEvidence} />
+          <ActionIcon icon="refresh" label={query.isFetching ? "Refreshing the figures..." : "Refresh the figures"} busy={query.isFetching} disabled={query.isFetching} onClick={() => void query.refetch()} />
         </div>
       </div>
 
