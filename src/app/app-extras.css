@@ -7191,3 +7191,10 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
   .ev-row .requirement-state-stack, .ev-row .requirement-title, .ev-row .requirement-coverage { grid-column: 1; text-align: left; }
   .ev-row .requirement-summary-toggle > svg { grid-column: 2; grid-row: 1; }
 }
+
+/* An evidence file row is a name that grows and a few things that do not: the AI's
+   decision chip and the file's icon actions. The older rule gave every direct span
+   a 280px basis, which stretched the chip and wrapped each icon onto its own line. */
+.requirement-table.compact .requirement-evidence-file { align-items: center; }
+.requirement-table.compact .requirement-evidence-file > span:not(:first-child),
+.requirement-table.compact .requirement-evidence-file > .action-icon { flex: 0 0 auto; }

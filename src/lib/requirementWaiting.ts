@@ -38,6 +38,7 @@ const KINDS: Partial<Record<TriageKind, RequirementWaitingKind>> = {
   not_accepted: "needs_person",
   signoff: "needs_signoff",
   partial: "partial",
+  replace: "partial",
   not_run: "review_not_run",
 };
 

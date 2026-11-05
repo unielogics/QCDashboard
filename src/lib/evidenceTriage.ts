@@ -27,6 +27,7 @@ export type TriageKind =
   | "not_run"
   | "checking"
   | "partial"
+  | "replace"
   | "waiting"
   | "not_asked"
   | "out_of_date";
@@ -92,6 +93,7 @@ export const LEGEND: { label: string; group: TriageGroup; means: string }[] = [
   { label: "Needs your review", group: "you", means: "A file came in and the AI could not accept it (wrong document, unreadable, or not sure). Preview it, then accept it anyway, move it to the right item, or ask the client for another." },
   { label: "Ready for your sign-off", group: "you", means: "The AI read the file and it looks right, but this item needs a person to confirm it before it counts." },
   { label: "Waiting on the client", group: "client", means: "We have asked and nothing has arrived yet. Partly received items say how much is in, for example 4 of 6 months." },
+  { label: "New file needed", group: "client", means: "Your team rejected the file and asked for another copy. The client needs to send a replacement, or you can fill the form in yourself." },
   { label: "AI is reading", group: "ai", means: "A file just came in and the AI is reading it. This usually takes a minute or two and updates by itself." },
   { label: "Complete", group: "done", means: "The AI accepted it or a person signed it off. It counts toward readiness." },
   { label: "Not needed", group: "done", means: "Waived or marked not applicable for this file." },
@@ -221,19 +223,35 @@ export function triageRequirement(requirement: TriageInput): Triage {
     };
   }
 
-  if (flagged.length || status === "failed") {
-    const why = sentence(flagged.find((file) => file.ai_explanation)?.ai_explanation ?? (status === "failed" ? requirement.state_reason : ""));
-    const lead = flagged.length > 1
-      ? `The AI could not accept ${flagged.length} of the ${files.length} files.`
-      : flagged.length === 1 && files.length > 1
+  // A file a person already rejected is not waiting on a person any more: the
+  // client owes a replacement (or the team fills the form in). Only what the AI
+  // itself could not accept is waiting on the underwriter.
+  const staffFlagged = flagged.filter((file) => file.decision_actor === "staff");
+  const aiFlagged = flagged.filter((file) => file.decision_actor !== "staff");
+
+  if (!aiFlagged.length && staffFlagged.length) {
+    const why = sentence(staffFlagged.find((file) => file.ai_explanation)?.ai_explanation);
+    return {
+      group: "client", kind: "replace", label: "New file needed", tone: "warn", owner: "client",
+      progress: progressOf(readCoverage(requirement.verified_coverage)),
+      short: "Your team asked for another copy",
+      next: `${staffFlagged.length > 1 ? "Your team rejected these files" : "Your team rejected this file"}.${why ? ` ${why}` : ""} The client needs to send another, or you can fill it in yourself.`,
+    };
+  }
+
+  if (aiFlagged.length || status === "failed") {
+    const why = sentence(aiFlagged.find((file) => file.ai_explanation)?.ai_explanation ?? (status === "failed" ? requirement.state_reason : ""));
+    const lead = aiFlagged.length > 1
+      ? `The AI could not accept ${aiFlagged.length} of the ${files.length} files.`
+      : aiFlagged.length === 1 && files.length > 1
         ? "The AI could not accept one of the files."
         : "The AI could not accept this file.";
     return {
-      group: "you", kind: status === "failed" && !flagged.length ? "not_accepted" : "review",
-      label: status === "failed" && !flagged.length ? "Not accepted" : "Needs your review",
+      group: "you", kind: status === "failed" && !aiFlagged.length ? "not_accepted" : "review",
+      label: status === "failed" && !aiFlagged.length ? "Not accepted" : "Needs your review",
       tone: "warn", owner: "you",
       progress: progressOf(readCoverage(requirement.verified_coverage)),
-      short: flagged.length > 1 ? `The AI could not accept ${flagged.length} files` : "The AI could not accept the file",
+      short: aiFlagged.length > 1 ? `The AI could not accept ${aiFlagged.length} files` : "The AI could not accept the file",
       next: `${lead}${why ? ` ${why}` : ""} Preview it, then accept it anyway, move it to the right item, or ask the client for another.`,
     };
   }
@@ -288,7 +306,7 @@ export function triageCounts(requirements: TriageInput[]): TriageGroupCounts {
 }
 
 const KIND_URGENCY: TriageKind[] = [
-  "review", "not_accepted", "signoff", "not_run", "out_of_date", "partial", "waiting", "not_asked", "reading", "checking", "complete", "overridden", "not_needed",
+  "review", "not_accepted", "signoff", "not_run", "out_of_date", "replace", "partial", "waiting", "not_asked", "reading", "checking", "complete", "overridden", "not_needed",
 ];
 
 const LEVEL_ORDER: Record<string, number> = { required: 0, recommended: 1, optional: 2 };

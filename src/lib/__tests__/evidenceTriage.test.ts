@@ -83,6 +83,26 @@ describe("who acts next on a requirement", () => {
     expect(result.progress?.text).toBe("0 of 1 document");
   });
 
+  it("does not leave a file the team already rejected waiting on the team: the client owes a new one", () => {
+    // The Earthly debt schedule: staff rejected the PDF ("too many missing columns") and asked for another copy.
+    const rejected = requirement({
+      verification_required: true,
+      coverage: { current: 1, required: 1, unit: "documents" },
+      verified_coverage: { current: 0, required: 1, unit: "documents" },
+      evidence_files: [file("rejected", { decision_actor: "staff", ai_explanation: "too many missing columns that are important for refinancing" })],
+    });
+    const result = triageRequirement(rejected);
+    expect(result).toMatchObject({ group: "client", kind: "replace", label: "New file needed", owner: "client" });
+    expect(result.next).toBe("Your team rejected this file. too many missing columns that are important for refinancing. The client needs to send another, or you can fill it in yourself.");
+    expect(result.short).toBe("Your team asked for another copy");
+  });
+
+  it("still asks the underwriter to look when the AI flagged a file, even if a person rejected another", () => {
+    const mixed = requirement({ evidence_files: [file("needs_more"), file("rejected", { decision_actor: "staff" })] });
+    expect(triageRequirement(mixed)).toMatchObject({ group: "you", kind: "review" });
+    expect(triageRequirement(mixed).next).toContain("could not accept one of the files");
+  });
+
   it("says ready for sign-off — not 'partly received' — when the AI accepted the file and only a person is missing", () => {
     // The live bug: the old label read the sign-off count (0 of 1) as a shortfall of documents.
     const result = triageRequirement(DEBT_SCHEDULE);
