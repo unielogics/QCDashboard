@@ -13,7 +13,7 @@
 //
 // It stands on its own so any row can embed it; the drawer is a thin wrapper.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Seg, Sub } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
@@ -49,16 +49,11 @@ import {
   type ReviewSource,
   type StorageLike,
 } from "@/lib/debtReview";
+import { day, DebtReviewHeadline, sourceMeta } from "./DebtScheduleReviewHeader";
 import { DebtScheduleReviewTable, type FocusRequest } from "./DebtScheduleReviewTable";
 import styles from "./DebtScheduleReviewDrawer.module.css";
 
 const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(" ");
-
-const day = (value: string | null): string => {
-  if (!value) return "";
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? "" : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
-};
 
 const time = (value: string | null): string => {
   if (!value) return "";
@@ -76,9 +71,7 @@ function sessionStore(): StorageLike | null {
 }
 
 function SourceCard({ source, compact }: { source: ReviewSource; compact: boolean }) {
-  const meta = [source.uploaded_by ? `uploaded by ${source.uploaded_by}` : "", day(source.uploaded_at), source.schedule_date ? `schedule dated ${source.schedule_date}` : "", `${source.line_count} line${source.line_count === 1 ? "" : "s"}`]
-    .filter(Boolean)
-    .join(" · ");
+  const meta = sourceMeta(source);
   return (
     <div className={styles.source}>
       <div className={styles.sourceTitle}>
@@ -89,6 +82,17 @@ function SourceCard({ source, compact }: { source: ReviewSource; compact: boolea
       <p className={styles.sourceMeta}>{meta}</p>
       {!compact && source.scope_note ? <p className={styles.sourceMeta} title={source.source_basis ?? undefined}>{source.scope_note}</p> : null}
     </div>
+  );
+}
+
+/** What the cell colours mean, so the mapping from the file reads at a glance. */
+function ColourKey() {
+  return (
+    <ul className={styles.legend} aria-label="What the cell colours mean">
+      <li><i className={styles.swFile} aria-hidden="true" />from the file</li>
+      <li><i className={styles.swNeeded} aria-hidden="true" />needed: the file did not say</li>
+      <li><i className={styles.swEdited} aria-hidden="true" />edited by you</li>
+    </ul>
   );
 }
 
@@ -118,6 +122,8 @@ export function DebtScheduleReviewPanel({
   const [filter, setFilter] = useState<"all" | "needed">("all");
   const [pinned, setPinned] = useState<ReadonlySet<string> | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const keyId = useId();
   const [fileIt, setFileIt] = useState(true);
   const [filingProblem, setFilingProblem] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
@@ -197,6 +203,7 @@ export function DebtScheduleReviewPanel({
   const history = useMemo(() => drafts.filter(isHistory), [drafts]);
   const columns = useMemo(() => visibleColumns(listed, showDetails), [listed, showDetails]);
   const sources = review.data?.sources ?? [];
+  const needy = useMemo(() => listed.filter((draft) => draft.keep && (neededFields(draft).length > 0 || Object.keys(draftErrors(draft)).length > 0)), [listed]);
   const dirty = useMemo(() => isDirty(drafts, fresh), [drafts, fresh]);
   const loading = review.isLoading || (review.isFetching && seeded.current === null) || (Boolean(review.data) && seeded.current === null);
 
@@ -222,7 +229,7 @@ export function DebtScheduleReviewPanel({
     setFilter(next);
     // The needs-answers view is the lines that need one right now, and stays
     // those lines while the person fills them in.
-    setPinned(next === "needed" ? new Set(listed.filter((draft) => draft.keep && (neededFields(draft).length > 0 || Object.keys(draftErrors(draft)).length > 0)).map((draft) => draft.key)) : null);
+    setPinned(next === "needed" ? new Set(needy.map((draft) => draft.key)) : null);
   };
 
   const goToNext = () => {
@@ -283,23 +290,27 @@ export function DebtScheduleReviewPanel({
 
       {!loading && review.data ? (
         <div className={styles.layout}>
-          <header className={styles.summary} role="status" aria-live="polite">
-            <div className={styles.headline}>
-              <strong>{headline}</strong>
-              <span className={styles.lead}>
-                {firstRun
-                  ? "Everything the file gave is already in its column. The amber cells are what it did not say: fill them in, take off anything that is not a loan, then save."
-                  : "These are the lines on the file's debt schedule. Change a cell and save."}
-              </span>
-            </div>
-            <div className={styles.stats}>
-              <span className={styles.stat}><b>{summary.keeping}</b> keeping</span>
-              <span className={`${styles.stat} ${summary.removing ? styles.statOff : ""}`}><b>{summary.removing}</b> taken off</span>
-              <span className={`${styles.stat} ${summary.missing ? styles.statNeed : ""}`}><b>{summary.missing}</b> answer{summary.missing === 1 ? "" : "s"} missing</span>
-            </div>
-          </header>
+          {compact ? (
+            <DebtReviewHeadline sources={sources} summary={summary} />
+          ) : (
+            <header className={styles.summary} role="status" aria-live="polite">
+              <div className={styles.headline}>
+                <strong>{headline}</strong>
+                <span className={styles.lead}>
+                  {firstRun
+                    ? "Everything the file gave is already in its column. The amber cells are what it did not say: fill them in, take off anything that is not a loan, then save."
+                    : "These are the lines on the file's debt schedule. Change a cell and save."}
+                </span>
+              </div>
+              <div className={styles.stats}>
+                <span className={styles.stat}><b>{summary.keeping}</b> keeping</span>
+                <span className={`${styles.stat} ${summary.removing ? styles.statOff : ""}`}><b>{summary.removing}</b> taken off</span>
+                <span className={`${styles.stat} ${summary.missing ? styles.statNeed : ""}`}><b>{summary.missing}</b> answer{summary.missing === 1 ? "" : "s"} missing</span>
+              </div>
+            </header>
+          )}
 
-          {sources.length ? <div className={styles.sources}>{sources.map((source) => <SourceCard key={source.file_id} source={source} compact={compact} />)}</div> : null}
+          {sources.length > (compact ? 1 : 0) ? <div className={styles.sources}>{sources.map((source) => <SourceCard key={source.file_id} source={source} compact={compact} />)}</div> : null}
 
           {saved ? (
             <div className={styles.notice} role="status">
@@ -322,7 +333,16 @@ export function DebtScheduleReviewPanel({
             </div>
           ) : null}
 
-          {summary.unsavedPayments ? (
+          {compact ? (
+            summary.droppedPayments ? (
+              <div className={styles.notice} role="status">
+                <Icon name="alert" size={14} />
+                <span className="grow">
+                  {summary.droppedPayments === 1 ? "A payment you typed has" : `${summary.droppedPayments} payments you typed have`} no &ldquo;how often&rdquo; (Per), so saving would leave {summary.droppedPayments === 1 ? "it" : "them"} out.
+                </span>
+              </div>
+            ) : null
+          ) : summary.unsavedPayments ? (
             <div className={styles.notice} role="status">
               <Icon name="alert" size={14} />
               <span className="grow">
@@ -355,14 +375,24 @@ export function DebtScheduleReviewPanel({
                   onChange={chooseFilter}
                   options={[
                     { value: "all", label: `All lines (${listed.length})` },
-                    { value: "needed", label: `Needs answers (${summary.missing})` },
+                    { value: "needed", label: `Needs answers (${needy.length})` },
                   ]}
                 />
-                <ul className={styles.legend} aria-label="What the cell colours mean">
-                  <li><i className={styles.swFile} aria-hidden="true" />from the file</li>
-                  <li><i className={styles.swNeeded} aria-hidden="true" />needed: the file did not say</li>
-                  <li><i className={styles.swEdited} aria-hidden="true" />edited by you</li>
-                </ul>
+                {compact ? (
+                  <button
+                    type="button"
+                    className={styles.infoBtn}
+                    aria-label="What the cell colours mean"
+                    aria-expanded={showKey}
+                    aria-controls={keyId}
+                    title="What the cell colours mean"
+                    onClick={() => setShowKey((open) => !open)}
+                  >
+                    i
+                  </button>
+                ) : (
+                  <ColourKey />
+                )}
                 <span className="grow" />
                 <label className={styles.toggle}>
                   <input type="checkbox" checked={showDetails} onChange={(event) => setShowDetails(event.target.checked)} />
@@ -371,6 +401,7 @@ export function DebtScheduleReviewPanel({
                 <Btn size="sm" onClick={addLine}><Icon name="plus" size={13} />Add a line</Btn>
                 <Btn size="sm" onClick={goToNext} disabled={!summary.missing}><Icon name="arrowR" size={13} />Next needed</Btn>
               </div>
+              {compact && showKey ? <div id={keyId}><ColourKey /></div> : null}
 
               <div
                 onFocusCapture={(event) => {
@@ -402,11 +433,13 @@ export function DebtScheduleReviewPanel({
             </details>
           ) : null}
 
-          <p className={styles.unlink}>
-            <Sub>Not right? Unlink the file from the request and upload a PDF or Excel file instead; the lines here follow the file.</Sub>
-          </p>
+          {compact ? null : (
+            <p className={styles.unlink}>
+              <Sub>Not right? Unlink the file from the request and upload a PDF or Excel file instead; the lines here follow the file.</Sub>
+            </p>
+          )}
 
-          {listed.length ? (
+          {listed.length && (!compact || offerFiling || alreadyFiled) ? (
             <div className={styles.filing}>
               {offerFiling ? (
                 <label className={styles.toggle}>

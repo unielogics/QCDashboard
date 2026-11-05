@@ -230,28 +230,40 @@ export type ColumnSpec = {
   max?: number;
 };
 
-/** The columns, in the order a schedule reads. The three Franco asks for are
- *  the accent group; the advance question is a group of its own because the
- *  schedule form requires it of every advance. */
+/** The columns, in the order a desk fills them. The three Franco asks for come
+ *  straight after the Lender (the accent group), so they are on screen without a
+ *  scroll even beside a narrow panel; the type of debt, which the file almost
+ *  always gives, waits behind the payment. The advance question is a group of its
+ *  own because the schedule form requires it of every advance. */
 export const COLUMNS: readonly ColumnSpec[] = [
-  { key: "lender", label: "Lender", group: "lender", kind: "text", width: 250, help: "Who the debt is owed to.", max: 180 },
-  { key: "debtType", label: "Type of debt", group: "lender", kind: "type", width: 230, help: "What kind of obligation it is. An advance is asked its factor rate and whether it was modified." },
-  { key: "originalAmount", label: "Original amount approved", group: "three", kind: "money", width: 160, help: "What the lender approved or funded at the start." },
-  { key: "balance", label: "Current balance", group: "three", kind: "money", width: 150, help: "What is still owed today." },
-  { key: "rate", label: "Interest rate (%) · factor for advances", group: "three", kind: "rate", width: 150, help: "Percent a year for a loan; the factor (such as 1.35) for a merchant cash advance or revenue-based financing." },
-  { key: "paymentAmount", label: "Payment", group: "payment", kind: "money", width: 130, help: "One payment, as the lender takes it." },
-  { key: "paymentCadence", label: "Per", group: "payment", kind: "cadence", width: 140, help: "How often that payment is taken." },
-  { key: "monthly", label: "≈ Monthly", group: "payment", kind: "computed", width: 130, help: "The payment as a month, which is what the debt service counts." },
-  { key: "paymentStatus", label: "Current or delinquent", group: "status", kind: "status", width: 150, help: "Whether the debt is being paid on time." },
-  { key: "mcaModified", label: "Modified for lower sales?", group: "advance", kind: "yesno", width: 150, help: "Asked of an advance only: did the funder lower the remittance because sales or revenue fell." },
-  { key: "mcaNote", label: "What changed", group: "advance", kind: "text", width: 210, help: "How the funder modified it.", max: 1000 },
-  { key: "originatedOn", label: "Origin date", group: "details", kind: "date", width: 130, help: "When the debt started (mm/dd/yyyy). Optional." },
-  { key: "maturityOn", label: "Maturity date", group: "details", kind: "date", width: 130, help: "When it is due to end (mm/dd/yyyy). Optional." },
-  { key: "secured", label: "Secured or unsecured", group: "details", kind: "secured", width: 150, help: "Whether something backs the debt. Optional." },
-  { key: "collateral", label: "Type of collateral", group: "details", kind: "text", width: 190, help: "What backs it. Optional.", max: 500 },
-  { key: "note", label: "Note", group: "details", kind: "text", width: 210, help: "Anything a reader of the schedule should know. Optional.", max: 2000 },
-  { key: "fromFile", label: "From the file", group: "file", kind: "notes", width: 260, help: "The file's own caveats about the line." },
+  { key: "lender", label: "Lender", group: "lender", kind: "text", width: 220, help: "Who the debt is owed to.", max: 180 },
+  { key: "originalAmount", label: "Original amount approved", group: "three", kind: "money", width: 130, help: "What the lender approved or funded at the start." },
+  { key: "balance", label: "Current balance", group: "three", kind: "money", width: 120, help: "What is still owed today." },
+  { key: "rate", label: "Interest rate (%) · factor for advances", group: "three", kind: "rate", width: 120, help: "Percent a year for a loan; the factor (such as 1.35) for a merchant cash advance or revenue-based financing." },
+  { key: "paymentAmount", label: "Payment", group: "payment", kind: "money", width: 120, help: "One payment, as the lender takes it." },
+  { key: "paymentCadence", label: "Per", group: "payment", kind: "cadence", width: 140, help: "How often that payment is taken. A payment is saved together with this: until it is chosen the payment waits (the file still has it)." },
+  { key: "monthly", label: "≈ Monthly", group: "payment", kind: "computed", width: 110, help: "The payment as a month, which is what the debt service counts." },
+  { key: "debtType", label: "Type of debt", group: "lender", kind: "type", width: 250, help: "What kind of obligation it is. An advance is asked its factor rate and whether it was modified." },
+  { key: "paymentStatus", label: "Current or delinquent", group: "status", kind: "status", width: 140, help: "Whether the debt is being paid on time." },
+  { key: "mcaModified", label: "Modified for lower sales?", group: "advance", kind: "yesno", width: 140, help: "Asked of an advance only: did the funder lower the remittance because sales or revenue fell." },
+  { key: "mcaNote", label: "What changed", group: "advance", kind: "text", width: 200, help: "How the funder modified it.", max: 1000 },
+  { key: "originatedOn", label: "Origin date", group: "details", kind: "date", width: 120, help: "When the debt started (mm/dd/yyyy). Optional." },
+  { key: "maturityOn", label: "Maturity date", group: "details", kind: "date", width: 120, help: "When it is due to end (mm/dd/yyyy). Optional." },
+  { key: "secured", label: "Secured or unsecured", group: "details", kind: "secured", width: 140, help: "Whether something backs the debt. Optional." },
+  { key: "collateral", label: "Type of collateral", group: "details", kind: "text", width: 180, help: "What backs it. Optional.", max: 500 },
+  { key: "note", label: "Note", group: "details", kind: "text", width: 200, help: "Anything a reader of the schedule should know. Optional.", max: 2000 },
+  { key: "fromFile", label: "From the file", group: "file", kind: "notes", width: 240, help: "The file's own caveats about the line." },
 ];
+
+/** What the rate column's header asks for, given the lines that stay: a percent
+ *  for loans, the factor for advances, and both words only when both are there. */
+export function rateHeader(drafts: readonly LineDraft[]): string {
+  const kept = drafts.filter((draft) => draft.keep);
+  const advances = kept.filter((draft) => isAdvanceDraft(draft)).length;
+  if (kept.length > 0 && advances === kept.length) return "Factor rate";
+  if (advances === 0) return "Interest rate (%)";
+  return "Interest rate (%) or factor";
+}
 
 export const COLUMN_BY_KEY: Readonly<Record<ColumnKey, ColumnSpec>> = Object.fromEntries(COLUMNS.map((column) => [column.key, column])) as Record<ColumnKey, ColumnSpec>;
 
@@ -549,6 +561,16 @@ export function unsavedPayment(draft: LineDraft): boolean {
   return !blank(draft.paymentAmount) && figure(draft.paymentAmount) != null && blank(draft.paymentCadence);
 }
 
+/** A payment the PERSON typed with no "how often": saving would leave it out. An
+ *  amount the file gave and nobody touched is not at risk (the file still carries
+ *  it and it comes back when the table opens), so it is not worth a warning: its
+ *  empty "Per" cell already says what is needed. */
+export function droppedPayment(draft: LineDraft): boolean {
+  if (!unsavedPayment(draft)) return false;
+  const said = draft.file?.values.paymentAmount;
+  return said == null || !sameAsFile("paymentAmount", draft.paymentAmount, said);
+}
+
 export type CellErrors = Partial<Record<FieldKey, string>>;
 
 /** What stops a kept line from being saved. Blank answers never do: "not all
@@ -748,6 +770,24 @@ export function visibleColumns(drafts: LineDraft[], showDetails: boolean): Colum
   return COLUMNS.filter((column) => (column.group === "details" ? showDetails : column.group === "advance" ? anyAdvance || showDetails : true)).map((column) => column.key);
 }
 
+export type Box = { left: number; right: number; top: number; bottom: number };
+
+/** How far a scroll box must move to bring `item` inside `band`, the stretch of
+ *  it that is not covered by the sticky Lender column, the row actions, the
+ *  header or the totals. The browser's own scroll-into-view (and the focus
+ *  scroll a Tab causes) counts the whole box as visible, so a cell under a
+ *  sticky column is "in view" and a Tab can land half hidden. Negative moves
+ *  left or up. A cell wider than the band is lined up by its start. */
+export function scrollToClear(item: Box, band: Box, margin = 6): { dx: number; dy: number } {
+  const along = (lo: number, hi: number, bandLo: number, bandHi: number): number => {
+    if (hi - lo > bandHi - bandLo - 2 * margin) return lo - (bandLo + margin);
+    if (lo < bandLo + margin) return lo - (bandLo + margin);
+    if (hi > bandHi - margin) return hi - (bandHi - margin);
+    return 0;
+  };
+  return { dx: along(item.left, item.right, band.left, band.right), dy: along(item.top, item.bottom, band.top, band.bottom) };
+}
+
 export type CellRef = { row: string; col: ColumnKey };
 
 /** Every needed cell, row by row, left to right, in the columns on screen. */
@@ -777,11 +817,13 @@ export type ReviewSummary = {
   invalid: number;
   /** Kept lines with a payment amount that has no "how often" yet, so it is not saved. */
   unsavedPayments: number;
+  /** Of those, the ones the person typed: saving would drop them (see `droppedPayment`). */
+  droppedPayments: number;
   changed: boolean;
 };
 
 export function summarize(drafts: LineDraft[]): ReviewSummary {
-  const summary: ReviewSummary = { read: 0, keeping: 0, removing: 0, missing: 0, invalid: 0, unsavedPayments: 0, changed: false };
+  const summary: ReviewSummary = { read: 0, keeping: 0, removing: 0, missing: 0, invalid: 0, unsavedPayments: 0, droppedPayments: 0, changed: false };
   for (const draft of drafts) {
     if (draft.state === "read") summary.read += 1;
     if (draft.keep) {
@@ -789,6 +831,7 @@ export function summarize(drafts: LineDraft[]): ReviewSummary {
       summary.missing += neededFields(draft).length;
       if (hasErrors(draft)) summary.invalid += 1;
       if (unsavedPayment(draft)) summary.unsavedPayments += 1;
+      if (droppedPayment(draft)) summary.droppedPayments += 1;
     } else if (draft.state !== "removed") {
       summary.removing += 1; // being taken off now; the earlier history is not counted
     }

@@ -10,6 +10,7 @@ import {
   displayToIso,
   draftErrors,
   draftFromLine,
+  droppedPayment,
   editedFields,
   fileSaying,
   formatMoneyText,
@@ -27,11 +28,13 @@ import {
   newLineDraft,
   nextNeeded,
   paymentSentence,
+  rateHeader,
   readingSignature,
   resetRow,
   reviewBody,
   saveStored,
   savedSentence,
+  scrollToClear,
   summarize,
   tidyCell,
   totals,
@@ -477,8 +480,45 @@ describe("the columns on screen", () => {
     expect(visibleColumns(loans, false)).not.toContain("mcaModified");
     expect(visibleColumns(loans, true)).toContain("mcaModified");
     expect(visibleColumns([{ ...draftFromLine(line()), keep: false }], false)).not.toContain("mcaModified");
-    expect(visibleColumns(loans, false).slice(0, 3)).toEqual(["lender", "debtType", "originalAmount"]);
+    // The three questions come straight after the Lender, so they are on screen beside a narrow panel.
+    expect(visibleColumns(loans, false).slice(0, 4)).toEqual(["lender", "originalAmount", "balance", "rate"]);
+    const order = visibleColumns(advance, false);
+    expect(order.indexOf("rate")).toBeLessThan(order.indexOf("paymentAmount"));
+    expect(order.indexOf("monthly")).toBeLessThan(order.indexOf("debtType")); // the type, which the file gives, waits behind the payment
     expect(visibleColumns(loans, false).at(-1)).toBe("fromFile");
+  });
+
+  it("asks the rate column for what the lines that stay are asked", () => {
+    const advance = draftFromLine(line());
+    const loanLine = draftFromLine(loan());
+    expect(rateHeader([advance])).toBe("Factor rate");
+    expect(rateHeader([loanLine])).toBe("Interest rate (%)");
+    expect(rateHeader([advance, loanLine])).toBe("Interest rate (%) or factor");
+    expect(rateHeader([{ ...advance, keep: false }, loanLine])).toBe("Interest rate (%)"); // a line taken off is not asked
+    expect(rateHeader([])).toBe("Interest rate (%)");
+  });
+});
+
+describe("scrolling a cell clear of the sticky parts", () => {
+  const band = { left: 220, right: 600, top: 50, bottom: 400 };
+  const box = (left: number, right: number, top = 100, bottom = 140) => ({ left, right, top, bottom });
+
+  it("does nothing for a cell that is inside the band", () => {
+    expect(scrollToClear(box(300, 420), band)).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it("moves left for a cell under the Lender column and right for one under the actions", () => {
+    expect(scrollToClear(box(150, 270), band).dx).toBe(150 - (220 + 6));
+    expect(scrollToClear(box(520, 660), band).dx).toBe(660 - (600 - 6));
+  });
+
+  it("moves up for a row under the header and down for one under the totals", () => {
+    expect(scrollToClear(box(300, 420, 20, 60), band).dy).toBe(20 - (50 + 6));
+    expect(scrollToClear(box(300, 420, 380, 440), band).dy).toBe(440 - (400 - 6));
+  });
+
+  it("lines up the start of a cell wider than the band", () => {
+    expect(scrollToClear(box(100, 900), band).dx).toBe(100 - (220 + 6));
   });
 });
 
@@ -492,6 +532,22 @@ describe("the summary", () => {
     expect(summarize(rows)).toMatchObject({ read: 3, keeping: 2, removing: 1, missing: 3, invalid: 0, unsavedPayments: 0, changed: true });
     const unsaid = [draftFromLine(line({ payment_frequency: null, monthly_payment: null })), draftFromLine(line({ key: "x" }))];
     expect(summarize(unsaid).unsavedPayments).toBe(1);
+  });
+
+  it("warns about a payment only when saving would drop one the person typed", () => {
+    // The file gave 359.62 with no how-often: it waits, and the file still has it, so nothing is at risk.
+    const fromFile = draftFromLine(line({ payment_frequency: null, monthly_payment: null }));
+    expect(unsavedPayment(fromFile)).toBe(true);
+    expect(droppedPayment(fromFile)).toBe(false);
+    expect(summarize([fromFile])).toMatchObject({ unsavedPayments: 1, droppedPayments: 0 });
+    // The person changed the amount (or typed one the file did not give): saving would leave it out.
+    const typedOver = { ...fromFile, paymentAmount: "400" };
+    expect(droppedPayment(typedOver)).toBe(true);
+    const typedNew = { ...newLineDraft(1), lender: "Local Bank", paymentAmount: "250" };
+    expect(summarize([typedNew])).toMatchObject({ unsavedPayments: 1, droppedPayments: 1 });
+    // Once it says how often, nothing waits; a line taken off is never counted.
+    expect(droppedPayment({ ...typedOver, paymentCadence: "weekly" })).toBe(false);
+    expect(droppedPayment({ ...typedOver, keep: false })).toBe(false);
   });
 
   it("does not count history as being taken off now", () => {

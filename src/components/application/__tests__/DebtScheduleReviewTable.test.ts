@@ -51,9 +51,16 @@ describe("the review table markup", () => {
     const html = render(drafts);
     expect(html.match(/<table /g)).toHaveLength(1);
     expect(html).toContain('aria-label="Debt schedule lines"');
-    for (const label of ["Lender", "Type of debt", "Original amount approved", "Current balance", "Payment", "Per", "≈ Monthly", "Current or delinquent", "Modified for lower sales?", "From the file", "This line"]) {
+    for (const label of ["Lender", "Type of debt", "Original amount approved", "Current balance", "Payment", "Per", "≈ Monthly", "Current or delinquent", "Modified for lower sales?", "From the file", "Take off"]) {
       expect(html).toContain(label);
     }
+    // The three questions follow the Lender, and the type of debt waits behind the payment.
+    const at = (key: string) => html.indexOf(`data-ck="${key}"`);
+    expect(at("lender")).toBeLessThan(at("originalAmount"));
+    expect(at("originalAmount")).toBeLessThan(at("balance"));
+    expect(at("balance")).toBeLessThan(at("rate"));
+    expect(at("rate")).toBeLessThan(at("paymentAmount"));
+    expect(at("paymentAmount")).toBeLessThan(at("debtType"));
     expect(html.match(/<th /g)).toHaveLength(visibleColumns(drafts, false).length + 1);
     expect(html).not.toContain("Type of collateral"); // the details wait for the person to ask
   });
@@ -92,7 +99,22 @@ describe("the review table markup", () => {
     const html = render(drafts);
     expect(html).toContain('data-label="Current balance"');
     expect(html).toContain('data-label="Factor rate"');
-    expect(html).toContain('data-label="This line"');
+    expect(html).toContain('data-label="Not a loan?"');
+  });
+
+  it("pins the Lender column and the row actions, and says so for the keyboard", () => {
+    const html = render(drafts);
+    expect(html.match(/data-pin="left"/g)!.length).toBeGreaterThanOrEqual(3); // header, rows, totals
+    expect(html.match(/data-pin="right"/g)!.length).toBeGreaterThanOrEqual(3);
+    expect(html).toContain('<col style="width:92px"/>'); // the actions are two small icons, not a wide column
+  });
+
+  it("asks the rate column for what the lines are asked", () => {
+    expect(render(drafts)).toContain(">Factor rate<"); // every line stays an advance
+    const loans = render([draftFromLine(line({ key: "bank", lender: "Bank of Main", debt_type: "term_loan", advance: false, from_file: null }))]);
+    expect(loans).toContain(">Interest rate (%)<");
+    const both = render([...drafts, draftFromLine(line({ key: "bank", lender: "Bank of Main", debt_type: "term_loan", advance: false, from_file: null }))]);
+    expect(both).toContain(">Interest rate (%) or factor<");
   });
 
   it("tags every control with its row and column so the keyboard can find its neighbour", () => {
@@ -110,17 +132,18 @@ describe("the review table markup", () => {
     expect(html).toContain("Not named in the file. Typed by the client.");
   });
 
-  it("offers Not a loan on every kept line and Reset to the file only where the row differs from it", () => {
+  it("offers Not a loan on every kept line and a reset only where the row differs from the file", () => {
     const edited = { ...drafts[0], balance: "1" };
     const html = render([edited, drafts[1]]);
-    expect(html.match(/Not a loan/g)!.length).toBeGreaterThanOrEqual(2);
-    expect(html.match(/Reset to the file/g)).toHaveLength(1);
+    // Two small icons with a name each (the name is also the hover), not text buttons.
+    expect(html.match(/aria-label="Not a loan: take [^"]+ off the schedule\./g)).toHaveLength(2);
+    expect(html.match(/aria-label="Put every cell on [^"]+ back to what the file said\."/g)).toHaveLength(1);
   });
 
-  it("offers Remove line, not Not a loan, on a line the desk added by hand", () => {
+  it("offers Remove, not Not a loan, on a line the desk added by hand", () => {
     const html = render([{ ...newLineDraft(1), lender: "Local Bank" }]);
-    expect(html).toContain("Remove line");
-    expect(html).not.toContain("Not a loan");
+    expect(html).toContain('aria-label="Remove the line Local Bank you added.');
+    expect(html).not.toContain("Not a loan: take");
     expect(html).toContain('data-rk="new:1"');
     expect(html).toContain("Added by you"); // said in the From the file column
   });

@@ -15,6 +15,7 @@
 
 import { memo, useEffect, useRef, type KeyboardEvent } from "react";
 import { Btn, CellChip } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { Icon } from "@/components/design-system/Icon";
 import { DEBT_TYPES, debtTypeLabel } from "@/lib/debtTypes";
 import {
@@ -35,7 +36,9 @@ import {
   monthlyOf,
   neededFields,
   paymentSentence,
+  rateHeader,
   resetRow,
+  scrollToClear,
   tidyCell,
   totals,
   type CellMood,
@@ -54,6 +57,9 @@ const cx = (...parts: Array<string | false | null | undefined>) => parts.filter(
 const quote = (value: string) => value.replace(/["\\]/g, "\\$&");
 
 type Change = (key: string, change: Partial<LineDraft>) => void;
+
+/** The pinned row-actions column: two small icons. */
+const ACTIONS_WIDTH = 92;
 
 const MAX_LENGTH: Partial<Record<FieldKey, number>> = { lender: 180, mcaNote: 1000, collateral: 500, note: 2000 };
 
@@ -165,7 +171,7 @@ const DataRow = memo(function DataRow({ draft, columns, onChange, onReplace, onD
     if (column === "lender") {
       const mood = cellMood(draft, "lender", edited, needed, errors);
       return (
-        <td key={column} className={cx(styles.cell, styles.lenderCol)} data-label={spec.label} data-mood={mood} title={cellTitle(draft, "lender", mood, errors) || undefined}>
+        <td key={column} className={cx(styles.cell, styles.lenderCol)} data-pin="left" data-label={spec.label} data-mood={mood} title={cellTitle(draft, "lender", mood, errors) || undefined}>
           <div className={styles.lenderBox}>
             <div className={styles.cellBox}>
               <input
@@ -224,22 +230,14 @@ const DataRow = memo(function DataRow({ draft, columns, onChange, onReplace, onD
   return (
     <tr className={styles.dataRow} data-row={draft.key}>
       {cells}
-      <td className={cx(styles.cell, styles.actionsCol)} data-label="This line">
+      <td className={cx(styles.cell, styles.actionsCol)} data-pin="right" data-label="Not a loan?">
         <div className={styles.actions}>
           {isNewLine(draft) ? (
-            <span title="Remove this line you added. Nothing was saved, so nothing is kept.">
-              <Btn size="sm" onClick={() => onDelete(draft.key)} aria-label={`Remove the line ${lender}`}><Icon name="x" size={13} />Remove line</Btn>
-            </span>
+            <ActionIcon icon="x" label={`Remove the line ${lender} you added. Nothing was saved, so nothing is kept.`} onClick={() => onDelete(draft.key)} />
           ) : (
-            <span title="Not a loan or debt: take it off the schedule. It is kept as history and can be put back.">
-              <Btn size="sm" onClick={() => onChange(draft.key, { keep: false })} aria-label={`${lender} is not a loan`}><Icon name="x" size={13} />Not a loan</Btn>
-            </span>
+            <ActionIcon icon="x" label={`Not a loan: take ${lender} off the schedule. It is kept as history and can be put back.`} onClick={() => onChange(draft.key, { keep: false })} />
           )}
-          {canResetRow(draft) ? (
-            <span title="Put every cell on this line back to what the file said.">
-              <Btn size="sm" onClick={() => onReplace(draft.key, resetRow(draft))} aria-label={`Reset ${lender} to what the file said`}><Icon name="refresh" size={13} />Reset to the file</Btn>
-            </span>
-          ) : null}
+          {canResetRow(draft) ? <ActionIcon icon="refresh" label={`Put every cell on ${lender} back to what the file said.`} onClick={() => onReplace(draft.key, resetRow(draft))} /> : null}
         </div>
       </td>
     </tr>
@@ -285,7 +283,21 @@ export function DebtScheduleReviewTable({
   visibleKeys: ReadonlySet<string> | null;
 }) {
   const wrap = useRef<HTMLDivElement>(null);
+  const pointerDown = useRef(false);
   const sum = totals(drafts);
+
+  // A mouse click that moved the table under the pointer would land its release on a
+  // different cell and lose the click, so only focus that did not come from a pointer
+  // is brought clear by hand (the keyboard, and "Next needed").
+  useEffect(() => {
+    const release = () => { pointerDown.current = false; };
+    window.addEventListener("pointerup", release, true);
+    window.addEventListener("pointercancel", release, true);
+    return () => {
+      window.removeEventListener("pointerup", release, true);
+      window.removeEventListener("pointercancel", release, true);
+    };
+  }, []);
 
   const rows = visibleKeys ? drafts.filter((draft) => visibleKeys.has(draft.key)) : drafts;
   const rowKeys = rows.filter((draft) => draft.keep).map((draft) => draft.key);
@@ -300,11 +312,37 @@ export function DebtScheduleReviewTable({
   const find = (row: string, column: ColumnKey): HTMLElement | null =>
     wrap.current?.querySelector<HTMLElement>(`[data-rk="${quote(row)}"][data-ck="${column}"]`) ?? null;
 
+  // The sticky Lender column, the row actions, the header and the totals cover the
+  // box's edges, and the browser's own scrolling (including the scroll a Tab causes)
+  // counts the whole box as visible: a cell under a sticky part is "in view". So after
+  // any focus, bring the cell clear of them by hand. Pinned cells only need it
+  // vertically, and a phone (every line a card, no scroll box) needs nothing.
+  const keepClear = (element: HTMLElement) => {
+    const box = wrap.current;
+    if (!box || (box.scrollWidth <= box.clientWidth && box.scrollHeight <= box.clientHeight)) return;
+    const cell = element.closest("td") ?? element;
+    const frame = box.getBoundingClientRect();
+    const size = (selector: string, axis: "width" | "height") => box.querySelector<HTMLElement>(selector)?.getBoundingClientRect()[axis] ?? 0;
+    const band = {
+      left: frame.left + box.clientLeft + size('thead th[data-pin="left"]', "width"),
+      right: frame.left + box.clientLeft + box.clientWidth - size('thead th[data-pin="right"]', "width"),
+      top: frame.top + box.clientTop + size("thead", "height"),
+      bottom: frame.top + box.clientTop + box.clientHeight - size("tfoot", "height"),
+    };
+    const { dx, dy } = scrollToClear(cell.getBoundingClientRect(), band);
+    // A pinned cell is always in view sideways, and a strip that spans every column
+    // (a line taken off) keeps its own content pinned: neither needs a sideways move.
+    const spans = cell instanceof HTMLTableCellElement && cell.colSpan > 1;
+    const left = cell.hasAttribute("data-pin") || spans ? 0 : dx;
+    if (left || dy) box.scrollBy({ left, top: dy });
+  };
+
   const focusCell = (element: HTMLElement | null, how: ScrollLogicalPosition = "nearest"): boolean => {
     if (!element) return false;
     element.focus({ preventScroll: true });
     if (element instanceof HTMLInputElement) element.select();
     element.scrollIntoView({ block: how, inline: how });
+    keepClear(element);
     return true;
   };
 
@@ -349,10 +387,10 @@ export function DebtScheduleReviewTable({
   const span = columns.length + 1;
   return (
     <div className={styles.gridWrap} ref={wrap}>
-      <table className={styles.grid} aria-label="Debt schedule lines" onKeyDown={onKeyDown}>
+      <table className={styles.grid} aria-label="Debt schedule lines" onKeyDown={onKeyDown} onPointerDown={() => { pointerDown.current = true; }} onFocus={(event) => { if (!pointerDown.current) keepClear(event.target as HTMLElement); }}>
         <colgroup>
           {columns.map((column) => <col key={column} style={{ width: COLUMN_BY_KEY[column].width }} />)}
-          <col style={{ width: 150 }} />
+          <col style={{ width: ACTIONS_WIDTH }} />
         </colgroup>
         <thead>
           <tr>
@@ -360,13 +398,13 @@ export function DebtScheduleReviewTable({
               const spec = COLUMN_BY_KEY[column];
               const count = needCounts[column];
               return (
-                <th key={column} scope="col" title={spec.help} className={cx(column === "lender" && styles.lenderCol, spec.group === "three" && styles.three, spec.group === "advance" && styles.advance)}>
-                  {spec.label}
+                <th key={column} scope="col" title={spec.help} data-pin={column === "lender" ? "left" : undefined} className={cx(column === "lender" && styles.lenderCol, spec.group === "three" && styles.three, spec.group === "advance" && styles.advance)}>
+                  {column === "rate" ? rateHeader(drafts) : spec.label}
                   {count ? <span className={styles.need} aria-label={`${count} needed`}>{count} needed</span> : null}
                 </th>
               );
             })}
-            <th scope="col" className={styles.actionsCol} title="Take a line off the schedule, or put it back to what the file said.">This line</th>
+            <th scope="col" data-pin="right" className={styles.actionsCol} title="Not a loan? Take the line off the schedule (it is kept as history and can be put back), or put it back to what the file said.">Take off</th>
           </tr>
         </thead>
         <tbody>
@@ -383,7 +421,7 @@ export function DebtScheduleReviewTable({
               const spec = COLUMN_BY_KEY[column];
               if (column === "lender") {
                 return (
-                  <td key={column} className={styles.lenderCol} data-label="Totals">
+                  <td key={column} className={styles.lenderCol} data-pin="left" data-label="Totals">
                     <div className={styles.totalLabel}>
                       <span>Totals</span>
                       <small>{sum.rows} line{sum.rows === 1 ? "" : "s"} · {sum.needed} answer{sum.needed === 1 ? "" : "s"} still missing</small>
@@ -403,7 +441,7 @@ export function DebtScheduleReviewTable({
               }
               return <td key={column} data-label={spec.label} aria-hidden="true" />;
             })}
-            <td className={styles.actionsCol} aria-hidden="true" />
+            <td className={styles.actionsCol} data-pin="right" aria-hidden="true" />
           </tr>
         </tfoot>
       </table>

@@ -98,7 +98,7 @@
   overscroll-behavior: contain;
   /* A cell scrolled to by the keyboard must land clear of the sticky header,
      the Lender column, the row actions and the totals. */
-  scroll-padding: 52px 170px 56px 270px;
+  scroll-padding: 52px 100px 56px 230px;
 }
 .grid {
   border-collapse: separate;
@@ -146,11 +146,11 @@
 /* The Lender column and the row actions stay put while the rest scrolls sideways. The
    selectors are doubled up on purpose: `.cell` (position: relative) comes later in this
    file and would otherwise win over a bare class. */
-.grid td.lenderCol, .grid th.lenderCol { position: sticky; left: 0; z-index: 2; box-shadow: 1px 0 0 var(--line2); }
+.grid td.lenderCol, .grid th.lenderCol { position: sticky; left: 0; z-index: 2; box-shadow: 1px 0 0 var(--line2), 6px 0 8px -6px color-mix(in srgb, var(--ink) 24%, transparent); }
 .grid thead th.lenderCol { z-index: 5; }
-.grid td.actionsCol, .grid th.actionsCol { position: sticky; right: 0; z-index: 2; box-shadow: -1px 0 0 var(--line2); }
+.grid td.actionsCol, .grid th.actionsCol { position: sticky; right: 0; z-index: 2; box-shadow: -1px 0 0 var(--line2), -6px 0 8px -6px color-mix(in srgb, var(--ink) 24%, transparent); }
 .grid thead th.actionsCol { z-index: 5; }
-.grid .dataRow:focus-within > td.lenderCol { box-shadow: 1px 0 0 var(--line2), inset 4px 0 0 var(--accent); }
+.grid .dataRow:focus-within > td.lenderCol { box-shadow: 1px 0 0 var(--line2), 6px 0 8px -6px color-mix(in srgb, var(--ink) 24%, transparent), inset 4px 0 0 var(--accent); }
 
 .cell { position: relative; }
 .cellBox { position: relative; display: flex; align-items: center; min-width: 0; }
@@ -231,7 +231,7 @@
 .fromFile small { display: block; color: var(--muted); }
 .fromFile b { font-weight: 600; color: var(--ink2); }
 
-.actions { display: grid; gap: 6px; justify-items: start; }
+.actions { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 36px; }
 
 /* A line taken off: one strip, kept in view across the scroll. */
 .removedRow > td { background: var(--sunken); }
@@ -292,7 +292,39 @@
   padding: 14px 26px;
   background: var(--sunken2);
 }
-.compactPanel .gridWrap { max-height: min(56vh, 640px); }
+.compactPanel, .compactPanel .layout { gap: 10px; }
+.compactPanel .gridWrap { max-height: min(78vh, 900px); }
+
+/* ── inside a requirement row: one headline line, not a stack of explanations ── */
+.compactSummary { display: grid; justify-content: stretch; gap: 4px; padding: 8px 12px; }
+.compactHead { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; min-width: 0; }
+/* The file's name gives way (with an ellipsis; the hover has the whole name) so the counts stay on its line. */
+.fileTag { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1 1 260px; }
+.fileTag b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+.fileTag :global(.cellchip) { flex: none; }
+.counts { display: inline-flex; flex: none; flex-wrap: wrap; align-items: center; gap: 6px; }
+.helper { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.4; }
+
+/* The colour key folds into a small "i": it opens one line of three swatches. */
+.infoBtn {
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line2);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.infoBtn:hover, .infoBtn[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.infoBtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 /* ── the nudge a row can show ───────────────────────────────────────────── */
 .nudge {
@@ -345,8 +377,10 @@
   .grid td[data-mood="needed"] { background: var(--warn-tint); }
   .grid td[data-mood="invalid"] { background: var(--danger-tint); }
   .grid td::before { content: attr(data-label); font-size: 12px; font-weight: 600; color: var(--muted); }
-  .grid td.lenderCol, .grid td.actionsCol { grid-template-columns: minmax(0, 1fr); background: var(--sunken); position: static; box-shadow: none; }
-  .grid td.lenderCol::before, .grid td.actionsCol::before, .grid td.fullRow::before { content: none; }
+  .grid td.lenderCol, .grid td.actionsCol { background: var(--sunken); position: static; box-shadow: none; }
+  .grid td.lenderCol { grid-template-columns: minmax(0, 1fr); }
+  .grid td.lenderCol::before, .grid td.fullRow::before { content: none; }
+  .actions { justify-content: flex-start; }
   .grid .dataRow:focus-within > td.lenderCol { box-shadow: inset 4px 0 0 var(--accent); }
   .removedRow { margin: 0 0 12px; border: 1px dashed var(--line2); border-radius: 12px; }
   .removedInner { position: static; width: 100%; }
