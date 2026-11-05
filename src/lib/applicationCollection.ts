@@ -22,5 +22,5 @@ export function collectionTaskNeedsAnswer(task: CollectionTask): boolean {
 }
 
 export function collectionTaskStatus(task: CollectionTask): string {
-  return ({ open: "Waiting on client", requested: "Asked · waiting on client", completed: "Complete", in_review: "Received · AI checking", paused: "Paused", unavailable: "Staff follow-up", escalated: "Staff follow-up", cancelled: "No longer needed" })[task.status];
+  return ({ open: "Waiting on client", requested: "Asked · waiting on client", completed: "Complete", in_review: "Received · under review", paused: "Paused", unavailable: "Staff follow-up", escalated: "Staff follow-up", cancelled: "No longer needed" })[task.status];
 }

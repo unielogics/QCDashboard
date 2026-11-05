@@ -20,9 +20,12 @@ import { errorMessage } from "@/components/marketplace/shared";
 import { Drawer } from "@/components/ds/Drawer";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
+import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
+import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
-import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
+import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
+import type { FundingProgramVertical } from "@/lib/fundingPrograms";
 import {
   compactMoney,
   confidenceLabel,
@@ -65,7 +68,13 @@ type Props = {
   canRecordTerms: boolean;
   /** Admin or underwriter: may enter, request or void the debt schedule. */
   canUnderwrite: boolean;
-  programReadiness: ApplicationProgramReadiness | null;
+  programReadiness: ProgramReadiness | null;
+  /** Programs are chosen here, not on Evidence & banking, so the card below edits the same snapshot the page holds. */
+  onProgramReadinessChange?: (readiness: ProgramReadiness) => void;
+  onRefreshProgramReadiness?: () => Promise<unknown> | void;
+  canCreatePrograms?: boolean;
+  programVertical?: FundingProgramVertical;
+  intakeVariant?: string | null;
   termSheet: ApplicationTermSheetState | null;
   packageState: CockpitPackageState;
   focus: "marketplace" | null;
@@ -782,6 +791,35 @@ export function FinancialCockpit(props: Props) {
         <NetProfitCard cockpit={cockpit} />
         <ExpensesCard cockpit={cockpit} />
         <DebtCard cockpit={cockpit} profileId={props.profileId} canEdit={props.canUnderwrite} onRefresh={() => void query.refetch()}  onOpenEvidence={props.onOpenEvidence} />
+      </div>
+
+      {props.programReadiness ? (
+        <div className="fc-grid">
+          <section className="fc-card fc-wide" id="fc-programs">
+            <div className="fc-card-h">
+              <div>
+                <h4>Programs and use of funds</h4>
+                <div className="sub">Choose the funding programs for this file and itemize how the money will be used. The programs decide which documents the file needs; those are listed on Evidence &amp; banking.</div>
+              </div>
+            </div>
+            <ApplicationProgramReadiness
+              section="setup"
+              profileId={props.profileId}
+              files={[]}
+              value={props.programReadiness}
+              onValueChange={props.onProgramReadinessChange}
+              onRefresh={props.onRefreshProgramReadiness}
+              showUploader={false}
+              canCreatePrograms={props.canCreatePrograms}
+              programVertical={props.programVertical}
+              intakeVariant={props.intakeVariant}
+            />
+          </section>
+        </div>
+      ) : null}
+
+      <div className="fc-grid">
+        <ApplicationLenderSubmissions key={props.profileId} profileId={props.profileId} />
       </div>
 
       <div className="fc-grid">

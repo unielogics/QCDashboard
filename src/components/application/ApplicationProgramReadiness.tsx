@@ -7,7 +7,8 @@ import { Drawer } from "@/components/ds/Drawer";
 import { FundingProgramPicker } from "./FundingProgramPicker";
 import { UseOfFundsEditor } from "./UseOfFundsEditor";
 import { DocumentReviewChecks } from "./DocumentReviewChecks";
-import { ApplicationCollectionTasks } from "./ApplicationCollectionTasks";
+import { ApplicationCollectionTasks, RequirementRequest, useCollectionTasks } from "./ApplicationCollectionTasks";
+import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
 import pickerStyles from "./FundingProgramPicker.module.css";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
@@ -25,12 +26,13 @@ import type {
   RoomDeliveryReceipt,
   UnlockedCopyRequestState,
 } from "@/lib/applicationProfile";
-import { requirementStatusLabel } from "@/lib/applicationProfile";
-import { requirementWaiting } from "@/lib/requirementWaiting";
+import type { CollectionTask } from "@/lib/applicationCollection";
+import { groupRequirements, isDocumentRequirement, requirementIsComplete, type Triage, type TriageGroup } from "@/lib/evidenceTriage";
+import { formKindsOf, formLabel, type FormKind } from "@/lib/formAnswers";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { semanticStatusClass } from "@/lib/semanticStatus";
 import { manualProgramDraftMatches, type FundingProgramCatalogItem, type FundingProgramVersion, type FundingProgramVertical } from "@/lib/fundingPrograms";
-import { semanticChipTone, semanticStatusClass } from "@/lib/semanticStatus";
 
 type EvidenceFile = {
   id: string;
@@ -78,23 +80,6 @@ function when(value: string | null): string {
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString([], { dateStyle: "medium", timeStyle: "short" });
 }
 
-function requirementIsComplete(requirement: ApplicationRequirement): boolean {
-  if (["verified", "waived", "not_applicable"].includes(requirement.status)) return true;
-  return requirement.source_program_keys.length > 0
-    && requirement.source_program_keys.every((key) => ["waived", "not_applicable"].includes(requirement.program_overrides[key] || ""));
-}
-
-function coverageText(requirement: ApplicationRequirement, accepted = false): string {
-  const coverage = (accepted ? requirement.verified_coverage : requirement.coverage) ?? {};
-  const fallbackCount = accepted
-    ? requirement.verified_evidence_count ?? 0
-    : requirement.evidence_count ?? Number(Boolean(requirement.evidence_file_id));
-  const current = Number(coverage.current ?? fallbackCount);
-  const required = Number(coverage.required ?? 1);
-  const unit = String(coverage.unit ?? "documents");
-  return `${current} of ${required} ${unit}`;
-}
-
 function decisionTone(decision: EvidenceDecisionStatus): "ok" | "acc" | "warn" | "bad" | "mut" {
   if (decision === "accepted") return "ok";
   if (decision === "rejected" || decision === "failed") return "bad";
@@ -131,6 +116,9 @@ export function ApplicationProgramReadiness({
   canCreatePrograms = false,
   programVertical = "main_street",
   intakeVariant,
+  section = "documents",
+  focusGroup = null,
+  onOpenFinancials,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -151,6 +139,12 @@ export function ApplicationProgramReadiness({
   canCreatePrograms?: boolean;
   programVertical?: FundingProgramVertical;
   intakeVariant?: string | null;
+  /** Which half to show: the documents the file needs, or the programs and use of funds that decide them. */
+  section?: "documents" | "setup";
+  /** Open and scroll to one group of documents (from the overview tiles). */
+  focusGroup?: { group: TriageGroup; requestId: number } | null;
+  /** Programs are chosen on the Financials tab; the Documents list links there. */
+  onOpenFinancials?: () => void;
 }) {
   const apiCall = useAuthedApi();
   const confirmAction = useConfirmAction();
@@ -249,6 +243,29 @@ export function ApplicationProgramReadiness({
     if (!readiness) return [];
     return readiness.candidates.filter((candidate) => selectedSet.has(candidate.program_key) && !candidate.eligible);
   }, [readiness, selectedSet]);
+
+  const taskRefreshKey = (readiness?.requirements ?? []).map((item) => `${item.requirement_key}:${item.status}`).join("|");
+  const taskController = useCollectionTasks(profileId, taskRefreshKey, load, section === "documents");
+  const [openGroups, setOpenGroups] = useState<Partial<Record<TriageGroup, boolean>>>({});
+  const [answersFor, setAnswersFor] = useState<{ kind: FormKind; requirementKey: string } | null>(null);
+  const expansionSeeded = useRef(false);
+  const lastGroupRequestRef = useRef(0);
+
+  // First time the list opens, show the items that need a person; the rest stay folded.
+  useEffect(() => {
+    if (!readiness || section !== "documents" || expansionSeeded.current) return;
+    expansionSeeded.current = true;
+    const needsYou = groupRequirements(readiness.requirements.filter(isDocumentRequirement)).find((item) => item.group === "you");
+    if (needsYou) setExpandedRequirements(needsYou.items.slice(0, 3).map((item) => item.requirement.requirement_key));
+  }, [readiness, section]);
+
+  useEffect(() => {
+    if (!focusGroup || focusGroup.requestId === lastGroupRequestRef.current) return;
+    lastGroupRequestRef.current = focusGroup.requestId;
+    setOpenGroups((current) => ({ ...current, [focusGroup.group]: true }));
+    const frame = window.requestAnimationFrame(() => document.getElementById(`ev-group-${focusGroup.group}`)?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    return () => window.cancelAnimationFrame(frame);
+  }, [focusGroup]);
 
   useEffect(() => {
     if (!focusRequirementQuery || !focusRequestId || !readiness) return;
@@ -629,6 +646,71 @@ export function ApplicationProgramReadiness({
     }
   }
 
+  async function emailFormLink(kind: FormKind) {
+    const confirmed = await confirmAction({
+      title: `Email the client a link to fill in the ${formLabel(kind)}?`,
+      body: "One email goes to the client's verified address with a link that needs no sign-in, and the secure room as the way to upload a file instead. The form is added to the checklist if it is not there yet.",
+      confirmLabel: "Send the email",
+    });
+    if (!confirmed) return;
+    setBusy(`formlink:${kind}`);
+    setError(null);
+    try {
+      const receipt = await authenticated<RoomDeliveryReceipt>(`/application-profiles/${profileId}/financial-forms/${kind}/email-link`, { method: "POST" });
+      await load();
+      onNotice?.(receipt.provider_accepted
+        ? `Link to fill in the ${formLabel(kind)} sent to ${receipt.recipient_masked || "the client"}.`
+        : `The email was not sent: ${receipt.detail || "the provider rejected it"}`);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function copyFormLink(kind: FormKind) {
+    setBusy(`formlink:${kind}`);
+    setError(null);
+    try {
+      const result = await authenticated<{ url: string; expires_at: string | null }>(`/application-profiles/${profileId}/financial-forms/${kind}/link`, { method: "POST" });
+      try {
+        await navigator.clipboard.writeText(result.url);
+        onNotice?.(`Link to fill in the ${formLabel(kind)} copied. It needs no sign-in.`);
+      } catch {
+        setError(`Clipboard access was blocked. The link is ${result.url}`);
+      }
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function emailReminder(requirement: ApplicationRequirement) {
+    const confirmed = await confirmAction({
+      title: `Email the client about ${requirement.label}?`,
+      body: "One email with the secure-room link goes to the client's verified address.",
+      confirmLabel: "Send the email",
+    });
+    if (!confirmed) return;
+    setBusy(`reminder:${requirement.requirement_key}`);
+    setError(null);
+    try {
+      const receipt = await authenticated<RoomDeliveryReceipt>(`/application-profiles/${profileId}/requirements/${encodeURIComponent(requirement.requirement_key)}/reminders`, {
+        method: "POST",
+        body: JSON.stringify({ retry_failed: requirement.status === "failed" }),
+      });
+      await load();
+      onNotice?.(receipt.provider_accepted
+        ? `Email about ${requirement.label} accepted for ${receipt.recipient_masked || "the client"}.`
+        : `The email was not sent: ${receipt.detail || "the provider rejected it"}`);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function toggleAutomation() {
     if (!readiness) return;
     const nextEnabled = !readiness.automation.enabled;
@@ -687,8 +769,88 @@ export function ApplicationProgramReadiness({
     setProgramPickerOpen(false);
   };
 
+
+  const documentRequirements = readiness.requirements.filter(isDocumentRequirement);
+  const triageSections = groupRequirements(documentRequirements);
+  const shownKeys = new Set(documentRequirements.map((item) => item.requirement_key));
+  const openTasks = taskController.tasks.filter((task) => !["completed", "cancelled"].includes(task.status));
+  const tasksByRequirement = new Map<string, CollectionTask>();
+  for (const task of openTasks) {
+    for (const key of task.requirement_keys ?? []) if (shownKeys.has(key) && !tasksByRequirement.has(key)) tasksByRequirement.set(key, task);
+  }
+  const mappedTaskIds = new Set([...tasksByRequirement.values()].map((task) => task.id));
+  const otherTasks = openTasks.filter((task) => !mappedTaskIds.has(task.id));
+  const checklistCaption = readiness.evidence_policies.length
+    ? `From ${readiness.evidence_policies.map((policy) => `${policy.policy_name} v${policy.playbook_version}`).join(" · ")}${readiness.selections.length ? " and the selected programs" : ""}.`
+    : "From the selected programs.";
+
+  const renderRequirementRow = (requirement: ApplicationRequirement, triage: Triage) => {
+    const isBusy = busy.endsWith(requirement.requirement_key);
+    const hasOverrides = Object.keys(requirement.program_overrides).length > 0;
+    const linkedEvidence = requirement.evidence_files ?? [];
+    const availableEvidence = readiness.available_evidence_files ?? [];
+    const linkedIds = new Set(linkedEvidence.map((file) => file.file_id));
+    const evidenceOptions = (availableEvidence.length ? availableEvidence.map((file) => ({ id: file.file_id, file_name: file.file_name })) : files).filter((file) => !linkedIds.has(file.id));
+    const selectedEvidenceId = evidenceSelections[requirement.requirement_key] || "";
+    const requestable = requestableRequirements.some((item) => item.requirement_key === requirement.requirement_key);
+    const expanded = expandedRequirements.includes(requirement.requirement_key);
+    const acceptedCount = linkedEvidence.filter((file) => file.ai_decision === "accepted").length;
+    const task = tasksByRequirement.get(requirement.requirement_key) ?? null;
+    const formKinds = formKindsOf(requirement);
+    const unsignedFileIds = linkedEvidence.filter((file) => file.ai_decision === "accepted" && !file.verified).map((file) => file.file_id);
+    const askClient = triage.group === "client";
+    const reasonNote = (requirement.state_reason ?? "").trim();
+    const showReason = Boolean(reasonNote) && !/^AI accepted \d+ of \d+/i.test(reasonNote) && !/^Accepted by /i.test(reasonNote) && !/^Awaiting client evidence/i.test(reasonNote);
+    return <div key={requirement.requirement_key} className={cx("requirement-row", "ev-row", expanded && "expanded", focusedRequirementKey === requirement.requirement_key && "navigation-target", dragTarget === requirement.requirement_key && "drop-target")} data-group={triage.group} onDragEnter={(event) => { if (onUploadFiles) { event.preventDefault(); setDragTarget(requirement.requirement_key); } }} onDragOver={(event) => { if (onUploadFiles) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTarget(null); }} onDrop={(event) => { if (onUploadFiles) { event.preventDefault(); void upload(Array.from(event.dataTransfer.files), requirement.requested_document_id || undefined); } }}>
+      <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
+        <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={triage.tone} title={triage.next}>{triage.label}</CellChip></span>
+        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}</strong><small>{triage.short}</small></span>
+        <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
+      </button>
+      {expanded ? <div className="requirement-expanded-body ev-row-body">
+        <p className="ev-next">{triage.next}</p>
+        <div className="ev-actions" role="group" aria-label={`Next steps for ${requirement.label}`}>
+          {triage.kind === "signoff" && unsignedFileIds.length ? <span title="Confirm the AI's acceptance so this item counts toward readiness"><Btn variant="pri" size="sm" disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "verify", unsignedFileIds)}><Icon name="shieldChk" size={14} />Sign off</Btn></span> : null}
+          {askClient ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
+          {askClient ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
+          {askClient && !formKinds.length && requestable ? <span title="Emails the client the secure-room link for this item"><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailReminder(requirement)}><Icon name="mail" size={14} />Email the client</Btn></span> : null}
+          {linkedEvidence.length ? formKinds.map((kind) => <ActionIcon key={`answers-${kind}`} icon="docCheck" label={`See the ${formLabel(kind)}: what was filled in`} onClick={() => setAnswersFor({ kind, requirementKey: requirement.requirement_key })} />) : null}
+        </div>
+        <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />
+        {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
+                  const fileBusy = busy === `evidence:${file.file_id}`;
+                  const coverageContribution = evidenceCoverageLabel(file.coverage_contribution);
+                  const reason = evidenceReasonLabel(file.ai_reason_code, file.ai_decision);
+                  const sourceFile = files.find((item) => item.id === file.file_id);
+                  const locked = lockedEvidencePresentation({
+                    fileName: file.file_name,
+                    isPasswordProtected: file.is_password_protected ?? sourceFile?.is_password_protected,
+                    analysisStatus: sourceFile?.analysis_status,
+                    analysisReasonCode: sourceFile?.analysis_reason_code,
+                    analysisDetail: sourceFile?.analysis_detail,
+                    decisionReasonCode: file.ai_reason_code,
+                    decisionExplanation: file.ai_explanation,
+                  });
+                  const unlockedCopyRequest = file.unlocked_copy_request ?? sourceFile?.unlocked_copy_request ?? null;
+                  const editingThisFile = evidenceOverride?.requirementKey === requirement.requirement_key && evidenceOverride.fileId === file.file_id;
+                  return <Fragment key={file.file_id}>
+                    {!locked ? <EvidenceIdentityWarning reasonCode={file.ai_reason_code} decision={file.ai_decision} detail /> : null}
+                    <div className={cx("requirement-evidence-file", locked && "password-protected", `decision-${file.ai_decision}`)}><span className="grow trunc"><strong className="trunc evidence-locked-title">{locked ? <Icon name="lock" size={14} aria-hidden="true" /> : null}<span>{file.file_name}</span></strong><small>{locked ? <><b>{locked.title}</b>{` · ${locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.`}</> : <><b>{reason}</b>{file.ai_explanation ? ` · ${file.ai_explanation}` : " · Decision explanation not available"}{coverageContribution ? ` · Coverage: ${coverageContribution}` : ""}</>}</small></span>{locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decisionTone(file.ai_decision)}>{evidenceDecisionLabel(file.ai_decision, file.decision_actor)}</CellChip>}{onPreviewEvidence ? <ActionIcon icon="eye" label={`Preview ${file.file_name}`} disabled={fileBusy} onClick={() => onPreviewEvidence(file.file_id, requirement.requirement_key)} /> : null}{locked ? <UnlockedCopyRequestControl request={unlockedCopyRequest} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, false, true) : undefined} /> : null}{!locked && file.ai_decision === "failed" ? <ActionIcon icon="refresh" label="Retry the AI's reading of this file" disabled={fileBusy} onClick={() => void retryAnalysis(file)} /> : null}{!locked && file.ai_decision !== "accepted" ? <ActionIcon icon="check" tone="ok" label="Accept this file anyway (override the AI)" disabled={fileBusy} pressed={editingThisFile} onClick={() => setEvidenceOverride({ requirementKey: requirement.requirement_key, fileId: file.file_id, decision: "accepted", reasonCode: "ai_override", reason: "" })} /> : null}{requirement.verification_required ? <ActionIcon icon="shieldChk" tone={file.verified ? "ok" : undefined} label={file.verified ? "Remove human verification" : "Human verify this file"} disabled={fileBusy} pressed={file.verified} onClick={() => void reviewRequirementAction(requirement, file.verified ? "unverify" : "verify", [file.file_id])} /> : null}<ActionIcon icon="x" tone="danger" label="Reject this file" disabled={fileBusy} onClick={() => setEvidenceOverride({ requirementKey: requirement.requirement_key, fileId: file.file_id, decision: "rejected", reasonCode: "wrong_document", reason: "" })} /><PageActionMenu label={`More actions for ${file.file_name}`} items={[{ label: "Move to another requirement...", onSelect: () => setReassignDraft({ requirementKey: requirement.requirement_key, fileId: file.file_id, targetKey: "" }) }, { label: "Unlink from this requirement", onSelect: () => void reviewRequirementAction(requirement, "unlink_evidence", [file.file_id]) }]} /></div>
+                    {editingThisFile ? <div className="requirement-override-editor requirement-evidence-action-editor"><div className="fldgrid two"><Field label="Decision"><Select value={evidenceOverride.decision} onChange={(event) => { const decision = event.target.value as EvidenceOverrideDraft["decision"]; setEvidenceOverride({ ...evidenceOverride, decision, reasonCode: decision === "accepted" ? "ai_override" : evidenceOverride.reasonCode === "ai_override" ? decision === "needs_more" ? "incomplete" : "wrong_document" : evidenceOverride.reasonCode }); }}><option value="rejected">Reject evidence</option><option value="needs_more">Needs more</option><option value="accepted">Override AI and accept</option></Select></Field><Field label="Reason code"><Select value={evidenceOverride.reasonCode} disabled={evidenceOverride.decision === "accepted"} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reasonCode: event.target.value as EvidenceOverrideDraft["reasonCode"] })}>{evidenceOverride.decision === "accepted" ? <option value="ai_override">AI override</option> : <><option value="wrong_document">Wrong document</option><option value="wrong_entity">Wrong entity</option><option value="wrong_period">Wrong period</option><option value="incomplete">Incomplete</option><option value="unreadable">Unreadable</option><option value="duplicate">Duplicate</option><option value="other">Other</option></>}</Select></Field></div><Field label="Reviewed reason"><Textarea autoFocus rows={2} value={evidenceOverride.reason} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reason: event.target.value })} placeholder={evidenceOverride.decision === "accepted" ? "Explain why this file should be accepted" : evidenceOverride.decision === "needs_more" ? "Explain what additional evidence is needed" : "Explain why this file should be rejected"} /></Field><div className="program-readiness-actions"><Btn onClick={() => setEvidenceOverride(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyEvidenceOverride()} disabled={fileBusy || evidenceOverride.reason.trim().length < 8}>{fileBusy ? "Saving..." : "Review decision"}</Btn></div></div> : null}
+                  </Fragment>;
+                })}</div> : <div className="requirement-evidence-empty">No evidence is assigned. Drop files on this requirement or choose an existing bucket file.</div>}
+        {task ? <RequirementRequest task={task} controller={taskController} /> : null}
+        <div className="ev-block"><span className="ev-block-title">Add a document or set this item aside</span><div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><ActionIcon icon="plus" label="Link the chosen document to this requirement" disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")} /><PageActionMenu label={`More actions for ${requirement.label}`} items={[{ label: "Waive this requirement", hidden: !requirement.can_waive, onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Mark not applicable", onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Restore the original requirement", hidden: !hasOverrides, onSelect: () => void reviewRequirementAction(requirement, "restore") }]} /></div></div>
+        {showReason ? <small className="ev-reason">System note: {reasonNote}</small> : null}
+        {overrideDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label={overrideDraft.action === "waive" ? "Waiver reason" : "Not-applicable reason"}><Textarea rows={2} value={overrideDraft.reason} onChange={(event) => setOverrideDraft({ ...overrideDraft, reason: event.target.value })} placeholder="Required for the immutable audit trail" /></Field><label className="checkline"><input type="checkbox" checked={overrideDraft.allPrograms} onChange={(event) => setOverrideDraft({ ...overrideDraft, allPrograms: event.target.checked, programKeys: [] })} />Apply to all selected programs and policies</label>{!overrideDraft.allPrograms ? <div className="override-programs">{requirement.source_program_keys.map((key) => <label key={key} className="checkline"><input type="checkbox" checked={overrideDraft.programKeys.includes(key)} onChange={() => setOverrideDraft({ ...overrideDraft, programKeys: overrideDraft.programKeys.includes(key) ? overrideDraft.programKeys.filter((item) => item !== key) : [...overrideDraft.programKeys, key] })} />{readiness.selections.find((item) => item.program_key === key)?.program_name || key}</label>)}</div> : null}<div className="program-readiness-actions"><Btn onClick={() => setOverrideDraft(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyOverride()} disabled={overrideDraft.reason.trim().length < 8 || (!overrideDraft.allPrograms && !overrideDraft.programKeys.length)}>Review override</Btn></div></div> : null}
+                {reassignDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label="Reassign to"><Select value={reassignDraft.targetKey} onChange={(event) => setReassignDraft({ ...reassignDraft, targetKey: event.target.value })}><option value="">Select another requirement...</option>{readiness.requirements.filter((item) => item.requirement_key !== requirement.requirement_key).map((item) => <option key={item.requirement_key} value={item.requirement_key}>{item.label}</option>)}</Select></Field><div className="program-readiness-actions"><Btn onClick={() => setReassignDraft(null)}>Cancel</Btn><Btn variant="pri" disabled={!reassignDraft.targetKey} onClick={() => void applyReassignment()}>Review reassignment</Btn></div></div> : null}
+      </div> : null}
+    </div>;
+  };
+
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
+    {section === "setup" ? <>
     {readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} /> : null}
     <details className="program-readiness-programs" open>
       <summary>
@@ -718,68 +880,44 @@ export function ApplicationProgramReadiness({
         <Field label="Required review reason"><Textarea rows={3} value={customProgram.reason} onChange={(event) => setCustomProgram((current) => ({ ...current, reason: event.target.value }))} placeholder="Explain why this program is being added and applied to the file." /></Field>
       </div>
     </Drawer>
-
     {readiness.lending_applicable ? <>
-      <ApplicationCollectionTasks profileId={profileId} refreshKey={readiness.requirements.map((item) => `${item.requirement_key}:${item.status}`).join("|")} onChanged={load} requirements={readiness.requirements} onPreviewEvidence={onPreviewEvidence ? (fileId, requirementKey) => onPreviewEvidence(fileId, requirementKey) : undefined} onVerifyRequirement={(requirement, fileIds) => reviewRequirementAction(requirement, "verify", fileIds)} />
-      {readiness.evidence_policies.length ? <section className="program-readiness-band initial-evidence-policy" aria-labelledby="initial-checklist-heading"><div className="program-readiness-heading"><div><span className="lbl">Evidence policy</span><h3 id="initial-checklist-heading">Initial evidence checklist</h3><p>{readiness.evidence_policies.map((policy) => `${policy.policy_name} v${policy.playbook_version}`).join(" · ")}</p></div><CellChip tone="mut">Not a funding product</CellChip></div></section> : null}
       <section className="program-readiness-band" aria-labelledby="program-progress-heading"><div className="program-readiness-heading"><div><span className="lbl">Independent readiness</span><h3 id="program-progress-heading">Program completion</h3></div><CellChip tone={readiness.can_advance ? "ok" : "warn"}>{readiness.can_advance ? "Ready for underwriting" : readiness.selections.length ? "Evidence still required" : "No program selected"}</CellChip></div><div className="program-progress-grid">{readiness.programs.map((program) => <div key={program.selection_id} className={semanticStatusClass(program.complete ? "ready" : program.completion_percent ? "processing" : "missing")}><div><strong>{program.program_name}</strong><span>{program.satisfied_count} of {program.required_count} required items accepted</span></div><div className="program-progress-track" aria-label={`${program.completion_percent}% complete`}><span style={{ width: `${program.completion_percent}%` }} /></div><b>{program.completion_percent}%</b></div>)}{!readiness.programs.length ? <div className="empty">No real product is selected. AI will select the highest-confidence eligible program after sufficient facts are available.</div> : null}</div></section>
-      <section className="program-readiness-band" aria-labelledby="shared-evidence-heading">
-        <div className="program-readiness-heading"><div><span className="lbl">Shared evidence</span><h3 id="shared-evidence-heading" tabIndex={-1}>Requirements and AI decisions</h3><p>AI reviews every uploaded file. Staff intervene only for exceptions, overrides, and policy decisions.</p></div><div className="program-readiness-actions requirement-bulk-actions">{onRunAiReview ? <Btn onClick={onRunAiReview} disabled={Boolean(busy) || aiReviewRunning}>{aiReviewRunning ? "Refreshing..." : "Refresh intake analysis"}</Btn> : null}{requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}<Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestKeys.length || Boolean(busy)}>{busy === "batch-request" ? "Sending one email..." : `Email selected (${selectedRequestKeys.length})`}</Btn></div></div>
-        {showUploader && onUploadFiles ? <div className={cx("readiness-upload-dropzone", uploadDragging && "dragging")} role="button" tabIndex={0} onClick={() => uploadRef.current?.click()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); uploadRef.current?.click(); } }} onDragEnter={(event) => { event.preventDefault(); setUploadDragging(true); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setUploadDragging(false); }} onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}><input ref={uploadRef} type="file" hidden multiple accept={ACCEPTED_UPLOADS} onChange={(event) => void upload(Array.from(event.target.files ?? []))} /><Icon name="upload" size={20} /><span><strong>{uploadBusy ? "Uploading and queuing analysis..." : "Drop evidence files or ZIP archives"}</strong><small>PDF, spreadsheet, image, document, and ZIP files are extracted, classified, and reviewed automatically.</small></span><span className="btn sm">Browse</span></div> : null}
-        <div className="requirement-table compact">
-          {readiness.requirements.filter((requirement) => (requirement.requirement_kind ?? "document") === "document" || requirement.requirement_kind === "form" && requirement.requested_document_id).map((requirement) => {
-            const complete = requirementIsComplete(requirement);
-            const isBusy = busy.endsWith(requirement.requirement_key);
-            const hasOverrides = Object.keys(requirement.program_overrides).length > 0;
-            const linkedEvidence = requirement.evidence_files ?? [];
-            const availableEvidence = readiness.available_evidence_files ?? [];
-            const linkedIds = new Set(linkedEvidence.map((file) => file.file_id));
-            const evidenceOptions = (availableEvidence.length ? availableEvidence.map((file) => ({ id: file.file_id, file_name: file.file_name })) : files).filter((file) => !linkedIds.has(file.id));
-            const selectedEvidenceId = evidenceSelections[requirement.requirement_key] || "";
-            const requestable = requestableRequirements.some((item) => item.requirement_key === requirement.requirement_key);
-            const expanded = expandedRequirements.includes(requirement.requirement_key);
-            const acceptedCount = linkedEvidence.filter((file) => file.ai_decision === "accepted").length;
-            return <div key={requirement.requirement_key} className={cx(semanticStatusClass(complete ? "verified" : requirement.status), "requirement-row", expanded && "expanded", focusedRequirementKey === requirement.requirement_key && "navigation-target", dragTarget === requirement.requirement_key && "drop-target")} onDragEnter={(event) => { if (onUploadFiles) { event.preventDefault(); setDragTarget(requirement.requirement_key); } }} onDragOver={(event) => { if (onUploadFiles) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTarget(null); }} onDrop={(event) => { if (onUploadFiles) { event.preventDefault(); void upload(Array.from(event.dataTransfer.files), requirement.requested_document_id || undefined); } }}>
-              <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
-                <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={semanticChipTone(complete ? "verified" : requirement.status)}>{complete && requirement.status !== "verified" ? "Overridden" : requirement.status === "received_unverified" ? requirementWaiting(requirement).label : requirementStatusLabel(requirement.status, { needsPerson: Boolean(requirement.verification_required) })}</CellChip></span>
-                <span className="requirement-title"><strong>{requirement.label}</strong><small>{requirement.source_policy_keys.length ? "Initial evidence checklist" : requirement.source_program_keys.join(", ") || "Shared requirement"}</small></span>
-                <span className="requirement-coverage"><strong>{coverageText(requirement, true)} accepted</strong><small>{acceptedCount} accepted file{acceptedCount === 1 ? "" : "s"} · {linkedEvidence.length} linked</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
-              </button>
-              {expanded ? <div className="requirement-expanded-body">
-                <div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><ActionIcon icon="plus" label="Link the chosen document to this requirement" disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")} /><PageActionMenu label={`More actions for ${requirement.label}`} items={[{ label: "Waive this requirement", hidden: !requirement.can_waive, onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Mark not applicable", onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Restore the original requirement", hidden: !hasOverrides, onSelect: () => void reviewRequirementAction(requirement, "restore") }]} /></div>
-                <p className="requirement-state-reason">{requirement.state_reason || "AI is waiting for qualifying evidence."}</p>
-                <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />
-                {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
-                  const fileBusy = busy === `evidence:${file.file_id}`;
-                  const coverageContribution = evidenceCoverageLabel(file.coverage_contribution);
-                  const reason = evidenceReasonLabel(file.ai_reason_code, file.ai_decision);
-                  const sourceFile = files.find((item) => item.id === file.file_id);
-                  const locked = lockedEvidencePresentation({
-                    fileName: file.file_name,
-                    isPasswordProtected: file.is_password_protected ?? sourceFile?.is_password_protected,
-                    analysisStatus: sourceFile?.analysis_status,
-                    analysisReasonCode: sourceFile?.analysis_reason_code,
-                    analysisDetail: sourceFile?.analysis_detail,
-                    decisionReasonCode: file.ai_reason_code,
-                    decisionExplanation: file.ai_explanation,
-                  });
-                  const unlockedCopyRequest = file.unlocked_copy_request ?? sourceFile?.unlocked_copy_request ?? null;
-                  const editingThisFile = evidenceOverride?.requirementKey === requirement.requirement_key && evidenceOverride.fileId === file.file_id;
-                  return <Fragment key={file.file_id}>
-                    {!locked ? <EvidenceIdentityWarning reasonCode={file.ai_reason_code} decision={file.ai_decision} detail /> : null}
-                    <div className={cx("requirement-evidence-file", locked && "password-protected", `decision-${file.ai_decision}`)}><span className="grow trunc"><strong className="trunc evidence-locked-title">{locked ? <Icon name="lock" size={14} aria-hidden="true" /> : null}<span>{file.file_name}</span></strong><small>{locked ? <><b>{locked.title}</b>{` · ${locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.`}</> : <><b>{reason}</b>{file.ai_explanation ? ` · ${file.ai_explanation}` : " · Decision explanation not available"}{coverageContribution ? ` · Coverage: ${coverageContribution}` : ""}</>}</small></span>{locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decisionTone(file.ai_decision)}>{evidenceDecisionLabel(file.ai_decision, file.decision_actor)}</CellChip>}{onPreviewEvidence ? <ActionIcon icon="eye" label={`Preview ${file.file_name}`} disabled={fileBusy} onClick={() => onPreviewEvidence(file.file_id, requirement.requirement_key)} /> : null}{locked ? <UnlockedCopyRequestControl request={unlockedCopyRequest} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, false, true) : undefined} /> : null}{!locked && file.ai_decision === "failed" ? <ActionIcon icon="refresh" label="Retry the AI's reading of this file" disabled={fileBusy} onClick={() => void retryAnalysis(file)} /> : null}{!locked && file.ai_decision !== "accepted" ? <ActionIcon icon="check" tone="ok" label="Accept this file anyway (override the AI)" disabled={fileBusy} pressed={editingThisFile} onClick={() => setEvidenceOverride({ requirementKey: requirement.requirement_key, fileId: file.file_id, decision: "accepted", reasonCode: "ai_override", reason: "" })} /> : null}{requirement.verification_required ? <ActionIcon icon="shieldChk" tone={file.verified ? "ok" : undefined} label={file.verified ? "Remove human verification" : "Human verify this file"} disabled={fileBusy} pressed={file.verified} onClick={() => void reviewRequirementAction(requirement, file.verified ? "unverify" : "verify", [file.file_id])} /> : null}<ActionIcon icon="x" tone="danger" label="Reject this file" disabled={fileBusy} onClick={() => setEvidenceOverride({ requirementKey: requirement.requirement_key, fileId: file.file_id, decision: "rejected", reasonCode: "wrong_document", reason: "" })} /><PageActionMenu label={`More actions for ${file.file_name}`} items={[{ label: "Move to another requirement...", onSelect: () => setReassignDraft({ requirementKey: requirement.requirement_key, fileId: file.file_id, targetKey: "" }) }, { label: "Unlink from this requirement", onSelect: () => void reviewRequirementAction(requirement, "unlink_evidence", [file.file_id]) }]} /></div>
-                    {editingThisFile ? <div className="requirement-override-editor requirement-evidence-action-editor"><div className="fldgrid two"><Field label="Decision"><Select value={evidenceOverride.decision} onChange={(event) => { const decision = event.target.value as EvidenceOverrideDraft["decision"]; setEvidenceOverride({ ...evidenceOverride, decision, reasonCode: decision === "accepted" ? "ai_override" : evidenceOverride.reasonCode === "ai_override" ? decision === "needs_more" ? "incomplete" : "wrong_document" : evidenceOverride.reasonCode }); }}><option value="rejected">Reject evidence</option><option value="needs_more">Needs more</option><option value="accepted">Override AI and accept</option></Select></Field><Field label="Reason code"><Select value={evidenceOverride.reasonCode} disabled={evidenceOverride.decision === "accepted"} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reasonCode: event.target.value as EvidenceOverrideDraft["reasonCode"] })}>{evidenceOverride.decision === "accepted" ? <option value="ai_override">AI override</option> : <><option value="wrong_document">Wrong document</option><option value="wrong_entity">Wrong entity</option><option value="wrong_period">Wrong period</option><option value="incomplete">Incomplete</option><option value="unreadable">Unreadable</option><option value="duplicate">Duplicate</option><option value="other">Other</option></>}</Select></Field></div><Field label="Reviewed reason"><Textarea autoFocus rows={2} value={evidenceOverride.reason} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reason: event.target.value })} placeholder={evidenceOverride.decision === "accepted" ? "Explain why this file should be accepted" : evidenceOverride.decision === "needs_more" ? "Explain what additional evidence is needed" : "Explain why this file should be rejected"} /></Field><div className="program-readiness-actions"><Btn onClick={() => setEvidenceOverride(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyEvidenceOverride()} disabled={fileBusy || evidenceOverride.reason.trim().length < 8}>{fileBusy ? "Saving..." : "Review decision"}</Btn></div></div> : null}
-                  </Fragment>;
-                })}</div> : <div className="requirement-evidence-empty">No evidence is assigned. Drop files on this requirement or choose an existing bucket file.</div>}
-                {overrideDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label={overrideDraft.action === "waive" ? "Waiver reason" : "Not-applicable reason"}><Textarea rows={2} value={overrideDraft.reason} onChange={(event) => setOverrideDraft({ ...overrideDraft, reason: event.target.value })} placeholder="Required for the immutable audit trail" /></Field><label className="checkline"><input type="checkbox" checked={overrideDraft.allPrograms} onChange={(event) => setOverrideDraft({ ...overrideDraft, allPrograms: event.target.checked, programKeys: [] })} />Apply to all selected programs and policies</label>{!overrideDraft.allPrograms ? <div className="override-programs">{requirement.source_program_keys.map((key) => <label key={key} className="checkline"><input type="checkbox" checked={overrideDraft.programKeys.includes(key)} onChange={() => setOverrideDraft({ ...overrideDraft, programKeys: overrideDraft.programKeys.includes(key) ? overrideDraft.programKeys.filter((item) => item !== key) : [...overrideDraft.programKeys, key] })} />{readiness.selections.find((item) => item.program_key === key)?.program_name || key}</label>)}</div> : null}<div className="program-readiness-actions"><Btn onClick={() => setOverrideDraft(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyOverride()} disabled={overrideDraft.reason.trim().length < 8 || (!overrideDraft.allPrograms && !overrideDraft.programKeys.length)}>Review override</Btn></div></div> : null}
-                {reassignDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label="Reassign to"><Select value={reassignDraft.targetKey} onChange={(event) => setReassignDraft({ ...reassignDraft, targetKey: event.target.value })}><option value="">Select another requirement...</option>{readiness.requirements.filter((item) => item.requirement_key !== requirement.requirement_key).map((item) => <option key={item.requirement_key} value={item.requirement_key}>{item.label}</option>)}</Select></Field><div className="program-readiness-actions"><Btn onClick={() => setReassignDraft(null)}>Cancel</Btn><Btn variant="pri" disabled={!reassignDraft.targetKey} onClick={() => void applyReassignment()}>Review reassignment</Btn></div></div> : null}
-              </div> : null}
-            </div>;
-          })}
-          {!readiness.requirements.length ? <div className="empty">No evidence policy or selected program currently requires documents.</div> : null}
-        </div>
-      </section>
-      <section className="program-readiness-band automation-band" aria-labelledby="automation-heading"><div><span className="lbl">Communications automation</span><h3 id="automation-heading">Combined missing-item follow-up</h3><p>{readiness.automation.stop_reason || `Next: ${readiness.automation.next_requirement_key?.replaceAll("_", " ") || "No item"} · ${when(readiness.automation.next_send_at)}`}</p><small>Last sent {when(readiness.automation.last_sent_at)} · {readiness.automation.attempts} of {readiness.automation.max_attempts} automatic attempts</small></div><div className="program-readiness-actions"><CellChip tone={readiness.automation.enabled && readiness.automation.eligible ? "ok" : readiness.automation.enabled ? "warn" : "mut"}>{readiness.automation.enabled ? readiness.automation.eligible ? "Active" : "Paused by readiness" : "Off"}</CellChip><Btn onClick={() => void toggleAutomation()} disabled={busy === "automation"}>{readiness.automation.enabled ? "Disable" : "Enable"}</Btn></div></section>
     </> : null}
+    </> : null}
+
+    {section === "documents" ? (readiness.lending_applicable ? <>
+      <header className="ev-doc-head">
+        <div><h3 id="shared-evidence-heading" tabIndex={-1}>Documents this file needs</h3><p>{checklistCaption}{onOpenFinancials ? <> <button type="button" className="linky" onClick={onOpenFinancials}>Choose programs in Financials</button></> : null}</p></div>
+        <div className="program-readiness-actions requirement-bulk-actions">
+          {onRunAiReview ? <ActionIcon icon="refresh" label="Re-read the intake with the AI" disabled={Boolean(busy) || aiReviewRunning} busy={aiReviewRunning} onClick={onRunAiReview} /> : null}
+          <span title="The AI asks the client for everything that is missing, following the communication window and reminder limits"><Btn onClick={() => void taskController.collect()} disabled={Boolean(taskController.busy)}>{taskController.busy === "collect" ? "Scheduling..." : "Let the AI ask for what is missing"}</Btn></span>
+          {requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}<Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestKeys.length || Boolean(busy)}>{busy === "batch-request" ? "Sending one email..." : `Email selected (${selectedRequestKeys.length})`}</Btn>
+        </div>
+      </header>
+      {taskController.error ? <Callout tone="warn">{taskController.error}</Callout> : null}
+      {taskController.notice ? <Callout tone="ok">{taskController.notice}</Callout> : null}
+      {showUploader && onUploadFiles ? <div className={cx("readiness-upload-dropzone", uploadDragging && "dragging")} role="button" tabIndex={0} onClick={() => uploadRef.current?.click()} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); uploadRef.current?.click(); } }} onDragEnter={(event) => { event.preventDefault(); setUploadDragging(true); }} onDragOver={(event) => { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setUploadDragging(false); }} onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}><input ref={uploadRef} type="file" hidden multiple accept={ACCEPTED_UPLOADS} onChange={(event) => void upload(Array.from(event.target.files ?? []))} /><Icon name="upload" size={20} /><span><strong>{uploadBusy ? "Uploading and queuing analysis..." : "Drop evidence files or ZIP archives"}</strong><small>PDF, spreadsheet, image, document, and ZIP files are extracted, classified, and reviewed automatically.</small></span><span className="btn sm">Browse</span></div> : null}
+      {triageSections.map((group) => {
+        const forceOpen = group.items.some((item) => item.requirement.requirement_key === focusedRequirementKey);
+        const groupOpen = forceOpen || (openGroups[group.group] ?? (group.group !== "done" || triageSections.length === 1));
+        return <section key={group.group} id={`ev-group-${group.group}`} className="ev-group" data-group={group.group} aria-label={group.title}>
+          <header className="ev-group-head">
+            <h4><button type="button" className="ev-group-toggle" aria-expanded={groupOpen} onClick={() => setOpenGroups((current) => ({ ...current, [group.group]: !groupOpen }))}><Icon name={groupOpen ? "chevU" : "chevD"} size={14} />{group.title}<span className="ev-count">{group.items.length}</span></button></h4>
+            <p>{group.blurb}</p>
+          </header>
+          {groupOpen ? <div className="requirement-table compact">{group.items.map(({ requirement, triage }) => renderRequirementRow(requirement, triage))}</div> : null}
+        </section>;
+      })}
+      {!documentRequirements.length ? <div className="empty">No evidence policy or selected program currently requires documents.</div> : null}
+      <ApplicationCollectionTasks profileId={profileId} controller={taskController} tasks={otherTasks} requirements={readiness.requirements} onPreviewEvidence={onPreviewEvidence ? (fileId, requirementKey) => onPreviewEvidence(fileId, requirementKey) : undefined} onVerifyRequirement={(requirement, fileIds) => reviewRequirementAction(requirement, "verify", fileIds)} />
+      <section className="program-readiness-band automation-band ev-reminders" aria-labelledby="automation-heading"><div><h4 id="automation-heading">Automatic reminders</h4><p>{readiness.automation.stop_reason || `Next: ${readiness.automation.next_requirement_key?.replaceAll("_", " ") || "nothing"} · ${when(readiness.automation.next_send_at)}`}</p><small>One combined email at most every 24 hours, up to {readiness.automation.max_attempts} attempts. Last sent {when(readiness.automation.last_sent_at)} · {readiness.automation.attempts} of {readiness.automation.max_attempts} used.</small></div><div className="program-readiness-actions"><CellChip tone={readiness.automation.enabled && readiness.automation.eligible ? "ok" : readiness.automation.enabled ? "warn" : "mut"}>{readiness.automation.enabled ? readiness.automation.eligible ? "Active" : "Paused by readiness" : "Off"}</CellChip><Btn onClick={() => void toggleAutomation()} disabled={busy === "automation"}>{readiness.automation.enabled ? "Turn off" : "Turn on"}</Btn></div></section>
+      <FormAnswersDrawer
+        profileId={profileId}
+        kind={answersFor?.kind ?? null}
+        open={Boolean(answersFor)}
+        onClose={() => setAnswersFor(null)}
+        onPreviewFile={onPreviewEvidence && answersFor ? (fileId) => onPreviewEvidence(fileId, answersFor.requirementKey) : undefined}
+      />
+    </> : <div className="empty">This enquiry is not a lending request, so it has no evidence checklist.</div>) : null}
   </div>;
 }

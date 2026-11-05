@@ -7109,3 +7109,85 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .collection-response dt { color: var(--ink2); text-transform: capitalize; }
 .collection-response dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
 .collection-response-text { margin: 4px 0 0; font-size: 13px; white-space: pre-wrap; }
+
+/* --- Evidence & banking: who acts next ----------------------------------
+   The tab opens on four tiles (needs you / waiting on the client / AI is
+   working / complete) plus the bank, then one list grouped the same way.
+   Row colour follows the group, not the raw status, so a glance down the
+   left edge says what is waiting on whom. */
+.ev-overview { display: grid; gap: 10px; margin: 0 0 14px; padding: 14px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); }
+.ev-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; }
+.ev-tile { display: flex; align-items: flex-start; gap: 12px; min-width: 0; padding: 12px; border: 1px solid var(--line); border-left: 4px solid var(--line2); border-radius: 8px; background: var(--surface); color: inherit; font: inherit; text-align: left; cursor: pointer; transition: background .12s ease, box-shadow .12s ease; }
+.ev-tile:hover { background: var(--sunken2); box-shadow: 0 1px 3px rgba(15, 23, 32, 0.08); }
+.ev-tile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ev-tile.quiet { background: var(--sunken2); }
+.ev-tile[data-group="you"] { border-left-color: var(--warn); }
+.ev-tile[data-group="client"] { border-left-color: var(--muted); }
+.ev-tile[data-group="ai"] { border-left-color: var(--accent); }
+.ev-tile[data-group="done"], .ev-tile[data-group="bank"][data-tone="ok"] { border-left-color: var(--ok); }
+.ev-tile[data-group="bank"][data-tone="warn"] { border-left-color: var(--warn); }
+.ev-tile-icon { flex: none; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--sunken2); color: var(--muted); }
+.ev-tile[data-group="you"] .ev-tile-icon { background: var(--warn-tint); color: var(--warn); }
+.ev-tile[data-group="ai"] .ev-tile-icon { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); color: var(--accent); }
+.ev-tile[data-group="done"] .ev-tile-icon, .ev-tile[data-group="bank"][data-tone="ok"] .ev-tile-icon { background: var(--ok-tint); color: var(--ok); }
+.ev-tile[data-group="bank"][data-tone="warn"] .ev-tile-icon { background: var(--warn-tint); color: var(--warn); }
+.ev-tile-body { display: grid; gap: 1px; min-width: 0; }
+.ev-tile-label { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+.ev-tile b { font-size: 22px; line-height: 1.15; font-variant-numeric: tabular-nums; }
+.ev-tile small { color: var(--muted); font-size: 12px; line-height: 1.35; }
+.ev-summary { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+.ev-summary p { margin: 0; color: var(--ink2); font-size: 13px; }
+.ev-legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px 20px; margin: 2px 0 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.ev-legend dt { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 700; }
+.ev-legend dd { margin: 2px 0 0 15px; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.ev-dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+.ev-dot[data-group="you"] { background: var(--warn); }
+.ev-dot[data-group="ai"] { background: var(--accent); }
+.ev-dot[data-group="done"] { background: var(--ok); }
+.ev-tab-badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin-left: 7px; padding: 0 6px; border-radius: 9px; background: var(--warn); color: #fff; font-size: 11px; font-weight: 700; line-height: 1; }
+.evidence-workspace-dropzone.compact { min-height: 0; margin-block: 8px; padding: 8px 12px; }
+.evidence-workspace-dropzone.compact .evidence-workspace-drop-icon { width: 28px; height: 28px; }
+.evidence-workspace-dropzone.compact strong { font-size: 12.5px; }
+
+.ev-doc-head { display: flex; flex-wrap: wrap; align-items: flex-start; justify-content: space-between; gap: 10px 16px; padding: 16px 0 4px; }
+.ev-doc-head h3 { margin: 0; font-size: 16px; }
+.ev-doc-head p { margin: 3px 0 0; color: var(--muted); font-size: 12.5px; }
+.ev-group, .ev-other { display: grid; gap: 8px; padding: 14px 0 6px; scroll-margin-top: 12px; }
+.ev-group-head { display: grid; gap: 2px; }
+.ev-group-head h4 { margin: 0; font-size: 13px; }
+.ev-group-head p { max-width: 74ch; margin: 0; color: var(--muted); font-size: 12px; }
+.ev-group-toggle { display: inline-flex; align-items: center; gap: 8px; padding: 2px 4px 2px 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+.ev-group-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+.ev-count { display: inline-grid; place-items: center; min-width: 22px; height: 20px; padding: 0 8px; border-radius: 10px; background: var(--sunken2); color: var(--ink2); font-size: 11.5px; font-weight: 700; }
+.ev-group[data-group="you"] .ev-count { background: var(--warn-tint); color: var(--warn); }
+.requirement-table.compact .requirement-row.ev-row { border: 1px solid var(--line); border-left: 4px solid var(--line2); background: var(--surface); }
+.requirement-table.compact .ev-row[data-group="you"] { border-left-color: var(--warn); background: color-mix(in srgb, var(--warn) 4%, var(--surface)); }
+.requirement-table.compact .ev-row[data-group="client"] { border-left-color: var(--muted); }
+.requirement-table.compact .ev-row[data-group="ai"] { border-left-color: var(--accent); }
+.requirement-table.compact .ev-row[data-group="done"] { border-left-color: var(--ok); }
+.ev-row .requirement-summary-toggle { padding: 12px 14px; }
+.ev-row .requirement-title strong { font-size: 13px; }
+.ev-row .requirement-title small { color: var(--ink2); font-size: 12px; white-space: normal; }
+.ev-row .requirement-coverage strong { font-size: 12.5px; }
+.ev-row .requirement-coverage small { font-size: 11.5px; }
+.ev-optional { margin-left: 8px; padding: 1px 6px; border-radius: 4px; background: var(--sunken2); color: var(--muted); font-size: 10.5px; font-style: normal; font-weight: 600; }
+.ev-row-body { gap: 12px; }
+.ev-next { margin: 0; color: var(--ink2); font-size: 13px; line-height: 1.5; }
+.ev-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.ev-actions:empty { display: none; }
+.ev-block { display: grid; gap: 6px; }
+.ev-block-title { color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.03em; text-transform: uppercase; }
+.ev-reason { color: var(--muted); font-size: 11.5px; }
+.ev-request { display: grid; gap: 6px; padding: 10px 12px; border: 1px dashed var(--line2); border-radius: 8px; background: var(--sunken2); }
+.ev-request-message { margin: 0; color: var(--ink2); font-size: 12.5px; }
+.ev-row .requirement-evidence-file strong { font-size: 12px; }
+.ev-row .requirement-evidence-file small { font-size: 11px; }
+.ev-reminders { margin-top: 10px; }
+.ev-reminders h4 { margin: 0; font-size: 13px; }
+@media (max-width: 1100px) { .ev-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 720px) {
+  .ev-tiles { grid-template-columns: 1fr; }
+  .ev-row .requirement-summary-toggle { grid-template-columns: minmax(0, 1fr) auto; }
+  .ev-row .requirement-state-stack, .ev-row .requirement-title, .ev-row .requirement-coverage { grid-column: 1; text-align: left; }
+  .ev-row .requirement-summary-toggle > svg { grid-column: 2; grid-row: 1; }
+}

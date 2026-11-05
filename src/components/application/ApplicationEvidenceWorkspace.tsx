@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
-import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
+import { EvidenceOverview, type OverviewTarget } from "@/components/application/EvidenceOverview";
 import { BankingPanel } from "@/components/application/ApplicationVerificationWorkspace";
 import { BankAccountsCard } from "@/components/application/BankAccountsCard";
 import { PlaidRequestBar } from "@/components/application/PlaidRequestBar";
@@ -41,6 +41,7 @@ import {
   evidenceReasonLabel,
   evidenceUsabilityLabel,
 } from "@/lib/evidenceDecision";
+import { isDocumentRequirement, triageCounts, type TriageGroup } from "@/lib/evidenceTriage";
 import { lockedEvidencePresentation, unlockedCopyRequest } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { useProductionCall } from "@/lib/productionTrainingCall";
@@ -116,6 +117,7 @@ export function ApplicationEvidenceWorkspace({
   canCreatePrograms = false,
   programVertical = "main_street",
   intakeVariant,
+  onOpenFinancials,
 }: {
   profileId: string;
   intakeId: string;
@@ -136,6 +138,8 @@ export function ApplicationEvidenceWorkspace({
   canCreatePrograms?: boolean;
   programVertical?: FundingProgramVertical;
   intakeVariant?: string | null;
+  /** Programs are chosen on the Financials tab; this opens it. */
+  onOpenFinancials?: () => void;
 }) {
   const apiCall = useAuthedApi();
   const productionCall = useProductionCall();
@@ -156,6 +160,7 @@ export function ApplicationEvidenceWorkspace({
   const [actionBusy, setActionBusy] = useState(false);
   const [requestingUnlockedCopyFileId, setRequestingUnlockedCopyFileId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [groupFocus, setGroupFocus] = useState<{ group: TriageGroup; requestId: number } | null>(null);
 
   const workspace = useQuery({
     queryKey,
@@ -207,8 +212,8 @@ export function ApplicationEvidenceWorkspace({
     () => data?.program_readiness.requirements ?? [],
     [data?.program_readiness.requirements],
   );
-  const requiredRequirements = requirements.filter((item) => item.required_level === "required");
-  const completeRequirements = requiredRequirements.filter(requirementComplete);
+  const documentRequirements = useMemo(() => requirements.filter(isDocumentRequirement), [requirements]);
+  const documentCounts = useMemo(() => triageCounts(documentRequirements), [documentRequirements]);
   const files = useMemo(() => data?.evidence.files ?? [], [data?.evidence.files]);
   const lockedEvidenceByFileId = useMemo(() => {
     const result = new Map<string, ReturnType<typeof lockedEvidencePresentation>>();
@@ -478,7 +483,7 @@ export function ApplicationEvidenceWorkspace({
       <div>
         <span className="lbl">Step 2</span>
         <h2>Evidence &amp; banking</h2>
-        <Sub>One live snapshot controls evidence decisions, statement coverage, Plaid, forms, and readiness.</Sub>
+        <Sub>Everything the client has sent, what the AI made of it, and what is still needed.</Sub>
       </div>
       <div className="evidence-workspace-actions">
         {onAddFromDrive ? <ActionIcon icon="upload" label="Add files from Google Drive" onClick={onAddFromDrive} /> : null}
@@ -492,7 +497,7 @@ export function ApplicationEvidenceWorkspace({
     <input ref={uploadRef} type="file" hidden multiple accept={ACCEPTED_UPLOADS} aria-label="Upload evidence files" onChange={(event) => void upload(Array.from(event.target.files ?? []))} />
     <button
       type="button"
-      className={cx("evidence-workspace-dropzone", dragging && "dragging")}
+      className={cx("evidence-workspace-dropzone", "compact", dragging && "dragging")}
       disabled={!data.can_upload || uploadBusy}
       onClick={() => uploadRef.current?.click()}
       onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
@@ -501,29 +506,42 @@ export function ApplicationEvidenceWorkspace({
       onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}
     >
       <span className="evidence-workspace-drop-icon"><Icon name="upload" size={22} /></span>
-      <span><strong>{uploadBusy ? uploadStatus || "Uploading evidence..." : "Drop files or ZIP archives here"}</strong><small>PDFs, spreadsheets, documents, images, CSV files, and ZIP archives are sent to Supporting / Other, classified, and reviewed by AI.</small></span>
+      <span><strong>{uploadBusy ? uploadStatus || "Uploading evidence..." : "Drop files or ZIP archives here"}</strong><small>PDFs, spreadsheets, images, CSV and ZIP files are classified and read by the AI.</small></span>
       <span className="btn sm">{uploadBusy ? "Uploading" : "Browse"}</span>
     </button>
 
-    <div className="evidence-workspace-metrics" aria-label="Evidence and banking status">
-      <div><span>Requirements</span><b>{completeRequirements.length} / {requiredRequirements.length}</b><small>accepted or overridden</small></div>
-      <div><span>Bank statements{data.bank_evidence.counted_accounts?.length ? ` (${data.bank_evidence.counted_accounts.length} account${data.bank_evidence.counted_accounts.length === 1 ? "" : "s"} counted)` : ""}</span><b>{data.bank_evidence.accepted_statement_months.length} / {data.bank_evidence.required_statement_months}</b><small>{data.bank_evidence.statement_coverage_complete ? "coverage complete" : "distinct months accepted"}</small></div>
-      <div><span>Plaid</span><b>{data.bank_evidence.connected_institutions}</b><small>{data.bank_evidence.connected_institutions ? "connected institutions" : data.bank_evidence.statement_coverage_complete ? "optional" : "not connected"}</small></div>
-      <div><span>Processing</span><b>{data.processing.analyzing_files}</b><small>{data.processing.failed_files || data.processing.skipped_files ? [data.processing.failed_files ? `${data.processing.failed_files} failed` : "", data.processing.skipped_files ? `${data.processing.skipped_files} skipped` : ""].filter(Boolean).join(" · ") : `${data.processing.total_files} total files`}</small></div>
-    </div>
+    <EvidenceOverview
+      counts={documentCounts}
+      aiFiles={data.processing.analyzing_files}
+      bank={{
+        accepted: data.bank_evidence.accepted_statement_months.length,
+        required: data.bank_evidence.required_statement_months,
+        complete: Boolean(data.bank_evidence.statement_coverage_complete),
+        institutions: data.bank_evidence.connected_institutions,
+        counted: data.bank_evidence.counted_accounts?.length ?? 0,
+      }}
+      onJump={(target: OverviewTarget) => {
+        if (target === "banking") { setTab("banking"); return; }
+        setTab("requirements");
+        setGroupFocus({ group: target, requestId: Date.now() });
+      }}
+    />
 
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {data.processing.has_processing ? <Callout tone="acc"><span className="spinner" />AI is processing {data.processing.analyzing_files} file{data.processing.analyzing_files === 1 ? "" : "s"}. This workspace refreshes automatically.</Callout> : null}
 
-    <ApplicationLenderSubmissions key={profileId} profileId={profileId} />
-
     <div className="evidence-workspace-tabs" role="tablist" aria-label="Evidence workspace sections">
-      {([[
-        "requirements", "Requirements",
-      ], ["banking", "Banking"], ["files", `All files (${data.evidence.total_files})`]] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : undefined} onClick={() => setTab(id)}>{label}</button>)}
+      {([
+        ["requirements", "Documents", documentCounts.you],
+        ["banking", "Banking", data.bank_evidence.statement_coverage_complete ? 0 : 1],
+        ["files", `All files (${data.evidence.total_files})`, 0],
+      ] as const).map(([id, label, attention]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? "on" : undefined} onClick={() => setTab(id)}>{label}{attention ? <span className="ev-tab-badge" aria-label={id === "requirements" ? `${attention} need you` : "needs attention"}>{id === "requirements" ? attention : "!"}</span> : null}</button>)}
     </div>
 
     {tab === "requirements" ? <ApplicationProgramReadiness
+      section="documents"
+      focusGroup={groupFocus}
+      onOpenFinancials={onOpenFinancials}
       profileId={profileId}
       files={files.map((file) => ({
         id: file.id,

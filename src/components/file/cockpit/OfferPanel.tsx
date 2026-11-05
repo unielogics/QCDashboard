@@ -317,7 +317,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
         <div className="fc-listing-item">
           <Lbl>Program on the file</Lbl>
           <strong>{selection?.program_name ?? "None selected"}</strong>
-          <div className="fc-chips"><CellChip tone={eligibility.tone}>{eligibility.label}</CellChip></div>
+          <div className="fc-chips"><CellChip tone={eligibility.tone}>{eligibility.label}</CellChip> <button type="button" className="linky" onClick={() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" })}>{selection ? "Change programs" : "Choose programs"}</button></div>
         </div>
         <div className="fc-listing-item">
           <Lbl>Evidence</Lbl>
@@ -368,7 +368,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
                   </Btn>
                 );
               })}
-              {!candidates.length ? <span className="sub">No programs on the file yet; select one on Evidence &amp; banking.</span> : null}
+              {!candidates.length ? <span className="sub">No programs on the file yet. <button type="button" className="linky" onClick={() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Choose one in Programs and use of funds above</button>.</span> : null}
               <Btn size="sm" variant="pri" onClick={() => void suggestAll()} disabled={!products.length || !editable || suggestions.isLoading}>
                 <Icon name="sparkles" size={12} /> Suggest terms
               </Btn>

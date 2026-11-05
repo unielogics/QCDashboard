@@ -5,8 +5,8 @@ import { requirementStatusLabel } from "@/lib/applicationProfile";
 describe("requirement states in the desk's words", () => {
   it("says what happens next, not what the machine knows", () => {
     expect(requirementStatusLabel("requested")).toBe("Waiting on client");
-    expect(requirementStatusLabel("received_unverified")).toBe("Received · AI checking");
-    expect(requirementStatusLabel("received_unverified", { needsPerson: true })).toBe("Received · needs a person");
+    expect(requirementStatusLabel("received_unverified")).toBe("Received · under review");
+    expect(requirementStatusLabel("received_unverified", { needsPerson: true })).toBe("Needs your review");
     expect(requirementStatusLabel("verified")).toBe("Accepted");
     expect(requirementStatusLabel("not_applicable")).toBe("Not needed");
     expect(requirementStatusLabel("failed")).toBe("Not accepted");

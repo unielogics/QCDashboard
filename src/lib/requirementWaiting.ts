@@ -1,14 +1,16 @@
-// What a received requirement is actually waiting on.
+// What a received requirement is waiting on, in the vocabulary of the collection
+// task cards. The decision itself lives in evidenceTriage.ts; this keeps the
+// older shape (kind / label / hint / tone / owner) for the callers that want a
+// single pill and a tooltip.
 //
 // "Received · AI checking" used to cover every requirement whose files had
-// arrived but which was not yet "Accepted". On the live files it was almost never
-// true: the AI had already finished (and accepted the file, or said it could not),
-// and the item was waiting on a person, or on the client for the rest of the
-// months. Nothing moved those along, so they sat under a label that promised the
-// opposite. This reads the same evidence the Requirements tab shows and says who
-// has to act next.
+// arrived but which was not yet accepted. On the live files it was almost never
+// true: the AI had already finished (and accepted the file, or said it could
+// not), and the item was waiting on a person, or on the client for the rest of
+// the months. It no longer exists.
 
-import type { ApplicationRequirement, ApplicationRequirementEvidence } from "@/lib/applicationProfile";
+import type { ApplicationRequirement } from "@/lib/applicationProfile";
+import { triageRequirement, type TriageInput, type TriageKind } from "@/lib/evidenceTriage";
 
 export type RequirementWaitingKind =
   | "ai_reading"
@@ -28,95 +30,26 @@ export type RequirementWaiting = {
   owner: "ai" | "person" | "client";
 };
 
-type Evidence = Pick<ApplicationRequirementEvidence, "ai_decision" | "ai_explanation" | "verified">;
-type Waitable = Pick<ApplicationRequirement, "status" | "verification_required" | "state_reason"> & {
-  evidence_files?: Evidence[] | null;
-  coverage?: Record<string, unknown> | null;
-  verified_coverage?: Record<string, unknown> | null;
+type Waitable = TriageInput;
+
+const KINDS: Partial<Record<TriageKind, RequirementWaitingKind>> = {
+  reading: "ai_reading",
+  review: "needs_person",
+  not_accepted: "needs_person",
+  signoff: "needs_signoff",
+  partial: "partial",
+  not_run: "review_not_run",
 };
 
-const FLAGGED = new Set(["needs_more", "rejected", "failed"]);
-
-type Progress = { current: number; required: number; unit: string };
-
-/** How much of what is needed the AI (or a person) has accepted so far, or
- *  null when it is all there or the requirement does not count in parts. */
-export function acceptedProgress(requirement: Pick<Waitable, "coverage" | "verified_coverage">): Progress | null {
-  const source = requirement.verified_coverage ?? requirement.coverage ?? {};
-  const current = Number(source.current);
-  const required = Number(source.required);
-  if (!Number.isFinite(current) || !Number.isFinite(required) || required <= 0 || current >= required) return null;
-  return { current, required, unit: String(source.unit ?? "documents") };
-}
-
-function sentence(value: string | null | undefined): string {
-  const text = (value ?? "").trim();
-  if (!text) return "";
-  return /[.!?]$/.test(text) ? text : `${text}.`;
-}
-
-/** Who a requirement in "received, not yet accepted" is waiting on, in words.
- *  Any other status answers `received` with a null-safe label of its own. */
+/** Who a requirement that is in but not yet accepted is waiting on, in words. */
 export function requirementWaiting(requirement: Waitable): RequirementWaiting {
-  const files = requirement.evidence_files ?? [];
-  const reading = files.filter((file) => file.ai_decision === "processing");
-  const flagged = files.filter((file) => FLAGGED.has(file.ai_decision));
-  const progress = acceptedProgress(requirement);
-  const allAccepted = files.length > 0 && files.every((file) => file.ai_decision === "accepted");
-
-  if (reading.length) {
-    return {
-      kind: "ai_reading",
-      label: "Received · AI reading",
-      hint: "The AI is reading the file now. This usually takes a minute or two.",
-      tone: "acc",
-      owner: "ai",
-    };
-  }
-  if (flagged.length) {
-    const why = sentence(flagged.find((file) => file.ai_explanation)?.ai_explanation);
-    const many = flagged.length > 1;
-    return {
-      kind: "needs_person",
-      label: "Received · needs a person",
-      hint: `${many ? `The AI could not accept ${flagged.length} of the files` : "The AI could not accept this file"}.${why ? ` ${why}` : ""} Preview it, then accept it, move it to the right item, or ask the client for another.`,
-      tone: "warn",
-      owner: "person",
-    };
-  }
-  if (progress) {
-    return {
-      kind: "partial",
-      label: `Partly received · ${progress.current} of ${progress.required} ${progress.unit}`,
-      hint: `The AI accepted ${progress.current} of ${progress.required} ${progress.unit}. The client still needs to send the rest.`,
-      tone: "mut",
-      owner: "client",
-    };
-  }
-  if (requirement.verification_required && allAccepted && !files.every((file) => file.verified)) {
-    return {
-      kind: "needs_signoff",
-      label: "Received · needs sign-off",
-      hint: "The AI accepted the file. This item needs a person to confirm it before it counts.",
-      tone: "warn",
-      owner: "person",
-    };
-  }
-  if (/run ai review/i.test(requirement.state_reason ?? "")) {
-    return {
-      kind: "review_not_run",
-      label: "Received · review not run",
-      hint: "The file is in. Its review checks have not been run yet; use Run AI review on the Requirements tab.",
-      tone: "acc",
-      owner: "ai",
-    };
-  }
+  const triage = triageRequirement(requirement);
   return {
-    kind: "received",
-    label: "Received · being checked",
-    hint: "The file is in and the requirement has not been accepted yet.",
-    tone: "acc",
-    owner: "ai",
+    kind: KINDS[triage.kind] ?? "received",
+    label: triage.label,
+    hint: triage.next,
+    tone: triage.tone === "warn" || triage.tone === "bad" ? "warn" : triage.tone === "mut" ? "mut" : "acc",
+    owner: triage.owner === "you" ? "person" : triage.owner === "client" ? "client" : "ai",
   };
 }
 
@@ -139,3 +72,5 @@ export function evidenceOriginLabel(origin: string | null | undefined, formKind?
   if (origin === "signed") return "Signed in the room";
   return "Uploaded";
 }
+
+export type { ApplicationRequirement };

@@ -103,7 +103,7 @@ export function requirementStatusLabel(
   switch (status) {
     case "missing": return "Not received";
     case "requested": return "Waiting on client";
-    case "received_unverified": return options.needsPerson ? "Received · needs a person" : "Received · AI checking";
+    case "received_unverified": return options.needsPerson ? "Needs your review" : "Received · under review";
     case "verified": return "Accepted";
     case "waived": return "Waived";
     case "not_applicable": return "Not needed";

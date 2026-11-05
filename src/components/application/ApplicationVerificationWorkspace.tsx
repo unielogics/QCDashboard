@@ -677,7 +677,7 @@ export function BankingPanel({ profileId, sourceKind, sourceId, state, banks, lo
   };
   return <><section className="verification-section bank-evidence-workspace">
     <header className="verification-section-head">
-      <div><span className="lbl">Evidence &amp; banking</span><h3>Business bank evidence</h3><Sub>AI-accepted uploaded statements and client-authorized Plaid data are alternative evidence sources. Staff only override exceptions.</Sub></div>
+      <div><span className="lbl">Banking</span><h3>Business bank evidence</h3><Sub>AI-accepted uploaded statements and client-authorized Plaid data are alternative evidence sources. Staff only override exceptions.</Sub></div>
       <CellChip tone={state?.business_banking_complete ? "ok" : manualFailedCount || manualRejectedCount ? "bad" : manualAcceptedCount || manualPendingCount ? "acc" : "warn"}>{state?.business_banking_complete ? "Complete" : manualFailedCount ? "Analysis failed" : manualRejectedCount ? "Needs attention" : manualPendingCount ? "AI review in progress" : manualAcceptedCount ? `${manualMonths.length} of ${requiredMonths} months accepted` : manualUnassignedCount ? "Evidence needs mapping" : "Awaiting applicant"}</CellChip>
     </header>
     <div className="bank-evidence-stats"><div><span>Connected institutions</span><b className="num">{connected.length}</b></div><div><span>Evidence source</span><b>{hasManualEvidence ? "Uploaded statements" : connected.length ? "Plaid" : "-"}</b></div><div><span>Accepted coverage</span><b className="num">{manualMonths.length ? `${manualMonths.length} / ${requiredMonths}` : state?.bank_statement_months || (manualPendingCount ? "Analyzing" : "-")}</b></div></div>

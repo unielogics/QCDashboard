@@ -1805,6 +1805,7 @@ export function LeadDetailPanel({
                   onRequestDocument={openDocumentRequest}
                   onVerificationChange={setProfileVerification}
                   onProgramReadinessChange={setProgramReadiness}
+                  onOpenFinancials={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }}
                   focusRequirement={evidenceFocus}
                   canCreatePrograms={currentUser?.role === Role.SUPER_ADMIN}
                   programVertical={programVerticalForVariant(detail.intake.variant)}
@@ -1863,6 +1864,11 @@ export function LeadDetailPanel({
                     canRecordTerms={isDealerFile && canUnderwrite}
                     canUnderwrite={canUnderwrite}
                     programReadiness={programReadiness}
+                    onProgramReadinessChange={setProgramReadiness}
+                    onRefreshProgramReadiness={refreshProgramReadiness}
+                    canCreatePrograms={currentUser?.role === Role.SUPER_ADMIN}
+                    programVertical={programVerticalForVariant(detail.intake.variant)}
+                    intakeVariant={detail.intake.variant}
                     termSheet={termSheet}
                     packageState={{
                       generated: Boolean(summary && packet),
