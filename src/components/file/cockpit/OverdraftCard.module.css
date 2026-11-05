@@ -1,0 +1,75 @@
+.card { container-type: inline-size; }
+.card select { min-width: 0; max-width: 100%; padding: 6px 8px; border: 1px solid var(--line2); border-radius: 7px; background: var(--surface); color: var(--ink); font: inherit; font-size: 11px; }
+.headerActions { display: flex; gap: 8px; flex-wrap: wrap; align-items: end; }
+.account, .monthHeader label, .eventFilter, .sources label { display: grid; gap: 4px; color: var(--muted); font-size: 10px; min-width: 0; }
+.account { max-width: 250px; }
+.stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.stats > div { min-width: 0; border: 1px solid var(--line); border-radius: 8px; padding: 9px; display: grid; align-content: start; gap: 4px; }
+.stats span { color: var(--muted); font-size: 10px; }
+.stats strong { font-size: 21px; line-height: 1.15; letter-spacing: -.02em; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.stats small { color: var(--muted); font-size: 9px; line-height: 1.35; }
+.loss { color: var(--danger); }
+.trend { display: grid; gap: 3px; font-size: 11px; color: var(--ink2); }
+.trend small { color: var(--muted); font-size: 10px; }
+.monthRail { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px; }
+.monthRail button { position: relative; min-width: 0; overflow: hidden; display: grid; gap: 4px; padding: 8px 5px 11px; background: var(--sunken2); border: 1px solid var(--line); border-radius: 7px; text-align: left; font: inherit; color: var(--ink); cursor: pointer; }
+.monthRail button span { font-size: 9px; color: var(--muted); white-space: nowrap; }
+.monthRail button strong { font-size: 14px; font-weight: 650; overflow-wrap: anywhere; }
+.monthRail button i { position: absolute; bottom: 0; left: 0; height: 4px; background: var(--danger); }
+.monthRail button[data-tone="warn"] i { background: var(--warn); }
+.monthRail button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-100); }
+.monthHeader { display: flex; gap: 7px; flex-wrap: wrap; align-items: end; }
+.monthHeader label { flex: 1; min-width: 100px; }
+.monthHeader > span { align-self: center; }
+.layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; align-items: start; }
+.calendarPanel { min-width: 0; }
+.calendar { width: 100%; border-spacing: 3px; table-layout: fixed; }
+.calendar th { color: var(--muted); font-size: 9px; font-weight: 600; text-align: center; padding-bottom: 4px; }
+.calendar td { padding: 0; height: 38px; }
+.calendar button { display: flex; position: relative; width: 100%; height: 38px; flex-direction: column; align-items: center; justify-content: center; gap: 2px; border: 1px solid var(--line); border-radius: 6px; font: inherit; font-size: 11px; color: var(--ink2); background: repeating-linear-gradient(135deg, transparent, transparent 4px, var(--line) 4px, var(--line) 5px); cursor: pointer; }
+.calendar button[data-negative] { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 32%, transparent); background: var(--danger-tint); font-weight: 750; }
+.calendar button[data-selected] { box-shadow: inset 0 0 0 2px var(--accent); }
+.card button:focus-visible, .card select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.markers { display: flex; justify-content: center; align-items: center; gap: 2px; min-height: 7px; }
+.feeDot { display: inline-block; width: 5px; height: 5px; border-radius: 50%; background: var(--warn); flex: 0 0 auto; }
+.returnDot { display: inline-flex; color: var(--accent); font-size: 11px; font-weight: 800; font-style: normal; line-height: 7px; align-items: center; flex: 0 0 auto; }
+.otherDot { font-size: 13px; font-style: normal; color: var(--ink); line-height: 6px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 10px; margin-top: 8px; }
+.legend span { display: inline-flex; align-items: center; gap: 4px; color: var(--muted); font-size: 9px; }
+.negativeKey, .unknownKey { display: inline-block; width: 9px; height: 9px; border-radius: 2px; border: 1px solid var(--line2); }
+.negativeKey { background: var(--danger-tint); border-color: var(--danger); }
+.unknownKey { background: repeating-linear-gradient(135deg, transparent, transparent 2px, var(--line2) 2px, var(--line2) 3px); }
+.help, .note { color: var(--muted); font-size: 10px; line-height: 1.5; margin: 7px 0 0; }
+.inspector { min-width: 0; border: 1px solid var(--line); border-radius: 9px; background: var(--sunken2); padding: 10px; display: grid; gap: 9px; }
+.inspector h5 { font-size: 12px; line-height: 1.4; margin: 0; }
+.inspector p { font-size: 11px; margin: 5px 0 0; line-height: 1.5; }
+.monthInfo, .dayInfo { display: grid; gap: 4px; }
+.dayInfo { padding-bottom: 8px; border-bottom: 1px solid var(--line); }
+.dayInfo > span { justify-self: start; }
+.eventHeader { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.eventFilter { grid-template-columns: auto minmax(0, 1fr); align-items: center; }
+.back { width: fit-content; padding: 0; border: 0; font: inherit; font-size: 10px; font-weight: 600; color: var(--accent); background: transparent; cursor: pointer; }
+.events { margin: 0; padding: 0; list-style: none; display: grid; gap: 4px; }
+.events button { display: grid; grid-template-columns: minmax(0, 1fr) auto 12px; align-items: center; gap: 7px; width: 100%; padding: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); text-align: left; font: inherit; font-size: 10px; cursor: pointer; }
+.events button span { display: grid; gap: 3px; min-width: 0; }
+.events b { font-size: 11px; }
+.events small { color: var(--muted); font-size: 9px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.events strong { white-space: nowrap; font-size: 10px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pagination { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.pagination > span { font-size: 9px; color: var(--muted); margin-right: auto; }
+.pagination button { font-size: 10px; padding-inline: 7px; }
+.empty { color: var(--muted); font-size: 11px; line-height: 1.6; padding: 10px 0; margin: 0; }
+.eventInfo { display: grid; gap: 9px; }
+.eventInfo dl { margin: 0; display: grid; gap: 6px; }
+.eventInfo dl > div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; font-size: 11px; }
+.eventInfo dt { color: var(--muted); }
+.eventInfo dd { margin: 0; overflow-wrap: anywhere; }
+.description { max-height: 150px; overflow-y: auto; overflow-wrap: anywhere; }
+.sources { display: grid; gap: 6px; margin-top: 6px; }
+.sources button { justify-self: start; }
+.tableWrap { overflow: auto; max-height: 350px; }
+.tableWrap caption { text-align: left; color: var(--muted); font-size: 11px; padding: 6px; }
+.tableWrap th { position: sticky; top: 0; background: var(--surface); }
+@container (min-width: 620px) { .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); } .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } }
+@container (max-width: 360px) { .monthRail { grid-template-columns: repeat(3, minmax(0, 1fr)); } .calendar { border-spacing: 2px; } .calendar td, .calendar button { height: 36px; } .account { max-width: none; width: 100%; } .stats strong { font-size: 18px; } }
+@media (prefers-reduced-motion: reduce) { .card * { scroll-behavior: auto; } }
