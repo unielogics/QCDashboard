@@ -9,6 +9,8 @@ import { UseOfFundsEditor } from "./UseOfFundsEditor";
 import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import { ApplicationCollectionTasks, RequirementRequest, useCollectionTasks } from "./ApplicationCollectionTasks";
 import { AddRequirementDrawer } from "@/components/application/AddRequirementDrawer";
+import { DebtScheduleReviewPanel } from "@/components/application/DebtScheduleReviewPanel";
+import { useDebtScheduleReviewSummary } from "@/hooks/useDebtScheduleReview";
 import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
 import pickerStyles from "./FundingProgramPicker.module.css";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -121,6 +123,7 @@ export function ApplicationProgramReadiness({
   focusGroup = null,
   onOpenFinancials,
   canAddRequirements = false,
+  onOpenForms,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -149,6 +152,8 @@ export function ApplicationProgramReadiness({
   onOpenFinancials?: () => void;
   /** Underwriting roles may add requirements from the library to this file's checklist. */
   canAddRequirements?: boolean;
+  /** Opens the financial forms (fill one in yourself). */
+  onOpenForms?: () => void;
 }) {
   const apiCall = useAuthedApi();
   const confirmAction = useConfirmAction();
@@ -253,6 +258,8 @@ export function ApplicationProgramReadiness({
   const [openGroups, setOpenGroups] = useState<Partial<Record<TriageGroup, boolean>>>({});
   const [answersFor, setAnswersFor] = useState<{ kind: FormKind; requirementKey: string } | null>(null);
   const [addOpen, setAddOpen] = useState(false);
+  const hasDebtRow = (readiness?.requirements ?? []).some((item) => formKindsOf(item).includes("debt_schedule"));
+  const debtSummary = useDebtScheduleReviewSummary(profileId, section === "documents" && hasDebtRow);
   const expansionSeeded = useRef(false);
   const lastGroupRequestRef = useRef(0);
 
@@ -806,12 +813,18 @@ export function ApplicationProgramReadiness({
     const formKinds = formKindsOf(requirement);
     const unsignedFileIds = linkedEvidence.filter((file) => file.ai_decision === "accepted" && !file.verified).map((file) => file.file_id);
     const askClient = triage.group === "client";
+    const isDebt = formKinds.includes("debt_schedule");
+    const debtHasWork = isDebt && (linkedEvidence.length > 0 || debtSummary.hasSource || debtSummary.onSchedule > 0);
+    const plural = (count: number, word: string) => `${count} ${word}${count === 1 ? "" : "s"}`;
+    const debtShort = isDebt && !debtSummary.loading && (debtSummary.read > 0 || debtSummary.onSchedule > 0)
+      ? `${debtSummary.read > 0 ? `We read ${plural(debtSummary.read, "line")} from the file` : `${plural(debtSummary.onSchedule, "line")} on the schedule`} · ${debtSummary.missingAnswers > 0 ? `${plural(debtSummary.missingAnswers, "answer")} missing` : "nothing missing"}`
+      : null;
     const reasonNote = (requirement.state_reason ?? "").trim();
     const showReason = Boolean(reasonNote) && !/^AI accepted \d+ of \d+/i.test(reasonNote) && !/^Accepted by /i.test(reasonNote) && !/^Awaiting client evidence/i.test(reasonNote);
     return <div key={requirement.requirement_key} className={cx("requirement-row", "ev-row", expanded && "expanded", focusedRequirementKey === requirement.requirement_key && "navigation-target", dragTarget === requirement.requirement_key && "drop-target")} data-group={triage.group} onDragEnter={(event) => { if (onUploadFiles) { event.preventDefault(); setDragTarget(requirement.requirement_key); } }} onDragOver={(event) => { if (onUploadFiles) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTarget(null); }} onDrop={(event) => { if (onUploadFiles) { event.preventDefault(); void upload(Array.from(event.dataTransfer.files), requirement.requested_document_id || undefined); } }}>
       <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
         <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={triage.tone} title={triage.next}>{triage.label}</CellChip></span>
-        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}</strong><small>{triage.short}</small></span>
+        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}</strong><small>{debtShort ?? triage.short}</small></span>
         <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
       </button>
       {expanded ? <div className="requirement-expanded-body ev-row-body">
@@ -821,8 +834,10 @@ export function ApplicationProgramReadiness({
           {askClient ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
           {askClient ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
           {askClient && !formKinds.length && requestable ? <span title="Emails the client the secure-room link for this item"><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailReminder(requirement)}><Icon name="mail" size={14} />Email the client</Btn></span> : null}
+          {askClient && formKinds.length && !debtHasWork && onOpenForms ? <span title="Open the forms and type it in yourself"><Btn size="sm" onClick={onOpenForms}><Icon name="pencil" size={14} />Fill it in yourself</Btn></span> : null}
           {linkedEvidence.length ? formKinds.map((kind) => <ActionIcon key={`answers-${kind}`} icon="docCheck" label={`See the ${formLabel(kind)}: what was filled in`} onClick={() => setAnswersFor({ kind, requirementKey: requirement.requirement_key })} />) : null}
         </div>
+        {debtHasWork ? <DebtScheduleReviewPanel profileId={profileId} compact onSaved={() => void load()} /> : null}
         <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />
         {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;

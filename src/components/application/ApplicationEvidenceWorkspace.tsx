@@ -547,6 +547,7 @@ export function ApplicationEvidenceWorkspace({
       focusGroup={groupFocus}
       onOpenFinancials={onOpenFinancials}
       canAddRequirements={canAddRequirements}
+      onOpenForms={() => setFormsOpen(true)}
       profileId={profileId}
       files={files.map((file) => ({
         id: file.id,
