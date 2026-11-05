@@ -1738,6 +1738,12 @@ export function LeadDetailPanel({
         </IconBtn>
       </div>
 
+      {detail?.application_source ? <div className="intake-source-links" aria-label="Application source">
+        <b>{detail.application_source.recorded ? "Application source" : "MCA application page"}</b>
+        {detail.application_source.marketing_url ? <a href={detail.application_source.marketing_url} target="_blank" rel="noopener noreferrer">{detail.application_source.marketing_url}<Icon name="arrowR" size={12} /></a> : null}
+        {detail.application_source.entry_url ? <a href={detail.application_source.entry_url} target="_blank" rel="noopener noreferrer">Open original application entry<Icon name="arrowR" size={12} /></a> : null}
+        {!detail.application_source.recorded ? <span className="sub">The original source was not captured for this older file.</span> : null}
+      </div> : null}
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
       {loading || !detail ? <div className="empty">Loading intake file...</div> : (
         <>

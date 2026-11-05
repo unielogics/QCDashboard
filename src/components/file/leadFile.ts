@@ -136,6 +136,7 @@ export function isSourceEvidenceFile(file: UploadedFile): boolean {
 }
 
 export type LeadDetail = {
+  application_source?: { entry_url: string | null; marketing_url: string | null; recorded: boolean; campaign: string | null; cta: string | null } | null;
   mca_refinance_policy?: McaRefinancePolicy | null;
   intake: LeadRow & {
     loan_purpose?: string | null;

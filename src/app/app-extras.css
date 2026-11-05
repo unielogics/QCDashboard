@@ -3437,6 +3437,12 @@ select.vm-in {
 }
 .vm-file-n { color: var(--qci-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .vm-file-m { color: var(--qci-muted); font-size: 12px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.vm-file:has([role="alert"]), .vm-file:has([role="status"]) { flex-wrap: wrap; align-items: center; }
+.vm-file:has([role]) .vm-file-n { flex: 1 1 160px; min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.vm-file [role="alert"], .vm-file [role="status"] { flex: 1 1 180px; overflow-wrap: anywhere; }
+.intake-source-links { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 10px 14px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.intake-source-links a { display: inline-flex; align-items: center; gap: 5px; color: var(--accent); min-width: 0; overflow-wrap: anywhere; }
+.intake-source-links a svg { flex-shrink: 0; }
 
 /* Two paths to the same answer, as the marketing site's segmented control. */
 .vm-tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 2px; padding: 3px; background: var(--qci-sunken); border: 1px solid var(--qci-border); border-radius: 8px; }

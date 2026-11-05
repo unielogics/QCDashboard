@@ -17,7 +17,7 @@
 // matching the security rule on the other public intake pages.
 
 import type { ReactNode } from "react";
-import { uploadFile } from "@/lib/fileUpload";
+import { uploadFile, type UploadStage } from "@/lib/fileUpload";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
@@ -28,7 +28,8 @@ import {
   type SignRequestedDocumentPayload,
 } from "@/components/intake/SignRequestedDocument";
 import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
-import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { readPublicIntakeAttribution, type PublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { readIntakeToken, rememberIntakeToken } from "@/lib/intakeSession";
 import { validPhone } from "@/lib/formCoerce";
 import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
 import { onboardingCopy } from "@/lib/onboardingCopy";
@@ -61,6 +62,8 @@ import {
 const API_ORIGIN = process.env.NEXT_PUBLIC_API_URL ?? "https://api.qualifiedcommercial.com";
 const API_BASE = `${API_ORIGIN}/api/v1/public/mca-refinance`;
 const TOKEN_KEY = "qc.mca.token";
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const UPLOAD_ACCEPT = ".pdf,.docx,.png,.jpg,.jpeg,.heic,.heif,.webp,.csv,.xls,.xlsx,.zip";
 
 const FREQS = ["daily", "weekly", "biweekly", "monthly"] as const;
 type Freq = (typeof FREQS)[number];
@@ -77,7 +80,7 @@ type McaIntakeResponse = Omit<
   IntakeResponse,
   "requested_documents" | "assistant_message" | "messages" | "intake"
 > & {
-  intake: Intake & { preferred_language?: string | null; communication_locale?: "en" | "es" | null };
+  intake: Intake & { preferred_language?: string | null; communication_locale?: "en" | "es" | null; years_in_business?: number | null };
   communication_locale?: "en" | "es" | null;
   mca_refinance_policy?: McaRefinancePolicy | null;
   // Where the soft credit check stands; the server runs it when the authorization is signed.
@@ -119,7 +122,8 @@ type SecureRoomHandoff = {
 
 type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
 
-type Phase = "boot" | "language" | "start" | "code" | "room";
+type Phase = "boot" | "restore-error" | "language" | "start" | "code" | "room";
+type McaQueuedFile = QueuedFile & { stage?: UploadStage; storedFileId?: string; requiresReplacement?: boolean };
 
 type Seed = { payback: number | null; months: number | null; freq: Freq | null };
 
@@ -151,11 +155,22 @@ class McaApiError extends Error {
   }
 }
 
-async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
-  });
+async function callMcaApi<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), init.method === "POST" ? 90000 : 20000);
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${path}`, {
+      ...init,
+      signal: init.signal ?? controller.signal,
+      credentials: "include",
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...(init.headers ?? {}) },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") throw new McaApiError(408, "The connection timed out. Reconnect to your file before trying again.");
+    throw error;
+  } finally { clearTimeout(timer); }
   if (!res.ok) {
     let message = `${res.status} ${res.statusText}`;
     let code: string | null = null;
@@ -256,6 +271,15 @@ type Copy = {
   dropHint: string;
   browse: string;
   uploadBusy: string;
+  uploadPreparing: string;
+  uploadConfirming: string;
+  uploadQueued: string;
+  uploadFormats: string;
+  uploadTooLarge: string;
+  uploadEmpty: string;
+  retry: string;
+  remove: string;
+  restoreError: string;
   uploadRejected: string;
   uploadRequestChanged: string;
   filesOnFile: (n: number) => string;
@@ -344,7 +368,7 @@ const COPY: Record<Lang, Copy> = {
       "Three items, about ten minutes. No rates or offers on this page — just the file we need to get you on a call with the desk.",
     programTerms: "Standard MCA refinance: up to $350,000, terms up to 10 years, and no more than 2 active MCAs. All terms depend on qualification. Applications with more than 2 MCAs are still accepted for manual review by our team.",
     qualificationTitle: "Your refinance details",
-    qualificationIntro: "Declare every active MCA and the total amount you need to refinance, whether you upload agreements or type their terms. You can start your file now and complete these details before automatic review.",
+    qualificationIntro: "Tell us how many active MCAs you have and how long your business has operated. Add the total amount you need to refinance if known. These details help route your file to the right review.",
     qualificationCount: "Number of active MCAs",
     qualificationYears: "Years in business",
     qualificationAmount: "Amount to refinance ($)",
@@ -401,6 +425,15 @@ const COPY: Record<Lang, Copy> = {
     dropHint: "Drag & drop files here, or",
     browse: "browse",
     uploadBusy: "Uploading…",
+    uploadPreparing: "Preparing file...",
+    uploadConfirming: "Uploaded. Confirming receipt...",
+    uploadQueued: "Queued",
+    uploadFormats: "PDF, Word, images, CSV, Excel or ZIP. Up to 100 MB per file.",
+    uploadTooLarge: "This file exceeds 100 MB. Choose a smaller file.",
+    uploadEmpty: "This file is empty. Choose the original document.",
+    retry: "Retry",
+    remove: "Remove",
+    restoreError: "We could not reconnect to your file. Your saved access has been kept. Please retry; you do not need to start again.",
     uploadRejected: "Secure storage rejected the file.",
     uploadRequestChanged: "The document request changed while you were uploading. We refreshed the checklist; add the file again from the current action.",
     filesOnFile: (n) => (n === 1 ? "1 file uploaded" : `${n} files uploaded`),
@@ -477,7 +510,7 @@ const COPY: Record<Lang, Copy> = {
       "Tres elementos, unos diez minutos. En esta página no hay tasas ni ofertas: solo el expediente que necesitamos para llevarte a una llamada con nuestro equipo.",
     programTerms: "Refinanciamiento MCA estándar: hasta $350,000, plazos de hasta 10 años y no más de 2 MCA vigentes. Todo depende de la calificación. Aceptamos solicitudes con más de 2 MCA para revisión manual de nuestro equipo.",
     qualificationTitle: "Datos de su refinanciamiento",
-    qualificationIntro: "Declare todos los MCA vigentes y el monto total que necesita refinanciar, tanto si sube contratos como si escribe sus términos. Puede iniciar el expediente ahora y completar estos datos antes de la revisión automática.",
+    qualificationIntro: "Indique cuántos MCA tiene vigentes y cuánto tiempo lleva operando su negocio. Agregue el monto total que necesita refinanciar si lo conoce. Estos datos nos ayudan a dirigir su expediente a la revisión adecuada.",
     qualificationCount: "Número de MCA vigentes",
     qualificationYears: "Años en el negocio",
     qualificationAmount: "Monto a refinanciar ($)",
@@ -534,6 +567,15 @@ const COPY: Record<Lang, Copy> = {
     dropHint: "Arrastra y suelta archivos aquí, o",
     browse: "búscalos en tu equipo",
     uploadBusy: "Subiendo…",
+    uploadPreparing: "Preparando archivo...",
+    uploadConfirming: "Archivo subido. Confirmando recepcion...",
+    uploadQueued: "En espera",
+    uploadFormats: "PDF, Word, imagenes, CSV, Excel o ZIP. Hasta 100 MB por archivo.",
+    uploadTooLarge: "Este archivo supera 100 MB. Elige un archivo mas pequeno.",
+    uploadEmpty: "Este archivo esta vacio. Elige el documento original.",
+    retry: "Reintentar",
+    remove: "Quitar",
+    restoreError: "No pudimos reconectar con tu expediente. Conservamos tu acceso. Reintenta sin iniciar otra solicitud.",
     uploadRejected: "El almacenamiento seguro rechazó el archivo.",
     uploadRequestChanged: "La solicitud de documentos cambió mientras subías el archivo. Actualizamos la lista; vuelve a agregarlo desde la acción actual.",
     filesOnFile: (n) => (n === 1 ? "1 archivo subido" : `${n} archivos subidos`),
@@ -671,6 +713,12 @@ export default function McaRefinanceIntakePage() {
   const compact = useCompact();
   const tokenRef = useRef<string>("");
   const messagesRef = useRef<HTMLDivElement | null>(null);
+  const booted = useRef(false);
+  const attributionRef = useRef<PublicIntakeAttribution>({});
+  const uploadJobs = useRef<Array<{ docId: string; row: McaQueuedFile }>>([]);
+  const uploading = useRef(false);
+  const refreshBusy = useRef(false);
+  const writeVersion = useRef(0);
 
   const [phase, setPhase] = useState<Phase>("boot");
   const [language, setLanguage] = useState<Lang | null>(null);
@@ -708,7 +756,7 @@ export default function McaRefinanceIntakePage() {
   const [chatActionBusy, setChatActionBusy] = useState("");
 
   // Uploads (keyed by requested_document_id)
-  const [uploads, setUploads] = useState<Record<string, QueuedFile[]>>({});
+  const [uploads, setUploads] = useState<Record<string, McaQueuedFile[]>>({});
   const [uploadDocBusy, setUploadDocBusy] = useState<string | null>(null);
 
   // Credit authorization + soft pull
@@ -754,8 +802,11 @@ export default function McaRefinanceIntakePage() {
 
   // --- boot: strip URL params, restore token or show language picker --------
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    if (typeof window === "undefined" || booted.current) return;
+    booted.current = true;
     const url = new URL(window.location.href);
+    attributionRef.current = readPublicIntakeAttribution();
+    const storedLang = getStoredLanguage("mca_refinance");
     const urlToken = url.searchParams.get("token");
     const paybackParam = url.searchParams.get("payback");
     const monthsParam = url.searchParams.get("months");
@@ -772,15 +823,14 @@ export default function McaRefinanceIntakePage() {
     if (payback !== null || months !== null || freq) setSeed({ payback, months, freq });
     setQualificationForm({ activeCount: declaredCount === null ? "" : String(declaredCount), requestedAmount: payback !== null && payback > 0 ? String(payback) : "", yearsInBusiness: "" });
 
-    const storedLang = getStoredLanguage("mca_refinance");
     if (storedLang) setLanguage(storedLang);
 
-    const storedToken = window.sessionStorage.getItem(TOKEN_KEY);
+    const storedToken = readIntakeToken(TOKEN_KEY);
     const candidate = urlToken || storedToken;
     if (candidate) {
       restoreToken(candidate, Boolean(storedLang));
     } else {
-      setPhase(storedLang ? "start" : "language");
+      void restoreSession(Boolean(storedLang));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -798,6 +848,11 @@ export default function McaRefinanceIntakePage() {
   }, [chat.length, chatBusy]);
 
   // --- response plumbing ----------------------------------------------------
+  function call<T>(path: string, init: RequestInit = {}): Promise<T> {
+    if ((init.method ?? "GET").toUpperCase() !== "GET") writeVersion.current++;
+    return callMcaApi<T>(path, init);
+  }
+
   function adopt(payload: McaIntakeResponse) {
     setResponse(payload);
     // The pull runs on the server the moment the authorization is signed, so
@@ -812,13 +867,14 @@ export default function McaRefinanceIntakePage() {
         ...current,
         activeCount: typeof policy.active_mca_count === "number" && Number.isFinite(policy.active_mca_count) ? String(policy.active_mca_count) : "",
         requestedAmount: typeof policy.requested_amount === "number" && Number.isFinite(policy.requested_amount) ? String(policy.requested_amount) : "",
+        yearsInBusiness: typeof payload.intake.years_in_business === "number" && Number.isFinite(payload.intake.years_in_business) ? String(payload.intake.years_in_business) : current.yearsInBusiness,
       }));
     }
     const nextToken = payload.token ?? tokenRef.current;
     if (nextToken) {
       tokenRef.current = nextToken;
       setToken(nextToken);
-      if (typeof window !== "undefined") window.sessionStorage.setItem(TOKEN_KEY, nextToken);
+      rememberIntakeToken(TOKEN_KEY, nextToken);
     }
     const messages = (payload.messages ?? []).filter(
       (message) => message.role === "assistant" || message.role === "user",
@@ -855,8 +911,39 @@ export default function McaRefinanceIntakePage() {
   async function refresh() {
     const tok = tokenRef.current;
     if (!tok) return;
+    const version = writeVersion.current;
     const payload = await call<McaIntakeResponse>(`/${encodeURIComponent(tok)}`);
-    adopt(payload);
+    // An older poll must not replace a file receipt or another newer save.
+    if (version === writeVersion.current && tok === tokenRef.current) adopt(payload);
+  }
+
+  useEffect(() => {
+    if (phase !== "room") return;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible" || uploading.current || refreshBusy.current || chatBusy || chatActionBusy || signBusy || pullBusy || reviewBusy || termsBusy || qualificationBusy) return;
+      refreshBusy.current = true;
+      void refresh().catch(() => undefined).finally(() => { refreshBusy.current = false; });
+    }, 5000);
+    return () => window.clearInterval(timer);
+    // Refresh reads the current token; mutation state prevents stale snapshots during writes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, chatBusy, chatActionBusy, signBusy, pullBusy, reviewBusy, termsBusy, qualificationBusy]);
+
+  const hasPendingUploads = Object.values(uploads).some((rows) => rows.length > 0);
+  useEffect(() => {
+    if (!hasPendingUploads) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasPendingUploads]);
+
+  async function restoreSession(hasStoredLang: boolean) {
+    try {
+      adopt(await call<McaIntakeResponse>("/session"));
+      setPhase("room");
+    } catch (error) {
+      setPhase(error instanceof McaApiError && [401, 403, 404].includes(error.status) ? hasStoredLang ? "start" : "language" : "restore-error");
+    }
   }
 
   // Resuming an existing room must preserve a manual-review arrival just as
@@ -885,10 +972,15 @@ export default function McaRefinanceIntakePage() {
       tokenRef.current = payload.token ?? candidate;
       adopt(payload);
       setPhase("room");
-    } catch {
-      if (typeof window !== "undefined") window.sessionStorage.removeItem(TOKEN_KEY);
-      tokenRef.current = "";
-      setPhase(hasStoredLang ? "start" : "language");
+    } catch (error) {
+      if (error instanceof McaApiError && [401, 403, 404].includes(error.status)) {
+        rememberIntakeToken(TOKEN_KEY, null);
+        tokenRef.current = "";
+        setPhase(hasStoredLang ? "start" : "language");
+      } else {
+        tokenRef.current = candidate;
+        setPhase("restore-error");
+      }
     }
   }
 
@@ -960,7 +1052,7 @@ export default function McaRefinanceIntakePage() {
       ...businessProfileBody({ website: startForm.business_website, description: startForm.business_description }),
       preferred_language: language ?? "en",
       phone: startForm.phone.trim(),
-      ...readPublicIntakeAttribution(),
+      ...attributionRef.current,
     };
     if (startForm.business_name.trim()) body.business_name = startForm.business_name.trim();
     if (seed.payback !== null) body.remaining_payback = seed.payback;
@@ -1080,7 +1172,7 @@ export default function McaRefinanceIntakePage() {
         const input = document.createElement("input");
         input.type = "file";
         input.multiple = true;
-        input.accept = ".pdf,.png,.jpg,.jpeg,.zip,.csv,.xlsx,application/pdf,image/*,application/zip";
+        input.accept = UPLOAD_ACCEPT;
         input.onchange = () => {
           if (input.files) void uploadFiles(action.requested_document_id!, Array.from(input.files));
         };
@@ -1114,59 +1206,67 @@ export default function McaRefinanceIntakePage() {
   }
 
   // --- uploads --------------------------------------------------------------
-  function patchQueued(docId: string, rowId: string, patch: Partial<QueuedFile>) {
+  function patchQueued(docId: string, rowId: string, patch: Partial<McaQueuedFile>) {
     setUploads((current) => ({
       ...current,
       [docId]: (current[docId] ?? []).map((row) => (row.id === rowId ? { ...row, ...patch } : row)),
     }));
   }
 
-  async function uploadFiles(docId: string, incoming: File[]) {
-    if (!tokenRef.current || !incoming.length || uploadDocBusy) return;
-    const rows: QueuedFile[] = incoming.map((file) => ({ id: cryptoId(), file, status: "uploading" as const }));
-    setUploadDocBusy(docId);
+  function uploadFiles(docId: string, incoming: File[]) {
+    if (!tokenRef.current || !incoming.length) return;
+    const rows: McaQueuedFile[] = incoming.map((file) => ({ id: cryptoId(), file, status: "ready" }));
     setUploads((current) => ({ ...current, [docId]: [...(current[docId] ?? []), ...rows] }));
-    const doneIds = new Set<string>();
-    const lockedFiles: File[] = [];
-    let uploaded = 0;
-    let stale = 0;
-    setChatError(null);
-    for (const row of rows) {
-      try {
-        await uploadFile(
-          // The intake endpoint reads `size_bytes`; sending `size` recorded every upload at 0 B.
-          { initPath: `/${encodeURIComponent(tokenRef.current)}/files/upload-init`, completePath: `/${encodeURIComponent(tokenRef.current)}/files/complete`, call },
-          row.file,
-          { requestedDocumentId: docId, storageRejectedMessage: () => c.uploadRejected },
-        );
-        uploaded += 1;
-        doneIds.add(row.id);
-        patchQueued(docId, row.id, { status: "uploaded" });
-      } catch (error) {
-        if (isPasswordProtectedPdfUploadError(error)) {
-          lockedFiles.push(row.file);
-          doneIds.add(row.id);
-        } else if (isStaleRequestedDocumentError(error)) {
-          stale += 1;
-          doneIds.add(row.id);
-          setChatError(c.uploadRequestChanged);
-        } else {
-          patchQueued(docId, row.id, { status: "error", message: apiErrorText(error, c) });
-        }
-      }
-    }
+    uploadJobs.current.push(...rows.map((row) => ({ docId, row })));
+    void drainUploads();
+  }
+
+  function retryUpload(docId: string, row: McaQueuedFile) {
+    patchQueued(docId, row.id, { status: "ready", message: undefined });
+    uploadJobs.current.push({ docId, row: { ...row, status: "ready" } });
+    void drainUploads();
+  }
+
+  function removeUpload(docId: string, id: string) {
+    uploadJobs.current = uploadJobs.current.filter((job) => job.row.id !== id);
+    setUploads((current) => ({ ...current, [docId]: (current[docId] ?? []).filter((row) => row.id !== id) }));
+  }
+
+  async function drainUploads() {
+    if (uploading.current) return;
+    uploading.current = true;
     try {
-      if (uploaded > 0 || stale > 0 || lockedFiles.length > 0) await refresh();
-    } catch {
-      // The upload itself succeeded; the next interaction re-syncs.
+      while (uploadJobs.current.length) {
+        const { docId, row } = uploadJobs.current.shift()!;
+        setUploadDocBusy(docId);
+        patchQueued(docId, row.id, { status: "uploading" });
+        try {
+          if (row.file.size > MAX_UPLOAD_BYTES) throw new Error(c.uploadTooLarge);
+          if (row.file.size === 0) throw new Error(c.uploadEmpty);
+          const result = await uploadFile<UploadedFile>(
+            { initPath: `/${encodeURIComponent(tokenRef.current)}/files/upload-init`, completePath: `/${encodeURIComponent(tokenRef.current)}/files/complete`, call },
+            row.file,
+            { requestedDocumentId: docId, clientPdfCheck: false, storageAttempts: 2, storageTimeoutMs: 120000,
+              storedFileId: row.storedFileId,
+              onStored: (id) => { row.storedFileId = id; patchQueued(docId, row.id, { storedFileId: id }); },
+              onStage: (stage) => patchQueued(docId, row.id, { stage }),
+              storageRejectedMessage: () => c.uploadRejected },
+          );
+          setResponse((current) => current ? { ...current, files: [result.complete, ...current.files.filter((file) => file.id !== result.fileId)] } : current);
+          removeUpload(docId, row.id);
+        } catch (error) {
+          const stale = isStaleRequestedDocumentError(error);
+          const locked = isPasswordProtectedPdfUploadError(error);
+          patchQueued(docId, row.id, { status: "error", requiresReplacement: stale || locked || row.file.size > MAX_UPLOAD_BYTES || row.file.size === 0,
+            message: stale ? c.uploadRequestChanged : locked ? passwordProtectedPdfUploadNotice([row.file]) : apiErrorText(error, c) });
+        }
+        if (!uploadJobs.current.length) { try { await refresh(); } catch { /* Successful receipts remain visible locally. */ } }
+      }
+    } finally {
+      uploading.current = false;
+      setUploadDocBusy(null);
+      if (uploadJobs.current.length) void drainUploads();
     }
-    const uploadGuidance = [
-      stale > 0 ? c.uploadRequestChanged : "",
-      lockedFiles.length ? passwordProtectedPdfUploadNotice(lockedFiles) : "",
-    ].filter(Boolean).join(" ");
-    if (uploadGuidance) setChatError(uploadGuidance);
-    setUploads((current) => ({ ...current, [docId]: (current[docId] ?? []).filter((row) => !doneIds.has(row.id)) }));
-    setUploadDocBusy(null);
   }
 
   // --- credit authorization + soft pull ------------------------------------
@@ -1384,7 +1484,7 @@ export default function McaRefinanceIntakePage() {
   // blocker and leave the borrower staring at two copies of their file.
   async function openSecureRoom() {
     const tok = tokenRef.current;
-    if (!tok || roomBusy) return;
+    if (!tok || roomBusy || uploading.current) return;
     setRoomBusy(true);
     setRoomNotice(null);
     setRoomError(null);
@@ -1447,6 +1547,8 @@ export default function McaRefinanceIntakePage() {
   let content: ReactNode;
   if (phase === "boot") {
     content = <div className="vm-loading">{c.loading}</div>;
+  } else if (phase === "restore-error") {
+    content = <div className="vm-mid code"><section className="vm-card"><p role="alert">{c.restoreError}</p><button type="button" className="vm-primary" onClick={() => { setPhase("boot"); if (tokenRef.current) void restoreToken(tokenRef.current, Boolean(language)); else void restoreSession(Boolean(language)); }}>{c.retry}</button><button type="button" className="vm-secondary" onClick={() => setPhase("code")}>{c.haveCode}</button></section></div>;
   } else if (phase === "language") {
     content = (
       <div className="vm-mid lang">
@@ -1467,7 +1569,7 @@ export default function McaRefinanceIntakePage() {
             <span className="vm-pill">{c.pillEncrypted}</span>
           </div>
         </div>
-        <section className="vm-card" aria-label={c.startTitle}>
+        <form className="vm-card" aria-label={c.startTitle} onSubmit={(event) => { event.preventDefault(); void startIntake(); }}>
           <h2 className="vm-sect-t">{c.startTitle}</h2>
           {seed.payback !== null || seed.months !== null || seed.freq ? (
             <div className="vm-note">{c.seededNote}</div>
@@ -1579,7 +1681,7 @@ export default function McaRefinanceIntakePage() {
               {startError}
             </div>
           ) : null}
-          <button type="button" onClick={startIntake} disabled={startBusy} className="vm-primary">
+          <button type="submit" disabled={startBusy} className="vm-primary">
             {startBusy ? c.startBusy : c.startButton}
           </button>
           <button
@@ -1595,7 +1697,7 @@ export default function McaRefinanceIntakePage() {
           >
             {c.haveCode}
           </button>
-        </section>
+        </form>
       </div>
     );
   } else if (phase === "code") {
@@ -1784,11 +1886,13 @@ export default function McaRefinanceIntakePage() {
           <RailCard title={c.bankTitle} sub={c.bankSub} done={bankDone} c={c}>
             <UploadArea
               busy={uploadDocBusy === bankDoc.id}
-              disabled={uploadDocBusy !== null}
+              disabled={false}
               files={filesFor(bankDoc.id)}
               queue={uploads[bankDoc.id] ?? []}
               c={c}
               onFiles={(picked) => uploadFiles(bankDoc.id, picked)}
+              onRetry={(row) => retryUpload(bankDoc.id, row)}
+              onRemove={(id) => removeUpload(bankDoc.id, id)}
             />
           </RailCard>
         ) : null}
@@ -1850,7 +1954,8 @@ export default function McaRefinanceIntakePage() {
             {termsDone ? (
               <div className="grid g8">
                 <div className="vm-ok">{termsAlready ? c.termsAlready : c.termsReceived}</div>
-                {filesFor(termsDoc.id).map((file) => <EvidenceFileLine key={file.id} file={file} />)}
+                <UploadArea busy={uploadDocBusy === termsDoc.id} disabled={false} files={filesFor(termsDoc.id)} queue={uploads[termsDoc.id] ?? []} c={c}
+                  onFiles={(picked) => uploadFiles(termsDoc.id, picked)} onRetry={(row) => retryUpload(termsDoc.id, row)} onRemove={(id) => removeUpload(termsDoc.id, id)} />
               </div>
             ) : (
               <div className="grid g12">
@@ -1877,11 +1982,13 @@ export default function McaRefinanceIntakePage() {
                 {termsPath === "upload" ? (
                   <UploadArea
                     busy={uploadDocBusy === termsDoc.id}
-                    disabled={uploadDocBusy !== null}
+                    disabled={false}
                     files={filesFor(termsDoc.id)}
                     queue={uploads[termsDoc.id] ?? []}
                     c={c}
                     onFiles={(picked) => uploadFiles(termsDoc.id, picked)}
+                    onRetry={(row) => retryUpload(termsDoc.id, row)}
+                    onRemove={(id) => removeUpload(termsDoc.id, id)}
                   />
                 ) : (
                   <div className="grid g12">
@@ -1988,11 +2095,13 @@ export default function McaRefinanceIntakePage() {
               ) : (
                 <UploadArea
                   busy={uploadDocBusy === doc.id}
-                  disabled={uploadDocBusy !== null}
+                  disabled={false}
                   files={filesFor(doc.id)}
                   queue={uploads[doc.id] ?? []}
                   c={c}
                   onFiles={(picked) => uploadFiles(doc.id, picked)}
+                  onRetry={(row) => retryUpload(doc.id, row)}
+                  onRemove={(id) => removeUpload(doc.id, id)}
                 />
               )}
             </RailCard>
@@ -2009,7 +2118,7 @@ export default function McaRefinanceIntakePage() {
             <div className="vm-card-t">{c.roomTitle}</div>
             <div className="vm-card-s">{c.roomSub}</div>
           </div>
-          <button type="button" onClick={openSecureRoom} disabled={roomBusy} className="vm-primary sm">
+          <button type="button" onClick={openSecureRoom} disabled={roomBusy || uploadDocBusy !== null} className="vm-primary sm">
             {roomBusy ? c.roomCtaBusy : c.roomCta}
           </button>
           {roomNotice ? <div className="vm-calm">{roomNotice}</div> : null}
@@ -2104,6 +2213,7 @@ function Field({
         inputMode={inputMode}
         autoComplete={autoComplete}
         disabled={disabled}
+        required={required}
       />
       {hint ? <span className="vm-fld-h">{hint}</span> : null}
     </label>
@@ -2132,6 +2242,7 @@ function TextArea({
         className="vm-in"
         rows={3}
         maxLength={600}
+        required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -2179,17 +2290,21 @@ function UploadArea({
   queue,
   c,
   onFiles,
+  onRetry,
+  onRemove,
 }: {
   busy: boolean;
   disabled: boolean;
   files: UploadedFile[];
-  queue: QueuedFile[];
+  queue: McaQueuedFile[];
   c: Copy;
   onFiles: (files: File[]) => void;
+  onRetry: (row: McaQueuedFile) => void;
+  onRemove: (id: string) => void;
 }) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const [dragging, setDragging] = useState(false);
-  const pendingRows = queue.filter((row) => row.status === "uploading" || row.status === "error");
+  const pendingRows = queue.filter((row) => row.status !== "uploaded");
   return (
     <div className="grid g8">
       <div
@@ -2213,7 +2328,7 @@ function UploadArea({
           ref={inputRef}
           type="file"
           multiple
-          accept=".pdf,.png,.jpg,.jpeg,.heic,.csv,.xls,.xlsx,.zip"
+          accept={UPLOAD_ACCEPT}
           className="hidden"
           onChange={(event) => {
             const list = event.target.files;
@@ -2222,13 +2337,16 @@ function UploadArea({
           }}
         />
       </div>
-      {busy ? <div className="vm-sub">{c.uploadBusy}</div> : null}
+      <div className="vm-sub">{c.uploadFormats}</div>
+      {busy ? <div role="status" className="vm-sub">{c.uploadBusy}</div> : null}
       {pendingRows.map((row) => (
         <div key={row.id} className="vm-file">
           <span className="vm-file-n">{row.file.name}</span>
-          <span className={row.status === "error" ? "vm-err" : "vm-file-m"}>
-            {row.status === "error" ? row.message ?? c.errGeneric : c.uploadBusy}
+          <span role={row.status === "error" ? "alert" : "status"} className={row.status === "error" ? "vm-err" : "vm-file-m"}>
+            {row.status === "error" ? row.message ?? c.errGeneric : row.status === "ready" ? c.uploadQueued : row.stage === "preparing" ? c.uploadPreparing : row.stage === "confirming" ? c.uploadConfirming : c.uploadBusy}
           </span>
+          {row.status === "error" && !row.requiresReplacement ? <button type="button" className="vm-linkbtn inline" onClick={() => onRetry(row)}>{c.retry}</button> : null}
+          {row.status === "error" || row.status === "ready" ? <button type="button" className="vm-linkbtn inline" aria-label={`${c.remove} ${row.file.name}`} onClick={() => onRemove(row.id)}>{c.remove}</button> : null}
         </div>
       ))}
       {files.length ? (
