@@ -114,6 +114,8 @@ export type DebtScheduleReview = {
   lines: ReviewLine[];
   removed: ReviewLine[];
   counts: Record<string, number>;
+  /** The schedule has been filed as the document on the checklist (our PDF of the rows is behind the slot). */
+  filed: boolean;
 };
 
 export type ReviewLineWrite = {
@@ -141,7 +143,17 @@ export type ReviewLineWrite = {
 };
 
 export type ReviewSaved = { kept: number; added: number; updated: number; removed: number; restored: number };
-export type ReviewResult = { review: DebtScheduleReview; saved: ReviewSaved };
+export type ReviewResult = {
+  review: DebtScheduleReview;
+  saved: ReviewSaved;
+  /** This save also filed the schedule on the checklist. */
+  filed: boolean;
+  /** Why it was not filed when filing was asked for: the schedule form's own sentence. */
+  filing_problem: string | null;
+};
+
+/** What a save sends: the changed lines, and whether to also file the schedule on the checklist. */
+export type ReviewBody = { lines: ReviewLineWrite[]; file_as_schedule: boolean };
 
 // ── the cells ────────────────────────────────────────────────────────────────
 
@@ -825,8 +837,15 @@ export function writeFromDraft(draft: LineDraft): ReviewLineWrite {
 }
 
 /** Only what saving would write: lines from the file, and lines that changed. */
-export function reviewBody(drafts: LineDraft[]): { lines: ReviewLineWrite[] } {
-  return { lines: drafts.filter(isChanged).map(writeFromDraft) };
+export function reviewBody(drafts: LineDraft[], fileAsSchedule = false): ReviewBody {
+  return { lines: drafts.filter(isChanged).map(writeFromDraft), file_as_schedule: fileAsSchedule };
+}
+
+/** Whether the schedule is complete enough to file as the document on the
+ *  checklist: at least one line stays, every required answer is in, nothing is
+ *  invalid and no payment is waiting for its "how often". */
+export function canFile(summary: ReviewSummary): boolean {
+  return summary.keeping >= 1 && summary.missing === 0 && summary.invalid === 0 && summary.unsavedPayments === 0;
 }
 
 /** The file's own caveat on a line ("Not confirmed"), worth a chip. */
@@ -845,13 +864,46 @@ export function paymentSentence(draft: LineDraft, format: (value: number) => str
   return `${format(amount)} per ${unit} ≈ ${format(month)} a month`;
 }
 
-export function savedSentence(saved: ReviewSaved, missing: number): string {
+export function savedSentence(saved: ReviewSaved, missing: number, filed = false): string {
   const parts: string[] = [];
   if (saved.kept) parts.push(`${saved.kept} line${saved.kept === 1 ? "" : "s"} on the schedule`);
   if (saved.removed) parts.push(`${saved.removed} taken off`);
   if (saved.restored) parts.push(`${saved.restored} put back`);
+  if (filed) parts.push("filed as the debt schedule");
   const head = parts.length ? parts.join(", ") : "Nothing changed";
   return missing > 0 ? `${head}. ${missing} answer${missing === 1 ? "" : "s"} still missing.` : `${head}.`;
+}
+
+// ── a line the desk adds by hand ─────────────────────────────────────────────
+
+/** A line the desk adds when the file gave none (or missed one). Its key says so. */
+export const NEW_LINE_PREFIX = "new:";
+
+export function isNewLine(draft: Pick<LineDraft, "key">): boolean {
+  return draft.key.startsWith(NEW_LINE_PREFIX);
+}
+
+/** A blank line to type into. It is "read" in the sense that it is not on the
+ *  schedule yet, so it is always saved once it has a lender. */
+export function newLineDraft(n: number): LineDraft {
+  return {
+    ...emptyValues(),
+    key: `${NEW_LINE_PREFIX}${n}`,
+    rowId: null,
+    fileId: null,
+    fileName: null,
+    state: "read",
+    originLabel: "Added by you",
+    hint: null,
+    fileNotes: [],
+    removedBy: null,
+    removedAt: null,
+    keep: true,
+    reason: "not_a_loan",
+    countInDscr: true,
+    file: null,
+    baseline: "",
+  };
 }
 
 // ── the draft that survives the drawer closing ───────────────────────────────
@@ -925,8 +977,16 @@ export function loadStored(storage: StorageLike | null, profileId: string, readi
  *  fresh server's. */
 export function applyStored(fresh: LineDraft[], saved: StoredReview): LineDraft[] {
   const byKey = new Map(saved.lines.map((line) => [line.key, line]));
-  return fresh.map((draft) => {
+  const restored = fresh.map((draft) => {
     const edit = byKey.get(draft.key);
     return edit ? { ...draft, ...edit.values, keep: edit.keep, reason: edit.reason } : draft;
   });
+  // The lines the person added by hand are not in the server's reading at all.
+  const known = new Set(fresh.map((draft) => draft.key));
+  for (const line of saved.lines) {
+    if (!line.key.startsWith(NEW_LINE_PREFIX) || known.has(line.key)) continue;
+    const n = Number(line.key.slice(NEW_LINE_PREFIX.length));
+    restored.push({ ...newLineDraft(Number.isFinite(n) ? n : restored.length + 1), ...line.values, keep: line.keep, reason: line.reason });
+  }
+  return restored;
 }

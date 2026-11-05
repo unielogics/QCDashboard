@@ -11,7 +11,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi } from "@/hooks/useApi";
-import type { DebtScheduleReview, ReviewLineWrite, ReviewResult } from "@/lib/debtReview";
+import type { DebtScheduleReview, ReviewBody, ReviewResult } from "@/lib/debtReview";
 
 export const debtReviewKey = (profileId: string | null | undefined) => ["debt-schedule-review", profileId] as const;
 
@@ -75,10 +75,15 @@ export function useApplyDebtScheduleReview(profileId: string | null | undefined)
   const api = useAuthedApi();
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: { lines: ReviewLineWrite[] }) =>
+    mutationFn: (body: ReviewBody) =>
       api<ReviewResult>(`/application-profiles/${profileId}/debt-schedule/review`, { method: "POST", body: JSON.stringify(body) }),
-    onSuccess: () => {
-      for (const key of ["financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers", "debt-schedule-review"]) {
+    onSuccess: (result) => {
+      // The save answers with the review as it now stands: that is the cache, so the
+      // panel and any row's summary update with no second request.
+      queryClient.setQueryData(debtReviewKey(profileId), result.review);
+      // Filing the schedule moves the checklist row (the readiness and the evidence), the
+      // request rows and the "what was filled in" read-backs.
+      for (const key of ["financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers"]) {
         void queryClient.invalidateQueries({ queryKey: [key, profileId] });
       }
     },

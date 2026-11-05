@@ -20,6 +20,7 @@ import { errorMessage } from "@/components/marketplace/shared";
 import { useApplyDebtScheduleReview, useDebtScheduleReview } from "@/hooks/useDebtScheduleReview";
 import {
   applyStored,
+  canFile,
   clearStored,
   columnOf,
   COLUMN_BY_KEY,
@@ -30,7 +31,9 @@ import {
   loadStored,
   neededCells,
   neededFields,
+  newLineDraft,
   nextNeeded,
+  NEW_LINE_PREFIX,
   readingSignature,
   REMOVE_REASONS,
   reviewBody,
@@ -115,7 +118,10 @@ export function DebtScheduleReviewPanel({
   const [filter, setFilter] = useState<"all" | "needed">("all");
   const [pinned, setPinned] = useState<ReadonlySet<string> | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [fileIt, setFileIt] = useState(true);
+  const [filingProblem, setFilingProblem] = useState<string | null>(null);
   const [focusRequest, setFocusRequest] = useState<FocusRequest | null>(null);
+  const added = useRef(0);
   const seeded = useRef<number | null>(null);
   const reseed = useRef(false);
   const readingKey = useRef("");
@@ -149,7 +155,11 @@ export function DebtScheduleReviewPanel({
       setDrafts(next);
       setRestoredAt(null);
     }
+    for (const draft of stored && restored ? restored : []) {
+      if (draft.key.startsWith(NEW_LINE_PREFIX)) added.current = Math.max(added.current, Number(draft.key.slice(NEW_LINE_PREFIX.length)) || 0);
+    }
     setError(null);
+    setFilingProblem(null);
     setFilter("all");
     setPinned(null);
     lastCell.current = null;
@@ -172,6 +182,15 @@ export function DebtScheduleReviewPanel({
 
   const patch = useCallback((key: string, change: Partial<LineDraft>) => setDrafts((current) => current.map((draft) => (draft.key === key ? { ...draft, ...change } : draft))), []);
   const replace = useCallback((key: string, next: LineDraft) => setDrafts((current) => current.map((draft) => (draft.key === key ? next : draft))), []);
+  const remove = useCallback((key: string) => setDrafts((current) => current.filter((draft) => draft.key !== key)), []);
+  const addLine = useCallback(() => {
+    added.current += 1;
+    const line = newLineDraft(added.current);
+    setDrafts((current) => [...current, line]);
+    setFilter("all");
+    setPinned(null);
+    setFocusRequest({ row: line.key, col: "lender", n: Date.now() });
+  }, []);
 
   const summary = useMemo(() => summarize(drafts), [drafts]);
   const listed = useMemo(() => drafts.filter((draft) => !isHistory(draft)), [drafts]);
@@ -211,17 +230,26 @@ export function DebtScheduleReviewPanel({
     if (next) setFocusRequest({ ...next, n: Date.now() });
   };
 
+  // Once every answer is in, the schedule can also be filed as the document on the
+  // checklist, which is what makes the "Business debt schedule" row count as received.
+  const alreadyFiled = Boolean(review.data?.filed);
+  const offerFiling = canFile(summary);
+  const filing = offerFiling && fileIt;
+
   const save = async () => {
     setError(null);
     setSaved(null);
+    setFilingProblem(null);
     reseed.current = true; // the saved schedule is what the table shows next
     try {
-      const result = await apply.mutateAsync(reviewBody(drafts));
+      const result = await apply.mutateAsync(reviewBody(drafts, filing));
       clearStored(sessionStore(), profileId);
       const missing = result.review.counts.missing_answers ?? 0;
-      setSaved(savedSentence(result.saved, missing));
+      setSaved(savedSentence(result.saved, missing, result.filed));
+      if (filing && !result.filed) setFilingProblem(result.filing_problem ?? "The schedule could not be filed.");
       onSaved?.(result, missing);
-      onClose?.();
+      // A schedule that was asked to be filed and was not stays open, with the reason in view.
+      if (!(filing && !result.filed)) onClose?.();
     } catch (reason) {
       reseed.current = false;
       setError(errorMessage(reason, "The schedule could not be saved. What you typed is still here."));
@@ -236,7 +264,16 @@ export function DebtScheduleReviewPanel({
       : `${summary.keeping} line${summary.keeping === 1 ? "" : "s"} on the schedule, from ${fileLabel}`
     : `${summary.keeping} line${summary.keeping === 1 ? "" : "s"} on the schedule`;
   const keeping = summary.keeping;
-  const label = keeping > 0 ? `Save ${keeping} line${keeping === 1 ? "" : "s"} to the schedule` : "Save the review";
+  const lines = `${keeping} line${keeping === 1 ? "" : "s"}`;
+  const label = filing
+    ? summary.changed
+      ? `Save ${lines} and file as the debt schedule`
+      : "File as the debt schedule"
+    : keeping > 0
+      ? `Save ${lines} to the schedule`
+      : "Save the review";
+  // Nothing to write is nothing to save, unless the schedule is complete and not filed yet.
+  const canSave = !apply.isPending && summary.invalid === 0 && (summary.changed || (filing && !alreadyFiled));
 
   return (
     <section className={cx(styles.panel, compact && styles.compactPanel, inDrawer && styles.inDrawer)} aria-label="Debt schedule table">
@@ -271,6 +308,12 @@ export function DebtScheduleReviewPanel({
             </div>
           ) : null}
 
+          {filingProblem ? (
+            <Callout tone="warn" icon={<Icon name="alert" size={16} />}>
+              The lines are saved, but the schedule was not filed on the checklist: {filingProblem}
+            </Callout>
+          ) : null}
+
           {restoredAt ? (
             <div className={styles.notice} role="status">
               <Icon name="refresh" size={14} />
@@ -297,7 +340,10 @@ export function DebtScheduleReviewPanel({
 
           {!listed.length && !history.length ? (
             <Callout tone="mut" icon={<Icon name="note" size={16} />}>
-              There are no lines to fill in yet. Upload a debt schedule (a PDF or an Excel file) or enter the schedule from the Financials tab.
+              <div className={styles.emptyCall}>
+                <span>There are no lines yet. Upload a debt schedule (a PDF or an Excel file) and it is read into this table, or type the schedule in yourself.</span>
+                <Btn size="sm" variant="pri" onClick={addLine}><Icon name="plus" size={13} />Add a line</Btn>
+              </div>
             </Callout>
           ) : (
             <>
@@ -322,6 +368,7 @@ export function DebtScheduleReviewPanel({
                   <input type="checkbox" checked={showDetails} onChange={(event) => setShowDetails(event.target.checked)} />
                   More columns
                 </label>
+                <Btn size="sm" onClick={addLine}><Icon name="plus" size={13} />Add a line</Btn>
                 <Btn size="sm" onClick={goToNext} disabled={!summary.missing}><Icon name="arrowR" size={13} />Next needed</Btn>
               </div>
 
@@ -331,7 +378,7 @@ export function DebtScheduleReviewPanel({
                   if (target.dataset.rk && target.dataset.ck) lastCell.current = { row: target.dataset.rk, col: target.dataset.ck as ColumnKey };
                 }}
               >
-                <DebtScheduleReviewTable drafts={listed} columns={columns} onChange={patch} onReplace={replace} focusRequest={focusRequest} visibleKeys={pinned} />
+                <DebtScheduleReviewTable drafts={listed} columns={columns} onChange={patch} onReplace={replace} onDelete={remove} focusRequest={focusRequest} visibleKeys={pinned} />
               </div>
             </>
           )}
@@ -359,12 +406,32 @@ export function DebtScheduleReviewPanel({
             <Sub>Not right? Unlink the file from the request and upload a PDF or Excel file instead; the lines here follow the file.</Sub>
           </p>
 
+          {listed.length ? (
+            <div className={styles.filing}>
+              {offerFiling ? (
+                <label className={styles.toggle}>
+                  <input type="checkbox" checked={fileIt} onChange={(event) => setFileIt(event.target.checked)} />
+                  <span>
+                    Also file it as the debt schedule on the checklist (counts as received)
+                    {alreadyFiled ? <small> · already filed; saving refreshes that PDF</small> : null}
+                  </span>
+                </label>
+              ) : (
+                <Sub>
+                  {alreadyFiled
+                    ? "Filed as the debt schedule on the checklist. Saving keeps that PDF current."
+                    : "When every answer is in, you can file this as the debt schedule on the checklist (it then counts as received)."}
+                </Sub>
+              )}
+            </div>
+          ) : null}
+
           <footer className={styles.actionsBar}>
             {onClose ? <Btn onClick={onClose} disabled={apply.isPending}>Close</Btn> : null}
             {dirty ? <Btn onClick={discard} disabled={apply.isPending}>Discard my edits</Btn> : null}
             <span className="grow" />
             {dirty ? <Sub>Your edits are kept on this browser until you save.</Sub> : null}
-            <Btn variant="pri" onClick={() => void save()} disabled={apply.isPending || !summary.changed || summary.invalid > 0}>
+            <Btn variant="pri" onClick={() => void save()} disabled={!canSave}>
               {apply.isPending ? "Saving…" : label}
             </Btn>
           </footer>

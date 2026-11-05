@@ -266,6 +266,11 @@
 
 .unlink { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
 
+.filing { padding: 10px 14px; border: 1px solid var(--line2); border-radius: 10px; background: var(--sunken); }
+.filing .toggle { align-items: flex-start; font-size: 13.5px; }
+.filing small { color: var(--muted); }
+.emptyCall { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.emptyCall span { flex: 1; min-width: 220px; }
 .actionsBar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding-top: 12px; border-top: 1px solid var(--line); }
 .actionsBar .grow { flex: 1; }
 .inDrawer .actionsBar {

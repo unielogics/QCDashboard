@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import { DebtScheduleReviewTable } from "@/components/application/DebtScheduleReviewTable";
-import { draftFromLine, visibleColumns, type FileCell, type LineDraft, type ReviewLine } from "@/lib/debtReview";
+import { draftFromLine, newLineDraft, visibleColumns, type FileCell, type LineDraft, type ReviewLine } from "@/lib/debtReview";
 
 function cell(value: FileCell["value"], over: Partial<FileCell> = {}): FileCell {
   return { value, wording: null, note: null, derived: false, ...over };
@@ -31,6 +31,7 @@ function render(drafts: LineDraft[], extra: { visibleKeys?: Set<string> | null; 
       columns: visibleColumns(drafts, extra.showDetails ?? false),
       onChange: () => undefined,
       onReplace: () => undefined,
+      onDelete: () => undefined,
       focusRequest: null,
       visibleKeys: extra.visibleKeys ?? null,
     }),
@@ -114,6 +115,14 @@ describe("the review table markup", () => {
     const html = render([edited, drafts[1]]);
     expect(html.match(/Not a loan/g)!.length).toBeGreaterThanOrEqual(2);
     expect(html.match(/Reset to the file/g)).toHaveLength(1);
+  });
+
+  it("offers Remove line, not Not a loan, on a line the desk added by hand", () => {
+    const html = render([{ ...newLineDraft(1), lender: "Local Bank" }]);
+    expect(html).toContain("Remove line");
+    expect(html).not.toContain("Not a loan");
+    expect(html).toContain('data-rk="new:1"');
+    expect(html).toContain("Added by you"); // said in the From the file column
   });
 
   it("collapses a line taken off into one strip with its reason and a way back", () => {

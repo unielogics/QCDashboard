@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyStored,
+  canFile,
   canResetRow,
   cellMood,
   cellTitle,
@@ -16,12 +17,14 @@ import {
   isChanged,
   isDirty,
   isHistory,
+  isNewLine,
   isoToDisplay,
   loadStored,
   looksUnconfirmed,
   monthlyFrom,
   neededCells,
   neededFields,
+  newLineDraft,
   nextNeeded,
   paymentSentence,
   readingSignature,
@@ -414,6 +417,56 @@ describe("the totals and the next cell", () => {
   });
 });
 
+describe("filing the schedule on the checklist", () => {
+  const complete = () => draftFromLine(loan({ original_amount: 50000, balance: 40000, rate: 7.25, monthly_payment: 800, payment_amount: null, payment_frequency: null, payment_status: "current" }));
+
+  it("is offered once every answer is in and something stays, and not before", () => {
+    expect(canFile(summarize([complete()]))).toBe(true);
+    expect(canFile(summarize([draftFromLine(line())]))).toBe(false); // answers still missing
+    expect(canFile(summarize([]))).toBe(false); // nothing stays
+    expect(canFile(summarize([{ ...complete(), keep: false }]))).toBe(false);
+    expect(canFile(summarize([{ ...complete(), balance: "lots" }]))).toBe(false); // something invalid
+    expect(canFile(summarize([{ ...complete(), paymentAmount: "800", paymentCadence: "" }]))).toBe(false); // a payment waits for how often
+  });
+
+  it("rides along on the save only when asked", () => {
+    expect(reviewBody([complete()]).file_as_schedule).toBe(false);
+    expect(reviewBody([complete()], true).file_as_schedule).toBe(true);
+  });
+});
+
+describe("a line the desk adds by hand", () => {
+  it("starts blank, not on the schedule, and says who added it", () => {
+    const draft = newLineDraft(3);
+    expect([draft.key, draft.state, draft.keep, draft.lender, draft.originLabel, draft.file, draft.fileId, draft.rowId]).toEqual(["new:3", "read", true, "", "Added by you", null, null, null]);
+    expect(isNewLine(draft)).toBe(true);
+    expect(isNewLine(draftFromLine(line()))).toBe(false);
+  });
+
+  it("needs a lender before it can be saved, and nothing else", () => {
+    const blank = newLineDraft(1);
+    expect(draftErrors(blank).lender).toBeTruthy();
+    expect(neededFields(blank)).toEqual([]); // a line with nothing on it is not an obligation yet
+    const named = { ...blank, lender: "Local Bank" };
+    expect(draftErrors(named)).toEqual({});
+    expect(neededFields(named)).toEqual(expect.arrayContaining(["debtType", "originalAmount", "balance", "rate", "paymentAmount", "paymentCadence", "paymentStatus"]));
+    expect(isChanged(named)).toBe(true); // always saved
+    expect(writeFromDraft(named)).toMatchObject({ key: "new:1", row_id: null, file_id: null, keep: true, lender: "Local Bank" });
+  });
+
+  it("comes back with the draft the person left on this browser", () => {
+    const fresh = [draftFromLine(line())];
+    const worked = [...fresh, { ...newLineDraft(2), lender: "Local Bank", balance: "5,000" }];
+    expect(isDirty(worked, fresh)).toBe(true);
+    const storage: Record<string, string> = {};
+    const memory: StorageLike = { getItem: (k) => storage[k] ?? null, setItem: (k, v) => { storage[k] = v; }, removeItem: (k) => { delete storage[k]; } };
+    saveStored(memory, "p1", "reading", worked);
+    const restored = applyStored(fresh, loadStored(memory, "p1", "reading")!);
+    expect(restored).toHaveLength(2);
+    expect(restored[1]).toMatchObject({ key: "new:2", lender: "Local Bank", balance: "5,000", state: "read", keep: true });
+  });
+});
+
 describe("the columns on screen", () => {
   it("shows the advance question when a kept line is an advance, and the details only on request", () => {
     const advance = [draftFromLine(line())];
@@ -472,6 +525,11 @@ describe("the words", () => {
     expect(looksUnconfirmed([])).toBe(false);
   });
 
+  it("says when the save also filed the schedule on the checklist", () => {
+    expect(savedSentence({ kept: 7, added: 7, updated: 0, removed: 2, restored: 0 }, 0, true)).toBe("7 lines on the schedule, 2 taken off, filed as the debt schedule.");
+    expect(savedSentence({ kept: 1, added: 1, updated: 0, removed: 0, restored: 0 }, 0, false)).toBe("1 line on the schedule.");
+  });
+
   it("says what was saved and what is still open", () => {
     expect(savedSentence({ kept: 4, added: 4, updated: 0, removed: 2, restored: 0 }, 11)).toBe("4 lines on the schedule, 2 taken off. 11 answers still missing.");
     expect(savedSentence({ kept: 1, added: 0, updated: 1, removed: 0, restored: 1 }, 1)).toBe("1 line on the schedule, 1 put back. 1 answer still missing.");
@@ -481,7 +539,7 @@ describe("the words", () => {
 
 describe("the draft that survives the drawer closing", () => {
   function review(over: Partial<DebtScheduleReview> = {}): DebtScheduleReview {
-    return { profile_id: "p1", sources: [{ file_id: "file-1" } as never], lines: [line(), line({ key: "credibly", lender: "Credibly" })], removed: [], counts: {}, ...over };
+    return { profile_id: "p1", sources: [{ file_id: "file-1" } as never], lines: [line(), line({ key: "credibly", lender: "Credibly" })], removed: [], counts: {}, filed: false, ...over };
   }
 
   function memory(): StorageLike & { data: Record<string, string> } {

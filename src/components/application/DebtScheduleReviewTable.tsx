@@ -30,6 +30,7 @@ import {
   editedFields,
   fieldOf,
   isAdvanceDraft,
+  isNewLine,
   looksUnconfirmed,
   monthlyOf,
   neededFields,
@@ -151,7 +152,7 @@ function FromFile({ draft }: { draft: LineDraft }) {
   );
 }
 
-const DataRow = memo(function DataRow({ draft, columns, onChange, onReplace }: { draft: LineDraft; columns: ColumnKey[]; onChange: Change; onReplace: (key: string, next: LineDraft) => void }) {
+const DataRow = memo(function DataRow({ draft, columns, onChange, onReplace, onDelete }: { draft: LineDraft; columns: ColumnKey[]; onChange: Change; onReplace: (key: string, next: LineDraft) => void; onDelete: (key: string) => void }) {
   const needed = neededFields(draft);
   const errors = draftErrors(draft);
   const edited = editedFields(draft);
@@ -225,9 +226,15 @@ const DataRow = memo(function DataRow({ draft, columns, onChange, onReplace }: {
       {cells}
       <td className={cx(styles.cell, styles.actionsCol)} data-label="This line">
         <div className={styles.actions}>
-          <span title="Not a loan or debt: take it off the schedule. It is kept as history and can be put back.">
-            <Btn size="sm" onClick={() => onChange(draft.key, { keep: false })} aria-label={`${lender} is not a loan`}><Icon name="x" size={13} />Not a loan</Btn>
-          </span>
+          {isNewLine(draft) ? (
+            <span title="Remove this line you added. Nothing was saved, so nothing is kept.">
+              <Btn size="sm" onClick={() => onDelete(draft.key)} aria-label={`Remove the line ${lender}`}><Icon name="x" size={13} />Remove line</Btn>
+            </span>
+          ) : (
+            <span title="Not a loan or debt: take it off the schedule. It is kept as history and can be put back.">
+              <Btn size="sm" onClick={() => onChange(draft.key, { keep: false })} aria-label={`${lender} is not a loan`}><Icon name="x" size={13} />Not a loan</Btn>
+            </span>
+          )}
           {canResetRow(draft) ? (
             <span title="Put every cell on this line back to what the file said.">
               <Btn size="sm" onClick={() => onReplace(draft.key, resetRow(draft))} aria-label={`Reset ${lender} to what the file said`}><Icon name="refresh" size={13} />Reset to the file</Btn>
@@ -262,6 +269,7 @@ export function DebtScheduleReviewTable({
   columns,
   onChange,
   onReplace,
+  onDelete,
   focusRequest,
   visibleKeys,
 }: {
@@ -269,6 +277,8 @@ export function DebtScheduleReviewTable({
   columns: ColumnKey[];
   onChange: Change;
   onReplace: (key: string, next: LineDraft) => void;
+  /** Remove a line the desk added by hand (it was never saved, so nothing is kept). */
+  onDelete: (key: string) => void;
   focusRequest: FocusRequest | null;
   /** Show only these lines (the "needs answers" view, frozen when it was chosen so
    *  a line does not vanish from under the person who has just finished it). Null shows all. */
@@ -360,7 +370,7 @@ export function DebtScheduleReviewTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((draft) => (draft.keep ? <DataRow key={draft.key} draft={draft} columns={columns} onChange={onChange} onReplace={onReplace} /> : <RemovedRow key={draft.key} draft={draft} span={span} onChange={onChange} />))}
+          {rows.map((draft) => (draft.keep ? <DataRow key={draft.key} draft={draft} columns={columns} onChange={onChange} onReplace={onReplace} onDelete={onDelete} /> : <RemovedRow key={draft.key} draft={draft} span={span} onChange={onChange} />))}
           {!rows.length ? (
             <tr>
               <td colSpan={span} className={styles.empty}>{visibleKeys ? "Nothing needs an answer. Every cell is filled." : "There are no lines to show."}</td>
