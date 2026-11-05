@@ -40,18 +40,21 @@ function BorrowerTask({ task, save, openForm, busy }: { task: CollectionTask; sa
   </article>;
 }
 
-export function RoomCollectionTasks({ token, passcode }: { token: string; passcode: string }) {
+export function RoomCollectionTasks({ token, passcode, onPendingCount, coveredDocumentIds, refreshKey }: { token: string; passcode: string; onPendingCount?: (count: number) => void; coveredDocumentIds?: string[]; refreshKey?: string }) {
   const [tasks, setTasks] = useState<CollectionTask[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const load = useCallback(async () => {
     const response = await fetch(`${apiBase}/api/v1/application-rooms/${token}/collection-tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode }), cache: "no-store" });
-    if (response.status === 404) return;
+    if (response.status === 404) { setTasks([]); return; }
     if (!response.ok) throw new Error(clientApiErrorDetail(await response.json().catch(() => null), "Collection items could not be loaded.").message);
     const data = await response.json() as { tasks: CollectionTask[] };
     setTasks(data.tasks.filter((task) => task.action_type !== "upload_documents"));
   }, [token, passcode]);
-  useEffect(() => { void load().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Collection items could not be loaded.")); }, [load]);
+  useEffect(() => { void load().catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Collection items could not be loaded.")); }, [load, refreshKey]);
+  useEffect(() => {
+    onPendingCount?.(tasks.filter((task) => collectionTaskNeedsAnswer(task) && !(task.config.requested_document_ids ?? []).some((id) => coveredDocumentIds?.includes(id))).length);
+  }, [coveredDocumentIds, onPendingCount, tasks]);
   async function save(id: string, body: object) {
     setBusy(true); setError("");
     try {

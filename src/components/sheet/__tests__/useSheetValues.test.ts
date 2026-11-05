@@ -64,6 +64,42 @@ afterEach(() => {
 
 const values = (kind: "p_and_l" | "debt_schedule" = "p_and_l") => store.getSnapshot().sheets[kind].values;
 
+describe("waiting before closing or changing a row", () => {
+  it("waits for the in-flight request and the edit made while it was saving", async () => {
+    let finish!: (value: unknown) => void;
+    onSave.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+    store.applyEdits([{ sheet: "p_and_l", key: "gross_revenue", value: "100" }]);
+    const first = store.flush();
+    store.applyEdits([{ sheet: "p_and_l", key: "gross_revenue", value: "150" }]);
+    let closed = false;
+    const close = store.flushAndWait().then(() => { closed = true; });
+    expect(closed).toBe(false);
+    finish({ rev: { p_and_l: 2 } });
+    await first;
+    await close;
+    expect(onSave).toHaveBeenCalledTimes(2);
+    expect(onSave.mock.calls[1][0][0]).toMatchObject({ value: "150" });
+    expect(store.getSnapshot().dirty).toEqual([]);
+    expect(closed).toBe(true);
+  });
+
+  it("refuses to close after a failed save and keeps the edit for retry", async () => {
+    onSave.mockRejectedValueOnce(new Error("Connection interrupted"));
+    store.applyEdits([{ sheet: "p_and_l", key: "gross_revenue", value: "125" }]);
+    await expect(store.flushAndWait()).rejects.toThrow("Connection interrupted");
+    expect(store.getSnapshot().dirty).toContain("p_and_l:gross_revenue");
+    await store.flushAndWait();
+    expect(store.getSnapshot().dirty).toEqual([]);
+  });
+
+  it("does not delete a row after its pending cell save fails", async () => {
+    onSave.mockRejectedValueOnce(new Error("Could not save"));
+    store.applyEdits([{ sheet: "debt_schedule", key: "d1.lender", value: "Oakwood" }]);
+    await expect(store.rowOp({ sheet: "debt_schedule", op: "delete", row_id: "d1", block: "debts" })).rejects.toThrow("Could not save");
+    expect(onRowOp).not.toHaveBeenCalled();
+  });
+});
+
 describe("the debounce", () => {
   it("shows the value at once and sends it 700 ms later", async () => {
     store.applyEdits([{ sheet: "p_and_l", key: "gross_revenue", value: "1,250" }]);

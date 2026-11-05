@@ -8,6 +8,28 @@ const render = (value: DebtBody, showProblems = false) =>
   renderToStaticMarkup(createElement(DebtScheduleForm, { value, onChange: noop, showProblems }));
 
 describe("the debt schedule form", () => {
+  it("retains MCA questions beside distinct factor and payment cadence fields", () => {
+    const html = render({ debts: [{ lender: "Fundbox", debt_type: "mca", factor_rate: "1.375", payment_amount: "100", payment_frequency: "daily", monthly_payment: "2100", monthly_payment_source: "native_terms" }] });
+    expect(html).toContain("Modified for lower sales?");
+    expect(html).toContain("Factor rate (×)");
+    expect(html).toContain('value="1.375"');
+    expect(html).toContain("≈ Monthly: payment amount × 21.");
+    const child = renderToStaticMarkup(createElement(DebtScheduleForm, { value: { debts: [] }, onChange: noop, singleRow: true }));
+    expect(child).not.toContain("I confirm this business has no outstanding debt.");
+    expect(child).not.toContain("Add an obligation");
+  });
+  it("marks only the staff completion minimum while retaining all borrower requirements", () => {
+    const value = { debts: [{ lender: "Fundbox", debt_type: "mca" }] };
+    const staff = renderToStaticMarkup(createElement(DebtScheduleForm, { value, onChange: noop, singleRow: true }));
+    expect(staff.match(/class="fp-req"/g)).toHaveLength(4); // lender, balance, monthly plus legend
+    expect(staff).toContain("Payment amount and frequency can calculate the monthly payment.");
+    expect(render(value).match(/class="fp-req"/g)).toHaveLength(9); // seven, MCA question, legend
+  });
+  it("offers an explicit no-debt declaration only when the borrower has no obligations", () => {
+    expect(render({ debts: [], no_debt: true })).toMatch(/type="checkbox"[^>]*checked=""/);
+    expect(render({ debts: [{ lender: "Chase" }] })).not.toContain("I confirm this business has no outstanding debt.");
+  });
+
   it("offers the type of debt as a list and marks the owner's required answers", () => {
     const html = render({ debts: [{ lender: "Newtek" }] });
     expect(html).toContain("Merchant cash advance (MCA)");

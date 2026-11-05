@@ -205,6 +205,7 @@ export class SheetStore {
   private again = false;
   private editingCell: string | null = null;
   private disposed = false;
+  private flushWaiters = new Set<() => void>();
   private options: SheetStoreOptions;
   private seq = 0;
 
@@ -426,11 +427,22 @@ export class SheetStore {
       return;
     } finally {
       this.inflight = false;
+      for (const resolve of this.flushWaiters) resolve();
+      this.flushWaiters.clear();
     }
     if (this.again || this.queue.size) {
       this.again = false;
       this.schedule();
     }
+  }
+
+  /** A close or row operation must wait for both the current request and edits queued behind it. */
+  async flushAndWait(): Promise<void> {
+    do {
+      if (this.inflight) await new Promise<void>((resolve) => this.flushWaiters.add(resolve));
+      else await this.flush();
+      if (this.snapshot.error) throw new Error(this.snapshot.error);
+    } while (this.inflight || this.queue.size > 0);
   }
 
   /** Put a failed batch back, without stepping on anything typed since. */
@@ -467,7 +479,7 @@ export class SheetStore {
    *  body, and anything still in the queue would be missing from it. */
   async rowOp(request: RowOpRequest): Promise<RowOpResponse | null> {
     if (!this.options.onRowOp) return null;
-    await this.flush();
+    await this.flushAndWait();
     // How many lines this grid is showing for the block, counted here rather
     // than by each caller. The server pads a short list up to it before adding
     // or removing, which is what makes a second consecutive "Add a line" move

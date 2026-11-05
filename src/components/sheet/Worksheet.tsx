@@ -94,6 +94,8 @@ export type WorksheetProps = {
   remoteEdits?: RemoteEditBatch | null;
   title?: string;
   subtitle?: string | null;
+  /** Lets an enclosing dialog await pending cell saves before it unmounts the grid. */
+  onController?: (controller: { flush: () => Promise<void> } | null) => void;
 };
 
 const LIST_SHEETS: SheetKind[] = ["debt_schedule", "pfs"];
@@ -142,6 +144,7 @@ export function Worksheet({
   remoteEdits,
   title,
   subtitle,
+  onController,
 }: WorksheetProps) {
   const canEdit = !!scope?.can_edit;
   const payloads = useMemo(() => sheets.map(toPayload), [sheets]);
@@ -152,6 +155,10 @@ export function Worksheet({
     onRowOp,
   });
   const { store, snapshot } = values;
+  useEffect(() => {
+    onController?.({ flush: () => store.flushAndWait() });
+    return () => onController?.(null);
+  }, [onController, store]);
 
   // ── the props are the server's answer ───────────────────────────────────
 
@@ -288,7 +295,7 @@ export function Worksheet({
 
   const addRow = useCallback(() => {
     if (!shown || !block) return;
-    void store.rowOp({ sheet: shown, op: "insert", block, after: cursor?.rowKey ?? null });
+    void store.rowOp({ sheet: shown, op: "insert", block, after: cursor?.rowKey ?? null }).catch((reason) => setNotice(reason instanceof Error ? reason.message : "That row could not be added."));
   }, [block, cursor?.rowKey, shown, store]);
 
   // The row says which row it is; nothing here reads the caret. A control that
@@ -297,7 +304,7 @@ export function Worksheet({
   const removeRow = useCallback(
     (row: { rowKey: string; block: string }) => {
       if (!shown) return;
-      void store.rowOp({ sheet: shown, op: "delete", block: row.block, row_id: row.rowKey });
+      void store.rowOp({ sheet: shown, op: "delete", block: row.block, row_id: row.rowKey }).catch((reason) => setNotice(reason instanceof Error ? reason.message : "That row could not be removed."));
     },
     [shown, store],
   );

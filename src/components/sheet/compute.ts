@@ -13,6 +13,7 @@ import {
 import { computePfsTotals, type PfsTotalsInput } from "@/lib/pfsTotals";
 import { parseMoney } from "./money";
 import type { ComputedValues, SheetKind, SheetValues } from "./types";
+import { debtMonthlyEquivalent } from "@/lib/debtPaymentTerms";
 
 /** What the 413 sheet ships alongside its rows: `pfs_schema.describe()`. */
 export type PfsSheetSchema = PfsTotalsInput & { schema_version?: string };
@@ -44,9 +45,14 @@ function sumOf(values: SheetValues, suffix: string): number {
 
 /** The debt schedule's two totals, the way `sheet_layout.debt_totals` reads them. */
 export function debtTotals(values: SheetValues): ComputedValues {
+  const rowKeys = [...new Set(Object.keys(values).filter((key) => /\.(monthly_payment|payment_amount|payment_frequency)$/.test(key)).map((key) => key.slice(0, key.lastIndexOf("."))))];
+  const totalMonthly = rowKeys.reduce((sum, key) => {
+    const native = debtMonthlyEquivalent(values[`${key}.payment_amount`], values[`${key}.payment_frequency`]);
+    return sum + parseMoney(native ?? values[`${key}.monthly_payment`]).value;
+  }, 0);
   return {
     total_balance: sumOf(values, ".balance"),
-    total_monthly_payment: sumOf(values, ".monthly_payment"),
+    total_monthly_payment: totalMonthly,
   };
 }
 

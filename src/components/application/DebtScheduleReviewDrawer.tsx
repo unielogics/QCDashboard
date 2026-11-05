@@ -10,14 +10,12 @@
 import { useState } from "react";
 import { Btn } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
-import { Drawer } from "@/components/ds/Drawer";
+import { FinancialWorkspace } from "./FinancialWorkspace";
 import { Icon } from "@/components/design-system/Icon";
 import { Toast, useToast } from "@/components/design-system/primitives";
 import { useCurrentUser } from "@/hooks/useApi";
 import { useDebtScheduleReviewSummary } from "@/hooks/useDebtScheduleReview";
-import { savedSentence, type ReviewResult } from "@/lib/debtReview";
 import { Role } from "@/lib/enums.generated";
-import { DebtScheduleReviewPanel } from "./DebtScheduleReviewPanel";
 import styles from "./DebtScheduleReviewDrawer.module.css";
 
 export function DebtScheduleReviewDrawer({
@@ -29,13 +27,9 @@ export function DebtScheduleReviewDrawer({
   profileId: string;
   open: boolean;
   onClose: () => void;
-  onSaved?: (result: ReviewResult, missing: number) => void;
+  onSaved?: () => void;
 }) {
-  return (
-    <Drawer open={open} onClose={onClose} title="Debt schedule · fill in the table" sub="Read from the uploaded schedule" width="xl" closeOnBackdrop={false} ariaLabel="Debt schedule: fill in the table">
-      <DebtScheduleReviewPanel profileId={profileId} inDrawer onSaved={onSaved} onClose={onClose} />
-    </Drawer>
-  );
+  return <FinancialWorkspace open={open} profileId={profileId} initialKind="debt_schedule" initialView="worksheet" onClose={onClose} onPublished={onSaved} />;
 }
 
 /** The way into the table from anywhere a debt schedule shows up: one icon (or a
@@ -74,8 +68,8 @@ export function DebtScheduleReviewButton({
         profileId={profileId}
         open={open}
         onClose={() => setOpen(false)}
-        onSaved={(result, missing) => {
-          toast.show(savedSentence(result.saved, missing));
+        onSaved={() => {
+          toast.show("Dated debt schedule version saved.");
           onChanged?.();
         }}
       />

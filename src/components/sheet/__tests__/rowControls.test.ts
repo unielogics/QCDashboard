@@ -240,6 +240,17 @@ describe("the remove control", () => {
 // ── the columns stay in step ────────────────────────────────────────────────
 
 describe("the extra cell at the end of a row", () => {
+  it("keeps a row document reference attached to its debt without changing editable columns", () => {
+    const markup = renderToStaticMarkup(createElement(SheetGrid, {
+      layout: DS_LAYOUT, values: DEBT_VALUES, computed: {}, canEdit: true, onEdits: () => undefined,
+      rowDetails: { label: "Linked documents", render: (row) => createElement("button", { "data-debt-id": row.row_key }, row.row_key === "d1" ? "1 file · Payoff" : "Link files") },
+    }));
+    expect(markup).toContain("Linked documents");
+    expect(markup).toContain('data-debt-id="d1"');
+    expect(markup).toContain("1 file · Payoff");
+    expect(markup).toContain(`aria-colcount="${DS_LAYOUT.columns.length + 1}"`);
+    for (const chunk of rowChunks(markup)) expect(columnsCovered(chunk)).toBe(DS_LAYOUT.columns.length + 1);
+  });
   it("gives the column heads one too, matching the data rows", () => {
     const chunks = rowChunks(grid(DS_LAYOUT, { values: DEBT_VALUES }));
     const heads = chunks.find((chunk) => chunk.includes("sg-r-colhead"));

@@ -11,6 +11,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi } from "@/hooks/useApi";
+import { financialDebtReviewSummary, readFinancialWorkspace } from "@/lib/financialWorkspaceApi";
 import type { DebtScheduleReview, ReviewBody, ReviewResult } from "@/lib/debtReview";
 
 export const debtReviewKey = (profileId: string | null | undefined) => ["debt-schedule-review", profileId] as const;
@@ -53,16 +54,13 @@ const NONE: DebtScheduleReviewSummary = { read: 0, onSchedule: 0, removed: 0, mi
  *  query as `useDebtScheduleReview`, so it costs nothing once the panel is open
  *  and the panel costs nothing once it has run. */
 export function useDebtScheduleReviewSummary(profileId: string | null | undefined, enabled = true): DebtScheduleReviewSummary {
+  const api = useAuthedApi();
   const query = useQuery({
-    ...useReviewQuery(profileId, enabled),
-    select: (review): DebtScheduleReviewSummary => ({
-      read: review.counts.read ?? 0,
-      onSchedule: review.counts.on_schedule ?? 0,
-      removed: review.counts.removed ?? 0,
-      missingAnswers: review.counts.missing_answers ?? 0,
-      hasSource: review.sources.length > 0,
-      loading: false,
-    }),
+    queryKey: ["financial-workspace-summary", profileId],
+    queryFn: () => readFinancialWorkspace(api, profileId!, "debt_schedule"),
+    enabled: Boolean(profileId) && enabled,
+    ...SHARED,
+    select: financialDebtReviewSummary,
   });
   if (query.isLoading && enabled && profileId) return { ...NONE, loading: true };
   return query.data ?? NONE;

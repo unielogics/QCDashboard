@@ -19,24 +19,14 @@
 // — to the borrower, or on to their accountant — and can close from here.
 
 import { useCallback, useEffect, useState } from "react";
-import { Btn, CellChip, Panel, Row, StatusLine } from "@/components/ds";
+import { Btn, CellChip, Panel, StatusLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
-import { useAuthedApi, useFinancialFormPdf } from "@/hooks/useApi";
-import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
-import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
-import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
-import {
-  BusinessStatementForm,
-  type StatementBody,
-  type StatementKind,
-  type StatementSchema,
-} from "@/components/application/BusinessStatementForm";
-import { ShareWorksheetDialog, WorksheetModal } from "@/components/application/WorksheetModal";
-import { Drawer } from "@/components/ds/Drawer";
-import { ActionIcon } from "@/components/ds/ActionIcon";
-import { DebtScheduleReviewButton } from "@/components/application/DebtScheduleReviewDrawer";
-import { PageActionMenu } from "@/components/ds/PageActionMenu";
-import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
+import { useAuthedApi } from "@/hooks/useApi";
+import type { StatementKind } from "./BusinessStatementForm";
+import { ShareWorksheetDialog } from "./WorksheetModal";
+import { FinancialWorkspace } from "./FinancialWorkspace";
+import { RequestFilesDialog } from "./RequestFilesDialog";
+import type { SheetKind } from "@/components/sheet/types";
 
 type FormKind = "pfs" | "debt_schedule" | StatementKind;
 
@@ -59,8 +49,8 @@ type FormStatus = {
   source: "filled" | "uploaded" | "none";
   statement_id: string | null;
   row_count: number;
-  total_monthly: number;
-  total_balance: number;
+  total_monthly: number | null;
+  total_balance: number | null;
   net_worth: number | null;
   updated_at: string | null;
   filled_by_staff: boolean;
@@ -171,9 +161,7 @@ function summaryLines(form: FormStatus): string[] {
 
   if (form.kind === "debt_schedule" && form.row_count > 0) {
     return [
-      `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${currency(
-        form.total_monthly,
-      )} a month · ${currency(form.total_balance)} outstanding`,
+      `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${form.total_monthly == null ? "monthly payments incomplete" : `${currency(form.total_monthly)} a month`} · ${form.total_balance == null ? "balances incomplete" : `${currency(form.total_balance)} outstanding`}`,
     ];
   }
 
@@ -221,555 +209,68 @@ function summaryLines(form: FormStatus): string[] {
   return [];
 }
 
-export function FinancialFormsPanel({
-  profileId,
-  intakeId,
-  nested = false,
-  onChange,
-  onPreviewFile,
-}: {
-  profileId?: string | null;
-  /** Resolve the profile ourselves when the caller has not loaded it. The
-   *  evidence tab renders before the underwriting state does, and a panel that
-   *  silently shows nothing is worse than one that fetches what it needs. */
-  intakeId?: string | null;
-  /** Rendered inside another panel, so it drops its own frame. */
-  nested?: boolean;
-  onChange?: () => void;
-  /** Open one of the files behind a form (the upload, or the PDF drawn from the answers). */
-  onPreviewFile?: (fileId: string) => void;
+export function FinancialFormsPanel({ profileId, intakeId, nested = false, onChange, onUploadFiles }: {
+  profileId?: string | null; intakeId?: string | null; nested?: boolean; onChange?: () => void; onUploadFiles?: (files: File[]) => Promise<void>; onPreviewFile?: (fileId: string) => void;
 }) {
   const api = useAuthedApi();
-  const pdf = useFinancialFormPdf();
   const [resolvedId, setResolvedId] = useState<string | null>(profileId ?? null);
   const [forms, setForms] = useState<FormStatus[]>([]);
   const [packets, setPackets] = useState<Packet[]>([]);
-  const [schema, setSchema] = useState<PfsSchema | null>(null);
-  // The two statement schemas, fetched the first time either editor opens and
-  // kept for the session. They are static per deployment.
-  const [statementSchemas, setStatementSchemas] = useState<Partial<Record<StatementKind, StatementSchema>>>({});
-  const [editing, setEditing] = useState<FormKind | null>(null);
-  // The read-back of what was filled in, opened from the form row.
-  const [answersKind, setAnswersKind] = useState<FormKind | null>(null);
-  const [pfsBody, setPfsBody] = useState<PfsBody>({});
-  const [debtBody, setDebtBody] = useState<DebtBody>({});
-  // Once the desk has tried to save the schedule, the card outlines the
-  // required answers still missing. Reset each time the editor opens.
-  const [debtProblems, setDebtProblems] = useState(false);
-  const [statementBody, setStatementBody] = useState<StatementBody>({});
-  const [statementId, setStatementId] = useState<string | null>(null);
-  const [busy, setBusy] = useState("");
-  const [copied, setCopied] = useState<LinkKind | null>(null);
-  const [shown, setShown] = useState<{ kind: LinkKind; url: string } | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  // The same four forms as one workbook — the grid over the file, and the link
-  // that opens part of it to somebody with no login. Both live in
-  // WorksheetModal.tsx; this panel only says when they are on screen.
-  const [worksheetOpen, setWorksheetOpen] = useState(false);
+  const [workspace, setWorkspace] = useState<{ kind: SheetKind; view: "form" | "worksheet" | "pdf" } | null>(null);
   const [shareOpen, setShareOpen] = useState(false);
-
+  const [requestOpen, setRequestOpen] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [shown, setShown] = useState<{ kind: LinkKind; url: string } | null>(null);
+  const [copied, setCopied] = useState<LinkKind | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const load = useCallback(async () => {
     let id = profileId ?? resolvedId;
     if (!id && intakeId) {
-      const profile = await api<{ id: string }>("/application-profiles/resolve", {
-        method: "POST",
-        body: JSON.stringify({ source_kind: "intake", source_id: intakeId }),
-      });
-      id = profile.id;
-      setResolvedId(profile.id);
+      const profile = await api<{ id: string }>("/application-profiles/resolve", { method: "POST", body: JSON.stringify({ source_kind: "intake", source_id: intakeId }) });
+      id = profile.id; setResolvedId(id);
     }
     if (!id) return;
-    setError(null);
-    try {
-      const [status, fields] = await Promise.all([
-        api<{ forms: FormStatus[]; packets?: Packet[] }>(`/application-profiles/${id}/financial-forms`),
-        api<PfsSchema>("/application-profiles/financial-statements/schema"),
-      ]);
-      setForms(status.forms);
-      setPackets(status.packets ?? []);
-      setSchema(fields);
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Financial forms could not be loaded.");
-    }
+    const status = await api<{ forms: FormStatus[]; packets?: Packet[] }>(`/application-profiles/${id}/financial-forms`);
+    setForms(status.forms); setPackets(status.packets ?? []);
   }, [api, intakeId, profileId, resolvedId]);
-
+  useEffect(() => { void load().catch((reason) => setError(reason instanceof Error ? reason.message : "Financial forms could not be loaded.")); }, [load]);
+  const pending = forms.some((form) => form.analysis_pending);
   useEffect(() => {
-    void load();
-  }, [load]);
-
-  // A document is read after it lands, not as it lands, so the figures show up
-  // a little behind the upload. Poll while anything is still being read and
-  // stop the moment it is — an idle panel should not be talking to the server.
-  const analysisPending = forms.some((form) => form.analysis_pending);
-  useEffect(() => {
-    if (!analysisPending) return;
-    // And give up after a few minutes. An analysis that gets stuck should not
-    // leave a forgotten tab polling the API for the rest of the day.
+    if (!pending) return;
     const until = Date.now() + 4 * 60 * 1000;
-    const timer = window.setInterval(() => {
-      if (Date.now() > until) {
-        window.clearInterval(timer);
-        return;
-      }
-      void load();
-    }, 6000);
+    const timer = window.setInterval(() => { if (Date.now() > until) window.clearInterval(timer); else void load().catch(() => undefined); }, 6000);
     return () => window.clearInterval(timer);
-  }, [analysisPending, load]);
-
+  }, [load, pending]);
   const fileId = profileId ?? resolvedId;
   if (!fileId) return null;
-
-  const run = async (label: string, work: () => Promise<unknown>) => {
-    setBusy(label);
-    setError(null);
-    try {
-      await work();
-      await load();
-      onChange?.();
-    } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "That did not work.");
-    } finally {
-      setBusy("");
-    }
+  const run = async (label: string, work: () => Promise<void>) => {
+    setBusy(label); setError(null);
+    try { await work(); await load(); onChange?.(); }
+    catch (reason) { setError(reason instanceof Error ? reason.message : "That did not work."); }
+    finally { setBusy(""); }
   };
-
-  /** A fresh token each time: only its hash is stored, so an old link cannot be
-   *  read back — and one sent to the wrong address can be left to expire.
-   *
-   *  `packet` mints four links behind one URL; the server answers with the
-   *  same `url` field, so the desk handles it exactly like the others. */
-  const copyLink = (kind: LinkKind) =>
-    run(`link:${kind}`, async () => {
-      const minted = await api<{ url: string }>(
-        `/application-profiles/${fileId}/financial-forms/${kind}/link`,
-        { method: "POST" },
-      );
-      // Shown as well as copied. navigator.clipboard refuses in ways nobody can
-      // diagnose from the outside — an unfocused document is enough — and a
-      // link that was minted but never reached the clipboard leaves someone
-      // certain the feature is broken. The text is the source of truth; the
-      // copy is a convenience on top of it.
-      setShown({ kind, url: minted.url });
-      try {
-        await navigator.clipboard.writeText(minted.url);
-        setCopied(kind);
-        window.setTimeout(() => setCopied(null), 4000);
-      } catch {
-        // Left on screen to select by hand.
-      }
-    });
-
-  /** Close a forwarded packet: all four links behind it stop answering, and a
-   *  tab somebody still has open flips to "no longer available" on its next
-   *  save. The one way to take back a credential that was sent on. */
-  const closePacket = (packetId: string) =>
-    run(`close:${packetId}`, async () => {
-      await api(`/application-profiles/${fileId}/financial-forms/packets/${packetId}/revoke`, {
-        method: "POST",
-      });
-      if (shown?.kind === "packet") setShown(null);
-    });
-
-  /** The filled form as a PDF, rendered from what the file holds right now.
-   *
-   *  Opened in a tab rather than downloaded: the desk's usual next move is to
-   *  read it before forwarding, and a file that lands in a downloads folder has
-   *  to be found again first. The object URL is released on the next tick —
-   *  long enough for the tab to have taken it, short of leaking the blob for
-   *  the life of the session. */
-  const openPdf = (kind: FormKind) =>
-    run(`pdf:${kind}`, async () => {
-      const { blob } = await pdf.mutateAsync({ profileId: fileId, kind });
-      const url = URL.createObjectURL(blob);
-      const opened = window.open(url, "_blank", "noopener");
-      if (!opened) {
-        // Popup blocked. Nothing opened and nothing said so, which is the same
-        // silent failure the copy-link button used to have. Download still works.
-        setError("Your browser blocked the new tab. Use Download instead, or allow pop-ups for this site.");
-      }
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    });
-
-  /** The same document, saved rather than opened — for forwarding to a partner
-   *  rather than reading. Uses the filename the server chose, which carries the
-   *  business, the applicant and the date. */
-  const downloadPdf = (kind: FormKind) =>
-    run(`dl:${kind}`, async () => {
-      const { blob, filename } = await pdf.mutateAsync({ profileId: fileId, kind });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    });
-
-  /** Put it on the checklist. Idempotent server-side, so a double click is
-   *  harmless rather than producing two rows for the same thing. */
-  const request = (kind: FormKind) =>
-    run(`request:${kind}`, async () => {
-      await api(`/application-profiles/${fileId}/financial-forms/${kind}/request`, {
-        method: "POST",
-      });
-    });
-
-  /** The desk's declaration that the business carries no debt, and its undo.
-   *  Both go through the cockpit's routes so the readiness, the room and the
-   *  cockpit read the same decision. */
-  const setVoided = (on: boolean) =>
-    run("void", async () => {
-      await api(`/application-profiles/${fileId}/debt-schedule/${on ? "void" : "restore"}`, {
-        method: "POST",
-        ...(on ? { body: JSON.stringify({ reason: "No debt on the business" }) } : {}),
-      });
-    });
-
-  const open = (form: FormStatus) =>
-    run(`open:${form.kind}`, async () => {
-      if (form.kind === "debt_schedule") {
-        // Opening an empty editor on a failed load used to be harmless, because
-        // a save only replaced the desk's own rows. It still only touches the
-        // desk's rows — but an explicit empty list now means "clear them", so
-        // a load that failed must not open a form whose Save would do that.
-        const rows = await api<{ debts: DebtBody["debts"] }>(
-          `/application-profiles/${fileId}/financial-forms/debt-schedule/body`,
-        ).catch(() => null);
-        if (!rows) {
-          setError("The debt schedule could not be loaded, so it was not opened. Try again in a moment.");
-          return;
-        }
-        setDebtBody({ debts: rows.debts ?? [] });
-        setDebtProblems(false);
-        setEditing("debt_schedule");
-        return;
-      }
-      if (isStatementKind(form.kind)) {
-        const kind = form.kind;
-        let fields = statementSchemas[kind];
-        if (!fields) {
-          fields = await api<StatementSchema>(`/application-profiles/financial-forms/schema/${kind}`);
-          setStatementSchemas((current) => ({ ...current, [kind]: fields }));
-        }
-        // The body read answers an empty, seeded body when nothing has been
-        // saved yet, so there is no create step the way the 413 has.
-        const saved = await api<StatementBody & { status?: string | null; statement_id?: string | null }>(
-          `/application-profiles/${fileId}/financial-forms/${kind}/body`,
-        );
-        setStatementBody({
-          schema_version: saved.schema_version,
-          header: saved.header ?? {},
-          sections: saved.sections ?? {},
-          notes: saved.notes ?? "",
-        });
-        setEditing(kind);
-        return;
-      }
-      const statements = await api<Array<{ id: string; body: PfsBody }>>(
-        `/application-profiles/${fileId}/financial-statements`,
-      );
-      const current = statements[0];
-      if (current) {
-        setStatementId(current.id);
-        setPfsBody(current.body ?? {});
-      } else {
-        const created = await api<{ id: string; body: PfsBody }>(
-          `/application-profiles/${fileId}/financial-statements`,
-          { method: "POST", body: JSON.stringify({ body: {}, owners: [] }) },
-        );
-        setStatementId(created.id);
-        setPfsBody(created.body ?? {});
-      }
-      setEditing("pfs");
-    });
-
-  const savePfs = () =>
-    run("save", async () => {
-      if (!statementId) return;
-      await api(`/application-profiles/${fileId}/financial-statements/${statementId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ body: pfsBody, owners: [] }),
-      });
-    });
-
-  const filePfs = () =>
-    run("file", async () => {
-      if (!statementId) return;
-      await api(
-        `/application-profiles/${fileId}/financial-statements/${statementId}/submit`,
-        { method: "POST" },
-      );
-      setEditing(null);
-    });
-
-  /** Save keeps the figures as a draft; File also renders the PDF onto the
-   *  checklist — one call, `submit` decides which. */
-  const saveStatement = (kind: StatementKind, submit: boolean) =>
-    run(submit ? "file" : "save", async () => {
-      await api(`/application-profiles/${fileId}/financial-forms/${kind}`, {
-        method: "PUT",
-        body: JSON.stringify({ body: statementBody, submit }),
-      });
-      if (submit) setEditing(null);
-    });
-
-  const openPackets = packets.filter((packet) => !packet.revoked);
-  const editingStatementSchema = editing && isStatementKind(editing) ? statementSchemas[editing] : null;
-
-  const body = (
-    <>
-      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
-
-      {shown ? (
-        <div className="form-link-out">
-          <span className="lbl">
-            {copied === shown.kind ? "Copied — also here if you need it" : "Send this to the borrower"}
-          </span>
-          <input readOnly value={shown.url} onFocus={(event) => event.currentTarget.select()} />
-          <span className="sub">
-            {shown.kind === "packet"
-              ? "Opens all four forms. Expires in 30 days. Safe to forward to their accountant."
-              : "Opens the form directly. Expires in 30 days."}
-          </span>
-        </div>
-      ) : null}
-
-      {forms.map((form) => (
-        <div key={form.kind} className="filerow">
-          <Icon name="doc" size={15} />
-          <div className="grow grid g4">
-            <div className="row">
-              <b>{form.label}</b>
-              {statusChip(form)}
-              {form.filled_by_staff ? <CellChip tone="mut">Completed by staff</CellChip> : null}
-              {/* Provenance, because a figure typed by the borrower and one read
-                  off a scan carry different weight in a conversation with a lender. */}
-              {form.figures_from === "document" ? <CellChip tone="mut">Read from the document</CellChip> : null}
-            </div>
-            {summaryLines(form).map((line) => (
-              <span key={line} className="sub">
-                {line}
-              </span>
-            ))}
-          </div>
-          <div className="icon-actions">
-            {form.source !== "none" || form.statement_id || (form.row_count ?? 0) > 0 ? (
-              <ActionIcon icon="docCheck" tone="pri" label={form.source === "uploaded" ? "See what the AI read off the upload" : "See what was filled in"} disabled={busy !== ""} onClick={() => setAnswersKind(form.kind)} />
-            ) : null}
-            {form.kind === "debt_schedule" && (form.source !== "none" || (form.row_count ?? 0) > 0) ? (
-              <DebtScheduleReviewButton profileId={fileId} onChanged={() => { void load(); onChange?.(); }} />
-            ) : null}
-            <ActionIcon icon="pencil" label={form.source === "filled" ? "Open the form to edit it" : "Fill it in for the client"} disabled={busy !== ""} busy={busy === `open:${form.kind}`} onClick={() => void open(form)} />
-            <ActionIcon icon={copied === form.kind ? "check" : "link"} tone={copied === form.kind ? "ok" : undefined} label={copied === form.kind ? "Link copied" : "Copy a link the borrower can fill this in from"} disabled={busy !== ""} busy={busy === `link:${form.kind}`} onClick={() => void copyLink(form.kind)} />
-            {/* Wherever there is something to hand back: figures we hold, a draft
-                to render, or the document the borrower uploaded instead — the
-                route serves all three. Hidden only when the slot is genuinely
-                empty, because a button that always 404s teaches the desk to stop
-                pressing it. */}
-            {form.figures_from === "form" ||
-            form.statement_id ||
-            (form.row_count ?? 0) > 0 ||
-            form.source === "uploaded" ? (
-              <>
-                <ActionIcon icon="file" label="Open the PDF in a new tab" disabled={busy !== ""} busy={busy === `pdf:${form.kind}`} onClick={() => void openPdf(form.kind)} />
-                <ActionIcon icon="download" label="Download the PDF" disabled={busy !== ""} busy={busy === `dl:${form.kind}`} onClick={() => void downloadPdf(form.kind)} />
-              </>
-            ) : null}
-            <PageActionMenu
-              label={`More actions for ${form.label}`}
-              items={[
-                { label: "Request it from the client", hidden: form.requested || Boolean(form.voided), onSelect: () => void request(form.kind) },
-                { label: "No debt: void the schedule", hidden: !(form.kind === "debt_schedule" && !form.voided && form.source === "none"), onSelect: () => void setVoided(true) },
-                { label: "Undo the void", hidden: !(form.kind === "debt_schedule" && form.voided), onSelect: () => void setVoided(false) },
-              ]}
-            />
-          </div>
-        </div>
-      ))}
-
-      {/* The four forms as one workbook, rather than four forms one at a time.
-          Open it to work the file like a spreadsheet; share it to hand part of
-          it — chosen sheet by sheet — to somebody with no login. The share
-          link's scope is stored on the link rather than derived from its
-          token, which is what makes "this opens the P&L only" true. */}
-      <div className="filerow">
-        <Icon name="calc" size={15} />
-        <div className="grow grid g4">
-          <div className="row">
-            <b>Worksheet</b>
-            <CellChip tone="acc">Live</CellChip>
-          </div>
-          <span className="sub">
-            All four forms as one grid, edited a cell at a time. Share any part of it — the
-            personal financial statement is left out unless you tick it.
-          </span>
-        </div>
-        <Btn size="sm" disabled={busy !== ""} onClick={() => setWorksheetOpen(true)}>
-          Open worksheet
-        </Btn>
-        <Btn size="sm" disabled={busy !== ""} onClick={() => setShareOpen(true)}>
-          Share worksheet
-        </Btn>
-      </div>
-
-      <FormAnswersDrawer profileId={fileId} kind={answersKind} open={answersKind !== null} onClose={() => setAnswersKind(null)} onPreviewFile={onPreviewFile} />
-
-      {worksheetOpen ? (
-        <WorksheetModal open onClose={() => setWorksheetOpen(false)} profileId={fileId} />
-      ) : null}
-      {shareOpen ? (
-        <ShareWorksheetDialog open onClose={() => setShareOpen(false)} profileId={fileId} />
-      ) : null}
-
-      {/* One link for all four. The packet is what gets forwarded to an
-          accountant, so it is minted from here and can be closed from here. */}
-      <div className="filerow">
-        <Icon name="link" size={15} />
-        <div className="grow grid g4">
-          <div className="row">
-            <b>All four forms, one link</b>
-            {openPackets.length > 0 ? (
-              <CellChip tone="acc">
-                {openPackets.length === 1 ? "1 link open" : `${openPackets.length} links open`}
-              </CellChip>
-            ) : null}
-          </div>
-          <span className="sub">
-            Opens all four forms. Expires in 30 days. Safe to forward to their accountant.
-          </span>
-        </div>
-        <Btn size="sm" disabled={busy !== ""} onClick={() => void copyLink("packet")}>
-          {copied === "packet"
-            ? "Copied"
-            : busy === "link:packet"
-              ? "Making a link…"
-              : "Copy packet link"}
-        </Btn>
-      </div>
-
-      {openPackets.map((packet) => (
-        <div key={packet.packet_id} className="filerow">
-          <Icon name="send" size={15} />
-          <div className="grow grid g4">
-            <div className="row">
-              <b>Packet sent {shortDate(packet.created_at)}</b>
-              <CellChip tone={packet.completed_kinds.length === 4 ? "ok" : "mut"}>
-                {packet.completed_kinds.length} of 4 sent back
-              </CellChip>
-            </div>
-            <span className="sub">Expires {shortDate(packet.expires_at)}.</span>
-          </div>
-          <Btn size="sm" disabled={busy !== ""} onClick={() => void closePacket(packet.packet_id)}>
-            {busy === `close:${packet.packet_id}` ? "Closing…" : "Close"}
-          </Btn>
-        </div>
-      ))}
-
-      {editing === "pfs" && schema ? (
-        <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title="Personal financial statement" sub="Complete or update the form without expanding the evidence workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
-        <div className="pfs-editor financial-form-modal-editor">
-          <Pfs413Form schema={schema} value={pfsBody} onChange={setPfsBody} disabled={busy !== ""} />
-          <Row>
-            <Btn variant="pri" disabled={busy !== ""} onClick={() => void savePfs()}>
-              {busy === "save" ? "Saving…" : "Save"}
-            </Btn>
-            <Btn disabled={busy !== ""} onClick={() => void filePfs()}>
-              {busy === "file" ? "Filing…" : "File on the checklist"}
-            </Btn>
-            <span className="sub grow">
-              Saving keeps the figures. Filing generates the sheet and satisfies the request — the
-              borrower is not notified either way.
-            </span>
-          </Row>
-        </div></Drawer>
-      ) : null}
-
-      {editing === "debt_schedule" ? (
-        <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title="Business debt schedule" sub="Complete the schedule in a focused workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
-        <div className="pfs-editor financial-form-modal-editor">
-          <DebtScheduleForm value={debtBody} onChange={setDebtBody} disabled={busy !== ""} showProblems={debtProblems} />
-          {/* The panel's own status line sits under this fullscreen drawer, so
-              the message is repeated here where the person can see it. */}
-          {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
-          <Row>
-            <Btn
-              variant="pri"
-              disabled={busy !== ""}
-              onClick={() => {
-                // The owner's required answers — lender, type, original amount,
-                // balance, rate, monthly payment, current or delinquent, and the
-                // advance question on an MCA — checked here so the card shows
-                // which are missing; the server refuses the same list with a 422.
-                const problems = debtRowProblems(debtBody.debts ?? []);
-                if (problems.length) {
-                  setDebtProblems(true);
-                  setError(describeDebtProblems(problems));
-                  focusFirstProblem(problems);
-                  return;
-                }
-                void run("save", async () => {
-                  await api(
-                    `/application-profiles/${fileId}/financial-forms/debt-schedule`,
-                    { method: "PUT", body: JSON.stringify({ body: debtBody, submit: true }) },
-                  );
-                  setEditing(null);
-                });
-              }}
-            >
-              {busy === "save" ? "Saving…" : "Save the schedule"}
-            </Btn>
-            <span className="sub grow">
-              These rows go on the file&apos;s debt schedule, which is what the DSCR reads.
-            </span>
-          </Row>
-        </div></Drawer>
-      ) : null}
-
-      {editing && isStatementKind(editing) && editingStatementSchema ? (
-        <Drawer open fullscreen closeOnBackdrop={false} onClose={() => setEditing(null)} title={editing === "p_and_l" ? "Profit and loss statement" : "Balance sheet"} sub="Complete or update the form without expanding the evidence workspace." footer={<Btn onClick={() => setEditing(null)}>Close</Btn>}>
-        <div className="pfs-editor financial-form-modal-editor">
-          <BusinessStatementForm
-            schema={editingStatementSchema}
-            value={statementBody}
-            onChange={setStatementBody}
-            disabled={busy !== ""}
-          />
-          <Row>
-            <Btn variant="pri" disabled={busy !== ""} onClick={() => void saveStatement(editing, false)}>
-              {busy === "save" ? "Saving…" : "Save"}
-            </Btn>
-            <Btn disabled={busy !== ""} onClick={() => void saveStatement(editing, true)}>
-              {busy === "file" ? "Filing…" : "File on the checklist"}
-            </Btn>
-            <span className="sub grow">
-              Saving keeps the figures. Filing generates the sheet and satisfies the request — the
-              borrower is not notified either way.
-            </span>
-          </Row>
-        </div></Drawer>
-      ) : null}
-    </>
-  );
-
-  const blurb =
-    "A profit and loss statement, a balance sheet, a business debt schedule and a personal financial statement. Send the borrower one link that opens all four, or fill any of them in on their behalf.";
-
-  if (nested) {
-    return (
-      <div className="grid g10 mt">
-        <div>
-          <strong>Financial forms</strong>
-          <div className="sub">{blurb}</div>
-        </div>
-        {body}
-      </div>
-    );
-  }
-
-  return (
-    <Panel title="Financial forms" sub={blurb} bodyClass="grid g10">
-      {body}
-    </Panel>
-  );
+  const copyLink = (kind: LinkKind) => void run(`link:${kind}`, async () => {
+    const result = await api<{ url: string }>(`/application-profiles/${fileId}/financial-forms/${kind}/link`, { method: "POST" });
+    setShown({ kind, url: result.url });
+    try { await navigator.clipboard.writeText(result.url); setCopied(kind); window.setTimeout(() => setCopied(null), 4000); } catch { /* The link remains selectable below. */ }
+  });
+  const body = <>
+    {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+    <div className="row"><span className="sub grow">Open any form to work with its form, worksheet, source PDFs, and dated versions.</span><Btn size="sm" onClick={() => setRequestOpen(true)}><Icon name="mail" size={14} />Request files</Btn></div>
+    {shown ? <div className="form-link-out"><span className="lbl">{copied === shown.kind ? "Copied" : "Secure borrower link"}</span><input readOnly value={shown.url} onFocus={(event) => event.currentTarget.select()} /><span className="sub">Expires in 30 days.</span></div> : null}
+    {forms.map((form) => <div key={form.kind} className="filerow">
+      <Icon name="doc" size={15} /><div className="grow grid g4"><div className="row"><b>{form.label}</b>{statusChip(form)}{form.figures_from === "document" ? <CellChip tone="mut">Read from document</CellChip> : null}</div>{summaryLines(form).map((line) => <span key={line} className="sub">{line}</span>)}</div>
+      <Btn size="sm" disabled={Boolean(busy)} onClick={() => setWorkspace({ kind: form.kind, view: "form" })}>Open workspace</Btn>
+      <Btn size="sm" disabled={Boolean(busy)} onClick={() => copyLink(form.kind)}>{copied === form.kind ? "Copied" : "Copy link"}</Btn>
+      {form.source !== "none" || form.statement_id || form.row_count > 0 ? <Btn size="sm" onClick={() => setWorkspace({ kind: form.kind, view: "pdf" })}>PDF & versions</Btn> : null}
+    </div>)}
+    <div className="filerow"><Icon name="calc" size={15} /><div className="grow grid g4"><b>Financial worksheet</b><span className="sub">The same draft figures in a grid. Save a version to update financials and AI.</span></div><Btn size="sm" onClick={() => setWorkspace({ kind: "debt_schedule", view: "worksheet" })}>Open worksheet</Btn><Btn size="sm" onClick={() => setShareOpen(true)}>Share worksheet</Btn></div>
+    <div className="filerow"><Icon name="link" size={15} /><div className="grow grid g4"><b>All four forms, one link</b><span className="sub">Send the borrower one link to complete all four forms. Expires in 30 days.</span></div><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyLink("packet")}>Copy packet link</Btn></div>
+    {packets.filter((packet) => !packet.revoked).map((packet) => <div className="filerow" key={packet.packet_id}><Icon name="send" size={15} /><div className="grow grid g4"><b>Packet sent {shortDate(packet.created_at)}</b><span className="sub">{packet.completed_kinds.length} of 4 sent back · expires {shortDate(packet.expires_at)}</span></div><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("revoke", async () => { await api(`/application-profiles/${fileId}/financial-forms/packets/${packet.packet_id}/revoke`, { method: "POST" }); if (shown?.kind === "packet") setShown(null); })}>Close link</Btn></div>)}
+    {workspace ? <FinancialWorkspace open profileId={fileId} initialKind={workspace.kind} initialView={workspace.view} onClose={() => { setWorkspace(null); void load(); }} onPublished={async () => { await load(); onChange?.(); }} onUploadFiles={onUploadFiles} /> : null}
+    {shareOpen ? <ShareWorksheetDialog open profileId={fileId} onClose={() => setShareOpen(false)} /> : null}
+    {requestOpen ? <RequestFilesDialog open profileId={fileId} onClose={() => setRequestOpen(false)} onRequested={() => { void load(); onChange?.(); }} /> : null}
+  </>;
+  const blurb = "A profit and loss statement, balance sheet, business debt schedule, and personal financial statement, each with one shared workspace and dated versions.";
+  return nested ? <div className="grid g10 mt"><div><strong>Financial forms</strong><div className="sub">{blurb}</div></div>{body}</div> : <Panel title="Financial forms" sub={blurb} bodyClass="grid g10">{body}</Panel>;
 }

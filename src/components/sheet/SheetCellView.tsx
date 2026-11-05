@@ -60,13 +60,17 @@ export function cellDisplay(
 
   const raw = String(value ?? "");
   if (raw.trim() === "") return { text: "", warn: false };
+  if (cell.key?.endsWith(".factor_rate")) {
+    const parsed = parseMoney(raw);
+    return { text: parsed.warn ? raw : String(parsed.value), warn: parsed.warn, title: "Factor rate multiplier" };
+  }
 
   if (cell.type === "money" || cell.format === "money") {
     const parsed = parseMoney(raw);
     if (parsed.warn) {
       return { text: raw, warn: true, title: `“${raw}” is not a number, so it counts as nothing in the totals.` };
     }
-    return { text: formatMoney(parsed.value), warn: false };
+    return { text: `${cell.flags?.includes("approximate") ? "≈ " : ""}${formatMoney(parsed.value)}`, warn: false };
   }
   if (cell.type === "rate") {
     const parsed = parseRate(raw);

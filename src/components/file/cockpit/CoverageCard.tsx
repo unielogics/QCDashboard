@@ -13,7 +13,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Btn, CellChip, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
-import { useSaveFinancialPlan, useSaveFileEconomics, useRereadStatements } from "@/hooks/useApi";
+import { useSaveFinancialPlan, useSaveFileEconomics } from "@/hooks/useApi";
 import { evaluatePlanLocally } from "@/lib/cockpitSimulation";
 import {
   ADD_BACK_KINDS,
@@ -42,8 +42,8 @@ import {
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
 import { ClientTermsStrip } from "./ClientTermsStrip";
-import { DebtScheduleControls } from "./DebtScheduleControls";
-import { ObligationEditableRow, ReadPayeesHint, useObligationEditor } from "./ObligationRowEditor";
+import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
+import { ObligationPlanRow } from "./ObligationRowEditor";
 import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
@@ -126,8 +126,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
   const economics = cockpit.plan?.economics ?? null;
-  const rowEditor = useObligationEditor(profileId);
-  const reread = useRereadStatements(profileId);
   // The fees are set against the loan in the plan; with no loan in the plan, against the recorded terms
   // (the term sheet or the client terms), which is what the package and the offering print.
   const proposedTerms = cockpit.proposed_terms ?? null;
@@ -375,7 +373,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
 
       <div className="fc-grid">
         <div className="grid g8">
-          <Lbl>Obligations: what the business pays lenders ({accountLabel})</Lbl>
+          <div className="row"><Lbl>Obligations: what the business pays lenders ({accountLabel})</Lbl><span className="sp" />{canEdit ? <Btn size="sm" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_DEBT_SCHEDULE_EVENT))}><Icon name="pencil" size={13} />Open financial workspace</Btn> : null}</div>
           {obligations.length ? (
             <div className="tbl-wrap">
               <table className="tbl fc-obligations">
@@ -385,18 +383,15 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                     <th>Lender</th>
                     <th className="r">Per month</th>
                     <th className="r">Balance / payoff</th>
-                    <th>Statements</th>
                     <th>In debt service</th>
                   </tr>
                 </thead>
                 <tbody>
                   {obligations.map((o) => (
-                    <ObligationEditableRow key={o.id} o={o} canEdit={canEdit} editor={rowEditor} payees={cockpit.bank.recurring.payees} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} />
+                    <ObligationPlanRow key={o.id} o={o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} />
                   ))}
                 </tbody>
               </table>
-              {rowEditor.error ? <StatusLine tone="bad">{rowEditor.error}</StatusLine> : null}
-              {!cockpit.bank.recurring.payees.length && months.length ? <ReadPayeesHint onReread={() => reread.mutate()} pending={reread.isPending} /> : null}
             </div>
           ) : (
             <div className="fc-empty fc-empty-actions">

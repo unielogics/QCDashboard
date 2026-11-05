@@ -18,12 +18,10 @@ import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx,
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { ActionIcon } from "@/components/ds/ActionIcon";
-import { Drawer } from "@/components/ds/Drawer";
+import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
-import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
-import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
 import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import type { FundingProgramVertical } from "@/lib/fundingPrograms";
@@ -416,7 +414,6 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh, onOpenEvidence }: { 
   const restore = useRestoreDebtSchedule(profileId);
   const confirmAction = useConfirmAction();
   const [editing, setEditing] = useState(false);
-  const [body, setBody] = useState<DebtBody>({});
   const [busy, setBusy] = useState<"" | "open" | "save" | "request">("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -427,45 +424,7 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh, onOpenEvidence }: { 
     return () => window.removeEventListener(OPEN_DEBT_SCHEDULE_EVENT, handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profileId]);
-  const openForm = async () => {
-    setError(null);
-    setBusy("open");
-    try {
-      // A load that failed must not open a form whose Save would clear the desk's rows.
-      const saved = await api<{ debts: DebtBody["debts"] }>(`/application-profiles/${profileId}/financial-forms/debt-schedule/body`);
-      setBody({ debts: saved.debts ?? [] });
-      setEditing(true);
-    } catch (e) {
-      setError(errorMessage(e, "The debt schedule could not be loaded, so it was not opened."));
-    } finally {
-      setBusy("");
-    }
-  };
-  const [showProblems, setShowProblems] = useState(false);
-  const saveForm = async () => {
-    setError(null);
-    // The same required answers the borrower's link and the desk panel hold a
-    // save to; checked here so the cards outline what is missing before the
-    // server refuses it.
-    const problems = debtRowProblems(body.debts ?? []);
-    if (problems.length) {
-      setShowProblems(true);
-      setError(describeDebtProblems(problems));
-      focusFirstProblem(problems);
-      return;
-    }
-    setBusy("save");
-    try {
-      await api(`/application-profiles/${profileId}/financial-forms/debt-schedule`, { method: "PUT", body: JSON.stringify({ body, submit: true }) });
-      setEditing(false);
-      setNotice("Schedule saved. The debt service and the coverage read it now.");
-      onRefresh();
-    } catch (e) {
-      setError(errorMessage(e, "The debt schedule could not be saved."));
-    } finally {
-      setBusy("");
-    }
-  };
+  const openForm = async () => { setEditing(true); };
   const requestIt = async () => {
     setError(null);
     setBusy("request");
@@ -588,27 +547,7 @@ function DebtCard({ cockpit, profileId, canEdit, onRefresh, onOpenEvidence }: { 
         {!scheduleTable && !documentedTable && !uploadedTable ? <Empty>{emptyText}</Empty> : null}
         {canEdit && (!rows.length || voided) ? <DebtScheduleControls cockpit={cockpit} profileId={profileId} canEdit={canEdit} onOpenEvidence={onOpenEvidence} /> : null}
       </Card>
-      {editing ? (
-        <Drawer
-          open
-          fullscreen
-          closeOnBackdrop={false}
-          onClose={() => setEditing(false)}
-          title="Business debt schedule"
-          sub="Every loan, advance, lease and card the business pays. Saving puts the rows on the file's schedule, which is what the DSCR reads."
-          footer={
-            <>
-              <Btn onClick={() => setEditing(false)} disabled={busy === "save"}>Close</Btn>
-              <span className="sp" />
-              <Btn variant="pri" onClick={() => void saveForm()} disabled={busy !== ""}>{busy === "save" ? "Saving…" : "Save the schedule"}</Btn>
-            </>
-          }
-        >
-          <div className="pfs-editor financial-form-modal-editor">
-            <DebtScheduleForm value={body} onChange={setBody} disabled={busy !== ""} showProblems={showProblems} />
-          </div>
-        </Drawer>
-      ) : null}
+      {editing ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" onClose={() => setEditing(false)} onPublished={onRefresh} /> : null}
     </>
   );
 }

@@ -226,7 +226,7 @@ export type CockpitDocumentedDebt = {
   source: "document";
 };
 
-export type DebtServiceSource = "debt_schedule_rows" | "debt_schedule_rows+bank_observed" | "debt_schedule_document" | "advance_terms" | "bank_observed" | "declared_none" | "none";
+export type DebtServiceSource = "accepted_debt_schedule" | "debt_schedule_rows" | "debt_schedule_rows+bank_observed" | "debt_schedule_document" | "advance_terms" | "bank_observed" | "declared_none" | "none";
 
 /** Where the debt schedule stands. It is a standing part of every file: the
  *  block is always there, and only the desk's declaration ("voided") means the
@@ -828,6 +828,7 @@ export function dscrLabel(status: DscrStatus | null | undefined): string {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
+  accepted_debt_schedule: "Saved debt schedule",
   debt_schedule_rows: "Debt schedule on the file",
   "debt_schedule_rows+bank_observed": "Schedule rows plus lender debits the rows forgot",
   bank_observed: "Lender debits seen in the statements",
