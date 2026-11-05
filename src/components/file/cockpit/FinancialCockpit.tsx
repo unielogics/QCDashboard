@@ -13,12 +13,16 @@
 // Everything numeric comes from GET /application-profiles/{id}/financial-cockpit
 // (app/services/financial_cockpit.py); this component only arranges it.
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
+import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } from "@/components/buckets/BucketFileReviewPanel";
+import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/financialSourcePreview";
+import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
+import { balanceRiskMonths, riskCountLabel, riskTotals } from "@/lib/balanceRisk";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
@@ -54,6 +58,7 @@ import { AdvancesCard } from "./AdvancesCard";
 import { OfferPanel } from "./OfferPanel";
 import { CoverageCard } from "./CoverageCard";
 import { OverdraftCard } from "./OverdraftCard";
+import { AccountMovementsCard } from "./AccountMovementsCard";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { RecurringCard } from "./RecurringCard";
 import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
@@ -135,6 +140,7 @@ function monthBands(months: CockpitMonth[]): ChartBand[] {
 
 function BankCards({ cockpit, months, summary, accountLabel, onOpenEvidence }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; onOpenEvidence: () => void }) {
   const bands = monthBands(months);
+  const risks = riskTotals(balanceRiskMonths(months));
   if (!months.length) {
     return (
       <Card title="Bank statements" wide>
@@ -188,7 +194,7 @@ function BankCards({ cockpit, months, summary, accountLabel, onOpenEvidence }: {
       />
       <ChartCard
         title="Balances"
-        sub={summary.average_balance_basis === "ending_balance" ? "Average balance is read from ending balances; the statements print no average ledger balance." : "Ending, average ledger and lowest daily balance; beginning balances sit in the table."}
+        sub={risks.accountDays ? "Combined balances. Monthly account lows are summed and may occur on different dates; inspect individual accounts in Balance risk." : summary.average_balance_basis === "ending_balance" ? "Average balance is read from ending balances; the statements print no average ledger balance." : "Ending, average ledger and lowest daily balance; beginning balances sit in the table."}
         table={balanceTable}
         chart={
           <LineChart
@@ -197,7 +203,7 @@ function BankCards({ cockpit, months, summary, accountLabel, onOpenEvidence }: {
             series={[
               { key: "ending", label: "Ending balance", color: SERIES.one, values: months.map((m) => m.ending_balance), emphasis: true },
               { key: "average", label: "Average balance", color: SERIES.two, values: months.map((m) => m.average_balance) },
-              { key: "low", label: "Lowest balance", color: SERIES.context, values: months.map((m) => m.low_balance) },
+              { key: "low", label: risks.accountDays ? "Sum of account lows" : "Lowest balance", color: SERIES.context, values: months.map((m) => m.low_balance) },
             ]}
           />
         }
@@ -222,7 +228,7 @@ function BankCards({ cockpit, months, summary, accountLabel, onOpenEvidence }: {
           <Stat label="Highest and lowest deposit months">{summary.highest_month ? `${monthShort(summary.highest_month)} · ${summary.lowest_month ? monthShort(summary.lowest_month) : "—"}` : "—"}</Stat>
           <Stat label="Average deposits per month (count)">{summary.avg_deposit_count == null ? "—" : summary.avg_deposit_count.toFixed(1)}</Stat>
           <Stat label="Average outflow ratio (withdrawals ÷ deposits)">{ratioPct(summary.avg_outflow_ratio)}</Stat>
-          <Stat label="NSF or overdraft items · returned checks · negative-balance days">{`${summary.nsf_total} · ${summary.returned_checks_total} · ${summary.negative_days_total}`}</Stat>
+          <Stat label={`NSF or overdraft items · returned checks · negative ${risks.accountDays ? "account-days" : "days"}`}>{`${riskCountLabel(risks.fees)} · ${riskCountLabel(risks.returned)} · ${riskCountLabel(risks.negative)}`}</Stat>
           <Stat label="Annualized deposits · withdrawals · net">{summary.estimates_available ? `${compactMoney(summary.annualized_deposits)} · ${compactMoney(summary.annualized_withdrawals)} · ${compactMoney(summary.annualized_net)}` : "Needs three months"}</Stat>
         </div>
       </Card>
@@ -602,8 +608,34 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 
 export function FinancialCockpit(props: Props) {
   const query = useFinancialCockpit(props.profileId);
+  const api = useAuthedApi();
   const marketplaceRef = useRef<HTMLElement>(null);
   const [accountChoice, setAccountChoice] = useState<string>("counted");
+  const [sourcePreview, setSourcePreview] = useState<{ profileId: string; fileId: string; page?: number; requestId: number } | null>(null);
+  const [sourceFiles, setSourceFiles] = useState<BucketReviewFile[]>([]);
+  const activeProfileRef = useRef(props.profileId);
+  const sourceFocusRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    activeProfileRef.current = props.profileId;
+    setSourcePreview(null);
+    setSourceFiles([]);
+    setAccountChoice("counted");
+  }, [props.profileId]);
+  const openSourcePreview = useCallback((fileId: string, page?: number) => {
+    sourceFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    setSourcePreview((current) => ({ profileId: props.profileId, fileId, page: validPdfSourcePage(page) ?? undefined, requestId: (current?.requestId ?? 0) + 1 }));
+  }, [props.profileId]);
+  const loadSourceReview = useCallback(async (): Promise<BucketFileReview> => {
+    if (!sourcePreview || sourcePreview.profileId !== props.profileId) throw new Error("Source reference needs review.");
+    const loaded = await loadFinancialSourcePreview(sourcePreview, api, () => activeProfileRef.current);
+    setSourceFiles(loaded.files);
+    return loaded.review;
+  }, [api, props.profileId, sourcePreview]);
+  const closeSourcePreview = useCallback(() => {
+    setSourcePreview(null);
+    const sourceButton = sourceFocusRef.current;
+    requestAnimationFrame(() => restoreFinancialSourceFocus(sourceButton));
+  }, []);
   const { focus, onFocusHandled } = props;
   useEffect(() => {
     if (focus === "marketplace" && query.data && marketplaceRef.current) {
@@ -631,6 +663,7 @@ export function FinancialCockpit(props: Props) {
     ...cockpit.bank.accounts.map((a) => ({ value: a.key, label: a.counted ? a.label : `${a.label} (not counted)` })),
   ];
   const chosen = cockpit.bank.accounts.find((a) => a.key === accountChoice) ?? null;
+  const resolvedAccountChoice = accountChoice === "all" && narrowed ? "all" : chosen?.key ?? "counted";
   const selection =
     accountChoice === "all" && cockpit.bank.all_months && cockpit.bank.all_summary
       ? { months: cockpit.bank.all_months, summary: cockpit.bank.all_summary, label: "All accounts", accountLabel: null as string | null }
@@ -642,6 +675,13 @@ export function FinancialCockpit(props: Props) {
   const conclusion = cockpit.net_profit.conclusion;
   const generated = new Date(cockpit.generated_at);
   const depositValues = selection.months.map((m) => m.deposits);
+  const risks = riskTotals(balanceRiskMonths(selection.months));
+  const nsfIncomplete = !risks.fees.complete;
+  const negativeIncomplete = !risks.negative.complete;
+  const negativeUnit = risks.accountDays ? "account-days" : "days";
+  const negativeCaption = negativeIncomplete && !risks.negative.value
+    ? "Negative-balance days not fully reported"
+    : `${riskCountLabel(risks.negative)} negative-balance ${negativeUnit}${negativeIncomplete ? " · partial detail" : ""}`;
   return (
     <div className={cx("fin-cockpit", query.isFetching && "is-refreshing")}>
       <div className="fc-head">
@@ -676,7 +716,7 @@ export function FinancialCockpit(props: Props) {
       {cockpit.bank.accounts.length > 1 ? (
         <div className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <span className="lbl">Account</span>
-          <Seg as="filter" ariaLabel="Checking account" value={accountChoice} onChange={setAccountChoice} options={accountOptions} />
+          <Seg as="filter" ariaLabel="Checking account" value={resolvedAccountChoice} onChange={setAccountChoice} options={accountOptions} />
           <span className="sub">Choose which accounts count on Evidence &amp; banking → Banking.</span>
         </div>
       ) : null}
@@ -695,8 +735,8 @@ export function FinancialCockpit(props: Props) {
           tone={summary.deposit_trend_pct == null ? "mut" : summary.deposit_trend_pct >= 0 ? "ok" : "warn"}
         />
         <Kpi label="Net cash flow per month" value={money(summary.avg_net)} sub={summary.annualized_net != null ? `${compactMoney(summary.annualized_net)} a year · deposits minus withdrawals` : "deposits minus withdrawals"} tone={toneForSign(summary.avg_net)} />
-        <Kpi label="Average balance" value={money(summary.average_balance)} sub={`begins ${compactMoney(summary.beginning_balance)} · ends ${compactMoney(summary.ending_balance)} · low ${compactMoney(summary.lowest_balance)}`} />
-        <Kpi label="NSF and overdrafts" value={count(summary.nsf_total)} sub={`${summary.negative_days_total} negative-balance day${summary.negative_days_total === 1 ? "" : "s"}`} tone={summary.nsf_total ? "bad" : "ok"} />
+        <Kpi label="Average balance" value={money(summary.average_balance)} sub={`begins ${compactMoney(summary.beginning_balance)} · ends ${compactMoney(summary.ending_balance)} · ${risks.accountDays ? "lowest account" : "low"} ${compactMoney(risks.lowest)}`} />
+        <Kpi label="NSF and overdrafts" value={riskCountLabel(risks.fees)} sub={negativeCaption} tone={risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok"} />
         {cockpit.dscr.no_debt ? (
           <Kpi label="DSCR · no debt" value="No debt" sub={cockpit.dscr.pro_forma_headline?.pro_forma_value != null ? `declared by the desk · ${multiple(cockpit.dscr.pro_forma_headline.pro_forma_value)} with the proposed payment` : "declared by the desk"} tone="ok" />
         ) : (
@@ -707,7 +747,11 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid fc-grid-charts">
         <BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} />
-        <OverdraftCard months={selection.months} accountLabel={selection.label} needReread={coverage.statements_need_reread} />
+      </div>
+
+      <div className="fc-grid">
+        <OverdraftCard months={selection.months} accountLabel={selection.label} needReread={coverage.statements_need_reread} accounts={cockpit.bank.accounts} onPreviewSource={openSourcePreview} />
+        <AccountMovementsCard data={cockpit.bank.account_movements} accountKey={resolvedAccountChoice} onOpenEvidence={(fileId, page) => fileId ? openSourcePreview(fileId, page ?? undefined) : props.onOpenEvidence()} />
       </div>
 
       <div className="fc-grid">
@@ -763,6 +807,18 @@ export function FinancialCockpit(props: Props) {
       <div className="fc-grid">
         <OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} />
       </div>
+      {sourcePreview && sourcePreview.profileId === props.profileId ? <BucketFileReviewPanel
+        title="Bank statement evidence"
+        files={sourceFiles}
+        activeFileId={sourcePreview.fileId}
+        initialPage={sourcePreview.page}
+        pageRequestId={sourcePreview.requestId}
+        reviewKey={`${sourcePreview.profileId}:${sourcePreview.fileId}`}
+        loadReview={loadSourceReview}
+        annotationsEnabled={false}
+        onSelectFile={(fileId) => setSourcePreview((current) => current ? { ...current, fileId, page: undefined, requestId: current.requestId + 1 } : null)}
+        onClose={closeSourcePreview}
+      /> : null}
     </div>
   );
 }

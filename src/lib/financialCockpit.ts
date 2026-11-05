@@ -1,6 +1,7 @@
 // The financial cockpit: the types that mirror app/services/financial_cockpit.py
 // in qcbackend (the contract pinned by app/tests/test_financial_cockpit.py)
 // and the pure helpers the tiles and charts use. Nothing here fetches.
+import type { AccountMovements } from "./accountMovements";
 
 export type DscrStatus = "unavailable" | "concerning" | "acceptable" | "healthy" | "very_strong";
 export type CockpitConfidence = "filed" | "statement" | "statement_unverified" | "proxy";
@@ -27,9 +28,13 @@ export type CockpitMonth = {
   negative_dates: string[];
   overdraft_items: OverdraftItem[];
   fees: number | null;
+  /** Statement/account provenance; negative days across accounts are account-days. */
+  risk_sources?: CockpitRiskSource[];
 };
 
-export type OverdraftItem = { date: string | null; description: string; amount: number | null; type: "nsf_fee" | "overdraft_fee" | "returned_item" | "negative_balance" | "other"; account?: string; month?: string };
+export type CockpitRiskSource = { file_id: string; file_name?: string; account: string; negative_dates: string[]; negative_days: number | null; nsf: number | null; returned_checks: number | null; low_balance: number | null; page?: number };
+
+export type OverdraftItem = { date: string | null; description: string; amount: number | null; type: "nsf_fee" | "overdraft_fee" | "returned_item" | "negative_balance" | "other"; account?: string; month?: string; file_id?: string; file_name?: string; page?: number };
 
 export type CockpitOverdrafts = {
   by_month: Array<{ month: string; label: string; negative_dates: string[]; negative_days: number; nsf: number; returned_checks: number; low_balance: number | null; ending_balance: number | null; fees: number | null; items: OverdraftItem[] }>;
@@ -706,6 +711,7 @@ export type FinancialCockpit = {
     recurring: CockpitRecurring;
     recurring_credits: CockpitRecurring;
     overdrafts: CockpitOverdrafts;
+    account_movements?: AccountMovements;
     /** Keys the desk chose to count; empty when every account counts. */
     counted_accounts: string[];
     /** Every account combined, only when the desk narrowed the counted set. */
