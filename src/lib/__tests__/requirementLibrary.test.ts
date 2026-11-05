@@ -31,6 +31,12 @@ describe("the requirement library", () => {
     expect(isFormItem(item({}))).toBe(false);
   });
 
+  it("keeps checks only the team sees out of the way until asked for", () => {
+    const rows = [item({ key: "client", label: "Zoning letter" }), item({ key: "internal", label: "Analyst check", client_visible: false }), item({ key: "mine", label: "My internal one", client_visible: false, added: true })];
+    expect(filterLibrary(rows, "", "all", false).map((i) => i.key)).toEqual(["client", "mine"]);
+    expect(filterLibrary(rows, "", "all", true)).toHaveLength(3);
+  });
+
   it("puts internal-only checks after what is asked of the client", () => {
     const rows = [item({ key: "internal", label: "Analyst check", client_visible: false }), item({ key: "client", label: "Zoning letter", client_visible: true })];
     expect(groupLibrary(rows)[0].items.map((i) => i.key)).toEqual(["client", "internal"]);

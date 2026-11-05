@@ -40,9 +40,10 @@ export function isFormItem(item: Pick<LibraryItem, "kind" | "form_kind" | "form_
 }
 
 /** What the desk typed against what the library holds, and the kind they asked to see. */
-export function filterLibrary(items: LibraryItem[], query: string, kind: "all" | "document" | "form"): LibraryItem[] {
+export function filterLibrary(items: LibraryItem[], query: string, kind: "all" | "document" | "form", includeInternal = true): LibraryItem[] {
   const words = query.toLowerCase().split(/\s+/).filter(Boolean);
   return items.filter((item) => {
+    if (!includeInternal && item.client_visible === false && !item.added) return false;
     if (kind === "form" && !isFormItem(item)) return false;
     if (kind === "document" && isFormItem(item)) return false;
     if (!words.length) return true;

@@ -50,6 +50,7 @@ export function AddRequirementDrawer({
   const [level, setLevel] = useState<LibraryLevel | "">("");
   const [note, setNote] = useState("");
   const [custom, setCustom] = useState(false);
+  const [showInternal, setShowInternal] = useState(false);
   const [customDraft, setCustomDraft] = useState({ label: "", category: "", instructions: "" });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -61,14 +62,15 @@ export function AddRequirementDrawer({
     staleTime: 30_000,
   });
   const data = library.data;
-  const visible = useMemo(() => (data ? filterLibrary(data.items, query, kind) : []), [data, query, kind]);
+  const internalCount = useMemo(() => (data ? data.items.filter((item) => item.client_visible === false && !item.added).length : 0), [data]);
+  const visible = useMemo(() => (data ? filterLibrary(data.items, query, kind, showInternal) : []), [data, query, kind, showInternal]);
   const groups = useMemo(() => groupLibrary(visible), [visible]);
   const selected: LibraryItem | null = data?.items.find((item) => item.key === picked) ?? null;
   const chosenLevel: LibraryLevel = (level || selected?.required_level || "required") as LibraryLevel;
   const customReady = customDraft.label.trim().length >= 2 && Boolean(customDraft.category);
 
   const reset = () => {
-    setQuery(""); setKind(initialKind); setPicked(null); setLevel(""); setNote(""); setCustom(false);
+    setQuery(""); setKind(initialKind); setShowInternal(false); setPicked(null); setLevel(""); setNote(""); setCustom(false);
     setCustomDraft({ label: "", category: "", instructions: "" }); setError("");
   };
   const close = () => { if (busy) return; reset(); onClose(); };
@@ -135,6 +137,7 @@ export function AddRequirementDrawer({
           <>
             <div className="ev-lib-tools">
               <Input autoFocus aria-label="Search the library" placeholder="Search documents and forms" value={query} onChange={(event) => setQuery(event.target.value)} />
+              {internalCount ? <label className="checkline"><input type="checkbox" checked={showInternal} onChange={(event) => setShowInternal(event.target.checked)} />Also show internal checks the client is not asked for ({internalCount})</label> : null}
               <Seg as="filter" ariaLabel="Show" value={kind} onChange={setKind} options={[{ value: "all", label: "Everything" }, { value: "document", label: "Documents" }, { value: "form", label: "Forms" }]} />
             </div>
             {!custom ? (
