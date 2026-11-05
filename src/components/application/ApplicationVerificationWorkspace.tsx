@@ -101,6 +101,7 @@ export function ApplicationVerificationWorkspace({
     queryKey: ["application-profile-owners", profileId],
     queryFn: () => apiCall<FileOwner[]>(`/application-profiles/${profileId}/owners`),
     enabled: Boolean(profileId),
+    refetchInterval: (query) => query.state.data?.some((owner) => owner.credit_report_import_status === "pending" || (owner.credit_pull_id && !owner.credit_report_available)) ? 15000 : false,
   });
   const verification = useQuery({
     queryKey: ["application-profile-verification", profileId],

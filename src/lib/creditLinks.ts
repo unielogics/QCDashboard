@@ -67,9 +67,9 @@ export function ownerCreditWords(
   return parts.join(" · ");
 }
 
-export function ownerCreditStatus(owner: Pick<FileOwner, "credit_complete" | "credit_score" | "credit_fico_source" | "invite_opened_at" | "invite_sent_at">): { label: string; tone: "ok" | "acc" | "warn" | "mut" } {
-  if (owner.credit_complete && owner.credit_score != null && owner.credit_fico_source !== "intelligence-proxy") return { label: `Score ${owner.credit_score}`, tone: "ok" };
-  if (owner.credit_complete) return { label: owner.credit_fico_source === "intelligence-proxy" ? "Bureau score needed" : "Report linked · import pending", tone: "warn" };
+export function ownerCreditStatus(owner: Pick<FileOwner, "credit_complete" | "credit_score" | "credit_score_verified" | "credit_fico_source" | "credit_report_import_status" | "invite_opened_at" | "invite_sent_at">): { label: string; tone: "ok" | "acc" | "warn" | "mut" } {
+  if (owner.credit_complete && owner.credit_score_verified && owner.credit_score != null && owner.credit_score >= 300 && owner.credit_score <= 850 && owner.credit_fico_source !== "intelligence-proxy") return { label: `Score ${owner.credit_score}`, tone: "ok" };
+  if (owner.credit_complete) return { label: owner.credit_fico_source === "intelligence-proxy" ? "Bureau score needed" : owner.credit_report_import_status === "completed" ? "Report imported · score unavailable" : "Report linked · import pending", tone: "warn" };
   if (owner.invite_opened_at) return { label: "Opened", tone: "acc" };
   if (owner.invite_sent_at) return { label: "Sent", tone: "warn" };
   return { label: "Not sent", tone: "mut" };

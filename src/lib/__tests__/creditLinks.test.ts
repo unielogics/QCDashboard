@@ -19,13 +19,19 @@ describe("ownerCreditWords", () => {
 });
 
 describe("ownerCreditStatus", () => {
-  const owner = { credit_complete: true, credit_score: 661, credit_fico_source: "scraped:fico_4", invite_opened_at: null, invite_sent_at: null };
+  const owner = { credit_complete: true, credit_score: 661, credit_score_verified: true, credit_fico_source: "scraped:fico_4", invite_opened_at: null, invite_sent_at: null };
   it("shows the verified linked number in green", () => {
     expect(ownerCreditStatus(owner)).toEqual({ label: "Score 661", tone: "ok" });
   });
   it("never turns a missing or proxy score green", () => {
     expect(ownerCreditStatus({ ...owner, credit_score: null }).tone).toBe("warn");
     expect(ownerCreditStatus({ ...owner, credit_score: 720, credit_fico_source: "intelligence-proxy" }).tone).toBe("warn");
+    expect(ownerCreditStatus({ ...owner, credit_score_verified: false }).tone).toBe("warn");
+    expect(ownerCreditStatus({ ...owner, credit_score: 999 }).tone).toBe("warn");
+  });
+  it("distinguishes an imported report with no score from an import still pending", () => {
+    expect(ownerCreditStatus({ ...owner, credit_score: null, credit_report_import_status: "completed" }).label).toBe("Report imported · score unavailable");
+    expect(ownerCreditStatus({ ...owner, credit_score: null, credit_report_import_status: "pending" }).label).toBe("Report linked · import pending");
   });
 });
 

@@ -23,6 +23,7 @@ export function OwnerCreditReportDrawer({ profileId, owner, onClose, onImported 
     queryKey: key,
     queryFn: () => api<ReportResponse>(path),
     enabled: Boolean(owner?.credit_pull_id),
+    refetchInterval: (query) => query.state.data?.owner.credit_report_import_status === "pending" ? 15000 : false,
   });
   const importReport = useMutation({
     mutationFn: () => api<ReportResponse>(`${path}/import`, { method: "POST" }),
