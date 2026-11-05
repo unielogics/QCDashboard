@@ -13,6 +13,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Callout, CellChip, Sub } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
+import { DebtScheduleReviewButton } from "@/components/application/DebtScheduleReviewDrawer";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -128,7 +129,15 @@ export function FormAnswersDrawer({
     : null;
   const context = data ? [data.who, data.as_of ? `as of ${data.as_of}` : null].filter(Boolean).join(" · ") : "";
   return (
-    <Drawer open={open} onClose={onClose} title={title} sub={data ? answersByline(data) : "Reading what was filled in..."} width="md" ariaLabel={`${title}: what was filled in`}>
+    <Drawer
+      open={open}
+      onClose={onClose}
+      title={title}
+      sub={data ? answersByline(data) : "Reading what was filled in..."}
+      width="md"
+      ariaLabel={`${title}: what was filled in`}
+      headerActions={kind === "debt_schedule" && data && data.source !== "none" ? <DebtScheduleReviewButton profileId={profileId} variant="button" label="Review the lines" /> : undefined}
+    >
       <div className="form-answers">
         {query.isLoading ? <div className="empty"><span className="spinner solo" />Reading the form...</div> : null}
         {query.isError ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>This form could not be read. Close and try again.</Callout> : null}

@@ -34,6 +34,7 @@ import {
 import { ShareWorksheetDialog, WorksheetModal } from "@/components/application/WorksheetModal";
 import { Drawer } from "@/components/ds/Drawer";
 import { ActionIcon } from "@/components/ds/ActionIcon";
+import { DebtScheduleReviewButton } from "@/components/application/DebtScheduleReviewDrawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
 
@@ -555,6 +556,9 @@ export function FinancialFormsPanel({
           <div className="icon-actions">
             {form.source !== "none" || form.statement_id || (form.row_count ?? 0) > 0 ? (
               <ActionIcon icon="docCheck" tone="pri" label={form.source === "uploaded" ? "See what the AI read off the upload" : "See what was filled in"} disabled={busy !== ""} onClick={() => setAnswersKind(form.kind)} />
+            ) : null}
+            {form.kind === "debt_schedule" && (form.source !== "none" || (form.row_count ?? 0) > 0) ? (
+              <DebtScheduleReviewButton profileId={fileId} onChanged={() => { void load(); onChange?.(); }} />
             ) : null}
             <ActionIcon icon="pencil" label={form.source === "filled" ? "Open the form to edit it" : "Fill it in for the client"} disabled={busy !== ""} busy={busy === `open:${form.kind}`} onClick={() => void open(form)} />
             <ActionIcon icon={copied === form.kind ? "check" : "link"} tone={copied === form.kind ? "ok" : undefined} label={copied === form.kind ? "Link copied" : "Copy a link the borrower can fill this in from"} disabled={busy !== ""} busy={busy === `link:${form.kind}`} onClick={() => void copyLink(form.kind)} />

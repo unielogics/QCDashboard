@@ -1,0 +1,128 @@
+/* The debt schedule line review. Cards, not a table: each line asks three
+   questions and a table of twelve narrow columns hides all of them. Tokens
+   only; nothing here knows a colour. */
+
+.layout { display: grid; gap: 16px; min-width: 0; }
+
+.sources { display: grid; gap: 10px; }
+.source {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  background: var(--sunken);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  min-width: 0;
+}
+.sourceTitle { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; min-width: 0; }
+.sourceTitle b { overflow-wrap: anywhere; }
+.sourceMeta { color: var(--muted); font-size: 12.5px; line-height: 1.5; margin: 0; }
+
+/* Stays in view while the cards scroll under it. The negative margins and top
+   cancel the drawer body's padding so it sits flush to the edge. */
+.summary {
+  position: sticky;
+  top: -24px;
+  z-index: 3;
+  margin: -24px -26px 0;
+  padding: 12px 26px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+.stat { display: inline-flex; align-items: baseline; gap: 6px; font-size: 13px; color: var(--muted); }
+.stat b { font-size: 17px; color: var(--ink); font-variant-numeric: tabular-nums; }
+.statNeed b { color: var(--warn); }
+.statOff b { color: var(--danger); }
+
+.groupHead { margin: 4px 0 -4px; }
+
+.cards { display: grid; gap: 12px; }
+
+.card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line2);
+  border-radius: 12px;
+  min-width: 0;
+}
+.card[data-hint="true"] { border-color: var(--warn); }
+
+.head {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+}
+.chips { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.questions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.payment {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.paymentRow { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 8px; align-items: center; }
+.paymentRow span { color: var(--muted); font-size: 13px; }
+
+.question { min-width: 0; }
+.question input, .question select, .payment input, .payment select, .head input, .head select { min-height: 40px; width: 100%; }
+/* An answer nobody has given yet. Saving blanks is allowed, so this is a
+   prompt and not an error: amber, with the word, never colour alone. */
+.needed input { border-color: var(--warn); background: var(--warn-tint); }
+.neededTag {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--warn);
+  background: var(--warn-tint);
+}
+.invalid input, .invalid select { border-color: var(--danger); }
+.error { color: var(--danger); font-size: 12.5px; }
+
+.fromFile { display: grid; gap: 2px; margin: 0; padding: 8px 10px; border-left: 3px solid var(--line2); background: var(--sunken2); border-radius: 0 8px 8px 0; }
+.fromFile small { color: var(--muted); font-size: 12px; line-height: 1.45; }
+
+.sentence { color: var(--muted); font-size: 12.5px; margin: -4px 0 0; }
+
+.removed {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--sunken);
+  border: 1px dashed var(--line2);
+  border-radius: 12px;
+}
+.removed b { text-decoration: line-through; text-decoration-color: var(--muted); overflow-wrap: anywhere; }
+.removed select { min-height: 38px; }
+.removedWhy { color: var(--muted); font-size: 12.5px; }
+
+.history { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); }
+.history > summary { padding: 12px 14px; cursor: pointer; font-weight: 600; }
+.history[open] > summary { border-bottom: 1px solid var(--line); }
+.historyList { display: grid; gap: 8px; padding: 12px 14px; }
+
+.unlink { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.5; }
+
+@media (max-width: 720px) {
+  .head, .removed { grid-template-columns: minmax(0, 1fr); }
+  .questions, .payment { grid-template-columns: minmax(0, 1fr); }
+  .summary { gap: 6px 14px; }
+}
