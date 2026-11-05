@@ -16,7 +16,7 @@ import { useAuthedApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
 import type { ApplicationProgramReadiness as Readiness } from "@/lib/applicationProfile";
 import type { FormKind } from "@/lib/formAnswers";
-import { filterLibrary, groupLibrary, type RequirementLibrary, type LibraryItem, type LibraryLevel } from "@/lib/requirementLibrary";
+import { filterLibrary, groupLibrary, isFormItem, type RequirementLibrary, type LibraryItem, type LibraryLevel } from "@/lib/requirementLibrary";
 
 const LEVELS: { value: LibraryLevel; label: string }[] = [
   { value: "required", label: "Required: the file is not ready without it" },
@@ -73,6 +73,21 @@ export function AddRequirementDrawer({
   };
   const close = () => { if (busy) return; reset(); onClose(); };
 
+  async function takeOff(item: LibraryItem) {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      const readiness = await api<Readiness>(`/application-profiles/${profileId}/requirements/${encodeURIComponent(item.key)}/added`, { method: "DELETE" });
+      onAdded(readiness, null);
+      void library.refetch();
+    } catch (reason) {
+      setError(message(reason));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function add() {
     if (busy || (!custom && !selected) || (custom && !customReady)) return;
     setBusy(true);
@@ -127,14 +142,22 @@ export function AddRequirementDrawer({
                 {groups.map((group) => (
                   <section key={group.label} className="ev-lib-group">
                     <h4>{group.label}</h4>
-                    {group.items.map((item) => (
+                    {group.items.map((item) => item.added ? (
+                      <div key={item.key} className="ev-lib-item added">
+                        <span className="ev-lib-text">
+                          <strong>{item.label}</strong>
+                          <small>Added to this file by your team.</small>
+                        </span>
+                        <Btn size="sm" onClick={() => void takeOff(item)} disabled={busy}>Take it off</Btn>
+                      </div>
+                    ) : (
                       <label key={item.key} className={cx("ev-lib-item", picked === item.key && "on", item.on_file && "off")}>
                         <input type="radio" name="requirement" value={item.key} disabled={item.on_file} checked={picked === item.key} onChange={() => { setPicked(item.key); setLevel(""); }} />
                         <span className="ev-lib-text">
                           <strong>{item.label}</strong>
                           {item.description ? <small>{item.description}</small> : null}
                         </span>
-                        {item.on_file ? <CellChip tone="mut">Already on this file</CellChip> : item.kind === "form" ? <CellChip tone="acc">Form · fills in online</CellChip> : <CellChip tone="mut">Document</CellChip>}
+                        {item.on_file ? <CellChip tone="mut">Already on this file</CellChip> : isFormItem(item) ? <CellChip tone="acc">Form · fills in online</CellChip> : item.client_visible === false ? <CellChip tone="mut">Internal check</CellChip> : <CellChip tone="mut">Document</CellChip>}
                       </label>
                     ))}
                   </section>
@@ -149,6 +172,7 @@ export function AddRequirementDrawer({
                 </Field>
                 <Field label="Note for your team (optional)"><Textarea rows={2} maxLength={500} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Why this file needs it" /></Field>
                 {selected.form_kind ? <Sub>{formHint(selected.form_kind)}</Sub> : null}
+                {selected.client_visible === false ? <Sub>This one is for your team only: the client is not asked for it.</Sub> : null}
               </div>
             ) : null}
             <div className="ev-lib-custom">

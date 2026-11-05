@@ -7225,3 +7225,5 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .ev-lib-text small { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
 .ev-lib-pick { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
 .ev-lib-custom { display: grid; gap: 10px; }
+.ev-lib-item.added { cursor: default; border-style: dashed; background: var(--sunken2); }
+.ev-lib-item.added:hover { background: var(--sunken2); }

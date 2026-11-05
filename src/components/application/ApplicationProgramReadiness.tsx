@@ -713,6 +713,27 @@ export function ApplicationProgramReadiness({
     }
   }
 
+  async function removeAddedRequirement(requirement: ApplicationRequirement) {
+    const confirmed = await confirmAction({
+      title: `Take ${requirement.label} off this file?`,
+      body: "It leaves the checklist. Anything the client already sent stays in the room. You can add it again from the library.",
+      confirmLabel: "Take it off",
+      reversible: true,
+    });
+    if (!confirmed) return;
+    setBusy(`remove:${requirement.requirement_key}`);
+    setError(null);
+    try {
+      const next = await authenticated<Readiness>(`/application-profiles/${profileId}/requirements/${encodeURIComponent(requirement.requirement_key)}/added`, { method: "DELETE" });
+      storeReadiness(next);
+      onNotice?.(`${requirement.label} is off this file's checklist.`);
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function emailReminder(requirement: ApplicationRequirement) {
     const confirmed = await confirmAction({
       title: `Email the client about ${requirement.label}?`,
@@ -828,6 +849,7 @@ export function ApplicationProgramReadiness({
     const formKinds = formKindsOf(requirement);
     const unsignedFileIds = linkedEvidence.filter((file) => file.ai_decision === "accepted" && !file.verified).map((file) => file.file_id);
     const askClient = triage.group === "client";
+    const staffAdded = requirement.source_policy_keys.includes("staff_added");
     const isDebt = formKinds.includes("debt_schedule");
     const debtHasWork = isDebt && (linkedEvidence.length > 0 || debtSummary.hasSource || debtSummary.onSchedule > 0);
     const reasonNote = (requirement.state_reason ?? "").trim();
@@ -835,7 +857,7 @@ export function ApplicationProgramReadiness({
     return <div key={requirement.requirement_key} className={cx("requirement-row", "ev-row", expanded && "expanded", focusedRequirementKey === requirement.requirement_key && "navigation-target", dragTarget === requirement.requirement_key && "drop-target")} data-group={triage.group} onDragEnter={(event) => { if (onUploadFiles) { event.preventDefault(); setDragTarget(requirement.requirement_key); } }} onDragOver={(event) => { if (onUploadFiles) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTarget(null); }} onDrop={(event) => { if (onUploadFiles) { event.preventDefault(); void upload(Array.from(event.dataTransfer.files), requirement.requested_document_id || undefined); } }}>
       <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
         <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={triage.tone} title={triage.next}>{triage.label}</CellChip></span>
-        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}</strong><small>{triage.short}</small></span>
+        <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}{staffAdded ? <em className="ev-optional">Added by your team</em> : null}</strong><small>{triage.short}</small></span>
         <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
       </button>
       {expanded ? <div className="requirement-expanded-body ev-row-body">
@@ -882,6 +904,7 @@ export function ApplicationProgramReadiness({
         <details className="ev-more">
           <summary>More options</summary>
           <div className="ev-more-body">
+            {staffAdded && canAddRequirements ? <div className="ev-block"><span className="ev-block-title">Added by your team</span><div><Btn size="sm" disabled={Boolean(busy)} onClick={() => void removeAddedRequirement(requirement)}>Take it off this file</Btn></div></div> : null}
         {task ? <RequirementRequest task={task} controller={taskController} /> : null}
         <div className="ev-block"><span className="ev-block-title">Add a document or set this item aside</span><div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><ActionIcon icon="plus" label="Link the chosen document to this requirement" disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")} /><PageActionMenu label={`More actions for ${requirement.label}`} items={[{ label: "Waive this requirement", hidden: !requirement.can_waive, onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Mark not applicable", onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Restore the original requirement", hidden: !hasOverrides, onSelect: () => void reviewRequirementAction(requirement, "restore") }]} /></div></div>
         {showReason ? <small className="ev-reason">System note: {reasonNote}</small> : null}

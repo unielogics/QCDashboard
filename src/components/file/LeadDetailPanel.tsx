@@ -1807,6 +1807,7 @@ export function LeadDetailPanel({
                   onRequestDocument={openDocumentRequest}
                   onVerificationChange={setProfileVerification}
                   onProgramReadinessChange={setProgramReadiness}
+                  canAddRequirements={canUnderwrite}
                   onOpenFinancials={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }}
                   focusRequirement={evidenceFocus}
                   canCreatePrograms={currentUser?.role === Role.SUPER_ADMIN}
