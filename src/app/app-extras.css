@@ -7008,3 +7008,98 @@ select.vm-in {
 .credit-mode-card input { margin-top: 3px; }
 .credit-link-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
 .credit-link-list li { display: flex; align-items: center; gap: 8px; min-width: 0; }
+
+/* The checkmarks an AI application opens with: terms and privacy (required)
+   and the two text-message consents (optional, unticked). Drawn from
+   currentColor so they sit on any of the intake pages' own palettes. */
+.onb-consent { display: grid; gap: 8px; margin: 4px 0 2px; padding: 0; border: 0; min-inline-size: 0; }
+.onb-consent-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid color-mix(in srgb, currentColor 16%, transparent); border-radius: 8px; cursor: pointer; text-align: left; font-size: 13px; line-height: 1.45; }
+.onb-consent-row:has(input:checked) { border-color: color-mix(in srgb, currentColor 38%, transparent); }
+.onb-consent-row input { flex: none; width: 16px; height: 16px; margin: 3px 0 0; accent-color: var(--qci-blue, auto); }
+.onb-consent-row b { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; font-weight: 650; }
+.onb-consent-row b em { font-style: normal; font-weight: 500; font-size: 11px; opacity: .68; }
+.onb-consent-row small { display: block; margin-top: 3px; font-size: 12px; line-height: 1.5; opacity: .8; }
+.onb-consent-row small a { text-underline-offset: 2px; }
+.onb-consent-note { margin: 0; font-size: 11.5px; line-height: 1.45; opacity: .7; }
+.vm-fld-h { font-size: 12px; line-height: 1.4; color: var(--qci-muted); }
+textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
+.capital-readiness-claim-consents .onb-consent-row small a { color: var(--accent); font-weight: 700; }
+
+/* Icon actions: one icon, one job, named on hover (see ds/ActionIcon). The
+   tooltip lives on the wrapper so a disabled button still explains itself. */
+.action-icon { display: inline-flex; }
+.action-icon .iconbtn.ok { color: var(--ok); }
+.action-icon .iconbtn.ok:hover { background: var(--ok-tint); border-color: color-mix(in srgb, var(--ok) 34%, var(--line)); }
+.action-icon .iconbtn.pri { color: #fff; }
+.action-icon .iconbtn.busy { opacity: .55; cursor: progress; }
+.icon-actions { display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* What was filled in: the read-back of a financial form. */
+.form-answers { display: grid; gap: 14px; }
+.form-answers-meta { flex-wrap: wrap; align-items: center; }
+.form-answers-headline { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
+.form-answers-headline > div { display: grid; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.form-answers-headline span { font-size: 11.5px; color: var(--muted); }
+.form-answers-headline b { font-size: 18px; font-variant-numeric: tabular-nums; }
+.form-answers-card { display: grid; gap: 8px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.form-answers-card h4 { margin: 0; font-size: 13px; }
+.form-answers-card.fold > summary { cursor: pointer; font-weight: 600; font-size: 13px; }
+.form-answers-card.fold[open] > summary { margin-bottom: 8px; }
+.form-answers-rows { display: grid; margin: 0; }
+.form-answers-rows > div { display: flex; justify-content: space-between; gap: 16px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.form-answers-rows > div:first-child { border-top: 0; }
+.form-answers-rows dt { color: var(--ink2); min-width: 0; }
+.form-answers-rows dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; overflow-wrap: anywhere; }
+.form-answers-rows dd small { display: block; font-weight: 400; font-size: 11px; color: var(--muted); }
+.form-answers-rows .total { border-top: 2px solid var(--line2); font-weight: 700; }
+.form-answers-table td, .form-answers-table th { white-space: normal; vertical-align: top; }
+.form-answers-table tr.total td { border-top: 2px solid var(--line2); }
+.form-answers-notes { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
+.form-answers-files { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.form-answers-files li { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.form-answers-files small { display: block; color: var(--muted); font-size: 11.5px; }
+
+/* Text consent card under the desk composer: the proof first, the by-phone
+   fallback second. */
+.consent-proof { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.consent-proof li { display: flex; gap: 8px; align-items: flex-start; }
+.consent-proof li > svg { margin-top: 3px; color: var(--ok); }
+.consent-proof small { display: block; color: var(--muted); font-size: 12px; }
+.sms-consent-fallback { display: grid; gap: 10px; padding-top: 10px; border-top: 1px solid var(--line); }
+.sms-consent-fallback > p { margin: 0; }
+.sms-consent-card { border-color: var(--line); }
+
+/* A contact card value you act on: the address or number is the button, with
+   its copy icon (or a chevron for the call / text / copy menu) beside it. */
+.contact-value { display: inline-flex; align-items: center; justify-content: flex-end; gap: 4px; min-width: 0; max-width: 100%; }
+.contact-link { display: inline-flex; align-items: center; gap: 4px; min-width: 0; max-width: 100%; padding: 2px 4px; margin: -2px -4px; border: 0; border-radius: 5px; background: transparent; color: var(--accent); font: inherit; font-weight: 700; text-align: right; overflow-wrap: anywhere; cursor: pointer; }
+.contact-link:hover { background: var(--accent-100); text-decoration: underline; text-underline-offset: 2px; }
+.contact-link:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.contact-link > svg { opacity: .7; }
+.contact-menu { position: fixed; z-index: 70; display: grid; padding: 6px; border: 1px solid var(--line2); border-radius: 8px; background: var(--surface); box-shadow: var(--sh2); }
+.contact-menu > a, .contact-menu > button { display: flex; align-items: flex-start; gap: 10px; padding: 9px 10px; border: 0; border-radius: 6px; background: transparent; color: var(--ink); font: inherit; text-align: left; text-decoration: none; cursor: pointer; }
+.contact-menu > a:hover, .contact-menu > button:hover, .contact-menu > a:focus-visible, .contact-menu > button:focus-visible { background: var(--accent-100); outline: none; }
+.contact-menu svg { margin-top: 2px; color: var(--accent); }
+.contact-menu b { display: block; font-size: 13px; }
+.contact-menu small { display: block; margin-top: 1px; font-size: 11.5px; color: var(--muted); }
+
+/* Collection tasks: a title and a status on one line, the actions as icons, then
+   what the client sent. */
+.collection-task { padding: 12px 14px; display: grid; gap: 6px; }
+.collection-task-head { display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap; }
+.collection-task-head > .grow { min-width: 220px; flex: 1 1 260px; }
+.collection-task-head p { margin: 3px 0 0; color: var(--ink2); font-size: 13px; line-height: 1.45; }
+.collection-task-meta { color: var(--muted); }
+.collection-task-hint { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--ink2); }
+.collection-files { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 6px; }
+.collection-files > li { display: flex; align-items: center; gap: 10px; min-width: 0; padding: 7px 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.collection-files > li small { display: block; color: var(--muted); font-size: 11.5px; line-height: 1.4; overflow-wrap: anywhere; white-space: normal; }
+.collection-files > li.decision-needs_more, .collection-files > li.decision-rejected, .collection-files > li.decision-failed { border-color: color-mix(in srgb, var(--warn) 45%, var(--line)); }
+.collection-files-more { border: 0 !important; padding: 0 !important; background: transparent !important; }
+.collection-task-edit { display: grid; gap: 8px; margin-top: 4px; }
+.collection-response { display: grid; margin: 4px 0 0; }
+.collection-response > div { display: flex; justify-content: space-between; gap: 16px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 13px; }
+.collection-response > div:first-child { border-top: 0; }
+.collection-response dt { color: var(--ink2); text-transform: capitalize; }
+.collection-response dd { margin: 0; font-weight: 600; text-align: right; overflow-wrap: anywhere; }
+.collection-response-text { margin: 4px 0 0; font-size: 13px; white-space: pre-wrap; }

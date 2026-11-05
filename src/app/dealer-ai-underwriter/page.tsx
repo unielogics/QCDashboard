@@ -28,6 +28,9 @@ import {
 } from "@/lib/publicIntakeConversion";
 import { readCapitalReadinessHandoffFragment, toCapitalReadinessIntakePrefill, type CapitalReadinessDiagnosticHandoff } from "@/lib/capitalReadinessHandoff";
 import { validPhone } from "@/lib/formCoerce";
+import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
+import { onboardingCopy } from "@/lib/onboardingCopy";
+import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import { metricProvenance } from "@/lib/intake";
 import type { IntakeChatAction, IntakeChatActionResult } from "@/lib/intake";
 import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
@@ -77,6 +80,9 @@ type Intake = {
   email: string;
   phone?: string | null;
   business_name?: string | null;
+  business_website?: string | null;
+  business_website_none?: boolean;
+  business_description?: string | null;
   preferred_language?: string;
   communication_locale?: "en" | "es" | null;
   loan_purpose?: string | null;
@@ -235,7 +241,7 @@ function useCompactViewport() {
   return compact;
 }
 
-const initialContact = { full_name: "", email: "", phone: "", business_name: "" };
+const initialContact = { full_name: "", email: "", phone: "", business_name: "", business_website: "", business_description: "" };
 
 type IntakeExperience = "dealer" | "equipment";
 type EquipmentDetailsForm = {
@@ -367,6 +373,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [resumeEmail, setResumeEmail] = useState("");
   const [loginCode, setLoginCode] = useState("");
   const [loginCodeSent, setLoginCodeSent] = useState(false);
@@ -549,6 +556,14 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
       setStatus(c.errPhoneIncomplete);
       return;
     }
+    const profileProblem = businessProfileProblem(
+      { website: contact.business_website, description: contact.business_description },
+      language ?? "en",
+    );
+    if (profileProblem) {
+      setStatus(profileProblem);
+      return;
+    }
     if (!legalAccepted) {
       setStatus(c.errAcceptTerms);
       return;
@@ -580,8 +595,10 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
           email: contact.email.trim(),
           phone: contact.phone.trim(),
           business_name: contact.business_name.trim() || null,
+          ...businessProfileBody({ website: contact.business_website, description: contact.business_description }),
           terms_accepted: true,
           privacy_accepted: true,
+          ...smsChoicesBody(sms),
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
           preferred_language: language ?? "en",
@@ -1103,10 +1120,13 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
     }
     if (persist) persistDealerSession({ token: activeToken || payload.token, session_token: payload.session_token });
     setContact((current) => ({
+      ...current,
       full_name: payload.intake.full_name || current.full_name,
       email: payload.intake.email || current.email,
       phone: payload.intake.phone || current.phone,
       business_name: payload.intake.business_name || current.business_name,
+      business_website: payload.intake.business_website || (payload.intake.business_website_none ? "N/A" : current.business_website),
+      business_description: payload.intake.business_description || current.business_description,
     }));
   }
 
@@ -1275,6 +1295,8 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                     emailLookupBusy={emailLookupBusy}
                     legalAccepted={legalAccepted}
                     setLegalAccepted={setLegalAccepted}
+                    sms={sms}
+                    setSms={setSms}
                     onEmailBlur={() => checkDealerEmail(contact.email).catch(() => undefined)}
                     onStart={() => startIntake().catch(() => undefined)}
                     onShowLogin={() => {
@@ -1595,6 +1617,8 @@ function ContactWidget({
   emailLookupBusy,
   legalAccepted,
   setLegalAccepted,
+  sms,
+  setSms,
   onEmailBlur,
   onStart,
   onShowLogin,
@@ -1610,10 +1634,13 @@ function ContactWidget({
   emailLookupBusy: boolean;
   legalAccepted: boolean;
   setLegalAccepted: (value: boolean) => void;
+  sms: SmsChoices;
+  setSms: (value: SmsChoices) => void;
   onEmailBlur: () => void;
   onStart: () => void;
   onShowLogin: () => void;
 }) {
+  const onb = onboardingCopy(language);
   return (
     <div className="qc-public-intake-form" style={stepOneFormCard}>
       <div>
@@ -1627,6 +1654,9 @@ function ContactWidget({
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} required={equipmentDetails !== null} />
       </div>
+      <Field label={onb.fieldWebsite} value={contact.business_website} onChange={(value) => setContact({ ...contact, business_website: value })} placeholder={onb.fieldWebsitePlaceholder} inputMode="url" required />
+      <div style={fieldHint}>{onb.fieldWebsiteHint}</div>
+      <TextAreaField label={onb.fieldDescription} value={contact.business_description} onChange={(value) => setContact({ ...contact, business_description: value })} placeholder={onb.fieldDescriptionPlaceholder} required />
       {equipmentDetails ? (
         <section className="qc-public-intake-equipment-details" style={equipmentDetailsCard} aria-label={equipmentFieldsCopy.sectionTitle}>
           <div style={equipmentSelectedPill}>{equipmentFieldsCopy.selected}</div>
@@ -1711,12 +1741,15 @@ function ContactWidget({
           />
         </section>
       ) : null}
-      <label style={legalCheckRow}>
-        <input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)} />
-        <span>
-          {c.legalAgreePrefix}<a style={inlineLink} href={`/terms${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreeTerms}</a>{c.legalAgreeAnd}<a style={inlineLink} href={`/privacy${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreePrivacy}</a>{c.legalAgreeSuffix}
-        </span>
-      </label>
+      <OnboardingConsent
+        language={language}
+        legalAccepted={legalAccepted}
+        onLegalChange={setLegalAccepted}
+        sms={sms}
+        onSmsChange={setSms}
+        style={{ color: "#B8C4D6" }}
+        legalLabel={<>{c.legalAgreePrefix}<a style={inlineLink} href={`/terms${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreeTerms}</a>{c.legalAgreeAnd}<a style={inlineLink} href={`/privacy${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreePrivacy}</a>{c.legalAgreeSuffix}</>}
+      />
       <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? c.startCtaBusy : c.startCta}</button>
       <button type="button" style={inlineLoginButton} onClick={onShowLogin}>
         {c.loginWithCodeLink}
@@ -3296,15 +3329,6 @@ const formTrustLine: CSSProperties = {
   color: "#8FA0B8",
   fontSize: 11,
   fontWeight: 700,
-};
-const legalCheckRow: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "18px minmax(0,1fr)",
-  gap: 10,
-  alignItems: "start",
-  color: "#B8C4D6",
-  fontSize: 12,
-  lineHeight: 1.45,
 };
 const inlineLink: CSSProperties = { color: "#F5E49A", fontWeight: 900, textDecoration: "none" };
 const inlineLoginButton: CSSProperties = {

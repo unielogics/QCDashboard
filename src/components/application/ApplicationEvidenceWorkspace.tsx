@@ -19,6 +19,7 @@ import {
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { Btn, Callout, CellChip, Field, IconBtn, Select, Sub, Textarea, cx } from "@/components/ds";
+import { ActionIcon } from "@/components/ds/ActionIcon";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import type {
@@ -480,11 +481,11 @@ export function ApplicationEvidenceWorkspace({
         <Sub>One live snapshot controls evidence decisions, statement coverage, Plaid, forms, and readiness.</Sub>
       </div>
       <div className="evidence-workspace-actions">
-        {onAddFromDrive ? <Btn onClick={onAddFromDrive}><Icon name="upload" size={14} />Add from Drive</Btn> : null}
-        {onAttachBucket ? <Btn onClick={onAttachBucket}><Icon name="link" size={14} />Attach bucket</Btn> : null}
-        {onRequestDocument ? <Btn onClick={onRequestDocument}><Icon name="send" size={14} />Request a document</Btn> : null}
-        {data.primary_bucket_id ? <Btn onClick={() => setOpenBucketId(data.primary_bucket_id)}><Icon name="vault" size={14} />Open bucket</Btn> : null}
-        <Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn>
+        {onAddFromDrive ? <ActionIcon icon="upload" label="Add files from Google Drive" onClick={onAddFromDrive} /> : null}
+        {onAttachBucket ? <ActionIcon icon="link" label="Attach an existing bucket to this file" onClick={onAttachBucket} /> : null}
+        {onRequestDocument ? <ActionIcon icon="send" label="Request a document from the client" onClick={onRequestDocument} /> : null}
+        {data.primary_bucket_id ? <ActionIcon icon="vault" label="Open the file room" onClick={() => setOpenBucketId(data.primary_bucket_id)} /> : null}
+        <span title="Fill in, share or download the PDS, debt schedule, P&L and balance sheet"><Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn></span>
       </div>
     </header>
 
@@ -603,7 +604,7 @@ export function ApplicationEvidenceWorkspace({
     </div> : null}
 
     <Drawer open={formsOpen} fullscreen closeOnBackdrop={false} onClose={() => setFormsOpen(false)} title="Financial forms" sub="Complete the form in this focused workspace. Evidence refreshes after every save." footer={<Btn onClick={() => setFormsOpen(false)}>Close</Btn>}>
-      <FinancialFormsPanel profileId={profileId} intakeId={intakeId} nested onChange={() => void refresh()} />
+      <FinancialFormsPanel profileId={profileId} intakeId={intakeId} nested onChange={() => void refresh()} onPreviewFile={(fileId) => { setFormsOpen(false); openEvidenceFile(fileId); }} />
     </Drawer>
 
     {selectedFile ? <BucketFileReviewPanel

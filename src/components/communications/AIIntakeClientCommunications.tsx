@@ -5,6 +5,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, Input, Lbl, Select, Sub, Textarea, WarnLine, cx } from "@/components/ds";
 import { ChatComposer } from "@/components/ds/ChatComposer";
+import { ActionIcon } from "@/components/ds/ActionIcon";
+import { activeGrants, consentKindLabel, grantWords, smsStatusWords } from "@/lib/smsConsentWords";
 import { useAuthedApi } from "@/hooks/useApi";
 import { LIVE_MESSAGE_POLL_MS, LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import type { ClientSmsMessage, ClientThreadMessage, ClientThreadResponse, LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
@@ -32,6 +34,8 @@ type SmsConsentState = {
   provider_available: boolean;
   blocked_reason: string | null;
   grants: SmsConsentGrant[];
+  /** What the client chose on the first screen of the application, kept whether or not they agreed. */
+  onboarding_choice?: { transactional: boolean; marketing: boolean; asked_at: string | null } | null;
 };
 
 type SmsDisclosure = {
@@ -246,11 +250,14 @@ export function AIIntakeClientConversation({
   intakeId,
   profileId,
   clientName,
+  preferSms = false,
 }: {
   adapter: LeadCockpitAdapter;
   intakeId: string;
   profileId: string | null;
   clientName?: string | null;
+  /** Opened to text the client: turn SMS on for this file when consent is on file, so the reply goes out by text. */
+  preferSms?: boolean;
 }) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
@@ -260,6 +267,8 @@ export function AIIntakeClientConversation({
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [showConsent, setShowConsent] = useState(false);
+  const [showManualConsent, setShowManualConsent] = useState(false);
+  const smsPreferenceApplied = useRef(false);
   const [consenterName, setConsenterName] = useState(clientName || "");
   const [transactional, setTransactional] = useState(true);
   const [marketing, setMarketing] = useState(false);
@@ -334,6 +343,20 @@ export function AIIntakeClientConversation({
     },
   });
 
+  // Opened from "Text" on the contact card: the point is to send a text, so
+  // switch SMS on for the file when the client has agreed to receive them.
+  useEffect(() => {
+    if (!preferSms || smsPreferenceApplied.current || !profileId || !smsConsent.data) return;
+    smsPreferenceApplied.current = true;
+    if (smsConsent.data.can_send && !smsConsent.data.delivery_enabled) smsPreference.mutate(true);
+  }, [preferSms, profileId, smsConsent.data, smsPreference]);
+
+  // The thread response carries a lighter state; the grants and the client's
+  // first-screen choice only come with the full consent query.
+  const fullSmsState = smsConsent.data ?? null;
+  const smsStatus = smsStatusWords(fullSmsState ? { ...state, ...fullSmsState } : state);
+  const consentProof = activeGrants(fullSmsState?.grants);
+
   const timeline = useMemo<TimelineItem[]>(() => {
     const latestByPortal = new Map<string, ClientSmsMessage>();
     const unlinked: ClientSmsMessage[] = [];
@@ -393,6 +416,7 @@ export function AIIntakeClientConversation({
     onSuccess: async (next) => {
       qc.setQueryData(["application-sms-consent", profileId], next);
       setShowConsent(false);
+      setShowManualConsent(false);
       setAcceptedLegal(false);
       adoptAuthoritative(await adapter.loadClientThread());
     },
@@ -484,8 +508,9 @@ export function AIIntakeClientConversation({
               onClick={() => smsPreference.mutate(!useSms)}
               title={useSms ? "SMS stays on for this file until you turn it off" : state?.can_send ? "Keep sending client replies by SMS" : state?.blocked_reason || "SMS unavailable"}
             ><span aria-hidden="true" /><Icon name="phone" size={14} />Also send by SMS</button>
-            <span className="sub">{state?.phone || "No mobile number"}{useSms ? state?.can_send ? " · stays on for this file" : ` · preference on · ${state?.blocked_reason || "SMS unavailable"}` : state?.can_send ? " · consent active" : state?.blocked_reason ? ` · ${state.blocked_reason}` : ""}</span>
-            {profileId && state?.phone && !state.transactional_consented && !state.opted_out ? <Btn size="sm" onClick={() => setShowConsent((value) => !value)}>Record consent</Btn> : null}
+            <span className="sub">{state?.phone || "No mobile number"}{useSms && state?.can_send ? " · stays on for this file" : ""}</span>
+            <CellChip tone={smsStatus.tone}>{smsStatus.text}</CellChip>
+            {profileId && state?.phone ? <ActionIcon icon="shieldChk" label="Text consent: who agreed and how" pressed={showConsent} onClick={() => setShowConsent((value) => !value)} /> : null}
           </div>
           {smsPreference.isError ? <Callout tone="bad">{smsPreference.error instanceof Error ? smsPreference.error.message : "The SMS preference could not be saved."}</Callout> : null}
           {error ? <Callout tone="bad" icon={<Icon name="alert" size={15} />}>{error}</Callout> : null}
@@ -493,16 +518,27 @@ export function AIIntakeClientConversation({
       </div>
 
       {showConsent ? <div className="sms-consent-card">
-        <div><Lbl>Client SMS consent</Lbl><Sub>Record only consent the owner of {state?.phone} gave after seeing this disclosure.</Sub></div>
-        {disclosure.isLoading ? <div className="empty"><span className="spinner solo" />Loading disclosure…</div> : null}
-        {disclosure.data ? <>
-          <label className="consent-choice"><input type="checkbox" checked={transactional} onChange={(event) => setTransactional(event.target.checked)} /><span><b>Application messages</b><small>{disclosure.data.transactional}</small></span></label>
-          <label className="consent-choice"><input type="checkbox" checked={marketing} onChange={(event) => setMarketing(event.target.checked)} /><span><b>Optional marketing messages</b><small>{disclosure.data.marketing}</small></span></label>
-          <label className="consent-choice"><input type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} /><span><b>Terms and privacy accepted</b><small>{disclosure.data.legal}</small></span></label>
-          <Field label="Consenter name"><Input value={consenterName} onChange={(event) => setConsenterName(event.target.value)} placeholder="Full legal name" /></Field>
-          {captureConsent.isError ? <Callout tone="bad">{captureConsent.error instanceof Error ? captureConsent.error.message : "Consent could not be recorded."}</Callout> : null}
-          <div className="row"><Btn onClick={() => setShowConsent(false)}>Cancel</Btn><Btn variant="pri" disabled={captureConsent.isPending || !acceptedLegal || !transactional || !consenterName.trim()} onClick={() => captureConsent.mutate()}>{captureConsent.isPending ? "Recording…" : "Record consent"}</Btn></div>
-        </> : null}
+        <div className="row g8">
+          <div className="grow"><Lbl>Text consent</Lbl><Sub>Who agreed to texts for {state?.phone}, and how.</Sub></div>
+          <ActionIcon icon="x" label="Close" onClick={() => { setShowConsent(false); setShowManualConsent(false); }} />
+        </div>
+        {consentProof.length ? <ul className="consent-proof">
+          {consentProof.map((grant) => <li key={grant.id}><Icon name="check" size={13} /><span><b>{consentKindLabel(grant.consent_kind)}</b><small>{grantWords(grant)}</small></span></li>)}
+        </ul> : <p className="sub">{state?.opted_out ? "This number opted out of text messages." : fullSmsState?.onboarding_choice && !fullSmsState.onboarding_choice.transactional ? "The client was asked when they started the application and did not agree to texts." : "The client has not agreed to texts yet. They are asked when they start an application."}</p>}
+        {profileId && state?.phone && !state.transactional_consented && !state.opted_out ? <div className="sms-consent-fallback">
+          <p className="sub">For a file that started before that question existed, record consent the client gave you by phone. Record only what the owner of {state.phone} agreed to after hearing the disclosure.</p>
+          {!showManualConsent ? <Btn size="sm" onClick={() => setShowManualConsent(true)}>Record consent given by phone</Btn> : <>
+            {disclosure.isLoading ? <div className="empty"><span className="spinner solo" />Loading disclosure…</div> : null}
+            {disclosure.data ? <>
+              <label className="consent-choice"><input type="checkbox" checked={transactional} onChange={(event) => setTransactional(event.target.checked)} /><span><b>Application messages</b><small>{disclosure.data.transactional}</small></span></label>
+              <label className="consent-choice"><input type="checkbox" checked={marketing} onChange={(event) => setMarketing(event.target.checked)} /><span><b>Optional marketing messages</b><small>{disclosure.data.marketing}</small></span></label>
+              <label className="consent-choice"><input type="checkbox" checked={acceptedLegal} onChange={(event) => setAcceptedLegal(event.target.checked)} /><span><b>Terms and privacy accepted</b><small>{disclosure.data.legal}</small></span></label>
+              <Field label="Consenter name"><Input value={consenterName} onChange={(event) => setConsenterName(event.target.value)} placeholder="Full legal name" /></Field>
+              {captureConsent.isError ? <Callout tone="bad">{captureConsent.error instanceof Error ? captureConsent.error.message : "Consent could not be recorded."}</Callout> : null}
+              <div className="row"><Btn onClick={() => setShowManualConsent(false)}>Cancel</Btn><Btn variant="pri" disabled={captureConsent.isPending || !acceptedLegal || !transactional || !consenterName.trim()} onClick={() => captureConsent.mutate()}>{captureConsent.isPending ? "Recording…" : "Record consent"}</Btn></div>
+            </> : null}
+          </>}
+        </div> : null}
       </div> : null}
     </section>
   );
@@ -514,17 +550,20 @@ export function AIIntakeEmailWorkspace({
   contactSuppressed = false,
   offerSelectionCount = 0,
   onComposeOffer,
+  startComposing = false,
 }: {
   profileId: string;
   clientName?: string | null;
   contactSuppressed?: boolean;
   offerSelectionCount?: number;
   onComposeOffer?: () => void;
+  /** Opened to email the client: start on a new message, addressed to the file's primary contact. */
+  startComposing?: boolean;
 }) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [composing, setComposing] = useState(false);
+  const [composing, setComposing] = useState(startComposing);
   const [toContactId, setToContactId] = useState("");
   const [ccContactIds, setCcContactIds] = useState<string[]>([]);
   const [subject, setSubject] = useState("");

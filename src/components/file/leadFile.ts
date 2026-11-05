@@ -74,6 +74,11 @@ export type LeadRow = {
   requested_loan_amount?: number | null;
   estimated_credit_score?: number | null;
   years_in_business?: number | null;
+  /** What the client said on the first screen; the desk's correction wins. */
+  business_website?: string | null;
+  /** True when the client answered N/A, so "has no website" reads differently from never asked. */
+  business_website_none?: boolean;
+  business_description?: string | null;
   created_at: string;
   updated_at: string;
   last_message_at?: string | null;
@@ -276,6 +281,9 @@ export type LeadContactUpdate = {
   referral_source?: string | null;
   /** How long the business has operated; program fit asks for it. */
   years_in_business?: number | null;
+  /** The desk's correction of the website ("N/A" for none) and the description. */
+  business_website?: string | null;
+  business_description?: string | null;
 };
 
 export type RoomDeliveryReceipt = {

@@ -214,6 +214,11 @@ export type ApplicationRequirementEvidence = {
   evidence_claims?: { capability: string; confidence: string; page_start?: number | null; page_end?: number | null; period_start?: string | null; period_end?: string | null; entity?: string | null }[];
   is_password_protected?: boolean;
   unlocked_copy_request?: UnlockedCopyRequestState | null;
+  /** A document somebody uploaded, a form somebody filled in (the PDF is our
+   *  rendering of their answers), or a certificate generated when they signed. */
+  origin?: "uploaded" | "filled_form" | "signed";
+  /** For a filled form, which one. */
+  form_kind?: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | null;
 };
 
 export type ApplicationBankEvidenceFile = {

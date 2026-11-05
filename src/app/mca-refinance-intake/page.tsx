@@ -30,6 +30,9 @@ import {
 import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { validPhone } from "@/lib/formCoerce";
+import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
+import { onboardingCopy } from "@/lib/onboardingCopy";
+import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
@@ -675,8 +678,9 @@ export default function McaRefinanceIntakePage() {
   const [, setToken] = useState<string>("");
 
   // Start screen
-  const [startForm, setStartForm] = useState({ full_name: "", business_name: "", email: "", phone: "" });
+  const [startForm, setStartForm] = useState({ full_name: "", business_name: "", email: "", phone: "", business_website: "", business_description: "" });
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [startBusy, setStartBusy] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
   const [seed, setSeed] = useState<Seed>({ payback: null, months: null, freq: null });
@@ -742,6 +746,7 @@ export default function McaRefinanceIntakePage() {
   const [booked, setBooked] = useState(false);
 
   const c = useMemo(() => COPY[language ?? "en"], [language]);
+  const onb = useMemo(() => onboardingCopy(language), [language]);
   const aiPaused = Boolean(response?.ai_paused_until);
   const reviewMode = mcaRefinanceReviewMode(response?.mca_refinance_policy, manualReviewHint);
   const manualReview = reviewMode === "manual_review";
@@ -913,6 +918,14 @@ export default function McaRefinanceIntakePage() {
       setStartError(c.errPhoneIncomplete);
       return;
     }
+    const profileProblem = businessProfileProblem(
+      { website: startForm.business_website, description: startForm.business_description },
+      language ?? "en",
+    );
+    if (profileProblem) {
+      setStartError(profileProblem);
+      return;
+    }
     if (!legalAccepted) {
       setStartError(c.errTermsCheckbox);
       return;
@@ -943,6 +956,8 @@ export default function McaRefinanceIntakePage() {
       email,
       terms_accepted: true,
       privacy_accepted: true,
+      ...smsChoicesBody(sms),
+      ...businessProfileBody({ website: startForm.business_website, description: startForm.business_description }),
       preferred_language: language ?? "en",
       phone: startForm.phone.trim(),
       ...readPublicIntakeAttribution(),
@@ -1489,6 +1504,26 @@ export default function McaRefinanceIntakePage() {
               autoComplete="tel"
               required
             />
+            <Field
+              label={onb.fieldWebsite}
+              value={startForm.business_website}
+              onChange={(value) => setStartForm((cur) => ({ ...cur, business_website: value }))}
+              inputMode="url"
+              autoComplete="url"
+              placeholder={onb.fieldWebsitePlaceholder}
+              hint={onb.fieldWebsiteHint}
+              required
+            />
+          </div>
+          <div className="vm-fg1">
+            <TextArea
+              label={onb.fieldDescription}
+              value={startForm.business_description}
+              onChange={(value) => setStartForm((cur) => ({ ...cur, business_description: value }))}
+              placeholder={onb.fieldDescriptionPlaceholder}
+              hint={onb.fieldDescriptionHint}
+              required
+            />
           </div>
           <h3 className="vm-grp-t">{c.qualificationTitle}</h3>
           <p className="vm-sub">{c.qualificationIntro}</p>
@@ -1518,24 +1553,27 @@ export default function McaRefinanceIntakePage() {
               placeholder="100000"
             />
           </div>
-          <label className="vm-check">
-            <input
-              type="checkbox"
-              checked={legalAccepted}
-              onChange={(event) => setLegalAccepted(event.target.checked)}
-            />
-            <span>
-              {c.legalPrefix}
-              <a href="/terms" target="_blank" rel="noreferrer" className="vm-link">
-                {c.legalTerms}
-              </a>
-              {c.legalAnd}
-              <a href="/privacy" target="_blank" rel="noreferrer" className="vm-link">
-                {c.legalPrivacy}
-              </a>
-              .
-            </span>
-          </label>
+          <OnboardingConsent
+            language={language ?? "en"}
+            legalAccepted={legalAccepted}
+            onLegalChange={setLegalAccepted}
+            sms={sms}
+            onSmsChange={setSms}
+            style={{ color: "var(--qci-ink-2)" }}
+            legalLabel={
+              <>
+                {c.legalPrefix}
+                <a href="/terms" target="_blank" rel="noreferrer" className="vm-link">
+                  {c.legalTerms}
+                </a>
+                {c.legalAnd}
+                <a href="/privacy" target="_blank" rel="noreferrer" className="vm-link">
+                  {c.legalPrivacy}
+                </a>
+                .
+              </>
+            }
+          />
           {startError ? (
             <div role="alert" className="vm-err">
               {startError}
@@ -2041,16 +2079,18 @@ function Field({
   autoComplete,
   disabled,
   required,
+  hint,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
   type?: string;
   placeholder?: string;
-  inputMode?: "text" | "email" | "tel" | "numeric" | "decimal";
+  inputMode?: "text" | "email" | "tel" | "numeric" | "decimal" | "url";
   autoComplete?: string;
   disabled?: boolean;
   required?: boolean;
+  hint?: string;
 }) {
   return (
     <label className="vm-fld">
@@ -2065,6 +2105,38 @@ function Field({
         autoComplete={autoComplete}
         disabled={disabled}
       />
+      {hint ? <span className="vm-fld-h">{hint}</span> : null}
+    </label>
+  );
+}
+
+function TextArea({
+  label,
+  value,
+  onChange,
+  placeholder,
+  hint,
+  required,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  hint?: string;
+  required?: boolean;
+}) {
+  return (
+    <label className="vm-fld">
+      <span className="vm-fld-l">{label}{required ? <span className="vm-req">*</span> : null}</span>
+      <textarea
+        className="vm-in"
+        rows={3}
+        maxLength={600}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+      />
+      {hint ? <span className="vm-fld-h">{hint}</span> : null}
     </label>
   );
 }

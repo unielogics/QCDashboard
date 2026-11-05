@@ -18,6 +18,9 @@ import { realEstateCopy, getStoredLanguage, resolveCommunicationLanguage, setSto
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { readCapitalReadinessHandoffFragment, readinessFundingPurposeLabel, toCapitalReadinessIntakePrefill, type CapitalReadinessDiagnosticHandoff } from "@/lib/capitalReadinessHandoff";
 import { validPhone } from "@/lib/formCoerce";
+import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
+import { onboardingCopy } from "@/lib/onboardingCopy";
+import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import { metricProvenance } from "@/lib/intake";
 import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
 import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
@@ -242,6 +245,8 @@ const initialContact = {
   email: "",
   phone: "",
   business_name: "",
+  business_website: "",
+  business_description: "",
   target_property_address: "",
   transaction_type: "",
   requested_amount: "",
@@ -294,6 +299,7 @@ export default function DealerAIUnderwriterPage() {
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [resumeEmail, setResumeEmail] = useState("");
   const [loginCode, setLoginCode] = useState("");
   const [loginCodeSent, setLoginCodeSent] = useState(false);
@@ -494,6 +500,14 @@ export default function DealerAIUnderwriterPage() {
       setStatus(c.errPhoneIncomplete);
       return;
     }
+    const profileProblem = businessProfileProblem(
+      { website: contact.business_website, description: contact.business_description },
+      language ?? "en",
+    );
+    if (profileProblem) {
+      setStatus(profileProblem);
+      return;
+    }
     if (!legalAccepted) {
       setStatus(c.errAcceptTerms);
       return;
@@ -514,8 +528,10 @@ export default function DealerAIUnderwriterPage() {
           estimated_value_or_purchase_price: numericOrNull(contact.estimated_value_or_purchase_price),
           monthly_rent: numericOrNull(contact.monthly_rent),
           estimated_credit_tier: contact.estimated_credit_tier.trim() || null,
+          ...businessProfileBody({ website: contact.business_website, description: contact.business_description }),
           terms_accepted: true,
           privacy_accepted: true,
+          ...smsChoicesBody(sms),
           terms_version: TERMS_VERSION,
           privacy_version: PRIVACY_VERSION,
           preferred_language: language ?? "en",
@@ -1169,6 +1185,8 @@ export default function DealerAIUnderwriterPage() {
                     emailLookupBusy={emailLookupBusy}
                     legalAccepted={legalAccepted}
                     setLegalAccepted={setLegalAccepted}
+                    sms={sms}
+                    setSms={setSms}
                     onEmailBlur={() => checkDealerEmail(contact.email).catch(() => undefined)}
                     onStart={() => startIntake().catch(() => undefined)}
                     onShowLogin={() => {
@@ -1452,6 +1470,8 @@ function ContactWidget({
   emailLookupBusy,
   legalAccepted,
   setLegalAccepted,
+  sms,
+  setSms,
   onEmailBlur,
   onStart,
   onShowLogin,
@@ -1464,10 +1484,13 @@ function ContactWidget({
   emailLookupBusy: boolean;
   legalAccepted: boolean;
   setLegalAccepted: (value: boolean) => void;
+  sms: SmsChoices;
+  setSms: (value: SmsChoices) => void;
   onEmailBlur: () => void;
   onStart: () => void;
   onShowLogin: () => void;
 }) {
+  const onb = onboardingCopy(language);
   const requestedAmount = numericOrNull(contact.requested_amount);
   const propertyValue = numericOrNull(contact.estimated_value_or_purchase_price);
   const currentLtv = requestedAmount && propertyValue ? requestedAmount / propertyValue : null;
@@ -1509,6 +1532,9 @@ function ContactWidget({
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
       </div>
+      <Field label={onb.fieldWebsite} value={contact.business_website} onChange={(value) => setContact({ ...contact, business_website: value })} placeholder={onb.fieldWebsitePlaceholder} inputMode="url" required />
+      <div style={fieldHint}>{onb.fieldWebsiteHint}</div>
+      <TextAreaField label={onb.fieldDescription} value={contact.business_description} onChange={(value) => setContact({ ...contact, business_description: value })} placeholder={onb.fieldDescriptionPlaceholder} required />
       <AddressInput
         publicAccess
         label="Target property address, if known"
@@ -1544,12 +1570,15 @@ function ContactWidget({
         </div>
       </div>
       <Field label="Monthly rent" value={contact.monthly_rent} onChange={(value) => setContact({ ...contact, monthly_rent: onlyDigits(value) })} placeholder="4500" />
-      <label style={legalCheckRow}>
-        <input type="checkbox" checked={legalAccepted} onChange={(event) => setLegalAccepted(event.target.checked)} />
-        <span>
-          {c.legalAgreePrefix}<a style={inlineLink} href={`/terms${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreeTerms}</a>{c.legalAgreeAnd}<a style={inlineLink} href={`/privacy${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreePrivacy}</a>{c.legalAgreeSuffix}
-        </span>
-      </label>
+      <OnboardingConsent
+        language={language}
+        legalAccepted={legalAccepted}
+        onLegalChange={setLegalAccepted}
+        sms={sms}
+        onSmsChange={setSms}
+        style={{ color: "#B8C4D6" }}
+        legalLabel={<>{c.legalAgreePrefix}<a style={inlineLink} href={`/terms${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreeTerms}</a>{c.legalAgreeAnd}<a style={inlineLink} href={`/privacy${language === "es" ? "?lang=es" : ""}`} target="_blank" rel="noreferrer">{c.legalAgreePrivacy}</a>{c.legalAgreeSuffix}</>}
+      />
       <button style={stepOneCta} disabled={busy} onClick={onStart}>{busy ? c.startCtaBusy : c.startCta}</button>
       <button type="button" style={inlineLoginButton} onClick={onShowLogin}>
         {c.loginWithCodeLink}
@@ -2765,11 +2794,11 @@ function WidgetBox({ title, description, children }: { title: string; descriptio
   );
 }
 
-function Field({ label, value, onChange, placeholder, onBlur, required }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void; required?: boolean }) {
+function Field({ label, value, onChange, placeholder, onBlur, required, inputMode }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void; required?: boolean; inputMode?: "decimal" | "email" | "numeric" | "search" | "tel" | "text" | "url" }) {
   return (
     <label style={fieldWrap}>
       <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
-      <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} />
+      <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} inputMode={inputMode} />
     </label>
   );
 }
@@ -2788,10 +2817,10 @@ function SelectField({ label, value, onChange, options }: { label: string; value
   );
 }
 
-function TextAreaField({ label, value, onChange, placeholder }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string }) {
+function TextAreaField({ label, value, onChange, placeholder, required }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; required?: boolean }) {
   return (
     <label style={fieldWrap}>
-      <span style={labelStyle}>{label}</span>
+      <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
       <textarea style={textarea} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </label>
   );
@@ -3396,15 +3425,6 @@ const formTrustLine: CSSProperties = {
   color: "#8FA0B8",
   fontSize: 11,
   fontWeight: 700,
-};
-const legalCheckRow: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "18px minmax(0,1fr)",
-  gap: 10,
-  alignItems: "start",
-  color: "#B8C4D6",
-  fontSize: 12,
-  lineHeight: 1.45,
 };
 const inlineLink: CSSProperties = { color: "#F5E49A", fontWeight: 900, textDecoration: "none" };
 const inlineLoginButton: CSSProperties = {

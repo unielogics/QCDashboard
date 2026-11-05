@@ -33,6 +33,9 @@ import {
 } from "@/components/application/BusinessStatementForm";
 import { ShareWorksheetDialog, WorksheetModal } from "@/components/application/WorksheetModal";
 import { Drawer } from "@/components/ds/Drawer";
+import { ActionIcon } from "@/components/ds/ActionIcon";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
 
 type FormKind = "pfs" | "debt_schedule" | StatementKind;
 
@@ -222,6 +225,7 @@ export function FinancialFormsPanel({
   intakeId,
   nested = false,
   onChange,
+  onPreviewFile,
 }: {
   profileId?: string | null;
   /** Resolve the profile ourselves when the caller has not loaded it. The
@@ -231,6 +235,8 @@ export function FinancialFormsPanel({
   /** Rendered inside another panel, so it drops its own frame. */
   nested?: boolean;
   onChange?: () => void;
+  /** Open one of the files behind a form (the upload, or the PDF drawn from the answers). */
+  onPreviewFile?: (fileId: string) => void;
 }) {
   const api = useAuthedApi();
   const pdf = useFinancialFormPdf();
@@ -242,6 +248,8 @@ export function FinancialFormsPanel({
   // kept for the session. They are static per deployment.
   const [statementSchemas, setStatementSchemas] = useState<Partial<Record<StatementKind, StatementSchema>>>({});
   const [editing, setEditing] = useState<FormKind | null>(null);
+  // The read-back of what was filled in, opened from the form row.
+  const [answersKind, setAnswersKind] = useState<FormKind | null>(null);
   const [pfsBody, setPfsBody] = useState<PfsBody>({});
   const [debtBody, setDebtBody] = useState<DebtBody>({});
   // Once the desk has tried to save the schedule, the card outlines the
@@ -544,49 +552,35 @@ export function FinancialFormsPanel({
               </span>
             ))}
           </div>
-          {!form.requested && !form.voided ? (
-            <Btn size="sm" disabled={busy !== ""} onClick={() => void request(form.kind)}>
-              {busy === `request:${form.kind}` ? "Requesting…" : "Request it"}
-            </Btn>
-          ) : null}
-          {form.kind === "debt_schedule" && form.voided ? (
-            <Btn size="sm" disabled={busy !== ""} onClick={() => void setVoided(false)}>
-              {busy === "void" ? "Restoring…" : "Undo void"}
-            </Btn>
-          ) : null}
-          {form.kind === "debt_schedule" && !form.voided && form.source === "none" ? (
-            <Btn size="sm" disabled={busy !== ""} onClick={() => void setVoided(true)}>
-              {busy === "void" ? "Voiding…" : "No debt: void"}
-            </Btn>
-          ) : null}
-          <Btn size="sm" disabled={busy !== ""} onClick={() => void copyLink(form.kind)}>
-            {copied === form.kind
-              ? "Copied"
-              : busy === `link:${form.kind}`
-                ? "Making a link…"
-                : "Copy link"}
-          </Btn>
-          <Btn size="sm" disabled={busy !== ""} onClick={() => void open(form)}>
-            {form.source === "filled" ? "Open" : "Fill in"}
-          </Btn>
-          {/* Wherever there is something to hand back: figures we hold, a draft
-              to render, or the document the borrower uploaded instead — the
-              route serves all three. Hidden only when the slot is genuinely
-              empty, because a button that always 404s teaches the desk to stop
-              pressing it. */}
-          {form.figures_from === "form" ||
-          form.statement_id ||
-          (form.row_count ?? 0) > 0 ||
-          form.source === "uploaded" ? (
-            <>
-              <Btn size="sm" disabled={busy !== ""} onClick={() => void openPdf(form.kind)}>
-                {busy === `pdf:${form.kind}` ? "Making it…" : "View PDF"}
-              </Btn>
-              <Btn size="sm" disabled={busy !== ""} onClick={() => void downloadPdf(form.kind)}>
-                {busy === `dl:${form.kind}` ? "Saving…" : "Download"}
-              </Btn>
-            </>
-          ) : null}
+          <div className="icon-actions">
+            {form.source !== "none" || form.statement_id || (form.row_count ?? 0) > 0 ? (
+              <ActionIcon icon="docCheck" tone="pri" label={form.source === "uploaded" ? "See what the AI read off the upload" : "See what was filled in"} disabled={busy !== ""} onClick={() => setAnswersKind(form.kind)} />
+            ) : null}
+            <ActionIcon icon="pencil" label={form.source === "filled" ? "Open the form to edit it" : "Fill it in for the client"} disabled={busy !== ""} busy={busy === `open:${form.kind}`} onClick={() => void open(form)} />
+            <ActionIcon icon={copied === form.kind ? "check" : "link"} tone={copied === form.kind ? "ok" : undefined} label={copied === form.kind ? "Link copied" : "Copy a link the borrower can fill this in from"} disabled={busy !== ""} busy={busy === `link:${form.kind}`} onClick={() => void copyLink(form.kind)} />
+            {/* Wherever there is something to hand back: figures we hold, a draft
+                to render, or the document the borrower uploaded instead — the
+                route serves all three. Hidden only when the slot is genuinely
+                empty, because a button that always 404s teaches the desk to stop
+                pressing it. */}
+            {form.figures_from === "form" ||
+            form.statement_id ||
+            (form.row_count ?? 0) > 0 ||
+            form.source === "uploaded" ? (
+              <>
+                <ActionIcon icon="file" label="Open the PDF in a new tab" disabled={busy !== ""} busy={busy === `pdf:${form.kind}`} onClick={() => void openPdf(form.kind)} />
+                <ActionIcon icon="download" label="Download the PDF" disabled={busy !== ""} busy={busy === `dl:${form.kind}`} onClick={() => void downloadPdf(form.kind)} />
+              </>
+            ) : null}
+            <PageActionMenu
+              label={`More actions for ${form.label}`}
+              items={[
+                { label: "Request it from the client", hidden: form.requested || Boolean(form.voided), onSelect: () => void request(form.kind) },
+                { label: "No debt: void the schedule", hidden: !(form.kind === "debt_schedule" && !form.voided && form.source === "none"), onSelect: () => void setVoided(true) },
+                { label: "Undo the void", hidden: !(form.kind === "debt_schedule" && form.voided), onSelect: () => void setVoided(false) },
+              ]}
+            />
+          </div>
         </div>
       ))}
 
@@ -614,6 +608,8 @@ export function FinancialFormsPanel({
           Share worksheet
         </Btn>
       </div>
+
+      <FormAnswersDrawer profileId={fileId} kind={answersKind} open={answersKind !== null} onClose={() => setAnswersKind(null)} onPreviewFile={onPreviewFile} />
 
       {worksheetOpen ? (
         <WorksheetModal open onClose={() => setWorksheetOpen(false)} profileId={fileId} />

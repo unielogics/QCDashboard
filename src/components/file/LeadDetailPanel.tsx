@@ -39,6 +39,7 @@ import { ApplicationClientTermsPanel } from "@/components/application/Applicatio
 import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
+import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
 import { LeadNotesPanel } from "@/components/broker/LeadNotesPanel";
@@ -127,6 +128,12 @@ export function Spinner() {
 
 export function InfoBlock({ title, children }: { title: string; children: React.ReactNode }) {
   return <Panel title={title}>{children}</Panel>;
+}
+
+/** The website box as the desk edits it: the address, or N/A when the client said they have none. */
+function businessWebsiteDraft(intake: { business_website?: string | null; business_website_none?: boolean } | null | undefined): string {
+  if (!intake) return "";
+  return intake.business_website || (intake.business_website_none ? "N/A" : "");
 }
 
 export function Line({ label, value }: { label: string; value: string }) {
@@ -702,6 +709,9 @@ export function LeadDetailPanel({
     sms_reminder: false,
   });
   const [contactEditOpen, setContactEditOpen] = useState(false);
+  // Text or email the client without leaving the page: the Contact card opens the
+  // same conversation and email workspace the Communications tab shows, in a popup.
+  const [contactPopup, setContactPopup] = useState<"text" | "email" | null>(null);
   const [contactSaving, setContactSaving] = useState(false);
   const [contactDraft, setContactDraft] = useState({
     full_name: "",
@@ -713,6 +723,8 @@ export function LeadDetailPanel({
     estimated_credit_score: "",
     referral_source: "",
     years_in_business: "",
+    business_website: "",
+    business_description: "",
   });
   const mcaReview = mcaRefinanceReviewState(detail);
   const mcaAutoReviewBlocked = Boolean(mcaReview && mcaReview.mode !== "automated_review");
@@ -1246,6 +1258,8 @@ export function LeadDetailPanel({
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
       years_in_business: detail.intake.years_in_business == null ? "" : String(detail.intake.years_in_business),
+      business_website: businessWebsiteDraft(detail.intake),
+      business_description: detail.intake.business_description || "",
     });
   }, [detail, initialCommunicationChannel, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite, canViewPayments]);
 
@@ -1266,6 +1280,10 @@ export function LeadDetailPanel({
         estimated_credit_score: contactDraft.estimated_credit_score ? Number(contactDraft.estimated_credit_score) : null,
         referral_source: contactDraft.referral_source.trim() || null,
         years_in_business: contactDraft.years_in_business.trim() ? Number(contactDraft.years_in_business.replace(",", ".")) : null,
+        // Only what the desk changed: sending the untouched client answer back
+        // would turn it into a desk correction.
+        ...(contactDraft.business_website.trim() !== businessWebsiteDraft(detail?.intake) ? { business_website: contactDraft.business_website.trim() } : {}),
+        ...(contactDraft.business_description.trim() !== (detail?.intake.business_description || "") ? { business_description: contactDraft.business_description.trim() } : {}),
       });
       setContactEditOpen(false);
       toast.show("Contact details updated.");
@@ -2059,9 +2077,18 @@ export function LeadDetailPanel({
                   }
                 >
                   <Line label="Legal entity / LLC" value={detail.intake.business_name || "-"} />
+                  <div className="kv">
+                    <span className="sub">Website</span>
+                    <b style={{ overflowWrap: "anywhere" }}>
+                      {detail.intake.business_website ? (
+                        <a href={detail.intake.business_website} target="_blank" rel="noopener noreferrer" title="Open the business website in a new tab">{detail.intake.business_website.replace(/^https?:\/\//, "")}</a>
+                      ) : detail.intake.business_website_none ? "None (client said N/A)" : "-"}
+                    </b>
+                  </div>
+                  {detail.intake.business_description ? <Line label="About the business" value={detail.intake.business_description} /> : null}
                   <Line label="Principal" value={detail.intake.full_name} />
-                  <Line label="Email" value={detail.intake.email} />
-                  <Line label="Mobile" value={detail.intake.phone || "-"} />
+                  <EmailContact email={detail.intake.email} onCompose={canUnderwrite ? () => setContactPopup("email") : undefined} />
+                  <PhoneContact phone={detail.intake.phone} firstName={(detail.intake.full_name || "").split(" ")[0]} onText={canUnderwrite ? () => setContactPopup("text") : undefined} />
                   <Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} />
                   <Line label="Approved" value={underwriting?.approved_amount == null ? "Not approved" : formatMoney(underwriting.approved_amount)} />
                   <Line label="Accepted" value={underwriting?.accepted_amount == null ? "Not recorded" : formatMoney(underwriting.accepted_amount)} />
@@ -2147,6 +2174,34 @@ export function LeadDetailPanel({
       {detail && canDelete ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
       <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send lender package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
       <Drawer
+        open={contactPopup === "text"}
+        onClose={() => setContactPopup(null)}
+        title={`Text ${detail?.intake.full_name || "the client"}`}
+        sub="The client conversation. Replies go to their secure portal and, when they have agreed to texts, to their phone."
+        width="lg"
+        footer={<><Btn onClick={() => { setContactPopup(null); setPrototypeView("communications"); setCommunicationChannel("client"); }}>Open in Communications</Btn><span className="sp" /><Btn onClick={() => setContactPopup(null)}>Close</Btn></>}
+      >
+        {contactPopup === "text" && detail ? (
+          cockpitAdapter ? (
+            <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} preferSms />
+          ) : <div className="empty"><span className="spinner solo" />Loading the client conversation...</div>
+        ) : null}
+      </Drawer>
+      <Drawer
+        open={contactPopup === "email"}
+        onClose={() => setContactPopup(null)}
+        title={`Email ${detail?.intake.full_name || "the client"}`}
+        sub="Written from your connected mailbox and kept on the file."
+        width="lg"
+        footer={<><Btn onClick={() => { setContactPopup(null); setPrototypeView("communications"); setCommunicationChannel("email"); }}>Open in Communications</Btn><span className="sp" /><Btn onClick={() => setContactPopup(null)}>Close</Btn></>}
+      >
+        {contactPopup === "email" && detail ? (
+          underwriting?.profile_id ? (
+            <AIIntakeEmailWorkspace key={`popup-${underwriting.profile_id}`} profileId={underwriting.profile_id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} startComposing />
+          ) : <div className="empty"><span className="spinner solo" />Loading email...</div>
+        ) : null}
+      </Drawer>
+      <Drawer
         open={contactEditOpen}
         onClose={() => setContactEditOpen(false)}
         title="Edit contact and entity"
@@ -2162,9 +2217,11 @@ export function LeadDetailPanel({
           <Field label="Requested amount"><Input aria-label="Requested amount" type="number" min="0" value={contactDraft.requested_loan_amount} onChange={(event) => setContactDraft({ ...contactDraft, requested_loan_amount: event.target.value })} /></Field>
           <Field label="Estimated credit"><Input aria-label="Estimated credit" type="number" min="300" max="850" value={contactDraft.estimated_credit_score} onChange={(event) => setContactDraft({ ...contactDraft, estimated_credit_score: event.target.value })} /></Field>
           <Field label="Years in business"><Input aria-label="Years in business" type="number" min="0" max="150" step="0.5" value={contactDraft.years_in_business} onChange={(event) => setContactDraft({ ...contactDraft, years_in_business: event.target.value })} /></Field>
+          <Field label="Website" hint="Type N/A if the business has none."><Input aria-label="Website" inputMode="url" value={contactDraft.business_website} onChange={(event) => setContactDraft({ ...contactDraft, business_website: event.target.value })} /></Field>
           <Field label="Loan purpose"><Input aria-label="Loan purpose" value={contactDraft.loan_purpose} onChange={(event) => setContactDraft({ ...contactDraft, loan_purpose: event.target.value })} /></Field>
           <Field label="Referral source"><Input aria-label="Referral source" value={contactDraft.referral_source} onChange={(event) => setContactDraft({ ...contactDraft, referral_source: event.target.value })} /></Field>
         </div>
+        <Field label="About the business" hint="What the client does, in their words or yours."><Textarea aria-label="About the business" rows={3} maxLength={1000} value={contactDraft.business_description} onChange={(event) => setContactDraft({ ...contactDraft, business_description: event.target.value })} /></Field>
       </Drawer>
       <Drawer
         open={requestOpen}
