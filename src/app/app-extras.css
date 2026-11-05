@@ -7208,3 +7208,20 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .ev-more > summary:hover { color: var(--ink); }
 .ev-more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 .ev-more-body { display: grid; gap: 12px; padding-top: 10px; }
+
+/* Add a requirement: the library picker. */
+.ev-lib { display: grid; gap: 14px; }
+.ev-lib-tools { display: grid; gap: 8px; }
+.ev-lib-list { display: grid; gap: 14px; max-height: min(52vh, 520px); overflow-y: auto; padding-right: 4px; }
+.ev-lib-group { display: grid; gap: 6px; }
+.ev-lib-group h4 { margin: 0; color: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; }
+.ev-lib-item { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.ev-lib-item:hover { background: var(--sunken2); }
+.ev-lib-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface)); }
+.ev-lib-item.off { opacity: 0.6; cursor: not-allowed; }
+.ev-lib-item input { margin: 0; }
+.ev-lib-text { display: grid; gap: 2px; min-width: 0; }
+.ev-lib-text strong { font-size: 13px; }
+.ev-lib-text small { color: var(--muted); font-size: 11.5px; line-height: 1.4; }
+.ev-lib-pick { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.ev-lib-custom { display: grid; gap: 10px; }

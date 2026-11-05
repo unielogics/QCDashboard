@@ -119,6 +119,7 @@ export function ApplicationEvidenceWorkspace({
   programVertical = "main_street",
   intakeVariant,
   onOpenFinancials,
+  canAddRequirements = false,
 }: {
   profileId: string;
   intakeId: string;
@@ -141,6 +142,8 @@ export function ApplicationEvidenceWorkspace({
   intakeVariant?: string | null;
   /** Programs are chosen on the Financials tab; this opens it. */
   onOpenFinancials?: () => void;
+  /** Underwriting roles may add requirements from the library. */
+  canAddRequirements?: boolean;
 }) {
   const apiCall = useAuthedApi();
   const productionCall = useProductionCall();
@@ -543,6 +546,7 @@ export function ApplicationEvidenceWorkspace({
       section="documents"
       focusGroup={groupFocus}
       onOpenFinancials={onOpenFinancials}
+      canAddRequirements={canAddRequirements}
       profileId={profileId}
       files={files.map((file) => ({
         id: file.id,

@@ -8,6 +8,7 @@ import { FundingProgramPicker } from "./FundingProgramPicker";
 import { UseOfFundsEditor } from "./UseOfFundsEditor";
 import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import { ApplicationCollectionTasks, RequirementRequest, useCollectionTasks } from "./ApplicationCollectionTasks";
+import { AddRequirementDrawer } from "@/components/application/AddRequirementDrawer";
 import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
 import pickerStyles from "./FundingProgramPicker.module.css";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
@@ -119,6 +120,7 @@ export function ApplicationProgramReadiness({
   section = "documents",
   focusGroup = null,
   onOpenFinancials,
+  canAddRequirements = false,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -145,6 +147,8 @@ export function ApplicationProgramReadiness({
   focusGroup?: { group: TriageGroup; requestId: number } | null;
   /** Programs are chosen on the Financials tab; the Documents list links there. */
   onOpenFinancials?: () => void;
+  /** Underwriting roles may add requirements from the library to this file's checklist. */
+  canAddRequirements?: boolean;
 }) {
   const apiCall = useAuthedApi();
   const confirmAction = useConfirmAction();
@@ -248,6 +252,7 @@ export function ApplicationProgramReadiness({
   const taskController = useCollectionTasks(profileId, taskRefreshKey, load, section === "documents");
   const [openGroups, setOpenGroups] = useState<Partial<Record<TriageGroup, boolean>>>({});
   const [answersFor, setAnswersFor] = useState<{ kind: FormKind; requirementKey: string } | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   const expansionSeeded = useRef(false);
   const lastGroupRequestRef = useRef(0);
 
@@ -696,9 +701,11 @@ export function ApplicationProgramReadiness({
     setBusy(`reminder:${requirement.requirement_key}`);
     setError(null);
     try {
-      const receipt = await authenticated<RoomDeliveryReceipt>(`/application-profiles/${profileId}/requirements/${encodeURIComponent(requirement.requirement_key)}/reminders`, {
+      // The same route the combined email uses, with one item: it accepts every
+      // requirement the checklist can ask for, including those no program blocks.
+      const receipt = await authenticated<RoomDeliveryReceipt>(`/application-profiles/${profileId}/requirements/batch-request`, {
         method: "POST",
-        body: JSON.stringify({ retry_failed: requirement.status === "failed" }),
+        body: JSON.stringify({ requirement_keys: [requirement.requirement_key], channel: "email", retry_failed: requirement.status === "failed" }),
       });
       await load();
       onNotice?.(receipt.provider_accepted
@@ -902,6 +909,7 @@ export function ApplicationProgramReadiness({
         <div><h3 id="shared-evidence-heading" tabIndex={-1}>Documents this file needs</h3><p>{checklistCaption}{onOpenFinancials ? <> <button type="button" className="linky" onClick={onOpenFinancials}>Choose programs in Financials</button></> : null}</p></div>
         <div className="program-readiness-actions requirement-bulk-actions">
           {onRunAiReview ? <ActionIcon icon="refresh" label="Re-read the intake with the AI" disabled={Boolean(busy) || aiReviewRunning} busy={aiReviewRunning} onClick={onRunAiReview} /> : null}
+          {canAddRequirements ? <span title="Add a document or a form from the library to this file's checklist"><Btn onClick={() => setAddOpen(true)}><Icon name="plus" size={14} />Add a requirement</Btn></span> : null}
           <span title="The AI asks the client for everything that is missing, following the communication window and reminder limits"><Btn onClick={() => void taskController.collect()} disabled={Boolean(taskController.busy)}>{taskController.busy === "collect" ? "Scheduling..." : "Let the AI ask for what is missing"}</Btn></span>
           {requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}<Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestKeys.length || Boolean(busy)}>{busy === "batch-request" ? "Sending one email..." : `Email selected (${selectedRequestKeys.length})`}</Btn>
         </div>
@@ -930,6 +938,21 @@ export function ApplicationProgramReadiness({
         onClose={() => setAnswersFor(null)}
         onPreviewFile={onPreviewEvidence && answersFor ? (fileId) => onPreviewEvidence(fileId, answersFor.requirementKey) : undefined}
       />
+      {canAddRequirements ? <AddRequirementDrawer
+        profileId={profileId}
+        open={addOpen}
+        onClose={() => setAddOpen(false)}
+        onAdded={(next, addedKey) => {
+          storeReadiness(next);
+          setAddOpen(false);
+          const added = addedKey ? next.requirements.find((item) => item.requirement_key === addedKey) : null;
+          onNotice?.(added ? `Added ${added.label} to the checklist.` : "Added to the checklist.");
+          if (addedKey) {
+            setExpandedRequirements((current) => current.includes(addedKey) ? current : [...current, addedKey]);
+            window.requestAnimationFrame(() => window.requestAnimationFrame(() => document.getElementById(`requirement-${addedKey}`)?.scrollIntoView({ behavior: "smooth", block: "center" })));
+          }
+        }}
+      /> : null}
     </> : <div className="empty">This enquiry is not a lending request, so it has no evidence checklist.</div>) : null}
   </div>;
 }
