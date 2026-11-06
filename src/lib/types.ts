@@ -3544,8 +3544,19 @@ export interface PipelineClientSummary {
 
 // --- Desk attention queue (GET /operator-files/attention) ---
 export type AttentionItemKind = "intake_no_files" | "no_client_entry" | "request_overdue" | "action_items_stale";
+export type AttentionQueueStatus = "active" | "archived" | "dismissed" | "duplicate";
+export type AttentionQueueView = "active" | "hidden" | "all";
+export type AttentionQueueAction = "archive" | "dismiss" | "duplicate" | "restore";
 
 export interface AttentionItem {
+  item_key: string;
+  queue_status: AttentionQueueStatus;
+  queue_revision: number;
+  queue_updated_at: string | null;
+  queue_actor_name: string | null;
+  queue_reason: string | null;
+  duplicate_of: { item_key: string; kind: AttentionItemKind; title: string; href: string; current_source_active: boolean } | null;
+  current_source_active: boolean;
   kind: AttentionItemKind;
   severity: "warn" | "bad";
   title: string;
@@ -3565,10 +3576,20 @@ export interface AttentionQueue {
   items: AttentionItem[];
   counts: Partial<Record<AttentionItemKind, number>>;
   total: number;
+  hidden_total: number;
+  status_counts: Record<AttentionQueueStatus, number>;
   filtered_total: number;
   limit: number;
   offset: number;
 }
+
+export type AttentionQueueActionWrite = {
+  item_key: string; action: AttentionQueueAction; expected_revision: number; idempotency_key: string;
+  reason?: string; duplicate_of_key?: string;
+};
+export type AttentionQueueActionResult = {
+  item: AttentionItem; event: unknown; replayed: boolean; current_source_active: boolean; message: string;
+};
 
 // --- AI action items seen from the desk (GET /buckets/admin/ai-action-items) ---
 export interface BucketAIActionItemQueueItem {
