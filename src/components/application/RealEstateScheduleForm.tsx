@@ -1,7 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Btn, Field, Input, Select } from "@/components/ds";
+import { Btn, CellChip, Field, Input, Select } from "@/components/ds";
+import { mortgageStatementStatus, type RealEstateEvidenceLink } from "@/lib/realEstateEvidence";
 import {
   meaningfulRealEstateRow, realEstateMoney, realEstateOptionLabel, realEstatePropertyLabel, realEstateTotals,
   type RealEstateBody, type RealEstateField, type RealEstateRow, type RealEstateSchema,
@@ -17,10 +18,12 @@ const PROPERTY_GROUPS = [
 ];
 
 /** Controlled across staff, borrower links, and the worksheet's phone renderer. */
-export function RealEstateScheduleForm({ schema, value, onChange, disabled = false }: {
+export function RealEstateScheduleForm({ schema, value, onChange, disabled = false, initialSection = "Properties", onImportSchedule, onMortgageEvidence, mortgageEvidence }: {
   schema: RealEstateSchema; value: RealEstateBody; onChange: (next: RealEstateBody) => void; disabled?: boolean;
+  initialSection?: typeof SECTIONS[number]; onImportSchedule?: () => void;
+  onMortgageEvidence?: (mortgageId?: string, propertyId?: string) => void; mortgageEvidence?: RealEstateEvidenceLink[] | null;
 }) {
-  const [section, setSection] = useState<typeof SECTIONS[number]>("Properties");
+  const [section, setSection] = useState<typeof SECTIONS[number]>(initialSection);
   const properties = value.properties ?? [];
   const mortgages = value.mortgages ?? [];
   const totals = useMemo(() => realEstateTotals(value), [value]);
@@ -62,6 +65,7 @@ export function RealEstateScheduleForm({ schema, value, onChange, disabled = fal
     <div className={styles.header}>
       {(schema.header ?? []).filter((field) => ["owner_name", "as_of"].includes(field.key)).map((field) => input(field, value[field.key as "owner_name" | "as_of"], (next) => onChange({ ...value, [field.key]: next })))}
     </div>
+    {onImportSchedule ? <div className={styles.import}><span>Have an existing real estate schedule? Import its PDF or Excel file and review the proposed fields.</span><Btn size="sm" disabled={disabled} onClick={onImportSchedule}>Import existing schedule</Btn></div> : null}
     <p className={styles.note}>List real estate held personally or through an entity. Current values are your estimates; include the valuation date and basis. Enter 0 when an amount is zero and leave unknown amounts blank.</p>
     <label className={styles.none}><input type="checkbox" checked={value.no_real_estate === true} disabled={disabled || hasEntries} onChange={(event) => onChange({ ...value, no_real_estate: event.target.checked })} />I confirm this owner has no real estate assets.</label>
     {hasEntries ? <small className={styles.hint}>Remove listed properties and mortgages before declaring no real estate.</small> : null}
@@ -76,6 +80,7 @@ export function RealEstateScheduleForm({ schema, value, onChange, disabled = fal
           <summary><b>{realEstatePropertyLabel(row, index)}</b><span>Estimated value {realEstateMoney(realEstateTotals({ properties: [row], mortgages }).estimated_value_total)}</span></summary>
           <div className={styles.rowBody}>
             {PROPERTY_GROUPS.map((group) => <fieldset key={group.label} className={styles.fieldset}><legend>{group.label}</legend><div className={styles.fields}>{group.fields.map((key) => schema.properties.find((field) => field.key === key)).filter((field): field is RealEstateField => Boolean(field)).map((field) => input(field, row[field.key], (next) => setRow("properties", index, field.key, next), `Property ${index + 1}: `))}</div></fieldset>)}
+            {onMortgageEvidence && row.mortgage_status === "active" ? <div className={styles.documents}><span>{linked ? `${linked} mortgage${linked === 1 ? "" : "s"} recorded for this property` : "Mortgage details and statement still need review"}</span><Btn size="sm" disabled={disabled} onClick={() => onMortgageEvidence(undefined, row.id)}>Review mortgage statements</Btn></div> : null}
             <Btn size="sm" disabled={disabled} onClick={() => onChange({ ...value, properties: properties.filter((_, at) => at !== index), mortgages: mortgages.filter((mortgage) => mortgage.property_row_id !== row.id) })}>{linked ? `Remove property and ${linked} linked mortgage${linked === 1 ? "" : "s"}` : "Remove property"}</Btn>
           </div>
         </details>;
@@ -86,10 +91,13 @@ export function RealEstateScheduleForm({ schema, value, onChange, disabled = fal
       <div className={styles.sectionHead}><h4>Mortgages</h4><Btn size="sm" disabled={disabled || value.no_real_estate === true || !properties.some(meaningfulRealEstateRow)} onClick={addMortgage}>Add active mortgage</Btn></div>
       <p className={styles.note}>Add each mortgage or lien separately and link it to its property. Saving a version creates a client to-do for the latest statement on each active mortgage. State whether payments include escrow so taxes and insurance are counted once.</p>
       {!mortgages.length ? <p className={styles.note}>No mortgage details entered. Mark properties as free and clear only when they have no mortgage.</p> : null}
-      {mortgages.map((row, index) => <details key={row.id ?? index} className={styles.row} open={mortgages.length === 1 || undefined}>
-        <summary><b>{text(row.lender) || `Mortgage ${index + 1}`}</b><span>{propertiesById.get(text(row.property_row_id)) || "Choose a property"}</span></summary>
-        <div className={styles.rowBody}><div className={styles.fields}>{(schema.mortgages ?? []).map((field) => input(field, row[field.key], (next) => setRow("mortgages", index, field.key, next), `Mortgage ${index + 1}: `))}</div><Btn size="sm" disabled={disabled} onClick={() => onChange({ ...value, mortgages: mortgages.filter((_, at) => at !== index) })}>Remove mortgage</Btn></div>
-      </details>)}
+      {mortgages.map((row, index) => {
+        const evidence = mortgageStatementStatus(mortgageEvidence, row.id!, row, properties.find((property) => property.id === row.property_row_id));
+        return <details key={row.id ?? index} className={styles.row} open={mortgages.length === 1 || undefined}>
+          <summary><b>{text(row.lender) || `Mortgage ${index + 1}`}</b><span>{propertiesById.get(text(row.property_row_id)) || "Choose a property"}{onMortgageEvidence ? ` · ${evidence.label}` : ""}</span></summary>
+          <div className={styles.rowBody}>{onMortgageEvidence ? <div className={styles.documents}><CellChip tone={evidence.tone}>{evidence.label}</CellChip><Btn size="sm" disabled={disabled} onClick={() => onMortgageEvidence(row.id, text(row.property_row_id))}>Statement documents</Btn></div> : null}<div className={styles.fields}>{(schema.mortgages ?? []).map((field) => input(field, row[field.key], (next) => setRow("mortgages", index, field.key, next), `Mortgage ${index + 1}: `))}</div><Btn size="sm" disabled={disabled} onClick={() => onChange({ ...value, mortgages: mortgages.filter((_, at) => at !== index) })}>Remove mortgage</Btn></div>
+        </details>;
+      })}
     </section> : null}
 
     {section === "Portfolio totals" ? <section className={styles.section}>
