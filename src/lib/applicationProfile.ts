@@ -696,7 +696,7 @@ export type ApplicationBankState = {
   asset_reports: PlaidAssetReport[];
 };
 
-export type EvidenceWorkspaceFile = {
+export type EvidenceWorkspaceFile = import("./documentVersions").DocumentVersionMetadata & {
   id: string;
   source_id: string;
   bucket_id: string;

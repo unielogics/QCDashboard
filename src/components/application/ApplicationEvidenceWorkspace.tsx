@@ -52,6 +52,8 @@ import { useProductionCall } from "@/lib/productionTrainingCall";
 import type { FundingProgramVertical } from "@/lib/fundingPrograms";
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { ApiError } from "@/lib/api";
+import { DocumentVersionControl } from "@/components/documents/DocumentVersionControl";
+import { documentVersionService, latestDocumentFiles } from "@/lib/documentVersions";
 
 type WorkspaceTab = "requirements" | "banking" | "files";
 type RequirementFocus = { query: string; requestId: number };
@@ -149,6 +151,7 @@ export function ApplicationEvidenceWorkspace({
   canAddRequirements?: boolean;
 }) {
   const apiCall = useAuthedApi();
+  const versions = useMemo(() => documentVersionService(apiCall, `/application-profiles/${profileId}/evidence`, { fileUrl: async (fileId, download) => (await apiCall<{ url: string }>(`/application-profiles/${profileId}/evidence/files/${fileId}/url?download=${download}`)).url }), [apiCall, profileId]);
   const productionCall = useProductionCall();
   const confirmAction = useConfirmAction();
   const queryClient = useQueryClient();
@@ -519,7 +522,7 @@ export function ApplicationEvidenceWorkspace({
       onDrop={(event) => { event.preventDefault(); void upload(Array.from(event.dataTransfer.files)); }}
     >
       <span className="evidence-workspace-drop-icon"><Icon name="upload" size={22} /></span>
-      <span><strong>{uploadBusy ? uploadStatus || "Uploading evidence..." : "Drop files or ZIP archives here"}</strong><small>PDFs, spreadsheets, images, CSV and ZIP files are classified and read by the AI.</small></span>
+      <span><strong>{uploadBusy ? uploadStatus || "Uploading evidence..." : "Drop files or ZIP archives here"}</strong><small>PDFs, spreadsheets, images, CSV and ZIP files are classified and read by the AI. Use Versions on an existing file to upload its updated copy.</small></span>
       <span className="btn sm">{uploadBusy ? "Uploading" : "Browse"}</span>
     </button>
 
@@ -612,7 +615,7 @@ export function ApplicationEvidenceWorkspace({
         <Btn onClick={() => uploadRef.current?.click()} disabled={uploadBusy}><Icon name="upload" size={14} />Add files</Btn>
       </div>
       <div className="evidence-workspace-file-list">
-        {files.map((file) => {
+        {latestDocumentFiles(files).map((file) => {
           const fileAssignments = requirements.filter((requirement) => requirement.evidence_files.some((item) => item.file_id === file.id));
           const fileDecisions = fileAssignments.flatMap((requirement) => requirement.evidence_files.filter((item) => item.file_id === file.id));
           const aggregate = aggregateEvidenceDecisions(fileDecisions.map((item) => item.ai_decision));
@@ -631,6 +634,7 @@ export function ApplicationEvidenceWorkspace({
             {!locked ? <EvidenceIdentityWarning reasonCode={decision?.ai_reason_code} decision={decision?.ai_decision} /> : null}
             {locked ? <UnlockedCopyRequestControl request={unlockedCopyRequestState} busy={requestingUnlockedCopyFileId === file.id} onRequest={(retryFailed) => requestUnlockedCopy(file.id, file.file_name, retryFailed, false, unlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(file.id, file.file_name, unlockedCopyRequirement?.requirement_key)} /> : null}
             <ActionIcon icon="eye" label={`Preview ${file.file_name}`} onClick={() => openEvidenceFile(file.id, fileAssignments[0]?.requirement_key)} />
+            <DocumentVersionControl file={file} service={versions} onChanged={refresh} />
           </article>;
         })}
         {!files.length ? <div className="empty">No evidence files have been uploaded.</div> : null}
@@ -660,6 +664,7 @@ export function ApplicationEvidenceWorkspace({
       lockedFileGuidance={<Sub>AI review can resume after the client uploads an unlocked replacement. The original remains in Evidence for the audit trail.</Sub>}
       lockedFileActions={<UnlockedCopyRequestControl request={selectedUnlockedCopyRequest} busy={requestingUnlockedCopyFileId === selectedFile.id} onRequest={(retryFailed) => requestUnlockedCopy(selectedFile.id, selectedFile.file_name, retryFailed, false, selectedUnlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(selectedFile.id, selectedFile.file_name, selectedUnlockedCopyRequirement?.requirement_key)} />}
       headerActions={<>
+        <DocumentVersionControl file={selectedFile} service={versions} onChanged={refresh} />
         {selectedLockedEvidence ? <LockedEvidenceBadge presentation={selectedLockedEvidence} /> : <CellChip tone={evidenceDecisionTone(assignmentAggregate.decision)}>{assignmentSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(assignmentAggregate.decision, aggregateDecision?.decision_actor)}</CellChip>}
         {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} /> : null}
         {assignments.length > 1 ? <CellChip tone="mut">{assignments.length} requirements</CellChip> : null}

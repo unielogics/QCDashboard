@@ -52,6 +52,7 @@ import { Role } from "@/lib/enums.generated";
 import type { Document, Loan, User, VaultLoanSummary } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { usePinnedRows } from "@/lib/tablePinning";
+import { LegacyDocumentVersionControl } from "@/components/documents/LegacyDocumentVersionControl";
 
 type UploadKind = "experience" | "active_asset";
 type LoanOption = Pick<Loan, "id" | "deal_id" | "address">;
@@ -444,7 +445,7 @@ function OperatorDocumentRow({
       <Td>
         <div className="vault-document-name">
           <span className="vault-file-icon"><Icon name="doc" size={14} /></span>
-          <div><b>{document.name}</b><div className="sub">{humanize(document.category ?? document.checklist_key ?? "Uncategorized")}</div></div>
+          <div><b>{document.name}</b><div className="sub">{humanize(document.category ?? document.checklist_key ?? "Uncategorized")}</div><LegacyDocumentVersionControl document={document} /></div>
         </div>
       </Td>
       <Td><span className="sub">{document.received_on ? formatShortDate(document.received_on) : "—"}</span></Td>
@@ -702,7 +703,7 @@ function DocRow({
               >
                 {doc.name}
               </button>
-            ) : <b>{doc.name}</b>}
+            ) : <><b>{doc.name}</b><LegacyDocumentVersionControl document={doc} /></>}
             {isRequested ? (
               <div style={{ marginTop: 3 }}>
                 <CellChip tone="warn">Click to upload →</CellChip>

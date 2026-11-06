@@ -9,6 +9,7 @@ import { useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { CellChip, ItemRow, Panel, Sub, Tag } from "@/components/ds";
 import { useDocuments, useDocumentsForClient, useDocumentsAnalysis, type DocAnalysisResponse } from "@/hooks/useApi";
+import { LegacyDocumentVersionControl } from "@/components/documents/LegacyDocumentVersionControl";
 
 type DocsScope = "agent" | "funding";
 
@@ -95,6 +96,7 @@ export function DocumentsTab({
                 right={<CellChip tone={d.status === "verified" ? "ok" : "mut"}>{d.status}</CellChip>}
               >
                 <b style={{ fontSize: 13, fontWeight: 600 }}>{d.name}</b>
+                <LegacyDocumentVersionControl document={d} />
               </ItemRow>
             ))}
           </div>

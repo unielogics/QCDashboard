@@ -24,4 +24,11 @@ describe("financial coverage obligations", () => {
   it("disables payoff plan selection for a reader", () => {
     expect(render(false, false)).toContain('disabled=""');
   });
+  it("shows review guidance instead of reusing a payoff from a historical document", () => {
+    const html = renderToStaticMarkup(createElement(ObligationPlanRow, { o: { ...obligation, payoff_requires_review: true, payoff_review_reason: "A newer payoff must be reviewed and saved." }, canEdit: true, on: false, onToggleRetire: () => undefined }));
+    expect(html).toContain("Payoff needs review");
+    expect(html).toContain("A newer payoff must be reviewed and saved.");
+    expect(html).toContain("$80,000");
+    expect(html).not.toContain("Payoff $79,000");
+  });
 });

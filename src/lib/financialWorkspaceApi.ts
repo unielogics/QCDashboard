@@ -8,7 +8,7 @@ export type FinancialVersion = {
   id: string; version_number: number; created_at: string; actor_name: string | null;
   source: string; source_file_id: string | null; pdf_file_id: string | null; status: string;
 };
-export type FinancialEvidence = { file_id: string; file_name: string; classification?: string | null };
+export type FinancialEvidence = import("./documentVersions").DocumentVersionMetadata & { file_id: string; file_name: string; classification?: string | null };
 export type FinancialWorkspaceSnapshot = {
   kind: SheetKind; family_id: string; label: string; body: FinancialBody; schema: unknown;
   worksheet: { layout: SheetLayout; values: SheetValues; computed: Record<string, number | null> };
@@ -30,7 +30,7 @@ export type FinancialImport = {
   warnings: string[];
 };
 export type DebtDocumentRole = "agreement" | "payoff" | "supporting";
-export type DebtDocumentLink = { file_id: string; role: DebtDocumentRole; is_current?: boolean; payoff_amount?: string | number | null; payoff_date?: string | null };
+export type DebtDocumentLink = import("./documentVersions").DocumentVersionMetadata & { file_id: string; role: DebtDocumentRole; is_current?: boolean; payoff_amount?: string | number | null; payoff_date?: string | null };
 export type FinancialDebtRow = Record<string, unknown> & { id: string; lender?: string; balance?: string; monthly_payment?: string; factor_rate?: string; payment_amount?: string; payment_frequency?: string; monthly_payment_source?: "native_terms" | "stated" | null; status?: "active" | "dismissed" | "duplicate"; duplicate_of_id?: string | null; evidence_links?: DebtDocumentLink[] };
 export type DebtAction = {
   op: "delete" | "restore" | "duplicate" | "link_document" | "unlink_document" | "select_payoff";

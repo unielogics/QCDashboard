@@ -25,6 +25,8 @@ import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
 import { BucketFileReviewPanel, type BucketFileAnnotation, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
+import { DocumentVersionControl } from "@/components/documents/DocumentVersionControl";
+import { documentVersionService, latestDocumentFiles, type DocumentVersionMetadata } from "@/lib/documentVersions";
 import { EmailComposer } from "@/components/email/EmailComposer";
 import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { useBucketIntakeLinks, useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
@@ -91,7 +93,7 @@ type RequestedDoc = {
   closed_at?: string | null;
   closed_reason?: string | null;
 };
-type BucketFile = {
+type BucketFile = DocumentVersionMetadata & {
   id: string;
   requested_document_id?: string | null;
   file_name: string;
@@ -1109,7 +1111,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   const pagedCreateDocs = filteredCreateDocs.slice(safeCreateDocPage * REQUEST_DOCS_PER_PAGE, (safeCreateDocPage + 1) * REQUEST_DOCS_PER_PAGE);
   const selectedCreateDocs = createDocs.filter((doc) => createChecked[doc.id]);
   const selectedShareFileIds = Object.entries(shareFiles).filter(([, selected]) => selected).map(([id]) => id);
-  const visibleFiles = useMemo(() => uniqueBucketFiles(detail?.files ?? []), [detail?.files]);
+  const visibleFiles = useMemo(() => latestDocumentFiles(uniqueBucketFiles(detail?.files ?? [])), [detail?.files]);
   const selectedFiles = useMemo(() => visibleFiles.filter((file) => shareFiles[file.id]), [visibleFiles, shareFiles]);
   const detailArchived = Boolean(detail && isBucketArchived(detail));
   const reviewFileRetention = useMemo(
@@ -3400,6 +3402,10 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                       <CellChip tone={file.requested_document_id ? "acc" : "mut"}>{file.requested_document_id ? "task" : "general"}</CellChip>
                       {retention ? <CellChip tone={retention.isRemovalBlocked ? "warn" : retention.isRetained ? "acc" : "mut"}>{retention.badge}</CellChip> : null}
                       <div className="row">
+                        <DocumentVersionControl file={file} readOnly={detailArchived} service={documentVersionService(call, `/buckets/admin/${detail.id}`, { extraInit: { uploader_name: me?.name || "File team" }, fileUrl: async (fileId, download) => {
+                          const signed = await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${fileId}/url?download=${download}`);
+                          return signed.url;
+                        } })} onChanged={async () => { await loadBucket(detail.id); await loadBuckets(); setNotice("New document version received. The latest version is being checked; previous uploads remain in history."); }} />
                         <Btn size="sm" onClick={() => openFile(file, false)}>
                           <Icon name="eye" size={13} />
                           Preview
@@ -4351,6 +4357,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
             openFile(reviewFile, true).catch((error) => setNotice(readableError(error)));
           }}
           reviewKey={reviewFile.id}
+          headerActions={detail ? <DocumentVersionControl file={reviewFile} readOnly={detailArchived} service={documentVersionService(call, `/buckets/admin/${detail.id}`, { extraInit: { uploader_name: me?.name || "File team" }, fileUrl: async (fileId, download) => (await call<{ url: string }>(`/buckets/admin/${detail.id}/files/${fileId}/url?download=${download}`)).url })} onChanged={async () => { await loadBucket(detail.id); await loadBuckets(); setReviewFile(null); setReviewMinimized(false); setNotice("New document version received. Open the latest upload to follow its analysis."); }} /> : null}
           loadReview={() => loadAdminReview(reviewFile)}
           saveAnnotation={detailArchived ? undefined : (payload) => saveAdminAnnotation(reviewFile, payload)}
           annotationsEnabled={!detailArchived}
