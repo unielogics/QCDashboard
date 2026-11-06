@@ -24,11 +24,12 @@ import type { Edit, SheetKind } from "@/components/sheet/types";
 import {
   FINANCIAL_LABELS, FINANCIAL_ORDER, readFinancialWorkspace, saveFinancialDraft,
   saveFinancialVersion, stageFinancialImport, stageDebtDocumentImport, applyFinancialImport, restoreFinancialVersion,
-  actOnFinancialDebt, financialVersionPdfPath, financialValues, financialLayout, applyFinancialCells, activeFinancialDebts, financialDebtTotals, createFinancialFamily, financialMappingConflict, financialMappingConfidence, isFinancialDraftConflict, clearEditedDebtSources, shareFinancialVersion, savedFinancialCompletion,
+  actOnFinancialDebt, financialVersionPdfPath, financialValues, financialLayout, applyFinancialCells, meaningfulFinancialDebts, financialDebtTotals, createFinancialFamily, financialMappingConflict, financialMappingConfidence, isFinancialDraftConflict, clearEditedDebtSources, shareFinancialVersion, savedFinancialCompletion,
   type FinancialWorkspaceSnapshot, type FinancialBody, type FinancialDebtRow, type FinancialImport, type FinancialVersion,
   type DebtAction, type DebtDocumentRole,
 } from "@/lib/financialWorkspaceApi";
 import { RequestFilesDialog } from "./RequestFilesDialog";
+import { addFinancialDebtDraft, financialDebtEntrySelection, financialDebtNavigationRows, financialWorkspaceEntryView, isBlankFinancialDebt } from "@/lib/financialWorkspaceEntry";
 import { DebtScheduleIntakeActions } from "./DebtScheduleIntakeActions";
 import { canDraftDebtIntake, hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
 
@@ -43,7 +44,7 @@ const newId = () => crypto.randomUUID();
 const rowsOf = (body: FinancialBody): FinancialDebtRow[] => (body.debts as FinancialDebtRow[] | undefined) ?? [];
 
 /** A draft has one body. Form fields, worksheet cells, and source review all edit that body. */
-export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView = "form", initialDebtId, onPublished, onUploadFiles }: {
+export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, onPublished, onUploadFiles }: {
   open: boolean; onClose: () => void; profileId: string; initialKind?: SheetKind; initialView?: View; initialDebtId?: string;
   onPublished?: () => void | Promise<void>; onUploadFiles?: (files: File[]) => Promise<void>;
 }) {
@@ -53,7 +54,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const devUser = useDevUser();
   const [snapshot, setSnapshot] = useState<FinancialWorkspaceSnapshot | null>(null);
   const [body, setBody] = useState<FinancialBody>({});
-  const [view, setView] = useState<View>(initialView);
+  const [view, setView] = useState<View>(() => financialWorkspaceEntryView(initialKind, initialView, initialDebtId));
   const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
@@ -96,11 +97,12 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const formRef = useRef<HTMLDivElement | null>(null);
   const uploadRef = useRef<HTMLInputElement | null>(null);
 
-  const accept = useCallback((next: FinancialWorkspaceSnapshot) => {
+  const accept = useCallback((next: FinancialWorkspaceSnapshot, entry?: { resetSelection: boolean; rowId?: string }) => {
+    const sameFamily = current.current?.family_id === next.family_id;
     current.current = next; draftBody.current = next.body;
     changed.current = 0; persisted.current = 0;
     setSnapshot(next); setBody(next.body); setLocalDirty(false); setConflict(false);
-    setSelectedDebt((selected) => rowsOf(next.body).some((row) => row.id === selected) ? selected : activeFinancialDebts(next.body)[0]?.id ?? null);
+    setSelectedDebt((selected) => financialDebtEntrySelection(next.body, entry?.resetSelection ? entry.rowId : sameFamily ? selected : null));
   }, []);
   const changeBody = useCallback((next: FinancialBody) => {
     if (current.current?.kind === "debt_schedule") next = clearEditedDebtSources(draftBody.current, next);
@@ -147,11 +149,12 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   useEffect(() => {
     if (!open) return;
     let cancelled = false;
-    setLoading(true); setError(""); setView(initialView);
-    void readFinancialWorkspace(api, profileId, initialKind).then((next) => { if (!cancelled) accept(next); })
+    setLoading(true); setError(""); setView(financialWorkspaceEntryView(initialKind, initialView, initialDebtId));
+    setSelectedDebt(initialDebtId ?? null); setShowExcluded(false);
+    void readFinancialWorkspace(api, profileId, initialKind).then((next) => { if (!cancelled) accept(next, { resetSelection: true, rowId: initialDebtId }); })
       .catch((reason) => { if (!cancelled) setError(message(reason)); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [accept, api, initialKind, initialView, open, profileId]);
+  }, [accept, api, initialDebtId, initialKind, initialView, open, profileId]);
   useEffect(() => {
     if (!localDirty || conflict) return;
     const timer = setTimeout(() => { void flush().catch(() => undefined); }, 700);
@@ -173,7 +176,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const close = () => { void run("close", async () => { await flush(); onClose(); }); };
   const switchForm = (kind: SheetKind, familyId?: string) => { void run("switch", async () => {
     await flush(); pdfRequest.current += 1; setLoading(true); setSavedReceipt(null); setSavedCompletion(null); setSharedPdf(null); setProposal(null); setSourceUrl(null); setSourceFile(""); setPdfUrl(null); setPdfVersionId(null);
-    try { accept(await readFinancialWorkspace(api, profileId, kind, familyId)); } finally { setLoading(false); }
+    try { accept(await readFinancialWorkspace(api, profileId, kind, familyId), { resetSelection: true }); setView(financialWorkspaceEntryView(kind)); } finally { setLoading(false); }
   }); };
   const switchView = (next: View) => { setView(next); setNotice(""); };
   const openRealEstateSource = (mode: "schedule" | "mortgage", mortgageId?: string, propertyId?: string) => {
@@ -259,8 +262,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   }); };
   const kind = snapshot?.kind ?? initialKind;
   const debts = rowsOf(body);
-  const activeDebts = activeFinancialDebts(body);
-  const selected = debts.find((row) => row.id === selectedDebt) ?? activeDebts[0] ?? null;
+  const activeDebts = meaningfulFinancialDebts(body);
+  const selected = debts.find((row) => row.id === selectedDebt) ?? debts.find((row) => row.id === financialDebtEntrySelection(body)) ?? null;
+  const navigationDebts = financialDebtNavigationRows(body, selected?.id ?? null, showExcluded);
+  const visibleDebtIds = useMemo(() => new Set(financialDebtNavigationRows(body, selected?.id ?? null, showExcluded).map((row) => row.id)), [body, selected?.id, showExcluded]);
   const sharedLayout = useMemo(() => snapshot ? financialLayout(body, snapshot.worksheet.layout) : null, [body, snapshot]);
   const values = useMemo(() => sharedLayout ? financialValues(body, sharedLayout) : {}, [body, sharedLayout]);
   const computed = useMemo(() => {
@@ -272,12 +277,13 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   useEffect(() => { if (initialDebtId && excludedIds.has(initialDebtId)) setShowExcluded(true); }, [initialDebtId, excludedIds]);
   const layout = useMemo(() => {
     if (!sharedLayout) return null;
-    return kind === "debt_schedule" && !showExcluded ? { ...sharedLayout, rows: sharedLayout.rows.filter((row) => !row.row_key || !excludedIds.has(row.row_key)) } : sharedLayout;
-  }, [excludedIds, kind, showExcluded, sharedLayout]);
+    return kind === "debt_schedule" ? { ...sharedLayout, rows: sharedLayout.rows.filter((row) => !row.row_key || visibleDebtIds.has(row.row_key)) } : sharedLayout;
+  }, [kind, sharedLayout, visibleDebtIds]);
   const editCells = (edits: Edit[]) => { if (sharedLayout) changeBody(applyFinancialCells(draftBody.current, sharedLayout, edits)); };
   const addDebt = () => {
-    const row = { id: newId(), lender: "", status: "active" as const, evidence_links: [] };
-    changeBody({ ...draftBody.current, no_debt: false, debts: [...rowsOf(draftBody.current), row] }); setSelectedDebt(row.id); setView("form");
+    const next = addFinancialDebtDraft(draftBody.current, newId);
+    if (next.body !== draftBody.current) changeBody(next.body);
+    setSelectedDebt(next.rowId); setView("form");
   };
   const sections = kind === "pfs" ? ["About you", "Assets", "Liabilities", "Annual income", "Contingent liabilities", ...((snapshot?.schema as PfsSchema | undefined)?.schedules ?? []).map((section) => section.label)]
     : kind === "real_estate_schedule" ? ["Properties", "Mortgages", "Portfolio totals"] : kind === "p_and_l" || kind === "balance_sheet" ? ((snapshot?.schema as StatementSchema | undefined)?.sections ?? []).map((section) => section.label) : [];
@@ -340,7 +346,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
           <button type="button" disabled={Boolean(busy)} aria-expanded={familyOpen} onClick={() => setFamilyOpen((value) => !value)}><Icon name="plus" size={13} />{kind === "pfs" ? "Add person / statement" : "Add reporting period"}</button>
           {familyOpen ? <div className="fw-new-family"><Field label="Statement label"><Input aria-label="Statement label" value={familyDraft.label} onChange={(event) => setFamilyDraft((draft) => ({ ...draft, label: event.target.value }))} placeholder={kind === "pfs" ? "Jane Smith — personal statement" : "2026 year to date"} /></Field><Field label={kind === "pfs" ? "Person's name" : "Business / subject"}><Input aria-label="Statement subject" value={familyDraft.subject} onChange={(event) => setFamilyDraft((draft) => ({ ...draft, subject: event.target.value }))} /></Field>{kind === "p_and_l" ? <><Field label="Period start"><Input aria-label="Period start" type="date" value={familyDraft.period_start} onChange={(event) => setFamilyDraft((draft) => ({ ...draft, period_start: event.target.value }))} /></Field><Field label="Period end"><Input aria-label="Period end" type="date" value={familyDraft.period_end} onChange={(event) => setFamilyDraft((draft) => ({ ...draft, period_end: event.target.value }))} /></Field></> : <Field label="As of"><Input aria-label="As of" type="date" value={familyDraft.as_of} onChange={(event) => setFamilyDraft((draft) => ({ ...draft, as_of: event.target.value }))} /></Field>}<Btn size="sm" disabled={Boolean(busy) || !familyDraft.label.trim() || !familyDraft.subject.trim()} onClick={() => void run("family", async () => { await flush(); const { label, ...identity } = familyDraft; accept(await createFinancialFamily(api, profileId, kind, label.trim(), Object.fromEntries(Object.entries(identity).filter(([, value]) => Boolean(value))))); setFamilyOpen(false); setFamilyDraft({ label: "", subject: "", period_start: "", period_end: "", as_of: "" }); setView("form"); })}>Create statement</Btn></div> : null}
           <div className="fw-sidebar-sections"><span className="lbl">{kind === "debt_schedule" ? "Obligations" : "Sections"}</span>
-            {kind === "debt_schedule" ? <>{(showExcluded ? debts : activeDebts).map((row, index) => <button type="button" key={row.id} className={selected?.id === row.id ? "on" : ""} onClick={() => { setSelectedDebt(row.id); setView("form"); }}><span>{String(row.lender || `Obligation ${index + 1}`)}</span>{excludedIds.has(row.id) ? <small>{row.status}</small> : null}</button>)}<Btn size="sm" onClick={addDebt} disabled={Boolean(busy)}><Icon name="plus" size={13} />Add obligation</Btn><label className="checkline"><input type="checkbox" checked={showExcluded} onChange={(event) => setShowExcluded(event.target.checked)} />Show removed / duplicates</label></>
+            {kind === "debt_schedule" ? <>{navigationDebts.map((row, index) => <button type="button" key={row.id} className={selected?.id === row.id ? "on" : ""} onClick={() => { setSelectedDebt(row.id); setView("form"); }}><span>{String(row.lender || (isBlankFinancialDebt(row) ? "New obligation" : `Obligation ${index + 1}`))}</span>{excludedIds.has(row.id) ? <small>{row.status}</small> : null}</button>)}<Btn size="sm" onClick={addDebt} disabled={Boolean(busy)}><Icon name="plus" size={13} />Add obligation</Btn><label className="checkline"><input type="checkbox" checked={showExcluded} onChange={(event) => setShowExcluded(event.target.checked)} />Show removed / duplicates</label></>
               : sections.map((section) => <button type="button" key={section} onClick={() => jumpTo(section)}>{section}</button>)}
           </div>
           <div className="fw-publication"><Icon name="shieldChk" size={16} /><strong>{completedVersion ? `Published v${completedVersion.version_number}` : currentVersion ? `Saved PDF v${currentVersion.version_number}` : "Draft only"}</strong><small>{completedVersion ? when(completedVersion.created_at) : kind === "debt_schedule" ? "No completed schedule version has been filed. Save version publishes the completed draft and its dated PDF." : "Save the first version to publish these figures."}</small><small>{completedVersion ? "The financial interface and AI use this saved version." : "Uploaded and historical PDFs remain available in History."}</small></div>
