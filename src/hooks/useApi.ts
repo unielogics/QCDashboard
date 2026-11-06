@@ -7918,7 +7918,7 @@ export function useFinancialFormPdf() {
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
   return useMutation({
-    mutationFn: async ({ profileId, kind }: { profileId: string; kind: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" }) => {
+    mutationFn: async ({ profileId, kind }: { profileId: string; kind: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule" }) => {
       let token: string | null = null;
       if (isSignedIn) {
         try { token = await getToken(); } catch { token = null; }

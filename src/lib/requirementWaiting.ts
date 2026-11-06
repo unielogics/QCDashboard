@@ -67,7 +67,7 @@ export function mostUrgentWaiting(items: RequirementWaiting[]): RequirementWaiti
  *  in (the PDF is our rendering of their answers), or a signed certificate. */
 export function evidenceOriginLabel(origin: string | null | undefined, formKind?: string | null): string {
   if (origin === "filled_form") {
-    const kind = ({ pfs: "personal financial statement", debt_schedule: "debt schedule", p_and_l: "profit and loss", balance_sheet: "balance sheet" } as Record<string, string>)[formKind ?? ""];
+    const kind = ({ pfs: "personal financial statement", debt_schedule: "debt schedule", p_and_l: "profit and loss", balance_sheet: "balance sheet", real_estate_schedule: "real estate schedule" } as Record<string, string>)[formKind ?? ""];
     return kind ? `Filled in online · ${kind}` : "Filled in online";
   }
   if (origin === "signed") return "Signed in the room";

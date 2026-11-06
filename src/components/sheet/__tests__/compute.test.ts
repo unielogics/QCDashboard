@@ -68,13 +68,13 @@ describe("recompute against the Python fixtures", () => {
   });
 
   it("produces every figure the layout's formula cells ask for", () => {
-    const produced: Record<SheetKind, ComputedValues> = {
+    const produced: Record<Exclude<SheetKind, "real_estate_schedule">, ComputedValues> = {
       p_and_l: recompute("p_and_l", PL_SCHEMA, PL_CASES.ebitda_reads_the_flags.values),
       balance_sheet: recompute("balance_sheet", BS_SCHEMA, BS_CASES.equity_implied.values),
       debt_schedule: recompute("debt_schedule", null, DEBT_CASE.values),
       pfs: recompute("pfs", PFS_SCHEMA, PFS_CASE.values),
     };
-    for (const kind of Object.keys(produced) as SheetKind[]) {
+    for (const kind of Object.keys(produced) as Array<keyof typeof produced>) {
       for (const key of COMPUTE_KEYS[kind]) {
         expect(Object.keys(produced[kind]), `${kind}.${key}`).toContain(key);
       }

@@ -28,6 +28,8 @@ import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/applicati
 import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtScheduleForm";
 import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import { FormReview } from "@/components/application/FormReview";
+import { RealEstateScheduleForm } from "@/components/application/RealEstateScheduleForm";
+import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -42,7 +44,7 @@ type Prefill = {
   owner_count: number;
 };
 
-type FormBody = PfsBody & DebtBody & StatementBody;
+type FormBody = PfsBody & DebtBody & StatementBody & RealEstateBody;
 
 // The schema is whichever the kind calls for; the two business statements
 // share one shape and one component, the way the 413 has its own.
@@ -54,6 +56,7 @@ type FormState = {
 } & (
   | { kind: "pfs" | "debt_schedule"; schema: PfsSchema }
   | { kind: "p_and_l" | "balance_sheet"; schema: StatementSchema }
+  | { kind: "real_estate_schedule"; schema: RealEstateSchema }
 );
 
 const TITLES = {
@@ -61,6 +64,7 @@ const TITLES = {
   pfs: "Personal Financial Statement",
   p_and_l: "Profit and Loss Statement",
   balance_sheet: "Balance Sheet",
+  real_estate_schedule: "Real Estate Schedule",
 } as const;
 
 const INTROS = {
@@ -71,6 +75,7 @@ const INTROS = {
     "Enter the figures for the period at the top — year to date, the last fiscal year, or the months you have. Totals are worked out as you type. Leave any line that does not apply blank.",
   balance_sheet:
     "Enter what the business owns and owes as of one date. If you do not have equity broken out, leave that section blank and it is taken as assets less liabilities.",
+  real_estate_schedule: "List your real estate, current estimated values, rental income, expenses, and mortgages. Active mortgages create a request for their latest statement after you send this schedule.",
 } as const;
 
 const RECEIVED = {
@@ -78,6 +83,7 @@ const RECEIVED = {
   pfs: "Your financial statement has been received and added to your file.",
   p_and_l: "Your profit and loss statement has been received and added to your file.",
   balance_sheet: "Your balance sheet has been received and added to your file.",
+  real_estate_schedule: "Your real estate schedule has been received. Check your account to-dos for any requested mortgage statements.",
 } as const;
 
 export default function FinancialFormPage() {
@@ -371,7 +377,7 @@ export default function FinancialFormPage() {
             </span>
             <h1>Thank you — you can close this window.</h1>
             <p>
-              {state ? RECEIVED[state.kind] : RECEIVED.pfs} Nothing else is needed from you here.
+              {state ? RECEIVED[state.kind] : RECEIVED.pfs} {state?.kind !== "real_estate_schedule" ? "Nothing else is needed from you here." : null}
             </p>
             <p className="fp-quiet">
               If you spot a mistake, this link still works. Correcting a figure now is far
@@ -433,6 +439,8 @@ export default function FinancialFormPage() {
               onChange={setBody}
               disabled={status === "saving"}
             />
+          ) : state?.kind === "real_estate_schedule" ? (
+            <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => setBody(next as FormBody)} disabled={status === "saving"} />
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}

@@ -56,13 +56,14 @@ const Worksheet = dynamic(() => import("@/components/sheet/Worksheet").then((m) 
 
 /** The four tabs, in the order the desk reads them: the business first, the
  *  owner last. */
-export const SHEET_ORDER: SheetKind[] = ["p_and_l", "balance_sheet", "debt_schedule", "pfs"];
+export const SHEET_ORDER: SheetKind[] = ["p_and_l", "balance_sheet", "debt_schedule", "pfs", "real_estate_schedule"];
 
 export const SHEET_LABELS: Record<SheetKind, string> = {
   p_and_l: "Profit & loss",
   balance_sheet: "Balance sheet",
   debt_schedule: "Debt schedule",
   pfs: "Personal financial statement",
+  real_estate_schedule: "Real estate schedule",
 };
 
 const DEFAULT_TTL_DAYS = 30;
@@ -256,6 +257,7 @@ export function ShareWorksheetDialog({
     balance_sheet: true,
     debt_schedule: true,
     pfs: false,
+    real_estate_schedule: false,
   });
   const [permission, setPermission] = useState<"edit" | "view">("view");
   const [label, setLabel] = useState("");
@@ -283,7 +285,7 @@ export function ShareWorksheetDialog({
   // Mirrors `worksheet_links.pin_required_for`: an edit link, or any link that
   // opens the 413, gets a second factor. Said before the mint so nobody is
   // surprised by a PIN they then have to pass on.
-  const willHavePin = permission === "edit" || chosen.pfs;
+  const willHavePin = permission === "edit" || chosen.pfs || chosen.real_estate_schedule;
 
   const mint = async () => {
     if (!worksheetId || sheets.length === 0) return;
@@ -382,14 +384,12 @@ export function ShareWorksheetDialog({
               />
               <span className="grow">
                 <b>{SHEET_LABELS[kind]}</b>
-                {kind === "pfs" ? (
+                {kind === "pfs" || kind === "real_estate_schedule" ? (
                   <>
                     {" "}
                     <CellChip tone="warn">Personal</CellChip>
                     <div className="sub">
-                      This one carries the owner&apos;s home address, their net worth and every
-                      personal liability. Leave it off unless the person receiving the link needs
-                      it — and it forces a PIN when it is on.
+                      {kind === "pfs" ? "This includes the owner's home address, net worth, and personal liabilities." : "This includes the owner's property portfolio, estimated values, and mortgage details."} Leave it off unless the recipient needs it. Including it requires a PIN.
                     </div>
                   </>
                 ) : null}
