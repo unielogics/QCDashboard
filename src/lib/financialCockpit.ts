@@ -3,6 +3,7 @@
 // and the pure helpers the tiles and charts use. Nothing here fetches.
 import type { AccountMovements } from "./accountMovements";
 import type { FinancialDebtReview } from "./financialDebtReview";
+import type { FinancialEbitda, FinancialMetricReview } from "./financialMetrics";
 
 export type DscrStatus = "unavailable" | "concerning" | "acceptable" | "healthy" | "very_strong";
 export type CockpitConfidence = "filed" | "statement" | "statement_unverified" | "proxy";
@@ -743,6 +744,8 @@ export type FinancialCockpit = {
   /** The terms the package and the listing speak of (recorded term sheet, else the plan's loan) with the schedule and the principal at risk. */
   proposed_terms?: ProposedTerms | null;
   dscr: CockpitDscr;
+  ebitda?: FinancialEbitda;
+  metric_review?: FinancialMetricReview;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];
 };
