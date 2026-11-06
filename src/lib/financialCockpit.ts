@@ -2,6 +2,7 @@
 // in qcbackend (the contract pinned by app/tests/test_financial_cockpit.py)
 // and the pure helpers the tiles and charts use. Nothing here fetches.
 import type { AccountMovements } from "./accountMovements";
+import type { FinancialDebtReview } from "./financialDebtReview";
 
 export type DscrStatus = "unavailable" | "concerning" | "acceptable" | "healthy" | "very_strong";
 export type CockpitConfidence = "filed" | "statement" | "statement_unverified" | "proxy";
@@ -729,6 +730,7 @@ export type FinancialCockpit = {
     debt_service_to_deposits: number | null;
   };
   debt: {
+    review?: FinancialDebtReview;
     rows: CockpitDebtRow[];
     documented: CockpitDocumentedDebt[];
     document: { total_monthly_debt_service: number | null; total_outstanding_balance: number | null; debts: UploadedScheduleLine[] } | null;
@@ -737,7 +739,7 @@ export type FinancialCockpit = {
     obligations: Obligation[];
     schedule: CockpitDebtSchedule;
   };
-  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null; schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number; exposure_pct?: number; recovered_pct?: number }>; risk?: PlanRisk | null; economics?: PlanEconomics | null };
+  plan: { record: FinancialPlanRecord; evaluation: PlanEvaluation; levers: PlanLever[]; unresolved_previous_selections?: Array<string | { id?: string; key?: string; lender?: string; reason?: string }>; modifications?: PlanModification[]; impact?: PlanImpact; terms_link?: PlanTermsLink | null; schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number; exposure_pct?: number; recovered_pct?: number }>; risk?: PlanRisk | null; economics?: PlanEconomics | null };
   /** The terms the package and the listing speak of (recorded term sheet, else the plan's loan) with the schedule and the principal at risk. */
   proposed_terms?: ProposedTerms | null;
   dscr: CockpitDscr;

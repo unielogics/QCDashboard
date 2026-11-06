@@ -1,219 +1,166 @@
 "use client";
 
-// Who the statements pay again and again, and who pays in: every recurring
-// debit or credit rolled up across the months the AI read, classified
-// without a model, shown by payee or as a month-by-month table. Statements
-// analyzed before this extraction existed can be re-read from here; the
-// queue takes a minute or two and the card refreshes itself while it waits.
-
-import { useEffect, useMemo, useState } from "react";
-import { Btn, CellChip, StatusLine, cx } from "@/components/ds";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Btn, CellChip, Input, StatusLine, cx } from "@/components/ds";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
-import { useRereadStatements } from "@/hooks/useApi";
-import { cadenceLabel, compactMoney, money, monthShort, payeeKindTone, type FinancialCockpit as Cockpit, type PayeeKind, type RecurringPayee } from "@/lib/financialCockpit";
+import { useAuthedApi, useRereadStatements } from "@/hooks/useApi";
+import { isFinancialDraftConflict, meaningfulFinancialDebts } from "@/lib/financialWorkspaceApi";
+import { actOnFinancialDebtCandidate, candidateDecisionLabel, readFinancialDebtReview, recurringReviewRows, reviewPage, type CandidateAction, type FinancialDebtCandidate } from "@/lib/financialDebtReview";
+import { cadenceLabel, compactMoney, money, monthShort, payeeKindTone, type FinancialCockpit as Cockpit, type RecurringPayee } from "@/lib/financialCockpit";
+import styles from "./FinancialReview.module.css";
 
-type Side = "debits" | "credits";
-type View = "payees" | "months";
-type Filter = "all" | "debt" | "cards" | "operating" | "income" | "funding" | "transfers";
-const DEBIT_FILTERS: Array<{ value: Filter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "debt", label: "Advances and loans" },
-  { value: "cards", label: "Cards" },
-  { value: "operating", label: "Operating" },
-];
-const CREDIT_FILTERS: Array<{ value: Filter; label: string }> = [
-  { value: "all", label: "All" },
-  { value: "income", label: "Customers and cards" },
-  { value: "funding", label: "Funding received" },
-  { value: "transfers", label: "Transfers" },
-];
-const OPERATING: PayeeKind[] = ["payroll", "rent", "tax", "insurance", "utilities", "merchant_services", "bank_fees", "vendor", "other", "owner_draw", "transfer"];
-
-function matches(p: RecurringPayee, filter: Filter): boolean {
-  switch (filter) {
-    case "debt":
-      return p.is_debt;
-    case "cards":
-      return p.is_card;
-    case "operating":
-      return OPERATING.includes(p.kind);
-    case "income":
-      return p.kind === "customer" || p.kind === "card_settlement";
-    case "funding":
-      return p.kind === "advance_funding" || p.kind === "loan_proceeds";
-    case "transfers":
-      return p.kind === "transfer" || p.kind === "owner_contribution";
-    default:
-      return true;
-  }
-}
-
-export function RecurringCard({ profileId, cockpit, canEdit, onRefresh, accountLabel }: { profileId: string; cockpit: Cockpit; canEdit: boolean; onRefresh: () => Promise<unknown> | void; accountLabel: string | null }) {
-  const [side, setSide] = useState<Side>("debits");
-  const [view, setView] = useState<View>("payees");
-  const [filter, setFilter] = useState<Filter>("all");
-  const data = side === "debits" ? cockpit.bank.recurring : cockpit.bank.recurring_credits;
-  const needReread = cockpit.coverage.statements_need_reread;
-  const reread = useRereadStatements(profileId);
-  const [queued, setQueued] = useState<number | null>(null);
+type Filter = "all" | "candidates" | "included" | "disabled";
+export type RecurringReviewView = { side: "debits" | "credits"; view: "payees" | "months"; filter: Filter; search: string; page: number; inspectedKey: string | null };
+export function RecurringCard({ profileId, cockpit, canEdit, onRefresh, accountLabel, accountScope, onOpenDebt, onPreviewSource, compact = false, initialReviewView, onReviewView }: {
+  profileId: string; cockpit: Cockpit; canEdit: boolean; onRefresh: () => Promise<unknown> | void;
+  accountLabel: string | null; accountScope?: string; onOpenDebt?: (rowId?: string) => void;
+  onPreviewSource?: (fileId: string, page?: number) => void; compact?: boolean;
+  initialReviewView?: RecurringReviewView; onReviewView?: (value: RecurringReviewView) => void;
+}) {
+  const api = useAuthedApi();
+  const queryClient = useQueryClient();
+  const reviewQuery = useQuery({ queryKey: ["financial-debt-review", profileId], queryFn: () => readFinancialDebtReview(api, profileId), staleTime: 0, refetchOnWindowFocus: false });
+  const review = reviewQuery.data ?? cockpit.debt.review;
+  const [side, setSide] = useState<"debits" | "credits">(initialReviewView?.side ?? "debits");
+  const [view, setView] = useState<"payees" | "months">(initialReviewView?.view ?? "payees");
+  const [filter, setFilter] = useState<Filter>(initialReviewView?.filter ?? "all");
+  const [search, setSearch] = useState(initialReviewView?.search ?? "");
+  const [page, setPage] = useState(initialReviewView?.page ?? 0);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-
+  const [queued, setQueued] = useState<number | null>(null);
+  const [inspectedKey, setInspectedKey] = useState<string | null>(initialReviewView?.inspectedKey ?? null);
+  const [targetRow, setTargetRow] = useState("");
+  const inspectorHeading = useRef<HTMLHeadingElement>(null);
+  const inspectorOrigin = useRef<HTMLElement | null>(null);
+  const inspect = (key: string) => { inspectorOrigin.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setInspectedKey(key); };
+  const closeInspector = () => { setInspectedKey(null); requestAnimationFrame(() => { if (inspectorOrigin.current?.isConnected) inspectorOrigin.current.focus(); }); };
+  const intent = useRef<{ key: string; action: CandidateAction; id: string; target?: string } | null>(null);
+  const reread = useRereadStatements(profileId);
+  const needReread = cockpit.coverage.statements_need_reread;
+  const data = side === "debits" ? cockpit.bank.recurring : cockpit.bank.recurring_credits;
+  const candidates = useMemo(() => review?.candidates ?? [], [review]);
+  const countedLabels = cockpit.bank.accounts.filter((account) => account.counted).map((account) => account.label);
+  const inScope = (accounts: string[], candidate?: FinancialDebtCandidate | null) => accountLabel ? accounts.includes(accountLabel) : accountScope === "counted" ? accounts.some((label) => countedLabels.includes(label)) || cockpit.bank.accounts.some((account) => account.counted && account.key === candidate?.account_key) : true;
+  const scopedCandidates = candidates.filter((candidate) => inScope(candidate.accounts, candidate));
+  const observedAmounts = scopedCandidates.map((candidate) => candidate.monthly_average).filter((value): value is number => value != null && Number.isFinite(value));
+  const observedTotal = observedAmounts.length ? observedAmounts.reduce((total, value) => total + value, 0) : scopedCandidates.length ? null : 0;
+  const observedPartial = observedAmounts.length < scopedCandidates.length;
+  const inspected = candidates.find((candidate) => candidate.key === inspectedKey);
+  const existingRows = review ? meaningfulFinancialDebts(review.workspace.body) : [];
+  useEffect(() => { if (inspectedKey) { setTargetRow(""); inspectorHeading.current?.focus(); } }, [inspectedKey]);
+  const combined = useMemo(() => side === "debits" ? recurringReviewRows(data.payees, candidates) : data.payees.map((payee) => ({ key: payee.key, payee, candidate: null })), [side, data.payees, candidates]);
+  const rows = combined.filter(({ payee, candidate }) => inScope(payee.accounts, candidate)
+    && (!search.trim() || `${payee.payee} ${payee.accounts.join(" ")}`.toLowerCase().includes(search.trim().toLowerCase()))
+    && (filter === "all" || filter === "candidates" && candidate?.status === "unreviewed" || filter === "included" && candidate?.status === "included" || filter === "disabled" && candidate?.status === "disabled"));
+  const displayed = reviewPage(rows, page, 8);
+  const months = data.months_read;
+  const resetKey = JSON.stringify([accountLabel, side, filter, search]);
+  const previousResetKey = useRef(resetKey);
+  useEffect(() => { if (previousResetKey.current !== resetKey) { previousResetKey.current = resetKey; setPage(0); } }, [resetKey]);
+  useEffect(() => { onReviewView?.({ side, view, filter, search, page, inspectedKey }); }, [side, view, filter, search, page, inspectedKey, onReviewView]);
   useEffect(() => {
-    if (queued == null || needReread === 0) return;
+    if (queued == null || !needReread) return;
     let tries = 0;
-    const timer = window.setInterval(() => {
-      tries += 1;
-      void onRefresh();
-      if (tries >= 12) window.clearInterval(timer);
-    }, 20_000);
+    const timer = window.setInterval(() => { void onRefresh(); if (++tries >= 12) window.clearInterval(timer); }, 20_000);
     return () => window.clearInterval(timer);
   }, [queued, needReread, onRefresh]);
 
-  const rows = useMemo(
-    () => data.payees.filter((p) => matches(p, filter) && (!accountLabel || p.accounts.includes(accountLabel))),
-    [data.payees, filter, accountLabel],
-  );
-  const monthsRead = data.months_read;
-  const columnTotals = useMemo(() => monthsRead.map((m) => rows.reduce((sum, p) => sum + (p.monthly[m] ?? 0), 0)), [monthsRead, rows]);
-
-  const queue = async () => {
-    setError(null);
+  const act = async (candidate: FinancialDebtCandidate, action: CandidateAction, target?: string) => {
+    if (!review || busyKey || !canEdit) return;
+    setError(null); setNotice(null); setBusyKey(candidate.key);
+    if (intent.current?.key !== candidate.key || intent.current.action !== action || intent.current.target !== target) intent.current = { key: candidate.key, action, id: crypto.randomUUID(), target };
     try {
-      const result = await reread.mutateAsync();
-      setQueued(result.queued);
-    } catch (e) {
-      setError(errorMessage(e, "The statements could not be queued."));
-    }
+      const next = await actOnFinancialDebtCandidate(api, profileId, review, candidate.key, action, intent.current.id, target);
+      queryClient.setQueryData(["financial-debt-review", profileId], next);
+      queryClient.setQueryData(["financial-workspace-summary", profileId], next.workspace);
+      intent.current = null;
+      setNotice(action === "include" ? `${candidate.payee} was added to the working schedule. Review its balance and terms, then Save version to publish.`
+        : action === "link_existing" ? "Statement evidence linked to the existing obligation. Its financial values were kept; Save version publishes the reviewed association."
+        : action === "disable" ? "Candidate disabled. Existing declared obligations remain on the schedule. Save version publishes any draft changes."
+          : "Candidate restored for review. Add it explicitly if it is an obligation.");
+      await onRefresh();
+    } catch (reason) {
+      if (isFinancialDraftConflict(reason)) { intent.current = null; await reviewQuery.refetch(); }
+      setError(errorMessage(reason, "The candidate decision could not be saved."));
+    } finally { setBusyKey(null); }
   };
-  const filters = side === "debits" ? DEBIT_FILTERS : CREDIT_FILTERS;
-  const switchSide = (next: Side) => {
-    setSide(next);
-    setFilter("all");
+  const candidateActions = (candidate: FinancialDebtCandidate) => [
+    { label: "Review source and schedule link", onSelect: () => inspect(candidate.key) },
+    { label: "Link to an existing obligation…", hidden: candidate.status !== "unreviewed" || !existingRows.length, onSelect: () => inspect(candidate.key) },
+    { label: "Add as a separate obligation", hidden: candidate.status !== "unreviewed" || !candidate.eligible, onSelect: () => void act(candidate, "include") },
+    { label: "Open linked schedule row", hidden: !candidate.row_id, onSelect: () => onOpenDebt?.(candidate.row_id ?? undefined) },
+    { label: candidate.status === "included" && candidate.binding === "created" ? "Exclude candidate-created draft row" : "Disable this debt candidate", hidden: candidate.status === "disabled", onSelect: () => void act(candidate, "disable") },
+    { label: "Restore candidate for review", hidden: candidate.status !== "disabled", onSelect: () => void act(candidate, "restore") },
+  ];
+  const openRowMenu = (event: React.MouseEvent<HTMLTableRowElement>, candidate: FinancialDebtCandidate | null) => {
+    if (!candidate || !canEdit || busyKey) return;
+    event.preventDefault();
+    event.currentTarget.querySelector<HTMLButtonElement>("[data-candidate-actions] button")?.click();
   };
+  const rowEvidence = (candidate: FinancialDebtCandidate | null, payee: RecurringPayee) => {
+    const source = candidate?.source_refs.find((item) => item.file_id);
+    const fileId = source?.file_id || payee.file_ids[0];
+    return fileId && onPreviewSource ? <button type="button" className={styles.textAction} onClick={() => onPreviewSource(fileId, source?.page ?? undefined)}>Source statement{source?.page ? ` · p${source.page}` : ""}</button> : null;
+  };
+  const queue = async () => { setError(null); try { const result = await reread.mutateAsync(); setQueued(result.queued); } catch (reason) { setError(errorMessage(reason, "The statements could not be queued.")); } };
 
-  return (
-    <section className="fc-card fc-wide">
-      <div className="fc-card-h">
-        <div>
-          <h4>Recurring {side === "debits" ? "payments out of" : "money into"} the statements</h4>
-          <div className="sub">
-            {side === "debits" ? "Every payee the statements debit repeatedly, with who they are: advances against banks against cards." : "Every payer the statements credit repeatedly: customers, card settlements, transfers in, funding received."} Monthly averages spread the total over the {monthsRead.length} month{monthsRead.length === 1 ? "" : "s"} read{monthsRead.length ? ` (${monthShort(monthsRead[0])} to ${monthShort(monthsRead[monthsRead.length - 1])})` : ""}{accountLabel ? ` · ${accountLabel}` : ""}.
-          </div>
-        </div>
-        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {needReread > 0 && canEdit ? (
-            <Btn size="sm" variant="pri" onClick={() => void queue()} disabled={reread.isPending || queued != null}>
-              <Icon name="refresh" size={13} /> {queued != null ? `Re-reading ${queued} statement${queued === 1 ? "" : "s"}…` : `Re-read ${needReread} statement${needReread === 1 ? "" : "s"}`}
-            </Btn>
-          ) : null}
-          <div className="fc-toggle" role="tablist" aria-label="Direction">
-            <button type="button" role="tab" aria-selected={side === "debits"} className={cx(side === "debits" && "on")} onClick={() => switchSide("debits")}>Withdrawals</button>
-            <button type="button" role="tab" aria-selected={side === "credits"} className={cx(side === "credits" && "on")} onClick={() => switchSide("credits")}>Deposits</button>
-          </div>
-          <div className="fc-toggle" role="tablist" aria-label="View">
-            <button type="button" role="tab" aria-selected={view === "payees"} className={cx(view === "payees" && "on")} onClick={() => setView("payees")}>By payee</button>
-            <button type="button" role="tab" aria-selected={view === "months"} className={cx(view === "months" && "on")} onClick={() => setView("months")}>By month</button>
-          </div>
-          <div className="fc-toggle" role="tablist" aria-label="Payee filter">
-            {filters.map((f) => (
-              <button key={f.value} type="button" role="tab" aria-selected={filter === f.value} className={cx(filter === f.value && "on")} onClick={() => setFilter(f.value)}>
-                {f.label}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
-      {queued != null && needReread > 0 ? <StatusLine tone="acc">Queued. The AI re-reads each statement in the background; this card refreshes itself for a few minutes.</StatusLine> : null}
-      {side === "debits" ? (
-        <div className="fc-stat-list">
-          <div className="fc-stat"><span>Going to advance funders each month</span><strong>{money(data.observed_mca_monthly)}</strong></div>
-          <div className="fc-stat"><span>Going to loans and leases each month</span><strong>{money(data.observed_loan_monthly)}</strong></div>
-          <div className="fc-stat"><span>Card payments each month (not counted as debt service)</span><strong>{money(data.observed_card_monthly)}</strong></div>
-          <div className="fc-stat"><span>All recurring payments each month</span><strong>{money(data.total_monthly)}</strong></div>
-        </div>
-      ) : (
-        <div className="fc-stat-list">
-          <div className="fc-stat"><span>From customers and card settlements each month</span><strong>{money(data.payees.filter((p) => p.kind === "customer" || p.kind === "card_settlement").reduce((s, p) => s + (p.monthly_average ?? 0), 0) || null)}</strong></div>
-          <div className="fc-stat"><span>Funding received (advances, loans), total</span><strong>{money(data.payees.filter((p) => p.kind === "advance_funding" || p.kind === "loan_proceeds").reduce((s, p) => s + (p.total ?? 0), 0) || null)}</strong></div>
-          <div className="fc-stat"><span>All recurring deposits each month</span><strong>{money(data.total_monthly)}</strong></div>
-        </div>
-      )}
-      {!rows.length ? (
-        <div className="fc-empty">
-          {monthsRead.length ? "No recurring payees in this group." : needReread > 0 ? "These statements were read before payees were extracted. Re-read them to see who is being paid." : "No bank statement on file yet."}
-        </div>
-      ) : view === "payees" ? (
-        <div className="tbl-wrap">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>{side === "debits" ? "Payee" : "Payer"}</th>
-                <th>Kind</th>
-                <th>Cadence</th>
-                <th className="r">Typical amount</th>
-                <th className="r">Times</th>
-                <th className="r">Months seen</th>
-                <th className="r">Per month</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.key} className={cx(!p.accepted && "is-muted")}>
-                  <td>
-                    <strong>{p.payee}</strong>
-                    <small className="sub" style={{ display: "block" }}>{p.rationale}{p.accounts.length > 1 ? ` · ${p.accounts.join(", ")}` : ""}</small>
-                  </td>
-                  <td><CellChip tone={payeeKindTone(p.kind)}>{p.kind_label}</CellChip></td>
-                  <td>{cadenceLabel(p.cadence)}{p.same_amount ? " · fixed" : ""}</td>
-                  <td className="r num">{money(p.average_amount)}</td>
-                  <td className="r num">{p.occurrences}</td>
-                  <td className="r num">{p.months_seen}</td>
-                  <td className="r num"><strong>{compactMoney(p.monthly_average)}</strong></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <div className="tbl-wrap">
-          <table className="tbl fc-pivot">
-            <thead>
-              <tr>
-                <th>{side === "debits" ? "Payee" : "Payer"}</th>
-                <th>Kind</th>
-                {monthsRead.map((m) => (
-                  <th key={m} className="r">{monthShort(m)}</th>
-                ))}
-                <th className="r">Per month</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((p) => (
-                <tr key={p.key} className={cx(!p.accepted && "is-muted")}>
-                  <td><strong>{p.payee}</strong></td>
-                  <td><CellChip tone={payeeKindTone(p.kind)}>{p.kind_label}</CellChip></td>
-                  {monthsRead.map((m) => (
-                    <td key={m} className="r num">{p.monthly[m] != null ? compactMoney(p.monthly[m]) : "—"}</td>
-                  ))}
-                  <td className="r num"><strong>{compactMoney(p.monthly_average)}</strong></td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td><strong>Total</strong></td>
-                <td />
-                {monthsRead.map((m, i) => (
-                  <td key={m} className="r num"><strong>{compactMoney(columnTotals[i])}</strong></td>
-                ))}
-                <td className="r num"><strong>{compactMoney(rows.reduce((s, p) => s + (p.monthly_average ?? 0), 0))}</strong></td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      )}
-    </section>
-  );
+  return <section className={cx(compact ? styles.section : "fc-card fc-wide")} aria-label="Statement payment review">
+    <div className={styles.sectionHead}>
+      <div><h4>Statement payments</h4><p className="sub">Observed activity stays separate from the debt schedule. Add or disable candidates explicitly; Save version publishes schedule changes.</p></div>
+      {onOpenDebt ? <Btn size="sm" onClick={() => onOpenDebt()}>Edit debt schedule</Btn> : null}
+    </div>
+    {review ? <div className={styles.summaryStrip}>
+      <span><small>Saved debt service</small><strong>{review.published.complete ? `${money(review.published.monthly)} / month` : "No completed saved schedule"}</strong></span>
+      <span><small>Working schedule</small><strong>{review.working.active_rows} obligations · {review.working.complete ? "complete" : "needs review"}</strong></span>
+      <span><small>Observed recurring withdrawals</small><strong>{observedPartial ? "At least " : ""}{money(observedTotal)} / month{observedPartial ? " · partial amounts" : ""}</strong></span>
+    </div> : null}
+    <div className={styles.toolbar}>
+      <div className="fc-toggle" role="tablist" aria-label="Statement direction">{(["debits", "credits"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={side === value} className={side === value ? "on" : undefined} onClick={() => { setSide(value); setFilter("all"); }}>{value === "debits" ? "Payments out" : "Money in"}</button>)}</div>
+      <div className="fc-toggle" role="tablist" aria-label="Statement payment view">{(["payees", "months"] as const).map((value) => <button key={value} type="button" role="tab" aria-selected={view === value} className={view === value ? "on" : undefined} onClick={() => setView(value)}>{value === "payees" ? "By payee" : "By month"}</button>)}</div>
+      <label className={styles.search}>Search<Input aria-label="Search statement payments" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+      {side === "debits" ? <label>Decision<select aria-label="Statement candidate decision" value={filter} onChange={(event) => setFilter(event.target.value as Filter)}><option value="all">All payments</option><option value="candidates">Unreviewed candidates</option><option value="included">Linked schedule rows</option><option value="disabled">Disabled candidates</option></select></label> : null}
+      {needReread > 0 && canEdit ? <Btn size="sm" disabled={reread.isPending || queued != null} onClick={() => void queue()}><Icon name="refresh" size={13} />{queued == null ? `Re-read ${needReread} statements` : `Queued ${queued}`}</Btn> : null}
+    </div>
+    <p className={styles.note}>{accountLabel || "All selected accounts"} · {months.length} statement months. {side === "debits" && canEdit ? "Right-click a candidate or use its visible Actions menu." : "Deposits are source observations and cannot be added as debt payments."}</p>
+    {reviewQuery.isLoading && side === "debits" ? <StatusLine tone="mut">Loading candidate decisions…</StatusLine> : null}
+    {reviewQuery.error && side === "debits" ? <StatusLine tone="warn">Review controls could not be refreshed. <button type="button" className={styles.textAction} onClick={() => void reviewQuery.refetch()}>Retry</button></StatusLine> : null}
+    {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+    {notice ? <StatusLine tone="acc">{notice}</StatusLine> : null}
+    <div className={inspected ? styles.statementSplit : undefined}><div>
+    <div className={styles.boundedTable} tabIndex={0} role="region" aria-label="Recurring statement payment rows">
+      <table className="tbl"><caption>{side === "debits" ? "Recurring withdrawals and staff debt decisions" : "Recurring deposits"}. Observations alone are not confirmed obligations.</caption>
+        <thead><tr><th>{side === "debits" ? "Payee / account" : "Payer / account"}</th><th>Classification</th>{view === "payees" ? <><th>Cadence</th><th className="r">Typical amount</th><th className="r">Per month</th></> : months.map((month) => <th key={month} className="r">{monthShort(month)}</th>)}{side === "debits" ? <><th>Schedule decision</th><th>Actions</th></> : null}</tr></thead>
+        <tbody>{displayed.items.map(({ key, payee, candidate }) => <tr key={key} onContextMenu={(event) => openRowMenu(event, candidate)} className={candidate?.status === "disabled" ? "is-muted" : undefined}>
+          <td><strong>{payee.payee}</strong><small className={styles.subline}>{payee.accounts.join(", ") || "Account not identified"}</small><small className={styles.subline}>{payee.occurrences > 0 ? `${payee.occurrences} payments · ${payee.months_seen} statement months` : "Observed in statements · review before adding"}</small>{rowEvidence(candidate, payee)}</td>
+          <td><CellChip tone={payeeKindTone(payee.kind)}>{payee.kind_label}</CellChip></td>
+          {view === "payees" ? <><td>{cadenceLabel(payee.cadence)}</td><td className="r num">{money(payee.average_amount)}</td><td className="r num"><strong>{money(payee.monthly_average)}</strong></td></> : months.map((month) => <td key={month} className="r num">{payee.monthly[month] == null ? "—" : compactMoney(payee.monthly[month])}</td>)}
+          {side === "debits" ? <><td><CellChip tone={candidate?.status === "included" ? "acc" : "mut"}>{candidateDecisionLabel(candidate)}</CellChip>{candidate?.status === "unreviewed" && candidate.possible_row_ids?.length ? <small className={styles.subline}>Possible existing obligation — review before adding.</small> : null}{candidate?.status === "included" ? <small className={styles.subline}>Published figures change only after Save version.</small> : null}</td><td>{canEdit && candidate ? <div className={styles.rowActions}>
+            {candidate.status === "unreviewed" && candidate.eligible ? candidate.possible_row_ids?.length ? <Btn size="sm" disabled={Boolean(busyKey)} onClick={() => inspect(candidate.key)}>Review match</Btn> : <Btn size="sm" disabled={Boolean(busyKey)} onClick={() => void act(candidate, "include")}>{busyKey === candidate.key ? "Saving…" : "Add to draft"}</Btn> : candidate.status === "included" && candidate.row_id && onOpenDebt ? <Btn size="sm" onClick={() => onOpenDebt(candidate.row_id ?? undefined)}>Open row</Btn> : candidate.status === "disabled" ? <Btn size="sm" disabled={Boolean(busyKey)} onClick={() => void act(candidate, "restore")}>Restore</Btn> : null}
+            {!busyKey ? <span data-candidate-actions><PageActionMenu label={`Actions for ${payee.payee} ${payee.accounts.join(" ")}`} items={candidateActions(candidate)} /></span> : null}
+          </div> : <span className="sub">{candidate ? "Review only" : reviewQuery.isLoading ? "Loading…" : "Observed only"}</span>}</td></> : null}
+        </tr>)}</tbody>
+      </table>
+      {!rows.length ? <div className="fc-empty">No recurring payments match this selection.</div> : null}
+    </div>
+    <div className={styles.pagination}><span role="status">{rows.length ? `${displayed.page * 8 + 1}–${Math.min((displayed.page + 1) * 8, rows.length)} of ${rows.length}` : "0 rows"}</span><Btn size="sm" disabled={!displayed.page} onClick={() => setPage(displayed.page - 1)}>Previous</Btn><Btn size="sm" disabled={displayed.page + 1 >= displayed.pages} onClick={() => setPage(displayed.page + 1)}>Next</Btn></div>
+    </div>{inspected ? <aside className={styles.candidateInspector} aria-label="Statement candidate inspector">
+      <div className={styles.sectionHead}><h5 ref={inspectorHeading} tabIndex={-1}>{inspected.payee}</h5><Btn size="sm" onClick={closeInspector}>Close details</Btn></div>
+      <CellChip tone="mut">{candidateDecisionLabel(inspected)}</CellChip>
+      <p className={styles.note}>{inspected.reason}</p><p className={styles.note}>{inspected.accounts.join(", ") || "Account not identified"} · observed {money(inspected.monthly_average)} / month</p>
+      {inspected.related_rows?.length ? <div><strong>Related schedule rows</strong><ul className={styles.relatedRows}>{inspected.related_rows.slice(0, 5).map((row) => <li key={row.row_id}>{row.lender} · {row.status}</li>)}</ul><p className={styles.note}>A similar name is a suggestion; it does not confirm the same loan.</p></div> : null}
+      {inspected.status === "unreviewed" && existingRows.length > 0 && canEdit ? <div className={styles.linkExisting}>
+        <label>Existing obligation<select aria-label="Existing obligation for statement candidate" value={targetRow} onChange={(event) => setTargetRow(event.target.value)}><option value="">Choose an obligation…</option>{existingRows.map((row) => <option key={row.id} value={row.id}>{String(row.lender || "Unnamed obligation")}{inspected.possible_row_ids?.includes(row.id) ? " · possible match" : ""}</option>)}</select></label>
+        <Btn size="sm" disabled={!targetRow || Boolean(busyKey)} onClick={() => void act(inspected, "link_existing", targetRow)}>Link existing obligation</Btn>
+        <p className={styles.note}>Financial values on the existing row are kept. Several account observations can support one obligation.</p>
+      </div> : null}
+      {inspected.status === "unreviewed" && inspected.eligible && canEdit ? <Btn size="sm" disabled={Boolean(busyKey)} onClick={() => void act(inspected, "include")}>Add as a separate obligation</Btn> : null}
+      {inspected.status === "included" && inspected.row_id && onOpenDebt ? <Btn size="sm" onClick={() => onOpenDebt(inspected.row_id ?? undefined)}>Open linked schedule row</Btn> : null}
+      <div className={styles.candidateSources}><strong>Source evidence</strong>{inspected.source_refs.slice(0, 6).map((source, index) => source.file_id && onPreviewSource ? <button type="button" className={styles.textAction} key={`${source.file_id}:${source.page}:${index}`} onClick={() => onPreviewSource(source.file_id!, source.page ?? undefined)}>{source.file_name || `Statement ${index + 1}`}{source.month ? ` · ${monthShort(source.month)}` : ""}{source.page ? ` · p${source.page}` : ""}</button> : null)}</div>
+    </aside> : null}</div>
+  </section>;
 }
