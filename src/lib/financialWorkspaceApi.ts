@@ -26,7 +26,7 @@ export type FinancialImport = {
   id: string; kind: SheetKind; family_id: string; source_file_id: string; status: string;
   base_revision: number; proposed_body: FinancialBody;
   target_row_id?: string; role?: DebtDocumentRole;
-  mappings: Array<{ key: string; value: unknown; before?: unknown; conflict?: boolean; derived?: boolean; source: { file_id?: string; analysis_id?: string | null; content_hash?: string; page?: number; quote?: string; kind?: string; calculation?: string; multiplier?: string; derived_from?: Record<string, unknown> }; confidence: number | "high" | "needs_review" | null }>;
+  mappings: Array<{ key: string; value: unknown; before?: unknown; conflict?: boolean; derived?: boolean; source: { file_id?: string; analysis_id?: string | null; content_hash?: string; page?: number; sheet?: string; cell?: string; quote?: string; kind?: string; calculation?: string; multiplier?: string; derived_from?: Record<string, unknown> }; confidence: number | "high" | "needs_review" | null }>;
   warnings: string[];
 };
 export type DebtDocumentRole = "agreement" | "payoff" | "supporting";
