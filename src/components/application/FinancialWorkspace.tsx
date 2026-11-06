@@ -11,6 +11,8 @@ import { apiBase } from "@/lib/api";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "./Pfs413Form";
 import { DebtScheduleForm, type DebtRow } from "./DebtScheduleForm";
 import { BusinessStatementForm, type StatementBody, type StatementSchema } from "./BusinessStatementForm";
+import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
+import { realEstateTotals, type RealEstateBody, type RealEstateSchema } from "@/lib/realEstateSchedule";
 import { SheetGrid } from "@/components/sheet/SheetGrid";
 import { recompute, type SheetSchema } from "@/components/sheet/compute";
 import { planPaste } from "@/components/sheet/clipboard";
@@ -242,7 +244,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const computed = useMemo(() => {
     if (!snapshot) return {};
     const source = kind === "debt_schedule" ? financialValues({ ...body, debts: activeDebts }, sharedLayout ?? snapshot.worksheet.layout) : values;
-    return kind === "debt_schedule" ? financialDebtTotals(body) : recompute(kind, snapshot.schema as SheetSchema, source);
+    return kind === "debt_schedule" ? financialDebtTotals(body) : kind === "real_estate_schedule" ? realEstateTotals(body as RealEstateBody) : recompute(kind, snapshot.schema as SheetSchema, source);
   }, [activeDebts, body, kind, sharedLayout, snapshot, values]);
   const excludedIds = useMemo(() => new Set(debts.filter((row) => row.status === "dismissed" || row.status === "duplicate" || row.duplicate_of_id).map((row) => row.id)), [debts]);
   useEffect(() => { if (initialDebtId && excludedIds.has(initialDebtId)) setShowExcluded(true); }, [initialDebtId, excludedIds]);
@@ -256,10 +258,14 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     changeBody({ ...draftBody.current, no_debt: false, debts: [...rowsOf(draftBody.current), row] }); setSelectedDebt(row.id); setView("form");
   };
   const sections = kind === "pfs" ? ["About you", "Assets", "Liabilities", "Annual income", "Contingent liabilities", ...((snapshot?.schema as PfsSchema | undefined)?.schedules ?? []).map((section) => section.label)]
-    : kind === "p_and_l" || kind === "balance_sheet" ? ((snapshot?.schema as StatementSchema | undefined)?.sections ?? []).map((section) => section.label) : [];
+    : kind === "real_estate_schedule" ? ["Properties", "Mortgages", "Portfolio totals"] : kind === "p_and_l" || kind === "balance_sheet" ? ((snapshot?.schema as StatementSchema | undefined)?.sections ?? []).map((section) => section.label) : [];
   const jumpTo = (title: string) => {
     setView("form");
     requestAnimationFrame(() => {
+      if (kind === "real_estate_schedule") {
+        const tab = [...(formRef.current?.querySelectorAll<HTMLButtonElement>("button[data-res-section]") ?? [])].find((button) => button.dataset.resSection === title);
+        tab?.click(); tab?.scrollIntoView({ block: "start", behavior: "smooth" }); return;
+      }
       const heading = [...(formRef.current?.querySelectorAll("h3,h4,summary,label") ?? [])].find((element) => element.textContent?.trim().startsWith(title));
       if (heading) { const details = heading.closest("details"); if (details) details.open = true; heading.scrollIntoView({ block: "start", behavior: "smooth" }); }
     });
@@ -283,6 +289,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
                 const schedules = Object.fromEntries(Object.entries(next.schedules ?? {}).map(([key, rows]) => [key, rows.map((row) => ({ ...row, id: row.id || newId() }))]));
                 changeBody({ ...next, schedules });
               }} disabled={Boolean(busy)} />
+                : kind === "real_estate_schedule" ? <RealEstateScheduleForm schema={snapshot.schema as RealEstateSchema} value={body as RealEstateBody} onChange={(next) => changeBody(next as FinancialBody)} disabled={Boolean(busy)} />
                 : kind === "debt_schedule" ? <>
                   {selected ? <><DebtScheduleForm singleRow renderFieldSource={renderFieldSource} value={{ business_name: String(body.business_name ?? ""), debts: [{ ...selected, editable: true } as DebtRow] }} disabled={Boolean(busy) || excludedIds.has(selected.id)} onChange={(next) => {
                     if (!next.debts?.length) { debtAction({ op: "delete", row_id: selected.id }); return; }

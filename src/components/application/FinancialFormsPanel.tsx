@@ -28,7 +28,7 @@ import { FinancialWorkspace } from "./FinancialWorkspace";
 import { RequestFilesDialog } from "./RequestFilesDialog";
 import type { SheetKind } from "@/components/sheet/types";
 
-type FormKind = "pfs" | "debt_schedule" | StatementKind;
+type FormKind = "pfs" | "debt_schedule" | "real_estate_schedule" | StatementKind;
 
 /** What a link can be minted for: any one form, or the packet of all four. */
 type LinkKind = FormKind | "packet";
@@ -69,6 +69,9 @@ type FormStatus = {
   total_liabilities?: number | null;
   total_equity?: number | null;
   balances?: boolean | null;
+  estimated_value_total?: number | null;
+  mortgage_balance_total?: number | null;
+  estimated_equity?: number | null;
   /** The debt schedule only: the desk declared the business carries no debt. */
   voided?: { reason: string; by: string | null; by_user_id: string | null; at: string | null } | null;
 };
@@ -163,6 +166,13 @@ function summaryLines(form: FormStatus): string[] {
     return [
       `${form.row_count} obligation${form.row_count === 1 ? "" : "s"} · ${form.total_monthly == null ? "monthly payments incomplete" : `${currency(form.total_monthly)} a month`} · ${form.total_balance == null ? "balances incomplete" : `${currency(form.total_balance)} outstanding`}`,
     ];
+  }
+  if (form.kind === "real_estate_schedule") {
+    const parts = form.row_count ? [`${form.row_count} propert${form.row_count === 1 ? "y" : "ies"}`] : [];
+    if (form.estimated_value_total != null) parts.push(`Owner-estimated value ${currency(form.estimated_value_total)}`);
+    if (form.mortgage_balance_total != null) parts.push(`mortgages ${currency(form.mortgage_balance_total)}`);
+    if (parts.length) return [parts.join(" · ")];
+    if (form.statement_id && form.source === "none") return ["A draft has been started. Open it to carry on where it was left."];
   }
 
   // "Net income $X · EBITDA $Y · Jan–Jun 2026". EBITDA sits beside net income
@@ -271,6 +281,6 @@ export function FinancialFormsPanel({ profileId, intakeId, nested = false, onCha
     {shareOpen ? <ShareWorksheetDialog open profileId={fileId} onClose={() => setShareOpen(false)} /> : null}
     {requestOpen ? <RequestFilesDialog open profileId={fileId} onClose={() => setRequestOpen(false)} onRequested={() => { void load(); onChange?.(); }} /> : null}
   </>;
-  const blurb = "A profit and loss statement, balance sheet, business debt schedule, and personal financial statement, each with one shared workspace and dated versions.";
+  const blurb = "Profit and loss, balance sheet, business debt schedule, personal financial statement, and real estate schedule, each with one shared workspace and dated versions.";
   return nested ? <div className="grid g10 mt"><div><strong>Financial forms</strong><div className="sub">{blurb}</div></div>{body}</div> : <Panel title="Financial forms" sub={blurb} bodyClass="grid g10">{body}</Panel>;
 }

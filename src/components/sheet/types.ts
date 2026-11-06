@@ -3,7 +3,7 @@
 // sparse cell map — and every row's `r` and every named cell's `xlsx_name`
 // are the same numbers and names the downloadable workbook writes. No React.
 
-export type SheetKind = "p_and_l" | "balance_sheet" | "debt_schedule" | "pfs";
+export type SheetKind = "p_and_l" | "balance_sheet" | "debt_schedule" | "pfs" | "real_estate_schedule";
 
 export type CellType = "label" | "text" | "money" | "date" | "select" | "rate" | "formula";
 

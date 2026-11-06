@@ -4,7 +4,7 @@
 
 import type { ApplicationRequirement } from "@/lib/applicationProfile";
 
-export type FormKind = "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet";
+export type FormKind = "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule";
 
 export type FormAnswerLine = { label: string; value: string; amount: number | null; note: string | null };
 export type FormAnswerSection = {
@@ -41,6 +41,7 @@ const BY_CLASSIFICATION: Record<string, FormKind> = {
   debt_schedule: "debt_schedule",
   current_p_and_l: "p_and_l",
   balance_sheet: "balance_sheet",
+  real_estate_schedule: "real_estate_schedule",
 };
 
 const FORM_LABELS: Record<FormKind, string> = {
@@ -48,6 +49,7 @@ const FORM_LABELS: Record<FormKind, string> = {
   debt_schedule: "debt schedule",
   p_and_l: "profit and loss",
   balance_sheet: "balance sheet",
+  real_estate_schedule: "real estate schedule",
 };
 
 export function formLabel(kind: FormKind): string {

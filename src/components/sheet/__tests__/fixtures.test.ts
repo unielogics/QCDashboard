@@ -60,7 +60,7 @@ export const DEBT_CASE: { values: SheetValues; expected: Record<string, number> 
 
 /** `sheet_layout.compute_keys(kind)`: the totals entries each sheet's formula cells show. */
 
-export const COMPUTE_KEYS: Record<SheetKind, string[]> = {"p_and_l":["gross_profit","total_operating_expenses","operating_income","net_income","ebitda","owner_compensation"],"balance_sheet":["total_current_assets","total_fixed_assets","total_other_assets","total_assets","total_current_liabilities","total_long_term_liabilities","total_liabilities","total_equity","total_liabilities_and_equity","imbalance"],"debt_schedule":["total_balance","total_monthly_payment"],"pfs":["total_assets","total_liabilities","net_worth","total_income","total_contingent"]};
+export const COMPUTE_KEYS: Record<Exclude<SheetKind, "real_estate_schedule">, string[]> = {"p_and_l":["gross_profit","total_operating_expenses","operating_income","net_income","ebitda","owner_compensation"],"balance_sheet":["total_current_assets","total_fixed_assets","total_other_assets","total_assets","total_current_liabilities","total_long_term_liabilities","total_liabilities","total_equity","total_liabilities_and_equity","imbalance"],"debt_schedule":["total_balance","total_monthly_payment"],"pfs":["total_assets","total_liabilities","net_worth","total_income","total_contingent"]};
 
 /** `pfs_schema._amount(text)` on the server, as a float. */
 

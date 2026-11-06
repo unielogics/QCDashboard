@@ -49,6 +49,8 @@ import {
   type StatementSchema,
 } from "@/components/application/BusinessStatementForm";
 import { DebtScheduleForm, type DebtBody, type DebtRow } from "@/components/application/DebtScheduleForm";
+import { RealEstateScheduleForm } from "@/components/application/RealEstateScheduleForm";
+import { realEstateBodyFromValues, realEstateValues, type RealEstateBody, type RealEstateSchema } from "@/lib/realEstateSchedule";
 import {
   Pfs413Form,
   scheduleFields,
@@ -93,6 +95,7 @@ const TITLES: Record<SheetKind, string> = {
   balance_sheet: "Balance sheet",
   debt_schedule: "Debt schedule",
   pfs: "Personal financial statement",
+  real_estate_schedule: "Real estate schedule",
 };
 
 /** The stacked branch's autosave. Longer than the grid's 700ms because a
@@ -120,6 +123,7 @@ type Phase =
 // ---------------------------------------------------------------------------
 
 type Values = Record<string, string>;
+type PhoneFormBody = StatementBody | PfsBody | DebtBody | RealEstateBody;
 
 /** The applicant block on the 413. `statement_date` is the cell key; `as_of`
  *  is where it is stored — see `sheet_layout.PFS_AS_OF_KEY`. */
@@ -145,7 +149,8 @@ function debtColumns(sheet: WorksheetSheet): string[] {
 }
 
 /** The body one stacked form takes, built from the flat values. */
-function bodyFor(sheet: WorksheetSheet, values: Values): StatementBody | PfsBody | DebtBody {
+function bodyFor(sheet: WorksheetSheet, values: Values): PhoneFormBody {
+  if (sheet.kind === "real_estate_schedule") return realEstateBodyFromValues(sheet.rows ?? [], values);
   if (sheet.kind === "p_and_l" || sheet.kind === "balance_sheet") {
     return statementBody(sheet.schema as StatementSchema, values);
   }
@@ -203,8 +208,9 @@ function bodyFor(sheet: WorksheetSheet, values: Values): StatementBody | PfsBody
 }
 
 /** The inverse: the flat values a body implies. */
-function flattenBody(sheet: WorksheetSheet, body: StatementBody | PfsBody | DebtBody): Values {
+function flattenBody(sheet: WorksheetSheet, body: PhoneFormBody): Values {
   const out: Values = {};
+  if (sheet.kind === "real_estate_schedule") return realEstateValues(body as RealEstateBody, sheet.schema as RealEstateSchema);
   if (sheet.kind === "p_and_l" || sheet.kind === "balance_sheet") {
     const schema = sheet.schema as StatementSchema;
     const statement = body as StatementBody;
@@ -251,7 +257,8 @@ function flattenBody(sheet: WorksheetSheet, body: StatementBody | PfsBody | Debt
 }
 
 /** The identities of a sheet's list rows, in order. */
-function rowKeys(sheet: WorksheetSheet, body: StatementBody | PfsBody | DebtBody): string[] {
+function rowKeys(sheet: WorksheetSheet, body: PhoneFormBody): string[] {
+  if (sheet.kind === "real_estate_schedule") return (["properties", "mortgages"] as const).flatMap((block) => ((body as RealEstateBody)[block] ?? []).map((row, index) => `${block}:${rowKeyOf(row, index + 1)}`));
   if (sheet.kind === "debt_schedule") {
     return ((body as DebtBody).debts ?? []).map((row, index) => rowKeyOf(row, index + 1));
   }
@@ -792,8 +799,8 @@ function StackedWorksheet({
   onRowOp: (op: WorksheetRowOp) => Promise<unknown>;
 }) {
   const sheet = sheets.find((one) => one.kind === active) ?? sheets[0];
-  const [draft, setDraft] = useState<StatementBody | PfsBody | DebtBody | null>(null);
-  const draftRef = useRef<StatementBody | PfsBody | DebtBody | null>(null);
+  const [draft, setDraft] = useState<PhoneFormBody | null>(null);
+  const draftRef = useRef<PhoneFormBody | null>(null);
   draftRef.current = draft;
 
   // A new tab, or a row list the server replaced, resets the local draft to
@@ -824,7 +831,7 @@ function StackedWorksheet({
    *  in the diff the next time round. Re-sending a value the file already
    *  holds is idempotent, which is the cheap half of that trade. */
   const flush = useCallback(
-    async (body: StatementBody | PfsBody | DebtBody) => {
+    async (body: PhoneFormBody) => {
       if (!sheet || !canEdit) return;
       const edits = diffEdits(sheet.kind, sheet.values, flattenBody(sheet, body));
       if (edits.length === 0) return;
@@ -842,7 +849,7 @@ function StackedWorksheet({
     return () => window.clearTimeout(timer);
   }, [draft, canEdit, flush]);
 
-  const change = (next: StatementBody | PfsBody | DebtBody) => {
+  const change = (next: PhoneFormBody) => {
     if (!sheet) return;
     // A row that carried a real identity and is now gone was deleted, not
     // emptied — a blanked debt row is still an obligation on the file, and
@@ -899,6 +906,8 @@ function StackedWorksheet({
           <ReadOnlySheet sheet={sheet} />
         ) : sheet.kind === "debt_schedule" ? (
           <DebtScheduleForm value={draft as DebtBody} onChange={change} />
+        ) : sheet.kind === "real_estate_schedule" ? (
+          <RealEstateScheduleForm schema={sheet.schema as RealEstateSchema} value={draft as RealEstateBody} onChange={change} />
         ) : sheet.kind === "pfs" ? (
           <Pfs413Form schema={sheet.schema as PfsSchema} value={draft as PfsBody} onChange={change} />
         ) : (

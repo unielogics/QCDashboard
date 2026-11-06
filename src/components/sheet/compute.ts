@@ -14,11 +14,12 @@ import { computePfsTotals, type PfsTotalsInput } from "@/lib/pfsTotals";
 import { parseMoney } from "./money";
 import type { ComputedValues, SheetKind, SheetValues } from "./types";
 import { debtMonthlyEquivalent } from "@/lib/debtPaymentTerms";
+import { realEstateTotalsFromValues, type RealEstateSchema } from "@/lib/realEstateSchedule";
 
 /** What the 413 sheet ships alongside its rows: `pfs_schema.describe()`. */
 export type PfsSheetSchema = PfsTotalsInput & { schema_version?: string };
 
-export type SheetSchema = StatementSchema | PfsSheetSchema;
+export type SheetSchema = StatementSchema | PfsSheetSchema | RealEstateSchema;
 
 /** The statement body `computeStatementTotals` reads, from flat values: the
  *  schema says which keys are header fields and which section each line
@@ -87,6 +88,8 @@ export function recompute(kind: SheetKind, schema: SheetSchema | null | undefine
       if (!schema || !("assets" in schema)) return {};
       return pfsTotals(schema, values);
     }
+    case "real_estate_schedule":
+      return realEstateTotalsFromValues(values);
     default:
       return {};
   }

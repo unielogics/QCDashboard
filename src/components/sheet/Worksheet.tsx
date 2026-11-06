@@ -98,7 +98,7 @@ export type WorksheetProps = {
   onController?: (controller: { flush: () => Promise<void> } | null) => void;
 };
 
-const LIST_SHEETS: SheetKind[] = ["debt_schedule", "pfs"];
+const LIST_SHEETS: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule"];
 
 function toPayload(sheet: WorksheetSheetInput): SheetPayload {
   return {

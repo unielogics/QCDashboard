@@ -39,8 +39,8 @@ export type DebtAction = {
 };
 
 const root = (profileId: string) => `/application-profiles/${encodeURIComponent(profileId)}/financial-workspace`;
-export const FINANCIAL_LABELS: Record<SheetKind, string> = { debt_schedule: "Business debt schedule", pfs: "Personal financial statement", p_and_l: "Profit and loss", balance_sheet: "Balance sheet" };
-export const FINANCIAL_ORDER: SheetKind[] = ["debt_schedule", "pfs", "p_and_l", "balance_sheet"];
+export const FINANCIAL_LABELS: Record<SheetKind, string> = { debt_schedule: "Business debt schedule", pfs: "Personal financial statement", p_and_l: "Profit and loss", balance_sheet: "Balance sheet", real_estate_schedule: "Real estate schedule" };
+export const FINANCIAL_ORDER: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule", "p_and_l", "balance_sheet"];
 export function readFinancialWorkspace(api: AuthedApi, profileId: string, kind: SheetKind, familyId?: string) {
   const query = new URLSearchParams({ kind });
   if (familyId) query.set("family_id", familyId);
@@ -104,7 +104,7 @@ export function financialValues(body: FinancialBody, layout: SheetLayout): Sheet
 }
 /** Reconcile list identities immediately, including excluded debts omitted by the published layout. */
 export function financialLayout(body: FinancialBody, source: SheetLayout): SheetLayout {
-  if (source.kind !== "debt_schedule" && source.kind !== "pfs") return source;
+  if (source.kind !== "debt_schedule" && source.kind !== "pfs" && source.kind !== "real_estate_schedule") return source;
   if (source.kind === "debt_schedule") {
     const fields = ["lender", "debt_type", "original_amount", "balance", "rate", "monthly_payment", "originated_on", "maturity_on", "secured", "payment_status", "collateral", "mca_modified", "mca_modification_note", "notes", "factor_rate", "payment_amount", "payment_frequency"];
     const old = source.rows.filter((row) => row.kind === "data" && row.block === "debts");
@@ -123,7 +123,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
     const after = source.rows.filter((row) => row.r >= first && row.kind !== "data").map((row, index) => ({ ...row, r: first + data.length + index }));
     return { ...source, rows: [...before, ...data, ...after] };
   }
-  const schedules = (body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
+  const schedules = (source.kind === "real_estate_schedule" ? body : body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
   const next: SheetRow[] = [];
   const handled = new Set<string>();
   let offset = 0;
@@ -138,7 +138,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
       const id = String(entries[index]?.id ?? entries[index]?.row_id ?? `r${index + 1}`);
       next.push({ ...row, r: row.r + offset + index, row_key: id, ordinal: index + 1, cells: row.cells?.map((cell) => {
         if (!cell.path || !cell.key) return cell;
-        const path = [...cell.path]; path[2] = id;
+        const path = [...cell.path]; path[source.kind === "real_estate_schedule" ? 1 : 2] = id;
         return { ...cell, key: `${row.block}.${id}.${path.at(-1)}`, path };
       }) });
     }
@@ -162,7 +162,7 @@ export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, ed
         node = node[index];
       } else if (node && typeof node === "object") {
         const object = node as Record<string, unknown>;
-        if (!object[key]) object[key] = key === "debts" || path[0] === "schedules" && at === 1 ? [] : {};
+        if (!object[key]) object[key] = ["debts", "properties", "mortgages"].includes(key) || path[0] === "schedules" && at === 1 ? [] : {};
         node = object[key];
       }
     }
