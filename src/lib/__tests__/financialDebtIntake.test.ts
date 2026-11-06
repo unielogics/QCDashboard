@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { applyDebtIntake, canDraftDebtIntake, debtIntakeIsEmpty, debtIntakeValue, hasPendingDebtIntakeReview, proposeDebtIntake, type DebtIntakeReview } from "../financialDebtIntake";
+import { applyDebtIntake, canDraftDebtIntake, debtIntakeIsEmpty, debtIntakeObservedWithdrawals, debtIntakeValue, hasPendingDebtIntakeReview, proposeDebtIntake, type DebtIntakeReview } from "../financialDebtIntake";
 import type { FinancialWorkspaceSnapshot } from "../financialWorkspaceApi";
 
 const workspace = (extra: Partial<FinancialWorkspaceSnapshot> = {}) => ({ family_id: "family", body: { debts: [] }, draft: { revision: 4 }, completion: { complete: false }, accepted_completion: null, ...extra } as FinancialWorkspaceSnapshot);
@@ -31,5 +31,14 @@ describe("debt schedule intake", () => {
     await applyDebtIntake(api, "profile", review, ["reviewed-one"], "same-attempt");
     expect(JSON.parse(api.mock.calls[1][1].body)).toEqual({ family_id: "family", mode: "documents", expected_revision: 4, selected_ids: ["reviewed-one"], idempotency_key: "same-attempt" });
     expect(api.mock.calls.every(([path]) => !path.includes("versions"))).toBe(true);
+  });
+  it("shows statement observations separately without inventing contractual payments", () => {
+    const body = { id: "observation", monthly_payment: undefined, evidence: { observed_monthly_average: 1200.5 } };
+    expect(debtIntakeObservedWithdrawals(body)).toBe(1200.5);
+    expect(body.monthly_payment).toBeUndefined();
+    expect(debtIntakeObservedWithdrawals({ ...body, evidence: { observed_monthly_average: 0 } })).toBe(0);
+    expect(debtIntakeObservedWithdrawals({ ...body, evidence: { observed_monthly_average: "0" } })).toBe(0);
+    for (const value of [null, undefined, "", "unknown", false, Infinity]) expect(debtIntakeObservedWithdrawals({ ...body, evidence: { observed_monthly_average: value } })).toBeNull();
+    expect(debtIntakeObservedWithdrawals({ id: "contract", monthly_payment: "500" })).toBeNull();
   });
 });

@@ -6,7 +6,7 @@ import { Btn, Callout, CellChip } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { useEmailDebtScheduleLink } from "@/hooks/useDebtScheduleReview";
-import { applyDebtIntake, canDraftDebtIntake, debtIntakeValue, hasPendingDebtIntakeReview, proposeDebtIntake, type DebtIntakeMode, type DebtIntakeReview } from "@/lib/financialDebtIntake";
+import { applyDebtIntake, canDraftDebtIntake, debtIntakeObservedWithdrawals, debtIntakeValue, hasPendingDebtIntakeReview, proposeDebtIntake, type DebtIntakeMode, type DebtIntakeReview } from "@/lib/financialDebtIntake";
 import { isFinancialDraftConflict, type FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
 import styles from "./DebtScheduleReadback.module.css";
 
@@ -81,12 +81,15 @@ export function DebtScheduleIntakeActions({ profileId, workspace, onApplied, bef
       <p className={styles.note}>{review.source_count} source files checked. Select only obligations that belong to this business. Nothing is published during this review.</p>
       {review.blocked_reason ? <Callout tone="warn">{review.blocked_reason}</Callout> : null}
       {review.warnings.map((warning, index) => <p key={index} className={styles.note}>{warning}</p>)}
-      {!review.proposals.length ? <p className={styles.guidance}>No eligible obligations were found. Upload contracts or payoff letters, try banking, or ask the client to fill the form.</p> : <ul className={styles.proposals}>{review.proposals.map((proposal) => <li key={proposal.id}>
+      {!review.proposals.length ? <p className={styles.guidance}>No eligible obligations were found. Upload contracts or payoff letters, try banking, or ask the client to fill the form.</p> : <ul className={styles.proposals}>{review.proposals.map((proposal) => {
+        const observed = debtIntakeObservedWithdrawals(proposal.body);
+        return <li key={proposal.id}>
         <label className={styles.proposalChoice}><input type="checkbox" aria-label={`Add ${proposal.lender} to working schedule`} checked={selected.includes(proposal.id)} disabled={disabled || !proposal.eligible || Boolean(review.blocked_reason) || conflict} onChange={(event) => { setSelected((current) => event.target.checked ? [...current, proposal.id] : current.filter((id) => id !== proposal.id)); attempt.current = null; }} /><strong>{proposal.lender || "Lender not identified"}</strong><CellChip tone={proposal.eligible ? "acc" : "mut"}>{proposal.eligible ? "Review" : "Unavailable"}</CellChip></label>
         <p className={styles.note}>{proposal.reason}</p><p className={styles.note}>{proposal.file_names.join(" · ") || "Source document not identified"}</p>
         <p className={styles.note}>Balance: {debtIntakeValue(proposal.body.balance)} · Monthly payment: {debtIntakeValue(proposal.body.monthly_payment)}</p>
+        {observed != null ? <p className={styles.note}>Observed recurring withdrawals: {observed.toLocaleString(undefined, { style: "currency", currency: "USD" })}/month (statement estimate; confirm debt terms)</p> : null}
         {proposal.warnings.map((warning, index) => <p key={index} className={styles.note}>{warning}</p>)}
-      </li>)}</ul>}
+      </li>; })}</ul>}
       <div className={styles.actions}><Btn variant="pri" size="sm" disabled={disabled || !selected.length || Boolean(review.blocked_reason) || conflict} onClick={() => void apply()}>Add {selected.length || "selected"} to working schedule</Btn><span className={styles.note}>Save version remains a separate step.</span></div>
     </div> : null}
   </section>;

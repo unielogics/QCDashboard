@@ -15,6 +15,13 @@ export function hasPendingDebtIntakeReview(workspace: FinancialWorkspaceSnapshot
 export function debtIntakeValue(value: unknown) {
   return value == null || String(value).trim() === "" ? "needed" : String(value);
 }
+export function debtIntakeObservedWithdrawals(body: FinancialDebtRow): number | null {
+  const evidence = body.evidence as { observed_monthly_average?: unknown } | null | undefined;
+  const raw = evidence?.observed_monthly_average;
+  if (typeof raw !== "number" && (typeof raw !== "string" || !raw.trim())) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : null;
+}
 export function debtIntakeIsEmpty(workspace: FinancialWorkspaceSnapshot) {
   return !meaningfulFinancialDebts(workspace.body).length && canDraftDebtIntake(workspace);
 }
