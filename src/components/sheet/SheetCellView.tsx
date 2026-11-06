@@ -173,6 +173,7 @@ function SheetCellViewInner({
       ) : (
         <>
           <span className="sg-text">{shown.text}</span>
+          {editable && cell?.type === "select" && cell.options?.length ? <span aria-hidden="true" style={{ marginLeft: "auto", color: "var(--muted)", paddingLeft: 5 }}>▾</span> : null}
           {shown.warn ? <span className="sg-flag" aria-hidden="true" /> : null}
           {mark ? (
             <span
@@ -302,6 +303,7 @@ function CellEditor({
       <select
         ref={selectRef}
         className="field sg-editor"
+        style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
         value={draft}
         onChange={(event) => {
           setDraft(event.target.value);
@@ -327,6 +329,7 @@ function CellEditor({
     <input
       ref={inputRef}
       className="field sg-editor"
+      style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
       type={cell?.type === "date" ? "date" : "text"}
       inputMode={cell?.type === "money" || cell?.type === "rate" ? "decimal" : undefined}
       value={draft}

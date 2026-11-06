@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { addFinancialDebtDraft, financialDebtEntrySelection, financialDebtNavigationRows, financialWorkspaceEntryView, isBlankFinancialDebt } from "../financialWorkspaceEntry";
+import { addFinancialDebtDraft, financialDebtEntrySelection, financialDebtNavigationRows, financialWorkspaceEntryView, isBlankFinancialDebt, newFinancialDebtEntry, commitFinancialDebtEntry, financialDebtChoiceLabel } from "../financialWorkspaceEntry";
 import { financialDebtTotals, financialLayout, meaningfulFinancialDebts, applyFinancialCells, type FinancialBody, type FinancialDebtRow } from "../financialWorkspaceApi";
 import type { SheetLayout } from "@/components/sheet/types";
 
@@ -8,14 +8,55 @@ const blank: FinancialDebtRow = { id: "old-blank", status: "active", lender: "",
 const body = (rows = [...lenders, blank]): FinancialBody => ({ business_name: "Example therapy", debts: rows });
 
 describe("debt schedule entry", () => {
+  it("distinguishes separate loans at one lender without exposing storage IDs", () => {
+    const first = financialDebtChoiceLabel({ id: "private-storage-id-1", lender: "SBA", balance: "1000", monthly_payment: "25" }, 1);
+    const second = financialDebtChoiceLabel({ id: "private-storage-id-2", lender: "SBA", balance: "2000", monthly_payment: "50" }, 2);
+    expect(first).toContain("Row 1 · SBA"); expect(second).toContain("Row 2 · SBA");
+    expect(first).not.toBe(second); expect(first).not.toContain("private-storage");
+  });
+  it("provides categorical dropdowns while leaving dates, rates and amounts manually editable", () => {
+    const source: SheetLayout = { kind: "debt_schedule", title: "Debt", schema_version: "v1", layout_version: "v1", name_prefix: "ds", freeze: [1, 1], columns: Array.from({ length: 17 }, (_, index) => ({ c: index + 1 })), rows: [{ r: 1, kind: "colhead", cells: [] }] };
+    const current = { debts: [{ id: "sba", lender: "SBA", debt_type: "sba_loan", secured: "legacy security", mca_modified: "yes", mca_modification_note: "Old advance note" }] };
+    const layout = financialLayout(current, source); const row = layout.rows.find((item) => item.row_key === "sba")!;
+    const cell = (field: string) => row.cells!.find((item) => item.path?.at(-1) === field)!;
+    for (const field of ["debt_type", "secured", "payment_status", "payment_frequency", "mca_modified"]) expect(cell(field).type).toBe("select");
+    expect(cell("debt_type").option_labels?.sba_loan).toBe("SBA loan");
+    expect(cell("secured").options).toContain("legacy security");
+    expect(cell("originated_on").type).toBe("date"); expect(cell("maturity_on").type).toBe("date");
+    expect(cell("rate").type).toBe("rate"); expect(cell("balance").type).toBe("money");
+    const updated = applyFinancialCells(current, layout, [{ sheet: "debt_schedule", key: "sba.debt_type", value: "term_loan" }]);
+    expect((updated.debts as FinancialDebtRow[])[0]).toMatchObject({ debt_type: "term_loan", mca_modified: "", mca_modification_note: "" });
+  });
+  it("keeps a new popup entry local until explicit commit and leaves cancelled entries out", () => {
+    const current = body(); const before = structuredClone(current);
+    const entry = newFinancialDebtEntry(current, () => "unused"); entry.lender = "New SBA lender";
+    expect(current).toEqual(before);
+    const saved = commitFinancialDebtEntry(current, { ...entry, debt_type: "sba_loan", balance: "5000", monthly_payment: "100" });
+    expect(meaningfulFinancialDebts(saved)).toHaveLength(lenders.length + 1);
+    expect(meaningfulFinancialDebts(current)).toHaveLength(lenders.length);
+    const cancelled = newFinancialDebtEntry(saved, () => "cancelled"); cancelled.lender = "Never saved";
+    expect((saved.debts as FinancialDebtRow[]).some((row) => row.id === "cancelled")).toBe(false);
+  });
+  it("saves multiple new SBA loans without fixed row counts, phantom blanks, or replacing older loans", () => {
+    let current = body(lenders); let sequence = 0;
+    for (let index = 0; index < 3; index++) {
+      const entry = newFinancialDebtEntry(current, () => `sba-${++sequence}`);
+      current = commitFinancialDebtEntry(current, { ...entry, lender: "SBA lender", debt_type: "sba_loan", balance: `${1000 + index}`, monthly_payment: "25" });
+    }
+    expect(meaningfulFinancialDebts(current)).toHaveLength(lenders.length + 3);
+    expect((current.debts as FinancialDebtRow[]).slice(0, lenders.length)).toEqual(lenders);
+    expect((current.debts as FinancialDebtRow[]).filter(isBlankFinancialDebt)).toEqual([]);
+    expect(() => commitFinancialDebtEntry(current, { id: "empty", lender: "", status: "active" })).toThrow("Enter loan details");
+    expect(() => commitFinancialDebtEntry(current, { id: lenders[0].id, lender: "Overwrite" })).toThrow("already exists");
+  });
   it("opens normal Edit as the existing schedule worksheet rather than a blank form", () => {
     expect(financialWorkspaceEntryView("debt_schedule")).toBe("worksheet");
     expect(financialWorkspaceEntryView("debt_schedule", "form")).toBe("worksheet");
     expect(financialWorkspaceEntryView("debt_schedule", "worksheet")).toBe("worksheet");
   });
-  it("opens an explicit lender in Form while preserving source and history links", () => {
-    expect(financialWorkspaceEntryView("debt_schedule", undefined, "loan-2")).toBe("form");
-    expect(financialWorkspaceEntryView("debt_schedule", "worksheet", "loan-2")).toBe("form");
+  it("keeps a selected lender in Worksheet while preserving source and history links", () => {
+    expect(financialWorkspaceEntryView("debt_schedule", undefined, "loan-2")).toBe("worksheet");
+    expect(financialWorkspaceEntryView("debt_schedule", "worksheet", "loan-2")).toBe("worksheet");
     expect(financialWorkspaceEntryView("debt_schedule", "pdf", "loan-2")).toBe("pdf");
     expect(financialWorkspaceEntryView("debt_schedule", "history")).toBe("history");
   });

@@ -83,6 +83,8 @@ export type SheetGridProps = {
   onRemoveRow?: (row: { rowKey: string; block: string; label: string }) => void;
   /** An optional row-level reference column, separate from editable financial cells. */
   rowDetails?: { label: string; width?: number; render: (row: SheetRow) => ReactNode };
+  focusRow?: { rowKey: string; requestId: number };
+  onFocusedRow?: (requestId: number) => void;
 };
 
 const MIN_COL = 72;
@@ -125,7 +127,7 @@ function columnTemplate(layout: SheetLayout, rowEnd: boolean, detailsWidth = 0):
   // that use it, because `--sg-cols` is the whole grid's template: a row with
   // one track fewer would put its own columns out of step with the headings.
   if (rowEnd) tracks.push(`${ROW_END_PX}px`);
-  if (detailsWidth) tracks.push(`${detailsWidth}px`);
+  if (detailsWidth) tracks.push(`var(--sg-details-track, ${detailsWidth}px)`);
   return tracks.join(" ");
 }
 
@@ -306,6 +308,8 @@ export function SheetGrid({
   onNotice,
   onRemoveRow,
   rowDetails,
+  focusRow,
+  onFocusedRow,
 }: SheetGridProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const catcherRef = useRef<HTMLTextAreaElement | null>(null);
@@ -317,6 +321,16 @@ export function SheetGrid({
     [layout, values, canEdit, lockedRows],
   );
   const { state, dispatch, read } = useSelection(ctx);
+  const focusedRequest = useRef<number | null>(null);
+  useEffect(() => {
+    if (!focusRow || focusedRequest.current === focusRow.requestId) return;
+    const row = layout.rows.find((item) => item.row_key === focusRow.rowKey);
+    const cell = row?.cells?.find((item) => item.key);
+    if (!row || !cell) return;
+    focusedRequest.current = focusRow.requestId; wantsFocus.current = true;
+    dispatch({ type: "select", addr: { r: row.r, c: cell.c }, extend: false });
+    onFocusedRow?.(focusRow.requestId);
+  }, [dispatch, focusRow, layout, onFocusedRow]);
 
   const index = useMemo(() => indexFormulas(layout), [layout]);
   const blanks = useMemo(() => blankFormulaNames(index, values), [index, values]);
@@ -545,8 +559,14 @@ export function SheetGrid({
         return;
       }
       dispatch({ type: "select", addr, extend: event.shiftKey });
+      const cell = cellAt(layout, addr);
+      if (!event.shiftKey && cell?.type === "select" && cell.options?.length && editableAt(rowAt(layout, addr.r), cell)) {
+        event.preventDefault();
+        dragging.current = false;
+        dispatch({ type: "edit", addr, seed: null });
+      }
     },
-    [dispatch, state.editing],
+    [dispatch, editableAt, layout, state.editing],
   );
 
   const onMouseOver = useCallback(
@@ -616,7 +636,7 @@ export function SheetGrid({
   // (below it the box scrolls sideways) and the width a short sheet is
   // measured against before the page cap centres it.
   const wrapStyle = useMemo(
-    () => ({ ["--sg-natural" as string]: `${naturalPx(layout, rowEnd, detailsWidth)}px` }) as CSSProperties,
+    () => ({ ["--sg-natural" as string]: detailsWidth ? `calc(${naturalPx(layout, rowEnd)}px + var(--sg-details-track, ${detailsWidth}px))` : `${naturalPx(layout, rowEnd)}px` }) as CSSProperties,
     [detailsWidth, layout, rowEnd],
   );
   const bounds = useMemo(() => normalizeRange(state.anchor, state.active), [state.anchor, state.active]);
@@ -644,7 +664,7 @@ export function SheetGrid({
         onDoubleClick={onDoubleClick}
       >
         {layout.rows.map((row, rowIndex) => (
-          <div key={row.r} role="row" aria-rowindex={rowIndex + 1} className={cx("sg-row", `sg-r-${row.kind}`)}>
+          <div key={row.r} role="row" data-row-key={row.row_key ?? undefined} aria-rowindex={rowIndex + 1} className={cx("sg-row", `sg-r-${row.kind}`)}>
             {renderRow(row, rowIndex)}
           </div>
         ))}

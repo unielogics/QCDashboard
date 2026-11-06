@@ -149,6 +149,7 @@ export function DebtScheduleForm({
   singleRow = false,
   scheduleCompletion = false,
   renderFieldSource,
+  rowEntry = false,
 }: {
   value: DebtBody;
   onChange: (next: DebtBody) => void;
@@ -160,6 +161,7 @@ export function DebtScheduleForm({
   /** Use the current shared schedule's lender/balance/payment completion rule. */
   scheduleCompletion?: boolean;
   renderFieldSource?: (row: DebtRow, field: keyof DebtRow) => ReactNode;
+  rowEntry?: boolean;
 }) {
   const rows = useMemo(() => value.debts ?? [], [value.debts]);
   const setRows = (next: DebtRow[]) => onChange({ ...value, debts: next, ...(next.length ? { no_debt: false } : {}) });
@@ -201,7 +203,7 @@ export function DebtScheduleForm({
 
   return (
     <div className="fp-stack">
-      <div className="fp-field">
+      {!rowEntry ? <div className="fp-field">
         <label htmlFor="fp-business-name">Business name</label>
         <input
           id="fp-business-name"
@@ -210,7 +212,7 @@ export function DebtScheduleForm({
           onChange={(event) => onChange({ ...value, business_name: event.target.value })}
           placeholder="The business these obligations belong to"
         />
-      </div>
+      </div> : null}
 
       <p className="fp-legend">
         <em className="fp-req" aria-hidden="true">
@@ -262,7 +264,7 @@ export function DebtScheduleForm({
                   </span>
                 ) : null}
               </div>
-              <button
+              {!rowEntry ? <button
                 type="button"
                 className="fp-icon-btn"
                 disabled={locked}
@@ -270,7 +272,7 @@ export function DebtScheduleForm({
                 onClick={() => remove(index)}
               >
                 <Icon name="x" size={14} />
-              </button>
+              </button> : null}
             </header>
 
             <div className="fp-grid">

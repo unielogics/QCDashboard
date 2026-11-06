@@ -1,0 +1,19 @@
+.gridRowActions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
+.gridRowActions > button { min-height: 28px; padding: 4px 6px; font-size: 10px; }
+.duplicatePicker, .uploadLinks { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.duplicatePicker p { margin: 0; font-size: 12px; color: var(--muted); }
+.uploadLink { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 230px); gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.uploadLink label { overflow-wrap: anywhere; }
+.imagePreview { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 12px; min-height: 350px; padding: 12px; overflow: auto; background: var(--sunken2); }
+.imagePreview img { max-width: 100%; height: auto; object-fit: contain; }
+.imagePreview a { font-size: 12px; }
+.sourceDetails { margin: 0; display: grid; gap: 12px; }
+.sourceDetails > div { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(0, 1.2fr); gap: 10px; padding-bottom: 10px; border-bottom: 1px solid var(--line); }
+.sourceDetails dt { color: var(--muted); font-size: 11px; }
+.sourceDetails dd { margin: 0; display: grid; gap: 5px; overflow-wrap: anywhere; font-size: 12px; }
+.newRowForm :global(.fp-stack) { max-width: none; }
+@media (max-width: 650px) { .uploadLink { grid-template-columns: minmax(0, 1fr); } }
+@media (max-width: 700px) {
+  .worksheet :global(.sg-wrap) { --sg-details-track: 150px; }
+  .worksheet :global(.sg-row-details) { position: static; }
+}
