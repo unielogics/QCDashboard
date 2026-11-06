@@ -157,31 +157,83 @@ export function uniqueMovementEvidence(movements: AccountMovement[], limit = 6):
 }
 
 export type MovementPosition = { key: string; x: number; y: number };
+export const MOVEMENT_ACCOUNT_SIZE = { width: 248, height: 188 } as const;
+
 export function movementLayout(keys: string[]): { width: number; height: number; positions: MovementPosition[] } {
   const sorted = [...new Set(keys)].sort();
-  const width = sorted.length > 6 ? 1000 : 760;
-  const height = sorted.length > 6 ? Math.ceil(sorted.length / 4) * 190 + 55 : sorted.length > 3 ? 510 : sorted.length === 3 ? 450 : 280;
+  const width = 1040;
+  const columns = sorted.length <= 4 ? 2 : 3;
+  const height = sorted.length <= 2 ? 380 : sorted.length === 3 ? 560 : Math.ceil(sorted.length / columns) * 320 - 20;
   const positions = sorted.map((key, index) => {
     if (sorted.length === 1) return { key, x: width / 2, y: height / 2 };
-    if (sorted.length === 2) return { key, x: 170 + index * 420, y: height / 2 };
-    if (sorted.length > 6) return { key, x: 125 + (index % 4) * 250, y: 110 + Math.floor(index / 4) * 190 };
-    const angle = -Math.PI / 2 + index * Math.PI * 2 / sorted.length;
-    return { key, x: width / 2 + Math.cos(angle) * 270, y: height / 2 + Math.sin(angle) * (height / 2 - 85) };
+    if (sorted.length === 2) return { key, x: index === 0 ? 160 : 880, y: 190 };
+    if (sorted.length === 3) return { key, x: [520, 880, 160][index], y: index === 0 ? 120 : 440 };
+    const row = Math.floor(index / columns);
+    const count = Math.min(columns, sorted.length - row * columns);
+    const spacing = columns === 2 ? 720 : 360;
+    return { key, x: (width - (count - 1) * spacing) / 2 + (index % columns) * spacing, y: 150 + row * 320 };
   });
   return { width, height, positions };
 }
 
-/** Curves end at the account card boundary; reverse and possible links stay distinguishable. */
-export function movementLinkPath(from: MovementPosition, to: MovementPosition, bend = 24): { path: string; x: number; y: number } {
+export type MovementLinkOptions = { lane?: number; labelWidth?: number; labelHeight?: number };
+export type MovementLinkGeometry = {
+  path: string; x: number; y: number;
+  start: { x: number; y: number }; end: { x: number; y: number }; control: { x: number; y: number };
+};
+
+/** Bend is the midpoint arc offset; positive bends put reverse directions on opposite sides. */
+export function movementLinkPath(from: MovementPosition, to: MovementPosition, bend = 24, options: MovementLinkOptions = {}): MovementLinkGeometry {
   const dx = to.x - from.x, dy = to.y - from.y;
-  const length = Math.hypot(dx, dy) || 1;
-  const edge = (x: number, y: number, direction: number) => {
-    const scale = Math.min(105 / Math.max(Math.abs(dx), .001), 71 / Math.max(Math.abs(dy), .001));
-    return { x: x + dx * scale * direction, y: y + dy * scale * direction };
+  const length = Math.hypot(dx, dy);
+  if (length < .001) return { path: "", x: from.x, y: from.y, start: { x: from.x, y: from.y }, end: { x: to.x, y: to.y }, control: { x: from.x, y: from.y } };
+  const normal = { x: -dy / length, y: dx / length };
+  const midpoint = { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+  const finiteBend = Number.isFinite(bend) ? bend : 24;
+  const side = finiteBend < 0 ? -1 : 1;
+  const lane = Number.isFinite(options.lane) ? Math.max(0, Math.floor(options.lane!)) : 0;
+  const offset = finiteBend + side * lane * 100;
+  const originalControl = { x: midpoint.x + normal.x * offset * 2, y: midpoint.y + normal.y * offset * 2 };
+  const point = (t: number) => ({
+    x: (1 - t) ** 2 * from.x + 2 * (1 - t) * t * originalControl.x + t ** 2 * to.x,
+    y: (1 - t) ** 2 * from.y + 2 * (1 - t) * t * originalControl.y + t ** 2 * to.y,
+  });
+  const inside = (p: { x: number; y: number }, center: MovementPosition, gap: number) =>
+    Math.abs(p.x - center.x) <= MOVEMENT_ACCOUNT_SIZE.width / 2 + gap && Math.abs(p.y - center.y) <= MOVEMENT_ACCOUNT_SIZE.height / 2 + gap;
+  // Clip the curve itself rather than its center chord: a strongly bent
+  // diagonal can otherwise run through a card corner before its endpoint.
+  const boundary = (center: MovementPosition, backwards: boolean, gap: number) => {
+    for (let step = 1; step <= 64; step++) {
+      const current = backwards ? 1 - step / 64 : step / 64;
+      if (inside(point(current), center, gap)) continue;
+      let outside = current, within = backwards ? current + 1 / 64 : current - 1 / 64;
+      for (let iteration = 0; iteration < 36; iteration++) {
+        const middle = (outside + within) / 2;
+        if (inside(point(middle), center, gap)) within = middle;
+        else outside = middle;
+      }
+      return (outside + within) / 2;
+    }
+    return backwards ? 0 : 1;
   };
-  const start = edge(from.x, from.y, 1), end = edge(to.x, to.y, -1);
-  const control = { x: (start.x + end.x) / 2 - dy / length * bend, y: (start.y + end.y) / 2 + dx / length * bend };
+  const first = boundary(from, false, 0), last = boundary(to, true, 8);
+  const start = point(first), end = point(last);
+  const control = {
+    x: start.x + (last - first) * ((1 - first) * (originalControl.x - from.x) + first * (to.x - originalControl.x)),
+    y: start.y + (last - first) * ((1 - first) * (originalControl.y - from.y) + first * (to.y - originalControl.y)),
+  };
+  const labelWidth = options.labelWidth && options.labelWidth > 0 ? options.labelWidth : 224;
+  const labelHeight = options.labelHeight && options.labelHeight > 0 ? options.labelHeight : 68;
+  const minimumSeparation = Math.abs(normal.x) * (labelWidth / 2 + 12) + Math.abs(normal.y) * (labelHeight / 2 + 12);
+  let labelDistance = Math.max(Math.abs(offset), minimumSeparation);
+  let label = { x: midpoint.x + normal.x * side * labelDistance, y: midpoint.y + normal.y * side * labelDistance };
+  const labelOverlaps = (center: MovementPosition) => Math.abs(label.x - center.x) < (MOVEMENT_ACCOUNT_SIZE.width + labelWidth) / 2 + 8
+    && Math.abs(label.y - center.y) < (MOVEMENT_ACCOUNT_SIZE.height + labelHeight) / 2 + 8;
+  for (let attempt = 0; attempt < 64 && (labelOverlaps(from) || labelOverlaps(to)); attempt++) {
+    labelDistance += 8;
+    label = { x: midpoint.x + normal.x * side * labelDistance, y: midpoint.y + normal.y * side * labelDistance };
+  }
+  if (first >= last) return { path: "", x: label.x, y: label.y, start, end, control };
   return { path: `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`,
-    x: (start.x + 2 * control.x + end.x) / 4 - dy / length * 22,
-    y: (start.y + 2 * control.y + end.y) / 4 + dx / length * 22 };
+    x: label.x, y: label.y, start, end, control };
 }

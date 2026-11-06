@@ -2,7 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { actOnFinancialDebtCandidate, candidateDecisionLabel, recurringReviewRows, reviewPage, type FinancialDebtCandidate, type FinancialDebtReview } from "../financialDebtReview";
 import type { RecurringPayee } from "../financialCockpit";
 
-const payee = { key: "funding", payee: "Funding LLC", monthly_average: 500, average_amount: 25, accounts: ["Checking", "Savings"], monthly: { "2026-05": 1000 }, occurrences: 40, months_seen: 1 } as RecurringPayee;
+const payee: RecurringPayee = {
+  key: "funding", payee: "Funding LLC", kind: "other", kind_label: "Other", rationale: "Test observation",
+  cadence: null, same_amount: null, monthly_average: 500, average_amount: 25, total: 1000,
+  accounts: ["Checking", "Savings"], monthly: { "2026-05": 1000 }, months: ["2026-05"], occurrences: 40, months_seen: 1,
+  first_date: null, last_date: null, file_ids: [], accepted: false, is_debt: false, is_card: false,
+};
 const candidate = (key: string, account: string, extra: Partial<FinancialDebtCandidate> = {}): FinancialDebtCandidate => ({ key, vendor_key: "funding", payee: "Funding LLC", kind: "other", kind_label: "Other", monthly_average: 100, accounts: [account], file_ids: ["statement"], source_refs: [], status: "unreviewed", row_id: null, eligible: true, reason: "Review classification", ...extra });
 
 describe("financial debt review decisions", () => {

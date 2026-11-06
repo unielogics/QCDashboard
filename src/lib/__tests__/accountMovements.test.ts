@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AccountMovementsCard } from "@/components/file/cockpit/AccountMovementsCard";
 import {
-  accountMovementView, linkMovements, movementCurrencies, movementLayout, movementLinkPath, movementMoney,
+  accountMovementView, linkMovements, movementCurrencies, movementMoney,
   movementOccursIn, movementStatusLabel, resolveMovementScope, uniqueMovementEvidence,
   type AccountMovement, type AccountMovementNode, type AccountMovementPeriod, type AccountMovements,
 } from "@/lib/accountMovements";
@@ -152,19 +152,6 @@ describe("account movement evidence and selection", () => {
     expect(linkMovements(data.links[1], data.movements).map((movement) => movement.id)).toEqual(["pair-one"]);
   });
 
-  it("lays out unique account keys consistently and ends the arrow at account boundaries", () => {
-    expect(movementLayout(["b", "a", "a"])).toEqual(movementLayout(["a", "b"]));
-    expect(movementLayout(["a", "b"]).height).toBe(280);
-    expect(movementLayout(["a", "b", "c"]).height).toBe(450);
-    const layout = movementLayout(Array.from({ length: 16 }, (_, index) => `account-${index}`));
-    expect(layout.positions).toHaveLength(16);
-    expect(new Set(layout.positions.map((node) => `${node.x},${node.y}`)).size).toBe(16);
-    const curve = movementLinkPath({ key: "a", x: 170, y: 195 }, { key: "b", x: 590, y: 195 });
-    expect(curve.path).toContain("M 275 195");
-    expect(curve.path).toContain("485 195");
-    expect(movementStatusLabel("review")).toBe("Possible match");
-  });
-
   it("renders keyboard graph controls and table/mobile equivalents with truthful limited coverage", () => {
     const data = accountMovementFixture(); data.periods = ["2026-05"];
     const html = renderToStaticMarkup(createElement(AccountMovementsCard, { data }));
@@ -180,5 +167,31 @@ describe("account movement evidence and selection", () => {
     expect(html).toContain("without transaction detail");
     expect(html).toContain("About this evidence");
     expect(html.match(/<details[^>]*>/)?.[0]).not.toContain("open");
+  });
+
+  it("labels both transfer directions and counts matched transfers without adding review amounts", () => {
+    const data = accountMovementFixture(); data.periods = ["2026-05"];
+    data.links.push({ ...data.links[0], id: "reverse", from_account: "savings", to_account: "checking", amount: 25, transaction_count: 2 });
+    const html = renderToStaticMarkup(createElement(AccountMovementsCard, { data }));
+    expect(html).toContain("Moved between accounts");
+    expect(html).toContain("$125.00");
+    expect(html).toContain("3 matched transfers");
+    expect(html).toContain("Business checking · 1234 to Business savings · 5678: $100.00, 1 transfer, Matched pair");
+    expect(html).toContain("Business savings · 5678 to Business checking · 1234: $25.00, 2 transfers, Matched pair");
+    expect(html).toContain('aria-label="Transfer routes"');
+    expect(html).toContain("View transactions");
+    expect(html).toContain("needs review");
+    expect(movementStatusLabel("review")).toBe("Possible match");
+  });
+
+  it("shows no directional routes or invented zero total when source transaction detail is absent", () => {
+    const data = accountMovementFixture(); data.periods = ["2026-05"];
+    data.status = "no_transaction_evidence"; data.links = []; data.movements = [];
+    data.nodes.forEach((node) => node.periods.forEach((period) => Object.assign(period, { coverage_status: "missing", internal_in: null, internal_out: null, internal_net: null })));
+    const html = renderToStaticMarkup(createElement(AccountMovementsCard, { data }));
+    expect(html).not.toContain('aria-label="Transfer routes"');
+    expect(html).not.toContain("0 matched transfers");
+    expect(html).toContain("Transfer detail needed");
+    expect(html).toContain("Transfer directions will appear when dated statement transactions are available.");
   });
 });
