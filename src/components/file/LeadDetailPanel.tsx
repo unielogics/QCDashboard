@@ -37,6 +37,7 @@ import { ApplicationAuditTimeline } from "@/components/application/ApplicationAu
 import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
 import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
 import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
+import { FundingRequestControl } from "@/components/application/FundingRequestControl";
 import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
@@ -560,6 +561,7 @@ export function LeadDetailPanel({
   onUpdateOutcomeStatus,
   onUpdateLanguage,
   onUpdateContact,
+  onFundingRequestSaved,
   onCancelDeletionRequest,
   onConfirmDeletion,
 }: {
@@ -599,6 +601,7 @@ export function LeadDetailPanel({
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
   onUpdateContact: (payload: LeadContactUpdate) => Promise<void>;
+  onFundingRequestSaved?: () => Promise<unknown> | void;
   onCancelDeletionRequest: () => Promise<void>;
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
@@ -719,7 +722,6 @@ export function LeadDetailPanel({
     business_name: "",
     email: "",
     phone: "",
-    requested_loan_amount: "",
     loan_purpose: "",
     estimated_credit_score: "",
     referral_source: "",
@@ -1254,7 +1256,6 @@ export function LeadDetailPanel({
       business_name: detail.intake.business_name || "",
       email: detail.intake.email || "",
       phone: detail.intake.phone || "",
-      requested_loan_amount: detail.intake.requested_loan_amount == null ? "" : String(detail.intake.requested_loan_amount),
       loan_purpose: detail.intake.loan_purpose || "",
       estimated_credit_score: detail.intake.estimated_credit_score == null ? "" : String(detail.intake.estimated_credit_score),
       referral_source: detail.intake.referral_source || "",
@@ -1276,7 +1277,6 @@ export function LeadDetailPanel({
         business_name: contactDraft.business_name.trim() || null,
         email: contactDraft.email.trim(),
         phone: contactDraft.phone.trim() || null,
-        requested_loan_amount: contactDraft.requested_loan_amount ? Number(contactDraft.requested_loan_amount) : null,
         loan_purpose: contactDraft.loan_purpose.trim() || null,
         estimated_credit_score: contactDraft.estimated_credit_score ? Number(contactDraft.estimated_credit_score) : null,
         referral_source: contactDraft.referral_source.trim() || null,
@@ -2104,7 +2104,7 @@ export function LeadDetailPanel({
                   <Line label="Principal" value={detail.intake.full_name} />
                   <EmailContact email={detail.intake.email} onCompose={canUnderwrite ? () => setContactPopup("email") : undefined} />
                   <PhoneContact phone={detail.intake.phone} firstName={(detail.intake.full_name || "").split(" ")[0]} onText={canUnderwrite ? () => setContactPopup("text") : undefined} />
-                  <Line label="Requested" value={formatMoney(detail.intake.requested_loan_amount)} />
+                  <FundingRequestControl profileId={profileId} role={currentUser?.role} fallbackAmount={detail.intake.requested_loan_amount} onSaved={async () => { await onFundingRequestSaved?.(); await refreshProgramReadiness(); }} />
                   <Line label="Approved" value={underwriting?.approved_amount == null ? "Not approved" : formatMoney(underwriting.approved_amount)} />
                   <Line label="Accepted" value={underwriting?.accepted_amount == null ? "Not recorded" : formatMoney(underwriting.accepted_amount)} />
                   <Line label="Origination fee" value={underwriting?.forecast_fee_points == null ? "Not configured" : `${underwriting.forecast_fee_points.toFixed(2)}%`} />
@@ -2229,7 +2229,7 @@ export function LeadDetailPanel({
           <Field label="Legal entity / LLC"><Input aria-label="Legal entity / LLC" value={contactDraft.business_name} onChange={(event) => setContactDraft({ ...contactDraft, business_name: event.target.value })} /></Field>
           <Field label="Email"><Input aria-label="Email" type="email" value={contactDraft.email} onChange={(event) => setContactDraft({ ...contactDraft, email: event.target.value })} /></Field>
           <Field label="Mobile"><Input aria-label="Mobile" type="tel" value={contactDraft.phone} onChange={(event) => setContactDraft({ ...contactDraft, phone: event.target.value })} /></Field>
-          <Field label="Requested amount"><Input aria-label="Requested amount" type="number" min="0" value={contactDraft.requested_loan_amount} onChange={(event) => setContactDraft({ ...contactDraft, requested_loan_amount: event.target.value })} /></Field>
+          <Field label="Current requested amount" hint="Use the edit icon next to Current request in File details to update the amount and its use of funds together."><Input aria-label="Requested amount (read only)" value={formatMoney(detail?.intake.requested_loan_amount)} readOnly /></Field>
           <Field label="Estimated credit"><Input aria-label="Estimated credit" type="number" min="300" max="850" value={contactDraft.estimated_credit_score} onChange={(event) => setContactDraft({ ...contactDraft, estimated_credit_score: event.target.value })} /></Field>
           <Field label="Years in business"><Input aria-label="Years in business" type="number" min="0" max="150" step="0.5" value={contactDraft.years_in_business} onChange={(event) => setContactDraft({ ...contactDraft, years_in_business: event.target.value })} /></Field>
           <Field label="Website" hint="Type N/A if the business has none."><Input aria-label="Website" inputMode="url" value={contactDraft.business_website} onChange={(event) => setContactDraft({ ...contactDraft, business_website: event.target.value })} /></Field>
@@ -2452,7 +2452,7 @@ export function LeadDetailPanel({
                 <Line label="Name" value={detail.intake.full_name} />
                 <Line label="Email" value={detail.intake.email} />
                 <Line label="Phone" value={detail.intake.phone || "-"} />
-                <Line label="Requested amount" value={formatMoney(detail.intake.requested_loan_amount)} />
+                <FundingRequestControl profileId={profileId} role={currentUser?.role} fallbackAmount={detail.intake.requested_loan_amount} onSaved={async () => { await onFundingRequestSaved?.(); await refreshProgramReadiness(); }} />
                 <Line label="Use of funds" value={detail.intake.loan_purpose || "-"} />
                 <Line label="Referral" value={detail.intake.referral_source || "-"} />
               </InfoBlock>

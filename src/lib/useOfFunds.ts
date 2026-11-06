@@ -25,6 +25,9 @@ export type UseOfFundsBudget = {
   updated_by_user_id: string | null;
   can_edit?: boolean;
   warnings?: string[];
+  requires_exact_allocation?: boolean;
+  payoff_only_alternative?: boolean;
+  funding_request_revision?: number;
 };
 export type UseOfFundsRow = Omit<UseOfFundsItem, "amount"> & { amount: string };
 
