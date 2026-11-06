@@ -96,6 +96,8 @@ export type WorksheetProps = {
   subtitle?: string | null;
   /** Lets an enclosing dialog await pending cell saves before it unmounts the grid. */
   onController?: (controller: { flush: () => Promise<void> } | null) => void;
+  /** Keeps the enclosing public form's version controls on the displayed tab. */
+  onActiveSheet?: (kind: SheetKind) => void;
 };
 
 const LIST_SHEETS: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule"];
@@ -145,6 +147,7 @@ export function Worksheet({
   title,
   subtitle,
   onController,
+  onActiveSheet,
 }: WorksheetProps) {
   const canEdit = !!scope?.can_edit;
   const payloads = useMemo(() => sheets.map(toPayload), [sheets]);
@@ -194,6 +197,7 @@ export function Worksheet({
   const [notice, setNotice] = useState<string | null>(null);
   const [cursor, setCursor] = useState<GridCursor | null>(null);
   const shown = order.includes(active) ? active : order[0];
+  useEffect(() => { if (shown) onActiveSheet?.(shown); }, [shown, onActiveSheet]);
 
   const onTab = useCallback(
     (kind: SheetKind) => {

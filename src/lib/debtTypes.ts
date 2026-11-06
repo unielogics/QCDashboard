@@ -191,12 +191,13 @@ function unanswered(field: RequiredDebtField, value: string | undefined): boolea
  *  borrower is not held up by a desk row they have no way to complete. Rows are
  *  numbered from one, the way the form shows them. Mirrors
  *  `financial_statements.debt_row_problems`. */
-export function debtRowProblems(rows: readonly DebtRowFields[] | undefined): DebtRowProblem[] {
+export function debtRowProblems(rows: readonly DebtRowFields[] | undefined, scheduleCompletion = false): DebtRowProblem[] {
   const problems: DebtRowProblem[] = [];
   (rows ?? []).forEach((row, at) => {
     if (row.editable === false || isBlankDebtRow(row)) return;
-    const missing = REQUIRED_DEBT_FIELDS.filter((field) => unanswered(field, row[field]));
-    if (isAdvanceType(row.debt_type) && unanswered("mca_modified", row.mca_modified)) missing.push("mca_modified");
+    const required: readonly RequiredDebtField[] = scheduleCompletion ? ["lender", "balance", "monthly_payment"] : REQUIRED_DEBT_FIELDS;
+    const missing = required.filter((field) => unanswered(field, row[field]));
+    if (!scheduleCompletion && isAdvanceType(row.debt_type) && unanswered("mca_modified", row.mca_modified)) missing.push("mca_modified");
     if (missing.length) {
       const lender = String(row.lender ?? "").trim();
       problems.push({ index: at + 1, lender: lender || null, missing });

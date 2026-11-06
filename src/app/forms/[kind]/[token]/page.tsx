@@ -21,7 +21,7 @@
 // tells them they can close the window, which is the whole interaction. It does
 // not bounce them somewhere or leave them wondering whether it went through.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 import { Pfs413Form, type PfsBody, type PfsSchema } from "@/components/application/Pfs413Form";
@@ -29,6 +29,8 @@ import { DebtScheduleForm, type DebtBody } from "@/components/application/DebtSc
 import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/debtTypes";
 import { FormReview } from "@/components/application/FormReview";
 import { RealEstateScheduleForm } from "@/components/application/RealEstateScheduleForm";
+import { PublicFormVersionNotice } from "@/components/application/PublicFormVersionNotice";
+import { PublicFinancialFormWriter, publicFinancialBody, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
 import {
   BusinessStatementForm,
@@ -48,7 +50,7 @@ type FormBody = PfsBody & DebtBody & StatementBody & RealEstateBody;
 
 // The schema is whichever the kind calls for; the two business statements
 // share one shape and one component, the way the 413 has its own.
-type FormState = {
+type FormState = PublicFinancialReply & {
   completed: boolean;
   business_name: string | null;
   prefill?: Prefill;
@@ -95,7 +97,7 @@ export default function FinancialFormPage() {
   // "review" sits between typing and sending: the borrower reads back what
   // they entered before it becomes the answer we hand a lender.
   const [status, setStatus] = useState<
-    "loading" | "ready" | "review" | "saving" | "done" | "gone"
+    "loading" | "ready" | "preparing" | "review" | "saving" | "done" | "gone"
   >("loading");
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<string | null>(null);
@@ -103,6 +105,19 @@ export default function FinancialFormPage() {
   // Once a submit has been tried, the schedule outlines the required answers
   // still missing. Off while drafting: a half-typed row is not shouted at.
   const [showProblems, setShowProblems] = useState(false);
+  const [savedVersion, setSavedVersion] = useState<PublicFinancialVersion | null>(null);
+  const writer = useRef<PublicFinancialFormWriter | null>(null);
+  const bodyRef = useRef(body);
+  const loadedBody = useRef("");
+  const statusRef = useRef(status);
+  statusRef.current = status;
+  const canEdit = state?.can_edit !== false && state?.permission !== "view";
+  const changeBody = useCallback((next: FormBody) => {
+    const stable = publicFinancialBody(next);
+    bodyRef.current = stable;
+    setBody(stable);
+    setSavedVersion(null);
+  }, []);
 
   // `apiBase` is the bare origin — `api<T>()` appends /api/v1 itself, and every
   // hand-written fetch in this app has to add it too. This one did not, so every
@@ -122,8 +137,12 @@ export default function FinancialFormPage() {
         const data = (await response.json()) as FormState;
         if (cancelled) return;
         setState(data);
-        setBody(data.body ?? {});
-        setStatus(data.completed ? "done" : "ready");
+        const next = publicFinancialBody(data.body ?? {});
+        bodyRef.current = next;
+        setBody(next);
+        loadedBody.current = JSON.stringify(next);
+        writer.current = new PublicFinancialFormWriter(base, data.workspace);
+        setStatus(data.completed && !data.workspace?.dirty && data.can_edit !== false && data.permission !== "view" ? "done" : "ready");
       } catch {
         if (!cancelled) setStatus("gone");
       }
@@ -133,58 +152,64 @@ export default function FinancialFormPage() {
     };
   }, [base, token]);
 
-  // Keep what has been typed. Form 413 is long and people fill it in on a
-  // phone; losing it to a closed tab is most of why the old form went unused.
-  const saveDraft = useCallback(async () => {
-    if (status !== "ready") return;
+  const acceptReply = useCallback((reply: PublicFinancialReply, sent: FormBody) => {
+    setState((current) => current ? { ...current, ...reply } as FormState : current);
+    loadedBody.current = JSON.stringify(sent);
+    // A canonical response must not erase typing that happened while it saved.
+    if (reply.body && bodyRef.current === sent) {
+      const next = reply.body as FormBody;
+      bodyRef.current = next;
+      setBody(next);
+      loadedBody.current = JSON.stringify(next);
+    }
+    if (reply.saved_version) setSavedVersion(reply.saved_version);
+  }, []);
+
+  const saveDraft = useCallback(async (sent: FormBody = bodyRef.current) => {
+    if (!writer.current || !canEdit || JSON.stringify(sent) === loadedBody.current) return;
     setSaving(true);
     try {
-      await fetch(`${base}/draft`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body, owners: [] }),
-      });
+      const reply = await writer.current.write("draft", sent);
+      acceptReply(reply, sent);
       setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-    } catch {
-      // Silent: a failed autosave must not interrupt someone mid-form. The
-      // explicit Save below reports its own failure.
-    } finally {
-      setSaving(false);
-    }
-  }, [base, body, status]);
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "Your progress could not be saved. Please try again.");
+      throw reason;
+    } finally { setSaving(false); }
+  }, [acceptReply, canEdit]);
 
   useEffect(() => {
-    if (status !== "ready") return;
-    const timer = window.setTimeout(() => void saveDraft(), 4000);
+    if (status !== "ready" || !canEdit || JSON.stringify(body) === loadedBody.current) return;
+    const timer = window.setTimeout(() => {
+      if (statusRef.current === "ready") void saveDraft().catch(() => undefined);
+    }, 4000);
     return () => window.clearTimeout(timer);
-  }, [body, saveDraft, status]);
+  }, [body, canEdit, saveDraft, status]);
 
-  /** Stop typing, start reading. Saves the draft on the way through so the
-   *  review is of something already safely stored, not of state held in a tab. */
-  const review = () => {
+  const review = async () => {
+    if (!canEdit || !writer.current) return;
     setError(null);
     if (state?.kind === "debt_schedule") {
-      // The owner's required answers: lender, type, original amount, balance,
-      // rate, monthly payment, current or delinquent — and the advance question
-      // on an MCA. Checked before the review so the borrower fixes the row
-      // while it is in front of them; the server holds the submit to the same list.
-      const problems = debtRowProblems((body as DebtBody).debts ?? []);
+      const problems = debtRowProblems(bodyRef.current.debts ?? [], !!state.workspace);
       if (problems.length) {
         setShowProblems(true);
         setError(describeDebtProblems(problems));
-        // The Save bar is fixed to the bottom and the message sits under the
-        // form, so bring the first gap into view rather than seem to do nothing.
         focusFirstProblem(problems);
         return;
       }
       setShowProblems(false);
     }
-    void saveDraft();
-    setStatus("review");
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    statusRef.current = "preparing";
+    setStatus("preparing");
+    try {
+      await saveDraft();
+      await writer.current.flush();
+      setStatus("review");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    } catch { setStatus("ready"); }
   };
 
-  /** Back to the form with everything intact — `body` was never cleared. */
   const edit = () => {
     setError(null);
     setStatus("ready");
@@ -192,39 +217,18 @@ export default function FinancialFormPage() {
   };
 
   const submit = async () => {
-    const previous = status === "done" ? "done" : "review";
+    if (!canEdit || !writer.current) return;
     setStatus("saving");
     setError(null);
-    // A 422 carries the server's own sentence about what is still missing;
-    // anything else is a generic failure.
-    let serverMessage = "";
+    const sent = bodyRef.current;
     try {
-      const response = await fetch(`${base}/submit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ body, owners: [] }),
-      });
-      if (!response.ok) {
-        if (response.status === 422) {
-          const data: unknown = await response.json().catch(() => null);
-          const detail = data && typeof data === "object" ? (data as { detail?: unknown }).detail : null;
-          if (typeof detail === "string" && detail.trim()) serverMessage = detail;
-        }
-        throw new Error("That did not save.");
-      }
+      const reply = await writer.current.write("submit", sent);
+      acceptReply(reply, sent);
       setStatus("done");
       window.scrollTo({ top: 0, behavior: "smooth" });
-    } catch {
-      setError(serverMessage || "We could not save that. Please try again in a moment.");
-      if (serverMessage) {
-        // The server named the missing answers: back to the form with them outlined.
-        setShowProblems(true);
-        setStatus("ready");
-        window.setTimeout(() => focusFirstProblem(debtRowProblems((body as DebtBody).debts ?? [])), 0);
-      } else {
-        // Back where they were, not to the top of a long form they had finished.
-        setStatus(previous);
-      }
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : "We could not save this version. Your answers are still here.");
+      setStatus("review");
     }
   };
 
@@ -311,7 +315,7 @@ export default function FinancialFormPage() {
             <p>
               This is everything you entered. Read it back once — a figure typed into the row
               above it is the kind of thing nobody notices while filling a form in and everybody
-              notices while reading one. Nothing is sent until you press Send.
+              notices while reading one. A dated PDF version is created when you save and send below.
             </p>
           </div>
 
@@ -333,7 +337,7 @@ export default function FinancialFormPage() {
             <button
               type="button"
               className="fp-submit"
-              disabled={status === "saving"}
+              disabled={!canEdit || status === "saving"}
               onClick={submit}
             >
               {status === "saving" ? (
@@ -341,18 +345,18 @@ export default function FinancialFormPage() {
                   <span className="fp-spinner" aria-hidden="true" /> Sending…
                 </>
               ) : (
-                "Send it"
+                "Save version and send"
               )}
             </button>
             <button
               type="button"
               className="fp-secondary"
-              disabled={status === "saving"}
+              disabled={!canEdit || status === "saving"}
               onClick={edit}
             >
               Go back and edit
             </button>
-            <span className="fp-autosave">Your answers are saved either way.</span>
+            <span className="fp-autosave">Your progress is a working draft until you save this version.</span>
           </div>
         </div>
       </div>
@@ -377,7 +381,7 @@ export default function FinancialFormPage() {
             </span>
             <h1>Thank you — you can close this window.</h1>
             <p>
-              {state ? RECEIVED[state.kind] : RECEIVED.pfs} {state?.kind !== "real_estate_schedule" ? "Nothing else is needed from you here." : null}
+              {state ? RECEIVED[state.kind] : RECEIVED.pfs}
             </p>
             <p className="fp-quiet">
               If you spot a mistake, this link still works. Correcting a figure now is far
@@ -385,9 +389,8 @@ export default function FinancialFormPage() {
             </p>
             {/* The sentence above used to be the whole offer, and "reopen it"
                 meant finding the email again. The way back belongs here. */}
-            <button type="button" className="fp-secondary" onClick={edit}>
-              Edit my answers
-            </button>
+            {canEdit ? <button type="button" className="fp-secondary" onClick={edit}>Edit my answers</button> : null}
+            <PublicFormVersionNotice workspace={state?.workspace} savedVersion={savedVersion} canEdit={canEdit} />
           </div>
         </main>
       </div>
@@ -429,24 +432,25 @@ export default function FinancialFormPage() {
           ) : null}
         </div>
 
+        <PublicFormVersionNotice workspace={state?.workspace} savedVersion={savedVersion} canEdit={canEdit} />
         <div className="fp-card">
           {state?.kind === "debt_schedule" ? (
-            <DebtScheduleForm value={body} onChange={setBody} disabled={status === "saving"} showProblems={showProblems} />
+            <DebtScheduleForm value={body} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} showProblems={showProblems} scheduleCompletion={!!state.workspace} />
           ) : state?.kind === "p_and_l" || state?.kind === "balance_sheet" ? (
             <BusinessStatementForm
               schema={state.schema}
               value={body}
-              onChange={setBody}
-              disabled={status === "saving"}
+              onChange={changeBody}
+              disabled={!canEdit || status === "saving" || status === "preparing"}
             />
           ) : state?.kind === "real_estate_schedule" ? (
-            <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => setBody(next as FormBody)} disabled={status === "saving"} />
+            <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}
               value={body}
-              onChange={setBody}
-              disabled={status === "saving"}
+              onChange={changeBody}
+              disabled={!canEdit || status === "saving" || status === "preparing"}
             />
           ) : null}
         </div>
@@ -460,11 +464,11 @@ export default function FinancialFormPage() {
 
       <div className="fp-actions">
         <div className="fp-actions-inner">
-          <button type="button" className="fp-submit" onClick={review}>
-            Save and review
-          </button>
+          {canEdit ? <button type="button" className="fp-submit" disabled={status === "preparing"} onClick={() => void review()}>
+            {status === "preparing" ? "Saving draft…" : "Review and save version"}
+          </button> : <span>This form link allows viewing only.</span>}
           <span className="fp-autosave" aria-live="polite">
-            {saving ? (
+            {error ? "Please check the save message above." : saving ? (
               <>
                 <span className="fp-pulse" aria-hidden="true" /> Saving your progress…
               </>

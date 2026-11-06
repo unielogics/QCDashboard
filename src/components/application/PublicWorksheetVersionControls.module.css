@@ -1,0 +1,5 @@
+.controls { display: grid; gap: 12px; margin: 16px 0 24px; min-width: 0; }
+.form { border: 1px solid #dce2eb; border-radius: 12px; padding: 14px; min-width: 0; overflow-wrap: anywhere; }
+.heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.heading button { border: 1px solid #cdd6e5; border-radius: 8px; padding: 9px 14px; background: #33499d; color: #fff; font: inherit; cursor: pointer; }
+.heading button:disabled { opacity: .55; cursor: wait; }
