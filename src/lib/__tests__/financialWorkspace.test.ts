@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { activeFinancialDebts, financialDebtReviewSummary, actOnFinancialDebt, applyFinancialCells, applyFinancialImport, financialValues, financialLayout, financialDebtTotals, readFinancialWorkspace, restoreFinancialVersion, saveFinancialDraft, saveFinancialVersion, financialMappingConfidence, financialMappingConflict, clearEditedDebtSources, stageDebtDocumentImport, savedFinancialCompletion, type FinancialWorkspaceSnapshot } from "../financialWorkspaceApi";
+import { activeFinancialDebts, financialDebtReviewSummary, actOnFinancialDebt, applyFinancialCells, applyFinancialImport, financialValues, financialLayout, financialDebtTotals, readFinancialWorkspace, restoreFinancialVersion, saveFinancialDraft, saveFinancialVersion, financialMappingConfidence, financialMappingConflict, clearEditedDebtSources, stageDebtDocumentImport, savedFinancialCompletion, financialVersionPublicationState, type FinancialWorkspaceSnapshot } from "../financialWorkspaceApi";
 import type { SheetLayout } from "@/components/sheet/types";
 
 const layout: SheetLayout = {
@@ -112,6 +112,23 @@ describe("the shared financial draft", () => {
 });
 
 describe("financial workspace transport", () => {
+  it("only claims debt publication for the exact current completed accepted version", () => {
+    const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 5 };
+    const result = { ...snapshot, current_version_id: "version-2", accepted_version_id: "version-2", saved_completion: complete, accepted_completion: complete };
+    expect(financialVersionPublicationState(result, "version-2")).toBe("published");
+    for (const changed of [{ saved_completion: { ...complete, complete: false } }, { accepted_completion: { ...complete, complete: false } }, { accepted_version_id: "version-1" }, { accepted_version_id: null }, { accepted_completion: null }]) {
+      expect(financialVersionPublicationState({ ...result, ...changed }, "version-2")).toBe("saved_pdf");
+    }
+  });
+  it("does not treat an older successful save replay as the current publication", () => {
+    const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 5 };
+    expect(financialVersionPublicationState({ ...snapshot, current_version_id: "version-2", accepted_version_id: "version-2", saved_completion: complete, accepted_completion: complete }, "version-1")).toBe("historical");
+  });
+  it("preserves publication behavior for the other financial forms", () => {
+    for (const kind of ["pfs", "p_and_l", "balance_sheet", "real_estate_schedule"] as const) {
+      expect(financialVersionPublicationState({ ...snapshot, kind, current_version_id: "version-2" }, "version-2")).toBe("published");
+    }
+  });
   it("uses the exact returned version's completion for an idempotent older save receipt", () => {
     const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 1 };
     const incomplete = { ...complete, complete: false, missing_fields: ["debt-a.monthly_payment"], reason: "Monthly payment needed" };

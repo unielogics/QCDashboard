@@ -79,6 +79,12 @@ export function savedFinancialCompletion(snapshot: FinancialWorkspaceSnapshot, v
   if (versionId !== snapshot.current_version_id) return null;
   return Object.prototype.hasOwnProperty.call(snapshot, "accepted_completion") ? snapshot.accepted_completion ?? null : snapshot.completion ?? null;
 }
+/** A PDF save is not proof that this exact debt version became authoritative. */
+export function financialVersionPublicationState(snapshot: FinancialWorkspaceSnapshot, versionId: string): "published" | "saved_pdf" | "historical" {
+  if (versionId !== snapshot.current_version_id) return "historical";
+  if (snapshot.kind !== "debt_schedule") return "published";
+  return savedFinancialCompletion(snapshot, versionId)?.complete && snapshot.accepted_completion?.complete && snapshot.accepted_version_id === versionId ? "published" : "saved_pdf";
+}
 
 function listIndex(rows: unknown[], key: string): number {
   const ordinal = /^r(\d+)$/.exec(key);

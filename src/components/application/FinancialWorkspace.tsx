@@ -24,7 +24,7 @@ import type { Edit, SheetKind } from "@/components/sheet/types";
 import {
   FINANCIAL_LABELS, FINANCIAL_ORDER, readFinancialWorkspace, saveFinancialDraft,
   saveFinancialVersion, stageFinancialImport, stageDebtDocumentImport, applyFinancialImport, restoreFinancialVersion,
-  actOnFinancialDebt, financialVersionPdfPath, financialValues, financialLayout, applyFinancialCells, meaningfulFinancialDebts, financialDebtTotals, createFinancialFamily, financialMappingConflict, financialMappingConfidence, isFinancialDraftConflict, clearEditedDebtSources, shareFinancialVersion, savedFinancialCompletion,
+  actOnFinancialDebt, financialVersionPdfPath, financialValues, financialLayout, applyFinancialCells, meaningfulFinancialDebts, financialDebtTotals, createFinancialFamily, financialMappingConflict, financialMappingConfidence, isFinancialDraftConflict, clearEditedDebtSources, shareFinancialVersion, savedFinancialCompletion, financialVersionPublicationState,
   type FinancialWorkspaceSnapshot, type FinancialBody, type FinancialDebtRow, type FinancialImport, type FinancialVersion,
   type DebtAction, type DebtDocumentRole,
 } from "@/lib/financialWorkspaceApi";
@@ -193,8 +193,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     const saved = next.saved_version ?? next.versions.find((version) => version.id === next.current_version_id) ?? null;
     const accepted = saved ? savedFinancialCompletion(next, saved.id) : null;
     setSavedReceipt(saved); setSavedCompletion(accepted); setSharedPdf(null);
-    const isCurrent = saved?.id === next.current_version_id;
-    setNotice(`Version ${saved?.version_number ?? "saved"} saved${isCurrent && (submit || next.kind === "debt_schedule" && accepted?.complete) ? " and filed on the checklist" : ""}. ${isCurrent ? "The financial interface and AI now use this version." : "This saved version is available in history; the latest version is shown in the sidebar."}`);
+    const publication = saved ? financialVersionPublicationState(next, saved.id) : "saved_pdf";
+    setNotice(publication === "saved_pdf" && next.kind === "debt_schedule"
+      ? `Version ${saved?.version_number ?? "saved"} PDF saved. ${accepted?.complete === false ? "This debt schedule is still a draft awaiting completion. Complete it and save a version to publish its figures to financials and AI." : "This PDF is not confirmed as the completed schedule used by financials and AI."}`
+      : `Version ${saved?.version_number ?? "saved"} saved${publication === "published" && (submit || next.kind === "debt_schedule") ? " and filed on the checklist" : ""}. ${publication === "published" ? "The financial interface and AI now use this version." : "This saved version is available in history; the latest version is shown in the sidebar."}`);
     for (const key of ["financial-workspace-summary", "debt-schedule-review", "financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
     await onPublished?.();
   }); };
@@ -305,6 +307,12 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     : currentVersion;
   const needsCompletedDebtVersion = kind === "debt_schedule" && snapshot?.completion?.complete && !snapshot.accepted_completion?.complete;
   const hasDraft = localDirty || snapshot?.draft.dirty;
+  const receiptPublication = snapshot && savedReceipt ? financialVersionPublicationState(snapshot, savedReceipt.id) : null;
+  const receiptSummary = kind !== "debt_schedule" ? "Dated PDF ready to download or share."
+    : receiptPublication === "published" ? "Debt schedule complete — dated PDF filed on the checklist."
+    : receiptPublication === "historical" ? "Dated PDF saved in History, ready to download or share."
+    : savedCompletion?.complete === false ? `Dated PDF saved. Draft awaiting completion${savedCompletion.reason ? `: ${savedCompletion.reason}` : "."}`
+    : "Dated PDF saved. Publication as the completed debt schedule is not confirmed.";
   const mappingBefore = (mapping: FinancialImport["mappings"][number]) => Object.prototype.hasOwnProperty.call(mapping, "before") ? mapping.before : values[mapping.key];
   const mappingConflict = (mapping: FinancialImport["mappings"][number]) => mapping.conflict ?? financialMappingConflict(mappingBefore(mapping), mapping.value);
   const mappingLabel = (mapping: FinancialImport["mappings"][number]) => kind === "real_estate_schedule" && snapshot ? realEstateImportFieldLabel(mapping.key, [body as RealEstateBody, (proposal?.proposed_body ?? {}) as RealEstateBody], snapshot.schema as RealEstateSchema) : mapping.key.slice(mapping.key.indexOf(".") + 1).replaceAll("_", " ");
@@ -355,7 +363,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
           <nav className="fw-tabs" aria-label="Financial workspace views" role="tablist">{VIEWS.map((tab) => <button type="button" role="tab" aria-selected={view === tab.id} key={tab.id} onClick={() => switchView(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}</button>)}</nav>
           {error ? <div className="fw-alert"><Callout tone="bad">{error}{conflict ? <p>Your draft is kept in this window. Reload the server draft to resolve the conflict before saving.</p> : null}<div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("retry", async () => { await flush(); })}>Retry save</Btn>{conflict ? <Btn size="sm" onClick={() => void run("reload", async () => { accept(await readFinancialWorkspace(api, profileId, kind, snapshot?.family_id)); setError(""); })}>Reload server draft</Btn> : null}</div></Callout></div> : null}
           {notice ? <div className="fw-alert"><Callout tone="ok">{notice}</Callout></div> : null}
-          {savedReceipt ? <div className="fw-save-receipt"><div><strong>Saved v{savedReceipt.version_number} · {when(savedReceipt.created_at)}</strong><span className="sub">{kind === "debt_schedule" ? savedCompletion?.complete ? "Debt schedule complete — dated PDF filed on the checklist." : savedCompletion?.reason || "Dated PDF ready to download or share." : "Dated PDF ready to download or share."}</span></div><div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("pdf", async () => { await showPdf(savedReceipt.id); setFileMode("versions"); setView("pdf"); })}>Open saved PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => downloadPdf(savedReceipt.id)}>Download PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyPdfShare(savedReceipt.id)}>Copy PDF share link</Btn></div></div> : null}
+          {savedReceipt ? <div className="fw-save-receipt"><div><strong>Saved v{savedReceipt.version_number} · {when(savedReceipt.created_at)}</strong><span className="sub">{receiptSummary}</span></div><div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("pdf", async () => { await showPdf(savedReceipt.id); setFileMode("versions"); setView("pdf"); })}>Open saved PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => downloadPdf(savedReceipt.id)}>Download PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyPdfShare(savedReceipt.id)}>Copy PDF share link</Btn></div></div> : null}
           {sharedPdf ? <div className="fw-share-result"><label className="lbl" htmlFor="fw-pdf-share-link">Read-only PDF · v{snapshot?.versions.find((version) => version.id === sharedPdf.version_id)?.version_number ?? "saved"} · expires {when(sharedPdf.expires_at)}</label><input id="fw-pdf-share-link" readOnly value={sharedPdf.url} onFocus={(event) => event.currentTarget.select()} /></div> : null}
           {hasDraft && view !== "history" ? <div className="fw-draft-note"><Icon name="note" size={14} />Draft changes are saved here. Financial summaries and AI update when you save a version, which includes a dated PDF.</div> : null}
           {loading ? <div className="empty">Opening financial workspace…</div> : !snapshot ? <div className="empty">The financial workspace could not be opened.</div> : <>
