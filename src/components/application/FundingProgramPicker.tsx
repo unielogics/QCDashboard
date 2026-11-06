@@ -1,4 +1,5 @@
 "use client";
+import { ProgramEbitdaComparison } from "./ProgramEbitdaComparison";
 
 import { useState } from "react";
 import { Modal } from "@/components/design-system/Modal";
@@ -40,7 +41,7 @@ function candidateTone(candidate: ProgramFitCandidate): "ok" | "warn" | "bad" | 
 
 export function FundingProgramPicker({
   candidates, selections, selectedKeys, onSelectionChange, reason, onReasonChange,
-  requiresOverride, changed, busy, error, onClose, onApply, selectionMode,
+  requiresOverride, changed, busy, error, onClose, onApply, selectionMode, onPreviewSource, onRequestEvidence,
 }: {
   candidates: ProgramFitCandidate[];
   selections: ApplicationProgramSelection[];
@@ -52,6 +53,7 @@ export function FundingProgramPicker({
   changed: boolean;
   /** The file's current mode; applying from `auto` is the moment AI selection is switched off. */
   selectionMode?: "auto" | "manual";
+  onPreviewSource?: (fileId: string, page?: number) => void; onRequestEvidence?: () => void;
   busy: boolean;
   error: string | null;
   onClose: () => void;
@@ -98,6 +100,7 @@ export function FundingProgramPicker({
               {candidate.preference_reasons?.length ? <small>QC preference: {candidate.preference_reasons.join(" · ")} — recommendation only, not approval.</small> : null}
             </span>
           </label>
+          <ProgramEbitdaComparison candidate={candidate} onPreviewSource={onPreviewSource} onRequestEvidence={onRequestEvidence} />
           {candidate.reasons.length > 1 ? <details className={styles.reasons}><summary>View all fit reasons ({candidate.reasons.length})</summary><ul>{candidate.reasons.map((item, index) => <li key={index}>{item}</li>)}</ul></details> : null}
         </div>)}
         {!visible.length ? <p className="empty">No programs match these filters. Try another search or choose All programs.</p> : null}

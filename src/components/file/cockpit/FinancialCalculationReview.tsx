@@ -61,7 +61,7 @@ export function FinancialCalculationReview({ cockpit, profileId, canEdit, draft:
       const next = await saveFinancialMetricCorrection(api, profileId, draft);
       queryClient.setQueriesData({ queryKey: ["financial-metrics", profileId] }, next);
       queryClient.setQueriesData({ queryKey: ["financial-cockpit", profileId] }, next);
-      for (const key of ["application-profile-audit", "application-evidence-workspace", "application-intelligence"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+      for (const key of ["application-profile-audit", "application-evidence-workspace", "application-intelligence", "application-assessment"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
       onDraft(null); setNotice(draft.action === "restore" ? "Source value restored. Current calculations have been refreshed." : "Staff correction saved. Current calculations have been refreshed.");
       try { await onRefresh(); } catch { setNotice("Correction saved. Refresh calculation sources to reload the rest of the financial interface."); }
     } catch (reason) {

@@ -2,6 +2,7 @@ import type { FundingProgramReviewCheck, FundingProgramScope } from "@/lib/fundi
 
 export type FitCondition = { field: string; op: string; value?: unknown };
 export type SimpleFit = { mode: "all" | "any"; conditions: FitCondition[] };
+export const ANNUAL_EBITDA_POLICY = "Verified annual EBITDA in USD from the current accepted, reconciled 6–12 month P&L for the same business. Tax estimates, bank cash-flow proxies, cached AI figures and hypothetical refinance addbacks do not qualify.";
 
 export const FIT_FIELDS: Array<{ key: string; label: string; type: "number" | "boolean" | "text"; hint?: string }> = [
   { key: "requested_amount", label: "Requested funding ($)", type: "number" },
@@ -10,6 +11,7 @@ export const FIT_FIELDS: Array<{ key: string; label: string; type: "number" | "b
   { key: "real_estate_equipment_pct", label: "Real estate and equipment share (%)", type: "number" },
   { key: "use_of_funds_complete", label: "Funding-use breakdown complete", type: "boolean" },
   { key: "annual_revenue", label: "Annual revenue ($)", type: "number" },
+  { key: "annual_ebitda", label: "Annual EBITDA (USD)", type: "number", hint: ANNUAL_EBITDA_POLICY },
   { key: "gross_margin_pct", label: "Gross margin (%)", type: "number", hint: "Latest confirmed source-period snapshot only." },
   { key: "net_margin_pct", label: "Net margin (%)", type: "number", hint: "Latest confirmed source-period snapshot only." },
   { key: "annualized_deposits", label: "Annualized bank deposits ($)", type: "number" },
@@ -63,6 +65,11 @@ export function writeSimpleFit(rules: Record<string, unknown>, fit: SimpleFit): 
   const next = { ...rules };
   if (fit.conditions.length) next.fit = { [fit.mode]: fit.conditions };
   else delete next.fit;
+  if (objectValue(next.financial_limits) && readSimpleFit(rules)?.conditions.some((row) => row.field === "annual_ebitda") && !fit.conditions.some((row) => row.field === "annual_ebitda")) delete next.financial_limits;
+  if (objectValue(next.financial_limits) && fit.mode === "all") {
+    const annual = fit.conditions.filter((row) => row.field === "annual_ebitda");
+    if (annual.length === 1 && annual[0].op === "gte" && typeof annual[0].value === "number" && Number.isFinite(annual[0].value)) next.financial_limits = { ...next.financial_limits, minimum_annual_ebitda: annual[0].value };
+  }
   return next;
 }
 
@@ -187,7 +194,8 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
       }
       if (Object.keys(node).some((key) => !["field", "op", "value"].includes(key)) || typeof node.field !== "string" || !node.field || node.field.length > 120) return "An eligibility check contains an invalid field. Review advanced settings.";
       if (!["present", "eq", "in", "gte", "lte", "gt", "lt", "evidence_available"].includes(String(node.op))) return "An eligibility check uses an unsupported condition.";
-      const supportedFields = new Set(["vertical", "intake_variant", "intent", "intent_kind", "funding_category", "entity_type", "industry", "subindustry", "industry_key", "naics_code", "loan_purpose", "requested_amount", "business_age_years", "revenue", "annual_revenue", "gross_margin_pct", "net_margin_pct", "annualized_deposits", "deposits", "bank_statement_months", "tax_return_years", "nsf_or_overdraft_count", "credit_score", "estimated_credit_score", "dscr", "cash_flow", "debt_burden", "liquid_assets", "tax_returns_available", "bank_statements_available", "evidence_count", "declared_collateral", "mca_obligations_present", "floorplan_inventory_present", "equipment_financing_intent"]);
+      const supportedFields = new Set(["vertical", "intake_variant", "intent", "intent_kind", "funding_category", "entity_type", "industry", "subindustry", "industry_key", "naics_code", "loan_purpose", "requested_amount", "business_age_years", "revenue", "annual_revenue", "annual_ebitda", "gross_margin_pct", "net_margin_pct", "annualized_deposits", "deposits", "bank_statement_months", "tax_return_years", "nsf_or_overdraft_count", "credit_score", "estimated_credit_score", "dscr", "cash_flow", "debt_burden", "liquid_assets", "tax_returns_available", "bank_statements_available", "evidence_count", "declared_collateral", "mca_obligations_present", "floorplan_inventory_present", "equipment_financing_intent"]);
+      if (node.field === "annual_ebitda" && !["present", "eq", "gte", "lte", "gt", "lt"].includes(String(node.op))) return "Annual EBITDA supports only numeric comparisons or a must-be-provided check.";
       if (node.op !== "evidence_available" && !supportedFields.has(node.field) && !["use_of_funds_total", "real_estate_equipment_amount", "real_estate_equipment_pct", "use_of_funds_complete"].includes(node.field)) return `Unsupported eligibility field: ${node.field}. Review Advanced settings.`;
       if (node.op === "present" && "value" in node) return "A 'must be provided' check must not contain a value. Remove its value in Advanced settings.";
       if (node.op === "evidence_available" && node.value != null && (typeof node.value !== "string" || !node.value.trim())) return "An evidence availability check needs a nonblank document classification, or no value.";
@@ -200,6 +208,14 @@ export function validateEditorContent(rulesText: string, requirementsText: strin
       return null;
     }
     if ("fit" in rules) { const error = validateNode(rules.fit); if (error) return error; }
+    if (rules.financial_limits !== undefined) {
+      const limits = rules.financial_limits;
+      if (!objectValue(limits) || Object.keys(limits).some((key) => !["minimum_annual_ebitda", "currency", "source_reference"].includes(key)) || typeof limits.minimum_annual_ebitda !== "number" || !Number.isFinite(limits.minimum_annual_ebitda) || limits.currency !== "USD" || typeof limits.source_reference !== "string" || !limits.source_reference.trim()) return "Annual EBITDA limit requires a finite minimum, USD currency, and a source reference.";
+      const annual: Array<{ node: Record<string, unknown>; mandatory: boolean }> = [];
+      const collect = (node: unknown, mandatory = true) => { if (!objectValue(node)) return; if (node.field === "annual_ebitda") annual.push({ node, mandatory }); for (const key of ["all", "any"] as const) if (Array.isArray(node[key])) (node[key] as unknown[]).forEach((child) => collect(child, mandatory && key === "all")); if (node.not) collect(node.not, false); };
+      collect(rules.fit);
+      if (annual.length !== 1 || !annual[0].mandatory || annual[0].node.op !== "gte" || annual[0].node.value !== limits.minimum_annual_ebitda) return "The documented annual EBITDA minimum requires one matching mandatory 'at least' check. Align the check or explicitly remove the limit metadata.";
+    }
     if (!Array.isArray(requirements) || !requirements.every(objectValue)) return "Document requirements must be a list of requirements.";
     const keys = new Set<string>();
     for (const row of requirements) {

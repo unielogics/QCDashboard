@@ -1,0 +1,1701 @@
+{
+  "operating": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 70000.0,
+        "change": 18000.0,
+        "status": "hypothetical_adjusted",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "status": "hypothetical_unverified"
+          },
+          {
+            "id": "one-time",
+            "kind": "one_time_expense",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 500.0,
+            "amount_annual": 6000.0,
+            "status": "hypothetical_unverified"
+          }
+        ],
+        "excluded_adjustments": [
+          {
+            "id": "interest",
+            "kind": "interest_refinanced",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 400.0,
+            "amount_annual": 4800.0,
+            "reason": "Interest and depreciation/amortization are already excluded from EBITDA; adding them again would double count.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Operating addbacks are staff hypotheses, not verified facts or lender-accepted adjustments. They change hypothetical Adjusted EBITDA only."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        },
+        {
+          "id": "one-time",
+          "kind": "one_time_expense",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 500.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        },
+        {
+          "id": "interest",
+          "kind": "interest_refinanced",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 400.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "missing-note": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 52000.0,
+        "change": 0,
+        "status": "unchanged",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": null,
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "reason": "Describe the operating assumption and its source before including it in hypothetical Adjusted EBITDA.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": null,
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "tax-only": {
+    "projection": {
+      "before": null,
+      "after": null,
+      "change": null,
+      "value_basis": "period_ebitda",
+      "annual_before": null,
+      "annual_after": null,
+      "annual_change": null,
+      "status": "tax_estimate_only",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "tax_estimate",
+      "period": "2025",
+      "months_covered": null,
+      "annualization_factor": null,
+      "currency": null,
+      "basis": null,
+      "provisional": true,
+      "source_refs": [
+        {
+          "file_id": "tax",
+          "file_name": "tax.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": null,
+          "period_end": null,
+          "currency": null,
+          "basis": null,
+          "facts_stamp": "51843521e84112576891a0c67ea5bca782d7c881e4bf4726e6364bc5021b319b"
+        }
+      ],
+      "baseline": null,
+      "tax_estimate": {
+        "key": "tax_return:tax:2025",
+        "label": "Tax-derived earnings estimate",
+        "value": 115000.0,
+        "annualized_value": null,
+        "period": "2025",
+        "months_covered": null,
+        "period_start": null,
+        "period_end": null,
+        "annualization_factor": null,
+        "kind": "tax_estimate",
+        "complete": false,
+        "provisional": true,
+        "formula": "tax income + known interest + known depreciation",
+        "input_keys": [
+          "tax_return:tax:2025.income",
+          "tax_return:tax:2025.interest",
+          "tax_return:tax:2025.depreciation"
+        ],
+        "missing_inputs": [],
+        "notes": [
+          "Underwriting estimate: tax income + known interest + known depreciation. This is not a reconciliation from net income to full EBITDA; missing deductions contribute zero only to this existing estimate.",
+          "The tax reporting duration is unknown or is not a full twelve months. This period estimate is not annualized; existing DSCR still uses its reported tax basis without a new annualization assumption.",
+          "The source currency is not established; this amount retains its source denomination without currency conversion."
+        ],
+        "source_refs": [
+          {
+            "file_id": "tax",
+            "file_name": "tax.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": null,
+            "period_end": null,
+            "currency": null,
+            "basis": null,
+            "facts_stamp": "51843521e84112576891a0c67ea5bca782d7c881e4bf4726e6364bc5021b319b"
+          }
+        ],
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": null,
+        "basis": null
+      },
+      "adjusted_annual": {
+        "before": null,
+        "after": null,
+        "change": null,
+        "status": "unavailable",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": null,
+        "adjustments": [],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "reason": "No comparable, source-supported annual P&L EBITDA baseline is available.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Underwriting estimate: tax income + known interest + known depreciation. This is not a reconciliation from net income to full EBITDA; missing deductions contribute zero only to this existing estimate.",
+        "The tax reporting duration is unknown or is not a full twelve months. This period estimate is not annualized; existing DSCR still uses its reported tax basis without a new annualization assumption.",
+        "The source currency is not established; this amount retains its source denomination without currency conversion.",
+        "Adjusted EBITDA requires an accepted, reconciled annual P&L basis for the same business, a known reporting period/accounting basis, and a comparable USD denomination."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "duplicates": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 52031.44,
+        "change": 31.44,
+        "status": "hypothetical_adjusted",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 2.62,
+            "amount_annual": 31.44,
+            "status": "hypothetical_unverified"
+          }
+        ],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 50.0,
+            "amount_annual": 600.0,
+            "reason": "This adjustment identity is already included; it is not counted twice.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Operating addbacks are staff hypotheses, not verified facts or lender-accepted adjustments. They change hypothetical Adjusted EBITDA only."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 2.62,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        },
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 50.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "short": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": null,
+      "annual_after": null,
+      "annual_change": null,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Apr 2026",
+      "months_covered": 4,
+      "annualization_factor": null,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-04-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "c8b8e540543ff6419412ffe0a416d15edc01626097a2c9036be1d46d5a681dfb"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": null,
+        "period": "Jan–Apr 2026",
+        "months_covered": 4,
+        "annualization_factor": null,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [
+          "Period EBITDA is shown without annualization; DSCR requires a known 6–12 month P&L period."
+        ],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-04-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "c8b8e540543ff6419412ffe0a416d15edc01626097a2c9036be1d46d5a681dfb"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": null,
+        "after": null,
+        "change": null,
+        "status": "unavailable",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": null,
+        "adjustments": [],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "reason": "No comparable, source-supported annual P&L EBITDA baseline is available.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Period EBITDA is shown without annualization; DSCR requires a known 6–12 month P&L period.",
+        "Adjusted EBITDA requires an accepted, reconciled annual P&L basis for the same business, a known reporting period/accounting basis, and a comparable USD denomination."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "refinance": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 52000.0,
+        "change": 0,
+        "status": "unchanged",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [],
+        "excluded_adjustments": []
+      },
+      "debt_service_savings_monthly": 500.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately."
+      ]
+    },
+    "plan": {
+      "retire": [
+        "row:debt"
+      ],
+      "exclude": [],
+      "new_payment_monthly": 500.0,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 500.0,
+      "retiredCount": 1,
+      "newPayment": 500.0,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "baseline": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 52000.0,
+        "change": 0,
+        "status": "unchanged",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [],
+        "excluded_adjustments": []
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "conflict": {
+    "projection": {
+      "before": 40000.0,
+      "after": 40000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 80000.0,
+      "annual_after": 80000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "reported_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": true,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "146a59603836323940d28b71949c380570d072e4a0a5bac3e9ad1b5ba03038d6"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "Reported EBITDA",
+        "value": 40000.0,
+        "annualized_value": 80000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "reported_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "source-reported EBITDA",
+        "input_keys": [
+          "profit_and_loss.reported_ebitda"
+        ],
+        "missing_inputs": [],
+        "notes": [
+          "Source-reported EBITDA differs from net income + interest + income taxes + D&A. Reported EBITDA remains the existing underwriting basis; reconcile the difference."
+        ],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "146a59603836323940d28b71949c380570d072e4a0a5bac3e9ad1b5ba03038d6"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": 40000.0,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": null,
+        "after": null,
+        "change": null,
+        "status": "unavailable",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": null,
+        "adjustments": [],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "reason": "No comparable, source-supported annual P&L EBITDA baseline is available.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Source-reported EBITDA differs from net income + interest + income taxes + D&A. Reported EBITDA remains the existing underwriting basis; reconcile the difference.",
+        "Adjusted EBITDA requires an accepted, reconciled annual P&L basis for the same business, a known reporting period/accounting basis, and a comparable USD denomination."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "foreign": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "EUR",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "EUR",
+          "basis": "accrual",
+          "facts_stamp": "67e0bd210d098e3c183d3394eedc1990b3d68a05f73a447fd9f257f1ee36d412"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "EUR",
+            "basis": "accrual",
+            "facts_stamp": "67e0bd210d098e3c183d3394eedc1990b3d68a05f73a447fd9f257f1ee36d412"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "EUR",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": null,
+        "after": null,
+        "change": null,
+        "status": "unavailable",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": null,
+        "adjustments": [],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "owner_salary",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "reason": "No comparable, source-supported annual P&L EBITDA baseline is available.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 0.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "projected",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Scenario addbacks are denominated in USD; they are not applied to a source EBITDA in another currency. No currency conversion is assumed.",
+        "Adjusted EBITDA requires an accepted, reconciled annual P&L basis for the same business, a known reporting period/accounting basis, and a comparable USD denomination."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "owner_salary",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 1000.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "no-replacement": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 52000.0,
+        "change": 0,
+        "status": "unchanged",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [],
+        "excluded_adjustments": []
+      },
+      "debt_service_savings_monthly": 1000.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "before_replacement_payment",
+      "replacement_payment_missing": true,
+      "debt_service_override_applied": false,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "Debt-service savings are shown before adding a replacement payment; replacement loan terms have not been provided."
+      ]
+    },
+    "plan": {
+      "retire": [
+        "row:debt"
+      ],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [],
+      "overrides": {
+        "income_annual": null,
+        "income_note": null,
+        "debt_service_monthly": null,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 0.0,
+      "retiredCount": 1,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  },
+  "override": {
+    "projection": {
+      "before": 26000.0,
+      "after": 26000.0,
+      "change": 0.0,
+      "value_basis": "period_ebitda",
+      "annual_before": 52000.0,
+      "annual_after": 52000.0,
+      "annual_change": 0.0,
+      "status": "projected_unchanged",
+      "label": "EBITDA",
+      "after_label": "After refinance EBITDA",
+      "source_kind": "computed_ebitda",
+      "period": "Jan–Jun 2026",
+      "months_covered": 6,
+      "annualization_factor": 2.0,
+      "currency": "USD",
+      "basis": "accrual",
+      "provisional": false,
+      "source_refs": [
+        {
+          "file_id": "source",
+          "file_name": "source.pdf",
+          "analysis_id": "analysis-1",
+          "content_hash": "content-1",
+          "accepted": true,
+          "entity": "Example LLC",
+          "period_start": "2026-01-01",
+          "period_end": "2026-06-30",
+          "currency": "USD",
+          "basis": "accrual",
+          "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+        }
+      ],
+      "baseline": {
+        "key": "profit_and_loss",
+        "label": "EBITDA",
+        "value": 26000.0,
+        "annualized_value": 52000.0,
+        "period": "Jan–Jun 2026",
+        "months_covered": 6,
+        "annualization_factor": 2.0,
+        "kind": "computed_ebitda",
+        "complete": true,
+        "provisional": false,
+        "formula": "net income + interest + income taxes + depreciation and amortization",
+        "input_keys": [
+          "profit_and_loss.net_income",
+          "profit_and_loss.interest",
+          "profit_and_loss.income_taxes",
+          "profit_and_loss.depreciation_and_amortization"
+        ],
+        "missing_inputs": [],
+        "notes": [],
+        "source_refs": [
+          {
+            "file_id": "source",
+            "file_name": "source.pdf",
+            "analysis_id": "analysis-1",
+            "content_hash": "content-1",
+            "accepted": true,
+            "entity": "Example LLC",
+            "period_start": "2026-01-01",
+            "period_end": "2026-06-30",
+            "currency": "USD",
+            "basis": "accrual",
+            "facts_stamp": "5061cf018e7989ae9774bd5cb118f429209ecad0af65d4bdf1290ee011aedd74"
+          }
+        ],
+        "computed_value": 26000.0,
+        "reported_value": null,
+        "entity_mismatch": false,
+        "entity_comparable": true,
+        "currency": "USD",
+        "basis": "accrual"
+      },
+      "tax_estimate": null,
+      "adjusted_annual": {
+        "before": 52000.0,
+        "after": 52000.0,
+        "change": 0,
+        "status": "unchanged",
+        "verified": false,
+        "label": "Hypothetical Adjusted EBITDA (annual)",
+        "currency": "USD",
+        "adjustments": [],
+        "excluded_adjustments": [
+          {
+            "id": "owner-adjustment",
+            "kind": "depreciation",
+            "label": "Proposed officer pay adjustment",
+            "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+            "source": "desk",
+            "amount_monthly": 1000.0,
+            "amount_annual": 12000.0,
+            "reason": "Interest and depreciation/amortization are already excluded from EBITDA; adding them again would double count.",
+            "status": "not_applied"
+          }
+        ]
+      },
+      "debt_service_savings_monthly": 950.0,
+      "debt_service_savings_currency": "USD",
+      "debt_service_savings_status": "hypothetical_override",
+      "replacement_payment_missing": false,
+      "debt_service_override_applied": true,
+      "cash_flow_change_monthly": null,
+      "cash_flow_currency": null,
+      "cash_flow_currency_status": "unknown",
+      "notes": [
+        "Refinancing alone does not change EBITDA: interest, principal payments and financing proceeds are outside EBITDA. Debt-service savings and bank cash-flow changes are shown separately.",
+        "The generic DSCR income override does not replace source EBITDA or create an EBITDA adjustment.",
+        "Projected savings include a hypothetical DSCR debt-service override; the published current debt service is unchanged."
+      ]
+    },
+    "plan": {
+      "retire": [],
+      "exclude": [],
+      "new_payment_monthly": null,
+      "new_payment_source": null,
+      "new_loan_amount": null,
+      "new_loan_rate_pct": null,
+      "new_loan_term_months": null,
+      "new_loan_interest_only": false,
+      "new_loan_structure": null,
+      "new_loan_interest_only_months": 0,
+      "add_backs": [
+        {
+          "id": "owner-adjustment",
+          "kind": "depreciation",
+          "label": "Proposed officer pay adjustment",
+          "amount_monthly": 1000.0,
+          "note": "Staff hypothesis: discretionary expense after the proposed transaction",
+          "source": "desk"
+        }
+      ],
+      "overrides": {
+        "income_annual": 999999.0,
+        "income_note": null,
+        "debt_service_monthly": 50.0,
+        "debt_service_note": null
+      },
+      "note": null,
+      "terms_ref": null,
+      "updated_at": null,
+      "updated_by": null
+    },
+    "context": {
+      "serviceAfter": 50.0,
+      "retiredCount": 0,
+      "newPayment": null,
+      "netBefore": null,
+      "netAfter": null
+    },
+    "service": 1000.0
+  }
+}

@@ -14,6 +14,7 @@ export type FundingProgramScope = {
 };
 
 export type FundingProgramVersion = {
+  financial_limits?: FundingProgramFinancialLimits | null;
   playbook_id: string;
   version: number;
   status: "draft" | "published" | "archived";
@@ -49,6 +50,7 @@ export type FundingProgramReviewCheck = {
 };
 
 export type FundingProgramBaseline = {
+  financial_limits?: FundingProgramFinancialLimits | null;
   program_key: string;
   name: string;
   version: string;
@@ -59,6 +61,7 @@ export type FundingProgramBaseline = {
   scopes: FundingProgramScope[];
   needs_review: boolean;
 };
+export type FundingProgramFinancialLimits = { minimum_annual_ebitda: number; currency: "USD"; source_reference: string };
 
 export type FundingProgramCatalogItem = {
   id: string;

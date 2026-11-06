@@ -116,8 +116,10 @@ export function simulateRemovals(months: CockpitMonth[], payees: RecurringPayee[
 import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanCandidate, PlanLoanTerms } from "@/lib/financialCockpit";
 import { dscrStatusOf } from "@/lib/financialCockpit";
 import { buildSchedule, describeSchedule, type LoanScheduleSummary } from "@/lib/loanSchedule";
+import { evaluateRefinanceEbitda, type RefinanceEbitda } from "@/lib/ebitdaRefinance";
 
 export type LocalPlanEvaluation = {
+  ebitda?: RefinanceEbitda;
   retiredMonthly: number;
   payoffTotal: number | null;
   payoffUnknown: number;
@@ -235,6 +237,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   });
   const netAfter = rows.map((r) => r.netAfter).filter((v): v is number => v != null);
   return {
+    ebitda: evaluateRefinanceEbitda(cockpit, plan, { serviceAfter, netBefore: mean(months.map((row) => row.net)), netAfter: netAfter.length ? r2(netAfter.reduce((a, b) => a + b, 0) / netAfter.length) : null, retiredCount: retired.length, newPayment: newPayment ?? null }),
     retiredMonthly,
     payoffTotal,
     payoffUnknown: retired.filter((o) => o.payoff == null).length,
