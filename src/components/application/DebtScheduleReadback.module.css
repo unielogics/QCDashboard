@@ -1,4 +1,9 @@
 .panel { min-width: 0; display: grid; gap: 9px; }
+.intake, .intakeReview { min-width: 0; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.intakeReview { background: var(--surface); }
+.proposals { list-style: none; padding: 0; margin: 0; max-height: 340px; overflow: auto; display: grid; gap: 8px; }
+.proposals li { padding: 10px; border: 1px solid var(--line); border-radius: 7px; overflow-wrap: anywhere; }
+.proposalChoice { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; }
 .header, .heading, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
 .header { justify-content: space-between; }
 .heading strong { font-size: 14px; }

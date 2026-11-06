@@ -1,10 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, Sub } from "@/components/ds";
 import { useDebtScheduleWorkspace } from "@/hooks/useDebtScheduleReview";
 import { FinancialWorkspace } from "./FinancialWorkspace";
 import { DebtScheduleReadback } from "./DebtScheduleReadback";
+import { DebtScheduleIntakeActions } from "./DebtScheduleIntakeActions";
+import { canDraftDebtIntake, hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
 
 /** The requirement shows the draft directly; edits use the one shared workspace. */
 export type DebtScheduleEditorTarget = { view: "form" | "pdf" | "history"; rowId?: string };
@@ -13,6 +16,7 @@ export function DebtScheduleReviewPanel({ profileId, compact = false, inDrawer =
   onOpenEditor?: (target: DebtScheduleEditorTarget) => void;
 }) {
   const workspace = useDebtScheduleWorkspace(profileId, !inDrawer);
+  const queryClient = useQueryClient();
   const [editor, setEditor] = useState<DebtScheduleEditorTarget | null>(null);
   const openEditor = (target: DebtScheduleEditorTarget) => onOpenEditor ? onOpenEditor(target) : setEditor(target);
   const closeEditor = () => { setEditor(null); void workspace.refetch(); onSaved?.(); };
@@ -24,6 +28,7 @@ export function DebtScheduleReviewPanel({ profileId, compact = false, inDrawer =
       onFiles={(rowId) => openEditor({ view: "pdf", rowId })}
       onHistory={() => openEditor({ view: "history" })}
     />}
+    {workspace.data && (canDraftDebtIntake(workspace.data) || hasPendingDebtIntakeReview(workspace.data)) ? <DebtScheduleIntakeActions profileId={profileId} workspace={workspace.data} onApplied={(next) => { queryClient.setQueryData(["financial-workspace-summary", profileId], next); onSaved?.(); }} onReload={() => workspace.refetch()} onEdit={() => openEditor({ view: "form" })} /> : null}
     {editor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={editor.view} initialDebtId={editor.rowId} onClose={closeEditor} onPublished={async () => { await workspace.refetch(); onSaved?.(); }} /> : null}
   </div>;
 }

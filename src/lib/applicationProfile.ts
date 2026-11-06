@@ -296,6 +296,9 @@ export type ApplicationRequirement = {
   received_at: string | null;
   verified_at: string | null;
   provenance: Record<string, unknown>;
+  can_remove?: boolean;
+  derived_required?: boolean;
+  removal_reason?: string | null;
 };
 
 export type ProgramReadinessItem = {
@@ -342,6 +345,7 @@ export type ApplicationProgramReadiness = {
   candidates: ProgramFitCandidate[];
   programs: ProgramReadinessItem[];
   requirements: ApplicationRequirement[];
+  inactive_requirements?: ApplicationRequirement[];
   available_evidence_files: ApplicationEvidenceOption[];
   evidence_summary?: ApplicationEvidenceSummary;
   can_advance: boolean;
