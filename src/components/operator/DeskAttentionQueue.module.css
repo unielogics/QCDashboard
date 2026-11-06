@@ -1,5 +1,11 @@
 .root { display: grid; gap: 12px; min-width: 0; }
 .headingActions { display: flex; align-items: center; gap: 8px; }
+.viewBar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.viewBar > span { color: var(--muted); font-size: 11px; }
+.views { display: flex; padding: 3px; gap: 3px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+.views button { border: 0; border-radius: 5px; padding: 6px 12px; color: var(--muted); background: transparent; font-size: 12px; cursor: pointer; }
+.views button[aria-selected=true] { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px #0001; font-weight: 650; }
+.views button:disabled { opacity: .6; cursor: wait; }
 .toolbar { display: grid; grid-template-columns: minmax(150px,1fr) minmax(180px,240px) 75px auto; align-items: end; gap: 10px; }
 .list { min-width: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 .item + .item { border-top: 1px solid var(--line); }
@@ -15,6 +21,28 @@
 .details p { margin: 0; white-space: pre-wrap; }
 .details > strong { display: block; margin-bottom: 5px; font-size: 12px; }
 .details > div { display: flex; flex-wrap: wrap; gap: 5px 15px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.hiddenMeta { display: grid; gap: 5px; padding: 0 14px 12px 45px; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.hiddenMeta p { margin: 0; color: var(--ink2); white-space: pre-wrap; }
+.noticeActions { display: flex; flex-wrap: wrap; gap: 6px; }
+.controls { display: grid; gap: 12px; margin: 0 12px 12px 43px; padding: 15px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-size: 12px; }
+.controlHeading { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+.controlHeading strong { display: block; overflow-wrap: anywhere; }
+.controlHeading p, .duplicatePicker > p { margin: 4px 0 0; color: var(--muted); line-height: 1.6; }
+.controlHeading > button { flex-shrink: 0; }
+.controlFooter, .candidatePages { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+.controlFooter small, .candidatePages > span { color: var(--muted); font-size: 11px; }
+.duplicatePicker { display: grid; gap: 10px; }
+.candidates { display: grid; gap: 7px; max-height: 330px; overflow-y: auto; padding: 1px; }
+.candidates article { display: flex; gap: 10px; align-items: start; padding: 10px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); }
+.candidates article.selectedCandidate { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.candidates label { display: flex; align-items: start; gap: 9px; flex: 1; min-width: 0; cursor: pointer; }
+.candidates input { margin-top: 3px; flex-shrink: 0; }
+.candidates label > span { display: grid; gap: 4px; min-width: 0; overflow-wrap: anywhere; }
+.candidates small { color: var(--muted); font-size: 10px; }
+.candidates label > span > span { color: var(--ink2); font-size: 11px; line-height: 1.5; }
+.candidates a { flex-shrink: 0; font-size: 11px; }
+.survivor { display: grid; gap: 4px; padding: 10px; border-radius: 6px; background: var(--accent-100); overflow-wrap: anywhere; }
+.survivor span, .survivor a { font-size: 11px; }
 .pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 11px; }
 .pagination nav { display: flex; align-items: center; gap: 9px; }
 .pagination nav > span { min-width: 65px; text-align: center; }
@@ -22,4 +50,4 @@
 .empty { display: grid; gap: 12px; justify-items: start; padding: 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
 .loading { display: grid; gap: 8px; padding: 10px; }.loading span { height: 44px; border-radius: 6px; }
 .disclosure:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
-@media(max-width:800px) { .toolbar { grid-template-columns: minmax(0,1fr) 75px; }.toolbar > :first-child { grid-column: 1 / -1; }.toolbar > :nth-child(4) { justify-self: start; }.row { grid-template-columns: 18px minmax(0,1fr) auto; gap: 8px; }.actions { grid-column: 2 / -1; justify-content: start; }.details { padding-left: 38px; } }
+@media(max-width:800px) { .toolbar { grid-template-columns: minmax(0,1fr) 75px; }.toolbar > :first-child { grid-column: 1 / -1; }.toolbar > :nth-child(4) { justify-self: start; }.row { grid-template-columns: 18px minmax(0,1fr) auto; gap: 8px; }.actions { grid-column: 2 / -1; justify-content: start; }.details, .hiddenMeta { padding-left: 38px; }.controls { margin-left: 12px; padding: 12px; }.candidates article { flex-direction: column; }.candidates a { margin-left: 24px; } }

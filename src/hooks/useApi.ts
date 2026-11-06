@@ -2,7 +2,7 @@
 
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import { useCallback, useRef } from "react";
-import type { AttentionItemKind, AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
+import type { AttentionItemKind, AttentionQueue, AttentionQueueActionResult, AttentionQueueActionWrite, AttentionQueueView, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
@@ -406,7 +406,7 @@ export function useAITasks() {
 }
 
 /** What is stalling on the desk, each row with the link that opens its file. */
-export function useAttentionQueue(enabled = true, options?: { limit?: number; offset?: number; kind?: AttentionItemKind; q?: string }) {
+export function useAttentionQueue(enabled = true, options?: { limit?: number; offset?: number; kind?: AttentionItemKind; q?: string; view?: AttentionQueueView }) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   const search = options?.q?.trim().replace(/\s+/g, " ") ?? "";
@@ -415,12 +415,24 @@ export function useAttentionQueue(enabled = true, options?: { limit?: number; of
   if (options?.offset != null) params.set("offset", String(options.offset));
   if (options?.kind) params.set("kind", options.kind);
   if (search) params.set("q", search);
+  if (options?.view) params.set("view", options.view);
   return useQuery({
-    queryKey: ["attention-queue", devUser, options?.limit ?? 60, options?.offset ?? 0, options?.kind ?? "", search],
+    queryKey: ["attention-queue", devUser, options?.limit ?? 60, options?.offset ?? 0, options?.kind ?? "", search, options?.view ?? "active"],
     queryFn: () => apiCall<AttentionQueue>(`/operator-files/attention${params.size ? `?${params}` : ""}`),
     enabled,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
+  });
+}
+
+/** Queue cleanup is reversible and never archives the underlying file. */
+export function useUpdateAttentionItem() {
+  const apiCall = useAuthedApi();
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: AttentionQueueActionWrite) => apiCall<AttentionQueueActionResult>("/operator-files/attention/actions", { method: "POST", body: JSON.stringify(body) }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["attention-queue"] }),
+    onError: (error) => { if (error instanceof ApiError && error.status === 409) void qc.invalidateQueries({ queryKey: ["attention-queue"] }); },
   });
 }
 
