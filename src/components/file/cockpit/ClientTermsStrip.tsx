@@ -15,12 +15,13 @@ import { money } from "@/lib/financialCockpit";
 /** The loan typed under the DSCR modifications, as the client terms: a line that says what is on file and
  *  whether it matches, one button to save the plan's loan as the terms, and the full editor in a drawer
  *  for the rest (funder, timing, co-branding, conditions) and the PDF. */
-export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canEdit }: {
+export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canEdit, onOpenEditor }: {
   profileId: string;
   loan: { amount: number | null; ratePct: number | null; termMonths: number | null; structure: LoanStructure; interestOnlyMonths: number | null };
   linkSummary: string | null;
   linkState: string | null;
   canEdit: boolean;
+  onOpenEditor?: () => void;
 }) {
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -64,13 +65,20 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
             <Icon name="docCheck" size={14} />{saveFromPlan.isPending ? "Saving…" : onFile ? "Update the client terms from this loan" : "Save this loan as the client terms"}
           </Btn>
         ) : null}
-        <Btn size="sm" onClick={() => setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn>
+        <Btn size="sm" onClick={() => onOpenEditor ? onOpenEditor() : setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn>
         {planHasLoan && !mirrored ? <span className="sub">The loan above goes into the editor as unsaved edits.</span> : null}
         {saveFromPlan.error ? <span className="sub">{errorMessage(saveFromPlan.error, "The client terms could not be saved.")}</span> : saveFromPlan.isSuccess ? <span className="sub">Saved; the plan reads the terms.</span> : !planHasLoan && !onFile ? <span className="sub">Enter the loan above, then save it as the client terms.</span> : null}
       </div>
-      <Drawer open={open} onClose={() => setOpen(false)} title="Client terms" sub="The full record behind the loan in the plan: funder, repayment, timing, co-branding and conditions; the report is the client's PDF." width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
-        {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={refresh} prefillLoan={planHasLoan && !mirrored ? { amount: loan.amount, aprPct: loan.ratePct, termMonths: loan.termMonths, structure: loan.structure, interestOnlyMonths: loan.interestOnlyMonths } : null} /> : null}
-      </Drawer>
+      {!onOpenEditor ? <ClientTermsDrawer open={open} onClose={() => setOpen(false)} profileId={profileId} onSaved={refresh} prefillLoan={planHasLoan && !mirrored ? { amount: loan.amount, aprPct: loan.ratePct, termMonths: loan.termMonths, structure: loan.structure, interestOnlyMonths: loan.interestOnlyMonths } : null} /> : null}
     </div>
   );
+}
+
+export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLoan }: {
+  open: boolean; onClose: () => void; profileId: string; onSaved?: () => void;
+  prefillLoan: { amount: number | null; aprPct: number | null; termMonths: number | null; structure: LoanStructure; interestOnlyMonths: number | null } | null;
+}) {
+  return <Drawer open={open} onClose={onClose} title="Client terms" sub="The full record behind the loan in the plan: funder, repayment, timing, co-branding and conditions; the report is the client's PDF." width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
+    {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={onSaved} prefillLoan={prefillLoan} /> : null}
+  </Drawer>;
 }

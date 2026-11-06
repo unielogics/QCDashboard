@@ -1,10 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Field, Input, Select, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi } from "@/hooks/useApi";
 import { fileRequestsApi, type FileRequestItem, type FileRequestRead } from "@/lib/fileRequestsApi";
+import { queueFileRequestPrefill } from "@/lib/financialStatementRequests";
 
 const TYPES = [
   ["bank_statement", "Bank statements", "months", 6],
@@ -21,11 +22,13 @@ const TYPES = [
 const blank = (): FileRequestItem => ({ document_type: "bank_statement", name: "Bank statements", quantity: 6, unit: "months", subject: "business", period: "current", instructions: "" });
 const message = (error: unknown) => error instanceof Error ? error.message : "The file request could not be saved.";
 
-export function RequestFilesDialog({ profileId, open, onClose, onRequested }: {
+export function RequestFilesDialog({ profileId, open, onClose, onRequested, prefill, prefillKey }: {
   profileId: string;
   open: boolean;
   onClose: () => void;
   onRequested?: () => void;
+  prefill?: FileRequestItem;
+  prefillKey?: string;
 }) {
   const call = useAuthedApi();
   const api = useMemo(() => fileRequestsApi(call, profileId), [call, profileId]);
@@ -36,15 +39,26 @@ export function RequestFilesDialog({ profileId, open, onClose, onRequested }: {
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const appliedPrefill = useRef<{ profileId: string; key?: string } | null>(null);
+  const activeProfile = useRef(profileId);
+  activeProfile.current = profileId;
 
   const load = useCallback(async () => {
-    try { setHistory((await api.list()).requests); }
-    catch (reason) { setError(message(reason)); }
-  }, [api]);
+    try { const response = await api.list(); if (activeProfile.current === profileId) setHistory(response.requests); }
+    catch (reason) { if (activeProfile.current === profileId) setError(message(reason)); }
+  }, [api, profileId]);
   useEffect(() => { if (open) void load(); }, [open, load]);
   useEffect(() => {
-    setItems([blank()]); setRequestId(null); setHistory([]); setNotice(""); setError("");
-  }, [profileId]);
+    const profileChanged = appliedPrefill.current?.profileId !== profileId;
+    const key = prefillKey ?? (prefill ? JSON.stringify(prefill) : undefined);
+    const addPrefill = open && prefill && (profileChanged || appliedPrefill.current?.key !== key);
+    if (!profileChanged && !addPrefill) return;
+    const baseline = profileChanged ? [blank()] : items;
+    const next = addPrefill ? queueFileRequestPrefill(baseline, prefill, blank()) : baseline;
+    appliedPrefill.current = { profileId, key: addPrefill ? key : profileChanged ? undefined : appliedPrefill.current?.key };
+    if (profileChanged) { setHistory([]); setError(""); setBusy(""); }
+    if (next !== items) { setItems(next); setRequestId(null); setNotice(""); }
+  }, [profileId, open, prefill, prefillKey, items]);
 
   function patch(index: number, changes: Partial<FileRequestItem>) {
     setItems((current) => current.map((item, at) => at === index ? { ...item, ...changes } : item));
@@ -58,13 +72,14 @@ export function RequestFilesDialog({ profileId, open, onClose, onRequested }: {
     setRequestId(id);
     try {
       const response = await api.create(id, items, notify);
+      if (activeProfile.current !== profileId) return;
       setHistory(response.requests);
       const failed = response.notification?.status === "failed";
-      setNotice(failed ? "Requests saved. The email could not be delivered; retry it below." : notify ? "Requests saved and one email sent to the client." : "Requests saved in the client’s secure room.");
+      setNotice(failed ? "Requests saved. The email could not be delivered; retry it below." : response.notification?.status === "sent" ? "Requests saved. The client email was accepted for delivery." : notify ? "Requests saved. Email delivery is pending." : "Requests saved in the client’s secure room.");
       setItems([blank()]); setRequestId(null);
       onRequested?.();
-    } catch (reason) { setError(message(reason)); }
-    finally { setBusy(""); }
+    } catch (reason) { if (activeProfile.current === profileId) setError(message(reason)); }
+    finally { if (activeProfile.current === profileId) setBusy(""); }
   }
 
   async function action(row: FileRequestRead, kind: "retry" | "cancel") {
@@ -72,11 +87,12 @@ export function RequestFilesDialog({ profileId, open, onClose, onRequested }: {
     try {
       if (kind === "retry") {
         const result = await api.retry(row.request_id, crypto.randomUUID());
+        if (activeProfile.current !== profileId) return;
         setNotice(result.notification.status === "sent" ? "The request email was sent." : result.notification.detail || "Delivery failed; the request remains available in the client’s room.");
-      } else { await api.cancel(row.request_id); setNotice("Request cancelled. Uploaded files are retained."); }
+      } else { await api.cancel(row.request_id); if (activeProfile.current !== profileId) return; setNotice("Request cancelled. Uploaded files are retained."); }
       await load(); onRequested?.();
-    } catch (reason) { setError(message(reason)); }
-    finally { setBusy(""); }
+    } catch (reason) { if (activeProfile.current === profileId) setError(message(reason)); }
+    finally { if (activeProfile.current === profileId) setBusy(""); }
   }
 
   const invalid = items.some((item) => item.name.trim().length < 2 || !item.subject.trim() || !item.period.trim() || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > ({ files: 100, months: 60, years: 10 }[item.unit]));

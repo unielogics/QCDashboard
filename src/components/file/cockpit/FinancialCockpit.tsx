@@ -14,11 +14,14 @@
 // (app/services/financial_cockpit.py); this component only arranges it.
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
+import { RequestFilesDialog } from "@/components/application/RequestFilesDialog";
+import { balanceSheetIsEmpty, financialStatementRequest, profitAndLossIsEmpty, type FinancialStatementRequestKind } from "@/lib/financialStatementRequests";
 import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } from "@/components/buckets/BucketFileReviewPanel";
 import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/financialSourcePreview";
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
@@ -54,13 +57,10 @@ import {
   scheduleStatusTone,
   type CockpitDebtRow,
 } from "@/lib/financialCockpit";
-import { AdvancesCard } from "./AdvancesCard";
 import { OfferPanel } from "./OfferPanel";
 import { CoverageCard } from "./CoverageCard";
-import { OverdraftCard } from "./OverdraftCard";
-import { AccountMovementsCard } from "./AccountMovementsCard";
+import financialReviewStyles from "./FinancialReview.module.css";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
-import { RecurringCard } from "./RecurringCard";
 import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
 
 export type CockpitPackageState = { generated: boolean; inSync: boolean; summaryVersion: number | null; packetVersion: number | null };
@@ -302,12 +302,12 @@ function TaxCard({ cockpit, onOpenEvidence }: { cockpit: Cockpit; onOpenEvidence
   );
 }
 
-function ProfitAndLossCard({ cockpit }: { cockpit: Cockpit }) {
+function ProfitAndLossCard({ cockpit, onRequest }: { cockpit: Cockpit; onRequest?: () => void }) {
   const pl = cockpit.profit_and_loss;
-  if (!pl) {
+  if (!pl || profitAndLossIsEmpty(pl)) {
     return (
       <Card title="Profit and loss">
-        <Empty>No profit-and-loss statement analyzed. The template on the resources page extracts cleanly when the client fills it in.</Empty>
+        <Empty action={onRequest ? <Btn size="sm" onClick={onRequest}>Request profit and loss</Btn> : undefined}>{pl ? "The available profit-and-loss file has no readable financial figures yet." : "No profit-and-loss statement has been analyzed yet."} Request it from the client to track it in the checklist and client account.</Empty>
       </Card>
     );
   }
@@ -344,9 +344,9 @@ function ProfitAndLossCard({ cockpit }: { cockpit: Cockpit }) {
   );
 }
 
-function BalanceSheetCard({ cockpit }: { cockpit: Cockpit }) {
+function BalanceSheetCard({ cockpit, onRequest }: { cockpit: Cockpit; onRequest?: () => void }) {
   const bs = cockpit.balance_sheet;
-  if (!bs) return null;
+  if (!bs || balanceSheetIsEmpty(bs)) return <Card title="Balance sheet"><Empty action={onRequest ? <Btn size="sm" onClick={onRequest}>Request balance sheet</Btn> : undefined}>{bs ? "The available balance-sheet file has no readable financial figures yet." : "No balance sheet has been analyzed yet."} Request it from the client to track it in the checklist and client account.</Empty></Card>;
   return (
     <Card title="Balance sheet" sub={`${bs.as_of_date ? `As of ${bs.as_of_date}` : "Date unknown"}${bs.basis ? ` · ${bs.basis}` : ""}`}>
       <div className="fc-stat-list">
@@ -607,8 +607,20 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 // ---------------------------------------------------------------------------
 
 export function FinancialCockpit(props: Props) {
+  const { profileId, onRefreshProgramReadiness } = props;
   const query = useFinancialCockpit(props.profileId);
   const api = useAuthedApi();
+  const queryClient = useQueryClient();
+  const [statementRequest, setStatementRequest] = useState<{ profileId: string; kind: FinancialStatementRequestKind; key: string; open: boolean } | null>(null);
+  const requestFinancialStatement = useCallback((kind: FinancialStatementRequestKind) => {
+    setStatementRequest({ profileId: props.profileId, kind, key: crypto.randomUUID(), open: true });
+  }, [props.profileId]);
+  const refreshFileRequests = useCallback(() => {
+    for (const key of ["financial-cockpit", "application-evidence-workspace", "application-collection-tasks", "application-profile-audit"])
+      void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+    void queryClient.invalidateQueries({ queryKey: ["application-profile"] });
+    void onRefreshProgramReadiness?.();
+  }, [profileId, onRefreshProgramReadiness, queryClient]);
   const marketplaceRef = useRef<HTMLElement>(null);
   const [accountChoice, setAccountChoice] = useState<string>("counted");
   const [sourcePreview, setSourcePreview] = useState<{ profileId: string; fileId: string; page?: number; requestId: number } | null>(null);
@@ -745,34 +757,24 @@ export function FinancialCockpit(props: Props) {
         <Kpi label="Net profit" value={money(conclusion?.value)} sub={conclusion ? `${conclusion.label}${conclusion.period && conclusion.key !== "tax_return" ? ` · ${conclusion.period}` : ""}` : "No income figure yet"} tone={toneForSign(conclusion?.value)} />
       </KpiRow>
 
-      <div className="fc-grid fc-grid-charts">
-        <BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} />
+      <div className="fc-grid">
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={() => query.refetch()} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} />
       </div>
 
-      <div className="fc-grid">
-        <OverdraftCard months={selection.months} accountLabel={selection.label} needReread={coverage.statements_need_reread} accounts={cockpit.bank.accounts} onPreviewSource={openSourcePreview} />
-        <AccountMovementsCard data={cockpit.bank.account_movements} accountKey={resolvedAccountChoice} onOpenEvidence={(fileId, page) => fileId ? openSourcePreview(fileId, page ?? undefined) : props.onOpenEvidence()} />
-      </div>
-
-      <div className="fc-grid">
-        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} canEdit={props.canRecordTerms || props.canPublish} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} />
-      </div>
+      <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
+        <summary>Bank trends and cash flow · {summary.months} statement months</summary>
+        <div className="fc-grid fc-grid-charts"><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
+      </details>
 
       <div className="fc-grid fc-grid-charts">
         <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
-        <ProfitAndLossCard cockpit={cockpit} />
-        <BalanceSheetCard cockpit={cockpit} />
-      </div>
-
-      <div className="fc-grid">
-        <AdvancesCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} />
-        <RecurringCard profileId={props.profileId} cockpit={cockpit} canEdit={props.canRecordTerms || props.canPublish} onRefresh={() => query.refetch()} accountLabel={selection.accountLabel} />
+        <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
+        <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
       </div>
 
       <div className="fc-grid">
         <NetProfitCard cockpit={cockpit} />
         <ExpensesCard cockpit={cockpit} />
-        <DebtCard cockpit={cockpit} profileId={props.profileId} canEdit={props.canUnderwrite} onRefresh={() => void query.refetch()}  onOpenEvidence={props.onOpenEvidence} />
       </div>
 
       {props.programReadiness ? (
@@ -819,6 +821,9 @@ export function FinancialCockpit(props: Props) {
         onSelectFile={(fileId) => setSourcePreview((current) => current ? { ...current, fileId, page: undefined, requestId: current.requestId + 1 } : null)}
         onClose={closeSourcePreview}
       /> : null}
+      {statementRequest?.profileId === props.profileId ? <RequestFilesDialog key={props.profileId} open={statementRequest.open} profileId={props.profileId}
+        prefill={financialStatementRequest(statementRequest.kind, props.businessName)} prefillKey={statementRequest.key}
+        onClose={() => setStatementRequest((current) => current ? { ...current, open: false } : null)} onRequested={refreshFileRequests} /> : null}
     </div>
   );
 }
