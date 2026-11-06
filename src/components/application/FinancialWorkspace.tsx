@@ -34,6 +34,7 @@ import {
 import { RequestFilesDialog } from "./RequestFilesDialog";
 import { newFinancialDebtEntry, commitFinancialDebtEntry, financialDebtChoiceLabel, financialDebtEntrySelection, financialDebtNavigationRows, financialWorkspaceEntryView, isBlankFinancialDebt } from "@/lib/financialWorkspaceEntry";
 import { DebtScheduleIntakeActions } from "./DebtScheduleIntakeActions";
+import { DebtBatchImport } from "./DebtBatchImport";
 import { canDraftDebtIntake, hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
 
 type View = "form" | "worksheet" | "pdf" | "history";
@@ -450,6 +451,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
           {sharedPdf ? <div className="fw-share-result"><label className="lbl" htmlFor="fw-pdf-share-link">Read-only PDF · v{snapshot?.versions.find((version) => version.id === sharedPdf.version_id)?.version_number ?? "saved"} · expires {when(sharedPdf.expires_at)}</label><input id="fw-pdf-share-link" readOnly value={sharedPdf.url} onFocus={(event) => event.currentTarget.select()} /></div> : null}
           {hasDraft && view !== "history" ? <div className="fw-draft-note"><Icon name="note" size={14} />Draft changes are saved here. Financial summaries and AI update when you save a version, which includes a dated PDF.</div> : null}
           {loading ? <div className="empty">Opening financial workspace…</div> : !snapshot ? <div className="empty">The financial workspace could not be opened.</div> : <>
+            {kind === "debt_schedule" ? <div hidden={view !== "worksheet"}><DebtBatchImport key={`${profileId}:${snapshot.family_id}`} api={api} profileId={profileId} snapshot={{ ...snapshot, body }} disabled={Boolean(busy) && busy !== "debt-batch" || conflict} prepare={async () => { await flush(); if (!current.current) throw new Error("Open the working schedule before reviewing debt files."); return current.current; }} onSnapshot={accept} onBusyChange={(working) => setBusy((value) => working ? "debt-batch" : value === "debt-batch" ? "" : value)} onError={(reason) => { if (isFinancialDraftConflict(reason)) { setConflict(true); setError(message(reason)); } }} /></div> : null}
             {view === "form" ? <div className="fw-form" ref={formRef}>
               <h3>{FINANCIAL_LABELS[kind]}</h3>
               {kind === "debt_schedule" ? <div className="fw-debt-summary"><strong>{activeDebts.length} active obligations</strong><span>{computed.total_monthly_payment == null ? "Monthly payments incomplete" : `${computed.total_monthly_payment.toLocaleString(undefined, { style: "currency", currency: "USD" })} a month`}</span><span>{computed.total_balance == null ? "Balances incomplete" : `${computed.total_balance.toLocaleString(undefined, { style: "currency", currency: "USD" })} outstanding`}</span></div> : null}
