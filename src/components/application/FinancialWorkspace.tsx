@@ -25,6 +25,8 @@ import {
   type DebtAction, type DebtDocumentRole,
 } from "@/lib/financialWorkspaceApi";
 import { RequestFilesDialog } from "./RequestFilesDialog";
+import { DebtScheduleIntakeActions } from "./DebtScheduleIntakeActions";
+import { canDraftDebtIntake, hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
 
 type View = "form" | "worksheet" | "pdf" | "history";
 const VIEWS: Array<{ id: View; label: string; icon: string }> = [
@@ -332,6 +334,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
               <h3>{FINANCIAL_LABELS[kind]}</h3>
               {kind === "debt_schedule" ? <div className="fw-debt-summary"><strong>{activeDebts.length} active obligations</strong><span>{computed.total_monthly_payment == null ? "Monthly payments incomplete" : `${computed.total_monthly_payment.toLocaleString(undefined, { style: "currency", currency: "USD" })} a month`}</span><span>{computed.total_balance == null ? "Balances incomplete" : `${computed.total_balance.toLocaleString(undefined, { style: "currency", currency: "USD" })} outstanding`}</span></div> : null}
               {kind === "debt_schedule" && !activeDebts.length ? <label className="checkline fw-no-debt"><input type="checkbox" checked={body.no_debt === true} disabled={Boolean(busy)} onChange={(event) => changeBody({ ...draftBody.current, no_debt: event.target.checked })} />I confirm this business has no outstanding debt.</label> : null}
+              {kind === "debt_schedule" && (canDraftDebtIntake({ ...snapshot, body }) || hasPendingDebtIntakeReview({ ...snapshot, body })) ? <DebtScheduleIntakeActions profileId={profileId} workspace={{ ...snapshot, body }} beforeRead={async () => { await flush(); return current.current!; }} onApplied={(next) => { accept(next); setView("form"); setNotice("AI draft added for your review. Save version publishes its PDF and financial figures."); }} onReload={() => run("reload", async () => accept(await readFinancialWorkspace(api, profileId, kind, snapshot.family_id)))} /> : null}
               {renderFields()}
             </div> : null}
             {view === "worksheet" && layout ? <div className="fw-worksheet">

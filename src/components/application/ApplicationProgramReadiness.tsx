@@ -1,6 +1,7 @@
 "use client";
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
@@ -38,6 +39,7 @@ import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { manualProgramDraftMatches, type FundingProgramCatalogItem, type FundingProgramVersion, type FundingProgramVertical } from "@/lib/fundingPrograms";
+import { requirementCanBeRemoved, updateRequirementLifecycle } from "@/lib/requirementLifecycle";
 
 type EvidenceFile = {
   id: string;
@@ -158,6 +160,7 @@ export function ApplicationProgramReadiness({
   onOpenForms?: () => void;
 }) {
   const apiCall = useAuthedApi();
+  const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
   const uploadRef = useRef<HTMLInputElement>(null);
   const lastFocusRequestRef = useRef(0);
@@ -171,6 +174,7 @@ export function ApplicationProgramReadiness({
   const [selectedRequestKeys, setSelectedRequestKeys] = useState<string[]>([]);
   const [expandedRequirements, setExpandedRequirements] = useState<string[]>([]);
   const [overrideDraft, setOverrideDraft] = useState<OverrideDraft | null>(null);
+  const [removalDraft, setRemovalDraft] = useState<{ requirementKey: string; reason: string } | null>(null);
   const [evidenceOverride, setEvidenceOverride] = useState<EvidenceOverrideDraft | null>(null);
   const [reassignDraft, setReassignDraft] = useState<ReassignDraft | null>(null);
   const [dragTarget, setDragTarget] = useState<string | null>(null);
@@ -715,20 +719,16 @@ export function ApplicationProgramReadiness({
     }
   }
 
-  async function removeAddedRequirement(requirement: ApplicationRequirement) {
-    const confirmed = await confirmAction({
-      title: `Take ${requirement.label} off this file?`,
-      body: "It leaves the checklist. Anything the client already sent stays in the room. You can add it again from the library.",
-      confirmLabel: "Take it off",
-      reversible: true,
-    });
-    if (!confirmed) return;
-    setBusy(`remove:${requirement.requirement_key}`);
+  async function changeRequirementLifecycle(requirement: ApplicationRequirement, action: "remove" | "restore") {
+    setBusy(`${action}:${requirement.requirement_key}`);
     setError(null);
     try {
-      const next = await authenticated<Readiness>(`/application-profiles/${profileId}/requirements/${encodeURIComponent(requirement.requirement_key)}/added`, { method: "DELETE" });
+      const next = await updateRequirementLifecycle(authenticated, profileId, requirement.requirement_key, action, action === "remove" ? removalDraft?.reason : "");
       storeReadiness(next);
-      onNotice?.(`${requirement.label} is off this file's checklist.`);
+      setRemovalDraft(null);
+      setSelectedRequestKeys((current) => current.filter((key) => key !== requirement.requirement_key));
+      for (const key of ["application-evidence-workspace", "application-collection-tasks", "financial-cockpit"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+      onNotice?.(action === "remove" ? `${requirement.label} removed from the checklist. Uploaded files and financial rows are preserved.` : `${requirement.label} restored to the checklist.`);
     } catch (reason) {
       setError(errorMessage(reason));
     } finally {
@@ -865,14 +865,16 @@ export function ApplicationProgramReadiness({
       {expanded ? <div className="requirement-expanded-body ev-row-body">
         {triage.kind === "fill" && debtHasWork ? null : <p className="ev-next">{triage.next}</p>}
         <div className="ev-actions" role="group" aria-label={`Next steps for ${requirement.label}`}>
+          {canAddRequirements ? requirementCanBeRemoved(requirement) ? <Btn size="sm" disabled={Boolean(busy)} onClick={() => setRemovalDraft({ requirementKey: requirement.requirement_key, reason: "" })}><Icon name="trash" size={14} />Remove checklist item</Btn> : <Btn size="sm" disabled={Boolean(busy)} title="This requirement is still required by a policy or selected program. Record a reason to set it aside." onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: requirement.can_waive ? "waive" : "not_applicable", reason: "", allPrograms: true, programKeys: [] })}>Set requirement aside</Btn> : null}
           {triage.kind === "signoff" && unsignedFileIds.length ? <span title="Confirm the AI's acceptance so this item counts toward readiness"><Btn variant="pri" size="sm" disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "verify", unsignedFileIds)}><Icon name="shieldChk" size={14} />Sign off</Btn></span> : null}
-          {askClient ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
-          {askClient ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
+          {askClient && !isDebt ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
+          {askClient && !isDebt ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
           {askClient && !formKinds.length && requestable ? <span title="Emails the client the secure-room link for this item"><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailReminder(requirement)}><Icon name="mail" size={14} />Email the client</Btn></span> : null}
-          {askClient && formKinds.length && !debtHasWork && onOpenForms ? <span title="Open the forms and type it in yourself"><Btn size="sm" onClick={onOpenForms}><Icon name="pencil" size={14} />Fill it in yourself</Btn></span> : null}
+          {askClient && !isDebt && formKinds.length && !debtHasWork && onOpenForms ? <span title="Open the forms and type it in yourself"><Btn size="sm" onClick={onOpenForms}><Icon name="pencil" size={14} />Fill it in yourself</Btn></span> : null}
           {linkedEvidence.length && !(isDebt && debtHasWork) ? formKinds.map((kind) => <ActionIcon key={`answers-${kind}`} icon="docCheck" label={`See the ${formLabel(kind)}: what was filled in`} onClick={() => setAnswersFor({ kind, requirementKey: requirement.requirement_key })} />) : null}
         </div>
-        {debtHasWork ? <DebtScheduleReviewPanel profileId={profileId} compact onSaved={() => void load()} /> : null}
+        {removalDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><strong>Remove {requirement.label} from this checklist?</strong><p className="sub">Client to-dos and reminders for this item stop. Uploaded files and financial rows stay available. Restore it below when needed.</p><Field label="Removal reason"><Textarea aria-label="Removal reason" autoFocus rows={2} value={removalDraft.reason} onChange={(event) => setRemovalDraft({ ...removalDraft, reason: event.target.value })} placeholder="Explain why this item is no longer needed" /></Field><div className="program-readiness-actions"><Btn disabled={Boolean(busy)} onClick={() => setRemovalDraft(null)}>Cancel removal</Btn><Btn disabled={Boolean(busy) || removalDraft.reason.trim().length < 8} onClick={() => void changeRequirementLifecycle(requirement, "remove")}>Confirm removal</Btn></div></div> : null}
+        {isDebt ? <DebtScheduleReviewPanel profileId={profileId} compact onSaved={() => void load()} /> : null}
         <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />
         {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;
@@ -908,7 +910,7 @@ export function ApplicationProgramReadiness({
         <details className="ev-more">
           <summary>More options</summary>
           <div className="ev-more-body">
-            {staffAdded && canAddRequirements ? <div className="ev-block"><span className="ev-block-title">Added by your team</span><div><Btn size="sm" disabled={Boolean(busy)} onClick={() => void removeAddedRequirement(requirement)}>Take it off this file</Btn></div></div> : null}
+
         {task ? <RequirementRequest task={task} controller={taskController} /> : null}
         <div className="ev-block"><span className="ev-block-title">Add a document or set this item aside</span><div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><ActionIcon icon="plus" label="Link the chosen document to this requirement" disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")} /><PageActionMenu label={`More actions for ${requirement.label}`} items={[{ label: "Waive this requirement", hidden: !requirement.can_waive, onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Mark not applicable", onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Restore the original requirement", hidden: !hasOverrides, onSelect: () => void reviewRequirementAction(requirement, "restore") }]} /></div></div>
         {showReason ? <small className="ev-reason">System note: {reasonNote}</small> : null}
@@ -982,6 +984,7 @@ export function ApplicationProgramReadiness({
         </section>;
       })}
       {!documentRequirements.length ? <div className="empty">No evidence policy or selected program currently requires documents.</div> : null}
+      {canAddRequirements && readiness.inactive_requirements?.length ? <details className="ev-more"><summary>Removed checklist items ({readiness.inactive_requirements.length})</summary><div className="ev-more-body">{readiness.inactive_requirements.map((requirement) => <div className="row" key={requirement.requirement_key}><div className="grow grid g4"><strong>{requirement.label}</strong><span className="sub">{requirement.removal_reason || "Removed by your team. Files and financial rows are preserved."}</span></div><Btn size="sm" disabled={Boolean(busy)} onClick={() => void changeRequirementLifecycle(requirement, "restore")}>Restore {requirement.label}</Btn></div>)}</div></details> : null}
       <ApplicationCollectionTasks profileId={profileId} controller={taskController} tasks={otherTasks} requirements={readiness.requirements} onPreviewEvidence={onPreviewEvidence ? (fileId, requirementKey) => onPreviewEvidence(fileId, requirementKey) : undefined} onVerifyRequirement={(requirement, fileIds) => reviewRequirementAction(requirement, "verify", fileIds)} />
       <section className="program-readiness-band automation-band ev-reminders" aria-labelledby="automation-heading"><div><h4 id="automation-heading">Automatic reminders</h4><p>{readiness.automation.stop_reason || `Next: ${readiness.automation.next_requirement_key?.replaceAll("_", " ") || "nothing"} · ${when(readiness.automation.next_send_at)}`}</p><small>One combined email at most every 24 hours, up to {readiness.automation.max_attempts} attempts. Last sent {when(readiness.automation.last_sent_at)} · {readiness.automation.attempts} of {readiness.automation.max_attempts} used.</small></div><div className="program-readiness-actions"><CellChip tone={readiness.automation.enabled && readiness.automation.eligible ? "ok" : readiness.automation.enabled ? "warn" : "mut"}>{readiness.automation.enabled ? readiness.automation.eligible ? "Active" : "Paused by readiness" : "Off"}</CellChip><Btn onClick={() => void toggleAutomation()} disabled={busy === "automation"}>{readiness.automation.enabled ? "Turn off" : "Turn on"}</Btn></div></section>
       <FormAnswersDrawer

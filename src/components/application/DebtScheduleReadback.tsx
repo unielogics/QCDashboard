@@ -3,6 +3,8 @@
 import { Btn, CellChip } from "@/components/ds";
 import { meaningfulFinancialDebts, financialDebtReviewSummary, financialDebtTotals, type FinancialDebtRow, type FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
 import { parseMoney } from "@/components/sheet/money";
+import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
 import styles from "./DebtScheduleReadback.module.css";
 
 const money = (value: unknown) => {
@@ -24,7 +26,9 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
   const excluded = ((workspace.body.debts as FinancialDebtRow[] | undefined) ?? []).filter((row) => row.status === "dismissed" || row.status === "duplicate" || row.duplicate_of_id);
   const totals = financialDebtTotals(workspace.body);
   const published = workspace.versions.find((version) => version.id === (workspace.accepted_version_id ?? workspace.current_version_id));
-  const guidance = summary.publishedComplete && summary.publishNeeded
+  const aiDraft = hasPendingDebtIntakeReview(workspace);
+  const guidance = aiDraft ? "These obligations were drafted from existing evidence. Review each lender, amount, and linked source, then Save version to confirm the schedule and generate its dated PDF."
+    : summary.publishedComplete && summary.publishNeeded
     ? "The last saved schedule is complete. Changes shown here are still a working draft; Save version updates the financial figures and dated PDF."
     : summary.draftComplete && summary.publishNeeded
       ? "Every required answer is filled in. Review the schedule, then choose Edit schedule → Save version to file its dated PDF and update the financial figures."
@@ -37,7 +41,7 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
     <div className={styles.header}>
       <div className={styles.heading}>
         <strong>Business debt schedule</strong>
-        <CellChip tone={summary.draftComplete ? "ok" : "warn"}>{rows.length} {rows.length === 1 ? "obligation" : "obligations"}{summary.draftComplete ? " · complete" : summary.missingAnswers ? ` · ${summary.missingAnswers} ${summary.missingAnswers === 1 ? "answer" : "answers"} needed` : ""}</CellChip>
+        <CellChip tone={summary.draftComplete && !aiDraft ? "ok" : "warn"}>{rows.length} {rows.length === 1 ? "obligation" : "obligations"}{aiDraft ? " · AI draft for review" : summary.draftComplete ? " · complete" : summary.missingAnswers ? ` · ${summary.missingAnswers} ${summary.missingAnswers === 1 ? "answer" : "answers"} needed` : ""}</CellChip>
         <CellChip tone={summary.publishNeeded ? "acc" : "mut"}>{summary.publishNeeded ? "Working draft" : "Saved version"}</CellChip>
       </div>
       <div className={styles.actions}>
@@ -46,7 +50,7 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
       </div>
     </div>
     <p className={styles.guidance} role="status">{guidance}</p>
-    {summary.publishNeeded && !summary.publishedComplete && workspace.current_version_id ? <p className={styles.note}>The original uploaded PDF is preserved. A completed schedule version has not been filed yet.</p> : null}
+    {summary.publishNeeded && !summary.publishedComplete && workspace.versions.some((version) => version.source_file_id || version.pdf_file_id) ? <p className={styles.note}>Existing PDFs are preserved. A completed schedule version has not been filed yet.</p> : null}
     {rows.length ? <>
       <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Debt schedule obligations, scroll across columns if needed">
         <table>
@@ -58,7 +62,7 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
               <th scope="row"><span>{String(row.lender || "Lender needed")}</span>{missing.length ? <small>Needed: {[...new Set(missing)].join(", ")}</small> : null}</th>
               <td>{money(row.balance)}</td><td>{money(row.payment_amount)}</td><td>{paymentFrequency(row.payment_frequency)}</td><td>{money(row.monthly_payment)}</td>
               <td><button type="button" className={styles.link} onClick={() => onFiles(row.id)}>{row.evidence_links?.length ? `${row.evidence_links.length} linked ${row.evidence_links.length === 1 ? "file" : "files"}` : "Link files"}</button></td>
-              <td><Btn size="sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.lender || "obligation"}`}>Edit</Btn></td>
+              <td><div className={styles.actions}><Btn size="sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.lender || "obligation"}`}>Edit</Btn><PageActionMenu label={`Manage ${row.lender || "obligation"}`} items={[{ label: "Remove row…", onSelect: () => onEdit(row.id) }, { label: "Mark duplicate of another obligation…", onSelect: () => onEdit(row.id) }, { label: "Link supporting documents", onSelect: () => onFiles(row.id) }]} /></div></td>
             </tr>;
           })}</tbody>
           <tfoot><tr><th scope="row">Totals</th><td>{money(totals.total_balance)}</td><td colSpan={2}>Active obligations only</td><td>{money(totals.total_monthly_payment)}</td><td colSpan={2}>{summary.removed} excluded</td></tr></tfoot>
