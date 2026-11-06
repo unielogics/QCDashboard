@@ -417,6 +417,9 @@ export type Obligation = {
   monthly: number | null;
   balance: number | null;
   payoff: number | null;
+  payoff_requires_review?: boolean;
+  payoff_review_reason?: string | null;
+  published_payoff_amount?: number | null;
   in_debt_service: boolean;
   count_in_dscr: boolean;
   linked_payee_key: string | null;

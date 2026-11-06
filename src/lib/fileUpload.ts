@@ -28,6 +28,8 @@ export type UploadStage = "preparing" | "uploading" | "confirming";
 
 export type UploadInitResponse = {
   file_id: string;
+  version_id?: string;
+  already_uploaded?: boolean;
   upload_url: string;
   required_headers?: Record<string, string> | null;
   headers?: Record<string, string> | null;
@@ -50,7 +52,8 @@ export type UploadFileOptions<TComplete> = {
   storageTimeoutMs?: number;
   /** Resume a stored file at confirmation rather than uploading it again. */
   storedFileId?: string;
-  onStored?: (fileId: string) => void;
+  storedVersionId?: string;
+  onStored?: (fileId: string, versionId?: string) => void;
 };
 
 export type UploadFileResult<TComplete = unknown> = {
@@ -65,6 +68,7 @@ export async function uploadFile<TComplete = unknown>(
 ): Promise<UploadFileResult<TComplete>> {
   const { requestedDocumentId, extraInit, extraComplete, onStage, storageRejectedMessage, mapComplete } = options;
   let fileId = options.storedFileId;
+  let versionId = options.storedVersionId;
   if (!fileId) {
     onStage?.("preparing");
     // Readability is authoritative on the server; callers may omit a redundant decode.
@@ -81,27 +85,33 @@ export async function uploadFile<TComplete = unknown>(
         ...(extraInit ?? {}),
       }),
     });
-    onStage?.("uploading");
-    const headers = init.headers ?? init.required_headers ?? { "Content-Type": contentType };
-    const attempts = Math.max(1, Math.min(3, Math.floor(options.storageAttempts ?? 1)));
-    for (let attempt = 0; attempt < attempts; attempt++) {
-      const controller = new AbortController();
-      const timer = options.storageTimeoutMs ? setTimeout(() => controller.abort(), options.storageTimeoutMs) : undefined;
-      try {
-        const put = await fetch(init.upload_url, { method: "PUT", body: file, headers, signal: controller.signal });
-        if (!put.ok) {
-          if (attempt + 1 < attempts && [408, 429, 500, 502, 503, 504].includes(put.status)) continue;
-          throw new Error(storageRejectedMessage ? storageRejectedMessage(file, put.status) : `Secure storage rejected ${file.name} (${put.status}).`);
+    versionId = init.version_id;
+    if (init.already_uploaded) {
+      fileId = init.file_id;
+      if (versionId) options.onStored?.(fileId, versionId); else options.onStored?.(fileId);
+    } else {
+      onStage?.("uploading");
+      const headers = init.headers ?? init.required_headers ?? { "Content-Type": contentType };
+      const attempts = Math.max(1, Math.min(3, Math.floor(options.storageAttempts ?? 1)));
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        const controller = new AbortController();
+        const timer = options.storageTimeoutMs ? setTimeout(() => controller.abort(), options.storageTimeoutMs) : undefined;
+        try {
+          const put = await fetch(init.upload_url, { method: "PUT", body: file, headers, signal: controller.signal });
+          if (!put.ok) {
+            if (attempt + 1 < attempts && [408, 429, 500, 502, 503, 504].includes(put.status)) continue;
+            throw new Error(storageRejectedMessage ? storageRejectedMessage(file, put.status) : `Secure storage rejected ${file.name} (${put.status}).`);
+          }
+          fileId = init.file_id;
+          if (versionId) options.onStored?.(fileId, versionId); else options.onStored?.(fileId);
+          break;
+        } catch (error) {
+          if (error instanceof TypeError && attempt + 1 < attempts) continue;
+          if (error instanceof Error && error.name === "AbortError") throw new Error(`Upload timed out for ${file.name}. Please retry on a stable connection.`);
+          throw error;
+        } finally {
+          if (timer !== undefined) clearTimeout(timer);
         }
-        fileId = init.file_id;
-        options.onStored?.(fileId);
-        break;
-      } catch (error) {
-        if (error instanceof TypeError && attempt + 1 < attempts) continue;
-        if (error instanceof Error && error.name === "AbortError") throw new Error(`Upload timed out for ${file.name}. Please retry on a stable connection.`);
-        throw error;
-      } finally {
-        if (timer !== undefined) clearTimeout(timer);
       }
     }
   }
@@ -110,7 +120,7 @@ export async function uploadFile<TComplete = unknown>(
   const complete = await target.call<unknown>(target.completePath, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ file_id: fileId, ...(extraComplete ?? {}) }),
+    body: JSON.stringify({ file_id: fileId, ...(versionId ? { version_id: versionId } : {}), ...(extraComplete ?? {}) }),
   });
   return { fileId, complete: (mapComplete ? mapComplete(complete) : complete) as TComplete };
 }

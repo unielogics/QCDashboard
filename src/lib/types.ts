@@ -1,4 +1,5 @@
 import type { InlineImage } from "@/lib/inlineImages";
+import type { DocumentVersionMetadata } from "@/lib/documentVersions";
 
 // Hand-typed mirror of backend response shapes.
 // (When you scale, switch to OpenAPI codegen — for now the surface is small.)
@@ -294,7 +295,7 @@ export interface AITask {
   updated_at: string;
 }
 
-export interface Document {
+export interface Document extends DocumentVersionMetadata {
   id: string;
   loan_id: string;
   name: string;
@@ -312,6 +313,8 @@ export interface Document {
   ai_scan_status?: "unscanned" | "queued" | "scanning" | "verified" | "flagged" | "failed" | string;
   ai_scan_confidence?: number | null;
   due_date?: string | null;
+  document_latest_version_number?: number;
+  document_has_pending_version?: boolean;
 }
 
 export type ProductAccountType = "funding" | "audit";
@@ -684,6 +687,8 @@ export interface DocumentUploadInitResponse {
   document_id: string;
   upload_url: string | null;
   s3_key: string;
+  version_id?: string;
+  already_uploaded?: boolean;
 }
 
 // ── Credit pull ────────────────────────────────────────────────────────────

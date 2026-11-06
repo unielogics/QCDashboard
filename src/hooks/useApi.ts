@@ -2562,7 +2562,7 @@ export function useUploadDocument() {
         // to scan anyway.
         await apiCall(`/documents/upload-complete`, {
           method: "POST",
-          body: JSON.stringify({ document_id: init.document_id }),
+          body: JSON.stringify({ document_id: init.document_id, ...(init.version_id ? { version_id: init.version_id } : {}) }),
         });
       }
       return init;
