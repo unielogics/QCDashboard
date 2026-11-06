@@ -13,6 +13,7 @@
 // enforces the exclusion; this component never sees them.
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, Input, PageHeader, Select, cx } from "@/components/ds";
@@ -49,6 +50,10 @@ function when(iso: string) {
 
 export function UnifiedMessagesInbox() {
   const apiCall = useAuthedApi();
+  const route = useSearchParams();
+  const router = useRouter();
+  const requestedThread = route.get("thread")?.trim() || null;
+  const requestedChannel = CHANNEL_OPTIONS.some(([value]) => value === route.get("channel")) ? route.get("channel") || "" : "";
   const [search, setSearch] = useState("");
   const [channel, setChannel] = useState("");
   const [unreadOnly, setUnreadOnly] = useState(false);
@@ -76,21 +81,22 @@ export function UnifiedMessagesInbox() {
     ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
 
-  // Keep the selection valid as the list refreshes; default to the newest
-  // contact's newest conversation so the pane is never pointlessly empty.
+  // A notification identifies one exact conversation, even when it is outside
+  // the current contact/filter window. Never substitute another person's thread.
   useEffect(() => {
-    const items = contacts.data?.items ?? [];
-    if (!items.length) { setOpenKey(null); setActiveThreadId(null); return; }
-    const open = items.find((c) => c.key === openKey);
-    if (!open) {
-      setOpenKey(items[0].key);
-      setActiveThreadId(items[0].latest_thread_id);
-      return;
-    }
-    if (!activeThreadId || !open.threads.some((t) => t.id === activeThreadId)) {
-      setActiveThreadId(open.latest_thread_id);
-    }
-  }, [contacts.data?.items, openKey, activeThreadId]);
+    setActiveThreadId(requestedThread);
+    setOpenKey(contacts.data?.items.find((contact) => contact.threads.some((thread) => thread.id === requestedThread))?.key ?? null);
+    setChannel(requestedChannel);
+    setMobileView(requestedThread ? "thread" : "list");
+    // Contact refreshes must not replace the requested conversation.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedThread, requestedChannel]);
+
+  const selectThread = (threadId: string) => {
+    setActiveThreadId(threadId); setMobileView("thread");
+    const params = new URLSearchParams(route.toString()); params.set("thread", threadId);
+    router.replace(`/messages?${params}`, { scroll: false });
+  };
 
   const toggle = (key: string, latestThreadId: string) => {
     const contact = contacts.data?.items.find((c) => c.key === key);
@@ -98,13 +104,11 @@ export function UnifiedMessagesInbox() {
     // picker and let them choose rather than guessing which they meant.
     if ((contact?.threads.length ?? 0) <= 1) {
       setOpenKey(key);
-      setActiveThreadId(latestThreadId);
-      setMobileView("thread");
+      selectThread(latestThreadId);
       return;
     }
     if (openKey === key) { setOpenKey(null); return; }
     setOpenKey(key);
-    setActiveThreadId(latestThreadId);
   };
 
   return (
@@ -160,7 +164,7 @@ export function UnifiedMessagesInbox() {
                           type="button"
                           role="listitem"
                           className={cx("contact-thread-row", activeThreadId === thread.id && "on")}
-                          onClick={() => { setActiveThreadId(thread.id); setMobileView("thread"); }}
+                          onClick={() => selectThread(thread.id)}
                         >
                           <CellChip tone={channelTone(thread.channel)}>{sourceLabel(thread)}</CellChip>
                           <span className="grow trunc">
@@ -175,7 +179,7 @@ export function UnifiedMessagesInbox() {
                 </div>
               );
             })}
-            {!contacts.isLoading && !contacts.data?.items.length ? <div className="empty">No contacts match these filters.</div> : null}
+            {!contacts.isLoading && !contacts.isError && !contacts.data?.items.length ? <div className="empty">No contacts match these filters.</div> : null}
           </div>
         </aside>
         <section className="global-inbox-thread">
@@ -183,7 +187,7 @@ export function UnifiedMessagesInbox() {
           <button type="button" className="thread-back" onClick={() => setMobileView("list")}>
             <Icon name="chevL" size={15} /> All messages
           </button>
-          {activeThreadId ? <UnifiedThreadConversation threadId={activeThreadId} /> : <div className="empty global-inbox-empty"><Icon name="chat" size={28} /><b>Select a contact</b><span>Expand a contact to see every conversation with them — chat, email, and SMS.</span></div>}
+          {activeThreadId ? <UnifiedThreadConversation key={activeThreadId} threadId={activeThreadId} /> : <div className="empty global-inbox-empty"><Icon name="chat" size={28} /><b>Select a contact</b><span>Expand a contact to see every conversation with them — chat, email, and SMS.</span></div>}
         </section>
       </div>
       <NewMessageDrawer
@@ -192,7 +196,7 @@ export function UnifiedMessagesInbox() {
         onSent={(threadId) => {
           if (threadId) {
             // Let the refreshed contact list resolve which contact owns it.
-            setActiveThreadId(threadId);
+            selectThread(threadId);
             setOpenKey(null);
           }
         }}

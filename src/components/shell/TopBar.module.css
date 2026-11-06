@@ -1,0 +1,13 @@
+.bar { gap: 10px; }
+.search { width: 360px; flex: 0 1 360px; min-width: 40px; }
+.search > :global(.grow) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.alerts { flex-shrink: 0; }
+@media (min-width: 761px) and (max-width: 1100px) {
+  .bar { flex-wrap: wrap; }
+  .search { flex-basis: 160px; }
+}
+@media (max-width: 760px) {
+  .bar:global(.top) { display: flex; min-height: 54px; padding: 10px 14px; }
+  .bar > :not(.alerts) { display: none; }
+  .alerts { margin-left: auto; }
+}

@@ -1,0 +1,5 @@
+.badge[aria-label] { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; width: max-content; height: 18px; margin-left: 5px; padding: 0 5px; border-radius: 10px; color: #fff; background: var(--danger); font-size: 10px; font-weight: 750; line-height: 1; vertical-align: middle; font-variant-numeric: tabular-nums; }
+.bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 16px; border-bottom: 1px solid var(--line); background: var(--danger-tint); }
+.bar > span { color: var(--ink2); font-size: 11px; margin-right: 3px; }
+.error { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; color: var(--muted); font-size: 11px; }
+.threadMeta { display: grid; justify-items: end; gap: 4px; }

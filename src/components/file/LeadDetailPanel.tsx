@@ -19,7 +19,7 @@ import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
-import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary, useIntakeCommunicationUnread } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
@@ -41,6 +41,7 @@ import { FundingRequestControl } from "@/components/application/FundingRequestCo
 import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
+import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
 import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
@@ -536,6 +537,9 @@ export function LeadDetailPanel({
   initialActiveTab = "conversation",
   initialWorkspaceSection = "overview",
   initialCommunicationChannel = "underwriter",
+  initialEmailThreadId,
+  onCommunicationNavigate,
+  onEmailThreadNavigate,
   initialSubmissionStep,
   initialEvidenceTab = "requirements",
   canGovern,
@@ -573,7 +577,10 @@ export function LeadDetailPanel({
   initialActiveTab?: "conversation" | "workspace";
   /** Which workspace section opens first, so a rail item lands on its part of the file. */
   initialWorkspaceSection?: "overview" | "documents" | "client" | "credit" | "contracts" | "package";
-  initialCommunicationChannel?: "underwriter" | "client" | "email";
+  initialCommunicationChannel?: "updates" | "underwriter" | "client" | "email" | "partner" | "internal";
+  initialEmailThreadId?: string | null;
+  onCommunicationNavigate?: (channel: "updates" | "underwriter" | "client" | "email" | "partner" | "internal") => void;
+  onEmailThreadNavigate?: (threadId: string) => void;
   initialSubmissionStep?: number;
   initialEvidenceTab?: "requirements" | "banking";
   canGovern: boolean;
@@ -610,6 +617,9 @@ export function LeadDetailPanel({
   const bookingLink = useBookingLink();
   const { data: currentUser } = useCurrentUser();
   const canUnderwrite = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.LOAN_EXEC;
+  const communicationUnread = useIntakeCommunicationUnread(detail?.intake.id, { enabled: canUnderwrite });
+  const smsUnread = communicationUnread.data?.sms ?? 0;
+  const emailUnread = communicationUnread.data?.email ?? 0;
   const canViewPayments = Boolean(
     currentUser &&
       (currentUser.role === Role.SUPER_ADMIN ||
@@ -658,7 +668,15 @@ export function LeadDetailPanel({
   // The current term sheet on the profile (dealer files only) for the
   // Underwriting strip. Recorded through the drawer, read here.
   const [termSheet, setTermSheet] = useState<ApplicationTermSheetState | null>(null);
-  const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "email" | "partner" | "internal">("underwriter");
+  const [communicationChannel, setCommunicationChannel] = useState<"updates" | "underwriter" | "client" | "email" | "partner" | "internal">(initialCommunicationChannel);
+  function navigateCommunication(channel: typeof communicationChannel) {
+    setPrototypeView("communications");
+    setCommunicationChannel(channel);
+    onCommunicationNavigate?.(channel);
+  }
+  useEffect(() => {
+    if (initialView === "communications") { setPrototypeView("communications"); setCommunicationChannel(initialCommunicationChannel); }
+  }, [initialCommunicationChannel, initialView]);
   const [submissionStep, setSubmissionStep] = useState(initialSubmissionStep === 3 ? 1 : initialSubmissionStep ?? 1);
   const [evidenceTab, setEvidenceTab] = useState<"requirements" | "banking" | "files">(initialEvidenceTab);
   const [evidenceFocus, setEvidenceFocus] = useState<{ query: string; requestId: number } | null>(null);
@@ -678,6 +696,7 @@ export function LeadDetailPanel({
   // read from `underwriting`, which only fills once the Underwriting tab has
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
+  const communicationProfileId = underwriting?.profile_id ?? profileId;
   const [programReadiness, setProgramReadiness] = useState<ApplicationProgramReadiness | null>(null);
   const [underwritingDraft, setUnderwritingDraft] = useState<UnderwritingDraft>(() => emptyUnderwritingDraft());
   const [underwritingLoading, setUnderwritingLoading] = useState(false);
@@ -1722,11 +1741,11 @@ export function LeadDetailPanel({
         {detail && detail.intake.preferred_language === "es" ? <CellChip tone="acc" title="This client is written to in Spanish">Spanish client</CellChip> : null}
         <PageActionMenu label="More actions for this file" items={[
           { label: detail?.intake.preferred_language === "es" ? "Write to this client in English" : "Write to this client in Español", onSelect: () => changeLanguage(detail?.intake.preferred_language === "es" ? "en" : "es"), hidden: !detail || languageBusy },
-          { label: "Open underwriting chat", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("underwriter"); }, hidden: !detail },
-          { label: "View client conversation", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("client"); }, hidden: !detail },
+          { label: "Open underwriting chat", onSelect: () => navigateCommunication("underwriter"), hidden: !detail },
+          { label: "View client conversation", onSelect: () => navigateCommunication("client"), hidden: !detail },
           { label: "Attach another room", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
-          { label: "Dealer partner messages", onSelect: () => { setPrototypeView("communications"); setCommunicationChannel("partner"); }, hidden: !detail },
+          { label: "Dealer partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Publish to marketplace", onSelect: () => { setPrototypeView("financials"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
@@ -1739,6 +1758,8 @@ export function LeadDetailPanel({
           <Icon name="x" size={16} />
         </IconBtn>
       </div>
+
+      {detail ? <CommunicationUnreadBar sms={smsUnread} email={emailUnread} error={communicationUnread.isError} fetching={communicationUnread.isFetching} onOpen={navigateCommunication} onRetry={() => void communicationUnread.refetch()} /> : null}
 
       {detail?.application_source ? <div className="intake-source-links" aria-label="Application source">
         <b>{detail.application_source.recorded ? "Application source" : "MCA application page"}</b>
@@ -1760,7 +1781,7 @@ export function LeadDetailPanel({
               ["communications", "Communications"],
               ["audit", "Audit trail"],
             ].map(([id, label]) => (
-              <button key={id} type="button" role="tab" aria-selected={prototypeView === id} className={prototypeView === id ? "on" : undefined} onClick={() => setPrototypeView(id as typeof prototypeView)}>{label}</button>
+              <button key={id} type="button" role="tab" aria-selected={prototypeView === id} className={prototypeView === id ? "on" : undefined} onClick={() => setPrototypeView(id as typeof prototypeView)}>{label}{id === "communications" ? <CommunicationUnreadBadge count={smsUnread + emailUnread} channel="client" /> : null}</button>
             ))}
           </div>
 
@@ -2054,12 +2075,12 @@ export function LeadDetailPanel({
                 <div className="intake-communications">
                   {underwriting?.profile_id ? <ApplicationMissingItemCommunications profileId={underwriting.profile_id} /> : null}
                   <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
-                    {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['email', 'Email'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => setCommunicationChannel(id)}>{label}</button>)}
+                    {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['email', 'Email'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => navigateCommunication(id)}>{label}{id === "client" ? <CommunicationUnreadBadge count={smsUnread} channel="SMS" /> : id === "email" ? <CommunicationUnreadBadge count={emailUnread} channel="email" /> : null}</button>)}
                   </div>
                   {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
                   {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={handleCockpitResponse} onRequestRerun={onRerun} programReadiness={programReadiness} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
-                  {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? null} clientName={detail.intake.full_name} /> : null}
-                  {communicationChannel === "email" && underwriting?.profile_id ? <AIIntakeEmailWorkspace key={underwriting.profile_id} profileId={underwriting.profile_id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} offerSelectionCount={availableOfferSelections.length} onComposeOffer={openCurrentOffersComposer} /> : null}
+                  {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? profileId} clientName={detail.intake.full_name} /> : null}
+                  {communicationChannel === "email" ? communicationProfileId ? <AIIntakeEmailWorkspace key={communicationProfileId} profileId={communicationProfileId} intakeId={detail.intake.id} initialThreadId={initialEmailThreadId} onThreadNavigate={onEmailThreadNavigate} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} offerSelectionCount={availableOfferSelections.length} onComposeOffer={openCurrentOffersComposer} /> : <div className="empty">Email is unavailable until this file’s communication profile can be loaded.</div> : null}
                   {communicationChannel === "partner" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:partner`} emptyLabel="No dealer-partner messages yet." /> : null}
                   {communicationChannel === "internal" ? <UnifiedThreadConversation threadId={`intake:${detail.intake.id}:internal`} emptyLabel="No private internal notes yet." /> : null}
                 </div>
@@ -2194,7 +2215,7 @@ export function LeadDetailPanel({
         title={`Text ${detail?.intake.full_name || "the client"}`}
         sub="The client conversation. Replies go to their secure portal and, when they have agreed to texts, to their phone."
         width="lg"
-        footer={<><Btn onClick={() => { setContactPopup(null); setPrototypeView("communications"); setCommunicationChannel("client"); }}>Open in Communications</Btn><span className="sp" /><Btn onClick={() => setContactPopup(null)}>Close</Btn></>}
+        footer={<><Btn onClick={() => { setContactPopup(null); navigateCommunication("client"); }}>Open in Communications</Btn><span className="sp" /><Btn onClick={() => setContactPopup(null)}>Close</Btn></>}
       >
         {contactPopup === "text" && detail ? (
           cockpitAdapter ? (
@@ -2208,11 +2229,11 @@ export function LeadDetailPanel({
         title={`Email ${detail?.intake.full_name || "the client"}`}
         sub="Written from your connected mailbox and kept on the file."
         width="lg"
-        footer={<><Btn onClick={() => { setContactPopup(null); setPrototypeView("communications"); setCommunicationChannel("email"); }}>Open in Communications</Btn><span className="sp" /><Btn onClick={() => setContactPopup(null)}>Close</Btn></>}
+        footer={<><Btn onClick={() => { setContactPopup(null); navigateCommunication("email"); }}>Open in Communications</Btn><span className="sp" /><Btn onClick={() => setContactPopup(null)}>Close</Btn></>}
       >
         {contactPopup === "email" && detail ? (
           underwriting?.profile_id ? (
-            <AIIntakeEmailWorkspace key={`popup-${underwriting.profile_id}`} profileId={underwriting.profile_id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} startComposing />
+            <AIIntakeEmailWorkspace key={`popup-${underwriting.profile_id}`} profileId={underwriting.profile_id} intakeId={detail.intake.id} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} startComposing />
           ) : <div className="empty"><span className="spinner solo" />Loading email...</div>
         ) : null}
       </Drawer>

@@ -106,7 +106,7 @@ a { color: var(--accent); }
 /* Sticky bar under the app topbar (.top is ~51px tall): dealer identity,
    status chips, team quick actions, and the module tab strip. Pulled to the
    .content edges with negative margins so it reads as its own bar. */
-.ckhead { position: sticky; top: 51px; z-index: 15; background: var(--surface); border-bottom: 1px solid var(--line); margin: calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) 18px; padding: 12px var(--pad-x) 0; }
+.ckhead { position: sticky; top: var(--topbar-height, 51px); z-index: 15; background: var(--surface); border-bottom: 1px solid var(--line); margin: calc(var(--pad-y) * -1) calc(var(--pad-x) * -1) 18px; padding: 12px var(--pad-x) 0; }
 .ckhead .ckrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .ckhead h2 { font-size: 17.5px; line-height: 1.15; }
 .cktabs { display: flex; gap: 2px; overflow-x: auto; white-space: nowrap; margin-top: 10px; scrollbar-width: none; }

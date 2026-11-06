@@ -3,7 +3,7 @@
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import { useCallback, useRef } from "react";
 import type { AttentionItemKind, AttentionQueue, AttentionQueueActionResult, AttentionQueueActionWrite, AttentionQueueView, BucketAIActionItemQueueItem } from "@/lib/types";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import type { AdvanceIn, AdvancesRead, BankAccountsRead, BankAccountsWrite, DebtScheduleVoidWrite, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
@@ -15,6 +15,8 @@ import type {
   ClientAccessDetail,
   ClientAccessDirectoryResponse,
   NotificationList,
+  NotificationGroup,
+  IntakeCommunicationUnread,
   ProductAccountType,
   User,
   LeadDscrPotentialResponse,
@@ -485,7 +487,36 @@ export function useNotifications(status: "all" | "unread" = "all") {
   const apiCall = useAuthedApi();
   return useQuery({
     queryKey: ["notifications", status, devUser],
-    queryFn: () => apiCall<NotificationList>(`/notifications?status=${status}`),
+    queryFn: () => apiCall<NotificationList>(`/notifications?status=${status}&limit=1`),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useNotificationFeed(group: NotificationGroup | null, status: "all" | "unread") {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useInfiniteQuery({
+    queryKey: ["notifications", "feed", group, status, devUser],
+    initialPageParam: 0,
+    queryFn: ({ pageParam }) => apiCall<NotificationList>(
+      `/notifications?group=${group}&status=${status}&limit=20&offset=${pageParam}`,
+    ),
+    getNextPageParam: (page) => page.items.length > 0 && page.offset + page.items.length < page.total
+      ? page.offset + page.items.length : undefined,
+    enabled: group !== null,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
+export function useIntakeCommunicationUnread(intakeId: string | null | undefined, options?: { enabled?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["intake-communication-unread", intakeId, devUser],
+    queryFn: () => apiCall<IntakeCommunicationUnread>(`/communications/intakes/${intakeId}/unread`),
+    enabled: Boolean(intakeId) && (options?.enabled ?? true),
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
   });
@@ -496,7 +527,11 @@ export function useMarkNotificationRead() {
   const apiCall = useAuthedApi();
   return useMutation({
     mutationFn: (id: string) => apiCall(`/notifications/${id}/read`, { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ["notifications"] }),
+      qc.invalidateQueries({ queryKey: ["intake-communication-unread"] }),
+      qc.invalidateQueries({ queryKey: ["unified-communication-contacts"] }),
+    ]),
   });
 }
 
@@ -504,8 +539,12 @@ export function useMarkAllNotificationsRead() {
   const qc = useQueryClient();
   const apiCall = useAuthedApi();
   return useMutation({
-    mutationFn: () => apiCall<void>("/notifications/read-all", { method: "POST" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["notifications"] }),
+    mutationFn: (group: NotificationGroup) => apiCall<void>(`/notifications/read-all?group=${group}`, { method: "POST" }),
+    onSuccess: () => Promise.all([
+      qc.invalidateQueries({ queryKey: ["notifications"] }),
+      qc.invalidateQueries({ queryKey: ["intake-communication-unread"] }),
+      qc.invalidateQueries({ queryKey: ["unified-communication-contacts"] }),
+    ]),
   });
 }
 
