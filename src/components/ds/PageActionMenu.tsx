@@ -15,13 +15,13 @@ export type PageActionMenuItem = {
   tone?: "default" | "danger";
 };
 
-const MENU_WIDTH = 232;
+const MENU_WIDTH = 320;
 const MENU_GAP = 8;
 const VIEWPORT_MARGIN = 12;
 
 export function PageActionMenu({ items, label = "More actions" }: { items: PageActionMenuItem[]; label?: string }) {
   const [open, setOpen] = useState(false);
-  const [position, setPosition] = useState({ top: 0, left: 0 });
+  const [position, setPosition] = useState({ top: 0, left: 0, width: MENU_WIDTH });
   const triggerWrapRef = useRef<HTMLSpanElement>(null);
   const menuRef = useRef<HTMLSpanElement>(null);
   const menuReceivedFocusRef = useRef(false);
@@ -32,6 +32,7 @@ export function PageActionMenu({ items, label = "More actions" }: { items: PageA
     if (!trigger) return;
 
     const triggerRect = trigger.getBoundingClientRect();
+    const menuWidth = Math.min(MENU_WIDTH, Math.max(0, window.innerWidth - 2 * VIEWPORT_MARGIN));
     const measuredHeight = menuRef.current?.getBoundingClientRect().height;
     const menuHeight = measuredHeight || visible.length * 36 + 12;
     const roomBelow = window.innerHeight - triggerRect.bottom - VIEWPORT_MARGIN;
@@ -42,16 +43,17 @@ export function PageActionMenu({ items, label = "More actions" }: { items: PageA
 
     setPosition({
       top: Math.max(VIEWPORT_MARGIN, Math.min(unclampedTop, window.innerHeight - menuHeight - VIEWPORT_MARGIN)),
+      width: menuWidth,
       left: Math.max(
         VIEWPORT_MARGIN,
-        Math.min(triggerRect.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - VIEWPORT_MARGIN),
+        Math.min(triggerRect.right - menuWidth, window.innerWidth - menuWidth - VIEWPORT_MARGIN),
       ),
     });
   }, [visible.length]);
 
   useLayoutEffect(() => {
     if (open) placeMenu();
-  }, [open, placeMenu]);
+  }, [open, placeMenu, position.width]);
 
   useEffect(() => {
     if (!open) return;
@@ -63,7 +65,9 @@ export function PageActionMenu({ items, label = "More actions" }: { items: PageA
     });
     const close = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
+        if (!menuRef.current?.contains(document.activeElement) && !triggerWrapRef.current?.contains(document.activeElement)) return;
         event.preventDefault();
+        event.stopPropagation();
         setOpen(false);
         return;
       }
@@ -84,14 +88,15 @@ export function PageActionMenu({ items, label = "More actions" }: { items: PageA
             ? current < 0 || current === choices.length - 1 ? 0 : current + 1
             : current <= 0 ? choices.length - 1 : current - 1;
       choices[next].focus({ preventScroll: true });
+      choices[next].scrollIntoView({ block: "nearest", inline: "nearest" });
     };
     const reposition = () => placeMenu();
-    window.addEventListener("keydown", close);
+    window.addEventListener("keydown", close, true);
     window.addEventListener("resize", reposition);
     window.addEventListener("scroll", reposition, true);
     return () => {
       window.cancelAnimationFrame(focusFrame);
-      window.removeEventListener("keydown", close);
+      window.removeEventListener("keydown", close, true);
       window.removeEventListener("resize", reposition);
       window.removeEventListener("scroll", reposition, true);
       if (menuReceivedFocusRef.current) {
@@ -133,7 +138,7 @@ export function PageActionMenu({ items, label = "More actions" }: { items: PageA
             role="menu"
             aria-label={label}
             onFocusCapture={() => { menuReceivedFocusRef.current = true; }}
-            style={{ top: position.top, left: position.left }}
+            style={{ top: position.top, left: position.left, width: position.width }}
           >
             {visible.map((item) => item.href ? (
               <Link

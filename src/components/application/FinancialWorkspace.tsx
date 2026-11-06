@@ -35,8 +35,8 @@ const newId = () => crypto.randomUUID();
 const rowsOf = (body: FinancialBody): FinancialDebtRow[] => (body.debts as FinancialDebtRow[] | undefined) ?? [];
 
 /** A draft has one body. Form fields, worksheet cells, and source review all edit that body. */
-export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView = "form", onPublished, onUploadFiles }: {
-  open: boolean; onClose: () => void; profileId: string; initialKind?: SheetKind; initialView?: View;
+export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView = "form", initialDebtId, onPublished, onUploadFiles }: {
+  open: boolean; onClose: () => void; profileId: string; initialKind?: SheetKind; initialView?: View; initialDebtId?: string;
   onPublished?: () => void | Promise<void>; onUploadFiles?: (files: File[]) => Promise<void>;
 }) {
   const api = useAuthedApi();
@@ -57,7 +57,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const [requestOpen, setRequestOpen] = useState(false);
   const [familyOpen, setFamilyOpen] = useState(false);
   const [familyDraft, setFamilyDraft] = useState({ label: "", subject: "", period_start: "", period_end: "", as_of: "" });
-  const [selectedDebt, setSelectedDebt] = useState<string | null>(null);
+  const [selectedDebt, setSelectedDebt] = useState<string | null>(initialDebtId ?? null);
   const [showExcluded, setShowExcluded] = useState(false);
   const [rowToolsOpen, setRowToolsOpen] = useState(false);
   const [sourceFile, setSourceFile] = useState("");
@@ -245,6 +245,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     return kind === "debt_schedule" ? financialDebtTotals(body) : recompute(kind, snapshot.schema as SheetSchema, source);
   }, [activeDebts, body, kind, sharedLayout, snapshot, values]);
   const excludedIds = useMemo(() => new Set(debts.filter((row) => row.status === "dismissed" || row.status === "duplicate" || row.duplicate_of_id).map((row) => row.id)), [debts]);
+  useEffect(() => { if (initialDebtId && excludedIds.has(initialDebtId)) setShowExcluded(true); }, [initialDebtId, excludedIds]);
   const layout = useMemo(() => {
     if (!sharedLayout) return null;
     return kind === "debt_schedule" && !showExcluded ? { ...sharedLayout, rows: sharedLayout.rows.filter((row) => !row.row_key || !excludedIds.has(row.row_key)) } : sharedLayout;
@@ -264,6 +265,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     });
   };
   const currentVersion = snapshot?.versions.find((version) => version.id === snapshot.current_version_id);
+  const completedVersion = kind === "debt_schedule"
+    ? snapshot?.accepted_completion?.complete ? snapshot.versions.find((version) => version.id === (snapshot.accepted_version_id ?? snapshot.current_version_id)) : undefined
+    : currentVersion;
+  const needsCompletedDebtVersion = kind === "debt_schedule" && snapshot?.completion?.complete && !snapshot.accepted_completion?.complete;
   const hasDraft = localDirty || snapshot?.draft.dirty;
   const mappingBefore = (mapping: FinancialImport["mappings"][number]) => Object.prototype.hasOwnProperty.call(mapping, "before") ? mapping.before : values[mapping.key];
   const mappingConflict = (mapping: FinancialImport["mappings"][number]) => mapping.conflict ?? financialMappingConflict(mappingBefore(mapping), mapping.value);
@@ -293,7 +298,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
       <Btn size="sm" disabled={Boolean(busy)} onClick={() => setRequestOpen(true)}><Icon name="mail" size={14} />Request files</Btn>
       <Btn size="sm" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace size" : "Expand workspace"}><Icon name={expanded ? "layers" : "external"} size={14} />{expanded ? "Restore" : "Expand"}</Btn>
       {kind !== "debt_schedule" ? <Btn size="sm" disabled={!snapshot || Boolean(busy) || conflict} onClick={() => publish(true)}>{busy === "file" ? "Filing…" : "File on checklist"}</Btn> : null}
-      <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion)} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn>
+      <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsCompletedDebtVersion} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn>
     </>}>
       <div className="fw-shell">
         <aside className="fw-sidebar" aria-label="Financial forms and sections">
@@ -306,7 +311,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
             {kind === "debt_schedule" ? <>{(showExcluded ? debts : activeDebts).map((row, index) => <button type="button" key={row.id} className={selected?.id === row.id ? "on" : ""} onClick={() => { setSelectedDebt(row.id); setView("form"); }}><span>{String(row.lender || `Obligation ${index + 1}`)}</span>{excludedIds.has(row.id) ? <small>{row.status}</small> : null}</button>)}<Btn size="sm" onClick={addDebt} disabled={Boolean(busy)}><Icon name="plus" size={13} />Add obligation</Btn><label className="checkline"><input type="checkbox" checked={showExcluded} onChange={(event) => setShowExcluded(event.target.checked)} />Show removed / duplicates</label></>
               : sections.map((section) => <button type="button" key={section} onClick={() => jumpTo(section)}>{section}</button>)}
           </div>
-          <div className="fw-publication"><Icon name="shieldChk" size={16} /><strong>{currentVersion ? `Published v${currentVersion.version_number}` : "Draft only"}</strong><small>{currentVersion ? when(currentVersion.created_at) : "Save the first version to publish these figures."}</small><small>The financial interface and AI use the latest saved version.</small></div>
+          <div className="fw-publication"><Icon name="shieldChk" size={16} /><strong>{completedVersion ? `Published v${completedVersion.version_number}` : currentVersion ? `Saved PDF v${currentVersion.version_number}` : "Draft only"}</strong><small>{completedVersion ? when(completedVersion.created_at) : kind === "debt_schedule" ? "No completed schedule version has been filed. Save version publishes the completed draft and its dated PDF." : "Save the first version to publish these figures."}</small><small>{completedVersion ? "The financial interface and AI use this saved version." : "Uploaded and historical PDFs remain available in History."}</small></div>
         </aside>
         <main className="fw-main">
           <nav className="fw-tabs" aria-label="Financial workspace views" role="tablist">{VIEWS.map((tab) => <button type="button" role="tab" aria-selected={view === tab.id} key={tab.id} onClick={() => switchView(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}</button>)}</nav>
@@ -376,7 +381,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
                 <div className="fw-pdf-panes split"><section><header><strong>{selected && kind === "debt_schedule" ? `Source for ${String(selected.lender || "selected loan")}` : "Original source"}</strong>{sourceUrl ? <Btn size="sm" onClick={() => setSourceUrl(null)}>Hide source</Btn> : null}</header>{sourceUrl ? <iframe title="Original financial source document" src={sourceUrl} /> : <div className="empty">Choose a related document and open its source to compare the printed terms.</div>}</section><section><header><strong>Working draft</strong><Btn size="sm" onClick={() => setView("form")}>Open form</Btn></header><div className="fw-pdf-fields">{renderFields()}</div></section></div>
               </> : <div className="fw-pdf-panes"><section><header><strong>Saved version PDF</strong>{(pdfVersionId ?? snapshot.current_version_id) ? <div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => downloadPdf((pdfVersionId ?? snapshot.current_version_id)!)}>Download PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyPdfShare((pdfVersionId ?? snapshot.current_version_id)!)}>Copy PDF share link</Btn></div> : null}{snapshot.versions.length ? <Select aria-label="PDF version" disabled={Boolean(busy)} value={pdfVersionId ?? snapshot.current_version_id ?? ""} onChange={(event) => void run("pdf", async () => { await showPdf(event.target.value); })}>{snapshot.versions.map((version) => <option key={version.id} value={version.id}>v{version.version_number} · {when(version.created_at)}</option>)}</Select> : null}</header>{pdfUrl ? <iframe title="Saved financial version PDF" src={pdfUrl} /> : <div className="empty">Save a version to generate its dated PDF.</div>}</section></div>}
             </div> : null}
-            {view === "history" ? <div className="fw-history"><h3>Dated versions</h3><p>Original client files and every saved revision stay available. Restoring an older version creates a draft; Save version publishes the next version.</p>{snapshot.versions.map((version) => <article key={version.id}><div><strong>v{version.version_number}</strong>{version.id === snapshot.current_version_id ? <CellChip tone="ok">Current · used by AI</CellChip> : null}<span>{when(version.created_at)}</span><small>{version.actor_name || "Client upload"} · {version.source.replaceAll("_", " ")}</small></div><div className="row"><Btn disabled={Boolean(busy)} onClick={() => void run("pdf", async () => { await showPdf(version.id); setFileMode("versions"); setView("pdf"); })}>View PDF</Btn><Btn disabled={Boolean(busy)} onClick={() => void run("restore", async () => { await flush(); accept(await restoreFinancialVersion(api, profileId, version.id, current.current!.draft.revision)); setNotice(`v${version.version_number} restored into the draft. Save version to publish it as the next revision.`); setView("form"); })}>Restore to draft</Btn></div></article>)}{!snapshot.versions.length ? <div className="empty">No saved versions yet. Uploaded originals appear here as v1.</div> : null}</div> : null}
+            {view === "history" ? <div className="fw-history"><h3>Dated versions</h3><p>Original client files and every saved revision stay available. Restoring an older version creates a draft; Save version publishes the next version.</p>{snapshot.versions.map((version) => <article key={version.id}><div><strong>v{version.version_number}</strong>{version.id === snapshot.current_version_id ? <CellChip tone={version.id === completedVersion?.id ? "ok" : "mut"}>{version.id === completedVersion?.id ? "Current · used by AI" : "Current saved PDF"}</CellChip> : null}<span>{when(version.created_at)}</span><small>{version.actor_name || "Client upload"} · {version.source.replaceAll("_", " ")}</small></div><div className="row"><Btn disabled={Boolean(busy)} onClick={() => void run("pdf", async () => { await showPdf(version.id); setFileMode("versions"); setView("pdf"); })}>View PDF</Btn><Btn disabled={Boolean(busy)} onClick={() => void run("restore", async () => { await flush(); accept(await restoreFinancialVersion(api, profileId, version.id, current.current!.draft.revision)); setNotice(`v${version.version_number} restored into the draft. Save version to publish it as the next revision.`); setView("form"); })}>Restore to draft</Btn></div></article>)}{!snapshot.versions.length ? <div className="empty">No saved versions yet. Uploaded originals appear here as v1.</div> : null}</div> : null}
           </>}
         </main>
       </div>

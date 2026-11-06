@@ -107,6 +107,15 @@ describe("who acts next on a requirement", () => {
     expect(onSchedule.short).toBe("On the schedule: 5 lines · 2 answers missing");
   });
 
+  it("asks staff to save a completed draft instead of claiming its empty original PDF has missing answers", () => {
+    const result = triageRequirement(requirement({ evidence_files: [file("needs_more")] }), { fillTable: { read: 5, onSchedule: 5, missing: 0, draftReady: true, publishNeeded: true } });
+    expect(result).toMatchObject({ group: "you", kind: "fill", label: "Save completed schedule", owner: "you" });
+    expect(result.short).toContain("5 obligations");
+    expect(result.next).toContain("Save version");
+    expect(result.short).not.toContain("missing");
+    expect(triageRequirement(requirement({ status: "verified" }), { fillTable: { read: 0, onSchedule: 5, missing: 0, draftReady: true, publishNeeded: true } }).group).toBe("done");
+  });
+
   it("leaves a complete requirement, a file still being read, and an empty table alone", () => {
     expect(triageRequirement(requirement({ status: "verified", evidence_files: [file("accepted", { verified: true })] }), { fillTable: { read: 3, onSchedule: 0, missing: 4 } }).group).toBe("done");
     expect(triageRequirement(requirement({ evidence_files: [file("processing")] }), { fillTable: { read: 3, onSchedule: 0, missing: 4 } }).kind).toBe("reading");

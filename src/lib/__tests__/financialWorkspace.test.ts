@@ -20,13 +20,28 @@ const body = {
 const snapshot = { kind: "debt_schedule", family_id: "family-a", body, draft: { revision: 7, base_version_id: "version-2" } } as unknown as FinancialWorkspaceSnapshot;
 
 describe("the shared financial draft", () => {
-  it("keeps the accepted schedule complete while an incomplete working draft is edited", () => {
+  it("shows working draft counts separately from the accepted schedule", () => {
     const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 2 };
     const pending = { ...complete, complete: false, missing_fields: ["debt-a.monthly_payment"], active_rows: 1 };
     const saved = { ...snapshot, current_version_id: "version-2", evidence: [], completion: pending, accepted_completion: complete };
-    expect(financialDebtReviewSummary(saved)).toMatchObject({ onSchedule: 2, missingAnswers: 0, read: 0 });
-    expect(financialDebtReviewSummary({ ...saved, completion: complete, accepted_completion: pending })).toMatchObject({ onSchedule: 1, missingAnswers: 1 });
-    expect(financialDebtReviewSummary({ ...saved, current_version_id: null, accepted_completion: null })).toMatchObject({ onSchedule: 0, read: 1, missingAnswers: 1 });
+    expect(financialDebtReviewSummary(saved)).toMatchObject({ onSchedule: 1, missingAnswers: 1, read: 0, publishedComplete: true, publishedRows: 2, draftComplete: false });
+    expect(financialDebtReviewSummary({ ...saved, completion: complete, accepted_completion: pending })).toMatchObject({ onSchedule: 1, missingAnswers: 0, draftComplete: true, publishedComplete: false, publishNeeded: true });
+    expect(financialDebtReviewSummary({ ...saved, current_version_id: null, accepted_completion: null })).toMatchObject({ onSchedule: 1, read: 1, missingAnswers: 1, publishedComplete: false });
+  });
+  it("does not replace a completed working schedule with the empty original PDF's completion", () => {
+    const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 1 };
+    const original = { ...snapshot, current_version_id: "original-v1", evidence: [], completion: complete, accepted_completion: null };
+    expect(financialDebtReviewSummary(original)).toMatchObject({ onSchedule: 1, missingAnswers: 0, draftComplete: true, publishedComplete: false, publishNeeded: true, removed: 1 });
+  });
+  it("ignores fully blank editor placeholders while retaining legitimate lender-only obligations", () => {
+    const value = { debts: [{ id: "complete", lender: "Bank", balance: "100", monthly_payment: "10" }, { id: "placeholder", status: "active", lender: "", balance: "", monthly_payment: "" }] };
+    const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 1 };
+    expect(financialDebtReviewSummary({ ...snapshot, body: value, completion: complete, evidence: [] })).toMatchObject({ onSchedule: 1, missingAnswers: 0, removed: 0 });
+    expect(financialDebtTotals(value)).toEqual({ total_balance: 100, total_monthly_payment: 10 });
+    expect(activeFinancialDebts(value)).toHaveLength(2);
+    expect(financialDebtTotals({ debts: [...value.debts, { id: "real-missing", lender: "Another lender" }] })).toEqual({ total_balance: null, total_monthly_payment: null });
+    expect(financialDebtTotals({ debts: [value.debts[1]] })).toEqual({ total_balance: null, total_monthly_payment: null });
+    expect(financialDebtTotals({ debts: [value.debts[1]], no_debt: true })).toEqual({ total_balance: 0, total_monthly_payment: 0 });
   });
   it("keeps MCA answers before the appended contract terms when building an empty 17-column layout", () => {
     const empty = { ...layout, columns: Array.from({ length: 17 }, (_, index) => ({ c: index + 1 })), rows: [{ r: 1, kind: "colhead" as const, cells: [] }] };

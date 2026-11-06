@@ -1,0 +1,14 @@
+.details { border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); font-size: 11px; min-width: 0; }
+.details summary { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; cursor: pointer; padding: 8px 10px; color: var(--accent); font-weight: 600; }
+.details summary::before { content: "▸"; }
+.details[open] summary::before { content: "▾"; }
+.details summary span { margin-left: auto; color: var(--muted); font-weight: 400; }
+.body { display: grid; gap: 7px; padding: 0 10px 10px; line-height: 1.6; color: var(--ink2); }
+.body p { margin: 0; overflow-wrap: anywhere; }
+.body dl { margin: 0; display: grid; gap: 5px; }
+.body dl > div { display: grid; grid-template-columns: 145px minmax(0, 1fr); gap: 10px; }
+.body dt { color: var(--muted); }
+.body dd { margin: 0; overflow-wrap: anywhere; }
+.recorded { color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 7px; }
+@media (max-width: 600px) { .body dl > div { grid-template-columns: 1fr; gap: 2px; } .details summary span { width: 100%; margin-left: 15px; } }

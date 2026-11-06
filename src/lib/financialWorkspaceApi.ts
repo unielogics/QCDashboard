@@ -14,6 +14,7 @@ export type FinancialWorkspaceSnapshot = {
   worksheet: { layout: SheetLayout; values: SheetValues; computed: Record<string, number | null> };
   draft: { revision: number; base_version_id: string | null; updated_at: string; dirty: boolean };
   current_version_id: string | null; versions: FinancialVersion[];
+  accepted_version_id?: string | null;
   families: Array<{ id: string; kind: SheetKind; label: string; current_version_id: string | null }>;
   evidence: FinancialEvidence[];
   saved_version?: FinancialVersion;
@@ -192,21 +193,37 @@ export function clearEditedDebtSources(previous: FinancialBody, next: FinancialB
 export function activeFinancialDebts(body: FinancialBody): FinancialDebtRow[] {
   return ((body.debts as FinancialDebtRow[] | undefined) ?? []).filter((row) => row.status !== "dismissed" && row.status !== "duplicate" && !row.duplicate_of_id);
 }
-/** Published checklist figures remain authoritative while a newer draft is edited. */
+/** Blank editor placeholders are retained for editing but are not obligations. */
+export function meaningfulFinancialDebts(body: FinancialBody): FinancialDebtRow[] {
+  return activeFinancialDebts(body).filter((row) => (row.status ?? "active") === "active" && [
+    "lender", "balance", "monthly_payment", "original_amount", "rate", "factor_rate",
+    "payment_amount", "payment_frequency", "debt_type", "notes", "collateral",
+  ].some((key) => row[key] !== null && row[key] !== undefined && row[key] !== ""));
+}
+/** Show the same working schedule the editor opens, with publication kept separate. */
 export function financialDebtReviewSummary(workspace: FinancialWorkspaceSnapshot) {
-  const rows = activeFinancialDebts(workspace.body);
-  const completion = workspace.current_version_id ? workspace.accepted_completion : workspace.completion;
+  const rows = meaningfulFinancialDebts(workspace.body);
+  const completion = workspace.completion;
+  const publishedComplete = workspace.accepted_completion?.complete === true;
   return {
-    read: workspace.current_version_id ? 0 : rows.length,
-    onSchedule: workspace.current_version_id ? completion?.active_rows ?? rows.length : 0,
-    removed: ((workspace.body.debts as unknown[] | undefined)?.length ?? 0) - rows.length,
+    read: publishedComplete ? 0 : rows.length,
+    onSchedule: rows.length,
+    removed: ((workspace.body.debts as FinancialDebtRow[] | undefined) ?? []).filter((row) => row.status === "dismissed" || row.status === "duplicate" || row.duplicate_of_id).length,
     missingAnswers: completion?.complete ? 0 : completion?.missing_fields.length ?? 0,
-    hasSource: workspace.evidence.some((file) => file.classification === "business_debt_schedule"),
+    missingFields: completion?.missing_fields ?? [],
+    reason: completion?.reason ?? null,
+    draftComplete: completion?.complete === true,
+    publishedComplete,
+    publishedRows: workspace.accepted_completion?.active_rows ?? 0,
+    publishNeeded: workspace.draft.dirty || !publishedComplete,
+    hasDraft: rows.length > 0 || workspace.body.no_debt === true || workspace.draft.dirty,
+    hasSource: workspace.evidence.some((file) => ["business_debt_schedule", "debt_schedule"].includes(file.classification ?? "")),
     loading: false,
   };
 }
 export function financialDebtTotals(body: FinancialBody): { total_balance: number | null; total_monthly_payment: number | null } {
-  const rows = activeFinancialDebts(body);
+  const rows = meaningfulFinancialDebts(body);
+  if (!rows.length && body.no_debt !== true) return { total_balance: null, total_monthly_payment: null };
   const sum = (field: "balance" | "monthly_payment") => {
     const amounts = rows.map((row) => parseMoney(row[field]));
     return amounts.some((amount, index) => amount.blank || amount.warn || ["-", "."].includes(String(rows[index][field]))) ? null : amounts.reduce((total, amount) => total + amount.value, 0);
