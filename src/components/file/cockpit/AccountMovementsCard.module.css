@@ -3,33 +3,61 @@
 .filters { display: flex; flex-wrap: wrap; gap: 8px; }
 .filters label { display: grid; gap: 3px; color: var(--muted); font-size: 10px; font-weight: 650; }
 .filters select { max-width: 220px; min-height: 33px; border: 1px solid var(--line2); border-radius: 7px; padding: 5px 25px 5px 8px; background: var(--surface); color: var(--ink); font: inherit; font-size: 12px; }
-.graphScroll { overflow: auto; overscroll-behavior-inline: contain; max-height: 650px; background: var(--sunken2); border-top: 1px solid var(--line); }
+.flowSummary { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; background: var(--surface); border-top: 1px solid var(--line); }
+.eyebrow { display: block; color: var(--muted); font-size: 12px; font-weight: 600; }
+.flowSummary > div > strong { display: block; margin-top: 5px; color: var(--accent); font-size: 30px; line-height: 1.2; letter-spacing: -.6px; font-variant-numeric: tabular-nums; }
+.flowSummaryContext { display: grid; gap: 5px; }
+.flowSummaryContext b { font-size: 14px; color: var(--ink); }
+.flowSummaryContext span { font-size: 12px; color: var(--muted); }
+.graphScroll { overflow: auto; overscroll-behavior-inline: contain; max-height: 650px; background: var(--sunken2); border-block: 1px solid var(--line); }
 .graph { position: relative; margin-inline: auto; }
 .edges { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-.line { fill: none; stroke: var(--accent); stroke-width: 2.5; }
-.possible .line { stroke: var(--fc-series-2, var(--warn)); stroke-dasharray: 7 5; }
+.line { fill: none; stroke: var(--accent); stroke-width: 6; stroke-linecap: round; }
+.possible .line { stroke: var(--fc-series-2, var(--warn)); stroke-width: 4; stroke-dasharray: 9 7; }
 .linkHit { fill: none; stroke: transparent; stroke-width: 21; cursor: pointer; outline: none; }
-.linkHit:focus { stroke: var(--accent-200); stroke-opacity: .65; }
-.activeConnection .line { stroke-width: 4; }
-.linkLabel { pointer-events: none; }
-.linkLabel rect { fill: var(--surface); stroke: var(--line2); }
-.linkLabel text { fill: var(--accent); font-family: inherit; font-size: 12px; font-weight: 700; }
+.connection:focus .linkHit { stroke: var(--accent-200); stroke-opacity: .65; }
+.connection:focus { outline: none; }
+.connection { cursor: pointer; }
+.connection:hover .line, .activeConnection .line { stroke-width: 8; }
+.linkLabel { cursor: pointer; }
+.linkLabel rect { fill: var(--surface); stroke: var(--accent-200, var(--line2)); stroke-width: 1.5; }
+.linkLabel text { fill: var(--accent); font-family: inherit; font-weight: 700; }
+.linkLabel .routeCaption { fill: var(--muted); font-size: 11px; }
+.linkLabel .routeAmount { font-size: 20px; font-variant-numeric: tabular-nums; }
+.linkLabel .routeCount { fill: var(--muted); font-size: 10px; font-weight: 500; }
 .possible .linkLabel text { fill: var(--warn); }
-.node { position: absolute; transform: translate(-50%, -50%); width: 198px; min-height: 130px; padding: 11px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface); color: var(--ink); cursor: pointer; text-align: left; box-shadow: 0 3px 9px rgb(15 23 32 / 4%); }
+.node { position: absolute; box-sizing: border-box; transform: translate(-50%, -50%); width: 248px; height: 188px; padding: 14px; border: 1px solid var(--line2); border-radius: 14px; background: var(--surface); color: var(--ink); cursor: pointer; text-align: left; box-shadow: 0 4px 14px rgb(15 23 32 / 5%); }
 .node:hover, .activeNode { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-100); }
-.nodeTitle { display: block; font-size: 12px; font-weight: 700; max-width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
-.nodeBalance { display: block; margin-top: 5px; font-size: 19px; font-weight: 750; font-variant-numeric: tabular-nums; }
-.nodeBalance small { font-size: 10px; font-weight: 500; color: var(--muted); }
+.nodeTitle { display: block; font-size: 13px; font-weight: 700; max-width: 100%; text-overflow: ellipsis; overflow: hidden; white-space: nowrap; }
+.balanceLabel { display: block; margin-top: 9px; color: var(--muted); font-size: 10px; }
+.nodeBalance { display: block; margin-top: 2px; font-size: 22px; line-height: 1.2; font-weight: 750; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
 .nodeFacts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-top: 10px; }
 .nodeFacts span { display: grid; gap: 3px; min-width: 0; }
-.nodeFacts small { color: var(--muted); font-size: 9px; font-weight: 500; }
-.nodeFacts b { font-size: 10px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
-.nodeCoverage { display: block; margin-top: 9px; color: var(--muted); font-size: 9px; line-height: 1.4; }
+.nodeFacts small { color: var(--muted); font-size: 10px; font-weight: 500; }
+.nodeFacts b { font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.nodeCoverage { display: block; margin-top: 10px; color: var(--muted); font-size: 10px; line-height: 1.4; }
 .boundary { border-style: dashed; background: var(--sunken2); }
 .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 12px 16px; font-size: 11px; color: var(--muted); }
 .legend span { display: flex; align-items: center; gap: 7px; }
 .legend i { display: inline-block; width: 25px; border-top: 2px solid var(--accent); }
 .legend i.dashed { border-top: 2px dashed var(--fc-series-2, var(--warn)); }
+.routes { display: grid; gap: 10px; padding: 16px 20px; }
+.route { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, 240px) minmax(0, 1fr) auto; align-items: center; gap: 24px; width: 100%; padding: 17px 20px; border: 1px solid var(--line2); border-radius: 12px; background: var(--surface); color: var(--ink); cursor: pointer; font: inherit; text-align: left; }
+.route:hover, .route[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-50, var(--sunken2)); }
+.routeAccount { display: grid; gap: 5px; min-width: 0; }
+.routeAccount > small { color: var(--muted); font-size: 11px; }
+.routeAccount > b { font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.routeFlow { display: grid; text-align: center; gap: 7px; }
+.routeFlow strong { font-size: 21px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.routeFlow > small { color: var(--muted); font-size: 11px; }
+.directionArrow { display: block; position: relative; height: 5px; margin: 0 10px 0 0; border-radius: 3px; background: var(--accent); }
+.directionArrow::after { content: ""; position: absolute; right: -10px; top: -5px; border-left: 12px solid var(--accent); border-top: 7.5px solid transparent; border-bottom: 7.5px solid transparent; }
+.routeInspect { font-size: 11px; color: var(--accent); white-space: nowrap; }
+.reviewRoute { border-style: dashed; }
+.reviewRoute .routeFlow strong { color: var(--warn); }
+.reviewRoute .directionArrow { background: repeating-linear-gradient(to right, var(--fc-series-2, var(--warn)) 0 9px, transparent 9px 15px); }
+.reviewRoute .directionArrow::after { border-left-color: var(--fc-series-2, var(--warn)); }
+.noRoutes { padding: 16px 24px; font-size: 12px; color: var(--muted); }
 .support { border: 1px solid var(--line); border-top: 0; padding: 14px 16px; background: var(--surface); border-radius: 0 0 12px 12px; }
 .summary { display: flex; flex-wrap: wrap; gap: 6px; }
 .note { font-size: 12px; line-height: 1.6; color: var(--muted); margin: 10px 0 0; }
@@ -67,6 +95,9 @@
 .mobileList { display: none; }
 .root button:focus-visible, .root select:focus-visible, .graphScroll:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 @media (max-width: 700px) {
+  .flowSummary { padding: 16px; gap: 12px; }
+  .flowSummary > div > strong { font-size: 26px; }
+  .flowSummaryContext span { font-size: 11px; }
   .graphScroll { display: none; }
   .mobileList { display: grid; padding: 10px 12px; gap: 8px; }
   .mobileAccount, .mobileLink { display: grid; min-width: 0; gap: 5px; border: 1px solid var(--line2); border-radius: 8px; background: var(--surface); padding: 12px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
@@ -75,6 +106,14 @@
   .mobileAccount > small, .mobileLink > small { color: var(--muted); font-size: 10px; }
   .mobileLink { border-style: dashed; }
   .mobileLink > strong { font-size: 16px; }
+  .routes { padding: 12px; gap: 10px; }
+  .route { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; padding: 14px; }
+  .routeAccount:first-child { grid-column: 1; grid-row: 1; }
+  .routeAccount:nth-child(3) { grid-column: 2; grid-row: 1; }
+  .routeAccount > b { font-size: 12px; }
+  .routeFlow { grid-column: 1 / -1; grid-row: 2; padding: 0 12px; }
+  .routeFlow strong { font-size: 24px; }
+  .routeInspect { grid-column: 1 / -1; grid-row: 3; text-align: center; }
   .nodeFacts { margin-top: 3px; }
   .nodeFacts b { font-size: 12px; }
   .filters { max-width: 100%; }

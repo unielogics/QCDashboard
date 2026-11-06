@@ -21,6 +21,10 @@ type Props = {
 
 const reasonLabel = (value: string) => value.replace(/_/g, " ").replace(/^./, (letter) => letter.toUpperCase());
 const coverageLabel = (value: string | undefined) => value === "complete" ? "Detail available" : value === "partial" ? "Incomplete detail" : "Detail missing";
+const accountShort = (label: string) => {
+  const suffix = label.match(/[•*x]{2,}\s*(\d{4})\b/i);
+  return suffix ? `••${suffix[1]}` : label;
+};
 
 function EvidenceRows({ rows, onOpenEvidence }: { rows: MovementEvidence[]; onOpenEvidence?: Props["onOpenEvidence"] }) {
   if (!rows.length) return <p className={styles.note}>This preview has no source transactions. Open the evidence room to inspect the original statements.</p>;
@@ -37,9 +41,9 @@ function EvidenceRows({ rows, onOpenEvidence }: { rows: MovementEvidence[]; onOp
 
 function AccountFacts({ node, currency }: { node: MovementNodeView; currency: string | null }) {
   return <div className={styles.nodeFacts}>
-    <span><small>Matched in</small><b>{movementMoney(node.facts?.internal_in, currency)}</b></span>
-    <span><small>Matched out</small><b>{movementMoney(node.facts?.internal_out, currency)}</b></span>
-    <span><small>Net influence</small><b>{movementMoney(node.facts?.internal_net, currency)}</b></span>
+    <span><small>Received</small><b>{movementMoney(node.facts?.internal_in, currency)}</b></span>
+    <span><small>Sent</small><b>{movementMoney(node.facts?.internal_out, currency)}</b></span>
+    <span><small>Transfer net</small><b>{movementMoney(node.facts?.internal_net, currency)}</b></span>
   </div>;
 }
 
@@ -63,6 +67,8 @@ export function AccountMovementsCard({ data, accountKey, onOpenEvidence }: Props
   const positions = new Map(layout.positions.map((node) => [node.key, node]));
   const labels = new Map(data?.nodes.map((node) => [node.key, node.label]) ?? []);
   const name = (key: string | null) => key ? labels.get(key) ?? "Unidentified account" : "Unidentified account";
+  const matchedLinks = view?.links.filter((link) => link.status === "supported") ?? [];
+  const matchedCount = view?.matchedAmount != null ? matchedLinks.reduce((count, link) => count + link.transaction_count, 0) : null;
   const selectedNode = selection?.kind === "account" ? view?.nodes.find((node) => node.key === selection.key) : undefined;
   const selectedLink = selection?.kind === "link" ? view?.links.find((link) => link.id === selection.id) : undefined;
   const selectedMovement = selection?.kind === "movement" ? view?.movements.find((movement) => movement.id === selection.id) : undefined;
@@ -135,22 +141,32 @@ export function AccountMovementsCard({ data, accountKey, onOpenEvidence }: Props
       sub="Follow money between the business’s accounts and inspect how it affects each account’s balance."
       chart={<>
         {view?.nodes.length ? <>
+          <div className={styles.flowSummary}>
+            <div><span className={styles.eyebrow}>Moved between accounts · {monthShort(period)}</span><strong>{movementMoney(view.matchedAmount, currency)}</strong></div>
+            <div className={styles.flowSummaryContext}><b>{matchedCount == null ? "Transfer detail needed" : `${matchedCount} matched transfer${matchedCount === 1 ? "" : "s"}`}</b><span>Each transfer counted once · select a route for dated transactions</span></div>
+          </div>
           <div className={styles.graphScroll} tabIndex={0} role="region" aria-label="Account relationship graph, scroll horizontally if needed">
             <div className={styles.graph} style={{ width: layout.width, height: layout.height }}>
               <svg className={styles.edges} viewBox={`0 0 ${layout.width} ${layout.height}`} aria-label={graphDescription} role="group">
-                <defs><marker id={`${id}-matched`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="var(--accent)" /></marker>
-                  <marker id={`${id}-review`} viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 Z" fill="var(--fc-series-2, var(--warn))" /></marker></defs>
+                <defs><marker id={`${id}-matched`} viewBox="0 0 12 12" refX="11" refY="6" markerWidth="18" markerHeight="18" markerUnits="userSpaceOnUse" orient="auto"><path d="M 0 0 L 12 6 L 0 12 Z" fill="var(--accent)" /></marker>
+                  <marker id={`${id}-review`} viewBox="0 0 12 12" refX="11" refY="6" markerWidth="16" markerHeight="16" markerUnits="userSpaceOnUse" orient="auto"><path d="M 0 0 L 12 6 L 0 12 Z" fill="var(--fc-series-2, var(--warn))" /></marker></defs>
                 {view.links.map((link) => {
                   const from = positions.get(link.from_account), to = positions.get(link.to_account);
                   if (!from || !to) return null;
-                  const path = movementLinkPath(from, to, link.status === "review" ? 44 : 20);
+                  const path = movementLinkPath(from, to, link.status === "review" ? 150 : 76);
                   const active = selectedLink?.id === link.id;
-                  return <g key={link.id} className={`${styles.connection} ${link.status === "review" ? styles.possible : ""} ${active ? styles.activeConnection : ""}`}>
+                  const description = `${name(link.from_account)} to ${name(link.to_account)}: ${movementMoney(link.amount, currency)}, ${link.transaction_count} transfer${link.transaction_count === 1 ? "" : "s"}, ${movementStatusLabel(link.status)}`;
+                  return <g key={link.id} className={`${styles.connection} ${link.status === "review" ? styles.possible : ""} ${active ? styles.activeConnection : ""}`}
+                    tabIndex={0} role="button" aria-pressed={active} aria-label={description}
+                    onClick={() => chooseLink(link)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseLink(link); } }}>
+                    <title>{description}</title>
                     <path className={styles.line} d={path.path} markerEnd={`url(#${id}-${link.status === "supported" ? "matched" : "review"})`} />
-                    <path className={styles.linkHit} d={path.path} tabIndex={0} role="button" aria-pressed={active}
-                      aria-label={`${name(link.from_account)} to ${name(link.to_account)}: ${movementMoney(link.amount, currency)}, ${movementStatusLabel(link.status)}`}
-                      onClick={() => chooseLink(link)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); chooseLink(link); } }} />
-                    <g className={styles.linkLabel} transform={`translate(${path.x} ${path.y})`} aria-hidden="true"><rect x="-64" y="-13" width="128" height="26" rx="7" /><text textAnchor="middle" dominantBaseline="central">{movementMoney(link.amount, currency)}</text></g>
+                    <path className={styles.linkHit} d={path.path} />
+                    <g className={styles.linkLabel} transform={`translate(${path.x} ${path.y})`} aria-hidden="true"><rect x="-112" y="-34" width="224" height="68" rx="12" />
+                      <text textAnchor="middle" y="-12" className={styles.routeCaption}>{accountShort(name(link.from_account))} → {accountShort(name(link.to_account))}</text>
+                      <text textAnchor="middle" y="10" className={styles.routeAmount}>{movementMoney(link.amount, currency)}</text>
+                      <text textAnchor="middle" y="26" className={styles.routeCount}>{link.transaction_count} transfer{link.transaction_count === 1 ? "" : "s"}{link.status === "review" ? " · needs review" : " · matched"}</text>
+                    </g>
                   </g>;
                 })}
               </svg>
@@ -159,7 +175,7 @@ export function AccountMovementsCard({ data, accountKey, onOpenEvidence }: Props
                 return <button type="button" key={node.key} className={`${styles.node} ${!node.inScope ? styles.boundary : ""} ${selectedNode?.key === node.key ? styles.activeNode : ""}`}
                   style={{ left: position.x, top: position.y }} onClick={() => chooseNode(node)} aria-pressed={selectedNode?.key === node.key}
                   aria-label={`${node.label}. Closing balance ${movementMoney(node.facts?.ending_balance, currency)}. ${coverageLabel(node.facts?.coverage_status)}. Inspect balance and evidence.`}>
-                  <span className={styles.nodeTitle}>{node.label}</span><span className={styles.nodeBalance}>{movementMoney(node.facts?.ending_balance, currency)} <small>closing</small></span>
+                  <span className={styles.nodeTitle}>{node.label}</span><small className={styles.balanceLabel}>Closing balance</small><span className={styles.nodeBalance}>{movementMoney(node.facts?.ending_balance, currency)}</span>
                   <AccountFacts node={node} currency={currency} />
                   <span className={styles.nodeCoverage}>{!node.inScope ? "Outside selected scope · " : !node.counted ? "Not counted · " : ""}{coverageLabel(node.facts?.coverage_status)}</span>
                 </button>;
@@ -168,8 +184,15 @@ export function AccountMovementsCard({ data, accountKey, onOpenEvidence }: Props
           </div>
           <div className={styles.mobileList} aria-label="Accounts and directed movements">
             {view.nodes.map((node) => <button key={node.key} type="button" className={styles.mobileAccount} onClick={() => chooseNode(node)}><b>{node.label}</b><span>Closing {movementMoney(node.facts?.ending_balance, currency)}</span><AccountFacts node={node} currency={currency} /><small>{coverageLabel(node.facts?.coverage_status)}{!node.inScope ? " · outside selected scope" : ""}</small></button>)}
-            {view.links.map((link) => <button type="button" key={link.id} className={styles.mobileLink} onClick={() => chooseLink(link)}><span>{name(link.from_account)} → {name(link.to_account)}</span><strong>{movementMoney(link.amount, currency)}</strong><small>{movementStatusLabel(link.status)}</small></button>)}
           </div>
+          {view.links.length ? <div className={styles.routes} aria-label="Transfer routes">
+            {view.links.map((link) => <button type="button" key={link.id} className={`${styles.route} ${link.status === "review" ? styles.reviewRoute : ""}`} onClick={() => chooseLink(link)} aria-pressed={selectedLink?.id === link.id}>
+              <span className={styles.routeAccount}><small>From</small><b>{name(link.from_account)}</b></span>
+              <span className={styles.routeFlow}><strong>{movementMoney(link.amount, currency)}</strong><span className={styles.directionArrow} aria-hidden="true" /><small>{link.transaction_count} transfer{link.transaction_count === 1 ? "" : "s"} · {link.status === "supported" ? "matched" : "needs review"}</small></span>
+              <span className={styles.routeAccount}><small>To</small><b>{name(link.to_account)}</b></span>
+              <span className={styles.routeInspect}>View transactions <span aria-hidden="true">↗</span></span>
+            </button>)}
+          </div> : <div className={styles.noRoutes}>{view.matchedAmount == null ? "Transfer directions will appear when dated statement transactions are available." : "No matched transfers between these accounts in this period."}</div>}
         </> : <div className="fc-empty">{currentScope === "counted" && data?.nodes.length ? "No counted accounts have evidence for this period. Choose all accounts to inspect the available evidence." : "No account-level evidence is available for this period."}</div>}
         <div className={styles.legend}><span><i /> Matched pair</span><span><i className={styles.dashed} /> Possible match · excluded from totals</span><span>Arrows show direction. Select an account or connection to inspect it.</span></div>
       </>}

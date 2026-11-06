@@ -1086,6 +1086,9 @@ export function useFinancialCockpit(profileId: string | null | undefined, enable
     queryFn: () => apiCall<FinancialCockpit>(`/application-profiles/${profileId}/financial-cockpit`),
     enabled: !!profileId && enabled,
     staleTime: 30_000,
+    // Statement reads can finish while this tab stays open.
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
   });
 }
 
