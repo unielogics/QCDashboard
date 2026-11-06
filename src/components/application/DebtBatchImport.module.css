@@ -1,0 +1,46 @@
+.root { margin: 0 0 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); min-width: 0; }
+.heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; }
+.heading > div:first-child { flex: 1 1 260px; min-width: 0; }
+.heading strong { font-size: 13px; }
+.heading p, .note, .apply p { margin: 5px 0 0; font-size: 12px; color: var(--muted); line-height: 1.5; }
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.content { display: grid; gap: 14px; margin-top: 14px; }
+.progress { margin: 0; color: var(--accent); font-size: 12px; }
+.uploads, .fileResults { display: grid; gap: 8px; }
+.uploads > div, .fileResults > div { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-bottom: 8px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.uploads span, .fileResults button { overflow-wrap: anywhere; }
+.uploads small, .fileResults small { flex-basis: 100%; color: var(--amber); }
+.fileResults button { padding: 0; border: 0; background: none; color: var(--accent); text-align: left; cursor: pointer; }
+.existing { font-size: 12px; }
+.existing summary { cursor: pointer; }
+.fileList { display: grid; gap: 8px; max-height: 180px; overflow: auto; padding: 10px 0; }
+.fileList label { display: flex; gap: 8px; align-items: flex-start; overflow-wrap: anywhere; }
+.reviewLayout { display: grid; grid-template-columns: minmax(170px, .8fr) minmax(0, 2fr); gap: 16px; border-top: 1px solid var(--line); padding-top: 16px; }
+.queue { display: grid; align-content: start; gap: 8px; }
+.queue button { padding: 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--sunken2); text-align: left; cursor: pointer; display: grid; gap: 5px; overflow-wrap: anywhere; min-width: 0; }
+.queue button[aria-current] { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
+.queue strong { font-size: 12px; }
+.queue span, .queue small { font-size: 11px; color: var(--muted); }
+.review { display: grid; gap: 12px; align-content: start; min-width: 0; }
+.review h4 { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.sourceLinks { display: flex; flex-wrap: wrap; gap: 6px; }
+.sourceLinks button { max-width: 100%; height: auto; white-space: normal; overflow-wrap: anywhere; }
+.mappings { display: grid; gap: 8px; max-height: 500px; overflow: auto; }
+.mappings > label { display: flex; gap: 9px; align-items: flex-start; padding: 11px; border: 1px solid var(--line); border-radius: 7px; font-size: 12px; background: var(--sunken2); }
+.mappings > label.conflict { border-color: var(--amber); }
+.mappings input { margin-top: 3px; flex-shrink: 0; }
+.mappings label > div { min-width: 0; display: grid; gap: 7px; }
+.mappings dl { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 5px 12px; margin: 0; }
+.mappings dt { color: var(--muted); }
+.mappings dd { margin: 0; overflow-wrap: anywhere; }
+.mappings q { color: var(--muted); overflow-wrap: anywhere; font-size: 11px; }
+.mappings button { justify-self: start; color: var(--accent); border: 0; padding: 0; background: none; cursor: pointer; font-size: 11px; }
+.confirm { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; line-height: 1.5; }
+.confirm input { margin-top: 3px; }
+.apply { display: flex; gap: 12px; justify-content: space-between; align-items: center; border-top: 1px solid var(--line); padding-top: 12px; flex-wrap: wrap; }
+.apply p { flex: 1 1 260px; margin: 0; }
+.preview { display: grid; gap: 12px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; background: var(--sunken2); min-width: 0; }
+.preview img { max-width: 100%; max-height: 650px; object-fit: contain; justify-self: center; }
+.preview iframe { width: 100%; height: 600px; border: 0; }
+.preview a { color: var(--accent); font-size: 12px; }
+@media (max-width: 760px) { .reviewLayout { grid-template-columns: minmax(0, 1fr); } .queue { grid-template-columns: repeat(auto-fit, minmax(135px, 1fr)); } .root { padding: 12px; } .actions { width: 100%; } .actions button { max-width: 100%; height: auto; white-space: normal; } .preview iframe { height: 450px; } }

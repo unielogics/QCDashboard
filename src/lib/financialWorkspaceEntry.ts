@@ -7,7 +7,7 @@ export type FinancialWorkspaceView = "form" | "worksheet" | "pdf" | "history";
 export function financialDebtChoiceLabel(row: FinancialDebtRow, ordinal: number): string {
   const balance = parseFigure(row.balance); const payment = parseFigure(row.monthly_payment);
   const money = (value: number) => value.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-  return `Row ${ordinal} · ${row.lender || "Unnamed loan"} · ${balance == null ? "balance unknown" : `${money(balance)} balance`} · ${payment == null ? "payment unknown" : `${money(payment)}/mo`}`;
+  return `Row ${ordinal} · ${row.lender || "Unnamed loan"}${row.loan_reference ? ` · Reference ${row.loan_reference}` : ""} · ${balance == null ? "balance unknown" : `${money(balance)} balance`} · ${payment == null ? "payment unknown" : `${money(payment)}/mo`}`;
 }
 
 /** Opening a schedule starts with its existing rows; adding a row is separate. */
