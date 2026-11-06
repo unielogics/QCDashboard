@@ -1,3 +1,4 @@
+import { repaymentPreview } from "./repaymentConfig";
 // What if these regular payments stopped? A pure month-by-month replay of
 // the statements with chosen recurring debits removed (the advance
 // remittances, say) and an optional new monthly payment added, carrying the
@@ -115,8 +116,8 @@ export function simulateRemovals(months: CockpitMonth[], payees: RecurringPayee[
 
 import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanCandidate, PlanLoanTerms } from "@/lib/financialCockpit";
 import { dscrStatusOf } from "@/lib/financialCockpit";
-import { buildSchedule, describeSchedule, type LoanScheduleSummary } from "@/lib/loanSchedule";
-import { evaluateRefinanceEbitda, type RefinanceEbitda } from "@/lib/ebitdaRefinance";
+import { describeSchedule, type LoanScheduleSummary } from "@/lib/loanSchedule";
+import { evaluateRefinanceEbitda, roundEbitdaMoney, type RefinanceEbitda } from "@/lib/ebitdaRefinance";
 
 export type LocalPlanEvaluation = {
   ebitda?: RefinanceEbitda;
@@ -135,6 +136,7 @@ export type LocalPlanEvaluation = {
   serviceBefore: number;
   serviceBeforeNewPayment: number;
   serviceAfter: number;
+  serviceAfterAnnual: number;
   candidates: PlanCandidate[];
   headlineAfter: number | null;
   noDebtLeft: boolean;
@@ -170,12 +172,13 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const serviceOverride = plan.overrides?.debt_service_monthly ?? null;
   const interestOnly = !!plan.new_loan_interest_only || plan.new_loan_structure === "interest_only";
   const proposed = cockpit.dscr.proposed;
+  const adoptedTerms = !plan.new_loan_amount && plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null ? cockpit.proposed_terms : null;
   const schedule: LoanScheduleSummary | null =
     plan.new_loan_amount && (plan.new_loan_term_months || interestOnly)
-      ? buildSchedule(plan.new_loan_amount, plan.new_loan_rate_pct ?? 0, plan.new_loan_term_months ?? 0, { structure: interestOnly ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months ?? 0 })
-      : null;
+      ? repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct ?? 0, plan.new_loan_term_months ?? 0, { structure: interestOnly ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months ?? 0, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).schedule
+      : adoptedTerms?.repayment_config && adoptedTerms.amount ? repaymentPreview(adoptedTerms.amount, adoptedTerms.rate_pct, adoptedTerms.term_months, { structure: adoptedTerms.structure, interestOnlyMonths: adoptedTerms.interest_only_months, periodsPerYear: adoptedTerms.payments_per_year ?? 12, repaymentConfig: adoptedTerms.repayment_config }).schedule : null;
   const loanTerms: PlanLoanTerms | null = schedule
-    ? { amount: schedule.amount, rate_pct: schedule.rate_pct, term_months: schedule.term_months, interest_only: schedule.structure === "interest_only", structure: schedule.structure, interest_only_months: schedule.interest_only_months, payment_io: schedule.payment_io_monthly, payment_after: schedule.payment_after_monthly, annual_debt_service: schedule.annual_debt_service, total_interest: schedule.total_interest, total_paid: schedule.total_paid, balloon: schedule.balloon, describe: describeSchedule(schedule) }
+    ? { amount: schedule.amount, rate_pct: schedule.rate_pct, term_months: schedule.term_months, interest_only: schedule.structure === "interest_only", structure: schedule.structure, interest_only_months: schedule.interest_only_months, repayment_config: schedule.repayment_config, payments_per_year: schedule.periods_per_year, payment_io: schedule.payment_io_monthly, payment_after: schedule.payment_after_monthly, annual_debt_service: schedule.repayment_config ? schedule.coverage_annual_debt_service : schedule.annual_debt_service, total_interest: schedule.total_interest, total_paid: schedule.total_paid, balloon: schedule.balloon, describe: describeSchedule(schedule) }
     : plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount
       ? { amount: proposed.amount, rate_pct: proposed.rate_pct ?? 0, term_months: proposed.term_months ?? null, interest_only: false }
       : null;
@@ -185,27 +188,33 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     newPayment = schedule.coverage_payment_monthly;
     source = source ?? "manual_terms";
   }
+  if (schedule?.repayment_config) newPayment = Math.max(newPayment ?? 0, schedule.coverage_payment_monthly);
   // The recorded loan terms join the plan only when the desk adopted them.
   if (newPayment == null && source === "term_sheet" && cockpit.dscr.proposed?.monthly_payment != null) {
     newPayment = cockpit.dscr.proposed.monthly_payment;
   } else if (newPayment == null && source === "term_sheet") {
     source = null;
   }
+  const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
+  const exactRetained = schedule?.repayment_config && source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? 0;
-  const serviceBeforeNewPayment = r2(Math.max(0, serviceBefore - retiredMonthly));
+  const serviceBeforeNewPayment = r2(Math.max(0, exactRetained ? serviceBefore : serviceBefore - retiredMonthly));
   const serviceAfter = r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
+  const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
+  const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment * 12;
+  const serviceAfterAnnual = r2(Math.max(0, existingAnnualService + newAnnualService));
   const candidates: PlanCandidate[] = cockpit.dscr.candidates
     .filter((c) => c.numerator != null)
     .map((c) => {
       // Add-backs raise every basis; a payee that is not spend raises the bank proxy only; an income override replaces the lot.
       const adjusted = r2((c.numerator as number) + addBacksAnnual + (c.key === "bank_cash_flow" ? excludedMonthly * 12 : 0));
       const numeratorAfter = incomeOverride != null ? r2(incomeOverride) : adjusted;
-      const valueAfter = serviceAfter > 0 ? r2(numeratorAfter / (serviceAfter * 12)) : null;
-      return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfter <= 0 && numeratorAfter > 0, overridden: incomeOverride != null };
+      const valueAfter = serviceAfterAnnual > 0 ? r2(numeratorAfter / serviceAfterAnnual) : null;
+      return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual <= 0 && numeratorAfter > 0, overridden: incomeOverride != null };
     });
   if (incomeOverride != null && !candidates.length) {
-    const valueAfter = serviceAfter > 0 ? r2(incomeOverride / (serviceAfter * 12)) : null;
-    candidates.push({ key: "desk_override", label: "Desk override", numerator_before: null, numerator_after: r2(incomeOverride), value_before: null, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfter <= 0 && incomeOverride > 0, overridden: true });
+    const valueAfter = serviceAfterAnnual > 0 ? r2(incomeOverride / serviceAfterAnnual) : null;
+    candidates.push({ key: "desk_override", label: "Desk override", numerator_before: null, numerator_after: r2(incomeOverride), value_before: null, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual <= 0 && incomeOverride > 0, overridden: true });
   }
   const headlineKey = cockpit.dscr.headline?.key ?? candidates[0]?.key ?? null;
   const headline = candidates.find((c) => c.key === headlineKey) ?? candidates[0] ?? null;
@@ -253,6 +262,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     serviceBefore,
     serviceBeforeNewPayment,
     serviceAfter,
+    serviceAfterAnnual,
     candidates,
     headlineAfter: headline?.value_after ?? null,
     noDebtLeft: !!headline?.no_debt_left,

@@ -1,3 +1,4 @@
+import type { RepaymentConfig } from "./loanSchedule";
 // The financial cockpit: the types that mirror app/services/financial_cockpit.py
 // in qcbackend (the contract pinned by app/tests/test_financial_cockpit.py)
 // and the pure helpers the tiles and charts use. Nothing here fetches.
@@ -454,10 +455,10 @@ export type PlanEconomics = {
 };
 export type ProposedTerms = {
   source: "term_sheet" | "plan"; label: string | null; amount: number | null; rate_pct: number | null; term_months: number | null; monthly_payment: number | null; structure?: string | null; structure_label?: string | null;
-  interest_only: boolean; interest_only_months: number; payment_io_monthly?: number | null; payment_after_monthly?: number | null; describe?: string; payment_note?: string | null;
+  interest_only: boolean; interest_only_months: number; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_io_monthly?: number | null; payment_after_monthly?: number | null; describe?: string; payment_note?: string | null;
   schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; month: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number; exposure_pct: number; recovered_pct: number }>; risk?: PlanRisk | null;
 };
-export type PlanLoanTerms = { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; structure?: string | null; interest_only_months?: number; payment_io?: number | null; payment_after?: number | null; annual_debt_service?: number | null; total_interest?: number | null; total_paid?: number | null; balloon?: number | null; describe?: string };
+export type PlanLoanTerms = { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; structure?: string | null; interest_only_months?: number; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_io?: number | null; payment_after?: number | null; annual_debt_service?: number | null; total_interest?: number | null; total_paid?: number | null; balloon?: number | null; describe?: string };
 
 export type FinancialPlanRecord = {
   retire: string[];
@@ -470,6 +471,8 @@ export type FinancialPlanRecord = {
   new_loan_interest_only?: boolean;
   new_loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
   new_loan_interest_only_months?: number | null;
+  new_loan_payments_per_year?: number | null;
+  new_loan_repayment_config?: RepaymentConfig | null;
   add_backs?: PlanAddBack[];
   overrides?: PlanOverrides | null;
   terms_ref?: PlanTermsRef | null;
@@ -478,14 +481,14 @@ export type FinancialPlanRecord = {
   updated_by?: string | null;
 };
 /** Which recorded terms the plan's loan was adopted from. */
-export type PlanTermsRef = { kind: "client_terms" | "production_term_sheet" | string; id: string; version: number; label: string; adopted_at?: string | null };
+export type PlanTermsRef = { kind: "client_terms" | "production_term_sheet" | string; id: string; version: number; label: string; adopted_at?: string | null; treatment?: "additive" | "refinance"; retained_annual_debt_service?: number | null };
 /** The recorded terms as the plan reads them (the Underwriting tab's client terms or the dealer's term sheet). */
-export type RecordedTerms = { kind: string; id: string; version: number; label: string; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; structure?: string; interest_only_months?: number; payment_monthly: number | null; treatment: string; retained_annual_debt_service: number | null };
+export type RecordedTerms = { kind: string; id: string; version: number; label: string; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; structure?: string; interest_only_months?: number; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_monthly: number | null; treatment: string; retained_annual_debt_service: number | null };
 /** Does the plan's loan mirror the recorded terms? */
 export type PlanTermsLink = {
   state: "none" | "plan_only" | "recorded_not_in_plan" | "mirrored" | "differs";
   recorded: RecordedTerms | null;
-  plan_loan: { amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; payment_monthly: number | null } | null;
+  plan_loan: { repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; payment_monthly: number | null } | null;
   adopted_from: PlanTermsRef | null;
   differences: string[];
   summary: string;
@@ -532,6 +535,9 @@ export type PlanReplayRow = {
 export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
 export type PlanEvaluation = {
+  replay_basis?: string | null;
+  replay_note?: string | null;
+  actual_regular_payment_monthly?: number | null;
   ebitda?: RefinanceEbitda;
   active: boolean;
   retired_ids: string[];
@@ -575,6 +581,7 @@ export type PlanEvaluation = {
 export type PlanLever = { key: string; label: string; detail: string; dscr_after: number | null; status_after: DscrStatus; apply: Partial<FinancialPlanRecord> | null; improves: boolean };
 
 export type FinancialPlanWrite = {
+  expected_updated_at?: string | null;
   retire: string[];
   exclude: string[];
   new_payment_monthly: number | null;
@@ -585,6 +592,8 @@ export type FinancialPlanWrite = {
   new_loan_interest_only: boolean;
   new_loan_structure: "amortizing" | "simple_interest" | "interest_only" | null;
   new_loan_interest_only_months: number | null;
+  new_loan_payments_per_year?: number | null;
+  new_loan_repayment_config?: RepaymentConfig | null;
   add_backs: PlanAddBack[];
   overrides: PlanOverrides | null;
   terms_ref?: PlanTermsRef | null;
