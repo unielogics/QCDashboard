@@ -1,0 +1,7 @@
+.metric { display: grid; gap: 5px; min-width: 0; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.heading { display: flex; justify-content: space-between; align-items: baseline; flex-wrap: wrap; gap: 5px 10px; color: var(--muted); font-size: 12px; }
+.metric > strong { font-size: 25px; line-height: 1.25; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.metric small { color: var(--muted); font-size: 11px; line-height: 1.5; overflow-wrap: anywhere; }
+.negative { color: var(--bad); }
+.adjusted { display: grid; gap: 4px; margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--line); font-size: 12px; }
+.adjusted strong { font-size: 20px; font-variant-numeric: tabular-nums; }

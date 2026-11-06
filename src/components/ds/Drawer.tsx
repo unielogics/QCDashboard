@@ -36,6 +36,7 @@ export function Drawer({
   width = "lg",
   closeOnBackdrop = true,
   bodyClass,
+  headerClass,
   bodyStyle,
   ariaLabel,
   fullscreen = false,
@@ -50,6 +51,7 @@ export function Drawer({
   width?: DrawerWidth;
   closeOnBackdrop?: boolean;
   bodyClass?: string;
+  headerClass?: string;
   bodyStyle?: CSSProperties;
   /**
    * Overrides the announced name of the dialog.
@@ -127,7 +129,7 @@ export function Drawer({
           </svg>
         </button>
         {(title || sub || headerActions) && (
-          <div className="drawer-h">
+          <div className={cx("drawer-h", headerClass)}>
             <div className="drawer-h-main">
               {title && <h2 id={titleId}>{title}</h2>}
               {sub && <p className="drawer-sub sub">{sub}</p>}

@@ -35,7 +35,7 @@ export function FinancialReviewDrawer({ open, onClose, tab, onTab, cockpit, prof
   const activeProfile = useRef(profileId);
   activeProfile.current = profileId;
   useEffect(() => { setMetricDraft(null); setMetricPending(false); }, [profileId]);
-  return <Drawer open={open} onClose={() => { if (!metricPending) onClose(); }} title="Advanced financial review" sub="One working schedule, statement evidence, and the published coverage basis." ariaLabel="Advanced financial review" width="xl" fullscreen={expanded} bodyClass={styles.drawerBody} headerActions={<>
+  return <Drawer open={open} onClose={() => { if (!metricPending) onClose(); }} title="Advanced financial review" sub="One working schedule, statement evidence, and the published coverage basis." ariaLabel="Advanced financial review" width="xl" fullscreen={expanded} bodyClass={styles.drawerBody} headerClass={styles.reviewHeader} headerActions={<>
     <Btn size="sm" disabled={metricPending} aria-label={expanded ? "Restore financial review size" : "Expand financial review"} onClick={() => setExpanded((value) => !value)}>{expanded ? "Restore" : "Expand"}</Btn>{tab === "plan" ? planActions : null}
   </>}>
     <nav className={styles.tabs} aria-label="Advanced financial review sections" role="tablist">{TABS.map((item) => <button type="button" key={item.value} role="tab" disabled={metricPending} aria-selected={tab === item.value} className={tab === item.value ? styles.selectedTab : undefined} onClick={() => onTab(item.value)}>{item.label}</button>)}</nav>
