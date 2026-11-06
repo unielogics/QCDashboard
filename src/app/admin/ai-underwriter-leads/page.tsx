@@ -11,7 +11,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { api, ApiError } from "@/lib/api";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
-import { useCurrentUser, useUnifiedOperatorFiles } from "@/hooks/useApi";
+import { useCurrentUser, useIntakeCommunicationUnreadBatch, useUnifiedOperatorFiles } from "@/hooks/useApi";
 import { WhatsNewRail } from "@/components/admin/WhatsNewRail";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { FileEconomicsDrawer } from "@/components/operator/FileEconomicsDrawer";
@@ -28,7 +28,7 @@ import { CreateLeadPayload, DEFAULT_PAGE_SIZE, LeadDetail, LeadPage, LeadRow, PA
 import { ConfirmDeleteLeadModal, Stat } from "@/components/file/LeadDetailPanel";
 import { CreateLeadModal } from "@/components/file/CreateLeadModal";
 import { fileHref, sectionFromLegacyParams } from "@/lib/fileRoutes";
-import { FundingAmounts } from "@/components/file/FundingAmounts";
+import { FileCommunicationCounts } from "@/components/communications/FileCommunicationCounts";
 
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
@@ -45,6 +45,10 @@ export default function AdminAIUnderwriterLeadsPage() {
   const canDelete = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
   const [deleteRow, setDeleteRow] = useState<LeadRow | null>(null);
   const [rows, setRows] = useState<LeadRow[]>([]);
+  const communicationCounts = useIntakeCommunicationUnreadBatch(rows.map((row) => row.id), { enabled: isIntakeOperator });
+  const communicationCountsByIntake = useMemo(() => new Map(
+    (communicationCounts.data?.items ?? []).map((item) => [item.intake_id, item]),
+  ), [communicationCounts.data]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
@@ -421,7 +425,10 @@ export default function AdminAIUnderwriterLeadsPage() {
       <TableWorkspace
         title="Files"
         storageKey={aiIntakeTableStorageKey ?? undefined}
-        actions={pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
+        actions={<div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+          {communicationCounts.isError ? <><span className="sub" role="status">Message counts could not refresh.</span><Btn size="sm" disabled={communicationCounts.isFetching} onClick={() => void communicationCounts.refetch()}>Retry message counts</Btn></> : null}
+          {pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
+        </div>}
         footer={(
           <div className="row" style={{ width: "100%", flexWrap: "nowrap" }}>
             <span className="sub">{total ? `${offset + 1}-${Math.min(offset + pageSize, total)} of ${total}` : "0 leads"}</span>
@@ -446,11 +453,11 @@ export default function AdminAIUnderwriterLeadsPage() {
       >
         <div className="tblwrap">
           <table className="tbl file-list-table">
-            <colgroup>{[21, 15, 11, 16, 11, 11, 8, 7].map((width, i) => <col key={i} style={{ width: `${width}%` }} />)}</colgroup>
+            <colgroup>{[16, 9, 13, 9, 10, 13, 9, 9, 7, 5].map((width, i) => <col key={i} style={{ width: `${width}%` }} />)}</colgroup>
             <caption className="sr-only">AI intake files</caption>
-            <thead><tr><th>File / Owner</th><th>Contact</th><th>Origin / Referral</th><th>Readiness / Review</th><th>Status</th><th>Economics</th><th>Evidence</th><th className="r">Actions</th></tr></thead>
+            <thead><tr><th>File / Owner</th><th className="r">Requested amount</th><th>Contact</th><th>Messages</th><th>Origin / Referral</th><th>Readiness / Review</th><th>Status</th><th>Economics</th><th>Evidence</th><th className="r">Actions</th></tr></thead>
             <tbody>
-              {loading ? <tr><td colSpan={8}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
+              {loading ? <tr><td colSpan={10}><div className="empty">Loading AI intake...</div></td></tr> : orderedRows.map((row) => {
                 const unified = unifiedByIntake.get(row.id);
                 const readiness = listReadinessSummary(unified);
                 const mcaReview = mcaRefinanceReviewState({ intake: row });
@@ -471,6 +478,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                   row.workspace_state_reason,
                 );
                 const pinned = isPinned(row.id);
+                const requestedAmount = unified?.requested_amount ?? row.requested_loan_amount;
                 const hasEconomics = Boolean(unified && (
                   unified.accepted_amount != null
                   || unified.forecast_fee_points != null
@@ -487,15 +495,16 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td className="lead-file-cell">
                       <button type="button" className="linky" disabled={manuallyArchived} onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>{row.business_name || row.full_name}</button>
                       <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
-                      <FundingAmounts requestedAmount={unified?.requested_amount ?? row.requested_loan_amount} />
                       <CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip>
                       {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
                       {manuallyArchived ? <CellChip tone="mut">Archived{row.archived_at ? ` ${new Date(row.archived_at).toLocaleDateString()}` : ""}</CellChip> : null}
                     </td>
+                    <td className="r file-list-request">{requestedAmount == null ? <span className="sub">Not provided</span> : <b className="num">{requestedAmount.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 })}</b>}</td>
                     <td className="lead-contact-cell">
                       <div className="lead-contact-line">{presentContact(row.email)}</div>
                       <div className="lead-contact-line sub">{presentContact(row.phone)}</div>
                     </td>
+                    <td><FileCommunicationCounts intakeId={row.id} name={row.business_name || row.full_name} counts={communicationCountsByIntake.get(row.id)} loading={communicationCounts.isPending} unavailable={communicationCounts.isError} /></td>
                     <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || "Internal"}</div><div className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</div>{unified?.case_ref ? <small>{unified.case_ref}</small> : null}</td>
                     <td>{readiness ? <div className="capital-readiness-list-summary"><div><b>{readiness.score == null ? "—" : Math.round(readiness.score)}</b><CellChip tone={capitalReadinessBandTone(readiness.band)}>{capitalReadinessBandLabel(readiness.band)}</CellChip></div><small>{readiness.evidence_coverage_pct == null ? "Coverage unavailable" : `${Math.round(readiness.evidence_coverage_pct)}% evidence coverage`}</small></div> : <span className="sub">Not calculated</span>}<div className="sub">{mcaReview && mcaReview.mode !== "automated_review" ? mcaReview.title : row.probability_status || "Awaiting review"}</div></td>
                     <td><CellChip tone={manuallyArchived ? "mut" : statusPresentation.tone}>{manuallyArchived ? "Archived" : statusPresentation.label}</CellChip></td>
@@ -520,7 +529,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                   </tr>
                 );
               })}
-              {!loading && !orderedRows.length ? <tr><td colSpan={8}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
+              {!loading && !orderedRows.length ? <tr><td colSpan={10}><div className="empty">No AI intake files match these filters.</div></td></tr> : null}
             </tbody>
           </table>
         </div>

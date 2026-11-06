@@ -522,6 +522,22 @@ export function useIntakeCommunicationUnread(intakeId: string | null | undefined
   });
 }
 
+/** Poll only the visible page, using the same scoped read state as the file header. */
+export function useIntakeCommunicationUnreadBatch(intakeIds: string[], options?: { enabled?: boolean }) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const ids = [...new Set(intakeIds)].sort();
+  return useQuery({
+    queryKey: ["intake-communication-unread", "batch", ids, devUser],
+    queryFn: () => apiCall<{ items: IntakeCommunicationUnread[] }>("/communications/intakes/unread-batch", {
+      method: "POST", body: JSON.stringify({ intake_ids: ids }),
+    }),
+    enabled: ids.length > 0 && (options?.enabled ?? true),
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+  });
+}
+
 export function useMarkNotificationRead() {
   const qc = useQueryClient();
   const apiCall = useAuthedApi();
