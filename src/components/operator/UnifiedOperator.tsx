@@ -50,6 +50,7 @@ import {
 } from "@/lib/unifiedOperator";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { usePinnedRows } from "@/lib/tablePinning";
+import { UnifiedFundingAmounts } from "@/components/file/FundingAmounts";
 
 export type UnifiedFilterState = {
   vertical: UnifiedVertical | "all";
@@ -201,7 +202,7 @@ export function UnifiedFilesTable({
         const pinned = isPinned(row.id);
         return (
         <Tr key={row.id} className={`${semanticStatusClass(lifecycleStatus(row))}${pinned ? " table-row-pinned" : ""}`} onClick={() => { window.location.href = operatorFileHref(row); }}>
-          <Td><b>{row.title || row.label}</b><div className="sub num">{row.ref || row.id} · {formatUnifiedAmount(row.amount)}</div></Td>
+          <Td><b>{row.title || row.label}</b><div className="sub num">{row.ref || row.id}</div><UnifiedFundingAmounts row={row} /></Td>
           <Td><CellChip tone={verticalTone(row.vertical)}>{row.vertical_label}</CellChip></Td>
           <Td><CellChip tone={originTone(row.origin)}>{row.origin_label}</CellChip></Td>
           <Td><UnifiedStageMeter row={row} /></Td>
@@ -240,7 +241,7 @@ export function UnifiedFileSummaryCard({ row, onLinkBucketIntake, onEditEconomic
         <div className="trunc" style={{ fontSize: 12.8, fontWeight: 640 }}>{row.title || row.label}</div>
         <div className="sub num trunc" style={{ fontSize: 10.5, marginTop: 1 }}>{row.ref || row.id} · {underwritingStatusLabel(status)}</div>
         <div className="row split" style={{ marginTop: 8 }}>
-          <b className="num" style={{ fontSize: 12.5 }}>{formatUnifiedAmount(row.amount)}</b>
+          <UnifiedFundingAmounts row={row} />
           <CellChip tone={row.health_tone}>{row.health}</CellChip>
         </div>
         <div className="file-forecast-card">

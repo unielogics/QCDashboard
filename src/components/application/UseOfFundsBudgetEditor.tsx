@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Field, Input, Select } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { ApiError } from "@/lib/api";
@@ -25,6 +25,8 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
   const [saved, setSaved] = useState("");
   const [conflict, setConflict] = useState(false);
   const [open, setOpen] = useState(audience === "client");
+  const editState = useRef({ dirty, busy });
+  editState.current = { dirty, busy };
   const apply = useCallback((next: UseOfFundsBudget) => { setBudget(next); setRows(budgetRows(next.items)); setDirty(false); setConflict(false); }, []);
   const load = useCallback(async () => {
     setBusy(true); setError("");
@@ -33,12 +35,26 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
     finally { setBusy(false); }
   }, [apply, loadBudget]);
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => {
+    let mounted = true;
+    const refresh = async () => {
+      if (document.visibilityState === "hidden" || editState.current.dirty || editState.current.busy) return;
+      try {
+        const next = await loadBudget();
+        if (mounted && !editState.current.dirty && !editState.current.busy) apply(next);
+      } catch { /* Keep the last saved budget; explicit reload provides retry. */ }
+    };
+    window.addEventListener("focus", refresh);
+    document.addEventListener("visibilitychange", refresh);
+    return () => { mounted = false; window.removeEventListener("focus", refresh); document.removeEventListener("visibilitychange", refresh); };
+  }, [apply, loadBudget]);
   const preview = budgetPreview(rows, budget?.requested_amount ?? null);
+  const exactAllocationMissing = Boolean(budget?.requires_exact_allocation && !preview.complete);
   const readOnly = budget?.can_edit === false;
   const change = (next: UseOfFundsRow[]) => { setRows(next); setDirty(true); setSaved(""); };
   const update = (id: string, patch: Partial<UseOfFundsRow>) => change(rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   async function save() {
-    if (!budget || Object.keys(preview.errors).length || busy || conflict || readOnly) return;
+    if (!budget || Object.keys(preview.errors).length || exactAllocationMissing || busy || conflict || readOnly) return;
     setBusy(true); setError(""); setSaved("");
     try {
       const next = await saveBudget({
@@ -64,13 +80,14 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
       {open && budget ? <>
         {readOnly ? <p className={styles.hint}>You can review this budget. An authorized file team member can edit it.</p> : null}
         {budget.warnings?.length ? <Callout tone="warn">{budget.warnings.join(" ")}</Callout> : null}
+        {budget.payoff_only_alternative ? <p className={styles.hint}>Your file also records a payoff-only alternative. The budget below is the primary request.</p> : null}
         <div className={styles.summary}>
           <span><small>Requested amount</small><strong>{budget.requested_amount === null ? "Not entered" : dollars(Number(budget.requested_amount) * 100)}</strong></span>
           <span><small>Allocated</small><strong>{dollars(preview.total)}</strong></span>
           <span><small>{preview.remaining !== null && preview.remaining < 0 ? "Over budget" : "Still to allocate"}</small><strong>{preview.remaining === null ? "Set requested amount first" : dollars(Math.abs(preview.remaining))}</strong></span>
           <span><small>Real estate + equipment</small><strong title="Rounded down to two decimals; program rules use exact amounts.">{budgetShareLabel(preview)}</strong></span>
         </div>
-        {budget.requested_amount === null ? <Callout tone="warn">{audience === "client" ? "Your file does not have a requested loan amount yet. You can save your planned uses now; ask your file team to confirm the requested amount." : "Enter the requested loan amount in this file’s contact / funding details. The budget uses that same amount, not a separate loan request."}</Callout> : null}
+        {budget.requested_amount === null ? <Callout tone="warn">{audience === "client" ? "Your file does not have a requested loan amount yet. You can save your planned uses now; ask your file team to confirm the requested amount." : "Set the current request in File details using the edit icon. Save its requested amount and use of funds together."}</Callout> : null}
         <fieldset className={styles.fields} disabled={busy || readOnly}>{rows.map((row, index) => <div key={row.id}>
           <div className={styles.row}>
             <Field label={`Use ${index + 1}`}><Select aria-label={`Use ${index + 1}`} disabled={busy} value={row.category} onChange={(event) => update(row.id, { category: event.target.value as UseOfFundsCategory })}>{USE_OF_FUNDS_CATEGORIES.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</Select></Field>
@@ -83,8 +100,8 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
         {preview.errors.total ? <p className={styles.error} role="alert">{preview.errors.total}</p> : null}
         {!readOnly ? <div><Btn disabled={busy || rows.length >= 50} onClick={() => change([...rows, { id: crypto.randomUUID(), category: "working_capital", label: "", amount: "" }])}><Icon name="plus" size={14} />Add a use</Btn></div> : null}
         <p className={styles.hint}>{audience === "client" ? "Use real estate for premises or property improvements, equipment for business equipment, and inventory for items you will sell. These categories help your team review suitable financing; they do not establish eligibility or guarantee a program." : "A published QC preference can prioritize SBA 504 when the fixed-asset share meets its configured threshold. This is not an SBA eligibility test. Working capital and inventory need another financing structure; equipment suitability, property use, and all lender criteria still require review."}</p>
-        <p className={styles.hint}>Partial budgets can be saved. Percentage-based recommendations stay off until the allocation exactly matches the requested amount.</p>
-        {!readOnly ? <div className={styles.actions}><Btn disabled={!dirty || busy} onClick={() => { apply(budget); setError(""); setSaved(""); }}>Discard edits</Btn><Btn variant="pri" disabled={!dirty || busy || conflict || Boolean(Object.keys(preview.errors).length)} onClick={() => void save()}>{busy ? "Saving…" : "Save budget"}</Btn></div> : null}
+        <p className={styles.hint}>{budget.requires_exact_allocation ? "Allocate the full current request before saving. Ask your file team if the requested amount needs to change." : "Partial budgets can be saved. Percentage-based recommendations stay off until the allocation exactly matches the requested amount."}</p>
+        {!readOnly ? <div className={styles.actions}><Btn disabled={!dirty || busy} onClick={() => { apply(budget); setError(""); setSaved(""); }}>Discard edits</Btn><Btn variant="pri" disabled={!dirty || busy || conflict || exactAllocationMissing || Boolean(Object.keys(preview.errors).length)} onClick={() => void save()}>{busy ? "Saving…" : "Save budget"}</Btn></div> : null}
       </> : open && !error ? <p className={styles.hint}>Loading saved budget…</p> : null}
     </div>
   </section>;

@@ -65,6 +65,7 @@ import { DeskAttentionQueue } from "@/components/operator/DeskAttentionQueue";
 import { FUNDING_LADDER, VERTICAL_OPTIONS, formatUnifiedAmount, operatorFileHref, verticalTone, type UnifiedFileRow, type UnifiedVertical } from "@/lib/unifiedOperator";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { MARKETING_URL } from "@/lib/appUrl";
+import { FundingAmounts } from "@/components/file/FundingAmounts";
 import { capitalReadinessBandLabel, capitalReadinessBandTone, listReadinessSummary } from "@/lib/capitalReadiness";
 
 const STAGE_KEYS = [
@@ -296,7 +297,7 @@ export default function DashboardPage() {
                   <div className="sub">{loan.type.replace("_", " ")}</div>
                 </Td>
                 <Td align="r">
-                  <b className="num">{QC_FMT.short(Number(loan.amount))}</b>
+                  <FundingAmounts requestedAmount={loan.requested_amount} amount={loan.amount} />
                 </Td>
                 <Td>
                   <StageChip stage={loan.stage} />
@@ -632,7 +633,7 @@ function formatRelativeTime(value: string | null): string {
 const CLOSING_COLS: Col[] = [
   { label: "Deal", width: 96 },
   { label: "Property" },
-  { label: "Amount", align: "r" },
+  { label: "Request / loan amount", align: "r" },
   { label: "Stage" },
   { label: "Close" },
   { label: "", align: "r", width: 40 },
@@ -1015,7 +1016,8 @@ function BorrowerPipelineCards({ loans }: { loans: Loan[] }) {
             <b>{l.address}</b>
           </div>
           <div className="sub">
-            {QC_FMT.short(Number(l.amount))} · {l.type.replace("_", " ")}
+            <FundingAmounts requestedAmount={l.requested_amount} amount={l.amount} />
+            {l.type.replace("_", " ")}
           </div>
         </Link>
       ))}

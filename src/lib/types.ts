@@ -74,6 +74,9 @@ export interface Loan {
   purpose: LoanPurpose | null;
   stage: LoanStage;
   amount: number;
+  /** Current application request; never replaces the recorded Loan.amount. */
+  requested_amount?: number | null;
+  requested_amount_source?: string | null;
   ltv: number | null;
   ltc: number | null;
   arv: number | null;

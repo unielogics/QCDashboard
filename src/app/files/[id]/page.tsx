@@ -82,6 +82,7 @@ export default function FilePage() {
         onUpdateOutcomeStatus={file.updateOutcomeStatus}
         onUpdateLanguage={file.updateLanguage}
         onUpdateContact={file.updateContact}
+        onFundingRequestSaved={() => file.reload()}
         onCancelDeletionRequest={file.cancelDeletionRequest}
         onConfirmDeletion={async (confirmName) => {
           await file.deleteLead(confirmName);

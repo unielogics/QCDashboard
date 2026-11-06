@@ -16,6 +16,7 @@ import { loanTypeLabel } from "@/lib/types";
 import { useCurrentUser, useMyFiles, type MyFileRow, type MyFileStatus } from "@/hooks/useApi";
 import { ClientFileModal } from "@/components/client/ClientFileModal";
 import { usePinnedRows } from "@/lib/tablePinning";
+import { FundingAmounts } from "@/components/file/FundingAmounts";
 
 type FilterId = MyFileStatus | "all";
 
@@ -271,7 +272,7 @@ function Header() {
         {cell("Property")}
         {cell("Type")}
         {cell("What's happening")}
-        {cell("Amount", true)}
+        {cell("Request / amount", true)}
         {cell("Updated", true)}
       </div>
       <div className="lbl" style={{ display: "grid", placeItems: "center" }}>Pin</div>
@@ -353,7 +354,7 @@ function Row({
         >
           {file.ai_status || "—"}
         </div>
-        <div className="align-r num"><b>{fmtAmount(file.amount)}</b></div>
+        <div className="align-r num">{file.kind === "loan" ? <FundingAmounts requestedAmount={file.requested_amount} amount={file.amount} /> : <b>{fmtAmount(file.amount)}</b>}</div>
         <div className="align-r num sub">{fmtDate(file.updated_at)}</div>
       </button>
       <div style={{ display: "grid", placeItems: "center" }}>

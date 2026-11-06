@@ -450,6 +450,7 @@ function LoanTermsPanel({ loan }: { loan: ReturnType<typeof useLoan>["data"] }) 
       <Card>
         <FieldGrid
           rows={[
+            { label: "Current request", value: loan.requested_amount != null ? QC_FMT.usd(Number(loan.requested_amount), 0) : null },
             { label: "Loan amount", value: loan.amount != null ? QC_FMT.usd(Number(loan.amount), 0) : null },
             { label: "Rate", value: rate != null ? `${Number(rate).toFixed(3)}%` : null },
             {

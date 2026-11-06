@@ -28,6 +28,7 @@ import { CreateLeadPayload, DEFAULT_PAGE_SIZE, LeadDetail, LeadPage, LeadRow, PA
 import { ConfirmDeleteLeadModal, Stat } from "@/components/file/LeadDetailPanel";
 import { CreateLeadModal } from "@/components/file/CreateLeadModal";
 import { fileHref, sectionFromLegacyParams } from "@/lib/fileRoutes";
+import { FundingAmounts } from "@/components/file/FundingAmounts";
 
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
@@ -486,6 +487,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td className="lead-file-cell">
                       <button type="button" className="linky" disabled={manuallyArchived} onClick={(event) => { event.stopPropagation(); void openLead(row.id); }}>{row.business_name || row.full_name}</button>
                       <div className="sub num">{unified?.ref || row.id.slice(0, 8)}</div>
+                      <FundingAmounts requestedAmount={unified?.requested_amount ?? row.requested_loan_amount} />
                       <CellChip tone={unified ? verticalTone(unified.vertical) : "acc"}>{unified?.vertical_label || variantLabel(row.variant)}</CellChip>
                       {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
                       {manuallyArchived ? <CellChip tone="mut">Archived{row.archived_at ? ` ${new Date(row.archived_at).toLocaleDateString()}` : ""}</CellChip> : null}

@@ -33,6 +33,7 @@ import { useBrokers, useClient, useClientAccessDirectory, useClientActivity, use
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { SmsThreadTab } from "@/components/sms/SmsThreadTab";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
+import { FundingAmounts } from "@/components/file/FundingAmounts";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
 import { RealtorReadinessCard } from "@/components/RealtorReadinessCard";
 import { ClientAIPlanCard } from "@/components/ClientAIPlanCard";
@@ -454,7 +455,7 @@ export default function ClientDetailPage() {
             <span className="sub" style={{ width: 80 }}>{l.deal_id}</span>
             <b style={{ flex: 1, minWidth: 0 }}>{l.address}</b>
             <Tag>{l.type.replace("_", " ")}</Tag>
-            <b className="num">{QC_FMT.short(Number(l.amount))}</b>
+            <FundingAmounts requestedAmount={l.requested_amount} amount={l.amount} />
           </Link>
         ))}
       </Panel>
