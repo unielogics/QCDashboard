@@ -1,0 +1,43 @@
+.root { display: grid; gap: 14px; min-width: 0; padding: 14px; }
+.heading { display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 12px; }
+.root h4 { margin: 0; font-size: 14px; }
+.heading p,.note { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 5px 0 0; }
+.progress { margin: 0; color: var(--accent); font-size: 12px; }
+.files { border: 1px solid var(--line); border-radius: 9px; padding: 12px; }
+.files > summary { cursor: pointer; font-size: 12px; font-weight: 650; }
+.fileTools { display: flex; gap: 10px; margin-block: 12px; }
+.fileTools > input { flex: 1; min-width: 0; }
+.fileList { display: grid; gap: 8px; max-height: 220px; overflow: auto; margin-bottom: 12px; }
+.fileList label { display: flex; gap: 8px; align-items: start; font-size: 12px; overflow-wrap: anywhere; }
+.reviewLayout { display: grid; grid-template-columns: 210px minmax(0,1fr); gap: 14px; align-items: start; }
+.queue { display: grid; gap: 6px; max-height: 440px; overflow: auto; }
+.queue button { min-width: 0; display: grid; gap: 5px; padding: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.queue button[aria-current] { border-color: var(--accent); background: var(--accent-100); }
+.queue strong { font-size: 12px; overflow-wrap: anywhere; }
+.queue small { color: var(--muted); font-size: 11px; }
+.review { min-width: 0; display: grid; gap: 12px; }
+.printed { display: grid; gap: 5px; background: var(--sunken2); border: 1px solid var(--line); border-radius: 8px; padding: 12px; font-size: 12px; }
+.printed span { color: var(--muted); }
+.targets { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 10px; }
+.suggestions { display: grid; gap: 7px; }
+.suggestions button { display: grid; gap: 5px; padding: 10px; border: 1px solid var(--accent-200); border-radius: 7px; background: var(--surface); color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.suggestions small,.suggestions span { color: var(--muted); font-size: 10px; }
+.suggestions b { font-size: 12px; }
+.mappings { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 10px; }
+.mappings > label { display: flex; gap: 8px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.mappings > label.conflict { border-color: var(--warn); background: var(--warn-tint); }
+.mappings > label > div { min-width: 0; display: grid; gap: 8px; font-size: 12px; }
+.mappings dl { display: grid; grid-template-columns: auto minmax(0,1fr); gap: 5px 10px; margin: 0; }
+.mappings dt { color: var(--muted); font-size: 10px; }.mappings dd { margin: 0; overflow-wrap: anywhere; }
+.mappings q { font-size: 11px; color: var(--muted); line-height: 1.6; }
+.mappings button { justify-self: start; padding: 0; border: 0; background: transparent; color: var(--accent); text-decoration: underline; cursor: pointer; font: inherit; font-size: 11px; }
+.confirm { display: flex; align-items: start; gap: 8px; color: var(--ink2); font-size: 12px; line-height: 1.5; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.linked { display: grid; gap: 10px; border-top: 1px solid var(--line); padding-top: 15px; }
+.linked article { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+.linked article > div:first-child { display: flex; flex-wrap: wrap; gap: 7px 12px; align-items: center; }
+.linked b { font-size: 12px; }.linked small { color: var(--muted); font-size: 11px; }
+.link { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; padding-top: 8px; }
+.link > span { flex: 1; min-width: 160px; font-size: 12px; overflow-wrap: anywhere; }.link small { display: block; margin-top: 4px; }
+.root button:focus-visible,.files summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+@media(max-width:760px) { .reviewLayout { grid-template-columns: minmax(0,1fr); }.queue { grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); max-height: 200px; }.targets { grid-template-columns: minmax(0,1fr); }.root { padding: 10px; }.fileTools { flex-wrap: wrap; }.mappings { grid-template-columns: minmax(0,1fr); } }
