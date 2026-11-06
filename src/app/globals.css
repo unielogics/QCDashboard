@@ -276,7 +276,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .lead-contact-line { overflow-wrap: anywhere; line-height: 1.35; }
 .panel-h.file-list-filters { display: grid; grid-template-columns: minmax(200px, 1fr) repeat(3, minmax(120px, 170px)) auto; gap: 10px; align-items: center; }
 .file-list-filters .field { width: 100%; min-width: 0; }
-.file-list-table { width: 100%; min-width: 920px; table-layout: fixed; }
+.file-list-table { width: 100%; min-width: 1320px; table-layout: fixed; }
 .file-list-table th, .file-list-table td { padding: 10px 8px; overflow-wrap: anywhere; white-space: normal; }
 .file-list-table th { font-size: 10px; letter-spacing: 0; }
 .file-list-table td { font-size: 12px; }
@@ -285,6 +285,7 @@ table.tbl { width: 100%; border-collapse: collapse; font-size: 12.8px; }
 .file-list-table .capital-readiness-list-summary > div { flex-wrap: wrap; }
 .file-list-table .linky { max-width: 100%; text-align: left; white-space: normal; }
 .file-list-table .sub { margin-top: 3px; font-size: 11px; }
+.file-list-table .file-list-request b { white-space: nowrap; }
 .file-list-missing { color: var(--warn); }
 @media (max-width: 1050px) {
   .panel-h.file-list-filters { grid-template-columns: repeat(3, minmax(0, 1fr)) auto; }
