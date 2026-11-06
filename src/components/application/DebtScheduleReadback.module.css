@@ -1,0 +1,22 @@
+.panel { min-width: 0; display: grid; gap: 9px; }
+.header, .heading, .actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.header { justify-content: space-between; }
+.heading strong { font-size: 14px; }
+.guidance { margin: 0; font-size: 12px; line-height: 1.6; color: var(--ink2); }
+.note { margin: 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.tableWrap { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.tableWrap table { width: 100%; min-width: 850px; border-collapse: separate; border-spacing: 0; font-size: 12px; }
+.tableWrap caption { text-align: left; padding: 9px 10px; color: var(--muted); font-size: 11px; }
+.tableWrap th, .tableWrap td { padding: 9px 10px; text-align: left; border-top: 1px solid var(--line); background: var(--surface); vertical-align: middle; }
+.tableWrap thead th { position: sticky; top: 0; z-index: 2; background: var(--sunken2); font-size: 11px; white-space: nowrap; }
+.tableWrap tbody th { position: sticky; left: 0; z-index: 1; min-width: 150px; }
+.tableWrap tbody th small { display: block; margin-top: 4px; max-width: 210px; font-weight: 400; font-size: 10px; line-height: 1.4; color: var(--warn); }
+.tableWrap td:nth-child(2), .tableWrap td:nth-child(3), .tableWrap td:nth-child(5) { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.tableWrap tfoot th, .tableWrap tfoot td { position: sticky; bottom: 0; z-index: 2; background: var(--sunken2); font-weight: 650; }
+.link { border: 0; background: transparent; color: var(--accent); padding: 2px 0; font: inherit; font-size: 11px; cursor: pointer; text-align: left; text-decoration: underline; text-underline-offset: 2px; }
+.excluded { font-size: 11px; color: var(--muted); }
+.excluded summary { cursor: pointer; }
+.excluded ul { margin: 8px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+.excluded li { display: flex; gap: 12px; align-items: center; justify-content: space-between; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
+.tableWrap:focus-visible, .panel button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (max-width: 600px) { .header { align-items: flex-start; } .actions { width: 100%; } .tableWrap { max-height: 285px; } }

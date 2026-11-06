@@ -208,6 +208,8 @@ export type ApplicationRequirementEvidence = {
   ai_confidence: string | null;
   decision_actor: "ai" | "staff" | "system" | null;
   analysis_id: string | null;
+  detected_classification?: string | null;
+  analysis_confidence?: string | null;
   coverage_contribution: Record<string, unknown>;
   usability_status?: "processing" | "usable" | "usable_with_warning" | "needs_review" | "needs_replacement" | "unsafe";
   document_type_candidates?: { classification: string; confidence: string; page_start?: number | null; page_end?: number | null }[];

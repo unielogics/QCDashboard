@@ -654,10 +654,13 @@
   right: auto;
   z-index: 701;
   width: 232px;
+  min-width: 0;
   max-width: calc(100vw - 24px);
   max-height: calc(100vh - 24px);
   overflow-y: auto;
 }
+.actmenu.actmenu--portal button,
+.actmenu.actmenu--portal a { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
 .menu-scrim.menu-scrim--portal { z-index: 700; }
 
 .completed-state { min-height: 310px; display: grid; place-items: center; align-content: center; gap: 10px; text-align: center; }
@@ -6219,6 +6222,10 @@ select.vm-in {
 .bank-statement-file-list { display: grid; gap: 8px; }
 .bank-statement-file-list .evidence-workspace-file-row .sub { overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.45; }
 .requirement-evidence-file small b { color: var(--ink2); }
+.requirement-evidence-file .evidence-file-copy { white-space: normal; overflow: visible; min-width: 0; }
+.requirement-evidence-file .evidence-file-copy strong { white-space: normal; overflow-wrap: anywhere; }
+.evidence-workspace-file-row .evidence-file-copy { min-width: 0; white-space: normal; overflow: visible; }
+.evidence-workspace-file-row .evidence-file-copy b { white-space: normal; overflow-wrap: anywhere; }
 
 .financial-form-modal-editor {
   width: min(100%, 1180px);

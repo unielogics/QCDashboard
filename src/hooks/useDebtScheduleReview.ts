@@ -35,19 +35,22 @@ export function useDebtScheduleReview(profileId: string | null | undefined, enab
   return useQuery(useReviewQuery(profileId, enabled));
 }
 
-export type DebtScheduleReviewSummary = {
-  /** Lines the uploaded schedule gave that are not on the schedule yet. */
-  read: number;
-  onSchedule: number;
-  removed: number;
-  /** Every required answer still missing on the lines that stay. */
-  missingAnswers: number;
-  /** An uploaded schedule is on the file. */
-  hasSource: boolean;
-  loading: boolean;
-};
+export type DebtScheduleReviewSummary = ReturnType<typeof financialDebtReviewSummary> & { error?: string };
 
-const NONE: DebtScheduleReviewSummary = { read: 0, onSchedule: 0, removed: 0, missingAnswers: 0, hasSource: false, loading: false };
+const NONE: DebtScheduleReviewSummary = { read: 0, onSchedule: 0, removed: 0, missingAnswers: 0, hasSource: false, loading: false, missingFields: [], reason: null, draftComplete: false, publishedComplete: false, publishedRows: 0, publishNeeded: false, hasDraft: false };
+
+const workspaceQuery = (api: ReturnType<typeof useAuthedApi>, profileId: string | null | undefined, enabled: boolean) => ({
+  queryKey: ["financial-workspace-summary", profileId],
+  queryFn: () => readFinancialWorkspace(api, profileId!, "debt_schedule"),
+  enabled: Boolean(profileId) && enabled,
+  ...SHARED,
+});
+
+/** The embedded read-back and its header observe the same draft snapshot. */
+export function useDebtScheduleWorkspace(profileId: string | null | undefined, enabled = true) {
+  const api = useAuthedApi();
+  return useQuery(workspaceQuery(api, profileId, enabled));
+}
 
 /** The debt schedule in one line for a row that wants to nudge: how many lines
  *  were read off the file and how many answers are still missing. The same
@@ -56,13 +59,11 @@ const NONE: DebtScheduleReviewSummary = { read: 0, onSchedule: 0, removed: 0, mi
 export function useDebtScheduleReviewSummary(profileId: string | null | undefined, enabled = true): DebtScheduleReviewSummary {
   const api = useAuthedApi();
   const query = useQuery({
-    queryKey: ["financial-workspace-summary", profileId],
-    queryFn: () => readFinancialWorkspace(api, profileId!, "debt_schedule"),
-    enabled: Boolean(profileId) && enabled,
-    ...SHARED,
+    ...workspaceQuery(api, profileId, enabled),
     select: financialDebtReviewSummary,
   });
   if (query.isLoading && enabled && profileId) return { ...NONE, loading: true };
+  if (query.error) return { ...NONE, error: query.error instanceof Error ? query.error.message : "The debt schedule could not be loaded." };
   return query.data ?? NONE;
 }
 

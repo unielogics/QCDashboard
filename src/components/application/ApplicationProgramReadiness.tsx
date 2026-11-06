@@ -10,6 +10,8 @@ import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import { ApplicationCollectionTasks, RequirementRequest, useCollectionTasks } from "./ApplicationCollectionTasks";
 import { AddRequirementDrawer } from "@/components/application/AddRequirementDrawer";
 import { DebtScheduleReviewPanel } from "@/components/application/DebtScheduleReviewPanel";
+import { EvidenceReviewDetails } from "@/components/application/EvidenceReviewDetails";
+import { evidenceReviewPresentation } from "@/lib/evidenceReviewPresentation";
 import { useDebtScheduleReviewSummary } from "@/hooks/useDebtScheduleReview";
 import { FormAnswersDrawer } from "@/components/application/FormAnswersDrawer";
 import pickerStyles from "./FundingProgramPicker.module.css";
@@ -18,7 +20,7 @@ import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/ap
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
 import { useAuthedApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
-import { evidenceCoverageLabel, evidenceDecisionLabel, evidenceReasonLabel } from "@/lib/evidenceDecision";
+import { evidenceCoverageLabel, evidenceDecisionLabel } from "@/lib/evidenceDecision";
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { findRequirementKey } from "@/lib/reviewNavigation";
 import type {
@@ -262,9 +264,9 @@ export function ApplicationProgramReadiness({
   const debtSummary = useDebtScheduleReviewSummary(profileId, section === "documents" && hasDebtRow);
   const extrasFor = useCallback((requirement: ApplicationRequirement): TriageExtra | undefined => (
     !debtSummary.loading && formKindsOf(requirement).includes("debt_schedule")
-      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers } }
+      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers, draftReady: debtSummary.draftComplete, publishNeeded: debtSummary.publishNeeded } }
       : undefined
-  ), [debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read]);
+  ), [debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read, debtSummary.draftComplete, debtSummary.publishNeeded]);
   const debtAutoExpanded = useRef(false);
   const expansionSeeded = useRef(false);
   const lastGroupRequestRef = useRef(0);
@@ -851,7 +853,7 @@ export function ApplicationProgramReadiness({
     const askClient = triage.group === "client";
     const staffAdded = requirement.source_policy_keys.includes("staff_added");
     const isDebt = formKinds.includes("debt_schedule");
-    const debtHasWork = isDebt && (linkedEvidence.length > 0 || debtSummary.hasSource || debtSummary.onSchedule > 0);
+    const debtHasWork = isDebt && (linkedEvidence.length > 0 || debtSummary.hasSource || debtSummary.hasDraft || debtSummary.onSchedule > 0);
     const reasonNote = (requirement.state_reason ?? "").trim();
     const showReason = Boolean(reasonNote) && !/^AI accepted \d+ of \d+/i.test(reasonNote) && !/^Accepted by /i.test(reasonNote) && !/^Awaiting client evidence/i.test(reasonNote);
     return <div key={requirement.requirement_key} className={cx("requirement-row", "ev-row", expanded && "expanded", focusedRequirementKey === requirement.requirement_key && "navigation-target", dragTarget === requirement.requirement_key && "drop-target")} data-group={triage.group} onDragEnter={(event) => { if (onUploadFiles) { event.preventDefault(); setDragTarget(requirement.requirement_key); } }} onDragOver={(event) => { if (onUploadFiles) { event.preventDefault(); event.dataTransfer.dropEffect = "copy"; } }} onDragLeave={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDragTarget(null); }} onDrop={(event) => { if (onUploadFiles) { event.preventDefault(); void upload(Array.from(event.dataTransfer.files), requirement.requested_document_id || undefined); } }}>
@@ -875,7 +877,8 @@ export function ApplicationProgramReadiness({
         {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;
                   const coverageContribution = evidenceCoverageLabel(file.coverage_contribution);
-                  const reason = evidenceReasonLabel(file.ai_reason_code, file.ai_decision);
+                  const review = evidenceReviewPresentation(file, requirement.label, isDebt);
+                  const reason = review.headline;
                   const sourceFile = files.find((item) => item.id === file.file_id);
                   const locked = lockedEvidencePresentation({
                     fileName: file.file_name,
@@ -890,7 +893,7 @@ export function ApplicationProgramReadiness({
                   const editingThisFile = evidenceOverride?.requirementKey === requirement.requirement_key && evidenceOverride.fileId === file.file_id;
                   return <Fragment key={file.file_id}>
                     {!locked ? <EvidenceIdentityWarning reasonCode={file.ai_reason_code} decision={file.ai_decision} detail /> : null}
-                    <div className={cx("requirement-evidence-file", locked && "password-protected", `decision-${file.ai_decision}`)}><span className="grow trunc"><strong className="trunc evidence-locked-title">{locked ? <Icon name="lock" size={14} aria-hidden="true" /> : null}<span>{file.file_name}</span></strong><small>{locked ? <><b>{locked.title}</b>{` · ${locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.`}</> : <><b>{reason}</b>{file.ai_explanation ? ` · ${file.ai_explanation}` : " · Decision explanation not available"}{coverageContribution ? ` · Coverage: ${coverageContribution}` : ""}</>}</small></span>{locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decisionTone(file.ai_decision)}>{evidenceDecisionLabel(file.ai_decision, file.decision_actor)}</CellChip>}{onPreviewEvidence ? <ActionIcon icon="eye" label={`Preview ${file.file_name}`} disabled={fileBusy} onClick={() => onPreviewEvidence(file.file_id, requirement.requirement_key)} /> : null}{locked ? <UnlockedCopyRequestControl request={unlockedCopyRequest} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, false, true) : undefined} /> : null}<PageActionMenu label={`More actions for ${file.file_name}`} items={[
+                    <div className={cx("requirement-evidence-file", locked && "password-protected", `decision-${file.ai_decision}`)}><span className="grow evidence-file-copy"><strong className="evidence-locked-title">{locked ? <Icon name="lock" size={14} aria-hidden="true" /> : null}<span>{file.file_name}</span></strong><small>{locked ? <><b>{locked.title}</b>{` · ${locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.`}</> : <><b>{reason}</b>{` · ${review.explanation}`}{coverageContribution ? ` · Coverage: ${coverageContribution}` : ""}</>}</small></span>{locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decisionTone(file.ai_decision)}>{evidenceDecisionLabel(file.ai_decision, file.decision_actor)}</CellChip>}{onPreviewEvidence ? <ActionIcon icon="eye" label={`Preview ${file.file_name}`} disabled={fileBusy} onClick={() => onPreviewEvidence(file.file_id, requirement.requirement_key)} /> : null}{locked ? <UnlockedCopyRequestControl request={unlockedCopyRequest} busy={unlockedCopyRequestingFileId === file.file_id} onRequest={onRequestUnlockedCopy ? (retryFailed) => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, retryFailed, false) : undefined} onCopyRoomLink={onRequestUnlockedCopy ? () => onRequestUnlockedCopy(file.file_id, requirement.requirement_key, file.file_name, false, true) : undefined} /> : null}<PageActionMenu label={`More actions for ${file.file_name}`} items={[
                     { label: "Accept this file anyway (override the AI)", hidden: Boolean(locked) || file.ai_decision === "accepted", onSelect: () => setEvidenceOverride({ requirementKey: requirement.requirement_key, fileId: file.file_id, decision: "accepted", reasonCode: "ai_override", reason: "" }) },
                     { label: file.verified ? "Remove human verification" : "Sign off: confirm the AI's acceptance", hidden: !requirement.verification_required, onSelect: () => void reviewRequirementAction(requirement, file.verified ? "unverify" : "verify", [file.file_id]) },
                     { label: "Retry the AI's reading of this file", hidden: Boolean(locked) || file.ai_decision !== "failed", onSelect: () => void retryAnalysis(file) },
@@ -898,6 +901,7 @@ export function ApplicationProgramReadiness({
                     { label: "Move to another requirement...", onSelect: () => setReassignDraft({ requirementKey: requirement.requirement_key, fileId: file.file_id, targetKey: "" }) },
                     { label: "Unlink from this requirement", onSelect: () => void reviewRequirementAction(requirement, "unlink_evidence", [file.file_id]) },
                   ]} /></div>
+                    {!locked ? <EvidenceReviewDetails file={file} requirementLabel={requirement.label} isDebtSchedule={isDebt} onPreview={onPreviewEvidence ? () => onPreviewEvidence(file.file_id, requirement.requirement_key) : undefined} /> : null}
                     {editingThisFile ? <div className="requirement-override-editor requirement-evidence-action-editor"><div className="fldgrid two"><Field label="Decision"><Select value={evidenceOverride.decision} onChange={(event) => { const decision = event.target.value as EvidenceOverrideDraft["decision"]; setEvidenceOverride({ ...evidenceOverride, decision, reasonCode: decision === "accepted" ? "ai_override" : evidenceOverride.reasonCode === "ai_override" ? decision === "needs_more" ? "incomplete" : "wrong_document" : evidenceOverride.reasonCode }); }}><option value="rejected">Reject evidence</option><option value="needs_more">Needs more</option><option value="accepted">Override AI and accept</option></Select></Field><Field label="Reason code"><Select value={evidenceOverride.reasonCode} disabled={evidenceOverride.decision === "accepted"} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reasonCode: event.target.value as EvidenceOverrideDraft["reasonCode"] })}>{evidenceOverride.decision === "accepted" ? <option value="ai_override">AI override</option> : <><option value="wrong_document">Wrong document</option><option value="wrong_entity">Wrong entity</option><option value="wrong_period">Wrong period</option><option value="incomplete">Incomplete</option><option value="unreadable">Unreadable</option><option value="duplicate">Duplicate</option><option value="other">Other</option></>}</Select></Field></div><Field label="Reviewed reason"><Textarea autoFocus rows={2} value={evidenceOverride.reason} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reason: event.target.value })} placeholder={evidenceOverride.decision === "accepted" ? "Explain why this file should be accepted" : evidenceOverride.decision === "needs_more" ? "Explain what additional evidence is needed" : "Explain why this file should be rejected"} /></Field><div className="program-readiness-actions"><Btn onClick={() => setEvidenceOverride(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyEvidenceOverride()} disabled={fileBusy || evidenceOverride.reason.trim().length < 8}>{fileBusy ? "Saving..." : "Review decision"}</Btn></div></div> : null}
                   </Fragment>;
                 })}</div> : <div className="requirement-evidence-empty">No evidence is assigned. Drop files on this requirement or choose an existing bucket file.</div>}

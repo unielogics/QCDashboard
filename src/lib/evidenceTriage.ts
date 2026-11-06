@@ -67,7 +67,7 @@ const FLAGGED = new Set(["needs_more", "rejected", "failed"]);
 /** What the rest of the page knows that the requirement itself does not. */
 export type TriageExtra = {
   /** A schedule read from a file (or already on the file) whose table still has work in it. */
-  fillTable?: { read: number; onSchedule: number; missing: number };
+  fillTable?: { read: number; onSchedule: number; missing: number; draftReady?: boolean; publishNeeded?: boolean };
 };
 
 export const GROUP_ORDER: TriageGroup[] = ["you", "client", "ai", "done"];
@@ -192,6 +192,13 @@ export function triageRequirement(requirement: TriageInput, extra?: TriageExtra)
   }
 
   const fill = extra?.fillTable;
+  if (fill?.draftReady && fill.publishNeeded && !files.some((file) => file.ai_decision === "processing")) {
+    return {
+      group: "you", kind: "fill", label: "Save completed schedule", tone: "acc", owner: "you", progress: null,
+      short: `${fill.onSchedule} ${plural(fill.onSchedule, "obligation")} in the working draft · ready to save`,
+      next: "The working schedule is complete. Review it, then choose Save version to file its dated PDF and update the financial figures.",
+    };
+  }
   if (fill && (fill.read > 0 || fill.missing > 0) && !files.some((file) => file.ai_decision === "processing")) {
     const lines = fill.read > 0 ? fill.read : fill.onSchedule;
     const missing = fill.missing;

@@ -11,6 +11,8 @@ import { BankAccountsCard } from "@/components/application/BankAccountsCard";
 import { PlaidRequestBar } from "@/components/application/PlaidRequestBar";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
+import { EvidenceReviewDetails } from "@/components/application/EvidenceReviewDetails";
+import { evidenceReviewPresentation } from "@/lib/evidenceReviewPresentation";
 import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
 import {
   BucketFileReviewPanel,
@@ -37,10 +39,8 @@ import {
   aggregateEvidenceDecisions,
   evidenceAnalysisLabel,
   evidenceActorLabel,
-  evidenceCoverageLabel,
   evidenceDecisionLabel,
   evidenceDecisionTone,
-  evidenceReasonLabel,
   evidenceUsabilityLabel,
 } from "@/lib/evidenceDecision";
 import { isDocumentRequirement, triageCounts, type TriageExtra, type TriageGroup } from "@/lib/evidenceTriage";
@@ -224,9 +224,9 @@ export function ApplicationEvidenceWorkspace({
   const debtSummary = useDebtScheduleReviewSummary(profileId, hasDebtRow);
   const documentCounts = useMemo(() => triageCounts(documentRequirements, (item: ApplicationRequirement): TriageExtra | undefined => (
     !debtSummary.loading && formKindsOf(item).includes("debt_schedule")
-      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers } }
+      ? { fillTable: { read: debtSummary.read, onSchedule: debtSummary.onSchedule, missing: debtSummary.missingAnswers, draftReady: debtSummary.draftComplete, publishNeeded: debtSummary.publishNeeded } }
       : undefined
-  )), [documentRequirements, debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read]);
+  )), [documentRequirements, debtSummary.loading, debtSummary.missingAnswers, debtSummary.onSchedule, debtSummary.read, debtSummary.draftComplete, debtSummary.publishNeeded]);
   const files = useMemo(() => data?.evidence.files ?? [], [data?.evidence.files]);
   const lockedEvidenceByFileId = useMemo(() => {
     const result = new Map<string, ReturnType<typeof lockedEvidencePresentation>>();
@@ -618,6 +618,7 @@ export function ApplicationEvidenceWorkspace({
           const aggregate = aggregateEvidenceDecisions(fileDecisions.map((item) => item.ai_decision));
           const decisionSummaryMixed = aggregate.mixed || evidenceDecisionDetailsMixed(fileDecisions);
           const decision = fileDecisions.find((item) => item.ai_decision === aggregate.decision);
+          const presentation = decision ? evidenceReviewPresentation({ ...decision, detected_classification: decision.detected_classification ?? file.analysis_classification, analysis_confidence: decision.analysis_confidence ?? file.analysis_confidence }, fileAssignments[0]?.label || "Supporting / Other", Boolean(fileAssignments[0] && formKindsOf(fileAssignments[0]).includes("debt_schedule"))) : null;
           const analysisLabel = evidenceAnalysisLabel(file.analysis_status, file.analysis_reason_code);
           const analysisDetail = file.analysis_detail || file.analysis_summary || (file.analysis_classification ? `Classified as ${file.analysis_classification.replaceAll("_", " ")}` : "Analysis explanation not available");
           const locked = lockedEvidenceByFileId.get(file.id) ?? null;
@@ -625,7 +626,7 @@ export function ApplicationEvidenceWorkspace({
           const unlockedCopyRequirement = fileAssignments.find((requirement) => requirement.client_visible && requirement.requested_document_id && !requirementComplete(requirement));
           return <article key={file.id} className={cx("evidence-workspace-file-row", locked && "password-protected", `decision-${decision?.ai_decision || "unassigned"}`)}>
             <span className={cx("evidence-file-icon", locked && "locked")}><Icon name={locked ? "lock" : "file"} size={16} aria-hidden="true" /></span>
-            <div className="grow trunc"><b className="trunc">{file.file_name}</b><Sub>{formatSize(file.size_bytes)} · {formatDate(file.created_at)} · {fileAssignments.map((item) => item.label).join(", ") || "Supporting / Other"}</Sub>{locked ? <Sub><strong>{locked.title}</strong> · {locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.</Sub> : decision ? decisionSummaryMixed ? <Sub><strong>Multiple requirement decisions</strong> · Preview the file to inspect each assignment.</Sub> : <Sub><strong>{evidenceReasonLabel(decision.ai_reason_code, decision.ai_decision)}</strong>{decision.ai_explanation ? ` · ${decision.ai_explanation}` : " · Decision explanation not available"}</Sub> : <Sub><strong>{analysisLabel}</strong>{analysisDetail ? ` · ${analysisDetail}` : ""}</Sub>}</div>
+            <div className="grow evidence-file-copy"><b>{file.file_name}</b><Sub>{formatSize(file.size_bytes)} · {formatDate(file.created_at)} · {fileAssignments.map((item) => item.label).join(", ") || "Supporting / Other"}</Sub>{locked ? <Sub><strong>{locked.title}</strong> · {locked.explanation} AI cannot review its contents until an unlocked replacement is uploaded.</Sub> : decision ? decisionSummaryMixed ? <Sub><strong>Multiple requirement decisions</strong> · Preview the file to inspect each assignment.</Sub> : <Sub><strong>{presentation?.headline}</strong>{presentation ? ` · ${presentation.explanation}` : ""}</Sub> : <Sub><strong>{analysisLabel}</strong>{analysisDetail ? ` · ${analysisDetail}` : ""}</Sub>}</div>
             {locked ? <LockedEvidenceBadge presentation={locked} /> : <CellChip tone={decision ? evidenceDecisionTone(decision.ai_decision) : file.analysis_status === "failed" ? "bad" : file.analysis_status === "skipped" ? "warn" : file.analysis_status === "completed" ? "acc" : "mut"}>{decision ? decisionSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(decision.ai_decision, decision.decision_actor) : analysisLabel}</CellChip>}
             {!locked ? <EvidenceIdentityWarning reasonCode={decision?.ai_reason_code} decision={decision?.ai_decision} /> : null}
             {locked ? <UnlockedCopyRequestControl request={unlockedCopyRequestState} busy={requestingUnlockedCopyFileId === file.id} onRequest={(retryFailed) => requestUnlockedCopy(file.id, file.file_name, retryFailed, false, unlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(file.id, file.file_name, unlockedCopyRequirement?.requirement_key)} /> : null}
@@ -653,7 +654,7 @@ export function ApplicationEvidenceWorkspace({
         {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} detail /> : null}
         {currentDecision?.usability_status ? <div className="row g8"><CellChip tone={currentDecision.usability_status === "usable" ? "ok" : "warn"}>{evidenceUsabilityLabel(currentDecision.usability_status)}</CellChip>{currentDecision.document_type_candidates?.length ? <Sub>{currentDecision.document_type_candidates.map((candidate) => candidate.classification.replaceAll("_", " ")).join(" · ")}</Sub> : null}</div> : null}
         <div><b>{currentAssignment?.label || "Supporting / Other"}</b>{assignments.length > 1 ? <Select aria-label="Evidence requirement decision" value={currentAssignment?.requirement_key || ""} onChange={(event) => { setSelectedRequirementKey(event.target.value); setAction(null); }}>{assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}{decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}</option>; })}</Select> : null}<Sub>{currentDecision ? `${evidenceActorLabel(currentDecision.decision_actor)}${currentDecision.ai_confidence ? ` · ${currentDecision.ai_confidence} confidence` : ""}${currentDecision.verified ? " · Human verified" : ""}` : `${evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)} · This file is not assigned to a requirement.`}</Sub></div>
-        {selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot review its contents.</span><small>This file cannot satisfy {currentAssignment?.label || "an evidence requirement"} until an unlocked replacement is uploaded.</small></div></Callout> : currentDecision ? <Callout tone={evidenceDecisionTone(currentDecision.ai_decision)}><div className="grid g4"><b>{evidenceReasonLabel(currentDecision.ai_reason_code, currentDecision.ai_decision)}</b><span>{currentDecision.ai_explanation || "Decision explanation not available."}</span>{evidenceCoverageLabel(currentDecision.coverage_contribution) ? <small>Coverage: {evidenceCoverageLabel(currentDecision.coverage_contribution)}</small> : null}</div></Callout> : null}
+        {selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot review its contents.</span><small>This file cannot satisfy {currentAssignment?.label || "an evidence requirement"} until an unlocked replacement is uploaded.</small></div></Callout> : currentDecision ? <EvidenceReviewDetails file={{ ...currentDecision, detected_classification: currentDecision.detected_classification ?? selectedFile.analysis_classification, analysis_confidence: currentDecision.analysis_confidence ?? selectedFile.analysis_confidence }} requirementLabel={currentAssignment?.label || "Supporting / Other"} isDebtSchedule={Boolean(currentAssignment && formKindsOf(currentAssignment).includes("debt_schedule"))} expanded /> : null}
         {!selectedLockedEvidence && !currentDecision ? <Callout tone={selectedFile.analysis_status === "failed" ? "bad" : selectedFile.analysis_status === "skipped" ? "warn" : "mut"}><div className="grid g4"><b>{evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)}</b><span>{selectedFile.analysis_detail || selectedFile.analysis_summary || "Analysis explanation not available."}</span>{selectedFile.analysis_classification ? <small>Classification: {selectedFile.analysis_classification.replaceAll("_", " ")}{selectedFile.analysis_confidence ? ` · ${selectedFile.analysis_confidence} confidence` : ""}</small> : null}</div></Callout> : null}
       </>}
       lockedFileGuidance={<Sub>AI review can resume after the client uploads an unlocked replacement. The original remains in Evidence for the audit trail.</Sub>}
