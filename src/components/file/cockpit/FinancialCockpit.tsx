@@ -26,6 +26,7 @@ import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } f
 import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/financialSourcePreview";
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { balanceRiskMonths, riskCountLabel, riskTotals } from "@/lib/balanceRisk";
+import { ebitdaIsStaffCorrected, ebitdaKpi, metricAmountLabel, metricCurrency } from "@/lib/financialMetrics";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
@@ -684,6 +685,10 @@ export function FinancialCockpit(props: Props) {
         : { months: cockpit.bank.months, summary: cockpit.bank.summary, label: narrowed ? "Counted accounts" : "All accounts", accountLabel: null as string | null };
   const summary = selection.summary;
   const headline = cockpit.dscr.headline;
+  const ebitda = cockpit.ebitda?.headline;
+  const ebitdaTile = ebitdaKpi(ebitda);
+  const ebitdaCorrected = ebitdaIsStaffCorrected(ebitda, cockpit.metric_review);
+  const ebitdaCurrency = metricCurrency(ebitda?.currency, ebitda?.source_refs);
   const conclusion = cockpit.net_profit.conclusion;
   const generated = new Date(cockpit.generated_at);
   const depositValues = selection.months.map((m) => m.deposits);
@@ -754,11 +759,12 @@ export function FinancialCockpit(props: Props) {
         ) : (
           <Kpi label={`DSCR · ${headline ? sourceLabel(headline.key) : "no basis"}`} value={multiple(headline?.value)} sub={dscrLabel(headline?.status)} tone={dscrTone(headline?.status)} />
         )}
+        <Kpi label={`EBITDA${ebitda?.kind === "tax_estimate" ? " · tax estimate" : ebitdaTile.annualized ? " · annualized" : ""}`} value={ebitdaTile.value == null ? "—" : metricAmountLabel(ebitdaTile.value, ebitdaCurrency, 0, false)} sub={ebitda ? `${ebitda.kind === "tax_estimate" ? ebitda.label : "P&L"} · ${ebitda.period || "period unknown"}${ebitda.months_covered != null ? ` · ${ebitda.months_covered} reporting months` : ""} · ${ebitdaCurrency || "currency unknown"}${ebitdaTile.provisional ? " · provisional" : ""}${ebitdaCorrected ? " · staff corrected" : ""}` : cockpit.ebitda?.reason || "No documented EBITDA"} tone={ebitdaTile.provisional ? "warn" : toneForSign(ebitdaTile.value)} />
         <Kpi label="Net profit" value={money(conclusion?.value)} sub={conclusion ? `${conclusion.label}${conclusion.period && conclusion.key !== "tax_return" ? ` · ${conclusion.period}` : ""}` : "No income figure yet"} tone={toneForSign(conclusion?.value)} />
       </KpiRow>
 
       <div className="fc-grid">
-        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={() => query.refetch()} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} />
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={() => query.refetch()} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} />
       </div>
 
       <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
