@@ -31,6 +31,7 @@
 
 import { apiBase, type ApiOptions } from "@/lib/api";
 import type { SheetColumn, SheetKind, SheetRow } from "@/components/sheet/types";
+import type { PublicFinancialVersion, PublicFinancialWorkspace } from "@/lib/publicFinancialForms";
 
 // ---------------------------------------------------------------------------
 // the read payload, exactly as `sheets.read_sheets` builds it
@@ -58,6 +59,7 @@ export type WorksheetSheet = {
   values: Record<string, string>;
   row_meta: Record<string, SheetRowMeta>;
   computed: Record<string, number | null>;
+  workspace?: PublicFinancialWorkspace | null;
 };
 
 /** What this reader may do, decided server-side from the link or the user and
@@ -94,6 +96,7 @@ export type WorksheetCellsResult = {
   computed: Record<string, Record<string, number | null>>;
   /** Sheets whose stored value differs from what was sent — refetch these. */
   resync: string[];
+  workspaces?: Record<string, PublicFinancialWorkspace>;
 };
 
 export type WorksheetRowOp = {
@@ -116,7 +119,17 @@ export type WorksheetRowResult = {
   rows: SheetRow[];
   row_meta: Record<string, SheetRowMeta>;
   rev: Record<string, number>;
+  workspaces?: Record<string, PublicFinancialWorkspace>;
 };
+
+export type WorksheetVersionRequest = {
+  sheet: SheetKind;
+  expected_revision: number;
+  base_version_id: string | null;
+  idempotency_key: string;
+  name?: string | null;
+};
+export type WorksheetVersionResult = WorksheetPayload & { saved_version: PublicFinancialVersion };
 
 export type WorksheetLinkRequest = {
   permission: "edit" | "view";
@@ -189,6 +202,14 @@ export class WorksheetTooFast extends Error {
   constructor(message = "Slow down — too many changes at once.") {
     super(message);
     this.name = "WorksheetTooFast";
+  }
+}
+
+/** Validation, conflicts and rendering failures retain the local working edits. */
+export class WorksheetSaveError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+    this.name = "WorksheetSaveError";
   }
 }
 
@@ -288,6 +309,9 @@ function publicError(status: number, body: unknown): Error {
   if (status === 429 && code === "pin_locked") return new WorksheetPinLocked(detail?.message);
   if (status === 429) return new WorksheetTooFast(detail?.message);
   if (status === 403) return new WorksheetViewOnly(detail?.message);
+  if (status === 409) return new WorksheetSaveError(status, detail?.message ?? "This form changed in another session. Your entries are still here; reload the latest version before saving.");
+  if (status === 422) return new WorksheetSaveError(status, detail?.message ?? "Review the required fields before saving a version. Your working entries are retained.");
+  if (status >= 500) return new WorksheetSaveError(status, detail?.message ?? "The changes could not be saved. Your entries are still here; try again.");
   return new WorksheetGone();
 }
 
@@ -376,6 +400,23 @@ export function writePublicRow(
     session,
     body: { ...op, name: name ?? null },
   });
+}
+
+/** Explicit publication, separate from the cell-by-cell working draft. */
+export function writePublicVersion(token: string, session: string | null, request: WorksheetVersionRequest): Promise<WorksheetVersionResult> {
+  return publicCall<WorksheetVersionResult>(token, "/versions", { method: "POST", session, body: request });
+}
+
+/** A PIN session travels in a header, including when opening a saved PDF. */
+export async function downloadPublicWorksheetVersion(token: string, session: string | null, kind: SheetKind, versionId: string): Promise<Blob> {
+  let response: Response;
+  try {
+    response = await fetch(publicUrl(token, `/versions/${encodeURIComponent(kind)}/${encodeURIComponent(versionId)}/pdf`), {
+      cache: "no-store", headers: session ? { [WORKSHEET_SESSION_HEADER]: session } : {},
+    });
+  } catch { throw new Error("network"); }
+  if (!response.ok) throw publicError(response.status, await response.json().catch(() => null));
+  return response.blob();
 }
 
 // ---------------------------------------------------------------------------

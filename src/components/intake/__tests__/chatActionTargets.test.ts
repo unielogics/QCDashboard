@@ -7,14 +7,16 @@ import {
   resolveChatActionTarget,
   type InlineDocKind,
 } from "@/components/intake/chatActionTargets";
+import { APP_ORIGIN } from "@/lib/appUrl";
 
 const PFS = "owner_personal_financial_statement";
 const DEBT = "business_debt_schedule";
 const PL_BS = "ytd_p_and_l_balance_sheet";
 
 const BOTH_INLINE: readonly InlineDocKind[] = ["pfs", "debt_schedule"];
-const FORM = "https://app.example.com/forms/pfs/tok";
-const WORKSHEET = "https://app.example.com/forms/worksheet/tok";
+const FORM = `${APP_ORIGIN}/forms/pfs/tok`;
+const DEBT_FORM = `${APP_ORIGIN}/forms/debt_schedule/tok`;
+const WORKSHEET = `${APP_ORIGIN}/forms/worksheet/tok`;
 const ROOM = "https://app.example.com/room/abc?x=1";
 
 describe("inline form kinds", () => {
@@ -28,16 +30,36 @@ describe("inline form kinds", () => {
 });
 
 describe("resolveChatActionTarget: complete_now", () => {
-  it("keeps the inline PFS / debt schedule forms on pages that have them", () => {
+  it("opens scoped canonical PFS / debt links instead of a blank inline form", () => {
     expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: PFS }, { form_url: FORM, room_url: ROOM }, { inlineKinds: BOTH_INLINE }))
-      .toEqual({ kind: "inline", docKind: "pfs" });
-    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: DEBT }, { form_url: FORM, room_url: ROOM }, { inlineKinds: BOTH_INLINE }))
-      .toEqual({ kind: "inline", docKind: "debt_schedule" });
+      .toEqual({ kind: "open", url: FORM });
+    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: DEBT }, { form_url: DEBT_FORM, room_url: ROOM }, { inlineKinds: BOTH_INLINE }))
+      .toEqual({ kind: "open", url: DEBT_FORM });
   });
 
   it("only inlines the kinds the page actually drafts", () => {
-    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: DEBT }, { form_url: FORM }, { inlineKinds: ["pfs"] }))
-      .toEqual({ kind: "open", url: FORM });
+    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: DEBT }, { form_url: DEBT_FORM }, { inlineKinds: ["pfs"] }))
+      .toEqual({ kind: "open", url: DEBT_FORM });
+  });
+
+  it("retains inline fallback only when no valid canonical link was returned", () => {
+    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: PFS }, {}, { inlineKinds: BOTH_INLINE })).toEqual({ kind: "inline", docKind: "pfs" });
+    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: DEBT }, { room_url: ROOM }, { inlineKinds: BOTH_INLINE })).toEqual({ kind: "inline", docKind: "debt_schedule" });
+  });
+
+  it("does not substitute an unrelated form scope or foreign origin", () => {
+    for (const invalid of [DEBT_FORM, "javascript:alert(1)", "https://unrelated.example/forms/pfs/token", `${APP_ORIGIN}/forms/pfs/tok/extra`]) {
+      expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: PFS }, { form_url: invalid }, { inlineKinds: BOTH_INLINE })).toEqual({ kind: "inline", docKind: "pfs" });
+      expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: PFS }, { form_url: invalid })).toEqual({ kind: "none" });
+    }
+  });
+
+  it("supports a canonical relative form path and all newer financial tables", () => {
+    expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: DEBT }, { form_url: "/forms/debt_schedule/token" }, { inlineKinds: BOTH_INLINE })).toEqual({ kind: "open", url: "/forms/debt_schedule/token" });
+    for (const kind of ["p_and_l", "balance_sheet", "real_estate_schedule"]) {
+      const url = `${APP_ORIGIN}/forms/${kind}/token`;
+      expect(resolveChatActionTarget({ action_type: "complete_now", requirement_key: kind }, { form_url: url }, { inlineKinds: BOTH_INLINE })).toEqual({ kind: "open", url });
+    }
   });
 
   it("opens the worksheet link for the P&L + balance sheet even on inline pages", () => {

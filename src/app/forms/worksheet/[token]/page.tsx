@@ -34,15 +34,15 @@
 //
 // Five states, in the order a visitor meets them: a skeleton, the PIN, the
 // "what should we call you" prompt, the worksheet, and the one uniform
-// sentence for a link that has stopped working. **Any non-ok save lands in
-// that last state** — the desk can close a forwarded link mid-edit, and
-// "Progress saved" would be a lie. The single exception is the per-link write
-// cap, which is the server asking for a pause and not a revocation; treating
-// it as a revocation would throw away work over a fast typist.
+// sentence for a link that has stopped working. Recoverable save failures keep
+// the working entries visible; only a closed or unavailable link ends access.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
+import { PublicWorksheetVersionControls } from "@/components/application/PublicWorksheetVersionControls";
+import { PublicWorksheetWriteQueue } from "@/lib/publicWorksheetWriter";
+import type { PublicFinancialVersion, PublicFinancialWorkspace } from "@/lib/publicFinancialForms";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -69,6 +69,8 @@ import {
   unlockPublicWorksheet,
   writePublicCells,
   writePublicRow,
+  writePublicVersion,
+  downloadPublicWorksheetVersion,
   writeWorksheetName,
   writeWorksheetSession,
   WorksheetGone,
@@ -76,6 +78,7 @@ import {
   WorksheetPinLocked,
   WorksheetPinRequired,
   WorksheetTooFast,
+  WorksheetSaveError,
   type WorksheetCellEdit,
   type WorksheetPayload,
   type WorksheetRowOp,
@@ -354,7 +357,13 @@ export default function PublicWorksheetPage() {
   const wide = useMediaQuery(WORKSHEET_MIN_WIDTH);
 
   const [phase, setPhase] = useState<Phase>({ kind: "loading" });
-  const [payload, setPayload] = useState<WorksheetPayload | null>(null);
+  const [payload, setPayloadState] = useState<WorksheetPayload | null>(null);
+  const payloadRef = useRef<WorksheetPayload | null>(null);
+  const setPayload = useCallback((next: WorksheetPayload | null | ((current: WorksheetPayload | null) => WorksheetPayload | null)) => {
+    const value = typeof next === "function" ? next(payloadRef.current) : next;
+    payloadRef.current = value;
+    setPayloadState(value);
+  }, []);
   const [name, setName] = useState<string>("");
   const [pin, setPin] = useState("");
   const [busy, setBusy] = useState(false);
@@ -362,6 +371,13 @@ export default function PublicWorksheetPage() {
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [active, setActive] = useState<SheetKind>("p_and_l");
+  const [publishing, setPublishing] = useState(false);
+  const gridController = useRef<{ flush: () => Promise<void> } | null>(null);
+  const phoneController = useRef<{ flush: () => Promise<void> } | null>(null);
+  const writes = useRef(new PublicWorksheetWriteQueue());
+  const versionAttempt = useRef<{ family: string; revision: number; key: string } | null>(null);
+  const onGridController = useCallback((value: { flush: () => Promise<void> } | null) => { gridController.current = value; }, []);
+  const onPhoneController = useCallback((value: { flush: () => Promise<void> } | null) => { phoneController.current = value; }, []);
 
   const sessionRef = useRef<string | null>(null);
   const nameRef = useRef<string>("");
@@ -375,7 +391,7 @@ export default function PublicWorksheetPage() {
    *  is the write cap: the server is asking for a pause, the edits are still
    *  in hand, and throwing the grid away over a fast typist would lose them. */
   const fail = useCallback((reason: unknown) => {
-    if (reason instanceof WorksheetTooFast) {
+    if (reason instanceof WorksheetTooFast || reason instanceof WorksheetSaveError) {
       setNotice(reason.message);
       return;
     }
@@ -422,7 +438,7 @@ export default function PublicWorksheetPage() {
         setPhase({ kind: "gone" });
       }
     },
-    [token],
+    [token, setPayload],
   );
 
   const opened = useRef<string | null>(null);
@@ -476,7 +492,7 @@ export default function PublicWorksheetPage() {
   /** Merge a write's answer back in: the server's revisions and its authoritative
    *  computed figures, and a refetch of any sheet it says drifted. */
   const absorb = useCallback(
-    (result: { rev: Record<string, number>; computed: Record<string, Record<string, number | null>>; resync: string[] }) => {
+    (result: { rev: Record<string, number>; computed: Record<string, Record<string, number | null>>; resync: string[]; workspaces?: Record<string, PublicFinancialWorkspace> }) => {
       setPayload((current) => {
         if (!current) return current;
         return {
@@ -485,19 +501,19 @@ export default function PublicWorksheetPage() {
             ...one,
             rev: result.rev?.[one.kind] ?? one.rev,
             computed: result.computed?.[one.kind] ?? one.computed,
+            workspace: result.workspaces?.[one.kind] ?? one.workspace,
           })),
         };
       });
-      if ((result.resync ?? []).length > 0) void load(sessionRef.current, null);
     },
-    [load],
+    [setPayload],
   );
 
   const baseRev = useCallback((): Record<string, number> => {
     const out: Record<string, number> = {};
-    for (const one of sheets) if (typeof one.rev === "number") out[one.kind] = one.rev;
+    for (const one of payloadRef.current?.sheets ?? []) if (typeof one.rev === "number") out[one.kind] = one.rev;
     return out;
-  }, [sheets]);
+  }, []);
 
   /** The grid's save. Edits are addressed by `key`, never by grid address —
    *  `planPaste` gives an appended row a nominal address that can collide with
@@ -508,55 +524,94 @@ export default function PublicWorksheetPage() {
       setSaving(true);
       setNotice(null);
       try {
-        const result = await writePublicCells(token, sessionRef.current, edits, baseRev(), nameRef.current);
-        absorb(result);
-        setPayload((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            sheets: current.sheets.map((one) => {
-              const mine = edits.filter((edit) => edit.sheet === one.kind);
-              if (mine.length === 0) return one;
-              const values = { ...one.values };
-              for (const edit of mine) values[edit.key] = edit.value;
-              return { ...one, values };
-            }),
-          };
+        await writes.current.run(async () => {
+          const result = await writePublicCells(token, sessionRef.current, edits, baseRev(), nameRef.current);
+          absorb(result);
+          setPayload((current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              sheets: current.sheets.map((one) => {
+                const mine = edits.filter((edit) => edit.sheet === one.kind);
+                if (mine.length === 0) return one;
+                const values = { ...one.values };
+                for (const edit of mine) values[edit.key] = edit.value;
+                return { ...one, values };
+              }),
+            };
+          });
+          setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+          // Identity/cadence changes need the authoritative layout before a version saves.
+          if ((result.resync ?? []).length) setPayload(await readPublicWorksheet(token, sessionRef.current));
         });
-        setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
       } catch (reason) {
         fail(reason);
+        throw reason;
       } finally {
         setSaving(false);
       }
     },
-    [absorb, baseRev, fail, token],
+    [absorb, baseRev, fail, token, setPayload],
   );
 
   const onRowOp = useCallback(
     async (op: WorksheetRowOp) => {
       setNotice(null);
       try {
-        const result = await writePublicRow(token, sessionRef.current, op, nameRef.current);
-        setPayload((current) => {
-          if (!current) return current;
-          return {
-            ...current,
-            sheets: current.sheets.map((one) =>
-              one.kind === op.sheet
-                ? { ...one, rows: result.rows, row_meta: result.row_meta, rev: result.rev?.[one.kind] ?? one.rev }
-                : one,
-            ),
-          };
+        return await writes.current.run(async () => {
+          const result = await writePublicRow(token, sessionRef.current, op, nameRef.current);
+          setPayload((current) => {
+            if (!current) return current;
+            return {
+              ...current,
+              sheets: current.sheets.map((one) =>
+                one.kind === op.sheet
+                  ? { ...one, rows: result.rows, row_meta: result.row_meta, rev: result.rev?.[one.kind] ?? one.rev, workspace: result.workspaces?.[one.kind] ?? one.workspace }
+                  : one,
+              ),
+            };
+          });
+          return result;
         });
-        return result;
       } catch (reason) {
         fail(reason);
-        return undefined;
+        throw reason;
       }
     },
-    [fail, token],
+    [fail, token, setPayload],
   );
+
+  const publish = async (kind: SheetKind) => {
+    if (publishing || !canEdit) return;
+    setPublishing(true);
+    setNotice(null);
+    try {
+      await gridController.current?.flush();
+      await phoneController.current?.flush();
+      await writes.current.flush();
+      const workspace = payloadRef.current?.sheets.find((one) => one.kind === kind)?.workspace;
+      if (!workspace) throw new WorksheetSaveError(409, "Reload this form to save a dated version.");
+      if (!versionAttempt.current || versionAttempt.current.family !== workspace.family_id || versionAttempt.current.revision !== workspace.revision) {
+        versionAttempt.current = { family: workspace.family_id, revision: workspace.revision, key: crypto.randomUUID() };
+      }
+      const answer = await writePublicVersion(token, sessionRef.current, { sheet: kind, expected_revision: workspace.revision, base_version_id: workspace.base_version_id, idempotency_key: versionAttempt.current.key, name: nameRef.current });
+      setPayload(answer);
+      versionAttempt.current = null;
+      setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+    } catch (error) { fail(error); }
+    finally { setPublishing(false); }
+  };
+
+  const openPdf = async (kind: SheetKind, version: PublicFinancialVersion) => {
+    try {
+      const blob = await downloadPublicWorksheetVersion(token, sessionRef.current, kind, version.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url; anchor.download = `${kind}-v${version.version_number}.pdf`;
+      document.body.appendChild(anchor); anchor.click(); anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (error) { fail(error); }
+  };
 
   // ---- states ------------------------------------------------------------
 
@@ -710,7 +765,7 @@ export default function PublicWorksheetPage() {
           <h1>Financial worksheet{businessName ? ` for ${businessName}` : ""}</h1>
           <p className="fp-for">
             {canEdit
-              ? "Figures save as you type. Everyone with this link sees the same sheet."
+              ? "Working changes save as you type. Choose Save version to submit a dated PDF."
               : "You are looking at this worksheet. Nothing here can be changed from this link."}
           </p>
         </div>
@@ -722,6 +777,7 @@ export default function PublicWorksheetPage() {
             {notice}
           </p>
         ) : null}
+        <PublicWorksheetVersionControls sheets={sheets} activeKind={active} canEdit={canEdit} busy={publishing} onPublish={publish} onOpenPdf={(kind, version) => void openPdf(kind, version)} />
 
         {/* `wide === null` is "the browser has not told us yet". Neither branch
             renders until it has: guessing would hydrate a tree that does not
@@ -732,18 +788,22 @@ export default function PublicWorksheetPage() {
         ) : wide ? (
           <Worksheet
             sheets={sheets}
-            scope={payload.scope}
+            scope={{ ...payload.scope, can_edit: canEdit && !publishing }}
             onSave={onSave}
             onRowOp={onRowOp}
+            onController={onGridController}
+            onActiveSheet={setActive}
           />
         ) : (
           <StackedWorksheet
             sheets={sheets}
             canEdit={canEdit}
+            disabled={publishing}
             active={active}
             onActive={setActive}
             onSave={onSave}
             onRowOp={onRowOp}
+            onController={onPhoneController}
           />
         )}
       </main>
@@ -758,7 +818,7 @@ export default function PublicWorksheetPage() {
                 <span className="fp-pulse" aria-hidden="true" /> Saving…
               </>
             ) : savedAt ? (
-              `Saved at ${savedAt}.`
+              `Working draft saved at ${savedAt}. Save version to submit a dated PDF.`
             ) : (
               "Your figures save as you type."
             )}
@@ -790,6 +850,8 @@ function StackedWorksheet({
   onActive,
   onSave,
   onRowOp,
+  onController,
+  disabled = false,
 }: {
   sheets: WorksheetSheet[];
   canEdit: boolean;
@@ -797,6 +859,8 @@ function StackedWorksheet({
   onActive: (kind: SheetKind) => void;
   onSave: (edits: WorksheetCellEdit[]) => Promise<void>;
   onRowOp: (op: WorksheetRowOp) => Promise<unknown>;
+  onController?: (controller: { flush: () => Promise<void> } | null) => void;
+  disabled?: boolean;
 }) {
   const sheet = sheets.find((one) => one.kind === active) ?? sheets[0];
   const [draft, setDraft] = useState<PhoneFormBody | null>(null);
@@ -841,13 +905,18 @@ function StackedWorksheet({
   );
 
   useEffect(() => {
-    if (!draft || !canEdit) return;
+    onController?.({ flush: async () => { if (draftRef.current) await flush(draftRef.current); } });
+    return () => onController?.(null);
+  }, [flush, onController]);
+
+  useEffect(() => {
+    if (!draft || !canEdit || disabled) return;
     const timer = window.setTimeout(() => {
       const body = draftRef.current;
-      if (body) void flush(body);
+      if (body) void flush(body).catch(() => undefined);
     }, AUTOSAVE_MS);
     return () => window.clearTimeout(timer);
-  }, [draft, canEdit, flush]);
+  }, [draft, canEdit, disabled, flush]);
 
   const change = (next: PhoneFormBody) => {
     if (!sheet) return;
@@ -864,10 +933,11 @@ function StackedWorksheet({
         if (now.has(key)) continue;
         const [block, rowKey] = key.includes(":") ? key.split(":") : [null, key];
         if (ORDINAL.test(rowKey)) continue;
-        void onRowOp({ sheet: sheet.kind, op: "delete", row_id: rowKey, block });
+        void flush(before).then(() => onRowOp({ sheet: sheet.kind, op: "delete", row_id: rowKey, block })).catch(() => undefined);
         return;
       }
     }
+    draftRef.current = next;
     setDraft(next);
   };
 
@@ -882,7 +952,8 @@ function StackedWorksheet({
               type="button"
               className="sg-tab"
               aria-current={one.kind === active ? "page" : undefined}
-              onClick={() => onActive(one.kind)}
+              disabled={disabled}
+              onClick={() => { if (draftRef.current) void flush(draftRef.current).then(() => onActive(one.kind)).catch(() => undefined); else onActive(one.kind); }}
             >
               {TITLES[one.kind]}
               {!canEdit ? (
@@ -905,16 +976,17 @@ function StackedWorksheet({
         {!canEdit ? (
           <ReadOnlySheet sheet={sheet} />
         ) : sheet.kind === "debt_schedule" ? (
-          <DebtScheduleForm value={draft as DebtBody} onChange={change} />
+          <DebtScheduleForm value={draft as DebtBody} onChange={change} disabled={disabled} scheduleCompletion />
         ) : sheet.kind === "real_estate_schedule" ? (
-          <RealEstateScheduleForm schema={sheet.schema as RealEstateSchema} value={draft as RealEstateBody} onChange={change} />
+          <RealEstateScheduleForm schema={sheet.schema as RealEstateSchema} value={draft as RealEstateBody} onChange={change} disabled={disabled} />
         ) : sheet.kind === "pfs" ? (
-          <Pfs413Form schema={sheet.schema as PfsSchema} value={draft as PfsBody} onChange={change} />
+          <Pfs413Form schema={sheet.schema as PfsSchema} value={draft as PfsBody} onChange={change} disabled={disabled} />
         ) : (
           <BusinessStatementForm
             schema={sheet.schema as StatementSchema}
             value={draft as StatementBody}
             onChange={change}
+            disabled={disabled}
           />
         )}
       </div>

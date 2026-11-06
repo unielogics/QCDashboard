@@ -7,6 +7,7 @@
 // which keeps the rule testable under vitest's node runner.
 
 import type { Lang } from "@/lib/intakeCopy";
+import { APP_ORIGIN } from "@/lib/appUrl";
 
 export type ChatActionType =
   | "upload_own"
@@ -48,13 +49,28 @@ function nonEmpty(value: string | null | undefined): string | null {
   return text ? text : null;
 }
 
+/** The server-issued form link carries the correct family, draft and versions. */
+function canonicalFinancialFormUrl(value: string | null | undefined, requirementKey: string, worksheetOnly = false): string | null {
+  const raw = nonEmpty(value);
+  if (!raw) return null;
+  try {
+    const origin = new URL(APP_ORIGIN);
+    const url = new URL(raw, origin);
+    if (url.origin !== origin.origin || !["https:", "http:"].includes(url.protocol) || url.username || url.password) return null;
+    const match = /^\/forms\/(pfs|debt_schedule|p_and_l|balance_sheet|real_estate_schedule|worksheet|packet)\/[^/]+\/?$/.exec(url.pathname);
+    if (!match || worksheetOnly && match[1] !== "worksheet") return null;
+    const expected = inlineDocKindFor(requirementKey);
+    if (expected && ![expected, "worksheet", "packet"].includes(match[1])) return null;
+    return raw.startsWith("/") ? raw : url.toString();
+  } catch { return null; }
+}
+
 /**
  * Decide what a page should do once a chat action has executed.
  *
- * - `complete_now`: when the page drafts that form kind inline (`inlineKinds`
- *   lists pfs and/or debt_schedule) keep the inline modal; otherwise open
- *   `result.form_url`, falling back to `result.room_url` for responses from
- *   older backends that only carried the room link.
+ * - `complete_now`: open a validated canonical form link when supplied so the
+ *   client sees the imported working rows and saves dated versions. Older
+ *   responses without one retain the inline modal or room-link fallback.
  * - `open_worksheet`: open `result.form_url`. There is no room fallback: the
  *   room does not open the worksheet, so sending the client there would lie.
  * - everything else (`upload_own`, `download_template`, `email_template`,
@@ -67,13 +83,15 @@ export function resolveChatActionTarget(
 ): ChatActionTarget {
   const inlineKinds = options.inlineKinds ?? [];
   if (action.action_type === "complete_now") {
+    const formUrl = canonicalFinancialFormUrl(result?.form_url, action.requirement_key);
+    if (formUrl) return { kind: "open", url: formUrl };
     const docKind = inlineDocKindFor(action.requirement_key);
     if (docKind && inlineKinds.includes(docKind)) return { kind: "inline", docKind };
-    const url = nonEmpty(result?.form_url) ?? nonEmpty(result?.room_url);
+    const url = nonEmpty(result?.room_url);
     return url ? { kind: "open", url } : { kind: "none" };
   }
   if (action.action_type === "open_worksheet") {
-    const url = nonEmpty(result?.form_url);
+    const url = canonicalFinancialFormUrl(result?.form_url, action.requirement_key, true);
     return url ? { kind: "open", url } : { kind: "none" };
   }
   return { kind: "none" };

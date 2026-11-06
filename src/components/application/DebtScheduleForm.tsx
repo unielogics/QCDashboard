@@ -53,8 +53,7 @@ export type DebtRow = DebtRowFields & {
    *  row in place instead of re-creating it — the re-creation was what
    *  doubled the schedule. Absent on a line added on this page. */
   id?: string;
-  /** Which source owns the row (admin, client_form, ai_draft, field_desk), so a
-   *  locked row can say who to ask — from whichever side is reading it. */
+  /** Provenance stays visible; server-issued editable controls this form's access. */
   owner?: string;
 };
 
@@ -148,6 +147,7 @@ export function DebtScheduleForm({
   disabled = false,
   showProblems = false,
   singleRow = false,
+  scheduleCompletion = false,
   renderFieldSource,
 }: {
   value: DebtBody;
@@ -157,6 +157,8 @@ export function DebtScheduleForm({
    *  outlined on the card. Off while drafting, so a half-typed row is not shouted at. */
   showProblems?: boolean;
   singleRow?: boolean;
+  /** Use the current shared schedule's lender/balance/payment completion rule. */
+  scheduleCompletion?: boolean;
   renderFieldSource?: (row: DebtRow, field: keyof DebtRow) => ReactNode;
 }) {
   const rows = useMemo(() => value.debts ?? [], [value.debts]);
@@ -165,8 +167,8 @@ export function DebtScheduleForm({
   const [openNotes, setOpenNotes] = useState<number[]>([]);
 
   const missing = useMemo(
-    () => (showProblems ? missingFieldKeys(debtRowProblems(rows)) : new Set<string>()),
-    [rows, showProblems],
+    () => (showProblems ? missingFieldKeys(debtRowProblems(rows, scheduleCompletion)) : new Set<string>()),
+    [rows, scheduleCompletion, showProblems],
   );
   const invalid = (index: number, field: string) => missing.has(`${index}.${field}`);
 
@@ -214,7 +216,7 @@ export function DebtScheduleForm({
         <em className="fp-req" aria-hidden="true">
           *
         </em>{" "}
-        {singleRow ? "Lender, current balance and monthly payment complete a saved schedule. Payment amount and frequency can calculate the monthly payment." : "What a lender needs on every obligation. Dates, collateral and notes can stay blank."}
+        {singleRow || scheduleCompletion ? "Lender, current balance and monthly payment complete a saved schedule. Payment amount and frequency can calculate the monthly payment." : "What a lender needs on every obligation. Dates, collateral and notes can stay blank."}
       </p>
 
       {rows.length === 0 ? (
@@ -234,10 +236,8 @@ export function DebtScheduleForm({
       {rows.map((row, index) => {
         const notesOpen = openNotes.includes(index);
         const hasNote = Boolean((row.notes ?? "").trim());
-        // A row another source owns — the desk's, an AI draft's — is shown so
-        // the schedule reads whole, but this form's save will leave it alone.
-        // Every control on the card is disabled, but the note stays readable:
-        // a locked row's note is still information the reader is owed.
+        // Source origin is provenance. The scoped server permission decides
+        // whether this reader may correct the form's working copy.
         const locked = disabled || row.editable === false;
         const advance = isAdvanceType(row.debt_type);
         const typed = (row.debt_type ?? "").trim();
@@ -255,9 +255,10 @@ export function DebtScheduleForm({
               <div className="fp-row-title">
                 <strong>{rowTitle(row, index)}</strong>
                 {rowAside(row) ? <span>{rowAside(row)}</span> : null}
-                {row.editable === false ? (
+                {row.owner ? (
                   <span className="fp-row-locked">
-                    Entered by {ownerLabel(row.owner)}. It can only be changed from there.
+                    {row.owner === "ai_draft" ? "Imported from a document. " : `Entered by ${ownerLabel(row.owner)}. `}
+                    {row.editable === false ? "Read-only in this form." : "Review and correct these answers; the original source is preserved."}
                   </span>
                 ) : null}
               </div>
@@ -281,7 +282,7 @@ export function DebtScheduleForm({
                   onChange={(event) => patch(index, { lender: event.target.value })}
                 />
               </Field>
-              <Field id={`type-${index}`} label="Type of debt" required={!singleRow} invalid={invalid(index, "debt_type")} source={renderFieldSource?.(row, "debt_type")}>
+              <Field id={`type-${index}`} label="Type of debt" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "debt_type")} source={renderFieldSource?.(row, "debt_type")}>
                 <select
                   id={`type-${index}`}
                   disabled={locked}
@@ -297,7 +298,7 @@ export function DebtScheduleForm({
                   ))}
                 </select>
               </Field>
-              <Field id={`original-${index}`} label="Original amount" required={!singleRow} invalid={invalid(index, "original_amount")} source={renderFieldSource?.(row, "original_amount")}>
+              <Field id={`original-${index}`} label="Original amount" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "original_amount")} source={renderFieldSource?.(row, "original_amount")}>
                 <input
                   id={`original-${index}`}
                   inputMode="decimal"
@@ -315,7 +316,7 @@ export function DebtScheduleForm({
                   onChange={(event) => patch(index, { balance: event.target.value })}
                 />
               </Field>
-              <Field id={`rate-${index}`} label="Annual interest rate (%)" required={!singleRow} invalid={invalid(index, "rate")} source={renderFieldSource?.(row, "rate")}>
+              <Field id={`rate-${index}`} label="Annual interest rate (%)" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "rate")} source={renderFieldSource?.(row, "rate")}>
                 <input
                   id={`rate-${index}`}
                   inputMode="decimal"
@@ -379,7 +380,7 @@ export function DebtScheduleForm({
                   <option value="unsecured">Unsecured</option>
                 </select>
               </Field>
-              <Field id={`status-${index}`} label="Current or delinquent" required={!singleRow} invalid={invalid(index, "payment_status")} source={renderFieldSource?.(row, "payment_status")}>
+              <Field id={`status-${index}`} label="Current or delinquent" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "payment_status")} source={renderFieldSource?.(row, "payment_status")}>
                 <select
                   id={`status-${index}`}
                   disabled={locked}
@@ -411,7 +412,7 @@ export function DebtScheduleForm({
                     because of lower sales or revenue — a reduced daily or weekly pull, a pause, a
                     reconciliation?
                   </p>
-                  <Field id={`mca-${index}`} label="Modified for lower sales?" required={!singleRow} invalid={invalid(index, "mca_modified")} source={renderFieldSource?.(row, "mca_modified")}>
+                  <Field id={`mca-${index}`} label="Modified for lower sales?" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "mca_modified")} source={renderFieldSource?.(row, "mca_modified")}>
                     <select
                       id={`mca-${index}`}
                       disabled={locked}
