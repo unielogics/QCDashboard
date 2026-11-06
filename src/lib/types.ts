@@ -3044,11 +3044,14 @@ export type VisibilityScope =
 // Super Admin / Funding Team. `scope: "mine"` excludes unassigned records.
 export type ListScope = "mine" | "all";
 
+export type NotificationGroup = "sms" | "email" | "general";
+
 export interface Notification {
   id: string;
   recipient_user_id: string;
   event_type: string;
   category: string;
+  group: NotificationGroup;
   priority: string;
   title: string;
   body: string;
@@ -3067,7 +3070,20 @@ export interface Notification {
 
 export interface NotificationList {
   unread_count: number;
+  unread_counts: Record<NotificationGroup, number>;
+  total: number;
+  limit: number;
+  offset: number;
   items: Notification[];
+}
+
+export interface IntakeCommunicationUnread {
+  intake_id: string;
+  profile_id?: string | null;
+  sms: number;
+  email: number;
+  total: number;
+  as_of: string;
 }
 
 

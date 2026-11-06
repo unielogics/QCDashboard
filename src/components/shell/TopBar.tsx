@@ -1,27 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Icon } from "@/components/design-system/Icon";
 import { useUI } from "@/store/ui";
 import {
   useAITasks,
   useCurrentUser,
-  useMarkAllNotificationsRead,
-  useMarkNotificationRead,
-  useNotifications,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
 import { cx } from "@/components/ds";
 import { ConsoleSwitcher } from "./ConsoleSwitcher";
-
-// Restyled onto `.top` / `.btn` / `.chip` / `.popcard` from the design-system
-// sheet. Every control, role gate, badge and title below is the one that was
-// here before — this file is imported by the whole authenticated app, so
-// nothing about what it can do changed.
+import { NotificationCenter } from "./NotificationCenter";
+import styles from "./TopBar.module.css";
 
 export default function TopBar() {
+  const header = useRef<HTMLElement>(null);
   const router = useRouter();
   const collapsed = useUI((s) => s.sidebarCollapsed);
   const toggleSidebar = useUI((s) => s.toggleSidebar);
@@ -32,10 +27,6 @@ export default function TopBar() {
   const toggleTheme = useUI((s) => s.toggleTheme);
   const { data: user } = useCurrentUser();
   const { data: tasks = [] } = useAITasks();
-  const { data: notificationData } = useNotifications();
-  const markRead = useMarkNotificationRead();
-  const markAllRead = useMarkAllNotificationsRead();
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const searchShortcutLabel = usePrimaryShortcutLabel("k");
 
   const isClient = user?.role === Role.CLIENT;
@@ -45,17 +36,20 @@ export default function TopBar() {
   // client-only).
   const isDealerPartner = user?.role === Role.DEALER_PARTNER;
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
-  const notifications = notificationData?.items ?? [];
-  const unreadCount = notificationData?.unread_count ?? 0;
 
-  async function openNotification(id: string, deepLink: string | null) {
-    await markRead.mutateAsync(id);
-    setNotificationsOpen(false);
-    if (deepLink) router.push(deepLink);
-  }
+  useEffect(() => {
+    const element = header.current;
+    const app = element?.closest<HTMLElement>(".app");
+    if (!element || !app) return;
+    const measure = () => app.style.setProperty("--topbar-height", `${element.getBoundingClientRect().height}px`);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => { observer.disconnect(); app.style.removeProperty("--topbar-height"); };
+  }, []);
 
   return (
-    <header className="top">
+    <header ref={header} className={cx("top", styles.bar)}>
       {/* Sidebar collapse toggle (lifted from sidebar footer to topbar per design) */}
       <button
         type="button"
@@ -72,9 +66,7 @@ export default function TopBar() {
       <button
         type="button"
         onClick={() => isDealerPartner ? router.push("/broker/buckets") : setSearchOpen(true)}
-        className="btn topsearch"
-        // A fixed 360px rail is this bar's own measurement, not a system step.
-        style={{ width: 360 }}
+        className={cx("btn topsearch", styles.search)}
       >
         <Icon name="search" size={14} />
         <span className="grow">{isDealerPartner ? "Search dealer leads and document rooms…" : "Search loans, clients, properties…"}</span>
@@ -107,72 +99,7 @@ export default function TopBar() {
           Field Desk and Audit; the server says which of them this login may enter. */}
       <ConsoleSwitcher consoles={user?.consoles} current="funding" />
 
-      {/* Notifications */}
-      <div className="popwrap">
-        <button
-          type="button"
-          onClick={() => setNotificationsOpen((v) => !v)}
-          aria-label={unreadCount > 0 ? `${unreadCount} unread notifications` : "Notifications"}
-          aria-expanded={notificationsOpen}
-          aria-haspopup="dialog"
-          title="Notifications"
-          className={cx("btn", "sm", "iconbtn", "badged", notificationsOpen && "tone-pet")}
-        >
-          <Icon name="bell" size={14} />
-          {unreadCount > 0 && (
-            <span className="cnt sm">{unreadCount > 9 ? "9+" : unreadCount}</span>
-          )}
-        </button>
-        {notificationsOpen && (
-          <div className="popcard" aria-label="Notifications">
-            <div className="panel-h">
-              <div className="grow">
-                <b>Notifications</b>
-                <div className="sub">{unreadCount} unread</div>
-              </div>
-              {unreadCount > 0 && (
-                <button type="button" className="btn sm" onClick={() => markAllRead.mutate()}>
-                  Mark all read
-                </button>
-              )}
-            </div>
-            {/* A bounded scroller: the cap is this popover's own geometry. */}
-            <div style={{ maxHeight: 430, overflowY: "auto" }}>
-              {notifications.length === 0 ? (
-                <div className="panel-b sub">No notifications yet.</div>
-              ) : (
-                notifications.map((item) => {
-                  const unread = !item.read_at;
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => openNotification(item.id, item.deep_link)}
-                      // `.filerow.tone-acc` carries "unread" on the whole row:
-                      // this list is SCANNED, and a dot alone means reading
-                      // every row to find the new ones.
-                      className={cx("filerow", "notifrow", unread && "tone-acc")}
-                    >
-                      <span
-                        className="repdot"
-                        // Presence of the dot is per-item state.
-                        style={{ background: unread ? "var(--petrol)" : "transparent" }}
-                      />
-                      <span className="grow">
-                        <b>{item.title}</b>
-                        <span className="sub">{item.body}</span>
-                        <span className="lbl">
-                          {item.category} · {formatNotificationTime(item.created_at)}
-                        </span>
-                      </span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        )}
-      </div>
+      <div className={styles.alerts}><NotificationCenter /></div>
 
       {/* One Elara control opens the shared chat, task, and context rail. */}
       {!isDealerPartner && (
@@ -190,14 +117,4 @@ export default function TopBar() {
 
     </header>
   );
-}
-
-function formatNotificationTime(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const diff = Date.now() - date.getTime();
-  if (diff < 60_000) return "now";
-  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
-  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
-  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }

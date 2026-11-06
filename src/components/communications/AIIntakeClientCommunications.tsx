@@ -9,6 +9,9 @@ import { ActionIcon } from "@/components/ds/ActionIcon";
 import { activeGrants, consentKindLabel, grantWords, smsStatusWords } from "@/lib/smsConsentWords";
 import { useAuthedApi } from "@/hooks/useApi";
 import { LIVE_MESSAGE_POLL_MS, LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
+import { CommunicationUnreadBadge } from "./CommunicationUnreadBadge";
+import unreadStyles from "./CommunicationUnreadBadge.module.css";
+import { useVisibleMessageReceipts } from "./useVisibleMessageReceipts";
 import type { ClientSmsMessage, ClientThreadMessage, ClientThreadResponse, LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
 
 type SmsConsentGrant = {
@@ -369,6 +372,7 @@ export function AIIntakeClientConversation({
       ...unlinked.map((sms) => ({ key: `sms:${sms.id}`, createdAt: sms.created_at, type: "sms" as const, sms })),
     ].sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [response]);
+  const smsReadReceipt = useVisibleMessageReceipts(timelineRef, { intakeId, channel: "sms" }, (response.sms_messages ?? []).filter((message) => message.direction === "inbound").map((message) => message.id), !loading);
   const latestOutboundSms = [...(response.sms_messages ?? [])]
     .reverse()
     .find((message) => message.direction === "outbound");
@@ -461,7 +465,7 @@ export function AIIntakeClientConversation({
           {timeline.map((item) => {
             if (item.type === "sms") {
               const inbound = item.sms.direction === "inbound";
-              return <article key={item.key} className={cx("msg", inbound ? "client-ch" : "mine", "transport-sms-only")}>
+              return <article key={item.key} data-communication-message-id={inbound ? item.sms.id : undefined} className={cx("msg", inbound ? "client-ch" : "mine", "transport-sms-only")}>
                 <div className="msg-h"><span className="msg-who">{inbound ? clientName || "Client" : "You"}</span><CellChip tone="pet">SMS</CellChip></div>
                 <div className="msg-b">{item.sms.body || "Text message"}</div>
                 <div className="msg-delivery"><span>{when(item.sms.created_at)}</span><CellChip tone={deliveryTone(item.sms.status)}>{item.sms.status}</CellChip></div>
@@ -471,7 +475,7 @@ export function AIIntakeClientConversation({
             const isAI = message.role === "assistant";
             const isClient = !isAI && (message.sender_kind ? message.sender_kind === "client" : !(message.author_name || "").toLowerCase().startsWith("underwriter"));
             const label = isAI ? "AI" : message.author_name || (isClient ? clientName || "Client" : "You");
-            return <article key={item.key} className={cx("msg", isAI ? "ai" : isClient ? "client-ch" : "mine")}>
+            return <article key={item.key} data-communication-message-id={item.sms?.direction === "inbound" ? item.sms.id : undefined} className={cx("msg", isAI ? "ai" : isClient ? "client-ch" : "mine")}>
               <div className="msg-h"><span className="msg-who">{label}</span><CellChip tone="acc">Portal</CellChip>{item.sms ? <CellChip tone={deliveryTone(item.sms.status)}>SMS · {item.sms.status}</CellChip> : null}</div>
               <div className="msg-b">{message.content}</div>
               <div className="msg-delivery"><span>{when(message.created_at)}</span>{item.sms && ["failed", "blocked"].includes(item.sms.status) ? <button type="button" className="linky" onClick={() => void retrySms(message.id)}>Retry SMS</button> : null}</div>
@@ -480,6 +484,7 @@ export function AIIntakeClientConversation({
         </div>
 
         <div className="ai-intake-client-composer">
+          {smsReadReceipt.error ? <Callout tone="bad">Messages loaded, but read status could not be saved. <Btn size="sm" onClick={smsReadReceipt.retry}>Retry read status</Btn></Callout> : null}
           {latestSmsFailure ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>
             <div className="sms-failure-alert-copy">
               <b>SMS delivery failed</b>
@@ -546,24 +551,31 @@ export function AIIntakeClientConversation({
 
 export function AIIntakeEmailWorkspace({
   profileId,
+  intakeId,
   clientName,
   contactSuppressed = false,
   offerSelectionCount = 0,
   onComposeOffer,
   startComposing = false,
+  initialThreadId = null,
+  onThreadNavigate,
 }: {
   profileId: string;
+  intakeId: string;
   clientName?: string | null;
   contactSuppressed?: boolean;
   offerSelectionCount?: number;
   onComposeOffer?: () => void;
   /** Opened to email the client: start on a new message, addressed to the file's primary contact. */
   startComposing?: boolean;
+  /** A notification's exact file email. An inaccessible target never falls back. */
+  initialThreadId?: string | null;
+  onThreadNavigate?: (threadId: string) => void;
 }) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
-  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(null);
-  const [composing, setComposing] = useState(startComposing);
+  const [selectedThreadId, setSelectedThreadId] = useState<string | null>(initialThreadId);
+  const [composing, setComposing] = useState(initialThreadId ? false : startComposing);
   const [toContactId, setToContactId] = useState("");
   const [ccContactIds, setCcContactIds] = useState<string[]>([]);
   const [subject, setSubject] = useState("");
@@ -575,6 +587,7 @@ export function AIIntakeEmailWorkspace({
   const [recipientLock, setRecipientLock] = useState<string | null>(null);
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
   const emailTimelineRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => { if (initialThreadId) { setSelectedThreadId(initialThreadId); setComposing(false); } }, [initialThreadId]);
 
   const contacts = useQuery({
     queryKey: ["application-communication-contacts", profileId],
@@ -599,6 +612,7 @@ export function AIIntakeEmailWorkspace({
     queryFn: () => apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads/${selectedThreadId}`),
     ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
+  const emailReadReceipt = useVisibleMessageReceipts(emailTimelineRef, { intakeId, channel: "email", ...(selectedThreadId ? { threadId: selectedThreadId } : {}) }, (detail.data?.messages ?? []).filter((message) => message.direction === "inbound").map((message) => message.id), !composing && Boolean(selectedThreadId && detail.data && !detail.isError));
 
   const availableContacts = useMemo(() => contacts.data ?? [], [contacts.data]);
   // Offer PDFs must go through the immutable offer-delivery workflow so the
@@ -618,11 +632,11 @@ export function AIIntakeEmailWorkspace({
   }, [availableContacts, toContactId]);
   useEffect(() => {
     if (selectedThreadId || composing || !threads.data?.length) return;
-    setSelectedThreadId(threads.data[0].id);
+    setSelectedThreadId((threads.data.find((thread) => thread.unread_count > 0) ?? threads.data[0]).id);
   }, [threads.data, selectedThreadId, composing]);
   useEffect(() => {
-    if (!threads.isLoading && !threads.data?.length) setComposing(true);
-  }, [threads.isLoading, threads.data]);
+    if (!threads.isLoading && !threads.isError && !threads.data?.length && !initialThreadId) setComposing(true);
+  }, [threads.isLoading, threads.isError, threads.data, initialThreadId]);
   const latestEmailMessageId = detail.data?.messages.at(-1)?.id ?? null;
   useLayoutEffect(() => {
     const timeline = emailTimelineRef.current;
@@ -719,10 +733,11 @@ export function AIIntakeEmailWorkspace({
     <aside className="ai-intake-email-list">
       <div className="ai-intake-email-list-head"><div><Lbl>Email</Lbl><Sub>{clientName || "Client"} and verified file owners</Sub></div><div className="ai-intake-email-list-actions">{onComposeOffer ? <Btn size="sm" disabled={directContactSuppressed || offerSelectionCount === 0} title={directContactSuppressed ? suppressionReason : offerSelectionCount ? "Draft one email with the current client offers" : "Record a sendable offer in Underwriting first"} onClick={onComposeOffer}><Icon name="spark" size={13} />Offer email{offerSelectionCount > 1 ? ` (${offerSelectionCount})` : ""}</Btn> : null}<Btn size="sm" variant="pri" disabled={directContactSuppressed} title={directContactSuppressed ? suppressionReason : undefined} onClick={() => setComposing(true)}><Icon name="plus" size={13} />New email</Btn></div></div>
       {threads.isLoading ? <div className="empty"><span className="spinner solo" />Loading email…</div> : null}
-      {!threads.isLoading && !threads.data?.length ? <div className="empty">No email conversations yet.</div> : null}
-      {(threads.data ?? []).map((thread) => <button key={thread.id} type="button" className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); setReply(""); setReplyAttachments([]); }}>
+      {threads.isError ? <Callout tone="bad">Email conversations could not be loaded. <Btn size="sm" onClick={() => void threads.refetch()}>Retry email list</Btn></Callout> : null}
+      {!threads.isLoading && !threads.isError && !threads.data?.length ? <div className="empty">No email conversations yet.</div> : null}
+      {(threads.isError ? [] : threads.data ?? []).map((thread) => <button key={thread.id} type="button" className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); setReply(""); setReplyAttachments([]); onThreadNavigate?.(thread.id); }}>
         <span><b>{thread.subject}</b><small>{thread.participant_names.join(", ") || thread.to_email}</small></span>
-        <time>{when(thread.last_message_at || thread.created_at)}</time>
+        <div className={unreadStyles.threadMeta}><time>{when(thread.last_message_at || thread.created_at)}</time><CommunicationUnreadBadge count={thread.unread_count} channel="email" /></div>
       </button>)}
     </aside>
 
@@ -767,11 +782,12 @@ export function AIIntakeEmailWorkspace({
         <div className="email-compose-actions"><Btn onClick={resetCompose}>Cancel</Btn><Btn variant="pri" disabled={directContactSuppressed || createThread.isPending || !selectedContact?.email || !subject.trim() || !body.trim()} onClick={() => createThread.mutate()}><Icon name="send" size={14} />{createThread.isPending ? "Sending…" : "Send email"}</Btn></div>
       </div> : selectedThreadId ? <div className="ai-intake-email-detail">
         {detail.isLoading ? <div className="empty"><span className="spinner solo" />Loading thread…</div> : null}
-        {detail.isError ? <Callout tone="bad">{detail.error instanceof Error ? detail.error.message : "Email thread unavailable."}</Callout> : null}
-        {detail.data ? <>
+        {detail.isError ? <Callout tone="bad">{detail.error instanceof Error ? detail.error.message : "Email thread unavailable."} <Btn size="sm" onClick={() => void detail.refetch()}>Retry requested email</Btn></Callout> : null}
+        {emailReadReceipt.error ? <Callout tone="bad">Messages loaded, but read status could not be saved. <Btn size="sm" onClick={emailReadReceipt.retry}>Retry read status</Btn></Callout> : null}
+        {!detail.isError && detail.data ? <>
           <header className="ai-intake-email-detail-head"><div><h3>{detail.data.thread.subject}</h3><Sub>To {detail.data.thread.to_email}{detail.data.thread.cc_emails.length ? ` · Cc ${detail.data.thread.cc_emails.join(", ")}` : ""}</Sub></div><CellChip tone={detail.data.thread.can_reply ? "ok" : "mut"}>{detail.data.thread.owner_name || detail.data.thread.owner_email || "Firm mailbox"}</CellChip></header>
           <div ref={emailTimelineRef} className="ai-intake-email-messages">
-            {detail.data.messages.map((message) => <article key={message.id} className={cx("email-message", message.direction)}>
+            {detail.data.messages.map((message) => <article key={message.id} data-communication-message-id={message.direction === "inbound" ? message.id : undefined} className={cx("email-message", message.direction)}>
               <div className="email-message-head"><b>{message.direction === "outbound" ? "You" : message.sender || "Client"}</b><span>{when(message.created_at)}</span></div>
               <p>{message.body}</p>
               {message.attachment_names?.length ? <div className="email-message-attachments" aria-label="Attachments">{message.attachment_names.map((name, index) => <span key={`${name}:${index}`} className="email-attachment-chip"><Icon name="paperclip" size={12} /><span>{name}</span></span>)}</div> : null}

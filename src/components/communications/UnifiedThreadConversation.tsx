@@ -3,12 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
-import { Callout, CellChip, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, cx } from "@/components/ds";
 import { ChatComposer } from "@/components/ds/ChatComposer";
 import { InlineImageStrip } from "@/components/InlineImages";
 import { useAuthedApi } from "@/hooks/useApi";
 import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
+import { useVisibleMessageReceipts } from "./useVisibleMessageReceipts";
 
 /** A new calendar day between two messages earns a divider, as in iMessage. */
 function dayBreak(previousIso: string | null, currentIso: string): boolean {
@@ -41,9 +42,10 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
   const key = ["unified-communication-thread", threadId];
   const thread = useQuery({
     queryKey: key,
-    queryFn: () => apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}`),
+    queryFn: () => apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${encodeURIComponent(threadId)}`),
     ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
+  const readReceipt = useVisibleMessageReceipts(scroller, { unifiedThreadId: threadId }, (thread.data?.messages ?? []).filter((message) => message.direction === "inbound").map((message) => message.id), Boolean(thread.data && !thread.isError));
   const send = useMutation({
     mutationFn: (body: string) => apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
     onSuccess: (data) => {
@@ -59,6 +61,8 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
     scroller.current.scrollTop = scroller.current.scrollHeight;
   }, [thread.data?.messages.length]);
 
+  if (thread.isError) return <div className="unified-thread-chat"><header className="unified-thread-chat-head"><b>Requested conversation unavailable</b></header><Callout tone="bad" icon={<Icon name="alert" size={16} />}>{thread.error instanceof Error ? thread.error.message : "This conversation could not be loaded."} <Btn size="sm" onClick={() => void thread.refetch()}>Retry requested conversation</Btn></Callout></div>;
+
   return (
     <div className="unified-thread-chat">
       <header className="unified-thread-chat-head">
@@ -67,7 +71,6 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
       </header>
       <div className="unified-thread-messages" ref={scroller}>
         {thread.isLoading ? <div className="empty"><span className="spinner solo" />Loading conversation...</div> : null}
-        {thread.isError ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{thread.error instanceof Error ? thread.error.message : "Conversation unavailable."}</Callout> : null}
         {thread.data && !thread.data.messages.length ? <div className="empty">{emptyLabel}</div> : null}
         {thread.data?.messages.map((message, index) => {
           const previous = index > 0 ? thread.data!.messages[index - 1] : null;
@@ -76,7 +79,7 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
               {dayBreak(previous?.created_at ?? null, message.created_at) ? (
                 <div className="msg-daybreak"><span>{dayLabel(message.created_at)}</span></div>
               ) : null}
-              <article className={cx("bubble-row", message.direction)}>
+              <article data-communication-message-id={message.direction === "inbound" ? message.id : undefined} className={cx("bubble-row", message.direction)}>
                 <div className="bubble">
                   {/* Only name inbound: every outbound is us, and repeating
                       that on each bubble is noise the alignment already says. */}
@@ -99,6 +102,7 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
           );
         })}
       </div>
+      {readReceipt.error ? <Callout tone="bad">Messages loaded, but read status could not be saved. <Btn size="sm" onClick={readReceipt.retry}>Retry read status</Btn></Callout> : null}
       <ChatComposer
         value={draft}
         onChange={setDraft}

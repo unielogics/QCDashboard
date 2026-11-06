@@ -2,11 +2,11 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useToast, Toast } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { apiErrorMessage } from "@/components/email/EmailComposer";
-import { Btn, CellChip, IconBtn, Input, Lbl, PageHeader, Panel, Textarea, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, IconBtn, Input, Lbl, PageHeader, Panel, Textarea, cx } from "@/components/ds";
 import {
   useCurrentUser,
   useGoogleConnection,
@@ -19,6 +19,7 @@ import {
   type InboxThreadSummary,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { useVisibleMessageReceipts } from "@/components/communications/useVisibleMessageReceipts";
 
 type InboxFilter = "all" | "unread" | "starred";
 
@@ -51,6 +52,9 @@ function initialsOf(email: string | null): string {
 
 export default function InboxPage() {
   const router = useRouter();
+  const route = useSearchParams();
+  const requestedThread = route.get("thread")?.trim() || null;
+  const unifiedTarget = requestedThread && /^(?:sms|rep|loan|dealer|intake|email):/.test(requestedThread) ? requestedThread : null;
   const toast = useToast();
   const { data: user } = useCurrentUser();
   const { data: conn, isLoading: connLoading } = useGoogleConnection();
@@ -75,6 +79,16 @@ export default function InboxPage() {
   const reply = useInboxReply();
   const markRead = useMarkThreadRead();
   const star = useStarMessage();
+  const readReceipt = useVisibleMessageReceipts(messageTimelineRef, { unifiedThreadId: `email:${selectedThread ?? ""}` }, (threadQ.data?.messages ?? []).filter((message) => message.direction === "inbound").map((message) => message.id), !unifiedTarget && Boolean(selectedThread && threadQ.data && !threadQ.isError));
+
+  useEffect(() => {
+    if (unifiedTarget) {
+      const query = new URLSearchParams({ thread: unifiedTarget });
+      const channel = route.get("channel");
+      if (channel === "sms" || channel === "email") query.set("channel", channel);
+      router.replace(`/messages?${query}`);
+    } else if (requestedThread) setSelectedThread(requestedThread);
+  }, [requestedThread, route, router, unifiedTarget]);
 
   // Owner gate: only a user with a connected Gmail mailbox sees the inbox.
   // Clients never reach it. Backend enforces owner-scoping regardless; this is UX.
@@ -83,14 +97,7 @@ export default function InboxPage() {
     if (isClient) router.replace("/");
   }, [isClient, router]);
 
-  // Auto-mark a thread read when opened.
-  useEffect(() => {
-    if (selectedThread && threadQ.data && threadQ.data.messages.some((m) => !m.is_read)) {
-      markRead.mutate({ threadId: selectedThread, isRead: true });
-    }
-    setReplyBody("");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedThread, threadQ.data?.thread_id]);
+  useEffect(() => { setReplyBody(""); }, [selectedThread]);
 
   const threads: InboxThreadSummary[] = list?.threads ?? [];
 
@@ -106,6 +113,7 @@ export default function InboxPage() {
   }, [selectedThread, latestThreadMessageId]);
 
   if (isClient) return null;
+  if (unifiedTarget) return <div className="empty" role="status">Opening the requested conversation…</div>;
 
   if (!connLoading && !conn?.gmail_connected) {
     return (
@@ -317,7 +325,8 @@ export default function InboxPage() {
               <span className="sub">Loading thread…</span>
             </div>
           )}
-          {selectedThread && threadQ.data && (
+          {selectedThread && threadQ.isError ? <Callout tone="bad">The requested email could not be loaded. <Btn size="sm" onClick={() => void threadQ.refetch()}>Retry requested email</Btn></Callout> : null}
+          {selectedThread && !threadQ.isError && threadQ.data && (
             <>
               {/* thread header */}
               <div className="panel-h">
@@ -379,7 +388,7 @@ export default function InboxPage() {
                 {threadQ.data.messages.map((m) => {
                   const outbound = m.direction === "outbound";
                   return (
-                    <div key={m.id} className="row top">
+                    <div key={m.id} data-communication-message-id={!outbound ? m.id : undefined} className="row top">
                       {/* Data-derived: petrol marks mail you sent, accent marks
                           mail you received — the same pairing as the Sent chip. */}
                       <span
@@ -414,6 +423,7 @@ export default function InboxPage() {
               </div>
 
               {/* reply */}
+              {readReceipt.error ? <Callout tone="bad">Messages loaded, but read status could not be saved. <Btn size="sm" onClick={readReceipt.retry}>Retry read status</Btn></Callout> : null}
               <div className="composer" style={{ paddingLeft: 16, paddingRight: 16, paddingBottom: 14 }}>
                 <Lbl>Reply from your Gmail</Lbl>
                 <Textarea

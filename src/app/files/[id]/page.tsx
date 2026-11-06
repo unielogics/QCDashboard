@@ -26,6 +26,8 @@ export default function FilePage() {
   const router = useRouter();
   const leadId = params?.id ?? null;
   const section = parseFileSection(searchParams.get("section"));
+  const requestedChannel = searchParams.get("channel");
+  const communicationChannel = requestedChannel === "client" || requestedChannel === "email" || requestedChannel === "updates" || requestedChannel === "partner" || requestedChannel === "internal" ? requestedChannel : requestedChannel === "sms" ? "client" : "underwriter";
   const definition = SECTION_DEFINITIONS[section];
   const { data: me, isLoading: meLoading } = useCurrentUser();
   const isDesk = me?.role === Role.SUPER_ADMIN || me?.role === Role.LOAN_EXEC;
@@ -54,7 +56,19 @@ export default function FilePage() {
         initialActiveTab={definition.activeTab}
         initialWorkspaceSection={definition.workspaceSection}
         initialEvidenceTab={definition.evidenceTab ?? "requirements"}
-        initialCommunicationChannel={searchParams.get("channel") === "client" ? "client" : searchParams.get("channel") === "email" ? "email" : "underwriter"}
+        initialCommunicationChannel={communicationChannel}
+        initialEmailThreadId={communicationChannel === "email" ? searchParams.get("thread") : null}
+        onCommunicationNavigate={(channel) => {
+          const query = new URLSearchParams(searchParams.toString());
+          query.set("section", "communications"); query.set("channel", channel);
+          if (channel !== "email") query.delete("thread");
+          router.push(`/files/${leadId}?${query}`, { scroll: false });
+        }}
+        onEmailThreadNavigate={(threadId) => {
+          const query = new URLSearchParams(searchParams.toString());
+          query.set("section", "communications"); query.set("channel", "email"); query.set("thread", threadId);
+          router.replace(`/files/${leadId}?${query}`, { scroll: false });
+        }}
         initialNotesOpen={searchParams.get("notes") === "1"}
         canGovern={canGovern}
         canDelete={isDesk}
