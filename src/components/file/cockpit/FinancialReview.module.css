@@ -1,4 +1,6 @@
 .summaryCard { grid-column: 1 / -1; min-width: 0; }
+.ebitdaDetails { min-width: 0; }
+.ebitdaDetails > summary { cursor: pointer; color: var(--ink2); font-size: 12px; font-weight: 650; padding: 8px 0; }
 .mainDetails { min-width: 0; }
 .mainDetails > summary { cursor: pointer; color: var(--ink2); font-size: 13px; font-weight: 650; }
 .mainDetails[open] > summary { margin-bottom: 12px; }
@@ -54,7 +56,14 @@
 .spendBody { display: grid; gap: 8px; padding: 0 12px 12px; }
 .spendList { max-height: 220px; overflow: auto; display: grid; gap: 5px; }
 .planContent { min-width: 0; }
-.planContent > section { border: 0; box-shadow: none; padding: 0; background: transparent; }
+.planContent > section { border: 0; box-shadow: none; padding: 0; background: transparent; grid-template-columns: minmax(0, 1fr); }
+.planContent > section > *, .planContent :global(.fc-grid) > * { min-width: 0; }
+.planContent :global(.grid) { min-width: 0; grid-template-columns: minmax(0, 1fr); }
+.planContent :global(.tbl-wrap) { min-width: 0; max-width: 100%; overflow-x: auto; }
 .planContent .boundedTable { max-height: 300px; }
 .tabs button:focus-visible, .boundedTable:focus-visible, .textAction:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summaryStrip { grid-template-columns: 1fr; } .reviewBody { padding: 12px; } .metrics strong { font-size: 20px; } .statementSplit { grid-template-columns: 1fr; } }
+@media (max-width: 760px) {
+  .reviewHeader { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 16px 54px 14px 16px; }
+  .reviewHeader :global(.drawer-h-actions) { width: 100%; min-width: 0; justify-content: flex-start; flex-wrap: wrap; }
+}

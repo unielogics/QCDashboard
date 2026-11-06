@@ -47,6 +47,8 @@ import {
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
 import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
 import { EbitdaRefinanceComparison } from "./EbitdaRefinanceComparison";
+import { CoverageEbitdaMetric } from "./CoverageEbitdaMetric";
+import { ebitdaIsStaffCorrected } from "@/lib/financialMetrics";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
 import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
@@ -358,6 +360,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             {headlineConfidence ? <CellChip tone={confidenceTone(headlineConfidence)}>{confidenceLabel(headlineConfidence)}</CellChip> : null}
             <CellChip tone={debt_service_source === "none" ? "warn" : "mut"}>Debt service {money(local.serviceBefore)} / mo · {sourceLabel(debt_service_source)}</CellChip>
           </div>
+          <CoverageEbitdaMetric value={local.ebitda} side="today" corrected={ebitdaIsStaffCorrected(cockpit.ebitda?.headline, cockpit.metric_review)} />
           <Meter value={headline?.value ?? null} tone={meterTone(headline?.status)} marks={marks} label="Debt service coverage today" />
           {reason ? <StatusLine tone="warn">{reason}</StatusLine> : null}
           {headline?.note ? <div className="sub">{headline.note}</div> : null}
@@ -375,6 +378,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             {local.excludedMonthly ? <CellChip tone="acc">{money(local.excludedMonthly)} / mo not spend</CellChip> : null}
             {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo new payment{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (recorded loan terms)" : ""}</CellChip> : null}
           </div>
+          <CoverageEbitdaMetric value={local.ebitda} side="plan" unsaved={dirty} scenarioActive={Boolean(cockpit.plan.evaluation.active)} corrected={ebitdaIsStaffCorrected(cockpit.ebitda?.headline, cockpit.metric_review)} />
           <div className="fc-plan-words">
             <span className="lbl">The plan</span>
             {planLines.length ? (
@@ -392,6 +396,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           </div>
         </div>
       </div>
+
+      <details className={styles.ebitdaDetails}>
+        <summary>EBITDA sources and plan adjustments</summary>
+        <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
+      </details>
 
       <div className="fc-grid">
         <div className="grid g8">
@@ -654,6 +663,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       </div>
 
       {candidates.length ? (
+        <div className="tbl-wrap" role="region" aria-label="Coverage calculation bases" tabIndex={0}>
         <table className="tbl fc-candidates">
           <thead>
             <tr>
@@ -685,6 +695,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             })}
           </tbody>
         </table>
+        </div>
       ) : null}
 
       {months.length ? (
@@ -721,7 +732,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     </div>
   </details> : null;
   const planActions = canEdit ? <><Btn size="sm" onClick={clearPlan} disabled={!dirty && !plan.retire.length && !plan.exclude.length && !plan.new_payment_monthly && !plan.new_loan_amount}>Clear plan</Btn><Btn size="sm" variant="pri" disabled={!dirty && !legacySelectionsReviewed || save.isPending || unresolvedPayoffs} onClick={() => void submit()}>{save.isPending ? "Saving…" : "Save plan"}</Btn></> : null;
-  const planReview = <><EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
+  const planReview = <>{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
   return <>
     <section className={`fc-card ${styles.summaryCard}`} aria-label="Debt coverage and financial review">
       <div className={styles.summaryHead}><div><h4>Debt coverage and financial review</h4><p className={styles.note}>Saved financial figures, the working debt schedule, and observed statement payments stay distinct.</p></div><div className={styles.summaryActions}>
