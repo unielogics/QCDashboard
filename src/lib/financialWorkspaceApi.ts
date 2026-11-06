@@ -2,13 +2,14 @@ import type { AuthedApi } from "@/lib/worksheetApi";
 import type { SheetKind, SheetLayout, SheetCell, SheetRow, Edit, SheetValues } from "@/components/sheet/types";
 import { parseMoney } from "@/components/sheet/money";
 import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
+import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
   id: string; version_number: number; created_at: string; actor_name: string | null;
-  source: string; source_file_id: string | null; pdf_file_id: string | null; status: string;
+  source: string; source_file_id: string | null; pdf_file_id: string | null; status: string; source_content_type?: string | null;
 };
-export type FinancialEvidence = import("./documentVersions").DocumentVersionMetadata & { file_id: string; file_name: string; classification?: string | null };
+export type FinancialEvidence = import("./documentVersions").DocumentVersionMetadata & { file_id: string; file_name: string; classification?: string | null; content_type?: string | null };
 export type FinancialWorkspaceSnapshot = {
   kind: SheetKind; family_id: string; label: string; body: FinancialBody; schema: unknown;
   worksheet: { layout: SheetLayout; values: SheetValues; computed: Record<string, number | null> };
@@ -26,7 +27,7 @@ export type FinancialImport = {
   id: string; kind: SheetKind; family_id: string; source_file_id: string; status: string;
   base_revision: number; proposed_body: FinancialBody;
   target_row_id?: string; role?: DebtDocumentRole;
-  mappings: Array<{ key: string; value: unknown; before?: unknown; conflict?: boolean; derived?: boolean; source: { file_id?: string; analysis_id?: string | null; content_hash?: string; page?: number; sheet?: string; cell?: string; quote?: string; kind?: string; calculation?: string; multiplier?: string; derived_from?: Record<string, unknown> }; confidence: number | "high" | "needs_review" | null }>;
+  mappings: Array<{ key: string; value: unknown; before?: unknown; conflict?: boolean; derived?: boolean; source: { file_id?: string; analysis_id?: string | null; content_hash?: string; page?: number; content_type?: string; sheet?: string; cell?: string; quote?: string; kind?: string; calculation?: string; multiplier?: string; derived_from?: Record<string, unknown> }; confidence: number | "high" | "needs_review" | null }>;
   warnings: string[];
 };
 export type DebtDocumentRole = "agreement" | "payoff" | "supporting";
@@ -121,8 +122,15 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
       cells: source.columns.map((column, at): SheetCell => {
         const original = template?.cells?.find((cell) => cell.c === column.c);
         const field = original?.path?.at(-1) ?? fields[at];
-        const type = ["balance", "monthly_payment", "original_amount", "payment_amount"].includes(field) ? "money" : ["rate", "factor_rate"].includes(field) ? "rate" : field === "payment_frequency" ? "select" : field.endsWith("_on") ? "date" : "text";
-        return { ...original, c: column.c, type: original?.type ?? type, key: `${row.id}.${field}`, path: ["debts", row.id, field], editable: true, ...(field === "payment_frequency" ? { options: ["daily", "weekly", "biweekly", "monthly"] } : {}), ...(field === "factor_rate" ? { format: "text" } : {}), ...(field === "monthly_payment" && row.monthly_payment_source === "native_terms" ? { flags: [...(original?.flags ?? []), "approximate"] } : {}) };
+        const categories: Record<string, Record<string, string>> = {
+          debt_type: Object.fromEntries(DEBT_TYPES.map((option) => [option.value, option.label])),
+          payment_frequency: { daily: "Business day", weekly: "Week", biweekly: "Every two weeks", monthly: "Month" },
+          secured: { secured: "Secured", unsecured: "Unsecured" }, payment_status: { current: "Current", delinquent: "Delinquent" }, mca_modified: { yes: "Yes", no: "No" },
+        };
+        const options = categories[field];
+        const legacy = options && row[field] != null && String(row[field]).trim() && !(String(row[field]) in options) ? String(row[field]) : null;
+        const type = options ? "select" : ["balance", "monthly_payment", "original_amount", "payment_amount"].includes(field) ? "money" : ["rate", "factor_rate"].includes(field) ? "rate" : field.endsWith("_on") ? "date" : "text";
+        return { ...original, c: column.c, type: options ? "select" : original?.type ?? type, key: `${row.id}.${field}`, path: ["debts", row.id, field], editable: true, ...(options ? { options: [...Object.keys(options), ...(legacy ? [legacy] : [])], option_labels: { ...options, ...(legacy ? { [legacy]: `${legacy} (as entered)` } : {}) } } : {}), ...(field === "factor_rate" ? { format: "text" } : {}), ...(field === "monthly_payment" && row.monthly_payment_source === "native_terms" ? { flags: [...(original?.flags ?? []), "approximate"] } : {}) };
       }),
     }));
     const before = source.rows.filter((row) => row.r < first && row.kind !== "data");
@@ -180,6 +188,7 @@ export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, ed
       const before = originalRows.find((candidate) => candidate.id === row.id);
       if (!before) return row;
       const changes = Object.fromEntries(edits.flatMap((edit) => { const path = paths.get(edit.key); return edit.sheet === layout.kind && path?.[0] === "debts" && path[1] === row.id ? [[path[2], edit.value]] : []; }));
+      if ("debt_type" in changes && !isAdvanceType(changes.debt_type)) { changes.mca_modified = ""; changes.mca_modification_note = ""; }
       return Object.keys(changes).length ? updateDebtPaymentTerms(before, changes) : row;
     });
   }
