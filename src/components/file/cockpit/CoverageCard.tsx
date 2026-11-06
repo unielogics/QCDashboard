@@ -9,12 +9,16 @@
 // levers list says what would raise coverage, each with its resulting DSCR
 // and one click to apply.
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
+import type { DebtScheduleEditorTarget } from "@/components/application/DebtScheduleReviewPanel";
 import { Btn, CellChip, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useSaveFinancialPlan, useSaveFileEconomics } from "@/hooks/useApi";
 import { evaluatePlanLocally } from "@/lib/cockpitSimulation";
+import { balanceSheetIsEmpty, profitAndLossIsEmpty } from "@/lib/financialStatementRequests";
 import {
   ADD_BACK_KINDS,
   EMPTY_OVERRIDES,
@@ -41,8 +45,9 @@ import {
   type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
-import { ClientTermsStrip } from "./ClientTermsStrip";
-import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
+import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
+import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
+import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
 import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
@@ -101,8 +106,28 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; canEdit: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; /** The fees were saved from here: the Underwriting tab's offer acceptance and the fee allocation should re-read. */ onEconomicsSaved?: () => void; /** Which record the loan in the plan becomes: the dealer's production term sheet, or the client terms. */ termsKind?: "production" | "client"; /** Opens the evidence upload. */ onOpenEvidence?: () => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, canEdit, canReviewDebt = canEdit, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; canEdit: boolean; canReviewDebt?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void }) {
   const save = useSaveFinancialPlan(profileId);
+  const queryClient = useQueryClient();
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
+  const [debtEditor, setDebtEditor] = useState<DebtScheduleEditorTarget | null>(null);
+  const [clientTermsOpen, setClientTermsOpen] = useState(false);
+  const [legacySelectionsReviewed, setLegacySelectionsReviewed] = useState(false);
+  const legacySelectionKey = JSON.stringify(cockpit.plan.unresolved_previous_selections ?? []);
+  useEffect(() => { setLegacySelectionsReviewed(false); }, [legacySelectionKey]);
+  const returnToReview = useRef(false);
+  const openDebt = (target: DebtScheduleEditorTarget) => { returnToReview.current = reviewOpen; setReviewOpen(false); setDebtEditor(target); };
+  const refresh = () => onRefresh?.();
+  const closeDebt = () => {
+    setDebtEditor(null);
+    void queryClient.invalidateQueries({ queryKey: ["financial-workspace-summary", profileId] });
+    void queryClient.invalidateQueries({ queryKey: ["financial-debt-review", profileId] });
+    void refresh();
+    if (returnToReview.current) setReviewOpen(true);
+    returnToReview.current = false;
+  };
+  const previewSource = (fileId: string, page?: number) => { setReviewOpen(false); onPreviewSource?.(fileId, page); };
   const [plan, setPlan] = useState<FinancialPlanWrite>(() => fromRecord(cockpit));
   const [paymentText, setPaymentText] = useState<string>(() => (cockpit.plan.record.new_payment_monthly == null ? "" : String(cockpit.plan.record.new_payment_monthly)));
   const [error, setError] = useState<string | null>(null);
@@ -122,7 +147,9 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const { headline, thresholds, candidates, reason, debt_service_source } = cockpit.dscr;
   const noDebt = Boolean(cockpit.dscr.no_debt);
   const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
-  const obligations = cockpit.debt.obligations;
+  const obligations = cockpit.debt.obligations.filter((obligation) => obligation.kind !== "payee");
+  const pendingRetires = plan.retire.filter((id) => !obligations.some((obligation) => obligation.id === id));
+  const unresolvedPayoffs = pendingRetires.length > 0 || !legacySelectionsReviewed && Boolean(cockpit.plan.unresolved_previous_selections?.length);
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
   const economics = cockpit.plan?.economics ?? null;
@@ -302,7 +329,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
   const loanTerms = plan.new_loan_amount ? `${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}%${plan.new_loan_interest_only ? " interest-only" : ` over ${plan.new_loan_term_months ?? "—"} mo`}` : null;
   const savedModifications = cockpit.plan?.modifications ?? [];
 
-  return (
+  const planContent = (
     <section className="fc-card fc-wide fc-coverage">
       <div className="fc-card-h">
         <div>
@@ -311,18 +338,12 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
             Income available for debt payments against the payments due; lenders usually look for 1.25x. Tick what the new loan pays off, mark transfers that are not spend, set the new payment, and every figure updates. Save the plan and the debt service, the offer and the advances read it too.
           </div>
         </div>
-        <div className="row" style={{ gap: 8, alignItems: "center" }}>
-          {canEdit ? (
-            <>
-              <Btn size="sm" onClick={clearPlan} disabled={!plan.retire.length && !plan.exclude.length && plan.new_payment_monthly == null && !plan.new_loan_amount}>Clear</Btn>
-              <Btn size="sm" variant="pri" onClick={() => void submit()} disabled={!dirty || save.isPending}>{save.isPending ? "Saving…" : "Save plan"}</Btn>
-            </>
-          ) : null}
-        </div>
+        <span className="sub">Scenario changes are saved from the review header.</span>
       </div>
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       {saved && !dirty ? <StatusLine tone="ok">{saved}</StatusLine> : null}
       {dirty ? <StatusLine tone="acc">Unsaved plan: the figures below already reflect it; save to make the debt service, the offer and the advances follow.</StatusLine> : null}
+      {onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
 
       <div className="fc-grid">
         <div className="grid g8">
@@ -343,7 +364,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
         <div className="grid g8">
           <Lbl>With the plan</Lbl>
           <div className="fc-hero">
-            {local.noDebtLeft ? "No debt" : multiple(local.headlineAfter)}
+            {unresolvedPayoffs ? "Needs review" : local.noDebtLeft ? "No debt" : multiple(local.headlineAfter)}
             <small>{local.noDebtLeft ? "service left" : headline ? headline.label : ""}</small>
           </div>
           <div className="fc-chips">
@@ -373,7 +394,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
 
       <div className="fc-grid">
         <div className="grid g8">
-          <div className="row"><Lbl>Obligations: what the business pays lenders ({accountLabel})</Lbl><span className="sp" />{canEdit ? <Btn size="sm" onClick={() => window.dispatchEvent(new CustomEvent(OPEN_DEBT_SCHEDULE_EVENT))}><Icon name="pencil" size={13} />Open financial workspace</Btn> : null}</div>
+          <div className="row"><Lbl>Saved and documented obligations ({accountLabel})</Lbl><span className="sp" />{canEdit ? <Btn size="sm" onClick={() => openDebt({ view: "form" })}><Icon name="pencil" size={13} />Open financial workspace</Btn> : null}</div>
           {obligations.length ? (
             <div className="tbl-wrap">
               <table className="tbl fc-obligations">
@@ -402,28 +423,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
                     ? "The uploaded schedule was read but none of its lines could be listed. Adopt it, enter the schedule, or ask again."
                     : `No obligations on file. Debt schedule: ${schedule.label.toLowerCase()}. Confirm the business is debt free, or get the schedule on the file.`}
               </span>
-              <DebtScheduleControls cockpit={cockpit} profileId={profileId} canEdit={canEdit} onOpenEvidence={onOpenEvidence} compact />
+              <Btn size="sm" onClick={() => openDebt({ view: "form" })}>Open working debt schedule</Btn>
             </div>
           )}
-          {excludable.length ? (
-            <div className="grid g4">
-              <Lbl>Not operating spend</Lbl>
-              <div className="fc-chips">
-                {excludable.map((p) => {
-                  const id = `payee:${p.key}`;
-                  const on = plan.exclude.includes(id);
-                  return (
-                    <label key={p.key} className={cx("fc-sim-pick", on && "on")}>
-                      <input type="checkbox" checked={on} disabled={!canEdit} onChange={() => toggleExclude(id)} />
-                      <span className="fc-sim-pick-name">{p.payee}</span>
-                      <CellChip tone={payeeKindTone(p.kind)}>{p.kind_label}</CellChip>
-                      <span className="sub">{money(p.monthly_average)} / mo · counts as income if it is the owner's own money</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-          ) : null}
+
         </div>
         <div className="grid g8">
           <Lbl>The new loan</Lbl>
@@ -443,19 +446,19 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
             {local.schedule && !termsAdopted ? `${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}: ${local.schedule.payment_io_monthly != null && local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ${money(local.schedule.payment_after_monthly)}` : `${money(local.newPayment)} a month${local.schedule.structure === "interest_only" ? " of interest; the principal is due at maturity" : ""}`}. Coverage stands on ${money(local.newPayment)} a month.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
-            {canRecordTerms ? <> <button type="button" className="linky" onClick={onRecordTerms}>Record loan terms</button></> : null}
+            {canRecordTerms ? <> <button type="button" className="linky" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record loan terms</button></> : null}
           </span>
           {recorded ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               {mirrorNow === "mirrored" ? <CellChip tone="ok">Mirrors {recorded.label}</CellChip> : mirrorNow === "recorded_not_in_plan" ? <CellChip tone="mut">{recorded.label} is recorded, not in the plan</CellChip> : mirrorNow ? <CellChip tone="warn">Differs from {recorded.label}: {mirrorNow.slice("differs:".length)}</CellChip> : null}
               {canEdit && mirrorNow !== "mirrored" ? <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Use the recorded terms ({money(recorded.payment_monthly)} / mo)</Btn> : null}
               {canEdit && termsAdopted ? <Btn size="sm" onClick={() => adoptTerms(false)}>Take them out of the plan</Btn> : null}
-              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={onRecordTerms}>Record the term sheet from this loan</Btn> : null}
+              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record the term sheet from this loan</Btn> : null}
             </div>
           ) : local.newPayment && canRecordTerms ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               <CellChip tone="mut">Not recorded on the Underwriting tab yet</CellChip>
-              <Btn size="sm" onClick={onRecordTerms}>Record these terms</Btn>
+              <Btn size="sm" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record these terms</Btn>
             </div>
           ) : null}
           {termsKind === "client" ? (
@@ -465,6 +468,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
               linkSummary={link?.summary ?? null}
               linkState={link?.state ?? null}
               canEdit={canEdit}
+              onOpenEditor={() => { returnToReview.current = reviewOpen; setReviewOpen(false); setClientTermsOpen(true); }}
             />
           ) : null}
           <Input aria-label="Or type the new monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Or type the payment (term sheet: ${money(cockpit.dscr.proposed.monthly_payment)})` : "Or type the payment"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
@@ -702,4 +706,39 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, canEdit, 
       ) : null}
     </section>
   );
+  const review = cockpit.debt.review;
+  const spendContent = excludable.length ? <details className={styles.spend}>
+    <summary>Not operating spend · {excludable.length} transfers / owner draws</summary>
+    <div className={styles.spendBody}><p className={styles.note}>These are income-estimate adjustments for transfers and owner draws. They do not decide whether a payment is a loan. Changes apply only when you Save plan.</p>
+      <div className={styles.spendList}>{excludable.map((payee) => {
+        const id = `payee:${payee.key}`;
+        return <label key={payee.key} className={cx("fc-sim-pick", plan.exclude.includes(id) && "on")}>
+          <input type="checkbox" checked={plan.exclude.includes(id)} disabled={!canEdit} onChange={() => toggleExclude(id)} />
+          <span className="fc-sim-pick-name">{payee.payee}</span><CellChip tone={payeeKindTone(payee.kind)}>{payee.kind_label}</CellChip><span className="sub">{money(payee.monthly_average)} / month</span>
+        </label>;
+      })}</div>
+    </div>
+  </details> : null;
+  const planActions = canEdit ? <><Btn size="sm" onClick={clearPlan} disabled={!dirty && !plan.retire.length && !plan.exclude.length && !plan.new_payment_monthly && !plan.new_loan_amount}>Clear plan</Btn><Btn size="sm" variant="pri" disabled={!dirty && !legacySelectionsReviewed || save.isPending || unresolvedPayoffs} onClick={() => void submit()}>{save.isPending ? "Saving…" : "Save plan"}</Btn></> : null;
+  const planReview = <>{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
+  return <>
+    <section className={`fc-card ${styles.summaryCard}`} aria-label="Debt coverage and financial review">
+      <div className={styles.summaryHead}><div><h4>Debt coverage and financial review</h4><p className={styles.note}>Saved financial figures, the working debt schedule, and observed statement payments stay distinct.</p></div><div className={styles.summaryActions}>
+        <Btn variant="pri" size="sm" onClick={() => setReviewOpen(true)}>Advanced review</Btn>
+        {canReviewDebt ? <Btn size="sm" onClick={() => openDebt({ view: "form" })}>Edit debt schedule</Btn> : null}
+        {profitAndLossIsEmpty(cockpit.profit_and_loss) && onRequestStatement ? <Btn size="sm" onClick={() => onRequestStatement("profit_and_loss")}>Request P&amp;L</Btn> : null}
+        {balanceSheetIsEmpty(cockpit.balance_sheet) && onRequestStatement ? <Btn size="sm" onClick={() => onRequestStatement("balance_sheet")}>Request balance sheet</Btn> : null}
+      </div></div>
+      <div className={styles.metrics}>
+        <div><small>Current coverage</small><strong>{noDebt ? "No debt" : multiple(headline?.value)}</strong><span>{headline ? sourceLabel(headline.key) : "Income basis not available"} · {dscrLabel(headline?.status)}</span></div>
+        <div><small>With the plan</small><strong>{unresolvedPayoffs ? "Needs review" : local.noDebtLeft ? "No debt" : multiple(local.headlineAfter)}</strong><span>{dirty ? "Unsaved scenario preview" : "Saved scenario"}{unresolvedPayoffs ? " · unconfirmed payoff selections" : ""}</span></div>
+        <div><small>{review?.published.complete ? "Saved debt service" : "Current service basis"}</small><strong>{money(review?.published.complete ? review.published.monthly : local.serviceBefore)}</strong><span>{review?.published.complete ? "Complete saved debt schedule / month" : `Provisional / month · ${sourceLabel(debt_service_source)}`}</span></div>
+        <div><small>Working schedule</small><strong>{review ? `${review.working.active_rows} obligations` : "Open review"}</strong><span>{review ? review.working.complete ? "Complete · Save version publishes changes" : "Review the required answers" : "Uses the same draft as Evidence & banking"}</span></div>
+      </div>
+      {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}
+    </section>
+    <FinancialReviewDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
+    {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
+    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={() => { void refresh(); }} prefillLoan={plan.new_loan_amount && plan.new_loan_rate_pct != null && (plan.new_loan_term_months || structureNow === "interest_only") && mirrorNow !== "mirrored" ? { amount: plan.new_loan_amount, aprPct: plan.new_loan_rate_pct, termMonths: plan.new_loan_term_months, structure: structureNow as LoanStructure, interestOnlyMonths: plan.new_loan_interest_only_months } : null} />
+  </>;
 }
