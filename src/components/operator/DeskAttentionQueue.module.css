@@ -1,0 +1,25 @@
+.root { display: grid; gap: 12px; min-width: 0; }
+.headingActions { display: flex; align-items: center; gap: 8px; }
+.toolbar { display: grid; grid-template-columns: minmax(150px,1fr) minmax(180px,240px) 75px auto; align-items: end; gap: 10px; }
+.list { min-width: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.item + .item { border-top: 1px solid var(--line); }
+.row { display: grid; grid-template-columns: 23px minmax(0,1fr) auto auto; gap: 10px; align-items: center; padding: 10px 12px; }
+.ordinal { color: var(--faint); font-size: 11px; font-variant-numeric: tabular-nums; text-align: center; }
+.disclosure { min-width: 0; position: relative; display: grid; gap: 4px; padding: 0 23px 0 0; border: 0; background: none; color: var(--ink); text-align: left; font: inherit; cursor: pointer; }
+.title { font-size: 13px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.issue { font-size: 11px; line-height: 1.5; color: var(--muted); }
+.toggle { position: absolute; right: 3px; top: 6px; color: var(--muted); font-size: 16px; }
+.actions { display: flex; align-items: center; justify-content: end; flex-wrap: wrap; gap: 6px; }
+.actions > button { min-width: 85px; }
+.details { padding: 0 14px 13px 45px; font-size: 12px; line-height: 1.6; color: var(--ink2); overflow-wrap: anywhere; }
+.details p { margin: 0; white-space: pre-wrap; }
+.details > strong { display: block; margin-bottom: 5px; font-size: 12px; }
+.details > div { display: flex; flex-wrap: wrap; gap: 5px 15px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+.pagination { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; color: var(--muted); font-size: 11px; }
+.pagination nav { display: flex; align-items: center; gap: 9px; }
+.pagination nav > span { min-width: 65px; text-align: center; }
+.error { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; font-size: 12px; }
+.empty { display: grid; gap: 12px; justify-items: start; padding: 20px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.loading { display: grid; gap: 8px; padding: 10px; }.loading span { height: 44px; border-radius: 6px; }
+.disclosure:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 3px; }
+@media(max-width:800px) { .toolbar { grid-template-columns: minmax(0,1fr) 75px; }.toolbar > :first-child { grid-column: 1 / -1; }.toolbar > :nth-child(4) { justify-self: start; }.row { grid-template-columns: 18px minmax(0,1fr) auto; gap: 8px; }.actions { grid-column: 2 / -1; justify-content: start; }.details { padding-left: 38px; } }
