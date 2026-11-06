@@ -6897,6 +6897,9 @@ export interface MyFileRow {
   city: string | null;
   loan_type: string | null;
   amount: number | null;
+  /** Canonical corrected request, distinct from the recorded loan amount. */
+  requested_amount?: number | null;
+  requested_amount_source?: string | null;
   ai_status: string | null;
   updated_at: string;
   deal_uuid: string | null;

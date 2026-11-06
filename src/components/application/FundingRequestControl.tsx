@@ -28,7 +28,7 @@ export function FundingRequestControl({ profileId, role, fallbackAmount, onSaved
     {query.isError ? <div className="sub">Current request details could not be loaded. <Btn size="sm" onClick={() => void query.refetch()}>Retry request details</Btn></div> : null}
     {request ? <FundingRequestEditor open={open} role={role} request={request} loadRequest={service.load} saveRequest={service.save} onClose={() => setOpen(false)} onSaved={async (next) => {
       queryClient.setQueryData(["funding-request", profileId], next);
-      await queryClient.invalidateQueries({ predicate: (entry) => entry.queryKey[0] !== "funding-request" && (entry.queryKey.includes(profileId) || ["operator-files", "lead-funnel", "ai-underwriter-leads"].includes(String(entry.queryKey[0]))) });
+      await queryClient.invalidateQueries({ predicate: (entry) => entry.queryKey[0] !== "funding-request" && (entry.queryKey.includes(profileId) || ["operator-files", "lead-funnel", "ai-underwriter-leads", "loans", "loan", "my-files"].includes(String(entry.queryKey[0]))) });
       await onSaved();
     }} /> : null}
   </div>;
