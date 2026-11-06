@@ -1,3 +1,4 @@
+import type { RepaymentConfig } from "./loanSchedule";
 export type ApplicationSourceKind = "deal" | "loan" | "intake" | "dealer";
 export type UnderwritingLifecycleStatus =
   | "submitted"
@@ -425,6 +426,7 @@ export type ClientTermsCalculation = {
   /** The structure the payment stands on, the interest-only months first and the payment during them. */
   loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
   interest_only_months?: number;
+  repayment_config?: RepaymentConfig | null;
   interest_only_payment?: number | null;
   structure_label?: string | null;
   periodic_payment: number | null;
@@ -465,7 +467,7 @@ export type ApplicationClientTerms = {
   retained_annual_debt_service: number | null;
   /** amortizing | simple_interest | interest_only (rows saved before the structure existed read as amortizing) and the interest-only months before principal starts. */
   loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
-  interest_only_months?: number | null;
+  interest_only_months?: number | null; repayment_config?: RepaymentConfig | null;
   expiration_days: number | null;
   closing_estimate_days: number | null;
   co_brand_enabled: boolean;
@@ -487,7 +489,7 @@ export type ApplicationClientTerms = {
     dscr?: { before: number | null; after: number | null; basis?: string | null } | null;
     debt_service_monthly?: { before: number | null; after: number | null } | null;
     income_annual?: { before: number | null; after: number | null } | null;
-    loan?: { amount?: number | null; rate_pct?: number | null; term_months?: number | null; interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; payment_monthly?: number | null; payment_io?: number | null; payment_after?: number | null; source?: string | null; describe?: string | null } | null;
+    loan?: { payments_per_year?: number | null; amount?: number | null; rate_pct?: number | null; term_months?: number | null; interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payment_monthly?: number | null; payment_io?: number | null; payment_after?: number | null; source?: string | null; describe?: string | null } | null;
     terms_link?: { state: string; summary: string; differences: string[] } | null;
   } | null;
 };
@@ -507,6 +509,7 @@ export type ApplicationClientTermsWrite = {
   retained_annual_debt_service: number | null;
   loan_structure: "amortizing" | "simple_interest" | "interest_only" | null;
   interest_only_months: number | null;
+  repayment_config?: RepaymentConfig | null;
   expiration_days: number;
   closing_estimate_days: number;
   co_brand_enabled: boolean;

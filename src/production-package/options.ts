@@ -72,6 +72,7 @@ export const FACILITY_CATALOG: readonly FacilityCatalogOption[] = [
 export const FACILITY_TYPES: readonly string[] = FACILITY_CATALOG.map((option) => option.label);
 
 export const REPAYMENT_STRUCTURES: ReadonlyArray<{ value: RepaymentStructure; label: string; detail: string }> = [
+  { value: "simple_interest", label: "Simple interest", detail: "Interest on original principal; advanced repayment required." },
   { value: "fully_amortizing", label: "Principal + interest", detail: "Pays down to zero over the amortization period." },
   { value: "interest_only", label: "Interest only", detail: "Interest is due periodically; principal remains due at maturity." },
   { value: "interest_only_then_amortizing", label: "IO, then amortizing", detail: "Interest-only opening phase followed by principal and interest." },

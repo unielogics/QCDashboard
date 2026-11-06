@@ -1,3 +1,5 @@
+import type { RepaymentConfig } from "@/lib/loanSchedule";
+import { repaymentPreview } from "@/lib/repaymentConfig";
 import { PAYMENT_FREQUENCIES } from "./options";
 import type { PaymentFrequency, RateStructure, RepaymentStructure, TermSheetPaymentSummary } from "./types";
 
@@ -13,6 +15,7 @@ export type StructuredPaymentInput = {
   amortizationMonths?: number | null;
   periodicPaymentOverride?: number | null;
   balloonAmountOverride?: number | null;
+  repaymentConfig?: RepaymentConfig | null;
 };
 
 export type StructuredRateInput = {
@@ -99,6 +102,12 @@ export function computePaymentSummary(input: StructuredPaymentInput): TermSheetP
     };
   }
 
+  if (input.repaymentConfig) {
+    const structure = ["interest_only", "revolving_interest_only"].includes(input.repaymentStructure) ? "interest_only" : input.repaymentStructure === "simple_interest" ? "simple_interest" : "amortizing";
+    const preview = repaymentPreview(basis, rate, term, { structure, interestOnlyMonths: ["interest_only", "revolving_interest_only"].includes(input.repaymentStructure) ? 0 : ioMonths, periodsPerYear: periods, repaymentConfig: input.repaymentConfig });
+    const schedule = preview.schedule;
+    return { periodic_payment: schedule?.payment_io ?? schedule?.payment_after ?? null, monthly_equivalent_payment: schedule?.coverage_payment_monthly ?? null, post_io_payment: schedule?.payment_after ?? null, post_io_monthly_equivalent: schedule?.payment_after_monthly ?? null, balloon_amount: schedule?.balloon ?? null, payment_basis_amount: basis, payments_per_year: periods, lines: schedule ? [`Regular payment ${money(schedule.payment_io ?? schedule.payment_after ?? 0)} ${input.paymentFrequency}`, `Residual at maturity ${money(schedule.balloon)}`] : [], assumptions: preview.error ? [preview.error] : ["Coverage includes the peak rolling 12 months of actual cash payments, including principal due."] };
+  }
   const periodicInterest = basis * (rate / 100) / periods;
   let calculatedPeriodic: number | null = null;
   let postIo: number | null = null;

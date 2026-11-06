@@ -29,7 +29,9 @@ import {
 } from "@/hooks/useCapitalPartners";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import { compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
-import { STRUCTURE_LABELS, buildSchedule, defaultStructure, type LoanStructure } from "@/lib/loanSchedule";
+import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, type RepaymentConfig } from "@/lib/loanSchedule";
+import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
+import { copyRepaymentConfig, repaymentPreview, termsCadenceForPeriods } from "@/lib/repaymentConfig";
 import type { CockpitPackageState } from "./FinancialCockpit";
 
 type Props = {
@@ -55,6 +57,9 @@ type ProductDraft = {
   interest_only: boolean;
   structure: LoanStructure | null;
   interest_only_months: string;
+  repayment_config: RepaymentConfig | null;
+  payment_frequency: "monthly" | "weekly" | "biweekly" | "daily" | "custom" | null;
+  payments_per_year: string;
   primary: boolean;
   notes: string | null;
   eligible: boolean | null;
@@ -70,10 +75,10 @@ const num = (value: string | number | null | undefined): number | null => {
 const text = (value: number | string | null | undefined) => (value == null ? "" : String(value));
 
 function fromListing(product: CpListingProduct): ProductDraft {
-  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, structure: (product.structure as LoanStructure | null) ?? (product.interest_only ? "interest_only" : null), interest_only_months: text(product.interest_only_months ?? null), primary: product.primary, notes: product.notes, eligible: null };
+  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, structure: (product.structure as LoanStructure | null) ?? (product.interest_only ? "interest_only" : null), interest_only_months: text(product.interest_only_months ?? null), repayment_config: copyRepaymentConfig(product.repayment_config), payment_frequency: product.payment_frequency, payments_per_year: text(product.payments_per_year), primary: product.primary, notes: product.notes, eligible: null };
 }
 function fromSuggestion(item: CpOfferSuggestion, primary: boolean): ProductDraft {
-  return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? null, interest_only_months: text(item.interest_only_months ?? null), primary, notes: item.reading, eligible: item.eligible };
+  return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? null, interest_only_months: text(item.interest_only_months ?? null), repayment_config: copyRepaymentConfig(item.repayment_config), payment_frequency: (["daily", "weekly", "biweekly", "custom"].includes(item.payment_frequency) ? item.payment_frequency : "monthly") as ProductDraft["payment_frequency"], payments_per_year: text(item.payments_per_year), primary, notes: item.reading, eligible: item.eligible };
 }
 function toProduct(draft: ProductDraft, payment: number | null, dscr: number | null): CpListingProduct {
   return {
@@ -86,7 +91,9 @@ function toProduct(draft: ProductDraft, payment: number | null, dscr: number | n
     interest_only: draft.interest_only || draft.structure === "interest_only",
     structure: draft.structure ?? defaultStructure(num(draft.term_months)),
     interest_only_months: draft.structure === "interest_only" ? null : (num(draft.interest_only_months) == null ? null : Math.round(num(draft.interest_only_months) as number)),
-    payment_frequency: "monthly",
+    repayment_config: copyRepaymentConfig(draft.repayment_config),
+    payments_per_year: draft.payment_frequency === "custom" ? num(draft.payments_per_year) : null,
+    payment_frequency: draft.payment_frequency ?? "monthly",
     monthly_payment: payment,
     dscr,
     notes: draft.notes,
@@ -139,9 +146,12 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
       products.map((draft) => {
         const amount = num(draft.amount);
         const term = num(draft.term_months);
-        const payment = draft.factor_rate && amount && term ? Math.round(((amount * draft.factor_rate) / term) * 100) / 100 : buildSchedule(amount, num(draft.rate_pct), term, { structure: draft.interest_only ? "interest_only" : draft.structure, interestOnlyMonths: num(draft.interest_only_months) })?.coverage_payment_monthly ?? null;
+        const preview = repaymentPreview(amount, num(draft.rate_pct), term, { structure: draft.interest_only ? "interest_only" : draft.structure, interestOnlyMonths: num(draft.interest_only_months), periodsPerYear: draft.payment_frequency === "custom" ? num(draft.payments_per_year) ?? 0 : draft.payment_frequency === "daily" ? 252 : draft.payment_frequency === "weekly" ? 51.96 : draft.payment_frequency === "biweekly" ? 25.98 : 12, repaymentConfig: draft.repayment_config });
+        const cadenceError = draft.payment_frequency === "custom" && (!(num(draft.payments_per_year)! >= 1) || num(draft.payments_per_year)! > 366) ? "Enter custom payments per year from 1 to 366." : null;
+        const repaymentError = cadenceError ?? (draft.factor_rate && draft.repayment_config ? "Advanced repayment is unavailable for factor-priced offers. Reset it or use an APR-based offer." : preview.error);
+        const payment = repaymentError ? null : draft.factor_rate && amount && term ? Math.round(((amount * draft.factor_rate) / term) * 100) / 100 : preview.schedule?.coverage_payment_monthly ?? null;
         const dscr = dscrWithPayment(income, existingMonthly, payment);
-        return { draft, payment, dscr };
+        return { draft, payment, dscr, repaymentError };
       }),
     [products, income, existingMonthly],
   );
@@ -151,7 +161,8 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
     setProducts((current) => {
       const index = current.findIndex((p) => p.primary);
       const base = index >= 0 ? current[index] : { key: nextKey(), program_key: null, label: "Loan", amount: "", rate_pct: "", factor_rate: null, term_months: "", interest_only: false, primary: true, notes: null, eligible: null };
-      const next = { ...base, amount: text(planLoan.amount), rate_pct: text(planLoan.rate_pct), term_months: text(planLoan.term_months), interest_only: planLoan.interest_only, structure: ((planLoan as { structure?: string | null }).structure as LoanStructure | null) ?? (planLoan.interest_only ? "interest_only" : null), interest_only_months: text((planLoan as { interest_only_months?: number | null }).interest_only_months ?? null), factor_rate: null, notes: "From the desk's plan on the file." };
+      const cadence = termsCadenceForPeriods(planLoan.payments_per_year ?? 12);
+      const next = { ...base, amount: text(planLoan.amount), rate_pct: text(planLoan.rate_pct), term_months: text(planLoan.term_months), interest_only: planLoan.interest_only, structure: ((planLoan as { structure?: string | null }).structure as LoanStructure | null) ?? (planLoan.interest_only ? "interest_only" : null), interest_only_months: text((planLoan as { interest_only_months?: number | null }).interest_only_months ?? null), repayment_config: copyRepaymentConfig(planLoan.repayment_config), payment_frequency: cadence.repayment_frequency, payments_per_year: cadence.custom_payments_per_year, factor_rate: null, notes: "From the desk's plan on the file." };
       return index >= 0 ? current.map((p, i) => (i === index ? next : p)) : [...current, next];
     });
   };
@@ -205,7 +216,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
       ...current,
       suggestion
         ? { ...fromSuggestion(suggestion, current.length === 0), eligible }
-        : { key: nextKey(), program_key: programKey, label: name, amount: "", rate_pct: "16", factor_rate: null, term_months: "120", interest_only: false, structure: null, interest_only_months: "", primary: current.length === 0, notes: null, eligible },
+        : { key: nextKey(), program_key: programKey, label: name, amount: "", rate_pct: "16", factor_rate: null, term_months: "120", interest_only: false, structure: null, interest_only_months: "", repayment_config: null, payment_frequency: "monthly", payments_per_year: "", primary: current.length === 0, notes: null, eligible },
     ]);
   };
   const suggestAll = async () => {
@@ -219,7 +230,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
         current.map((p) => {
           const item = fetched.products.find((s) => s.program_key === p.program_key);
           if (!item) return p;
-          return { ...p, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? p.structure, interest_only_months: text(item.interest_only_months ?? null) || p.interest_only_months, notes: item.reading, eligible: item.eligible };
+          return { ...p, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? p.structure, interest_only_months: text(item.interest_only_months ?? null) || p.interest_only_months, repayment_config: copyRepaymentConfig(item.repayment_config ?? p.repayment_config), notes: item.reading, eligible: item.eligible };
         }),
       );
       setNotice("Suggested terms applied. Each line reads the amount the income supports at 1.25x on the program's longest term, capped by the program and the request.");
@@ -228,7 +239,8 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
     }
   };
 
-  const payload = () => computed.map(({ draft, payment, dscr }) => toProduct(draft, payment, dscr));
+  const repaymentError = computed.find((item) => item.repaymentError)?.repaymentError;
+  const payload = () => { if (repaymentError) throw new Error(repaymentError); return computed.map(({ draft, payment, dscr }) => toProduct(draft, payment, dscr)); };
   const primary = computed.find(({ draft }) => draft.primary) ?? computed[0] ?? null;
   const headlinePatch = () => ({
     products: payload(),
@@ -390,7 +402,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
                     <th className="r">{computed.some(({ draft }) => draft.factor_rate) ? "Rate % / factor" : "Rate %"}</th>
                     <th className="r">Term (mo)</th>
                     <th>Structure</th>
-                    <th className="r">Payment / mo</th>
+                    <th className="r">Coverage service / mo</th>
                     <th>Coverage</th>
                     <th aria-label="Remove" />
                   </tr>
@@ -436,6 +448,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
           ) : (
             <div className="fc-empty">{suggestions.isLoading ? "Working out what the income supports…" : "No products yet. Add one above; the suggestion fills in the terms the income supports."}</div>
           )}
+          {products.map((draft) => <section key={draft.key} aria-label={`${draft.label} repayment details`}><span className="sub">{draft.label || "Loan"} repayment</span><Select aria-label={`${draft.label} payment frequency`} value={draft.payment_frequency ?? "monthly"} disabled={!editable} onChange={(event) => update(draft.key, { payment_frequency: event.target.value as ProductDraft["payment_frequency"] })}><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="daily">Daily (business days)</option><option value="custom">Custom</option></Select>{draft.payment_frequency === "custom" ? <label>Payments per year<Input aria-label={`${draft.label} custom payments per year`} type="number" min={1} max={366} step="any" value={draft.payments_per_year} disabled={!editable} onChange={(event) => update(draft.key, { payments_per_year: event.target.value })} /></label> : null}<AdvancedRepaymentEditor value={draft.repayment_config} onChange={(config) => update(draft.key, { repayment_config: config })} amount={num(draft.amount)} ratePct={num(draft.rate_pct)} termMonths={num(draft.term_months)} structure={draft.interest_only ? "interest_only" : draft.structure ?? defaultStructure(num(draft.term_months))} interestOnlyMonths={num(draft.interest_only_months)} periodsPerYear={draft.payment_frequency === "custom" ? num(draft.payments_per_year) ?? 0 : draft.payment_frequency === "daily" ? 252 : draft.payment_frequency === "weekly" ? 51.96 : draft.payment_frequency === "biweekly" ? 25.98 : 12} disabled={!editable} unsupportedReason={draft.factor_rate ? "Advanced repayment requires an APR-based offer; factor pricing keeps its stated repayment." : null} /></section>)}
           <div className="fc-listing-grid">
             <div className="fc-listing-item">
               <Lbl>Listing name (never the borrower's name)</Lbl>
@@ -454,9 +467,10 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
             <Lbl>Summary members read</Lbl>
             <Textarea rows={2} aria-label="Listing summary" value={head.summary} disabled={!editable} placeholder="Operating business and what the statements show; the prefill writes a first line." onChange={(e) => { setDirty(true); setHead({ ...head, summary: e.target.value }); }} />
           </div>
+          {repaymentError ? <StatusLine tone="bad">{repaymentError} Resolve the repayment schedule before saving.</StatusLine> : null}
           {listingId ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || (!!listingId && !dirty)}>
+            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || !!repaymentError || (!!listingId && !dirty)}>
               {busy ? "Saving…" : listingId ? "Save terms to the listing" : "Start the listing draft with these terms"}
             </Btn>
             {dirty ? <span className="sub">Unsaved changes.</span> : null}

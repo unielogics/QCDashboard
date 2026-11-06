@@ -16,7 +16,9 @@ import {
   USE_OF_FUNDS_KEYS,
 } from "./options";
 import { computePaymentSummary, defaultProgramCoverage, effectiveAnnualRate, periodsPerYear } from "./termSheetStructure";
-import { buildSchedule } from "@/lib/loanSchedule";
+import type { RepaymentConfig } from "@/lib/loanSchedule";
+import { repaymentPreview, copyRepaymentConfig } from "@/lib/repaymentConfig";
+import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { Callout, KV, MoneySplit, Overlay, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
 import type {
@@ -69,6 +71,7 @@ type FormState = {
   custom_payment_frequency: string;
   interest_only_months: string;
   amortization_months: string;
+  repayment_config: RepaymentConfig | null;
   periodic_payment: string;
   lender_payment_override: boolean;
   custom_payment_description: string;
@@ -117,6 +120,8 @@ const COVERAGE_OPTIONS: Array<[ProgramCoverageBasis, string]> = [
   ["underwriting_budget", "Underwriting budget"],
   ["manual", "Manual coverage amount"],
 ];
+
+function usesInitialIo(repayment: RepaymentStructure, config: RepaymentConfig | null): boolean { return repayment === "interest_only_then_amortizing" || !!config && ["fully_amortizing", "balloon", "simple_interest"].includes(repayment); }
 
 function isKind(v: string): v is FundingPartyKind { return (FUNDING_PARTIES as readonly string[]).includes(v); }
 function isFacilityKind(v: unknown): v is FacilityKind { return ["term_loan", "revolving_loc", "heloc", "hybrid", "other"].includes(String(v)); }
@@ -206,8 +211,9 @@ function formFrom(sheet: TermSheet | null, defaults: Record<string, unknown>): F
     custom_payment_frequency: str(extraValue(src, extra, "custom_payment_frequency")),
     interest_only_months: str(extraValue(src, extra, "interest_only_months")) || (repayment === "interest_only_then_amortizing" ? "12" : ""),
     amortization_months: str(extraValue(src, extra, "amortization_months")) || term,
+    repayment_config: copyRepaymentConfig(extraValue(src, extra, "repayment_config") as RepaymentConfig | null | undefined),
     periodic_payment: str(extraValue(src, extra, "periodic_payment")) || str(src.monthly_debt_service),
-    lender_payment_override: Boolean(extraValue(src, extra, "lender_payment_override")) || Boolean(sheet && !sheet.debt_service_is_level_payment),
+    lender_payment_override: Boolean(extraValue(src, extra, "lender_payment_override")) || Boolean(sheet && !sheet.debt_service_is_level_payment && !extraValue(src, extra, "repayment_config")),
     custom_payment_description: str(extraValue(src, extra, "custom_payment_description")),
     monthly_program_coverage_amount: str(extraValue(src, extra, "monthly_program_coverage_amount")) || str(src.monthly_debt_service),
     monthly_program_coverage_basis: isCoverageBasis(extraValue(src, extra, "monthly_program_coverage_basis"))
@@ -254,9 +260,11 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
     && form.payment_frequency === "monthly"
     && form.rate_structure === "fixed"
     && !form.lender_payment_override
+    && !form.repayment_config
     && (maybeNumber(form.amortization_months) ?? maybeNumber(form.term_months)) === maybeNumber(form.term_months);
   const structured: TermSheetStructuredFields = {
     structure_version: 1,
+    repayment_config: copyRepaymentConfig(form.repayment_config),
     facility_kind: form.facility_kind,
     facility_catalog_key: form.facility_catalog_key,
     funder_type: form.funder_type || null,
@@ -276,18 +284,18 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
     initial_draw_amount: maybeNumber(form.initial_draw_amount),
     payment_basis_amount: summary.payment_basis_amount,
     draw_period_months: ["revolving_loc", "heloc", "hybrid"].includes(form.facility_kind) ? maybeNumber(form.draw_period_months) : null,
-    interest_only_months: ["interest_only", "interest_only_then_amortizing", "revolving_interest_only"].includes(form.repayment_structure)
-      ? (form.repayment_structure === "interest_only_then_amortizing" ? maybeNumber(form.interest_only_months) : maybeNumber(form.term_months))
+    interest_only_months: ["interest_only", "interest_only_then_amortizing", "revolving_interest_only"].includes(form.repayment_structure) || usesInitialIo(form.repayment_structure, form.repayment_config)
+      ? (usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : maybeNumber(form.term_months))
       : 0,
     amortization_months: ["fully_amortizing", "interest_only_then_amortizing", "balloon"].includes(form.repayment_structure)
-      ? maybeNumber(form.amortization_months)
+      ? form.repayment_config ? form.repayment_config.amortization_months ?? null : maybeNumber(form.amortization_months)
       : null,
     balloon_amount: summary.balloon_amount,
     periodic_payment: summary.periodic_payment,
     post_io_payment: summary.post_io_payment,
     monthly_equivalent_payment: summary.monthly_equivalent_payment,
     monthly_program_coverage_amount: roundedMoney(programCoverage),
-    monthly_program_coverage_basis: form.monthly_program_coverage_basis,
+    monthly_program_coverage_basis: form.repayment_config ? "monthly_equivalent" : form.monthly_program_coverage_basis,
     debt_service_treatment: form.debt_service_treatment,
     retained_annual_debt_service: form.debt_service_treatment === "refinance" ? maybeNumber(form.retained_annual_debt_service) : null,
     lender_payment_override: form.lender_payment_override || form.repayment_structure === "fixed_payment" || form.repayment_structure === "custom",
@@ -403,6 +411,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     paymentBasisAmount: paymentBasis,
     interestOnlyMonths: maybeNumber(form.interest_only_months),
     amortizationMonths: maybeNumber(form.amortization_months),
+    repaymentConfig: form.repayment_config,
     periodicPaymentOverride: form.lender_payment_override || form.repayment_structure === "fixed_payment" || form.repayment_structure === "custom" ? maybeNumber(form.periodic_payment) : null,
   }) : null, [annualRate, approved, form, paymentBasis]);
   // The period-by-period schedule, on the same engine as the Financials tab and the client terms, for the
@@ -414,15 +423,17 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     const term = toNumber(form.term_months);
     const io = maybeNumber(form.interest_only_months) ?? 0;
     const amortization = maybeNumber(form.amortization_months);
-    const structure = form.repayment_structure === "fully_amortizing" && (amortization == null || amortization === term) ? "amortizing"
-      : form.repayment_structure === "interest_only_then_amortizing" && (amortization == null || amortization === term - io) ? "amortizing"
-      : form.repayment_structure === "interest_only" ? "interest_only" : null;
+    const structure = ["fully_amortizing", "balloon", "simple_interest"].includes(form.repayment_structure) && (form.repayment_config || amortization == null || amortization === term) ? "amortizing"
+      : form.repayment_structure === "interest_only_then_amortizing" && (form.repayment_config || amortization == null || amortization === term - io) ? "amortizing"
+      : ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : null;
     if (!structure) return null;
-    return buildSchedule(paymentBasis || approved, annualRate, term, { structure, interestOnlyMonths: form.repayment_structure === "interest_only_then_amortizing" ? io : 0, periodsPerYear: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) ?? 12 });
+    const engineStructure = form.repayment_structure === "simple_interest" ? "simple_interest" : structure;
+    return repaymentPreview(paymentBasis || approved, annualRate, term, { structure: engineStructure, interestOnlyMonths: usesInitialIo(form.repayment_structure, form.repayment_config) ? io : 0, periodsPerYear: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) ?? 12, repaymentConfig: form.repayment_config }).schedule;
   }, [annualRate, approved, form, paymentBasis]);
 
   const programCoverage = useMemo(() => {
     if (!form || !summary) return 0;
+    if (form.repayment_config) return summary.monthly_equivalent_payment ?? 0;
     const fullLimitInterest = approved * annualRate / 100 / 12;
     const drawInterest = (initialDraw ?? paymentBasis) * annualRate / 100 / 12;
     switch (form.monthly_program_coverage_basis) {
@@ -438,6 +449,10 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const validationErrors = useMemo(() => {
     if (!form || !summary) return [] as string[];
     const issues: string[] = [];
+    const advanced = repaymentPreview(paymentBasis || approved, annualRate, toNumber(form.term_months), { structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interestOnlyMonths: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, periodsPerYear: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) ?? 0, repaymentConfig: form.repayment_config });
+    if (form.repayment_config && (form.lender_payment_override || ["fixed_payment", "custom"].includes(form.repayment_structure))) issues.push("Advanced repayment cannot be combined with a lender-stated or custom payment override. Reset advanced repayment or use a calculated structure.");
+    if (advanced.error) issues.push(advanced.error);
+    if (form.repayment_structure === "simple_interest" && !form.repayment_config) issues.push("Simple interest requires advanced repayment. Set the amortization or a scheduled principal payment.");
     const amount = toNumber(form.approved_amount);
     const minimum = toNumber(form.min_activation_amount);
     const term = toNumber(form.term_months);
@@ -468,10 +483,10 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     if (apr !== null && (apr < 0 || apr > 100)) issues.push("APR must be between 0% and 100%.");
     if (form.payment_frequency === "custom" && (!(maybeNumber(form.payments_per_year) && toNumber(form.payments_per_year) > 0) || !form.custom_payment_frequency.trim())) issues.push("Describe the custom cadence and enter payments per year.");
     if (form.repayment_structure === "interest_only_then_amortizing" && (!io || io >= term)) issues.push("Interest-only months must be above zero and shorter than the facility term.");
-    if (["fully_amortizing", "interest_only_then_amortizing", "balloon"].includes(form.repayment_structure) && (!amortization || amortization <= 0)) issues.push("Enter the amortization period.");
-    if (form.repayment_structure === "interest_only_then_amortizing" && io && amortization && amortization < term - io) issues.push("The amortization period cannot be shorter than the remaining term after the interest-only phase.");
-    if (form.repayment_structure === "fully_amortizing" && amortization && amortization !== term) issues.push("Principal-and-interest terms must amortize over the facility term. Choose amortizing + balloon for a longer schedule.");
-    if (form.repayment_structure === "balloon" && amortization && amortization <= term) issues.push("Balloon structures need an amortization period longer than the facility term.");
+    if (!form.repayment_config && ["fully_amortizing", "interest_only_then_amortizing", "balloon"].includes(form.repayment_structure) && (!amortization || amortization <= 0)) issues.push("Enter the amortization period.");
+    if (!form.repayment_config && form.repayment_structure === "interest_only_then_amortizing" && io && amortization && amortization < term - io) issues.push("The amortization period cannot be shorter than the remaining term after the interest-only phase.");
+    if (!form.repayment_config && form.repayment_structure === "fully_amortizing" && amortization && amortization !== term) issues.push("Principal-and-interest terms must amortize over the facility term. Choose amortizing + balloon for a longer schedule.");
+    if (!form.repayment_config && form.repayment_structure === "balloon" && amortization && amortization <= term) issues.push("Balloon structures need an amortization period longer than the facility term.");
     if (isRevolving && maybeNumber(form.draw_period_months) !== null && toNumber(form.draw_period_months) > term) issues.push("The draw period cannot exceed the facility term.");
     if (form.repayment_structure === "custom" && !form.custom_payment_description.trim()) issues.push("Describe the custom payment schedule.");
     if (!summary.monthly_equivalent_payment || summary.monthly_equivalent_payment <= 0) issues.push("Enter terms that produce a positive lender payment, or use the lender-stated payment override.");
@@ -488,13 +503,13 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     if (form.maturity_date && form.commencement_date && form.maturity_date <= form.commencement_date) issues.push("Maturity must be after production commencement.");
     if (form.maturity_date && form.first_payment_date && form.first_payment_date > form.maturity_date) issues.push("The first payment cannot be after maturity.");
     return issues;
-  }, [form, isRevolving, paymentBasis, programCoverage, summary]);
+  }, [annualRate, approved, form, isRevolving, paymentBasis, programCoverage, summary]);
 
   const save = async () => {
     if (!form || !summary || !client.saveTermSheet || validationErrors.length) return;
     setBusy("save"); setErrors([]); setDone(null);
     try {
-      const result = await client.saveTermSheet(profileId, toBody(form, summary, annualRate, programCoverage));
+      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: current?.version ?? 0 });
       setState(result.state);
       setForm(formFrom(result.state.current, result.state.defaults));
       const version = result.state.current?.version;
@@ -586,7 +601,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     const nextUsesPaymentBasis = nextRevolving || ["interest_only", "interest_only_then_amortizing", "balloon"].includes(repayment);
     const nextInterestOnlyMonths = repayment === "interest_only_then_amortizing"
       ? str(Math.max(1, Math.min(maybeNumber(form.interest_only_months) ?? 12, Math.max(1, term - 1))))
-      : "";
+      : form.repayment_config && ["fully_amortizing", "balloon", "simple_interest"].includes(repayment) ? form.interest_only_months : "";
     const remainingTerm = Math.max(1, term - Number(nextInterestOnlyMonths || 0));
     const nextAmortizationMonths = repayment === "fully_amortizing"
       ? str(term)
@@ -708,7 +723,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
                   <label className="pp-field"><span className="pp-lbl">{isRevolving ? "Minimum initial draw / activation" : "Minimum activation amount"} <SrcChip k="min_activation_amount" /></span>
                     <span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={form.min_activation_amount} onChange={(event) => upd({ min_activation_amount: decimal(event.target.value) })} /></span></label>
                   <label className="pp-field"><span className="pp-lbl">Facility term <SrcChip k="term_months" /></span>
-                    <span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.term_months} onChange={(event) => { const termMonths = integer(event.target.value); upd({ term_months: termMonths, ...(form.repayment_structure === "fully_amortizing" ? { amortization_months: termMonths } : {}) }); }} /><span className="pp-affix">months</span></span></label>
+                    <span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.term_months} onChange={(event) => { const termMonths = integer(event.target.value); upd({ term_months: termMonths, ...(form.repayment_structure === "fully_amortizing" && !form.repayment_config ? { amortization_months: termMonths } : {}) }); }} /><span className="pp-affix">months</span></span></label>
                   {isRevolving ? <>
                     <label className="pp-field"><span className="pp-lbl">Expected initial draw</span><span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={form.initial_draw_amount} onChange={(event) => upd({ initial_draw_amount: decimal(event.target.value) })} placeholder="Optional" /></span></label>
                     <label className="pp-field"><span className="pp-lbl">Draw / availability period</span><span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.draw_period_months} onChange={(event) => upd({ draw_period_months: integer(event.target.value) })} /><span className="pp-affix">months</span></span></label>
@@ -746,7 +761,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
               <section className="pp-ts-section">
                 <div className="pp-ts-section-head"><span>4</span><div><h4>Repayment structure</h4><p>Payment structure is independent of product type. Choose it explicitly, then confirm the calculated schedule.</p></div></div>
                 <div className="pp-ts-choice-grid" role="radiogroup" aria-label="Repayment structure">
-                  {REPAYMENT_STRUCTURES.map((option) => <button key={option.value} type="button" className={`pp-ts-choice${form.repayment_structure === option.value ? " on" : ""}`} role="radio" aria-checked={form.repayment_structure === option.value} onClick={() => repaymentChanged(option.value)}><b>{option.label}</b><span>{option.detail}</span></button>)}
+                  {REPAYMENT_STRUCTURES.map((option) => <button key={option.value} type="button" className={`pp-ts-choice${form.repayment_structure === option.value ? " on" : ""}`} role="radio" aria-checked={form.repayment_structure === option.value} onClick={() => repaymentChanged(option.value)}><b>{form.repayment_config && option.value === "fully_amortizing" ? "Amortizing" : option.label}</b><span>{form.repayment_config && option.value === "fully_amortizing" ? "Declining-balance principal and interest; principal payments and maturity set below." : option.detail}</span></button>)}
                 </div>
                 <div className="pp-grid">
                   <label className="pp-field"><span className="pp-lbl">Payment frequency</span><select className="pp-input" value={form.payment_frequency} onChange={(event) => upd({ payment_frequency: event.target.value as PaymentFrequency })}>{PAYMENT_FREQUENCIES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
@@ -754,8 +769,9 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
                     <label className="pp-field"><span className="pp-lbl">Payments per year</span><input className="pp-input" inputMode="decimal" value={form.payments_per_year} onChange={(event) => upd({ payments_per_year: decimal(event.target.value) })} placeholder="18" /></label>
                     <label className="pp-field"><span className="pp-lbl">Cadence description</span><input className="pp-input" value={form.custom_payment_frequency} onChange={(event) => upd({ custom_payment_frequency: event.target.value })} placeholder="Every 20 days" /></label>
                   </> : null}
-                  {form.repayment_structure === "interest_only_then_amortizing" ? <label className="pp-field"><span className="pp-lbl">Interest-only period</span><span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.interest_only_months} onChange={(event) => upd({ interest_only_months: integer(event.target.value) })} /><span className="pp-affix">months</span></span></label> : null}
-                  {showAmortization ? <label className="pp-field"><span className="pp-lbl">Amortization period</span><span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.amortization_months} onChange={(event) => upd({ amortization_months: integer(event.target.value) })} /><span className="pp-affix">months</span></span></label> : null}
+                  {usesInitialIo(form.repayment_structure, form.repayment_config) ? <label className="pp-field"><span className="pp-lbl">Interest-only period</span><span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.interest_only_months} onChange={(event) => upd({ interest_only_months: integer(event.target.value) })} /><span className="pp-affix">months</span></span></label> : null}
+                  {showAmortization && !form.repayment_config ? <label className="pp-field"><span className="pp-lbl">Amortization period</span><span className="pp-num u-unit"><input className="pp-input" inputMode="numeric" value={form.amortization_months} onChange={(event) => upd({ amortization_months: integer(event.target.value) })} /><span className="pp-affix">months</span></span></label> : null}
+                  <div style={{ gridColumn: "1 / -1", minWidth: 0 }}><AdvancedRepaymentEditor value={form.repayment_config} onChange={(config) => upd({ repayment_config: config })} amount={paymentBasis || approved} ratePct={annualRate} termMonths={toNumber(form.term_months)} structure={["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing"} interestOnlyMonths={usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0} periodsPerYear={periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) ?? 0} disabled={!state?.can_edit} unsupportedReason={form.lender_payment_override || ["fixed_payment", "custom"].includes(form.repayment_structure) ? "Advanced repayment requires a calculated loan structure without a lender-stated payment override." : null} /></div>
                   {showPaymentBasis && !isRevolving ? <label className="pp-field"><span className="pp-lbl">Balance used for payment estimate</span><span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={form.payment_basis_amount} onChange={(event) => upd({ payment_basis_amount: decimal(event.target.value) })} placeholder="Defaults to approved amount" /></span></label> : null}
                   {form.repayment_structure === "custom" ? <label className="pp-field span-3"><span className="pp-lbl">Custom payment schedule</span><textarea className="pp-input" rows={3} value={form.custom_payment_description} onChange={(event) => upd({ custom_payment_description: event.target.value })} placeholder="Describe each phase, payment rule, maturity obligation and any lender minimum." /></label> : null}
                 </div>
@@ -777,8 +793,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
 
                 <div className="pp-ts-coverage">
                   <div><b>Program monthly coverage amount</b><p>This is the monthly amount used by the production build and 125% remittance covenant. It is separate from a changing LOC or HELOC payment.</p></div>
-                  <label className="pp-field"><span className="pp-lbl">Coverage basis</span><select className="pp-input" value={form.monthly_program_coverage_basis} onChange={(event) => upd({ monthly_program_coverage_basis: event.target.value as ProgramCoverageBasis })}>{COVERAGE_OPTIONS.map(([value, label]) => <option key={value} value={value} disabled={value === "post_io_payment" && !summary.post_io_monthly_equivalent}>{label}</option>)}</select></label>
-                  <label className="pp-field"><span className="pp-lbl">Monthly amount</span><span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={manualCoverage ? form.monthly_program_coverage_amount : roundedMoney(programCoverage) ?? ""} disabled={!manualCoverage} onChange={(event) => upd({ monthly_program_coverage_amount: decimal(event.target.value) })} /></span></label>
+                  <label className="pp-field"><span className="pp-lbl">Coverage basis</span><select className="pp-input" value={form.repayment_config ? "monthly_equivalent" : form.monthly_program_coverage_basis} disabled={!!form.repayment_config} onChange={(event) => upd({ monthly_program_coverage_basis: event.target.value as ProgramCoverageBasis })}>{COVERAGE_OPTIONS.map(([value, label]) => <option key={value} value={value} disabled={value === "post_io_payment" && !summary.post_io_monthly_equivalent}>{label}</option>)}</select></label>
+                  <label className="pp-field"><span className="pp-lbl">Monthly amount</span><span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={manualCoverage && !form.repayment_config ? form.monthly_program_coverage_amount : roundedMoney(programCoverage) ?? ""} disabled={!manualCoverage || !!form.repayment_config} onChange={(event) => upd({ monthly_program_coverage_amount: decimal(event.target.value) })} /></span></label>
                 </div>
 
                 <div className="pp-ts-coverage">

@@ -4,6 +4,7 @@
 // route here is super-admin only on the server; the pages guard the UI too.
 // Decimals arrive as strings and stay strings until formatted.
 
+import type { RepaymentConfig } from "@/lib/loanSchedule";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi } from "@/hooks/useApi";
 
@@ -49,12 +50,12 @@ export interface CpListingRef { id: string; ref: string; status: CpListingStatus
 /** One product offered on a listing: a program with suggested amount, rate and term; the primary one supplies the headline terms. */
 export interface CpListingProduct {
   program_key: string | null; label: string; amount: number | string | null; rate_pct: number | string | null; factor_rate?: number | string | null;
-  term_months: number | null; interest_only?: boolean; structure?: "amortizing" | "simple_interest" | "interest_only" | null; interest_only_months?: number | null; payment_frequency: "monthly" | "weekly" | "daily" | null; monthly_payment: number | string | null; dscr: number | string | null;
+  term_months: number | null; interest_only?: boolean; structure?: "amortizing" | "simple_interest" | "interest_only" | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_frequency: "monthly" | "weekly" | "biweekly" | "daily" | "custom" | null; monthly_payment: number | string | null; dscr: number | string | null;
   notes: string | null; primary: boolean;
 }
 export interface CpOfferSuggestion {
   program_key: string | null; label: string; eligible: boolean | null; amount: number | null; rate_pct: number | null; factor_rate: number | null; term_months: number;
-  interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; payment_frequency: string; monthly_payment: number | null; dscr: number | null; dscr_status: string; affordable_amount: number | null; room_monthly: number | null;
+  interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_frequency: string; monthly_payment: number | null; dscr: number | null; dscr_status: string; affordable_amount: number | null; room_monthly: number | null;
   requested_amount: number | null; requested_monthly_payment: number | null; requested_dscr: number | null; requested_dscr_status: string;
   bounds: { min_amount: number | null; max_amount: number | null; min_term: number | null; max_term: number | null; pricing_basis: string | null; published: boolean };
   reason: string | null; reading: string;
@@ -64,7 +65,7 @@ export interface CpOfferSuggestions {
   debt_service_source: string | null; target_dscr: number; requested_amount: number | null; products: CpOfferSuggestion[];
   plan_active?: boolean; payoff_total?: number | null; interest_only?: boolean;
   /** The loan the desk's plan carries: amount, rate, term, interest-only and its payment. */
-  plan_loan?: { amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; payment_monthly: number | null; source: string | null } | null;
+  plan_loan?: { repayment_config?: RepaymentConfig | null; amount: number; rate_pct: number; term_months: number | null; interest_only: boolean; payment_monthly: number | null; source: string | null } | null;
 }
 /** What the listing carries against the file now: published, up to date, and which sections moved since the last push. */
 export interface CpSyncState {

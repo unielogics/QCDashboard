@@ -1,3 +1,4 @@
+import type { RepaymentConfig } from "@/lib/loanSchedule";
 // Shapes mirror app/schemas/production_package.py on the backend.
 
 export type PackageStatus = "draft" | "out_for_signature" | "executed" | "void";
@@ -246,6 +247,7 @@ export type FundingPartyKind = "Sponsor" | "Qualified Commercial LLC" | "Lender"
 export type FacilityKind = "term_loan" | "revolving_loc" | "heloc" | "hybrid" | "other";
 export type RepaymentStructure =
   | "fully_amortizing"
+  | "simple_interest"
   | "interest_only"
   | "interest_only_then_amortizing"
   | "balloon"
@@ -307,6 +309,7 @@ export type TermSheetStructuredFields = {
   draw_period_months?: number | null;
   interest_only_months?: number | null;
   amortization_months?: number | null;
+  repayment_config?: RepaymentConfig | null;
   balloon_amount?: number | null;
   periodic_payment?: number | null;
   post_io_payment?: number | null;
@@ -342,6 +345,7 @@ export type TermSheetExtra = TermSheetStructuredFields & {
 export type TermSheetUseOfFunds = Partial<Record<UseOfFundsKey, number | null>> & { other_label?: string | null };
 
 export type TermSheetBody = {
+  expected_version?: number | null;
   funding_party_kind: FundingPartyKind;
   lender_id: string | null;
   funding_party_name: string;
