@@ -127,6 +127,8 @@ export type EvidenceDecisionStatus =
   | "failed";
 
 export type ProgramFitCandidate = {
+  rule_results?: Array<{ field?: string; operator?: string; op?: string; required?: unknown; observed?: unknown; status?: string; state?: string; negated?: boolean }>;
+  fact_sources?: { annual_ebitda?: { verification_status?: string; kind?: string; currency?: string | null; period?: string | null; months_covered?: number | null; annualization_factor?: number | null; basis?: string | null; accounting_basis?: string | null; corrected_inputs?: unknown[]; reason?: string | null; action?: string | null; source_refs?: import("./financialMetrics").MetricSourceRef[] } };
   program_key: string;
   program_name: string;
   catalog_id: string;

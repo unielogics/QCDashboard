@@ -4,6 +4,7 @@
 import type { AccountMovements } from "./accountMovements";
 import type { FinancialDebtReview } from "./financialDebtReview";
 import type { FinancialEbitda, FinancialMetricReview } from "./financialMetrics";
+import type { RefinanceEbitda } from "./ebitdaRefinance";
 
 export type DscrStatus = "unavailable" | "concerning" | "acceptable" | "healthy" | "very_strong";
 export type CockpitConfidence = "filed" | "statement" | "statement_unverified" | "proxy";
@@ -495,6 +496,7 @@ export type PlanModification = { kind: string; label: string; detail: string | n
 export type PlanPair = { before: number | null; after: number | null; change: number | null };
 /** Original, with the plan, and the difference. */
 export type PlanImpact = {
+  ebitda?: RefinanceEbitda;
   active: boolean;
   dscr: PlanPair & { basis: string | null; status_before: DscrStatus; status_after: DscrStatus; no_debt_left: boolean };
   income_annual: PlanPair;
@@ -530,6 +532,7 @@ export type PlanReplayRow = {
 export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
 export type PlanEvaluation = {
+  ebitda?: RefinanceEbitda;
   active: boolean;
   retired_ids: string[];
   excluded_ids: string[];

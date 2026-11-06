@@ -46,6 +46,7 @@ import {
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
 import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
+import { EbitdaRefinanceComparison } from "./EbitdaRefinanceComparison";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
 import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
@@ -720,7 +721,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     </div>
   </details> : null;
   const planActions = canEdit ? <><Btn size="sm" onClick={clearPlan} disabled={!dirty && !plan.retire.length && !plan.exclude.length && !plan.new_payment_monthly && !plan.new_loan_amount}>Clear plan</Btn><Btn size="sm" variant="pri" disabled={!dirty && !legacySelectionsReviewed || save.isPending || unresolvedPayoffs} onClick={() => void submit()}>{save.isPending ? "Saving…" : "Save plan"}</Btn></> : null;
-  const planReview = <>{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
+  const planReview = <><EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
   return <>
     <section className={`fc-card ${styles.summaryCard}`} aria-label="Debt coverage and financial review">
       <div className={styles.summaryHead}><div><h4>Debt coverage and financial review</h4><p className={styles.note}>Saved financial figures, the working debt schedule, and observed statement payments stay distinct.</p></div><div className={styles.summaryActions}>
@@ -735,6 +736,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         <div><small>{review?.published.complete ? "Saved debt service" : "Current service basis"}</small><strong>{money(review?.published.complete ? review.published.monthly : local.serviceBefore)}</strong><span>{review?.published.complete ? "Complete saved debt schedule / month" : `Provisional / month · ${sourceLabel(debt_service_source)}`}</span></div>
         <div><small>Working schedule</small><strong>{review ? `${review.working.active_rows} obligations` : "Open review"}</strong><span>{review ? review.working.complete ? "Complete · Save version publishes changes" : "Review the required answers" : "Uses the same draft as Evidence & banking"}</span></div>
       </div>
+      <EbitdaRefinanceComparison value={local.ebitda} compact scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => onRequestStatement("profit_and_loss") : undefined} />
       {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}
     </section>
     <FinancialReviewDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />

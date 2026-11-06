@@ -1,5 +1,5 @@
 import type { FundingProgramCatalogItem, FundingProgramScope } from "@/lib/fundingPrograms";
-import { FIT_FIELDS, objectValue } from "./fundingProgramEditorModel";
+import { ANNUAL_EBITDA_POLICY, FIT_FIELDS, objectValue } from "./fundingProgramEditorModel";
 import { currentProgramDraft, WORKSPACE_LABELS } from "./fundingProgramValidationModel";
 
 export type ProgramStatusBadge = { label: string; tone: "ok" | "warn" | "mut" };
@@ -30,6 +30,8 @@ export type SummaryDocument = {
   appliesWhen: SummaryRule | null;
 };
 export type ProgramEffectSummary = {
+  annualEbitdaPolicy?: string;
+  annualEbitdaSourceReference?: string;
   routes: SummaryRoute[];
   fit: SummaryRule | null;
   checkCount: number;
@@ -54,7 +56,7 @@ const VALUES: Record<string, string> = {
   restaurant_food_service: "Restaurants and food service", manufacturing: "Manufacturing",
   automotive: "Automotive", auto_dealer: "Auto dealerships", car_dealer: "Auto dealerships",
 };
-const MONEY_FIELDS = new Set(["requested_amount", "use_of_funds_total", "real_estate_equipment_amount", "annual_revenue", "annualized_deposits", "cash_flow", "debt_burden", "liquid_assets", "revenue", "deposits"]);
+const MONEY_FIELDS = new Set(["requested_amount", "use_of_funds_total", "real_estate_equipment_amount", "annual_revenue", "annual_ebitda", "annualized_deposits", "cash_flow", "debt_burden", "liquid_assets", "revenue", "deposits"]);
 const PERCENT_FIELDS = new Set(["real_estate_equipment_pct", "gross_margin_pct", "net_margin_pct"]);
 const FACTS: Record<string, string> = {
   declared_collateral: "Real estate collateral", mca_obligations_present: "Existing merchant cash advances",
@@ -152,7 +154,8 @@ export function summarizeProgramEffects(scopes: FundingProgramScope[], rulesText
   const fit = rules.fit ? summarizeFitRule(rules.fit) : null;
   const preferences = Array.isArray(rules.recommendation_preferences) ? rules.recommendation_preferences.filter(objectValue).map((row) => ({ label: text(row.label) || "Unnamed preference", score: typeof row.score === "number" && Number.isFinite(row.score) ? row.score : null, condition: summarizeFitRule(row.when) })) : [];
   if (Array.isArray(rules.unresolved_review_items) && rules.unresolved_review_items.length) warnings.push(`${rules.unresolved_review_items.length} imported ${rules.unresolved_review_items.length === 1 ? "item still needs" : "items still need"} review before enabling.`);
-  return { routes, fit, checkCount: countChecks(fit), documents, priority: typeof rules.priority === "number" && Number.isFinite(rules.priority) ? rules.priority : null, requestedAmountMaximum: unconditionalRequestedMaximum(rules.fit), preferences, warnings };
+  const annualConfigured = JSON.stringify(rules.fit ?? {}).includes('"annual_ebitda"');
+  return { routes, fit, checkCount: countChecks(fit), documents, priority: typeof rules.priority === "number" && Number.isFinite(rules.priority) ? rules.priority : null, requestedAmountMaximum: unconditionalRequestedMaximum(rules.fit), preferences, warnings, ...(annualConfigured ? { annualEbitdaPolicy: ANNUAL_EBITDA_POLICY } : {}), ...(objectValue(rules.financial_limits) && typeof rules.financial_limits.source_reference === "string" ? { annualEbitdaSourceReference: rules.financial_limits.source_reference } : {}) };
 }
 
 export const PROGRAM_EFFECT_SAFEGUARDS = "Fit is advisory—not a financing approval or guarantee. Authorized staff can override an ineligible recommendation with an audited reason.";

@@ -26,6 +26,8 @@
   display: grid;
   gap: 16px;
 }
+.financialCheck { margin: 10px 0; border: 1px solid var(--line); border-radius: 8px; padding: 10px; display: grid; gap: 7px; min-width: 0; font-size: 12px; }
+.financialCheck p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 
 .toolbar {
   display: grid;

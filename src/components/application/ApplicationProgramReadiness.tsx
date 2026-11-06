@@ -128,6 +128,8 @@ export function ApplicationProgramReadiness({
   onOpenFinancials,
   canAddRequirements = false,
   onOpenForms,
+  onPreviewFinancialEvidence,
+  onRequestFinancialEvidence,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -158,6 +160,8 @@ export function ApplicationProgramReadiness({
   canAddRequirements?: boolean;
   /** Opens the financial forms (fill one in yourself). */
   onOpenForms?: () => void;
+  onPreviewFinancialEvidence?: (fileId: string, page?: number) => void;
+  onRequestFinancialEvidence?: () => void;
 }) {
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();
@@ -942,7 +946,7 @@ export function ApplicationProgramReadiness({
     </section>
     </details>
 
-    {programPickerOpen ? <FundingProgramPicker candidates={readiness.candidates} selections={readiness.selections} selectedKeys={selectedPrograms} onSelectionChange={setSelectedPrograms} reason={programReason} onReasonChange={setProgramReason} requiresOverride={ineligibleSelected.length > 0} changed={programsChanged} busy={busy === "programs"} error={error} onClose={closeProgramPicker} onApply={() => void savePrograms(false)} selectionMode={readiness.selection_mode} /> : null}
+    {programPickerOpen ? <FundingProgramPicker candidates={readiness.candidates} selections={readiness.selections} selectedKeys={selectedPrograms} onSelectionChange={setSelectedPrograms} reason={programReason} onReasonChange={setProgramReason} requiresOverride={ineligibleSelected.length > 0} changed={programsChanged} busy={busy === "programs"} error={error} onClose={closeProgramPicker} onApply={() => void savePrograms(false)} selectionMode={readiness.selection_mode} onPreviewSource={onPreviewFinancialEvidence ? (fileId, page) => { closeProgramPicker(); onPreviewFinancialEvidence(fileId, page); } : undefined} onRequestEvidence={onRequestFinancialEvidence ? () => { closeProgramPicker(); onRequestFinancialEvidence(); } : undefined} /> : null}
 
     <Drawer open={customProgramOpen} onClose={() => { if (busy !== "create-program") setCustomProgramOpen(false); }} title="Add a funding program" sub="Create a reviewed catalog program, publish its first criteria version, and select it on this file." width="md" closeOnBackdrop={busy !== "create-program"} footer={<><Btn onClick={() => setCustomProgramOpen(false)} disabled={busy === "create-program"}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={() => void createAndSelectProgram()} disabled={busy === "create-program" || customProgram.name.trim().length < 2 || programKey(customProgram.programKey || customProgram.name).length < 2 || customProgram.reason.trim().length < 8}>{busy === "create-program" ? "Creating and selecting..." : "Create and select"}</Btn></>}>
       <div className="grid g12">

@@ -627,6 +627,15 @@ export function FinancialCockpit(props: Props) {
   const [sourcePreview, setSourcePreview] = useState<{ profileId: string; fileId: string; page?: number; requestId: number } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<BucketReviewFile[]>([]);
   const activeProfileRef = useRef(props.profileId);
+  const refetchCockpit = query.refetch;
+  const refreshFinancialFacts = useCallback(async () => {
+    const refreshed = await refetchCockpit();
+    if (activeProfileRef.current !== profileId) return refreshed;
+    for (const key of ["application-assessment", "application-intelligence", "application-evidence-workspace"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+    void queryClient.invalidateQueries({ queryKey: ["lead-program-fit"] });
+    await onRefreshProgramReadiness?.();
+    return refreshed;
+  }, [onRefreshProgramReadiness, profileId, queryClient, refetchCockpit]);
   const sourceFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     activeProfileRef.current = props.profileId;
@@ -764,7 +773,7 @@ export function FinancialCockpit(props: Props) {
       </KpiRow>
 
       <div className="fc-grid">
-        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={() => query.refetch()} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} />
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} />
       </div>
 
       <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
@@ -794,6 +803,8 @@ export function FinancialCockpit(props: Props) {
             </div>
             <ApplicationProgramReadiness
               section="setup"
+              onPreviewFinancialEvidence={openSourcePreview}
+              onRequestFinancialEvidence={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined}
               profileId={props.profileId}
               files={[]}
               value={props.programReadiness}

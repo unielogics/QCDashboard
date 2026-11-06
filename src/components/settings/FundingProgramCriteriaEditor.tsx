@@ -11,10 +11,10 @@ import styles from "./FundingProgramEditor.module.css";
 import documentStyles from "./FundingProgramDocuments.module.css";
 import { FundingProgramPreferencesEditor } from "./FundingProgramPreferencesEditor";
 
-type Props = { rules: string; requirements: string; onRules: (value: string) => void; onRequirements: (value: string) => void };
+type Props = { rules: string; requirements: string; programKey?: string; onRules: (value: string) => void; onRequirements: (value: string) => void };
 const pretty = (value: unknown) => JSON.stringify(value, null, 2);
 
-function EligibilityBuilder({ rules, onChange }: { rules: Record<string, unknown>; onChange: (rules: Record<string, unknown>) => void }) {
+function EligibilityBuilder({ rules, onChange, programKey }: { rules: Record<string, unknown>; onChange: (rules: Record<string, unknown>) => void; programKey?: string }) {
   const fit = readSimpleFit(rules);
   if (!fit) return <ValidationTarget target="Eligibility checks"><Callout tone="warn">This version has advanced conditions. They are preserved exactly. Use Advanced settings below to review or change the complete rule set.</Callout></ValidationTarget>;
   function update(index: number, patch: Partial<FitCondition>) {
@@ -33,7 +33,7 @@ function EligibilityBuilder({ rules, onChange }: { rules: Record<string, unknown
           const nextField = FIT_FIELDS.find((row) => row.key === event.target.value)!;
           const replacement: FitCondition = { field: nextField.key, op: nextField.type === "number" ? "gte" : "eq", value: nextField.type === "boolean" ? true : "" };
           onChange(writeSimpleFit(rules, { ...fit, conditions: fit.conditions.map((row, i) => i === index ? replacement : row) }));
-        }}>{FIT_FIELDS.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</Select></Field>
+        }}>{FIT_FIELDS.map((item) => <option key={item.key} value={item.key} disabled={item.key === "annual_ebitda" && programKey?.startsWith("arf_")}>{item.label}</option>)}</Select>{field.hint ? <small className={styles.muted}>{field.hint}</small> : null}</Field>
         <Field label="Condition"><Select aria-label={`Check ${index + 1} condition`} value={condition.op} onChange={(event) => {
           const op = event.target.value;
           const next: FitCondition = { field: condition.field, op };
@@ -139,7 +139,7 @@ function EvidenceBuilder({ requirements, onChange }: { requirements: Array<Recor
   </div>;
 }
 
-export function FundingProgramCriteriaEditor({ rules, requirements, onRules, onRequirements }: Props) {
+export function FundingProgramCriteriaEditor({ rules, requirements, programKey, onRules, onRequirements }: Props) {
   const confirmAction = useConfirmAction();
   let parsedRules: Record<string, unknown> | null = null;
   let parsedRequirements: Array<Record<string, unknown>> | null = null;
@@ -153,7 +153,9 @@ export function FundingProgramCriteriaEditor({ rules, requirements, onRules, onR
   }
   return <div className={styles.stack}>
     {unresolved.length ? <ValidationTarget target="Imported items to resolve"><div className={styles.unresolved}><h4>Imported items to resolve · {unresolved.length}</h4><p className={styles.muted}>Publishing is blocked until staff review these imported items. Update the relevant checks or document instructions first, mark each item resolved, then save a new criteria draft.</p><ul>{unresolved.map((item, index) => <li key={index}><span>{String(item)}</span><Btn aria-label={`Mark imported item ${index + 1} resolved`} onClick={() => void resolveImportedItem(index)}>Mark resolved</Btn></li>)}</ul></div></ValidationTarget> : null}
-    {parsedRules ? <EligibilityBuilder rules={parsedRules} onChange={(value) => onRules(pretty(value))} /> : <ValidationTarget target="Eligibility checks"><Callout tone="bad">The eligibility rules need correction in Advanced settings.</Callout></ValidationTarget>}
+    {parsedRules ? <EligibilityBuilder programKey={programKey} rules={parsedRules} onChange={(value) => onRules(pretty(value))} /> : <ValidationTarget target="Eligibility checks"><Callout tone="bad">The eligibility rules need correction in Advanced settings.</Callout></ValidationTarget>}
+    {programKey?.startsWith("arf_") ? <p className={styles.muted}>ARF specialist programs do not accept annual EBITDA criteria. Use their supported specialist checks.</p> : null}
+    {parsedRules && objectValue(parsedRules.financial_limits) ? <div className={styles.stack}><h4>Documented annual EBITDA minimum · USD</h4><p className={styles.muted}>The minimum follows its mandatory eligibility check above. Keep the source reference when reviewing a suggested baseline; this does not publish the limit.</p><Field label="Annual EBITDA source reference"><Textarea aria-label="Annual EBITDA source reference" rows={2} value={String(parsedRules.financial_limits.source_reference ?? "")} onChange={(event) => onRules(pretty({ ...parsedRules, financial_limits: { ...objectValue(parsedRules.financial_limits) ? parsedRules.financial_limits : {}, source_reference: event.target.value } }))} /></Field><Btn onClick={() => { const next = { ...parsedRules }; delete next.financial_limits; onRules(pretty(next)); }}>Use ordinary eligibility checks without limit metadata</Btn></div> : null}
     {parsedRules ? <FundingProgramPreferencesEditor rules={parsedRules} onChange={(value) => onRules(pretty(value))} /> : null}
     {parsedRequirements ? <EvidenceBuilder requirements={parsedRequirements} onChange={(value) => onRequirements(pretty(value))} /> : <Callout tone="bad">The document requirements need correction in Advanced settings.</Callout>}
     <details className={styles.details}><summary>Advanced settings · full rules and document configuration</summary><div className={styles.stack}><p className={styles.muted}>Existing nested rules and additional settings are preserved. Use this section only for configurations that need technical editing.</p><Field label="Eligibility rules JSON"><Textarea aria-label="Eligibility rules JSON" className="funding-program-json" rows={10} value={rules} onChange={(event) => onRules(event.target.value)} spellCheck={false} /></Field><Field label="Document requirements JSON"><Textarea aria-label="Document requirements JSON" className="funding-program-json" rows={10} value={requirements} onChange={(event) => onRequirements(event.target.value)} spellCheck={false} /></Field></div></details>

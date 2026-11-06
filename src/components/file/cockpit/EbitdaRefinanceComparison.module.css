@@ -1,0 +1,11 @@
+.panel { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 9px; }
+.panel h4, .panel p { margin: 0; }
+.values { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px; }
+.values > div { display: grid; align-content: start; gap: 6px; border: 1px solid var(--line); border-radius: 8px; padding: 11px; min-width: 0; }
+.values small, .note { color: var(--muted); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
+.values strong { font-size: 20px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.adjustments { max-height: 260px; overflow: auto; display: grid; gap: 8px; padding-left: 20px; font-size: 12px; line-height: 1.6; }
+.source { border: 0; background: none; padding: 0; font: inherit; font-size: 11px; color: var(--accent); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.support { border: 1px solid var(--line); border-radius: 8px; padding: 12px; display: grid; gap: 8px; }
+@media (max-width: 500px) { .values { grid-template-columns: minmax(0, 1fr); } }
