@@ -2,7 +2,7 @@
 
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import { useCallback, useRef } from "react";
-import type { AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
+import type { AttentionItemKind, AttentionQueue, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
@@ -406,12 +406,18 @@ export function useAITasks() {
 }
 
 /** What is stalling on the desk, each row with the link that opens its file. */
-export function useAttentionQueue(enabled = true) {
+export function useAttentionQueue(enabled = true, options?: { limit?: number; offset?: number; kind?: AttentionItemKind; q?: string }) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  const search = options?.q?.trim().replace(/\s+/g, " ") ?? "";
+  const params = new URLSearchParams();
+  if (options?.limit != null) params.set("limit", String(options.limit));
+  if (options?.offset != null) params.set("offset", String(options.offset));
+  if (options?.kind) params.set("kind", options.kind);
+  if (search) params.set("q", search);
   return useQuery({
-    queryKey: ["attention-queue", devUser],
-    queryFn: () => apiCall<AttentionQueue>("/operator-files/attention"),
+    queryKey: ["attention-queue", devUser, options?.limit ?? 60, options?.offset ?? 0, options?.kind ?? "", search],
+    queryFn: () => apiCall<AttentionQueue>(`/operator-files/attention${params.size ? `?${params}` : ""}`),
     enabled,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,

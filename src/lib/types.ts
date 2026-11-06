@@ -3564,6 +3564,10 @@ export interface AttentionQueue {
   generated_at: string;
   items: AttentionItem[];
   counts: Partial<Record<AttentionItemKind, number>>;
+  total: number;
+  filtered_total: number;
+  limit: number;
+  offset: number;
 }
 
 // --- AI action items seen from the desk (GET /buckets/admin/ai-action-items) ---
