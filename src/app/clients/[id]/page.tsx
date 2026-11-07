@@ -415,10 +415,7 @@ export default function ClientDetailPage() {
         <Kpi label="Funded" value={QC_FMT.short(Number(client.funded_total))} />
       </KpiRow>
 
-      {/* Credit pull widget — summary card + drill-down to the full
-          parsed report. Operators see this as the canonical credit view
-          for the client; the underlying iSoftPull HTML is reachable via
-          the "View raw report" link inside CreditReportDetail. */}
+      {/* Credit summary and the interactive structured report for this pull. */}
       {credit && (
         <>
           <CreditSummaryCard summary={creditSummary} loading={summaryLoading} />
@@ -443,7 +440,7 @@ export default function ClientDetailPage() {
             </span>
           </Row>
           {showFullReport ? (
-            <CreditReportDetail report={parsedReport} loading={parsedLoading} />
+            <CreditReportDetail key={credit.id} report={parsedReport} loading={parsedLoading} />
           ) : null}
         </>
       )}

@@ -1,299 +1,213 @@
 "use client";
 
-// Operator-facing full credit report. Renders every field iSoftPull
-// surfaced — score models with reason codes, personal info, identity
-// risk panel, address/employment history, tradelines, inquiries.
-//
-// Mounts on /clients/[id] under a "View full report" expansion.
-// Backend: GET /credit/pulls/{pull_id}/parsed (super_admin/loan_exec/broker only).
-//
-// Restyled onto the plain-CSS design system: each former Card+SectionLabel is
-// now one `.panel`, the field grids are `.grid` (auto-fit tracks stay inline —
-// their minimum column widths are a per-section design call, not a 12-col
-// span), and the status pills are `.cellchip`. The only colours still written
-// inline are the two data-derived ones: the fraud-shield banner and the
-// derogatory tradeline. Losing the red on a derog row would make it scan the
-// same as a current account, which is the one thing this screen exists to
-// prevent.
-
+import { useRef, useState } from "react";
 import { Icon } from "@/components/design-system/Icon";
 import { CreditRiskReview } from "@/components/CreditRiskReview";
-import { BtnLink, CellChip, Empty, Panel, Sub, Tag } from "@/components/ds";
-import type { ParsedReport, ParsedTradeAccount, ParsedInquiry } from "@/lib/types";
+import { Btn, BtnLink, CellChip, Empty, Input, Panel, Sub } from "@/components/ds";
+import type { ParsedReport, ParsedTradeAccount } from "@/lib/types";
+import {
+  creditAccountField, creditAccountLabel, creditAccountState, creditDisplayField, creditFieldGroups,
+  creditMoney, creditMonthlyPayment, creditPretty, creditReportSummary, filterCreditAccounts, type CreditAccountFilter,
+} from "@/lib/creditReportCockpit";
+import styles from "./CreditReportDetail.module.css";
 
-export function CreditReportDetail({
-  report,
-  loading,
-  reportLink,
-}: {
-  report: ParsedReport | undefined;
-  loading?: boolean;
-  reportLink?: string | null;
+type View = "accounts" | "scores" | "review" | "inquiries" | "identity" | "records" | "report";
+type RecordSelection = { kind: "collections" | "public_records"; index: number };
+
+export function CreditReportDetail({ report, loading, reportLink }: {
+  report: ParsedReport | undefined; loading?: boolean; reportLink?: string | null;
 }) {
-  if (loading) {
-    return (
-      <Panel>
-        <Sub>Loading credit report…</Sub>
-      </Panel>
-    );
+  if (loading) return <Panel><Sub>Loading credit report…</Sub></Panel>;
+  if (!report) return <Panel><Sub>No parsed credit report on file.</Sub></Panel>;
+  return <CreditCockpit report={report} reportLink={reportLink} />;
+}
+
+function CreditCockpit({ report, reportLink }: { report: ParsedReport; reportLink?: string | null }) {
+  const [view, setView] = useState<View>("accounts");
+  const [filter, setFilter] = useState<CreditAccountFilter>("all");
+  const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<number | null>(null);
+  const [scoreIndex, setScoreIndex] = useState(0);
+  const [inquiryIndex, setInquiryIndex] = useState<number | null>(null);
+  const [record, setRecord] = useState<RecordSelection | null>(null);
+  const [basis, setBasis] = useState<"balance" | "monthly" | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const summary = creditReportSummary(report);
+  const visible = filterCreditAccounts(report.trade_accounts, filter, search);
+  const account = selected == null ? undefined : report.trade_accounts[selected];
+  const selectedPosition = visible.findIndex((item) => item.index === selected);
+  const displayTotal = (value: number | null) => value == null ? "Not provided" : value.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  function openAccounts(next: CreditAccountFilter, metric: "balance" | "monthly" | null = null) {
+    setView("accounts"); setFilter(next); setSearch(""); setSelected(null); setBasis(metric);
   }
-  if (!report) {
-    return (
-      <Panel>
-        <Sub>No parsed credit report on file.</Sub>
-      </Panel>
-    );
+  function openAccount(index: number) {
+    setSelected(index);
+    requestAnimationFrame(() => {
+      headingRef.current?.focus({ preventScroll: true });
+      if (listRef.current && getComputedStyle(listRef.current).display === "none") {
+        headingRef.current?.closest("section")?.scrollIntoView({ block: "start" });
+      }
+    });
+  }
+  function backToAccounts() {
+    const previous = selected;
+    const narrow = listRef.current && getComputedStyle(listRef.current).display === "none";
+    setSelected(null);
+    requestAnimationFrame(() => listRef.current?.querySelector<HTMLButtonElement>('[data-account-index="' + previous + '"]')?.focus({ preventScroll: !narrow }));
+  }
+  function openSource(source: string) {
+    const trade = source.match(/(?:^|\.)trade_accounts\[(\d+)\]/);
+    if (trade && Number(trade[1]) < report.trade_accounts.length) {
+      setView("accounts"); setFilter("all"); setSearch(""); setBasis(null); openAccount(Number(trade[1])); return;
+    }
+    const item = source.match(/(?:^|\.)(collections|public_records)\[(\d+)\]/);
+    if (item && Number(item[2]) < report[item[1] as RecordSelection["kind"]].length) {
+      setView("records"); setRecord({ kind: item[1] as RecordSelection["kind"], index: Number(item[2]) }); return;
+    }
+    const score = source.match(/(?:^|\.)scores\[(\d+)\]/);
+    if (score && Number(score[1]) < report.scores.length) { setView("scores"); setScoreIndex(Number(score[1])); return; }
+    const inquiry = source.match(/(?:^|\.)inquiries\[(\d+)\]/);
+    if (inquiry && Number(inquiry[1]) < report.inquiries.length) { setView("inquiries"); setInquiryIndex(Number(inquiry[1])); return; }
+    if (/identity_risk|personal_info|addresses|employment/.test(source)) { setView("identity"); return; }
+    setView("report");
   }
 
-  const fraudText = report.identity_risk.fraud_shield?.text;
-  const ofacStatus = report.identity_risk.ofac?.search_status ?? "—";
-  const mlaStatus = report.identity_risk.mla?.covered_borrower_status ?? "—";
+  const views: { id: View; label: string }[] = [
+    { id: "accounts", label: "Accounts (" + summary.accounts + ")" },
+    { id: "scores", label: "Scores" },
+    { id: "review", label: "Review flags (" + (report.intelligence?.flag_count ?? 0) + ")" },
+    { id: "inquiries", label: "Inquiries (" + summary.inquiries + ")" },
+    { id: "identity", label: "Identity & history" },
+    { id: "records", label: "Records (" + (summary.collections + summary.publicRecords) + ")" },
+    { id: "report", label: "Full report details" },
+  ];
 
-  return (
-    <div className="grid">
-      {report.intelligence ? <CreditRiskReview review={report.intelligence} /> : null}
-      {/* Score models */}
-      <Panel
-        title="Credit scores"
-        actions={
-          reportLink ? (
-            <BtnLink
-              size="sm"
-              href={reportLink}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <Icon name="arrowR" size={11} /> View raw report
-            </BtnLink>
-          ) : undefined
-        }
-      >
-        <div className="grid cols-auto">
-          {report.scores.map((s, i) => (
-            <div className="kpi" key={i}>
-              <div className="lbl">{s.model}</div>
-              <div className="knum num">{s.score ?? "—"}</div>
-              {s.reason_codes.length > 0 ? (
-                <ul className="sub" style={{ marginTop: 6 }}>
-                  {s.reason_codes.map((rc, j) => (
-                    <li key={j}>• {rc}</li>
-                  ))}
-                </ul>
-              ) : null}
-            </div>
-          ))}
-          {report.scores.length === 0 ? <Empty>No scores parsed.</Empty> : null}
-        </div>
-      </Panel>
-
-      {/* Identity Risk — most operationally important panel */}
-      {(fraudText || ofacStatus !== "—" || mlaStatus !== "—") && (
-        <Panel title="Identity risk">
-          {fraudText ? (
-            <div
-              style={{
-                background: "var(--danger-tint)",
-                border: "1px solid rgba(180, 35, 24, 0.28)",
-                borderRadius: 10,
-                padding: "11px 13px",
-                marginBottom: 12,
-              }}
-            >
-              <div className="row">
-                <Icon name="alert" size={18} color="var(--danger)" stroke={2.4} />
-                <CellChip tone="bad">Fraud shield</CellChip>
-                <strong>{fraudText}</strong>
-              </div>
-            </div>
-          ) : null}
-          <div
-            className="grid"
-            style={{ gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))" }}
-          >
-            <KV label="OFAC search status" value={ofacStatus} />
-            <KV label="MLA covered borrower" value={mlaStatus} />
-          </div>
-        </Panel>
-      )}
-
-      {/* Personal info + addresses + employment */}
-      <Panel title="Personal information">
-        <div
-          className="grid"
-          style={{ gridTemplateColumns: "repeat(auto-fit, minmax(190px, 1fr))" }}
-        >
-          {Object.entries(report.personal_info).map(([k, v]) => (
-            <KV key={k} label={pretty(k)} value={v} />
-          ))}
-        </div>
-      </Panel>
-
-      {report.addresses.length > 0 && (
-        <Panel title="Address history">
-          <div className="grid cols-auto">
-            {report.addresses.map((a, i) => (
-              <div className="card" key={i}>
-                <Tag>{a.period}</Tag>
-                {Object.entries(a.fields).map(([k, v]) => (
-                  <div className="kv" key={k}>
-                    <span>{pretty(k)}</span>
-                    <b>{v}</b>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {report.employment.length > 0 && (
-        <Panel title="Employment history">
-          <div className="grid cols-auto">
-            {report.employment.map((e, i) => (
-              <div className="card" key={i}>
-                <Tag>{e.period}</Tag>
-                {Object.entries(e.fields).map(([k, v]) => (
-                  <div className="kv" key={k}>
-                    <span>{pretty(k)}</span>
-                    <b>{v}</b>
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        </Panel>
-      )}
-
-      {/* Tradelines */}
-      <Panel title={`Trade accounts (${report.trade_accounts.length})`}>
-        <div className="ladder">
-          {report.trade_accounts.length === 0 ? <Empty>No tradelines.</Empty> : null}
-          {report.trade_accounts.map((ta, i) => (
-            <TradeRow key={i} account={ta} />
-          ))}
-        </div>
-      </Panel>
-
-      {/* Inquiries */}
-      <Panel title={`Inquiries (${report.inquiries.length})`}>
-        {report.inquiries.length === 0 ? <Empty>No inquiries on file.</Empty> : null}
-        {report.inquiries.map((inq, i) => (
-          <InquiryRow key={i} inq={inq} />
-        ))}
-      </Panel>
-
-      {/* Public record + collections (only when present) */}
-      {report.public_records.length > 0 && (
-        <Panel
-          title={`Public records (${report.public_records.length})`}
-          actions={<CellChip tone="warn">Adverse</CellChip>}
-        >
-          <div className="tblwrap">
-            <pre className="sub">{JSON.stringify(report.public_records, null, 2)}</pre>
-          </div>
-        </Panel>
-      )}
-      {report.collections.length > 0 && (
-        <Panel
-          title={`Collections (${report.collections.length})`}
-          actions={<CellChip tone="warn">Adverse</CellChip>}
-        >
-          <div className="tblwrap">
-            <pre className="sub">{JSON.stringify(report.collections, null, 2)}</pre>
-          </div>
-        </Panel>
-      )}
-      {Object.entries(report.additional_sections ?? {}).map(([title, value]) => (
-        <Panel key={title} title={pretty(title)}><ReportFields value={value} /></Panel>
-      ))}
-    </div>
-  );
-}
-
-function ReportFields({ value }: { value: unknown }) {
-  if (Array.isArray(value)) return <div className="grid g12">{value.map((item, index) => <ReportFields key={index} value={item} />)}</div>;
-  if (value && typeof value === "object") return <dl className="grid g8">{Object.entries(value).map(([key, item]) => <div key={key}><dt className="lbl">{pretty(key)}</dt><dd style={{ margin: 0, overflowWrap: "anywhere" }}><ReportFields value={item} /></dd></div>)}</dl>;
-  return <span>{value == null ? "Not provided" : String(value)}</span>;
-}
-
-/** Stacked label-over-value. Distinct from the `.kv` class, which is the
- *  space-between row used for the address/employment field lists. */
-function KV({ label, value }: { label: string; value: string }) {
-  return (
-    <div>
-      <div className="lbl">{label}</div>
-      <div className="num">
-        <strong>{value}</strong>
-      </div>
-    </div>
-  );
-}
-
-function TradeRow({ account }: { account: ParsedTradeAccount }) {
-  const f = account.fields;
-  const status = (f.account_status ?? "").toLowerCase();
-  const rating = (f.account_rating ?? "").toLowerCase();
-  const isDerog = /delinquen|past due|charge|collection|120 days|90 days|60 days|default/.test(rating);
-  const isOpen = status === "open";
-  const balance = f.balance ?? "0";
-  const limit = f.credit_limit ?? "—";
-  const company = f.company ?? "—";
-  const accountType = f.account_type ?? "—";
-
-  return (
-    <div
-      className="card"
-      // Data-derived: a derogatory tradeline has to read as red at a glance.
-      style={isDerog ? { borderColor: "var(--danger)", background: "var(--danger-tint)" } : undefined}
-    >
+  return <div className={styles.cockpit}>
+    <header className={styles.header}>
+      <div><h3>Credit report cockpit</h3><p className="sub">Choose a metric, account or report section to see its supporting details.</p></div>
       <div className="row">
-        <strong>{company}</strong>
-        <span className="sp" />
-        <CellChip tone={isOpen ? "ok" : "mut"}>{f.account_status ?? "—"}</CellChip>
-        {isDerog ? <CellChip tone="bad">Derogatory</CellChip> : null}
+        {report.intelligence?.high_count ? <Btn size="sm" onClick={() => setView("review")}><CellChip tone="bad">{report.intelligence.high_count} high priority</CellChip></Btn> : null}
+        {reportLink ? <BtnLink size="sm" href={reportLink} target="_blank" rel="noopener noreferrer">Open source report<Icon name="arrowR" size={12} /></BtnLink> : null}
       </div>
-      <div className="sub">
-        {accountType} · {f.portfolio_type ?? "—"}
-      </div>
-      <div
-        className="grid mt"
-        style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))" }}
-      >
-        <KV label="Balance" value={`$${balance}`} />
-        {limit !== "0" && limit !== "—" ? <KV label="Limit" value={`$${limit}`} /> : null}
-        {f.monthly_payment_amount ? <KV label="Monthly" value={`$${f.monthly_payment_amount}`} /> : null}
-        {f.date_of_opening ? <KV label="Opened" value={f.date_of_opening} /> : null}
-        {f.date_reported ? <KV label="Reported" value={f.date_reported} /> : null}
-        {f.responsibility ? <KV label="Resp." value={f.responsibility} /> : null}
-        {f.past_due && f.past_due !== "N/A" ? <KV label="Past due" value={`$${f.past_due}`} /> : null}
-      </div>
-      {f.account_rating ? (
-        <div className="mt">
-          {isDerog ? (
-            <CellChip tone="bad">{f.account_rating}</CellChip>
-          ) : (
-            <Sub>{f.account_rating}</Sub>
-          )}
+    </header>
+
+    {report.scores.length ? <div className={styles.scores} aria-label="Reported credit scores">
+      {report.scores.map((score, index) => <button type="button" key={index} className={styles.score} aria-label={"View " + score.model + " score details"} onClick={() => { setScoreIndex(index); setView("scores"); }}>
+        <span className="lbl">{score.model}</span><strong className="num">{score.score ?? "Not provided"}</strong>
+        <span className="sub">{score.reason_codes.length ? score.reason_codes.length + (score.reason_codes.length === 1 ? " score factor" : " score factors") : "View reported details"} <Icon name="arrowR" size={12} /></span>
+      </button>)}
+    </div> : null}
+
+    <div className={styles.metrics} aria-label="Credit report summary">
+      <Metric label="Trade accounts" value={String(summary.accounts)} detail={summary.open + " reported open"} onClick={() => openAccounts("all")} />
+      <Metric label="Adverse accounts" value={String(summary.adverse)} detail={summary.pastDue + " with reported past-due evidence"} danger={summary.adverse > 0} onClick={() => openAccounts("adverse")} />
+      <Metric label="Reported balances" value={displayTotal(summary.balance)} detail={summary.balancesReported + " of " + summary.accounts + " accounts reported"} onClick={() => openAccounts("all", "balance")} />
+      <Metric label="Monthly payments" value={displayTotal(summary.monthly)} detail={summary.paymentsReported + " of " + summary.accounts + " accounts reported"} onClick={() => openAccounts("all", "monthly")} />
+    </div>
+
+    <nav className={styles.navigation} aria-label="Credit report sections">
+      {views.map((item) => <button type="button" key={item.id} aria-pressed={view === item.id} onClick={() => setView(item.id)}>{item.label}</button>)}
+    </nav>
+
+    {view === "accounts" ? <div className={[styles.workspace, account ? styles.detailsOpen : ""].join(" ")}>
+      <div className={styles.accountList} ref={listRef}>
+        <div className={styles.tools}>
+          <Input value={search} onChange={(event) => { setSearch(event.target.value); setSelected(null); }} aria-label="Search reported accounts" placeholder="Search creditor, account type or reported field…" />
+          <div className={styles.filters} aria-label="Account filters">
+            {([["all", "All", summary.accounts], ["open", "Open", summary.open], ["adverse", "Adverse", summary.adverse], ["past_due", "Past due", summary.pastDue]] as const).map(([id, label, count]) => <button type="button" key={id} aria-pressed={filter === id} onClick={() => { setFilter(id); setSelected(null); }}>{label} <span className="num">{count}</span></button>)}
+          </div>
+          {basis ? <p className={styles.basis}>{basis === "balance" ? "Reported balances" : "Reported monthly payments"} are summed only where the provider supplied a numeric value. Missing values are not treated as zero. Review each contributing account below.</p> : null}
+          <Sub>{visible.length} of {summary.accounts} accounts · Select a row for every reported field</Sub>
         </div>
-      ) : null}
-    </div>
-  );
+        <div className={styles.tableScroll}>
+          <table className={styles.table}>
+            <caption className="sr-only">Reported trade accounts</caption>
+            <thead><tr><th>Creditor / account</th><th>Status</th><th>Balance</th><th>Monthly</th><th>Reported</th></tr></thead>
+            <tbody>{visible.map(({ account: item, index }) => {
+              const state = creditAccountState(item);
+              const field = (names: string[]) => creditAccountField(item, names);
+              return <tr key={index} data-selected={selected === index || undefined} data-adverse={state.isAdverse || undefined} onClick={() => openAccount(index)}>
+                <td><button type="button" className={styles.rowButton} data-account-index={index} aria-current={selected === index ? "true" : undefined} aria-label={"View account " + (index + 1) + ": " + creditAccountLabel(item)} onClick={(event) => { event.stopPropagation(); openAccount(index); }}><strong>{creditAccountLabel(item)}</strong><Icon name="arrowR" size={13} /></button><div className="sub">{field(["account_type"]) || "Type not provided"}{field(["portfolio_type"]) ? " · " + field(["portfolio_type"]) : ""}</div><small className={styles.accountReference}>{field(["account_number", "account_no", "account_num"]) ? creditDisplayField("account_number", field(["account_number", "account_no", "account_num"])) + " · " : ""}Account {index + 1}</small></td>
+                <td><CellChip tone={state.isOpen ? "ok" : "mut"}>{field(["account_status", "status"]) || "Not provided"}</CellChip>{state.isAdverse ? <div><CellChip tone="bad">Adverse</CellChip></div> : null}</td>
+                <td className={basis === "balance" ? styles.highlight : undefined}>{creditMoney(field(["balance", "current_balance", "outstanding_balance"]))}</td>
+                <td className={basis === "monthly" ? styles.highlight : undefined}>{creditMoney(creditMonthlyPayment(item))}</td>
+                <td>{field(["date_reported", "reported_date"]) || "Not provided"}</td>
+              </tr>;
+            })}</tbody>
+          </table>
+          {!visible.length ? <Empty>{summary.accounts ? "No accounts match these filters." : "No trade accounts were provided in this report."}</Empty> : null}
+        </div>
+      </div>
+      {account && selected != null ? <section className={styles.inspector} aria-label="Selected account details">
+        <div className={styles.detailToolbar}><Btn size="sm" onClick={backToAccounts}>Back to accounts</Btn><div className="row"><Btn size="sm" disabled={selectedPosition <= 0} aria-label="Previous account" onClick={() => openAccount(visible[selectedPosition - 1].index)}>Previous</Btn><Btn size="sm" disabled={selectedPosition < 0 || selectedPosition >= visible.length - 1} aria-label="Next account" onClick={() => openAccount(visible[selectedPosition + 1].index)}>Next</Btn></div></div>
+        <h3 ref={headingRef} tabIndex={-1}>{creditAccountLabel(account)}</h3><Sub>Account {selected + 1} · All fields supplied for this account</Sub>
+        {creditAccountField(account, ["account_rating", "rating"]) ? <p className={creditAccountState(account).isAdverse ? styles.adverseText : "sub"}>{creditAccountField(account, ["account_rating", "rating"])}</p> : null}
+        <AccountDetails account={account} />
+      </section> : null}
+    </div> : null}
+
+    {view === "scores" ? <Panel title="Score details">
+      {report.scores.length ? <><div className={styles.filters}>{report.scores.map((score, index) => <button type="button" key={index} aria-pressed={scoreIndex === index} onClick={() => setScoreIndex(index)}>{score.model}</button>)}</div>
+        <h3>{report.scores[scoreIndex]?.model}</h3><p className={styles.scoreValue}>{report.scores[scoreIndex]?.score ?? "Not provided"}</p><h4>Reported score factors</h4>
+        {report.scores[scoreIndex]?.reason_codes.length ? <ul className={styles.reasonList}>{report.scores[scoreIndex].reason_codes.map((reason, index) => <li key={index}>{reason}</li>)}</ul> : <Sub>No score factors were supplied for this model.</Sub>}
+      </> : <Empty>No scores were provided in this report.</Empty>}
+    </Panel> : null}
+
+    {view === "review" ? report.intelligence ? <CreditRiskReview review={report.intelligence} onSourceOpen={openSource} /> : <Panel title="Credit review"><Empty>No structured review flags are available. The reported account details remain available.</Empty></Panel> : null}
+
+    {view === "inquiries" ? <Panel title={"Inquiries (" + report.inquiries.length + ")"}>
+      {report.inquiries.length ? <div className={styles.inquiryList}>{report.inquiries.map((inquiry, index) => <details key={index} open={inquiryIndex === index ? true : undefined}><summary><strong>{inquiry.fields.company || "Inquiring company not provided"}</strong><span>{inquiry.fields.date || "Date not provided"}</span><Icon name="arrowR" size={13} /></summary><ReportFields value={inquiry.fields} /></details>)}</div> : <Empty>No inquiries were provided in this report.</Empty>}
+    </Panel> : null}
+
+    {view === "identity" ? <IdentityDetails report={report} /> : null}
+
+    {view === "records" ? <div className={styles.records}>
+      <Panel title="Collections & public records">
+        {!(report.collections.length + report.public_records.length) ? <Empty>No collections or public records were provided.</Empty> : null}
+        {(["collections", "public_records"] as const).map((kind) => report[kind].map((item, index) => <button type="button" className={styles.recordButton} key={kind + index} aria-pressed={record?.kind === kind && record.index === index} onClick={() => setRecord({ kind, index })}><span><strong>{kind === "collections" ? "Collection " : "Public record "}{index + 1}</strong><small>{item.company || item.creditor || item.court || item.type || "View all reported fields"}</small></span><Icon name="arrowR" size={14} /></button>))}
+      </Panel>
+      {record && report[record.kind][record.index] ? <Panel title={(record.kind === "collections" ? "Collection " : "Public record ") + (record.index + 1)}><ReportFields value={report[record.kind][record.index]} /></Panel> : null}
+    </div> : null}
+
+    {view === "report" ? <div className={styles.fullReport} aria-label="Full reported details">
+      <Panel title="Full report details"><Sub>All structured sections supplied by the report provider. Open an account or section below to inspect its fields.</Sub>
+        <ReportSection title="Scores" value={report.scores} />
+        <ReportSection title="Personal information" value={report.personal_info} />
+        <ReportSection title="Identity risk" value={report.identity_risk} />
+        <ReportSection title="Address history" value={report.addresses} />
+        <ReportSection title="Employment history" value={report.employment} />
+        <details><summary>Trade accounts ({report.trade_accounts.length})</summary><div className="grid g12">{report.trade_accounts.map((item, index) => <details key={index}><summary>{creditAccountLabel(item)} · Account {index + 1}</summary><Btn size="sm" onClick={() => openSource("trade_accounts[" + index + "]")}>Open account details</Btn><AccountDetails account={item} /></details>)}{!report.trade_accounts.length ? <Sub>No trade accounts supplied.</Sub> : null}</div></details>
+        <ReportSection title="Inquiries" value={report.inquiries} />
+        <ReportSection title="Collections" value={report.collections} />
+        <ReportSection title="Public records" value={report.public_records} />
+        {Object.entries(report.additional_sections ?? {}).map(([title, value]) => <ReportSection key={title} title={creditPretty(title)} value={value} />)}
+        {report.intelligence ? <details><summary>Credit review findings</summary><CreditRiskReview review={report.intelligence} onSourceOpen={openSource} /></details> : null}
+      </Panel>
+    </div> : null}
+  </div>;
+}
+function Metric({ label, value, detail, danger, onClick }: { label: string; value: string; detail: string; danger?: boolean; onClick: () => void }) {
+  return <button type="button" className={styles.metric} onClick={onClick}><span className="lbl">{label}</span><strong className={danger ? styles.adverseText : "num"}>{value}</strong><span className="sub">{detail}<Icon name="arrowR" size={12} /></span></button>;
 }
 
-function InquiryRow({ inq }: { inq: ParsedInquiry }) {
-  return (
-    <div className="filerow">
-      <div className="num" style={{ minWidth: 82 }}>
-        <strong>{inq.fields.date ?? "—"}</strong>
-      </div>
-      <div className="sp">
-        <strong>{inq.fields.company ?? "—"}</strong>
-        <div className="sub">{inq.fields.industry ?? ""}</div>
-      </div>
-    </div>
-  );
+function AccountDetails({ account }: { account: ParsedTradeAccount }) {
+  return <div className={styles.accountDetails}>{creditFieldGroups(account.fields).map((group) => <section key={group.title}><h4>{group.title}</h4><dl className={styles.fields}>{group.fields.map(([key, value]) => <div key={key}><dt>{creditPretty(key)}</dt><dd>{creditDisplayField(key, value)}</dd></div>)}</dl></section>)}
+    {!Object.keys(account.fields).some((key) => /history|payment_pattern|payment_record/.test(key)) ? <Sub>A detailed payment-history timeline was not supplied for this account.</Sub> : null}
+  </div>;
 }
 
-function pretty(key: string): string {
-  return key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+function IdentityDetails({ report }: { report: ParsedReport }) {
+  return <div className="grid g12"><Panel title="Identity checks"><ReportFields value={report.identity_risk} /></Panel><Panel title="Personal information"><ReportFields value={report.personal_info} /></Panel><Panel title="Address history"><ReportFields value={report.addresses} /></Panel><Panel title="Employment history"><ReportFields value={report.employment} /></Panel></div>;
+}
+
+function ReportSection({ title, value }: { title: string; value: unknown }) {
+  return <details><summary>{title}</summary><ReportFields value={value} /></details>;
+}
+
+function ReportFields({ value, field = "" }: { value: unknown; field?: string }) {
+  if (Array.isArray(value)) return value.length ? <div className="grid g12">{value.map((item, index) => <section className={styles.reportItem} key={index}><ReportFields value={item} field={field} /></section>)}</div> : <Sub>Not provided.</Sub>;
+  if (value && typeof value === "object") return Object.keys(value).length ? <dl className={styles.fields}>{Object.entries(value).map(([key, item]) => <div key={key}><dt>{creditPretty(key)}</dt><dd><ReportFields value={item} field={key} /></dd></div>)}</dl> : <Sub>Not provided.</Sub>;
+  return <span>{creditDisplayField(field, value)}</span>;
 }
