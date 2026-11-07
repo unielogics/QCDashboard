@@ -71,7 +71,7 @@ export function LoanImagePreviewProvider({ profileId, contextKey, onOpenSource, 
       const anchor = target.anchor.getBoundingClientRect();
       const viewport = { width: window.innerWidth, height: window.innerHeight };
       if (anchor.bottom < 0 || anchor.top > viewport.height || anchor.right < 0 || anchor.left > viewport.width) { hide(); return; }
-      setPosition(loanPreviewPosition(anchor, viewport, { width: Math.min(330, viewport.width - 24), height: Math.min(element.scrollHeight || 370, 420) }));
+      setPosition(loanPreviewPosition(anchor, viewport, { width: 720, height: element.scrollHeight || 840 }));
     };
     place();
     window.addEventListener("resize", place); document.addEventListener("scroll", place, true);
@@ -145,7 +145,7 @@ export function LoanFilePicker({ files, value, onChange, disabled, label = "Sour
   };
   const select = (file: LoanPreviewFile) => { onChange(file.file_id); close(); if (input.current && document.activeElement !== input.current) { skipFocusOpen.current = true; input.current.focus({ preventScroll: true }); } };
   return <div className={styles.picker} ref={root} data-loan-file-picker onBlur={(event) => { const next = event.relatedTarget; if (!root.current?.contains(next as Node) && !(next instanceof Element && next.closest("[data-loan-image-preview]"))) close(); }}>
-    <div className={styles.inputRow}><input ref={input} role="combobox" aria-label={label} aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && highlighted ? `${id}-${highlighted.file_id}` : undefined} disabled={disabled} placeholder={selected?.file_name || "Choose an uploaded document…"} value={open ? query : selected?.file_name ?? ""} onFocus={(event) => { if (preview?.consumeRestoredFocus(event.currentTarget)) return; if (skipFocusOpen.current) { skipFocusOpen.current = false; return; } setOpen(true); setActive(Math.max(0, files.findIndex((file) => file.file_id === value))); setQuery(""); }} onClick={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); preview?.hide(); }} onKeyDown={(event) => {
+    <div className={styles.inputRow}><input ref={input} type="text" name={`uploaded-document-choice-${id}`} autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false} role="combobox" aria-label={label} aria-expanded={open} aria-controls={`${id}-list`} aria-autocomplete="list" aria-activedescendant={open && highlighted ? `${id}-${highlighted.file_id}` : undefined} disabled={disabled} placeholder={selected?.file_name || "Choose an uploaded document…"} value={open ? query : selected?.file_name ?? ""} onFocus={(event) => { if (preview?.consumeRestoredFocus(event.currentTarget)) return; if (skipFocusOpen.current) { skipFocusOpen.current = false; return; } setOpen(true); setActive(Math.max(0, files.findIndex((file) => file.file_id === value))); setQuery(""); }} onClick={() => setOpen(true)} onChange={(event) => { setQuery(event.target.value); setActive(0); setOpen(true); preview?.hide(); }} onKeyDown={(event) => {
       if (["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) { event.preventDefault(); browse(event.key === "Home" ? 0 : event.key === "End" ? filtered.length - 1 : open ? active + (event.key === "ArrowDown" ? 1 : -1) : 0); }
       if (event.key === "Enter" && open) { event.preventDefault(); if (highlighted) select(highlighted); }
       if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); close(); }

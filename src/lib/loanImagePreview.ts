@@ -30,7 +30,7 @@ export async function fetchLoanImagePreview(request: { profileId: string; file: 
   return response.blob();
 }
 
-export function loanPreviewPosition(anchor: { left: number; right: number; top: number; bottom: number }, viewport: { width: number; height: number }, desired = { width: 330, height: 370 }) {
+export function loanPreviewPosition(anchor: { left: number; right: number; top: number; bottom: number }, viewport: { width: number; height: number }, desired = { width: 720, height: 840 }) {
   const gap = 10; const edge = 12;
   const width = Math.min(desired.width, Math.max(0, viewport.width - edge * 2));
   const height = Math.min(desired.height, Math.max(0, viewport.height - edge * 2));
