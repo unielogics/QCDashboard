@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { draftFromTerms, emptyDraft, payloadFromDraft } from "../ApplicationClientTermsPanel";
+import { clientTermsCoveragePreview, draftFromTerms, emptyDraft, payloadFromDraft } from "../ApplicationClientTermsPanel";
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 
 const saved = {
@@ -52,5 +52,26 @@ describe("versioned client terms repayment", () => {
     expect(payloadFromDraft(draft, 4).custom_payments_per_year).toBe(51.5);
     draft.custom_payments_per_year = "51.1234";
     expect(() => payloadFromDraft(draft, 4)).toThrow(/three decimal/);
+  });
+});
+
+describe("client terms debt-service coverage preview", () => {
+  const business = { cash_flow_value: 120000, dscr_method: "business", current_annual_debt_service: 12000, annual_property_carrying_costs: null } as ApplicationClientTerms["calculation"];
+  it("preserves unknown additive or retained service and distinguishes explicit zero", () => {
+    expect(clientTermsCoveragePreview({ ...business, current_annual_debt_service: null }, "additive", null, 12000)).toEqual({ existingAnnual: null, denominator: null, value: null });
+    expect(clientTermsCoveragePreview(business, "refinance", null, 12000)).toEqual({ existingAnnual: null, denominator: null, value: null });
+    expect(clientTermsCoveragePreview(business, "refinance", 0, 12000)).toEqual({ existingAnnual: 0, denominator: 12000, value: 10 });
+    expect(clientTermsCoveragePreview({ ...business, current_annual_debt_service: 0 }, "additive", null, 12000).value).toBe(10);
+  });
+  it("uses complete real-estate carrying and retained debt costs once", () => {
+    const property = { ...business, dscr_method: "real_estate" as const, annual_property_carrying_costs: 6000 };
+    expect(clientTermsCoveragePreview(property, "refinance", 12000, 12000)).toEqual({ existingAnnual: 18000, denominator: 30000, value: 4 });
+    expect(clientTermsCoveragePreview({ ...property, annual_property_carrying_costs: null }, "refinance", 0, 12000).value).toBeNull();
+  });
+  it("does not invent missing payments, allow negative retained debt, or discard zero earnings", () => {
+    expect(clientTermsCoveragePreview(business, "additive", null, null).value).toBeNull();
+    expect(clientTermsCoveragePreview(business, "refinance", -100, 12000).value).toBeNull();
+    expect(clientTermsCoveragePreview({ ...business, cash_flow_value: 0 }, "additive", null, 12000).value).toBe(0);
+    expect(clientTermsCoveragePreview({ ...business, cash_flow_value: -12000 }, "additive", null, 12000).value).toBe(-0.5);
   });
 });

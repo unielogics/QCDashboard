@@ -6,7 +6,7 @@ import { Btn, Callout, CellChip, Input, Textarea } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { useAuthedApi, useDevUser } from "@/hooks/useApi";
 import { multiple, type FinancialCockpit } from "@/lib/financialCockpit";
-import { metricAmountLabel, metricCurrency, metricDraftIsStale, metricDraftValue, metricInputCurrency, metricInputProvenance, readFinancialMetrics, saveFinancialMetricCorrection, type MetricCorrection, type MetricCorrectionDraft, type MetricInput, type MetricSourceRef } from "@/lib/financialMetrics";
+import { metricAmountLabel, metricCurrency, metricDraftIsStale, metricDraftValue, metricInputCurrency, metricInputProvenance, readFinancialMetrics, saveFinancialMetricCorrection, type FinancialMetricReview, type MetricCorrection, type MetricCorrectionDraft, type MetricInput, type MetricSourceRef } from "@/lib/financialMetrics";
 import styles from "./FinancialCalculationReview.module.css";
 
 const valueLabel = (value: number | null | undefined, unit = "currency", currency?: string | null) => value == null ? "Unknown" : unit === "ratio" ? multiple(value) : unit === "currency" ? metricAmountLabel(value, currency) : `${value}${unit === "months" ? " months" : ""}`;
@@ -16,6 +16,36 @@ function Sources({ sources, onPreview, disabled }: { sources: MetricSourceRef[];
     {source.file_id && onPreview ? <button type="button" className={styles.source} disabled={disabled} onClick={() => onPreview(source.file_id!, source.pages?.[0] ?? source.citations?.[0]?.page)}>{source.file_name || "Source document"}{source.pages?.length ? ` · p${source.pages.join(", ")}` : ""}</button> : <span className={styles.note}>{source.file_name || "Source document"}</span>}
     <small>{[source.entity, source.period_start && source.period_end ? `${source.period_start} – ${source.period_end}` : source.period_start || source.period_end, source.currency, source.basis, source.accepted === false ? "Provisional source" : null, source.entity_comparable === false ? "Business association differs — review" : null, source.version_id ? "Saved version" : null].filter(Boolean).join(" · ")}</small>
   </div>) : <span className={styles.note}>No source reference supplied</span>}</div>;
+}
+
+/** Keep source conflicts visible without promoting a later comparison over the original return. */
+export function FinancialSourceReviewNotices({ review, onPreview, disabled = false }: {
+  review: Pick<FinancialMetricReview, "excluded_income_sources" | "comparative_conflicts">;
+  onPreview?: (fileId: string, page?: number) => void; disabled?: boolean;
+}) {
+  const excluded = review.excluded_income_sources ?? [];
+  const conflicts = review.comparative_conflicts ?? [];
+  if (!excluded.length && !conflicts.length) return null;
+  const source = (id: string | null, label: string) => id && onPreview
+    ? <button type="button" className={styles.source} disabled={disabled} onClick={() => onPreview(id)}>{label}</button>
+    : <span className={styles.note}>{label}</span>;
+  const amount = (value: number | null) => metricAmountLabel(value, null, 2, false);
+  return <section className={styles.section} aria-label="Financial source review notices">
+    {conflicts.map((conflict, index) => <Callout tone="warn" key={`${conflict.file_id}:${conflict.field}:${index}`}>
+      <div className={styles.section}>
+        <strong>{conflict.year || "Prior year"} · {conflict.field === "gross_receipts" ? "Revenue" : conflict.field === "income" ? "Business income" : "Reported figure"} differs between returns</strong>
+        <p className={styles.note}>Original return: {amount(conflict.value)} · Later return comparison: {amount(conflict.comparative_value)} · Difference: {amount(conflict.difference)}. Amounts retain their source currency.</p>
+        <p className={styles.note}>{conflict.reason}</p>
+        <div className={styles.actions}>{source(conflict.file_id, `Open original ${conflict.year || "prior-year"} return`)}{source(conflict.comparative_file_id, "Open later return comparison")}</div>
+      </div>
+    </Callout>)}
+    {excluded.length ? <details><summary>{excluded.length} tax {excluded.length === 1 ? "file excluded" : "files excluded"} from business earnings</summary>
+      <div className={styles.section}>{excluded.map((item, index) => <div key={`${item.file_id}:${index}`}>
+        {source(item.file_id, item.file_name || "Review excluded tax file")}
+        <p className={styles.note}>{item.reason}</p>
+      </div>)}</div>
+    </details> : null}
+  </section>;
 }
 
 export function FinancialCalculationReview({ cockpit, profileId, canEdit, draft: suppliedDraft, onDraft, onPending, onRefresh, onOpenDebt, onPreviewSource }: {
@@ -76,6 +106,7 @@ export function FinancialCalculationReview({ cockpit, profileId, canEdit, draft:
     {query.error ? <Callout tone="warn">Calculation sources could not be refreshed. Editing is unavailable until a fresh read succeeds.</Callout> : null}
     {notice ? <p className={styles.note} role="status">{notice}</p> : null}
     {!review ? <Callout tone="warn">Exact calculation inputs are not available for this read. Refresh the calculation sources.</Callout> : <>
+      <FinancialSourceReviewNotices review={review} onPreview={onPreviewSource} disabled={busy} />
       {data.ebitda?.reason ? <p className={styles.note}>{data.ebitda.reason}</p> : null}
       <div className={styles.calculations}>{review.calculations.map((calculation) => <article key={calculation.key} className={styles.calculation}>
         <div className={styles.heading}><h4>{calculation.label}</h4><strong>{valueLabel(calculation.value, calculation.unit ?? (calculation.key.startsWith("dscr") ? "ratio" : "currency"), metricCurrency(calculation.currency, calculation.source_refs))}</strong></div>

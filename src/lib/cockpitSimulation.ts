@@ -114,7 +114,7 @@ export function simulateRemovals(months: CockpitMonth[], payees: RecurringPayee[
 // the server and replace these).
 // ---------------------------------------------------------------------------
 
-import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanCandidate, PlanLoanTerms } from "@/lib/financialCockpit";
+import type { FinancialCockpit, FinancialPlanWrite, Obligation, PlanAddBack, PlanCandidate, PlanLoanTerms } from "@/lib/financialCockpit";
 import { dscrStatusOf } from "@/lib/financialCockpit";
 import { describeSchedule, type LoanScheduleSummary } from "@/lib/loanSchedule";
 import { evaluateRefinanceEbitda, roundEbitdaMoney, type RefinanceEbitda } from "@/lib/ebitdaRefinance";
@@ -126,6 +126,8 @@ export type LocalPlanEvaluation = {
   payoffUnknown: number;
   excludedMonthly: number;
   addBacksMonthly: number;
+  excludedAddBacks: Array<PlanAddBack & { reason: string }>;
+  coverageUnavailableReason: string | null;
   incomeBefore: number | null;
   incomeAfter: number | null;
   loanTerms: PlanLoanTerms | null;
@@ -133,10 +135,10 @@ export type LocalPlanEvaluation = {
   newPayment: number | null;
   newPaymentSource: string | null;
   loanAmountNeeded: number | null;
-  serviceBefore: number;
-  serviceBeforeNewPayment: number;
-  serviceAfter: number;
-  serviceAfterAnnual: number;
+  serviceBefore: number | null;
+  serviceBeforeNewPayment: number | null;
+  serviceAfter: number | null;
+  serviceAfterAnnual: number | null;
   candidates: PlanCandidate[];
   headlineAfter: number | null;
   noDebtLeft: boolean;
@@ -148,6 +150,12 @@ export type LocalPlanEvaluation = {
 };
 
 const r2 = (v: number) => Math.round(v * 100) / 100;
+
+export const DSCR_ADD_BACK_EXCLUSION = "Interest and depreciation/amortization are already accounted for in the earnings or bank cash-flow basis; adding them again would double count.";
+export const DSCR_SERVICE_MISSING = "Existing debt service is unknown. Complete the debt schedule or enter a reviewed debt-service override before calculating coverage.";
+export function isExcludedDscrAddBack(kind: PlanAddBack["kind"]): boolean {
+  return kind === "interest_refinanced" || kind === "depreciation";
+}
 
 function obligationAmountInMonth(obligation: Obligation, month: string, payees: RecurringPayee[], monthsRead: string[]): number {
   const payee = obligation.linked_payee_key ? payees.find((p) => p.key === obligation.linked_payee_key) : undefined;
@@ -162,11 +170,13 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const retire = new Set(plan.retire);
   const exclude = new Set(plan.exclude);
   const retired = obligations.filter((o) => retire.has(o.id));
+  const retiredPaymentUnknown = retired.some((o) => o.in_debt_service && (o.monthly == null || !Number.isFinite(o.monthly)));
   const retiredMonthly = r2(retired.filter((o) => o.in_debt_service).reduce((s, o) => s + (o.monthly ?? 0), 0));
   const payoffs = retired.map((o) => o.payoff).filter((v): v is number => v != null);
   const payoffTotal = payoffs.length ? r2(payoffs.reduce((a, b) => a + b, 0)) : null;
   const excludedMonthly = r2(payees.filter((p) => exclude.has(`payee:${p.key}`)).reduce((s, p) => s + (p.monthly_average ?? 0), 0));
-  const addBacksMonthly = r2((plan.add_backs ?? []).reduce((s, a) => s + (Number.isFinite(a.amount_monthly) ? a.amount_monthly : 0), 0));
+  const excludedAddBacks = (plan.add_backs ?? []).filter((a) => isExcludedDscrAddBack(a.kind)).map((a) => ({ ...a, reason: DSCR_ADD_BACK_EXCLUSION }));
+  const addBacksMonthly = r2((plan.add_backs ?? []).filter((a) => !isExcludedDscrAddBack(a.kind)).reduce((s, a) => s + (Number.isFinite(a.amount_monthly) ? a.amount_monthly : 0), 0));
   const addBacksAnnual = r2(addBacksMonthly * 12);
   const incomeOverride = plan.overrides?.income_annual ?? null;
   const serviceOverride = plan.overrides?.debt_service_monthly ?? null;
@@ -198,24 +208,26 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
   const recordedRetained = source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
   const exactRetained = schedule?.repayment_config && recordedRetained;
-  const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? 0;
-  const serviceBeforeNewPayment = r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
-  const serviceAfter = r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
+  const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? null;
+  const retirementUnknown = retiredPaymentUnknown && !recordedRetained;
+  const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : null;
+  const serviceBeforeNewPayment = serviceBefore == null || retirementUnknown ? null : r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
+  const serviceAfter = serviceBeforeNewPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
   const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
-  const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment * 12;
-  const serviceAfterAnnual = r2(Math.max(0, existingAnnualService + newAnnualService));
+  const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment == null ? null : serviceBeforeNewPayment * 12;
+  const serviceAfterAnnual = existingAnnualService == null ? null : r2(Math.max(0, existingAnnualService + newAnnualService));
   const candidates: PlanCandidate[] = cockpit.dscr.candidates
     .filter((c) => c.numerator != null)
     .map((c) => {
-      // Add-backs raise every basis; a payee that is not spend raises the bank proxy only; an income override replaces the lot.
+      // Only additional operating adjustments raise earnings. Interest and D&A are already accounted for.
       const adjusted = r2((c.numerator as number) + addBacksAnnual + (c.key === "bank_cash_flow" ? excludedMonthly * 12 : 0));
       const numeratorAfter = incomeOverride != null ? r2(incomeOverride) : adjusted;
-      const valueAfter = serviceAfterAnnual > 0 ? r2(numeratorAfter / serviceAfterAnnual) : null;
-      return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual <= 0 && numeratorAfter > 0, overridden: incomeOverride != null };
+      const valueAfter = serviceAfterAnnual != null && serviceAfterAnnual > 0 ? r2(numeratorAfter / serviceAfterAnnual) : null;
+      return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual != null && serviceAfterAnnual <= 0 && numeratorAfter > 0, overridden: incomeOverride != null };
     });
   if (incomeOverride != null && !candidates.length) {
-    const valueAfter = serviceAfterAnnual > 0 ? r2(incomeOverride / serviceAfterAnnual) : null;
-    candidates.push({ key: "desk_override", label: "Desk override", numerator_before: null, numerator_after: r2(incomeOverride), value_before: null, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual <= 0 && incomeOverride > 0, overridden: true });
+    const valueAfter = serviceAfterAnnual != null && serviceAfterAnnual > 0 ? r2(incomeOverride / serviceAfterAnnual) : null;
+    candidates.push({ key: "desk_override", label: "Desk override", numerator_before: null, numerator_after: r2(incomeOverride), value_before: null, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual != null && serviceAfterAnnual <= 0 && incomeOverride > 0, overridden: true });
   }
   const headlineKey = cockpit.dscr.headline?.key ?? candidates[0]?.key ?? null;
   const headline = candidates.find((c) => c.key === headlineKey) ?? candidates[0] ?? null;
@@ -253,6 +265,8 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     payoffUnknown: retired.filter((o) => o.payoff == null).length,
     excludedMonthly,
     addBacksMonthly,
+    excludedAddBacks,
+    coverageUnavailableReason,
     incomeBefore: cockpit.dscr.headline?.numerator ?? null,
     incomeAfter: headline?.numerator_after ?? null,
     loanTerms,

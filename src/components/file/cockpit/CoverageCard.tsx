@@ -23,7 +23,7 @@ import { Btn, CellChip, Input, Lbl, Select, StatusLine, cx } from "@/components/
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useSaveFinancialPlan, useSaveFileEconomics } from "@/hooks/useApi";
-import { evaluatePlanLocally } from "@/lib/cockpitSimulation";
+import { evaluatePlanLocally, isExcludedDscrAddBack } from "@/lib/cockpitSimulation";
 import { balanceSheetIsEmpty, profitAndLossIsEmpty } from "@/lib/financialStatementRequests";
 import {
   ADD_BACK_KINDS,
@@ -121,8 +121,10 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, canEdit, canReviewDebt = canEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void }) {
   const save = useSaveFinancialPlan(profileId);
+  const [termsPending, setTermsPending] = useState(false);
+  const canEdit = requestedCanEdit && !termsPending && !save.isPending;
   const queryClient = useQueryClient();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
@@ -159,13 +161,15 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     setError(null); setSaved(null); returnToReview.current = false;
   }, [profileId, cockpit]);
   const savedRecord = useMemo(() => fromRecord(cockpit), [cockpit]);
+  const previousSavedRecord = useRef(savedRecord);
   const dirty = !same(plan, savedRecord);
   useEffect(() => {
     // A fresh read of the file (another tab saved, a re-read landed) replaces an untouched draft.
-    if (!dirty) {
+    if (same(plan, previousSavedRecord.current)) {
       setPlan(savedRecord);
       setPaymentText(savedRecord.new_payment_monthly == null ? "" : String(savedRecord.new_payment_monthly));
     }
+    previousSavedRecord.current = savedRecord;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedRecord]);
 
@@ -183,7 +187,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const workingLoan = workingLoanFromPlan(plan, loanDraftTouched || plan.new_payment_source === "manual");
   const serviceKnown = plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null;
   const refinanceContext: LoanRefinanceContext | null = plan.retire.length || plan.terms_ref?.treatment === "refinance"
-    ? { treatment: "refinance", retainedAnnualService: serviceKnown && !selectionTotals.monthlyUnknown && !unresolvedPayoffs ? Math.round(local.serviceBeforeNewPayment * 1200) / 100 : null } : null;
+    ? { treatment: "refinance", retainedAnnualService: serviceKnown && local.serviceBeforeNewPayment != null && !unresolvedPayoffs ? Math.round(local.serviceBeforeNewPayment * 1200) / 100 : null } : null;
   const scenarioPaymentOnly = plan.new_payment_source === "manual" && plan.new_loan_amount == null;
   const previewScenario: LoanScenarioPreviewer = (loan, context) => {
     const before = cockpit.dscr.headline?.value ?? null;
@@ -199,7 +203,9 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       payment_monthly: schedule.coverage_payment_monthly, treatment: "refinance", retained_annual_debt_service: context.retainedAnnualService,
     });
     const evaluation = evaluatePlanLocally(cockpit, previewPlan, months);
-    return { before, after: evaluation.headlineAfter, basis, noDebtLeft: evaluation.noDebtLeft };
+    return { before, after: evaluation.headlineAfter, basis, noDebtLeft: evaluation.noDebtLeft,
+      incomeAnnual: evaluation.incomeAfter, existingAnnual: context.treatment === "refinance" ? context.retainedAnnualService : evaluation.serviceBeforeNewPayment == null ? null : evaluation.serviceBeforeNewPayment * 12,
+      unavailableReason: evaluation.coverageUnavailableReason };
   };
   function termsSaved(terms: ApplicationClientTerms, savedPlan?: FinancialPlanRead) {
     if (savedPlan) {
@@ -237,7 +243,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const feeValid = (feePoints == null || (Number.isFinite(feePoints) && feePoints >= 0 && feePoints <= 100)) && (feeConsulting == null || (Number.isFinite(feeConsulting) && feeConsulting >= 0));
   // The strip prices on what is typed, so the true cost moves as the fee is set, before the save.
   const liveFees = (feeValid ? ((feePoints ?? 0) / 100) * (economics?.accepted_amount ?? economicsSchedule?.amount ?? 0) + (feeConsulting ?? 0) : null);
-  const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter != null ? local.incomeAfter / 12 : null, Math.max(0, local.serviceBefore - local.retiredMonthly)), [local.schedule, local.incomeAfter, local.serviceBefore, local.retiredMonthly]);
+  const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter != null && local.serviceBeforeNewPayment != null ? local.incomeAfter / 12 : null, local.serviceBeforeNewPayment), [local.schedule, local.incomeAfter, local.serviceBeforeNewPayment]);
   const structureRate = useMemo(() => (economicsSchedule ? effectiveRatePct(economicsSchedule.amount, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule]);
   const totalFees = liveFees ?? economics?.total_fees ?? 0;
   const effectiveRate = useMemo(() => (economicsSchedule && economics ? effectiveRatePct(economicsSchedule.amount - totalFees, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule, economics, totalFees]);
@@ -337,7 +343,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const planLines: string[] = [
     ...plan.retire.map((id) => { const o = cockpit.debt.obligations.find((x) => x.id === id); return o ? `Pay off ${o.lender} with the new loan (${money(o.monthly)} / mo stops)` : null; }).filter((x): x is string => !!x),
     ...plan.exclude.map((id) => { const p = cockpit.bank.recurring.payees.find((x) => `payee:${x.key}` === id); return p ? `${p.payee} is not operating spend (+${money(p.monthly_average)} / mo income on the bank basis)` : null; }).filter((x): x is string => !!x),
-    ...plan.add_backs.filter((a) => a.amount_monthly > 0).map((a) => `Add back ${a.label || ADD_BACK_KINDS[a.kind]} (+${money(a.amount_monthly)} / mo)`),
+    ...plan.add_backs.filter((a) => a.amount_monthly > 0 && !isExcludedDscrAddBack(a.kind)).map((a) => `Add back ${a.label || ADD_BACK_KINDS[a.kind]} (+${money(a.amount_monthly)} / mo)`),
     ...(plan.overrides?.income_annual != null ? [`Income available for debt service set to ${money(plan.overrides.income_annual)} a year`] : []),
     ...(plan.overrides?.debt_service_monthly != null ? [`Existing debt service set to ${money(plan.overrides.debt_service_monthly)} a month`] : []),
     ...(local.newPayment ? [local.newPaymentSource === "term_sheet" ? `New debt service ${money(local.newPayment)} / mo equivalent from the recorded loan terms${cockpit.dscr.proposed?.label ? ` (${cockpit.dscr.proposed.label})` : ""}` : plan.new_loan_amount ? `New loan ${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}% ${local.schedule ? describeSchedule(local.schedule) : plan.new_loan_interest_only ? "interest-only" : `over ${plan.new_loan_term_months ?? "—"} months`}: ${local.schedule?.payment_io_monthly != null && local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_io_monthly)} / mo for ${local.schedule.interest_only_months} months, then ${money(local.schedule.payment_after_monthly)} / mo` : `${money(local.newPayment)} / mo${local.schedule?.repayment_config ? " coverage equivalent (peak actual cash due)" : ""}`}` : `New payment ${money(local.newPayment)} / mo, typed by the desk`] : []),
@@ -375,10 +381,9 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   })();
   const latestTax = [...(cockpit.tax?.years ?? [])].reverse();
   const officerYear = latestTax.find((y) => (y.officer_compensation ?? 0) > 0) ?? null;
-  const interestYear = latestTax.find((y) => (y.interest ?? 0) > 0) ?? null;
   const hasKind = (kind: PlanAddBackKind) => plan.add_backs.some((a) => a.kind === kind);
   const overrides = plan.overrides ?? EMPTY_OVERRIDES;
-  const serviceOriginal = cockpit.debt.service.monthly ?? 0;
+  const serviceOriginal = cockpit.debt.service.monthly;
   const clearPlan = () => {
     setSaved(null);
     setLoanDraftTouched(true);
@@ -458,6 +463,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo {local.schedule?.repayment_config ? "coverage equivalent" : "new payment"}{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (recorded loan terms)" : ""}</CellChip> : null}
           </div>
           <CoverageEbitdaMetric value={local.ebitda} side="plan" unsaved={dirty} scenarioActive={Boolean(cockpit.plan.evaluation.active)} corrected={ebitdaIsStaffCorrected(cockpit.ebitda?.headline, cockpit.metric_review)} />
+          {local.coverageUnavailableReason ? <StatusLine tone="warn">{local.coverageUnavailableReason}</StatusLine> : null}
           <div className="fc-plan-words">
             <span className="lbl">The plan</span>
             {planLines.length ? (
@@ -569,7 +575,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
               linkSummary={link?.summary ?? null}
               linkState={link?.state ?? null}
               canEdit={canEdit}
-              financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onSaved={termsSaved}
+              financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onSaved={termsSaved} onPending={setTermsPending}
               onOpenEditor={() => { returnToReview.current = reviewOpen; setReviewOpen(false); setClientTermsOpen(true); }}
             />
           ) : null}
@@ -599,13 +605,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       <div className="fc-grid">
         <div className="grid g8">
           <Lbl>Add-backs: income the documents understate</Lbl>
-          <span className="sub">Owner pay that is discretionary, interest the refinance removes, depreciation, one-time costs: each raises the income available for debt service on every basis, with a note that says why.</span>
+          <span className="sub">Document discretionary owner pay or one-time operating costs with a note. Interest and depreciation are already accounted for in earnings or bank cash flow and are not added again.</span>
           {plan.add_backs.length ? (
             <div className="grid g6">
               {plan.add_backs.map((item, index) => (
                 <div key={item.id ?? index} className="fc-adjust-row">
                   <Select aria-label="Add-back kind" value={item.kind} disabled={!canEdit} onChange={(e) => updateAddBack(index, { kind: e.target.value as PlanAddBackKind, label: item.label && item.label !== ADD_BACK_KINDS[item.kind] ? item.label : null })}>
-                    {(Object.keys(ADD_BACK_KINDS) as PlanAddBackKind[]).map((kind) => <option key={kind} value={kind}>{ADD_BACK_KINDS[kind]}</option>)}
+                    {(Object.keys(ADD_BACK_KINDS) as PlanAddBackKind[]).filter((kind) => !isExcludedDscrAddBack(kind) || kind === item.kind).map((kind) => <option key={kind} value={kind}>{ADD_BACK_KINDS[kind]}{isExcludedDscrAddBack(kind) ? " (not applied)" : ""}</option>)}
                   </Select>
                   <Input aria-label="Add-back label" placeholder={ADD_BACK_KINDS[item.kind]} value={item.label ?? ""} disabled={!canEdit} onChange={(e) => updateAddBack(index, { label: e.target.value || null })} />
                   <Input aria-label="Add-back amount per month" type="number" inputMode="decimal" min={0} step="any" placeholder="$ / month" value={numberValue(item.amount_monthly)} disabled={!canEdit} onChange={(e) => updateAddBack(index, { amount_monthly: num(e.target.value) ?? 0 })} />
@@ -617,10 +623,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           ) : (
             <div className="fc-empty">No add-backs. The income figure is what the documents show.</div>
           )}
+          {local.excludedAddBacks.length ? <StatusLine tone="warn">{local.excludedAddBacks.map((item) => item.label || ADD_BACK_KINDS[item.kind]).join(", ")}: retained for review, excluded from DSCR to avoid counting interest or depreciation twice.</StatusLine> : null}
           {canEdit ? (
             <div className="fc-chips">
               {officerYear && !hasKind("owner_salary") ? <Btn size="sm" onClick={() => addAddBack({ kind: "owner_salary", label: `Officer compensation (tax return ${officerYear.year})`, amount_monthly: Math.round(((officerYear.officer_compensation ?? 0) / 12) * 100) / 100, source: "tax_return" })}><Icon name="plus" size={12} /> Officer compensation {money(officerYear.officer_compensation)} a year</Btn> : null}
-              {interestYear && plan.retire.length && !hasKind("interest_refinanced") ? <Btn size="sm" onClick={() => addAddBack({ kind: "interest_refinanced", label: `Interest on refinanced debt (tax return ${interestYear.year})`, amount_monthly: Math.round(((interestYear.interest ?? 0) / 12) * 100) / 100, source: "tax_return" })}><Icon name="plus" size={12} /> Interest {money(interestYear.interest)} a year</Btn> : null}
               <Btn size="sm" onClick={() => addAddBack()}><Icon name="plus" size={12} /> Add an add-back</Btn>
               {local.addBacksMonthly ? <CellChip tone="ok">+{money(local.addBacksMonthly)} / mo · {money(local.addBacksMonthly * 12)} a year</CellChip> : null}
             </div>
@@ -839,6 +845,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         <div><small>{review?.published.complete ? "Saved debt service" : "Current service basis"}</small><strong>{money(review?.published.complete ? review.published.monthly : local.serviceBefore)}</strong><span>{review?.published.complete ? "Complete saved debt schedule / month" : `Provisional / month · ${sourceLabel(debt_service_source)}`}</span></div>
         <div><small>Working schedule</small><strong>{review ? `${review.working.active_rows} obligations` : "Open review"}</strong><span>{review ? review.working.complete ? "Complete · Save version publishes changes" : "Review the required answers" : "Uses the same draft as Evidence & banking"}</span></div>
       </div>
+      {local.coverageUnavailableReason ? <StatusLine tone="warn">{local.coverageUnavailableReason}</StatusLine> : null}
       <EbitdaRefinanceComparison value={local.ebitda} compact scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => onRequestStatement("profit_and_loss") : undefined} />
       {repaymentIssue ? <StatusLine tone="bad">Repayment preview is invalid: {repaymentIssue} Resolve it before saving or using these projections.</StatusLine> : null}
       {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}

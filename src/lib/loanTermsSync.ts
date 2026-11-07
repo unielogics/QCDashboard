@@ -7,6 +7,7 @@ export type SyncedLoan = { amount: number | null; ratePct: number | null; termMo
 export type LoanRefinanceContext = { treatment: "refinance"; retainedAnnualService: number | null };
 export type LoanScenarioPreviewer = (loan: SyncedLoan, context: { treatment: "additive" | "refinance"; retainedAnnualService: number | null }) => {
   before: number | null; after: number | null; basis: string; noDebtLeft?: boolean; unavailableReason?: string | null;
+  incomeAnnual?: number | null; existingAnnual?: number | null;
 };
 
 /** The same loan-field mapping is used by the strip and full terms editor. */
@@ -17,6 +18,19 @@ export function clientDraftLoanFields(loan: SyncedLoan) {
     interest_only_months: loan.structure === "interest_only" || loan.interestOnlyMonths == null ? "" : String(loan.interestOnlyMonths),
     repayment_config: copyRepaymentConfig(loan.repaymentConfig), ...termsCadenceForPeriods(loan.paymentsPerYear ?? 12),
   };
+}
+
+/** Compare effective loan terms, preserving the distinction between legacy and configured coverage. */
+export function sameWorkingLoan(a: SyncedLoan | null, b: SyncedLoan | null): boolean {
+  if (!a || !b) return a === b;
+  const config = (value: RepaymentConfig | null | undefined) => value == null ? null : {
+    amortization_months: value.amortization_months ?? null,
+    after_balloon: value.after_balloon ?? "keep_payment",
+    balloons: (value.balloons ?? []).map(({ id, month, type, value }) => ({ id, month, type, value })),
+  };
+  const fields = (loan: SyncedLoan) => [loan.amount, loan.ratePct, loan.termMonths, loan.structure,
+    loan.structure === "interest_only" ? 0 : loan.interestOnlyMonths ?? 0, loan.paymentsPerYear ?? 12, config(loan.repaymentConfig)];
+  return JSON.stringify(fields(a)) === JSON.stringify(fields(b));
 }
 
 export function releaseAutomaticRefinance(plan: FinancialPlanWrite) {

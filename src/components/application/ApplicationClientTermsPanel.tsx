@@ -146,6 +146,21 @@ function ratio(value: number | null | undefined) {
   return value == null || !Number.isFinite(value) ? "Needs evidence" : `${value.toFixed(2)}x`;
 }
 
+/** A proposed payment cannot establish the unknown existing or retained debt burden. */
+export function clientTermsCoveragePreview(calculation: ApplicationClientTerms["calculation"] | null | undefined, treatment: ClientTermsDebtTreatment, retainedAnnual: number | null, newAnnual: number | null) {
+  const knownService = (value: number | null | undefined) => value != null && Number.isFinite(value) && value >= 0 ? value : null;
+  let existingAnnual = knownService(treatment === "refinance" ? retainedAnnual : calculation?.current_annual_debt_service);
+  if (treatment === "refinance" && calculation?.dscr_method === "real_estate") {
+    const carrying = knownService(calculation.annual_property_carrying_costs);
+    existingAnnual = existingAnnual == null || carrying == null ? null : existingAnnual + carrying;
+  }
+  const proposed = knownService(newAnnual);
+  const denominator = existingAnnual == null || proposed == null ? null : existingAnnual + proposed;
+  const income = calculation?.cash_flow_value;
+  const value = income != null && Number.isFinite(income) && denominator != null && denominator > 0 ? income / denominator : null;
+  return { existingAnnual, denominator, value };
+}
+
 function paymentPreview(draft: Draft) {
   const amount = finite(draft.amount);
   const apr = finite(draft.apr_pct);
@@ -329,30 +344,10 @@ export function ApplicationClientTermsPanel({
   const repaymentIssue = repaymentPreview(finite(draft.amount), finite(draft.apr_pct), finite(draft.term_months), { structure: draft.loan_structure || null, interestOnlyMonths: finite(draft.interest_only_months), periodsPerYear: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) ?? 0 : PERIODS[draft.repayment_frequency], repaymentConfig: draft.repayment_config }).error;
   const preview = useMemo(() => paymentPreview(draft), [draft]);
   const scenarioCoverage = previewScenario?.(loanFromClientDraft(draft), { treatment: draft.debt_service_treatment, retainedAnnualService: finite(draft.retained_annual_debt_service) });
-  const afterDscr = useMemo(() => {
-    if (previewScenario) return scenarioCoverage?.after ?? null;
-    const calc = query.data?.calculation;
-    if (calc?.cash_flow_value == null || preview?.annual == null) return null;
-    let denominator: number | null = null;
-    if (calc.dscr_method === "real_estate") {
-      if (draft.debt_service_treatment === "refinance") {
-        const retained = finite(draft.retained_annual_debt_service);
-        denominator = calc.annual_property_carrying_costs == null || retained == null
-          ? null
-          : calc.annual_property_carrying_costs + retained + preview.annual;
-      } else {
-        denominator = calc.current_annual_debt_service == null
-          ? null
-          : calc.current_annual_debt_service + preview.annual;
-      }
-    } else if (draft.debt_service_treatment === "refinance") {
-      const retained = finite(draft.retained_annual_debt_service);
-      denominator = retained == null ? null : retained + preview.annual;
-    } else {
-      denominator = calc.current_annual_debt_service == null ? null : calc.current_annual_debt_service + preview.annual;
-    }
-    return denominator && denominator > 0 ? calc.cash_flow_value / denominator : null;
-  }, [draft.debt_service_treatment, draft.retained_annual_debt_service, preview, query.data?.calculation, previewScenario, scenarioCoverage?.after]);
+  const coveragePreview = useMemo(() => clientTermsCoveragePreview(query.data?.calculation, draft.debt_service_treatment, finite(draft.retained_annual_debt_service), preview?.annual ?? null), [draft.debt_service_treatment, draft.retained_annual_debt_service, preview, query.data?.calculation]);
+  const afterDscr = previewScenario ? scenarioCoverage?.after ?? null : coveragePreview.value;
+  const riskExistingAnnual = previewScenario ? scenarioCoverage?.existingAnnual ?? null : coveragePreview.existingAnnual;
+  const riskIncomeAnnual = previewScenario ? scenarioCoverage?.incomeAnnual ?? null : query.data?.calculation.cash_flow_value ?? null;
 
   const dirty = savedFingerprint !== JSON.stringify(draft);
   const offerSelection = useMemo<OfferSelection | null>(() => {
@@ -575,7 +570,7 @@ export function ApplicationClientTermsPanel({
         <div className="terms-preview-hero"><span>Proposed amount</span><strong>{money(finite(draft.amount), 0)}</strong><div><b>{finite(draft.apr_pct) == null ? "—" : `${finite(draft.apr_pct)!.toFixed(2)}%`}</b><small>APR</small><b>{finite(draft.term_months) == null ? "—" : `${Math.round(finite(draft.term_months)!)} mo`}</b><small>Time</small></div></div>
         <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? `${money(preview.schedule.payment_io, 2)} for ${preview.schedule.interest_only_months} interest-only months, then ${money(preview.schedule.payment_after, 2)} · ` : ""}${preview.count} payments · ${preview.schedule.structure_label.toLowerCase()} · ${money(preview.annual, 0)} annual debt service${preview.schedule.repayment_config ? " (peak rolling 12 months of actual cash due)" : ""}${!preview.schedule.repayment_config && preview.schedule.payment_io != null && preview.schedule.payment_after != null ? " once principal starts" : ""}${preview.schedule.balloon ? ` · ${money(preview.schedule.balloon, 0)} due at maturity` : ""}` : "Enter amount, APR, and time to calculate"}</small></div>
         {preview ? <LoanScheduleTable schedule={preview.schedule} title={`Schedule: ${describeSchedule(preview.schedule)}`} /> : null}
-        {preview ? <p className="terms-preview-source terms-preview-risk"><strong>Principal at risk.</strong> {riskProfile(preview.schedule, terms.calculation.cash_flow_value != null ? terms.calculation.cash_flow_value / 12 : null, (draft.debt_service_treatment === "refinance" ? (finite(draft.retained_annual_debt_service) ?? 0) : (terms.calculation.current_annual_debt_service ?? 0)) / 12)?.words}</p> : null}
+        {preview ? <p className="terms-preview-source terms-preview-risk"><strong>Principal at risk.</strong> {riskProfile(preview.schedule, riskIncomeAnnual != null && riskExistingAnnual != null ? riskIncomeAnnual / 12 : null, riskExistingAnnual == null ? null : riskExistingAnnual / 12)?.words}{riskExistingAnnual == null ? " Existing debt service must be established before calculating coverage." : ""}</p> : null}
         <div className="terms-preview-dscr"><div><span>{previewScenario ? "Current coverage" : "Before acceptance"}</span><strong>{ratio(previewScenario ? scenarioCoverage?.before : terms.calculation.dscr_before)}</strong></div><i>→</i><div className="after"><span>{previewScenario ? "With this working loan" : "After acceptance"}</span><strong>{scenarioCoverage?.noDebtLeft ? "No debt left" : ratio(afterDscr)}</strong></div></div>
         <p className="terms-preview-source">{previewScenario ? `Working scenario · ${scenarioCoverage?.basis ?? "current inputs"}. ${scenarioCoverage?.unavailableReason ?? "Uses the current payoff selections, add-backs and calculation inputs."}` : <>{terms.calculation.dscr_explanation}<br />{terms.calculation.source}</>}</p>
         {terms.repayment_config ? <p className="terms-preview-source">{repaymentConfigLabel(terms.repayment_config)}</p> : null}

@@ -59,6 +59,20 @@ describe("refinance selection totals", () => {
       netMonthly: null, monthlyAfter: null, remainingMonthly: null });
   });
 
+  it.each([null, undefined, Number.NaN, Number.POSITIVE_INFINITY])("does not infer a zero baseline from %s even when the caller marks debt known", (serviceBefore) => {
+    const result = refinanceSelectionTotals([obligation("one")], ["one"], evaluation({
+      serviceBefore: serviceBefore as number | null, serviceBeforeNewPayment: null, serviceAfter: null,
+    }), known);
+    expect(result).toMatchObject({ monthlyRemoved: 200, monthlyAdded: 100, payoffTotal: 1100,
+      netMonthly: null, monthlyAfter: null, remainingMonthly: null, basisAdjusted: false });
+  });
+
+  it.each([null, Number.NaN, Number.POSITIVE_INFINITY])("withholds the new-payment comparison when evaluated service after is %s", (serviceAfter) => {
+    const result = refinanceSelectionTotals([obligation("one")], ["one"], evaluation({ serviceAfter }), known);
+    expect(result).toMatchObject({ monthlyRemoved: 200, monthlyAdded: 100, remainingMonthly: 800,
+      netMonthly: null, monthlyAfter: null, basisAdjusted: false });
+  });
+
   it("reports missing selected payments without presenting a partial after total as complete", () => {
     const missing = obligation("missing", { monthly: null });
     const allUnknown = refinanceSelectionTotals([missing], ["missing"], evaluation({ retiredMonthly: 0 }), known);

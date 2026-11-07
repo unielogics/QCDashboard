@@ -9,7 +9,7 @@ import { ApplicationClientTermsPanel, draftFromTerms, draftWithScenarioLoan, pay
 import { useAuthedApi, useClientTermsSummary } from "@/hooks/useApi";
 import { errorMessage } from "@/components/marketplace/shared";
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
-import { applyWorkingLoan, clientDraftLoanFields, loanFromClientDraft, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
+import { applyWorkingLoan, loanFromClientDraft, sameWorkingLoan, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { repaymentConfigLabel } from "@/lib/repaymentConfig";
 import { money } from "@/lib/financialCockpit";
@@ -17,7 +17,7 @@ import { money } from "@/lib/financialCockpit";
 /** The loan typed under the DSCR modifications, as the client terms: a line that says what is on file and
  *  whether it matches, one button to save the plan's loan as the terms, and the full editor in a drawer
  *  for the rest (funder, timing, co-branding, conditions) and the PDF. */
-export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canEdit, onOpenEditor, financialPlanDraft, refinanceContext, workingDraft, onSaved }: {
+export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canEdit, onOpenEditor, financialPlanDraft, refinanceContext, workingDraft, onSaved, onPending }: {
   profileId: string;
   loan: SyncedLoan | null;
   linkSummary: string | null;
@@ -28,6 +28,7 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
   refinanceContext?: LoanRefinanceContext | null;
   workingDraft?: ClientTermsWorkingDraft | null;
   onSaved?: (terms: ApplicationClientTerms, plan?: FinancialPlanRead) => void;
+  onPending?: (pending: boolean) => void;
 }) {
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -53,8 +54,9 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
       return api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`, { method: "PUT", body: JSON.stringify(payload) });
     },
     onSuccess: (data) => { queryClient.setQueryData(["application-client-terms", profileId], data); refresh(); onSaved?.(data, data.financial_plan); },
+    onSettled: () => onPending?.(false),
   });
-  const mirrored = !!loan && !!terms && JSON.stringify(clientDraftLoanFields(loan)) === JSON.stringify(clientDraftLoanFields(loanFromClientDraft(draftFromTerms(terms))));
+  const mirrored = !!loan && !!terms && sameWorkingLoan(loan, loanFromClientDraft(draftFromTerms(terms)));
   const differs = !!loan && onFile && !mirrored;
   const summary = onFile && terms
     ? `${terms.status === "issued" ? "Issued" : "Draft"} v${terms.version}: ${money(terms.amount ?? null)}${terms.apr_pct != null ? ` at ${terms.apr_pct}%` : ""}${terms.term_months ? ` over ${terms.term_months} months` : ""}${terms.calculation?.structure_label ? ` · ${terms.calculation.structure_label.toLowerCase()}${terms.interest_only_months ? `, ${terms.interest_only_months} interest-only months first` : ""}` : ""}${terms.calculation?.periodic_payment != null ? ` · ${money(terms.calculation.periodic_payment)} per payment` : ""}`
@@ -67,11 +69,11 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
       </div>
       <div className="fc-client-terms-actions">
         {canEdit && planHasLoan && !mirrored && !pendingEditor ? (
-          <Btn variant="pri" size="sm" onClick={() => saveFromPlan.mutate()} disabled={saveFromPlan.isPending || !terms}>
+          <Btn variant="pri" size="sm" onClick={() => { onPending?.(true); saveFromPlan.mutate(); }} disabled={saveFromPlan.isPending || !terms}>
             <Icon name="docCheck" size={14} />{saveFromPlan.isPending ? "Saving…" : onFile ? "Update the client terms from this loan" : "Save this loan as the client terms"}
           </Btn>
         ) : null}
-        <Btn size="sm" onClick={() => onOpenEditor ? onOpenEditor() : setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn>
+        <Btn size="sm" disabled={saveFromPlan.isPending} onClick={() => onOpenEditor ? onOpenEditor() : setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn>
         {loan ? <span className="sub">The current scenario loan opens as a working draft; Apply or Save version returns changes to the scenario.</span> : null}
         {pendingEditor ? <span className="sub">An unsaved editor draft is kept. Open the full terms to review it before saving.</span> : null}
         {saveFromPlan.error ? <span className="sub">{errorMessage(saveFromPlan.error, "The client terms could not be saved.")}</span> : saveFromPlan.isSuccess ? <span className="sub">Saved; the plan reads the terms.</span> : !planHasLoan && !onFile ? <span className="sub">Enter the loan above, then save it as the client terms.</span> : null}

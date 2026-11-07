@@ -561,6 +561,8 @@ export type PlanEvaluation = {
   excluded_monthly: number;
   add_backs_monthly?: number;
   add_backs_annual?: number;
+  excluded_add_backs?: Array<PlanAddBack & { reason: string }>;
+  coverage_unavailable_reason?: string | null;
   income_override_annual?: number | null;
   debt_service_override_monthly?: number | null;
   interest_only?: boolean;
@@ -571,8 +573,8 @@ export type PlanEvaluation = {
   new_payment_source: string | null;
   loan_amount_needed: number | null;
   debt_service_before_monthly: number | null;
-  debt_service_before_new_payment_monthly: number;
-  debt_service_after_monthly: number;
+  debt_service_before_new_payment_monthly: number | null;
+  debt_service_after_monthly: number | null;
   debt_service_after_annual: number | null;
   candidates: PlanCandidate[];
   headline_before: number | null;
