@@ -428,9 +428,9 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                     <th>Pay off with the new loan</th>
                     <th>Lender</th>
                     <th>Origination date</th>
-                    <th className="r">Paid down</th>
                     <th className="r">Per month</th>
                     <th className="r">Balance / payoff</th>
+                    <th className="r">Paid down</th>
                     <th>In debt service</th>
                   </tr>
                 </thead>
