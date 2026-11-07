@@ -253,10 +253,10 @@ const TAX_LINES: Array<[keyof Cockpit["tax"]["years"][number], string]> = [
   ["salaries_and_wages", "Salaries and wages"],
   ["rent", "Rent"],
   ["interest", "Interest"],
-  ["depreciation", "Depreciation"],
+  ["depreciation", "Depreciation & amortization"],
   ["taxes_and_licenses", "Taxes and licenses"],
   ["total_deductions", "Total deductions"],
-  ["ebitda", "EBITDA (income + interest + depreciation)"],
+  ["ebitda", "Tax-derived earnings estimate (income + interest + D&A)"],
 ];
 
 function TaxCard({ cockpit, onOpenEvidence }: { cockpit: Cockpit; onOpenEvidence: () => void }) {
@@ -281,7 +281,7 @@ function TaxCard({ cockpit, onOpenEvidence }: { cockpit: Cockpit; onOpenEvidence
       {latest.gross_receipts_change_pct != null ? <CellChip tone={latest.gross_receipts_change_pct >= 0 ? "ok" : "warn"}>Receipts {signedPct(latest.gross_receipts_change_pct)} vs prior year</CellChip> : null}
       {latest.income_change_pct != null ? <CellChip tone={latest.income_change_pct >= 0 ? "ok" : "warn"}>Income {signedPct(latest.income_change_pct)} vs prior year</CellChip> : null}
       {latest.income_basis ? <CellChip tone="mut">Income basis: {latest.income_basis}</CellChip> : null}
-      {!latest.ebitda_complete ? <CellChip tone="warn">Interest or depreciation not read</CellChip> : null}
+      {!latest.ebitda_complete ? <CellChip tone="warn">Interest or D&amp;A incomplete</CellChip> : null}
     </span>
   );
   return (
