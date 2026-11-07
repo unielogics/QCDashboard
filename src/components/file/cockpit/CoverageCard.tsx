@@ -56,6 +56,8 @@ import { ebitdaIsStaffCorrected } from "@/lib/financialMetrics";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
 import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
+import { RefinanceSelectionSummary } from "./RefinanceSelectionSummary";
+import { refinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
 import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
@@ -160,6 +162,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const obligations = cockpit.debt.obligations.filter((obligation) => obligation.kind !== "payee");
   const pendingRetires = plan.retire.filter((id) => !obligations.some((obligation) => obligation.id === id));
   const unresolvedPayoffs = pendingRetires.length > 0 || !legacySelectionsReviewed && Boolean(cockpit.plan.unresolved_previous_selections?.length);
+  const selectionTotals = refinanceSelectionTotals(obligations, plan.retire, local, {
+    unresolvedSelections: unresolvedPayoffs,
+    debtServiceKnown: plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null,
+  });
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
   const economics = cockpit.plan?.economics ?? null;
@@ -421,11 +427,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         <div className="grid g8">
           <div className="row"><Lbl>Saved and documented obligations ({accountLabel})</Lbl><span className="sp" />{canEdit ? <Btn size="sm" onClick={() => openDebt({ view: "form" })}><Icon name="pencil" size={13} />Open financial workspace</Btn> : null}</div>
           {obligations.length ? (
-            <div className="tbl-wrap" tabIndex={0} role="region" aria-label="Loan obligations, scroll across for origination dates and paid-down percentages">
+            <div className={styles.obligationsWorkspace}>
+            <div className={`tbl-wrap ${styles.obligationsScroll}`} tabIndex={0} role="region" aria-label="Loan obligations, scroll across for origination dates and paid-down percentages">
               <table className={`tbl fc-obligations ${styles.obligationsTable}`}>
+                <colgroup><col className={styles.payoffSelectionColumn} /><col /><col style={{ width: 110 }} /><col style={{ width: 110 }} /><col style={{ width: 140 }} /><col style={{ width: 85 }} /><col style={{ width: 110 }} /></colgroup>
                 <thead>
                   <tr>
-                    <th>Pay off with the new loan</th>
+                    <th scope="col" className={styles.payoffSelectionCell} title="Select loans to pay off"><span aria-hidden="true">✓</span><span className="sr-only">Select loans to pay off</span></th>
                     <th>Lender</th>
                     <th>Origination date</th>
                     <th className="r">Per month</th>
@@ -440,6 +448,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                   ))}
                 </tbody>
               </table>
+            </div>
+            <RefinanceSelectionSummary totals={selectionTotals} coverageEquivalent={Boolean(local.schedule?.repayment_config) || (local.schedule?.periods_per_year != null && local.schedule.periods_per_year !== 12)} />
             </div>
           ) : (
             <div className="fc-empty fc-empty-actions">
