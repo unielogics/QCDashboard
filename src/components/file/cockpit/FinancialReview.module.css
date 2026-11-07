@@ -60,9 +60,30 @@
 .planContent > section > *, .planContent :global(.fc-grid) > * { min-width: 0; }
 .planContent :global(.grid) { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .planContent :global(.tbl-wrap) { min-width: 0; max-width: 100%; overflow-x: auto; }
-.obligationsTable { min-width: 850px; }
+.obligationsWorkspace { min-width: 0; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+.obligationsScroll { min-width: 0; max-width: 100%; max-height: min(44dvh, 400px); overflow: auto; overscroll-behavior: contain; }
+.obligationsTable { min-width: 850px; width: 100%; table-layout: fixed; }
+.obligationsTable .payoffSelectionColumn { width: 44px; }
+.obligationsTable .payoffSelectionCell { width: 44px; min-width: 44px; max-width: 44px; padding-left: 8px; padding-right: 8px; text-align: center; }
+.payoffSelectionTarget { display: inline-grid; place-items: center; width: 28px; min-height: 28px; cursor: pointer; }
+.payoffSelectionCell input { margin: 0; vertical-align: middle; }
+.obligationsTable thead th { position: sticky; top: 0; z-index: 1; background: var(--sunken2); white-space: normal; overflow-wrap: anywhere; letter-spacing: .04em; }
+.obligationsTable td:nth-child(2) { min-width: 0; white-space: normal; overflow-wrap: anywhere; }
+.selectionSummary { padding: 11px 12px; border-top: 1px solid var(--line2); background: var(--surface); }
+.selectionSummaryHead { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding-bottom: 9px; }
+.selectionSummaryHead > span, .selectionPayoff { display: grid; gap: 3px; }
+.selectionSummaryHead strong { font-size: 13px; }
+.selectionSummaryHead small { font-size: 10px; color: var(--muted); }
+.selectionPayoff { text-align: right; }
+.selectionPayoff > strong { font-size: 18px; }
+.selectionMetrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px 14px; padding-top: 9px; border-top: 1px solid var(--line); }
+.selectionMetrics > div { min-width: 0; display: grid; gap: 4px; }
+.selectionMetrics span { color: var(--muted); font-size: 11px; }
+.selectionMetrics strong { color: var(--ink); font-size: 15px; overflow-wrap: anywhere; }
+.selectionMetrics strong small { font-size: 10px; font-weight: 400; color: var(--muted); }
+.selectionNote { margin: 9px 0 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
 .planContent .boundedTable { max-height: 300px; }
-.tabs button:focus-visible, .boundedTable:focus-visible, .textAction:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.tabs button:focus-visible, .boundedTable:focus-visible, .obligationsScroll:focus-visible, .textAction:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summaryStrip { grid-template-columns: 1fr; } .reviewBody { padding: 12px; } .metrics strong { font-size: 20px; } .statementSplit { grid-template-columns: 1fr; } }
 @media (max-width: 760px) {
   .reviewHeader { display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 16px 54px 14px 16px; }
