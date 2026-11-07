@@ -153,6 +153,7 @@ const r2 = (v: number) => Math.round(v * 100) / 100;
 
 export const DSCR_ADD_BACK_EXCLUSION = "Interest and depreciation/amortization are already accounted for in the earnings or bank cash-flow basis; adding them again would double count.";
 export const DSCR_SERVICE_MISSING = "Existing debt service is unknown. Complete the debt schedule or enter a reviewed debt-service override before calculating coverage.";
+export const DSCR_NEW_PAYMENT_MISSING = "The new loan payment is unknown. Enter its rate and terms or a reviewed monthly payment before calculating coverage.";
 export function isExcludedDscrAddBack(kind: PlanAddBack["kind"]): boolean {
   return kind === "interest_refinanced" || kind === "depreciation";
 }
@@ -184,12 +185,12 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const proposed = cockpit.dscr.proposed;
   const adoptedTerms = !plan.new_loan_amount && plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null ? cockpit.proposed_terms : null;
   const schedule: LoanScheduleSummary | null =
-    plan.new_loan_amount && (plan.new_loan_term_months || interestOnly)
-      ? repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct ?? 0, plan.new_loan_term_months ?? 0, { structure: interestOnly ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months ?? 0, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).schedule
-      : adoptedTerms?.repayment_config && adoptedTerms.amount ? repaymentPreview(adoptedTerms.amount, adoptedTerms.rate_pct, adoptedTerms.term_months, { structure: adoptedTerms.structure, interestOnlyMonths: adoptedTerms.interest_only_months, periodsPerYear: adoptedTerms.payments_per_year ?? 12, repaymentConfig: adoptedTerms.repayment_config }).schedule : null;
+    plan.new_loan_amount && plan.new_loan_rate_pct != null && (plan.new_loan_term_months || interestOnly)
+      ? repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct, plan.new_loan_term_months ?? 0, { structure: interestOnly ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months ?? 0, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).schedule
+      : adoptedTerms?.repayment_config && adoptedTerms.amount && adoptedTerms.rate_pct != null ? repaymentPreview(adoptedTerms.amount, adoptedTerms.rate_pct, adoptedTerms.term_months, { structure: adoptedTerms.structure, interestOnlyMonths: adoptedTerms.interest_only_months, periodsPerYear: adoptedTerms.payments_per_year ?? 12, repaymentConfig: adoptedTerms.repayment_config }).schedule : null;
   const loanTerms: PlanLoanTerms | null = schedule
     ? { amount: schedule.amount, rate_pct: schedule.rate_pct, term_months: schedule.term_months, interest_only: schedule.structure === "interest_only", structure: schedule.structure, interest_only_months: schedule.interest_only_months, repayment_config: schedule.repayment_config, payments_per_year: schedule.periods_per_year, payment_io: schedule.payment_io_monthly, payment_after: schedule.payment_after_monthly, annual_debt_service: schedule.repayment_config ? schedule.coverage_annual_debt_service : schedule.annual_debt_service, total_interest: schedule.total_interest, total_paid: schedule.total_paid, balloon: schedule.balloon, describe: describeSchedule(schedule) }
-    : plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount
+    : !plan.new_loan_amount && plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount && proposed.rate_pct != null
       ? { amount: proposed.amount, rate_pct: proposed.rate_pct ?? 0, term_months: proposed.term_months ?? null, interest_only: false }
       : null;
   let newPayment = plan.new_payment_monthly;
@@ -200,22 +201,24 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   }
   if (schedule?.repayment_config) newPayment = Math.max(newPayment ?? 0, schedule.coverage_payment_monthly);
   // The recorded loan terms join the plan only when the desk adopted them.
-  if (newPayment == null && source === "term_sheet" && cockpit.dscr.proposed?.monthly_payment != null) {
+  if (newPayment == null && !plan.new_loan_amount && source === "term_sheet" && cockpit.dscr.proposed?.monthly_payment != null) {
     newPayment = cockpit.dscr.proposed.monthly_payment;
   } else if (newPayment == null && source === "term_sheet") {
     source = null;
   }
+  const configuredScheduleUnpriced = ((!!plan.new_loan_amount && plan.new_loan_repayment_config != null) || (!!adoptedTerms?.amount && adoptedTerms.repayment_config != null)) && schedule == null;
+  const newLoanPaymentUnknown = (!!plan.new_loan_amount && newPayment == null) || configuredScheduleUnpriced;
   const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
   const recordedRetained = source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
   const exactRetained = schedule?.repayment_config && recordedRetained;
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? null;
   const retirementUnknown = retiredPaymentUnknown && !recordedRetained;
-  const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : null;
+  const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : newLoanPaymentUnknown ? DSCR_NEW_PAYMENT_MISSING : null;
   const serviceBeforeNewPayment = serviceBefore == null || retirementUnknown ? null : r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
-  const serviceAfter = serviceBeforeNewPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
+  const serviceAfter = serviceBeforeNewPayment == null || newLoanPaymentUnknown ? null : r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
   const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
   const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment == null ? null : serviceBeforeNewPayment * 12;
-  const serviceAfterAnnual = existingAnnualService == null ? null : r2(Math.max(0, existingAnnualService + newAnnualService));
+  const serviceAfterAnnual = existingAnnualService == null || newLoanPaymentUnknown ? null : r2(Math.max(0, existingAnnualService + newAnnualService));
   const candidates: PlanCandidate[] = cockpit.dscr.candidates
     .filter((c) => c.numerator != null)
     .map((c) => {
