@@ -19,7 +19,7 @@ describe("working loan progress cells", () => {
   it("binds formulas to exact new and reordered rows, including legitimate zero progress", () => {
     const body = { debts: [{ id: "new", lender: "Same lender", original_amount: "100", balance: "100", monthly_payment: "10" }, { id: "other", lender: "Same lender", original_amount: "200", balance: "150", monthly_payment: "20" }] };
     const layout = financialLayout(body, source); const values = financialValues(body, layout); const computed = financialDebtComputed(body);
-    const cells = layout.rows.map((row) => row.cells!.find((cell) => cell.c === 18)!);
+    const cells = layout.rows.map((row) => row.cells!.find((cell) => cell.compute?.endsWith(".paid_down_pct"))!);
     expect(cells.map((cell) => cell.compute)).toEqual(["new.paid_down_pct", "other.paid_down_pct"]);
     expect(cells[0].formula).toContain("{new.original_amount}");
     expect(cells[1].formula).toContain("{other.balance}");
@@ -30,7 +30,7 @@ describe("working loan progress cells", () => {
   });
   it("cannot save or paste the derived field and refreshes it after financial edits", () => {
     const body = { debts: [{ id: "a", original_amount: "100", balance: "75", monthly_payment: "10" }] };
-    const layout = financialLayout(body, source); const cell = layout.rows[0].cells!.find((item) => item.c === 18)!;
+    const layout = financialLayout(body, source); const cell = layout.rows[0].cells!.find((item) => item.compute?.endsWith(".paid_down_pct"))!;
     expect(isEditable(cell)).toBe(false); expect(cell.path).toBeUndefined(); expect(cell.key).toBeUndefined();
     const next = applyFinancialCells(body, layout, [{ sheet: "debt_schedule", key: "a.paid_down_pct", value: "99" }, { sheet: "debt_schedule", key: "a.balance", value: "50" }]);
     expect(next.debts).toEqual([{ id: "a", original_amount: "100", balance: "50", monthly_payment: "10" }]);

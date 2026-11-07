@@ -4,6 +4,7 @@ import { parseMoney } from "@/components/sheet/money";
 import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
 import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
 import { loanPaidDownPct } from "@/lib/loanProgress";
+import { orderDebtScheduleColumns } from "@/lib/debtWorksheetLayout";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
@@ -122,8 +123,8 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
       r: first + index, kind: "data", block: "debts", row_key: row.id, ordinal: index + 1,
       cells: source.columns.map((column, at): SheetCell => {
         const original = template?.cells?.find((cell) => cell.c === column.c);
-        if (original?.type === "formula" || at >= fields.length) {
-          const paidDown = at === fields.length || original?.compute?.endsWith(".paid_down_pct");
+        if (original?.type === "formula" || (!original?.path && at >= fields.length)) {
+          const paidDown = original?.compute?.endsWith(".paid_down_pct") || (!original && at === fields.length);
           return { ...original, c: column.c, type: "formula", editable: false, key: undefined, path: undefined,
             ...(paidDown ? { compute: `${row.id}.paid_down_pct`, xlsx_name: `${row.id}.paid_down_pct`, formula: `=IFERROR(({${row.id}.original_amount}-{${row.id}.balance})/{${row.id}.original_amount}*100,"")`, format: "percent", hint: "Balance reduction: (original amount − current balance) ÷ original amount × 100. Payoff fees, interest and factor rates are not included." }
               : { compute: original?.compute?.replace(`${template?.row_key}.`, `${row.id}.`) }) };
@@ -142,7 +143,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
     }));
     const before = source.rows.filter((row) => row.r < first && row.kind !== "data");
     const after = source.rows.filter((row) => row.r >= first && row.kind !== "data").map((row, index) => ({ ...row, r: first + data.length + index }));
-    return { ...source, rows: [...before, ...data, ...after] };
+    return orderDebtScheduleColumns({ ...source, rows: [...before, ...data, ...after] });
   }
   const schedules = (source.kind === "real_estate_schedule" ? body : body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
   const next: SheetRow[] = [];
