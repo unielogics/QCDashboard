@@ -196,9 +196,10 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     source = null;
   }
   const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
-  const exactRetained = schedule?.repayment_config && source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
+  const recordedRetained = source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
+  const exactRetained = schedule?.repayment_config && recordedRetained;
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? 0;
-  const serviceBeforeNewPayment = r2(Math.max(0, exactRetained ? serviceBefore : serviceBefore - retiredMonthly));
+  const serviceBeforeNewPayment = r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
   const serviceAfter = r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
   const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
   const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment * 12;

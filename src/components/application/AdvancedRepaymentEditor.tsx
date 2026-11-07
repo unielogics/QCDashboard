@@ -10,10 +10,11 @@ const numberText = (value: number | undefined) => value == null || !Number.isFin
 const numeric = (value: string) => value.trim() === "" ? Number.NaN : Number(value);
 
 /** One optional schedule editor. The ordinary loan controls remain outside it. */
-export function AdvancedRepaymentEditor({ value, onChange, amount, ratePct, termMonths, structure, interestOnlyMonths, periodsPerYear = 12, disabled = false, unsupportedReason }: {
+export function AdvancedRepaymentEditor({ value, onChange, amount, ratePct, termMonths, structure, interestOnlyMonths, periodsPerYear = 12, disabled = false, unsupportedReason, amortizationAlreadyVisible = false }: {
   value: RepaymentConfig | null | undefined; onChange: (value: RepaymentConfig | null) => void;
   amount: number | null; ratePct: number | null; termMonths: number | null; structure: LoanStructure | string | null;
   interestOnlyMonths?: number | null; periodsPerYear?: number; disabled?: boolean; unsupportedReason?: string | null;
+  amortizationAlreadyVisible?: boolean;
 }) {
   const id = useId();
   const config = { ...value, after_balloon: value?.after_balloon ?? "keep_payment" as const, balloons: value?.balloons ?? [] };
@@ -27,7 +28,7 @@ export function AdvancedRepaymentEditor({ value, onChange, amount, ratePct, term
       <p>Maturity remains {termMonths ?? "the term entered above"} months. Amortization sets the regular principal payment after any interest-only period; unpaid principal is due at maturity.</p>
       {unsupportedReason ? <p role={value ? "alert" : undefined}>{unsupportedReason}</p> : null}
       <div className={styles.fields}>
-        <label htmlFor={`${id}-amortization`}>Amortization after interest-only (months)<input id={`${id}-amortization`} inputMode="numeric" type="number" min={1} max={1200} placeholder="Use remaining term" value={numberText(config.amortization_months)} disabled={disabled || !!unsupportedReason || structure === "interest_only"} onChange={(event) => update({ amortization_months: event.target.value === "" ? undefined : numeric(event.target.value) })} />{structure === "interest_only" && config.amortization_months != null ? <button type="button" disabled={disabled} onClick={() => update({ amortization_months: undefined })}>Remove amortization; keep principal payments</button> : null}</label>
+        {!amortizationAlreadyVisible ? <label htmlFor={`${id}-amortization`}>Amortization after interest-only (months)<input id={`${id}-amortization`} inputMode="numeric" type="number" min={1} max={1200} placeholder="Use remaining term" value={numberText(config.amortization_months)} disabled={disabled || !!unsupportedReason || structure === "interest_only"} onChange={(event) => update({ amortization_months: event.target.value === "" ? undefined : numeric(event.target.value) })} />{structure === "interest_only" && config.amortization_months != null ? <button type="button" disabled={disabled} onClick={() => update({ amortization_months: undefined })}>Remove amortization; keep principal payments</button> : null}</label> : null}
         <label htmlFor={`${id}-after`}>After a principal payment<select id={`${id}-after`} value={config.after_balloon} disabled={disabled || !!unsupportedReason} onChange={(event) => update({ after_balloon: event.target.value as RepaymentConfig["after_balloon"] })}><option value="keep_payment">Keep regular payment</option><option value="recast">Recast remaining regular payments</option></select></label>
       </div>
       <p>Each percentage uses the remaining principal after that period’s regular payment. Payments in the same period apply in listed order. Monthly dates map to the nearest payment period for other cadences.</p>
@@ -39,7 +40,7 @@ export function AdvancedRepaymentEditor({ value, onChange, amount, ratePct, term
           <button type="button" disabled={disabled} aria-label={`Remove principal payment ${index + 1}`} onClick={() => update({ balloons: config.balloons.filter((_item, i) => i !== index) })}>Remove</button>
         </div>)}
       </div>
-      <div className={styles.actions}><button type="button" disabled={disabled || !!unsupportedReason || config.balloons.length >= 60} onClick={() => update({ balloons: [...config.balloons, { id: globalThis.crypto?.randomUUID?.() ?? `principal-${Date.now()}-${config.balloons.length}`, month: Math.min(termMonths ?? 12, 12), type: "amount", value: Number.NaN }] })}>Add principal payment</button>{value ? <button type="button" disabled={disabled} onClick={() => onChange(null)}>Reset advanced repayment</button> : null}</div>
+      <div className={styles.actions}><button type="button" disabled={disabled || !!unsupportedReason || config.balloons.length >= 60} onClick={() => update({ balloons: [...config.balloons, { id: globalThis.crypto?.randomUUID?.() ?? `principal-${Date.now()}-${config.balloons.length}`, month: Math.min(termMonths ?? 12, 12), type: "amount", value: Number.NaN }] })}>Add principal payment</button>{value && (!amortizationAlreadyVisible || config.balloons.length > 0) ? <button type="button" disabled={disabled} onClick={() => amortizationAlreadyVisible ? update({ balloons: [] }) : onChange(null)}>{amortizationAlreadyVisible ? "Remove additional principal payments" : "Reset all advanced repayment"}</button> : null}</div>
       {error ? <p className={styles.error} role="alert">{error} Changes cannot be saved until this is resolved.</p> : null}
       {!error && preview.schedule && value ? <div className={styles.preview}>
         {events.map((row) => <div key={row.id}>Month {row.month}{row.due_month !== row.month ? ` (applied at ${row.due_month} months)` : ""}: {money(row.amount)} principal payment · {money(row.balance_after)} remaining{row.recast_payment != null && row.recast_effective_period != null ? ` · recast payment ${money(row.recast_payment)} from period ${row.recast_effective_period}` : " · regular payment retained"}</div>)}

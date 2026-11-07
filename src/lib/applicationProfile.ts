@@ -449,6 +449,8 @@ export type ClientTermsCalculation = {
 };
 
 export type ApplicationClientTerms = {
+  /** Returned by an atomic terms + working financial-plan save. */
+  financial_plan?: import("./financialCockpit").FinancialPlanRead;
   profile_id: string;
   term_sheet_id: string | null;
   version: number;
@@ -495,6 +497,7 @@ export type ApplicationClientTerms = {
 };
 
 export type ApplicationClientTermsWrite = {
+  financial_plan?: import("./financialCockpit").FinancialPlanWrite;
   expected_version: number;
   loan_type: string;
   amount: number;

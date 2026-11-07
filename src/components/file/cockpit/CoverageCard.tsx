@@ -1,8 +1,10 @@
 "use client";
 
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
-import { adoptRecordedLoan, releaseRecordedLoan } from "@/lib/loanTermsSync";
-import { copyRepaymentConfig, repaymentPreview } from "@/lib/repaymentConfig";
+import { adoptRecordedLoan, applyWorkingLoan, mergeAcknowledgedLoan, releaseAutomaticRefinance, releaseRecordedLoan, workingLoanFromPlan, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
+import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview } from "@/lib/repaymentConfig";
+import type { ApplicationClientTerms } from "@/lib/applicationProfile";
+import type { ClientTermsWorkingDraft } from "@/components/application/ApplicationClientTermsPanel";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
 // the plan on the right, and the plan itself in between: the obligations
@@ -43,6 +45,7 @@ import {
   type CockpitMonth,
   type FinancialCockpit as Cockpit,
   type FinancialPlanWrite,
+  type FinancialPlanRead,
   type PayeeKind,
   type PlanAddBack,
   type PlanAddBackKind,
@@ -125,6 +128,9 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
   const [debtEditor, setDebtEditor] = useState<DebtScheduleEditorTarget | null>(null);
   const [clientTermsOpen, setClientTermsOpen] = useState(false);
+  const [clientTermsDraft, setClientTermsDraft] = useState<ClientTermsWorkingDraft | null>(null);
+  const [loanDraftTouched, setLoanDraftTouched] = useState(false);
+  const activeProfile = useRef(profileId);
   const [legacySelectionsReviewed, setLegacySelectionsReviewed] = useState(false);
   const legacySelectionKey = JSON.stringify(cockpit.plan.unresolved_previous_selections ?? []);
   useEffect(() => { setLegacySelectionsReviewed(false); }, [legacySelectionKey]);
@@ -144,6 +150,14 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const [paymentText, setPaymentText] = useState<string>(() => (cockpit.plan.record.new_payment_monthly == null ? "" : String(cockpit.plan.record.new_payment_monthly)));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
+  useEffect(() => {
+    if (activeProfile.current === profileId) return;
+    activeProfile.current = profileId;
+    const next = fromRecord(cockpit);
+    setPlan(next); setPaymentText(numberValue(next.new_payment_monthly));
+    setClientTermsDraft(null); setLoanDraftTouched(false); setClientTermsOpen(false); setReviewOpen(false);
+    setError(null); setSaved(null); returnToReview.current = false;
+  }, [profileId, cockpit]);
   const savedRecord = useMemo(() => fromRecord(cockpit), [cockpit]);
   const dirty = !same(plan, savedRecord);
   useEffect(() => {
@@ -166,6 +180,40 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     unresolvedSelections: unresolvedPayoffs,
     debtServiceKnown: plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null,
   });
+  const workingLoan = workingLoanFromPlan(plan, loanDraftTouched || plan.new_payment_source === "manual");
+  const serviceKnown = plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null;
+  const refinanceContext: LoanRefinanceContext | null = plan.retire.length || plan.terms_ref?.treatment === "refinance"
+    ? { treatment: "refinance", retainedAnnualService: serviceKnown && !selectionTotals.monthlyUnknown && !unresolvedPayoffs ? Math.round(local.serviceBeforeNewPayment * 1200) / 100 : null } : null;
+  const scenarioPaymentOnly = plan.new_payment_source === "manual" && plan.new_loan_amount == null;
+  const previewScenario: LoanScenarioPreviewer = (loan, context) => {
+    const before = cockpit.dscr.headline?.value ?? null;
+    const basis = cockpit.dscr.headline?.label ?? "Working scenario inputs";
+    const schedule = repaymentPreview(loan.amount, loan.ratePct, loan.termMonths, { structure: loan.structure, interestOnlyMonths: loan.interestOnlyMonths, periodsPerYear: loan.paymentsPerYear ?? 12, repaymentConfig: loan.repaymentConfig }).schedule;
+    if (!schedule) return { before, after: null, basis, unavailableReason: "Complete the loan details to calculate scenario coverage." };
+    if (context.treatment === "refinance" && context.retainedAnnualService == null) return { before, after: null, basis, unavailableReason: "The annual debt service remaining after payoff is not provided." };
+    let previewPlan = applyWorkingLoan(plan, loan);
+    if (context.treatment === "refinance") previewPlan = adoptRecordedLoan(previewPlan, {
+      kind: "working_preview", id: "local-only", version: 0, label: "working terms preview", amount: loan.amount, rate_pct: loan.ratePct,
+      term_months: loan.termMonths, interest_only: loan.structure === "interest_only", structure: loan.structure,
+      interest_only_months: loan.interestOnlyMonths ?? 0, repayment_config: copyRepaymentConfig(loan.repaymentConfig), payments_per_year: loan.paymentsPerYear,
+      payment_monthly: schedule.coverage_payment_monthly, treatment: "refinance", retained_annual_debt_service: context.retainedAnnualService,
+    });
+    const evaluation = evaluatePlanLocally(cockpit, previewPlan, months);
+    return { before, after: evaluation.headlineAfter, basis, noDebtLeft: evaluation.noDebtLeft };
+  };
+  function termsSaved(terms: ApplicationClientTerms, savedPlan?: FinancialPlanRead) {
+    if (savedPlan) {
+      setPlan((current) => mergeAcknowledgedLoan(current, savedPlan.record));
+      setPaymentText(numberValue(savedPlan.record.new_payment_monthly));
+      setClientTermsDraft(null); setLoanDraftTouched(false); setSaved(`Client terms v${terms.version} and the scenario loan were saved together.`);
+    }
+    void refresh();
+  }
+  function applyTermsLoan(loan: SyncedLoan) {
+    setPlan((current) => applyWorkingLoan(current, loan)); setPaymentText(""); setSaved(null); setLoanDraftTouched(true);
+    setClientTermsDraft((current) => current ? { ...current, editedInEditor: false } : null);
+    setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false;
+  }
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
   const economics = cockpit.plan?.economics ?? null;
@@ -206,15 +254,17 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   };
   const setPayment = (text: string) => {
     setSaved(null);
+    setLoanDraftTouched(true);
     setPaymentText(text);
     const value = num(text);
-    setPlan((p) => ({ ...p, new_payment_monthly: value, new_payment_source: value == null ? null : "manual", ...(value == null ? {} : { new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_structure: null, new_loan_interest_only: false, new_loan_interest_only_months: null, new_loan_repayment_config: null, new_loan_payments_per_year: null }) }));
+    setPlan((p) => ({ ...p, terms_ref: null, overrides: releaseAutomaticRefinance(p), new_payment_monthly: value, new_payment_source: value == null ? null : "manual", ...(value == null ? {} : { new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_structure: null, new_loan_interest_only: false, new_loan_interest_only_months: null, new_loan_repayment_config: null, new_loan_payments_per_year: null }) }));
   };
   const applyLever = (apply: Partial<FinancialPlanWrite>) => {
     setSaved(null);
     setPlan((p) => {
       const next = { ...p, ...apply } as FinancialPlanWrite;
       if (apply.new_loan_amount != null || apply.new_loan_interest_only) {
+        next.terms_ref = null; next.overrides = releaseAutomaticRefinance(p); setLoanDraftTouched(true);
         next.new_payment_monthly = null;
         next.new_payment_source = "manual_terms";
       }
@@ -225,20 +275,19 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   // The new loan's terms: amount, rate, term and whether it is interest-only. Typing a term wipes a typed payment.
   const setLoan = (field: "amount" | "rate" | "term" | "interest_only" | "structure" | "io_months", raw: string | boolean) => {
     setSaved(null);
+    setLoanDraftTouched(true);
     setPaymentText("");
     setPlan((p) => {
       const value = typeof raw === "boolean" ? null : num(raw);
-      const next: FinancialPlanWrite = { ...p, new_payment_monthly: null };
+      const next: FinancialPlanWrite = { ...p, new_payment_monthly: null, terms_ref: null, overrides: releaseAutomaticRefinance(p) };
       if (field === "amount") next.new_loan_amount = value;
       else if (field === "rate") next.new_loan_rate_pct = value;
       else if (field === "term") {
         const term = value == null ? null : Math.max(1, Math.round(value));
-        // The house default follows the term: simple interest under three years, amortizing from three.
-        if (p.new_loan_structure !== "interest_only" && (p.new_loan_structure == null || p.new_loan_structure === defaultStructure(p.new_loan_term_months))) next.new_loan_structure = defaultStructure(term);
         next.new_loan_term_months = term;
-        if (next.new_loan_interest_only_months != null && term != null) next.new_loan_interest_only_months = Math.min(next.new_loan_interest_only_months, term);
+        if (p.new_loan_structure == null && term != null && (p.new_loan_repayment_config?.amortization_months ?? 0) > term - (p.new_loan_interest_only_months ?? 0)) next.new_loan_structure = "amortizing";
       } else if (field === "structure") {
-        const structure = String(raw) as LoanStructure;
+        const structure = raw === "" ? null : String(raw) as LoanStructure;
         next.new_loan_structure = structure;
         next.new_loan_interest_only = structure === "interest_only";
         if (structure === "interest_only") next.new_loan_interest_only_months = null;
@@ -249,12 +298,21 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         next.new_loan_interest_only = raw === true;
         next.new_loan_structure = raw === true ? "interest_only" : defaultStructure(p.new_loan_term_months);
       }
-      next.new_payment_source = next.new_loan_amount ? "manual_terms" : null;
+      next.new_payment_source = next.new_loan_amount != null ? "manual_terms" : null;
       return next;
     });
   };
   const repaymentIssue = repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct, plan.new_loan_term_months, { structure: plan.new_loan_interest_only ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).error;
   const structureNow: LoanStructure = plan.new_loan_interest_only ? "interest_only" : (plan.new_loan_structure ?? defaultStructure(plan.new_loan_term_months));
+  const setAmortization = (raw: string) => {
+    const months = raw.trim() === "" ? null : Number(raw);
+    setSaved(null); setPaymentText(""); setLoanDraftTouched(true);
+    setPlan((current) => ({ ...current, terms_ref: null, overrides: releaseAutomaticRefinance(current),
+      new_loan_repayment_config: applyAmortizationMonths(current.new_loan_repayment_config, months),
+      new_loan_structure: current.new_loan_structure == null && !current.new_loan_interest_only && months != null && Number.isFinite(months)
+        && current.new_loan_term_months != null && months > current.new_loan_term_months - (current.new_loan_interest_only_months ?? 0) ? "amortizing" : current.new_loan_structure,
+      new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null }));
+  };
   const updateAddBack = (index: number, patch: Partial<PlanAddBack>) => {
     setSaved(null);
     setPlan((p) => ({ ...p, add_backs: p.add_backs.map((a, i) => (i === index ? { ...a, ...patch } : a)) }));
@@ -323,6 +381,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const serviceOriginal = cockpit.debt.service.monthly ?? 0;
   const clearPlan = () => {
     setSaved(null);
+    setLoanDraftTouched(true);
     setPlan({ ...EMPTY_PLAN, expected_updated_at: plan.expected_updated_at ?? null });
     setPaymentText("");
   };
@@ -470,18 +529,21 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           <div className="fc-loan-terms">
             <label className="grid g2"><span className="sub">Amount, $</span><Input aria-label="New loan amount" type="number" inputMode="decimal" min={0} step="any" value={numberValue(plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => setLoan("amount", e.target.value)} /></label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
-            <label className="grid g2"><span className="sub">Term, months</span><Input aria-label="New loan term in months" type="number" inputMode="numeric" min={1} max={600} step={1} value={numberValue(plan.new_loan_term_months)} disabled={!canEdit} onChange={(e) => setLoan("term", e.target.value)} /></label>
-            <label className="grid g2"><span className="sub">Payments per year</span><Input aria-label="New loan payments per year" type="number" inputMode="decimal" min={1} max={366} step="any" placeholder="12 (monthly)" value={numberValue(plan.new_loan_payments_per_year)} disabled={!canEdit} onChange={(event) => { setSaved(null); setPlan((current) => ({ ...current, new_loan_payments_per_year: event.target.value === "" ? null : Number(event.target.value), new_payment_monthly: null, new_payment_source: current.new_loan_amount ? "manual_terms" : null, terms_ref: null })); }} /></label>
+            <label className="grid g2"><span className="sub">Loan term / maturity, months</span><Input aria-label="New loan term in months" type="number" inputMode="numeric" min={1} max={600} step={1} value={numberValue(plan.new_loan_term_months)} disabled={!canEdit} onChange={(e) => setLoan("term", e.target.value)} /></label>
+            <label className="grid g2"><span className="sub">Payments per year</span><Input aria-label="New loan payments per year" type="number" inputMode="decimal" min={1} max={366} step="any" placeholder="12 (monthly)" value={numberValue(plan.new_loan_payments_per_year)} disabled={!canEdit} onChange={(event) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_payments_per_year: event.target.value === "" ? null : Number(event.target.value), new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} /></label>
             <label className="grid g2"><span className="sub">Structure</span>
-              <Select aria-label="New loan structure" value={structureNow} disabled={!canEdit} onChange={(e) => setLoan("structure", e.target.value)}>
-                {(Object.keys(STRUCTURE_LABELS) as LoanStructure[]).map((k) => <option key={k} value={k}>{STRUCTURE_LABELS[k]}{k === defaultStructure(plan.new_loan_term_months) && k !== "interest_only" ? " (default for this term)" : ""}</option>)}
+              <Select aria-label="New loan structure" value={plan.new_loan_interest_only ? "interest_only" : plan.new_loan_structure ?? ""} disabled={!canEdit} onChange={(e) => setLoan("structure", e.target.value)}>
+                <option value="">Automatic for this term ({STRUCTURE_LABELS[defaultStructure(plan.new_loan_term_months)].toLowerCase()})</option>
+                {(Object.keys(STRUCTURE_LABELS) as LoanStructure[]).map((k) => <option key={k} value={k}>{k === "amortizing" ? "Amortizing / declining balance" : STRUCTURE_LABELS[k]}</option>)}
               </Select>
             </label>
             {structureNow !== "interest_only" ? (
               <label className="grid g2"><span className="sub">Interest-only months first</span><Input aria-label="Interest-only months at the start of the term" type="number" inputMode="numeric" min={0} max={plan.new_loan_term_months ?? 600} step={1} placeholder="0" value={numberValue(plan.new_loan_interest_only_months)} disabled={!canEdit} onChange={(e) => setLoan("io_months", e.target.value)} /></label>
             ) : null}
+            <label className="grid g2"><span className="sub">Amortization after interest-only, months</span><Input aria-label="Amortization after interest-only (months)" type="number" inputMode="numeric" min={1} max={1200} placeholder="Use remaining loan term" value={numberValue(plan.new_loan_repayment_config?.amortization_months)} disabled={!canEdit || structureNow === "interest_only"} onChange={(event) => setAmortization(event.target.value)} /><small className="sub">Independent of maturity; this period begins after any interest-only months.</small>{structureNow === "interest_only" && plan.new_loan_repayment_config?.amortization_months != null ? <Btn size="sm" disabled={!canEdit} onClick={() => setAmortization("")}>Remove amortization; keep principal payments</Btn> : null}</label>
+            <div className="grid g2"><span className="sub">Residual balloon at maturity</span><strong className="num">{local.schedule ? money(local.schedule.balloon, 2) : "Enter loan details to calculate"}</strong><small className="sub">Unpaid principal is due at maturity{plan.new_loan_term_months != null ? ` in month ${plan.new_loan_term_months}` : ""}; additional principal payments are set below.</small></div>
           </div>
-          <AdvancedRepaymentEditor value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPlan((current) => ({ ...current, new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
+          <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
             {local.schedule?.repayment_config ? `Regular payment ${money(local.schedule.payment_io ?? local.schedule.payment_after)} per period; ${money(local.schedule.balloon)} residual due at maturity. Coverage uses ${money(local.schedule.coverage_annual_debt_service)} of peak rolling 12-month actual cash due (${money(local.newPayment)} monthly equivalent), including scheduled principal payments.` : local.schedule && !termsAdopted ? `${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}: ${local.schedule.payment_io_monthly != null && local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ${money(local.schedule.payment_after_monthly)}` : `${money(local.newPayment)} a month${local.schedule.structure === "interest_only" ? " of interest; the principal is due at maturity" : ""}`}. Coverage stands on ${money(local.newPayment)} a month.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
@@ -503,10 +565,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           {termsKind === "client" ? (
             <ClientTermsStrip
               profileId={profileId}
-              loan={{ amount: plan.new_loan_amount ?? null, ratePct: plan.new_loan_rate_pct ?? null, termMonths: plan.new_loan_term_months ?? null, structure: structureNow as LoanStructure, interestOnlyMonths: plan.new_loan_interest_only_months ?? null, repaymentConfig: plan.new_loan_repayment_config, paymentsPerYear: plan.new_loan_payments_per_year ?? 12 }}
+              loan={workingLoan}
               linkSummary={link?.summary ?? null}
               linkState={link?.state ?? null}
               canEdit={canEdit}
+              financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onSaved={termsSaved}
               onOpenEditor={() => { returnToReview.current = reviewOpen; setReviewOpen(false); setClientTermsOpen(true); }}
             />
           ) : null}
@@ -782,6 +845,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     </section>
     <FinancialReviewDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
-    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={() => { void refresh(); }} prefillLoan={plan.new_loan_amount && plan.new_loan_rate_pct != null && (plan.new_loan_term_months || structureNow === "interest_only") && mirrorNow !== "mirrored" ? { amount: plan.new_loan_amount, aprPct: plan.new_loan_rate_pct, termMonths: plan.new_loan_term_months, structure: structureNow as LoanStructure, interestOnlyMonths: plan.new_loan_interest_only_months, repaymentConfig: plan.new_loan_repayment_config, paymentsPerYear: plan.new_loan_payments_per_year ?? 12 } : null} />
+    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} previewScenario={previewScenario} canEdit={canEdit} scenarioPaymentOnly={scenarioPaymentOnly} />
   </>;
 }
