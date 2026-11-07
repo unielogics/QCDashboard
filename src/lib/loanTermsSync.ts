@@ -15,7 +15,7 @@ export function clientDraftLoanFields(loan: SyncedLoan) {
   return {
     amount: loan.amount == null ? "" : String(loan.amount), apr_pct: loan.ratePct == null ? "" : String(loan.ratePct), term_months: loan.termMonths == null ? "" : String(loan.termMonths),
     loan_structure: loan.structureExplicit === false ? "" as const : loan.structure,
-    interest_only_months: loan.structure === "interest_only" || loan.interestOnlyMonths == null ? "" : String(loan.interestOnlyMonths),
+    interest_only_months: loan.structure === "interest_only" ? "" : String(loan.interestOnlyMonths ?? 0),
     repayment_config: copyRepaymentConfig(loan.repaymentConfig), ...termsCadenceForPeriods(loan.paymentsPerYear ?? 12),
   };
 }
@@ -37,6 +37,25 @@ export function releaseAutomaticRefinance(plan: FinancialPlanWrite) {
   if (!plan.overrides?.debt_service_note?.startsWith("Refinance per ")) return plan.overrides;
   const next = { ...plan.overrides, debt_service_monthly: null, debt_service_note: null };
   return next.income_annual != null || next.income_note ? next : null;
+}
+
+/** Preserve the exact reviewed annual basis instead of round-tripping its monthly display value. */
+export function recordedRetainedAnnual(plan: FinancialPlanWrite): number | null {
+  const annual = plan.terms_ref?.retained_annual_debt_service;
+  const monthly = plan.overrides?.debt_service_monthly;
+  return plan.new_payment_source === "recorded_terms" && plan.terms_ref?.treatment === "refinance"
+    && annual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ")
+    && monthly != null && Math.abs(monthly - roundEbitdaMoney(annual / 12)) < 0.005 ? annual : null;
+}
+
+/** Repair only legacy recorded-loan cadence when its exact source version still identifies it. */
+export function recordedLoanCadence(plan: Pick<FinancialPlanRecord, "new_payment_source" | "terms_ref" | "new_loan_payments_per_year">, recorded?: RecordedTerms | null): number | null {
+  if (plan.new_loan_payments_per_year != null) return plan.new_loan_payments_per_year;
+  const reference = plan.terms_ref;
+  const periods = recorded?.payments_per_year;
+  return plan.new_payment_source === "recorded_terms" && reference && recorded
+    && reference.kind === recorded.kind && reference.id === recorded.id && reference.version === recorded.version
+    && periods != null && Number.isFinite(periods) && periods >= 1 && periods <= 366 ? periods : null;
 }
 
 export function workingLoanFromPlan(plan: FinancialPlanWrite, includeEmpty = false): SyncedLoan | null {
@@ -96,9 +115,9 @@ const EMPTY_LOAN_OVERRIDES = { income_annual: null, income_note: null, debt_serv
 /** Mirrors the server's versioned recorded-terms adoption; payoff selections remain recoverable. */
 export function adoptRecordedLoan(plan: FinancialPlanWrite, recorded: RecordedTerms): FinancialPlanWrite {
   const structure: LoanStructure = recorded.structure === "simple_interest" || recorded.structure === "amortizing" || recorded.structure === "interest_only" ? recorded.structure : recorded.interest_only ? "interest_only" : "amortizing";
-  const retained = recorded.retained_annual_debt_service ?? 0;
-  const overrides = recorded.treatment === "refinance" ? { income_annual: null, income_note: null, ...plan.overrides, debt_service_monthly: roundEbitdaMoney(retained / 12), debt_service_note: `Refinance per ${recorded.label}: existing debt retained per recorded terms.` } : releaseAutomaticRefinance(plan);
-  return { ...plan, new_payment_monthly: recorded.payment_monthly, new_payment_source: "recorded_terms", new_loan_amount: recorded.amount, new_loan_rate_pct: recorded.rate_pct, new_loan_term_months: recorded.term_months, new_loan_interest_only: recorded.interest_only, new_loan_structure: structure, new_loan_interest_only_months: recorded.interest_only_months ?? 0, new_loan_repayment_config: copyRepaymentConfig(recorded.repayment_config), new_loan_payments_per_year: recorded.repayment_config ? recorded.payments_per_year ?? 12 : null, overrides, terms_ref: { kind: recorded.kind, id: recorded.id, version: recorded.version, label: recorded.label, treatment: recorded.treatment === "refinance" ? "refinance" : "additive", retained_annual_debt_service: recorded.retained_annual_debt_service } };
+  const retained = recorded.retained_annual_debt_service;
+  const overrides = recorded.treatment === "refinance" && retained != null ? { income_annual: null, income_note: null, ...plan.overrides, debt_service_monthly: roundEbitdaMoney(retained / 12), debt_service_note: `Refinance per ${recorded.label}: existing debt retained per recorded terms.` } : releaseAutomaticRefinance(plan);
+  return { ...plan, new_payment_monthly: recorded.payment_monthly, new_payment_source: "recorded_terms", new_loan_amount: recorded.amount, new_loan_rate_pct: recorded.rate_pct, new_loan_term_months: recorded.term_months, new_loan_interest_only: recorded.interest_only, new_loan_structure: structure, new_loan_interest_only_months: recorded.interest_only_months ?? 0, new_loan_repayment_config: copyRepaymentConfig(recorded.repayment_config), new_loan_payments_per_year: recorded.payments_per_year ?? 12, overrides, terms_ref: { kind: recorded.kind, id: recorded.id, version: recorded.version, label: recorded.label, treatment: recorded.treatment === "refinance" ? "refinance" : "additive", retained_annual_debt_service: recorded.retained_annual_debt_service } };
 }
 
 export function releaseRecordedLoan(plan: FinancialPlanWrite): FinancialPlanWrite {

@@ -50,7 +50,10 @@ export type Draft = {
 export type ClientTermsWorkingDraft = { profileId: string; draft: Draft; baseVersion: number; savedFingerprint: string; sourceFingerprint: string; editedInEditor: boolean };
 const cloneDraft = (draft: Draft): Draft => ({ ...draft, repayment_config: copyRepaymentConfig(draft.repayment_config) });
 export function draftWithScenarioLoan(draft: Draft, loan?: SyncedLoan | null, context?: LoanRefinanceContext | null): Draft {
-  return { ...cloneDraft(draft), ...(loan ? clientDraftLoanFields(loan) : {}),
+  const fields = loan ? clientDraftLoanFields(loan) : null;
+  if (fields?.repayment_frequency === "custom" && draft.repayment_frequency === "custom"
+      && loanFromClientDraft(draft).paymentsPerYear === loan?.paymentsPerYear) fields.custom_repayment_label = draft.custom_repayment_label;
+  return { ...cloneDraft(draft), ...fields,
     ...(context ? { debt_service_treatment: context.treatment, retained_annual_debt_service: context.retainedAnnualService == null ? "" : String(context.retainedAnnualService) } : {}) };
 }
 
@@ -120,7 +123,7 @@ export function draftFromTerms(terms: ApplicationClientTerms): Draft {
     debt_service_treatment: terms.debt_service_treatment ?? "additive",
     retained_annual_debt_service: terms.retained_annual_debt_service == null ? "" : String(terms.retained_annual_debt_service),
     loan_structure: terms.loan_structure ?? "",
-    interest_only_months: terms.interest_only_months ? String(terms.interest_only_months) : "",
+    interest_only_months: terms.loan_structure === "interest_only" ? "" : String(terms.interest_only_months ?? 0),
     repayment_config: copyRepaymentConfig(terms.repayment_config),
     expiration_days: String(terms.expiration_days ?? 7),
     closing_estimate_days: String(terms.closing_estimate_days ?? 5),
@@ -520,7 +523,7 @@ export function ApplicationClientTermsPanel({
     {!terms.loan_type_options.length ? <Callout tone="bad">No active loan type is scoped to this file. Publish or scope a funding program before creating client terms.</Callout> : null}
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {notice ? <Callout tone="ok">{notice}</Callout> : null}
-    {sourceConflict ? <Callout tone="warn"><div className="grid g8"><span>The scenario loan changed after this editor draft was kept. Your pending editor fields are preserved. Choose which loan to continue editing.</span><Row><Btn size="sm" disabled={save.isPending} onClick={() => resolveScenarioSource(true)}>Use current scenario loan</Btn><Btn size="sm" disabled={save.isPending} onClick={() => resolveScenarioSource(false)}>Keep editor loan</Btn></Row></div></Callout> : null}
+    {sourceConflict ? <Callout tone="warn"><div className="grid g8"><span>The scenario loan changed after this editor draft was kept. Your pending editor fields are preserved. Choose which loan to continue editing.</span><Row><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(true)}>Use current scenario loan</Btn><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(false)}>Keep editor loan</Btn></Row></div></Callout> : null}
     {onApplyLoan ? <p className="sub">Loan edits stay in this editor until you Apply loan to scenario or Save new version. Closing keeps this editor draft; it does not issue or send terms.</p> : null}
     {scenarioPaymentOnly ? <Callout tone="warn">The scenario has a manually entered monthly payment. It does not establish a principal amount, APR or loan term; enter those details to calculate matching terms.</Callout> : null}
     <fieldset disabled={!canEdit || save.isPending || downloading} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
