@@ -24,6 +24,7 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent as ReactKeyboardE
 import { cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { formatCount, formatMoney, formatRatio, parseMoney, parseRate } from "./money";
+import { formatLoanPaidDownPct } from "@/lib/loanProgress";
 import type { CellMark } from "./useSheetValues";
 import type { Editing } from "./useSelection";
 import type { CellAddr, RowKind, SheetCell } from "./types";
@@ -52,6 +53,7 @@ export function cellDisplay(
     if (figure === null || figure === undefined || !Number.isFinite(figure)) {
       return { text: NO_FIGURE, warn: false, title: "Not enough figures yet" };
     }
+    if (cell.format === "percent") return { text: formatLoanPaidDownPct(figure), warn: false, title: `${figure < 0 ? "Current balance is above the original amount. " : ""}${cell.hint ?? "Balance reduction from the original loan amount."}` };
     if (cell.format === "ratio") return { text: formatRatio(figure), warn: false };
     if (cell.format === "count") return { text: formatCount(figure), warn: false };
     if (cell.format === "text") return { text: String(figure), warn: false };

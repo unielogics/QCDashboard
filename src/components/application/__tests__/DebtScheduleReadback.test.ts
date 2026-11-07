@@ -5,6 +5,7 @@ import { DebtScheduleReadback } from "../DebtScheduleReadback";
 import { EvidenceReviewDetails } from "../EvidenceReviewDetails";
 import type { FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
 import type { ApplicationRequirementEvidence } from "@/lib/applicationProfile";
+import { formatLoanOriginationDate } from "@/lib/loanProgress";
 
 const fixture = (values: Partial<FinancialWorkspaceSnapshot> = {}): FinancialWorkspaceSnapshot => ({
   kind: "debt_schedule", family_id: "family", label: "Business obligations", schema: null,
@@ -48,6 +49,24 @@ describe("embedded debt schedule and reviewed evidence", () => {
     expect(html).toContain("last saved schedule is complete");
     expect(html).toContain("Needed: monthly payment or payment terms");
     expect(html).not.toContain("completed schedule version has not been filed");
+  });
+
+  it("shows canonical origination dates and per-loan paid down without aggregating a percentage", () => {
+    const html = render({ body: { debts: [
+      { id: "first", lender: "First loan", originated_on: "2026-01-15", original_amount: "100000", balance: "80000", monthly_payment: "100", status: "active" },
+      { id: "paid", lender: "Paid loan", originated_on: "bad-date", original_amount: "1000", balance: "0", monthly_payment: "0", status: "active" },
+      { id: "unknown", lender: "Unknown basis", original_amount: "0", balance: "50", monthly_payment: "10", status: "active" },
+    ] } });
+    expect(html).toContain("Origination date");
+    expect(html).toContain("% paid down");
+    expect(html).toContain(formatLoanOriginationDate("2026-01-15"));
+    expect(html).toContain("Not provided");
+    expect(html).toContain("20.0%");
+    expect(html).toContain("100.0%");
+    expect(html).toContain("—");
+    expect(html.match(/<thead>[\s\S]*?<\/thead>/)?.[0].match(/scope="col"/g)).toHaveLength(9);
+    expect(html.match(/<tfoot>[\s\S]*?<\/tfoot>/)?.[0]).not.toContain("%");
+    expect(html).toMatch(/colspan="2"/i);
   });
 
   it("offers a specific supporting-document explanation and source action without implying acceptance", () => {

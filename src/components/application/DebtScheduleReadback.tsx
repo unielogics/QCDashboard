@@ -5,6 +5,7 @@ import { meaningfulFinancialDebts, financialDebtReviewSummary, financialDebtTota
 import { parseMoney } from "@/components/sheet/money";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
+import { formatLoanOriginationDate, formatLoanPaidDown, loanPaidDownDescription } from "@/lib/loanProgress";
 import styles from "./DebtScheduleReadback.module.css";
 
 const money = (value: unknown) => {
@@ -55,17 +56,17 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
       <div className={styles.tableWrap} tabIndex={0} role="region" aria-label="Debt schedule obligations, scroll across columns if needed">
         <table>
           <caption>{summary.publishNeeded ? "Working draft" : "Saved schedule"} · active obligations only</caption>
-          <thead><tr><th scope="col">Lender</th><th scope="col">Current balance</th><th scope="col">Payment</th><th scope="col">Per</th><th scope="col">Monthly equivalent</th><th scope="col">Loan documents</th><th scope="col">Edit</th></tr></thead>
+          <thead><tr><th scope="col">Lender</th><th scope="col">Origination date</th><th scope="col">Current balance</th><th scope="col">% paid down</th><th scope="col">Payment</th><th scope="col">Per</th><th scope="col">Monthly equivalent</th><th scope="col">Loan documents</th><th scope="col">Edit</th></tr></thead>
           <tbody>{rows.map((row) => {
             const missing = summary.missingFields.filter((field) => field.includes(row.id)).map(fieldLabel);
             return <tr key={row.id}>
               <th scope="row"><span>{String(row.lender || "Lender needed")}</span>{missing.length ? <small>Needed: {[...new Set(missing)].join(", ")}</small> : null}</th>
-              <td>{money(row.balance)}</td><td>{money(row.payment_amount)}</td><td>{paymentFrequency(row.payment_frequency)}</td><td>{money(row.monthly_payment)}</td>
+              <td>{formatLoanOriginationDate(row.originated_on)}</td><td>{money(row.balance)}</td><td title={loanPaidDownDescription(row.original_amount, row.balance)}>{formatLoanPaidDown(row.original_amount, row.balance)}</td><td>{money(row.payment_amount)}</td><td>{paymentFrequency(row.payment_frequency)}</td><td>{money(row.monthly_payment)}</td>
               <td><button type="button" className={styles.link} onClick={() => onFiles(row.id)}>{row.evidence_links?.length ? `${row.evidence_links.length} linked ${row.evidence_links.length === 1 ? "file" : "files"}` : "Link files"}</button></td>
               <td><div className={styles.actions}><Btn size="sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.lender || "obligation"}`}>Edit</Btn><PageActionMenu label={`Manage ${row.lender || "obligation"}`} items={[{ label: "Remove row…", onSelect: () => onEdit(row.id) }, { label: "Mark duplicate of another obligation…", onSelect: () => onEdit(row.id) }, { label: "Link supporting documents", onSelect: () => onFiles(row.id) }]} /></div></td>
             </tr>;
           })}</tbody>
-          <tfoot><tr><th scope="row">Totals</th><td>{money(totals.total_balance)}</td><td colSpan={2}>Active obligations only</td><td>{money(totals.total_monthly_payment)}</td><td colSpan={2}>{summary.removed} excluded</td></tr></tfoot>
+          <tfoot><tr><th scope="row" colSpan={2}>Totals</th><td>{money(totals.total_balance)}</td><td title="Paid-down percentages are calculated per loan, not combined in totals.">—</td><td colSpan={2}>Active obligations only</td><td>{money(totals.total_monthly_payment)}</td><td colSpan={2}>{summary.removed} excluded</td></tr></tfoot>
         </table>
       </div>
       {summary.publishedComplete && published ? <p className={styles.note}>Last completed version: v{published.version_number}{published.created_at ? ` · ${new Date(published.created_at).toLocaleString()}` : ""}. {summary.publishedRows} saved {summary.publishedRows === 1 ? "obligation" : "obligations"}.</p> : null}

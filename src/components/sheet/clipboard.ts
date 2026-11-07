@@ -4,6 +4,7 @@
 
 import { colIndex, isEditable, rangeCells, rowIndex } from "./coords";
 import { formatPlain, parseMoney } from "./money";
+import { formatLoanPaidDownPct } from "@/lib/loanProgress";
 import type { CellAddr, ComputedValues, Edit, NewRow, PastePlan, SheetCell, SheetLayout, SheetRow, SheetValues } from "./types";
 
 /** A tab-separated block as a matrix of strings.
@@ -78,6 +79,7 @@ export function cellText(cell: SheetCell | null, values: SheetValues, computed: 
   if (!cell) return "";
   if (cell.type === "label") return String(cell.label ?? "");
   if (cell.type === "formula") {
+    if (cell.compute && cell.format === "percent") { const value = computed[cell.compute]; return value == null || !Number.isFinite(value) ? "" : formatLoanPaidDownPct(value); }
     if (cell.compute) return formatPlain(computed[cell.compute] ?? null);
     if (cell.source) return formatPlain(parseMoney(values[cell.source]).value);
     return "";
