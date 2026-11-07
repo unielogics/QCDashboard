@@ -25,6 +25,7 @@ import { cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { formatCount, formatMoney, formatRatio, parseMoney, parseRate } from "./money";
 import { formatLoanPaidDownPct } from "@/lib/loanProgress";
+import { focusSheetInput, isValidSheetDate, SHEET_DATE_ERROR } from "./inputEditing";
 import type { CellMark } from "./useSheetValues";
 import type { Editing } from "./useSelection";
 import type { CellAddr, RowKind, SheetCell } from "./types";
@@ -257,6 +258,7 @@ function CellEditor({
   onCancel: () => void;
 }) {
   const [draft, setDraft] = useState(seed === null ? String(value ?? "") : seed);
+  const [invalidDate, setInvalidDate] = useState(false);
   const cancelled = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const selectRef = useRef<HTMLSelectElement | null>(null);
@@ -264,17 +266,19 @@ function CellEditor({
   useEffect(() => {
     const input = inputRef.current;
     if (input) {
-      input.focus();
-      // Opened from Enter or a double click: the raw string, selected, so the
-      // next keystroke replaces it and an arrow key does not.
-      if (seed === null) input.select();
-      else input.setSelectionRange(input.value.length, input.value.length);
+      focusSheetInput(input, seed);
       return;
     }
     selectRef.current?.focus();
   }, [seed]);
 
   const finish = (next: string, how: CommitHow) => {
+    if (cell?.type === "date" && !isValidSheetDate(next, inputRef.current?.validity.badInput)) {
+      setInvalidDate(true);
+      inputRef.current?.setCustomValidity(SHEET_DATE_ERROR);
+      inputRef.current?.reportValidity();
+      return;
+    }
     cancelled.current = true;
     onCommit(next, how);
   };
@@ -332,13 +336,25 @@ function CellEditor({
       ref={inputRef}
       className="field sg-editor"
       style={{ minWidth: 0, maxWidth: "100%", boxSizing: "border-box" }}
-      type={cell?.type === "date" ? "date" : "text"}
+      type={cell?.type === "date" && seed === null ? "date" : "text"}
+      placeholder={cell?.type === "date" && seed !== null ? "YYYY-MM-DD" : undefined}
+      aria-invalid={invalidDate || undefined}
+      title={invalidDate ? SHEET_DATE_ERROR : undefined}
       inputMode={cell?.type === "money" || cell?.type === "rate" ? "decimal" : undefined}
       value={draft}
-      onChange={(event) => setDraft(event.target.value)}
+      onChange={(event) => {
+        setDraft(event.target.value);
+        if (cell?.type === "date") { setInvalidDate(false); event.currentTarget.setCustomValidity(""); }
+      }}
       onKeyDown={onKeyDown}
       onBlur={() => {
-        if (!cancelled.current) onCommit(draft, "blur");
+        if (cancelled.current) return;
+        if (cell?.type === "date" && !isValidSheetDate(draft, inputRef.current?.validity.badInput)) {
+          cancelled.current = true;
+          onCancel();
+          return;
+        }
+        finish(draft, "blur");
       }}
       aria-label={cell?.label ?? cell?.key ?? undefined}
     />
