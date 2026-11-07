@@ -30,7 +30,7 @@ export function roundEbitdaMoney(value: number): number {
 }
 
 /** Eligibility is a server decision; only the scenario's operating assumptions are replayed here. */
-export function evaluateRefinanceEbitda(cockpit: FinancialCockpit, plan: FinancialPlanWrite, context: { serviceAfter: number; netBefore: number | null; netAfter: number | null; retiredCount: number; newPayment: number | null }): RefinanceEbitda | undefined {
+export function evaluateRefinanceEbitda(cockpit: FinancialCockpit, plan: FinancialPlanWrite, context: { serviceAfter: number | null; netBefore: number | null; netAfter: number | null; retiredCount: number; newPayment: number | null }): RefinanceEbitda | undefined {
   const baseline = cockpit.plan.evaluation.ebitda ?? cockpit.plan.impact?.ebitda;
   if (!baseline) return undefined;
   const eligible = baseline.adjusted_annual.before;
@@ -59,7 +59,7 @@ export function evaluateRefinanceEbitda(cockpit: FinancialCockpit, plan: Financi
   if (replacementMissing) notes.push("Debt-service savings are shown before adding a replacement payment; replacement loan terms have not been provided.");
   return { ...baseline,
     adjusted_annual: { ...baseline.adjusted_annual, after: eligible == null ? null : roundEbitdaMoney(eligible + adjustment), change: eligible == null ? null : adjustment, status: eligible == null ? "unavailable" : included.length ? "hypothetical_adjusted" : "unchanged", adjustments: included, excluded_adjustments: excluded },
-    debt_service_savings_monthly: cockpit.debt.service.monthly == null ? null : roundEbitdaMoney(cockpit.debt.service.monthly - context.serviceAfter),
+    debt_service_savings_monthly: cockpit.debt.service.monthly == null || context.serviceAfter == null ? null : roundEbitdaMoney(cockpit.debt.service.monthly - context.serviceAfter),
     cash_flow_change_monthly: context.netBefore == null || context.netAfter == null ? null : roundEbitdaMoney(context.netAfter - context.netBefore),
     replacement_payment_missing: replacementMissing, debt_service_override_applied: plan.overrides?.debt_service_monthly != null,
     debt_service_savings_status: replacementMissing ? "before_replacement_payment" : plan.overrides?.debt_service_monthly != null ? "hypothetical_override" : "projected", notes,

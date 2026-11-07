@@ -33,11 +33,14 @@ export function refinanceSelectionTotals(
   const monthlyUnknown = inService.filter((row) => row.monthly == null || !Number.isFinite(row.monthly)).length;
   const monthlyAdded = evaluation.newPayment;
   const selectionKnown = !needsReview && monthlyUnknown === 0;
-  const remainingKnown = selectionKnown && options.debtServiceKnown;
-  const afterKnown = remainingKnown && monthlyAdded != null;
-  const netMonthly = afterKnown ? round2(evaluation.serviceAfter - evaluation.serviceBefore) : null;
-  const evaluatedChange = round2(evaluation.serviceAfter - evaluation.serviceBefore);
-  const basisAdjusted = monthlyAdded != null && round2(monthlyAdded - evaluation.retiredMonthly) !== evaluatedChange;
+  const before = evaluation.serviceBefore, after = evaluation.serviceAfter;
+  const evaluatedChange = before != null && after != null && Number.isFinite(before) && Number.isFinite(after)
+    ? round2(after - before) : null;
+  const remainingKnown = selectionKnown && options.debtServiceKnown && before != null && Number.isFinite(before)
+    && evaluation.serviceBeforeNewPayment != null && Number.isFinite(evaluation.serviceBeforeNewPayment);
+  const afterKnown = remainingKnown && monthlyAdded != null && Number.isFinite(monthlyAdded) && evaluatedChange != null;
+  const netMonthly = afterKnown ? evaluatedChange : null;
+  const basisAdjusted = afterKnown && monthlyAdded != null && round2(monthlyAdded - evaluation.retiredMonthly) !== evaluatedChange;
 
   return {
     selectedCount: selected.length,
