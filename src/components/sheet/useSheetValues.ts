@@ -33,6 +33,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import { planPaste } from "./clipboard";
+import { orderDebtScheduleColumns } from "@/lib/debtWorksheetLayout";
 import { recompute, type SheetSchema } from "./compute";
 import { visibleLines } from "./types";
 import type {
@@ -179,7 +180,7 @@ export function normalizeLayout(payload: SheetPayload): SheetLayout {
 }
 
 function stateFrom(payload: SheetPayload): SheetState {
-  const layout = normalizeLayout(payload);
+  const layout = orderDebtScheduleColumns(normalizeLayout(payload));
   const values = { ...(payload.values ?? {}) };
   const schema = payload.schema ?? null;
   return {
@@ -196,6 +197,12 @@ function stateFrom(payload: SheetPayload): SheetState {
 
 const cellId = (sheet: string, key: string) => `${sheet}:${key}`;
 
+/** Match the grid's explicit per-row permission without changing keyed legacy edits. */
+function protectedRowInputKeys(state: SheetState): Set<string> {
+  return new Set(state.layout.rows.flatMap((row) => row.row_key && state.rowMeta[row.row_key]?.editable === false
+    ? (row.cells ?? []).flatMap((cell) => typeof cell.key === "string" ? [cell.key] : []) : []));
+}
+
 export class SheetStore {
   private snapshot: StoreSnapshot;
   private listeners = new Set<() => void>();
@@ -208,12 +215,16 @@ export class SheetStore {
   private flushWaiters = new Set<() => void>();
   private options: SheetStoreOptions;
   private seq = 0;
+  // Row-operation replies contain canonical cells but no columns. Keep their
+  // source geometry separate from the ordered layout used by the grid/paste.
+  private sourceLayouts = new Map<SheetKind, SheetLayout>();
 
   constructor(options: SheetStoreOptions) {
     this.options = options;
     const sheets: Record<string, SheetState> = {};
     const order: SheetKind[] = [];
     for (const payload of options.sheets ?? []) {
+      this.sourceLayouts.set(payload.kind, normalizeLayout(payload));
       sheets[payload.kind] = stateFrom(payload);
       order.push(payload.kind);
     }
@@ -278,6 +289,7 @@ export class SheetStore {
     const sheets = { ...this.snapshot.sheets };
     const order = [...this.snapshot.order];
     for (const payload of payloads ?? []) {
+      this.sourceLayouts.set(payload.kind, normalizeLayout(payload));
       const state = stateFrom(payload);
       if (!order.includes(payload.kind)) order.push(payload.kind);
       // Anything still queued was typed after the server answered, so it goes
@@ -331,10 +343,15 @@ export class SheetStore {
     const marks = { ...this.snapshot.marks };
     const touched = new Set<SheetKind>();
     let markChanged = false;
+    const protectedKeys = new Map<SheetKind, Set<string>>();
 
     for (const edit of edits) {
       const state = sheets[edit.sheet];
       if (!state) continue;
+      if (source === "local") {
+        if (!protectedKeys.has(edit.sheet)) protectedKeys.set(edit.sheet, protectedRowInputKeys(state));
+        if (protectedKeys.get(edit.sheet)!.has(edit.key)) continue;
+      }
       const id = cellId(edit.sheet, edit.key);
       if (source === "remote" && this.editingCell === id) {
         // The rule the live half depends on: your keystrokes are not
@@ -513,10 +530,12 @@ export class SheetStore {
       for (const [key, value] of Object.entries(state.values)) {
         if (!(key in values) && !rowOwns(rows, key)) values[key] = value;
       }
-      layout = {
-        ...layout,
+      const source = {
+        ...(this.sourceLayouts.get(kind) ?? layout),
         rows: rows.map(({ values: _rowValues, ...row }) => row),
       };
+      this.sourceLayouts.set(kind, source);
+      layout = orderDebtScheduleColumns(source);
     }
     const rev = response.rev?.[kind];
     sheets[kind] = {
@@ -561,8 +580,10 @@ export class SheetStore {
       const fresh = this.snapshot.sheets[kind];
       plan = planPaste(fresh.layout, fresh.values, topLeft, matrix);
     }
-    this.applyEdits(plan.edits, { source: "local" });
-    return { applied: plan.edits.length, clipped: plan.clipped, appended };
+    const protectedKeys = protectedRowInputKeys(this.snapshot.sheets[kind]);
+    const permitted = plan.edits.filter((edit) => !protectedKeys.has(edit.key));
+    this.applyEdits(permitted, { source: "local" });
+    return { applied: permitted.length, clipped: plan.clipped, appended };
   }
 
   dispose(): void {
