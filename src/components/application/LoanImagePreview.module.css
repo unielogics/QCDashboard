@@ -9,11 +9,11 @@
 .inputRow button, .previewHeading button { display: inline-flex; align-items: center; justify-content: center; padding: 4px; border: 0; background: none; color: var(--muted); cursor: pointer; border-radius: 4px; }
 .inputRow button:hover, .previewHeading button:hover { color: var(--ink); background: var(--sunken2); }
 .preview, .menu { position: fixed; inset: auto; margin: 0; box-sizing: border-box; border: 1px solid var(--line); border-radius: 9px; background: var(--surface, white); color: var(--ink); box-shadow: 0 12px 35px rgba(20, 32, 50, .2); z-index: 300; }
-.preview { width: 330px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow: auto; padding: 11px; }
+.preview { width: 720px; max-width: calc(100vw - 24px); max-height: calc(100dvh - 24px); overflow: auto; padding: 14px; }
 .previewHeading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin-bottom: 9px; }
 .previewHeading strong { min-width: 0; font-size: 12px; line-height: 1.4; overflow-wrap: anywhere; }
 .previewHeading button { flex-shrink: 0; }
-.preview img { display: block; max-width: 100%; width: auto; max-height: 270px; height: auto; object-fit: contain; margin: 0 auto; background: var(--sunken2); }
+.preview img { display: block; max-width: 100%; width: auto; max-height: min(72dvh, 760px); height: auto; object-fit: contain; margin: 0 auto; background: var(--sunken2); }
 .previewFooter { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; }
 .previewFooter small { font-size: 10px; color: var(--muted); }
 .loading, .failure { padding: 24px 7px; font-size: 12px; color: var(--muted); }
