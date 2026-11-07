@@ -1,0 +1,4 @@
+@media (max-width: 700px) {
+  .header { display: grid; grid-template-columns: minmax(0, 1fr); padding: 16px 54px 14px 16px; }
+  .header :global(.drawer-h-actions) { width: 100%; justify-content: flex-start; flex-wrap: wrap; gap: 8px; }
+}

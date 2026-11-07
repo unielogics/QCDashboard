@@ -1,6 +1,7 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { CreditReportDetail } from "@/components/CreditReportDetail";
 import { Drawer } from "@/components/ds/Drawer";
 import { Btn, Callout, Sub } from "@/components/ds";
@@ -9,6 +10,7 @@ import { useAuthedApi } from "@/hooks/useApi";
 import type { FileOwner } from "@/lib/applicationProfile";
 import type { ParsedReport } from "@/lib/types";
 import { ownerCreditWords } from "@/lib/creditLinks";
+import styles from "./OwnerCreditReportDrawer.module.css";
 
 type ReportResponse = { owner: FileOwner; report: ParsedReport | null };
 
@@ -16,6 +18,7 @@ export function OwnerCreditReportDrawer({ profileId, owner, onClose, onImported 
   profileId: string; owner: FileOwner | null; onClose: () => void; onImported: () => Promise<void>;
 }) {
   const api = useAuthedApi();
+  const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
   const path = `/application-profiles/${profileId}/owners/${owner?.id}/credit-report`;
   const key = ["owner-credit-report", profileId, owner?.id];
@@ -34,14 +37,15 @@ export function OwnerCreditReportDrawer({ profileId, owner, onClose, onImported 
     },
   });
   const shown = report.data?.owner ?? owner;
-  return <Drawer open={Boolean(owner)} onClose={onClose} title={`${owner?.full_name ?? "Owner"} · Credit report`} width="lg"
+  return <Drawer open={Boolean(owner)} onClose={onClose} title={`${owner?.full_name ?? "Owner"} · Credit report`} width="xl" fullscreen={expanded}
+    headerClass={styles.header}
     sub={shown ? ownerCreditWords(shown) : undefined}
-    headerActions={<Btn disabled={importReport.isPending} onClick={() => importReport.mutate()}><Icon name="refresh" size={14} />{importReport.isPending ? "Importing..." : "Import existing report"}</Btn>}>
+    headerActions={<><Btn onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore credit report" : "Expand credit report"}>{expanded ? "Restore" : "Expand"}</Btn><Btn disabled={importReport.isPending} onClick={() => importReport.mutate()}><Icon name="refresh" size={14} />{importReport.isPending ? "Importing..." : "Import existing report"}</Btn></>}>
     <div className="grid g12">
       <Sub>Imports the already-created report. Does not request a new credit check or change the original pull date.</Sub>
       {report.isError || importReport.isError ? <Callout tone="warn">{(importReport.error ?? report.error) instanceof Error ? (importReport.error ?? report.error)?.message : "The report could not be loaded."}</Callout> : null}
       {!report.isLoading && !report.isError && !report.data?.report ? <Callout tone="warn">The report is linked, but its contents have not been imported. Import the existing report to bring the score and report details into this file.</Callout> : null}
-      {report.isLoading || report.data?.report ? <CreditReportDetail report={report.data?.report ?? undefined} loading={report.isLoading} /> : null}
+      {report.isLoading || report.data?.report ? <CreditReportDetail key={owner?.credit_pull_id ?? owner?.id} report={report.data?.report ?? undefined} loading={report.isLoading} /> : null}
     </div>
   </Drawer>;
 }
