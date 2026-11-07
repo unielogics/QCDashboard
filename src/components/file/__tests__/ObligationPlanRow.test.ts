@@ -8,6 +8,18 @@ const obligation = { id: "row:a", kind: "row", lender: "Oakwood", category: "ter
 const render = (canEdit: boolean, on: boolean) => renderToStaticMarkup(createElement(ObligationPlanRow, { o: obligation, canEdit, on, onToggleRetire: () => undefined }));
 
 describe("financial coverage obligations", () => {
+  it("shows the exact loan date and balance reduction separately from its payoff quote", () => {
+    const html = renderToStaticMarkup(createElement(ObligationPlanRow, { o: { ...obligation, original_amount: 100000, originated_on: "2023-07-03" }, canEdit: true, on: false, onToggleRetire: () => undefined }));
+    expect(html).toContain("20.0%");
+    expect(html).toContain("2023");
+    expect(html).not.toContain("21.0%");
+    expect(html.match(/<input/g)).toHaveLength(1);
+  });
+  it("honors an explicitly unavailable loan-specific percentage from legacy document evidence", () => {
+    const html = renderToStaticMarkup(createElement(ObligationPlanRow, { o: { ...obligation, original_amount: 100000, paid_down_pct: null }, canEdit: true, on: false, onToggleRetire: () => undefined }));
+    expect(html).not.toContain("20.0%");
+    expect(html).toContain("—");
+  });
   it("shows saved figures with only the payoff plan checkbox editable", () => {
     const html = render(true, true);
     expect(html).toContain("Oakwood");

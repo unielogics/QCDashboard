@@ -34,6 +34,7 @@
 import { cloneElement, isValidElement, useMemo, useState, type ReactElement, type ReactNode } from "react";
 import { DEBT_MONTHLY_FACTORS, debtMonthlyEquivalent, updateDebtPaymentTerms, type DebtPaymentFrequency } from "@/lib/debtPaymentTerms";
 import { Icon } from "@/components/design-system/Icon";
+import { formatLoanPaidDown, loanPaidDownDescription } from "@/lib/loanProgress";
 import {
   DEBT_TYPES,
   debtRowProblems,
@@ -318,6 +319,9 @@ export function DebtScheduleForm({
                   onChange={(event) => patch(index, { balance: event.target.value })}
                 />
               </Field>
+              <Field id={`paid-down-${index}`} label="Paid down">
+                <output id={`paid-down-${index}`} htmlFor={`original-${index} balance-${index}`} title={loanPaidDownDescription(row.original_amount, row.balance)}>{formatLoanPaidDown(row.original_amount, row.balance)}</output>
+              </Field>
               <Field id={`rate-${index}`} label="Annual interest rate (%)" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "rate")} source={renderFieldSource?.(row, "rate")}>
                 <input
                   id={`rate-${index}`}
@@ -352,7 +356,7 @@ export function DebtScheduleForm({
                   onChange={(event) => patch(index, { monthly_payment: event.target.value })}
                 />
               </Field>
-              <Field id={`origin-${index}`} label="Origin date" source={renderFieldSource?.(row, "originated_on")}>
+              <Field id={`origin-${index}`} label="Origination date" source={renderFieldSource?.(row, "originated_on")}>
                 <input
                   id={`origin-${index}`}
                   type="date"

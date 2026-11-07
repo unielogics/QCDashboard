@@ -3,6 +3,7 @@ import type { SheetKind, SheetLayout, SheetCell, SheetRow, Edit, SheetValues } f
 import { parseMoney } from "@/components/sheet/money";
 import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
 import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
+import { loanPaidDownPct } from "@/lib/loanProgress";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
@@ -121,6 +122,12 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
       r: first + index, kind: "data", block: "debts", row_key: row.id, ordinal: index + 1,
       cells: source.columns.map((column, at): SheetCell => {
         const original = template?.cells?.find((cell) => cell.c === column.c);
+        if (original?.type === "formula" || at >= fields.length) {
+          const paidDown = at === fields.length || original?.compute?.endsWith(".paid_down_pct");
+          return { ...original, c: column.c, type: "formula", editable: false, key: undefined, path: undefined,
+            ...(paidDown ? { compute: `${row.id}.paid_down_pct`, xlsx_name: `${row.id}.paid_down_pct`, formula: `=IFERROR(({${row.id}.original_amount}-{${row.id}.balance})/{${row.id}.original_amount}*100,"")`, format: "percent", hint: "Balance reduction: (original amount − current balance) ÷ original amount × 100. Payoff fees, interest and factor rates are not included." }
+              : { compute: original?.compute?.replace(`${template?.row_key}.`, `${row.id}.`) }) };
+        }
         const field = original?.path?.at(-1) ?? fields[at];
         const categories: Record<string, Record<string, string>> = {
           debt_type: Object.fromEntries(DEBT_TYPES.map((option) => [option.value, option.label])),
@@ -162,7 +169,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
 }
 export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, edits: Edit[]): FinancialBody {
   const next = structuredClone(body);
-  const paths = new Map(layout.rows.flatMap((row) => (row.cells ?? []).filter((cell) => cell.key && cell.path).map((cell) => [cell.key!, cell.path!] as const)));
+  const paths = new Map(layout.rows.flatMap((row) => (row.cells ?? []).filter((cell) => cell.key && cell.path && cell.editable !== false && cell.type !== "formula").map((cell) => [cell.key!, cell.path!] as const)));
   for (const edit of edits) {
     const path = paths.get(edit.key);
     if (!path || edit.sheet !== layout.kind) continue;
@@ -244,6 +251,10 @@ export function financialDebtTotals(body: FinancialBody): { total_balance: numbe
     return amounts.some((amount, index) => amount.blank || amount.warn || ["-", "."].includes(String(rows[index][field]))) ? null : amounts.reduce((total, amount) => total + amount.value, 0);
   };
   return { total_balance: sum("balance"), total_monthly_payment: sum("monthly_payment") };
+}
+/** Formula values follow the working rows; excluded rows retain their own read-only detail. */
+export function financialDebtComputed(body: FinancialBody): Record<string, number | null> {
+  return { ...financialDebtTotals(body), ...Object.fromEntries(((body.debts as FinancialDebtRow[] | undefined) ?? []).map((row) => [`${row.id}.paid_down_pct`, loanPaidDownPct(row.original_amount, row.balance)])) };
 }
 export function financialMappingConflict(existing: unknown, proposed: unknown): boolean {
   return existing != null && String(existing).trim() !== "" && String(existing).trim() !== String(proposed ?? "").trim();

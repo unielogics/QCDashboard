@@ -17,6 +17,7 @@ import type { PfsBody, PfsSchema } from "@/components/application/Pfs413Form";
 import type { DebtBody, DebtRow } from "@/components/application/DebtScheduleForm";
 import type { StatementBody, StatementSchema } from "@/components/application/BusinessStatementForm";
 import { debtTypeLabel, isAdvanceType, isBlankDebtRow } from "@/lib/debtTypes";
+import { formatLoanOriginationDate, formatLoanPaidDown, loanPaidDownDescription } from "@/lib/loanProgress";
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
 
@@ -34,11 +35,11 @@ const money = (value: number) =>
  *  neither is a figure the lender will read. */
 const entered = (value: unknown) => String(value ?? "").trim() !== "" && num(value) !== 0;
 
-function Line({ label, value }: { label: string; value: string }) {
+function Line({ label, value, title }: { label: string; value: string; title?: string }) {
   return (
     <div className="fpr-line">
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong title={title}>{value}</strong>
     </div>
   );
 }
@@ -188,7 +189,6 @@ const DEBT_FIELDS: [keyof DebtRow, string][] = [
   ["debt_type", "Type"],
   ["original_amount", "Original"],
   ["rate", "Rate"],
-  ["originated_on", "Originated"],
   ["maturity_on", "Matures"],
   ["secured", "Secured"],
   ["payment_status", "Status"],
@@ -200,7 +200,8 @@ const DEBT_FIELDS: [keyof DebtRow, string][] = [
 export function debtFieldText(key: keyof DebtRow, value: string): string {
   if (key === "debt_type") return debtTypeLabel(value) || value;
   if (key === "secured" || key === "payment_status") return value.charAt(0).toUpperCase() + value.slice(1);
-  if (key === "originated_on" || key === "maturity_on") {
+  if (key === "originated_on") return formatLoanOriginationDate(value);
+  if (key === "maturity_on") {
     const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
     return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
   }
@@ -244,6 +245,8 @@ function DebtReview({ body }: { body: DebtBody }) {
         <Section key={index} title={String(row.lender ?? "").trim() || `Obligation ${index + 1}`}>
           <Line label="Current balance" value={money(num(row.balance))} />
           <Line label="Monthly payment" value={money(num(row.monthly_payment))} />
+          <Line label="Origination date" value={formatLoanOriginationDate(row.originated_on)} />
+          <Line label="Paid down" value={formatLoanPaidDown(row.original_amount, row.balance)} title={loanPaidDownDescription(row.original_amount, row.balance)} />
           <div className="fpr-sub">
             {DEBT_FIELDS.filter(([key]) => String(row[key] ?? "").trim()).map(([key, label]) => (
               <span key={String(key)}>

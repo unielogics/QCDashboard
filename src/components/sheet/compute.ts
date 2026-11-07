@@ -15,6 +15,7 @@ import { parseMoney } from "./money";
 import type { ComputedValues, SheetKind, SheetValues } from "./types";
 import { debtMonthlyEquivalent } from "@/lib/debtPaymentTerms";
 import { realEstateTotalsFromValues, type RealEstateSchema } from "@/lib/realEstateSchedule";
+import { loanPaidDownPct } from "@/lib/loanProgress";
 
 /** What the 413 sheet ships alongside its rows: `pfs_schema.describe()`. */
 export type PfsSheetSchema = PfsTotalsInput & { schema_version?: string };
@@ -57,6 +58,14 @@ export function debtTotals(values: SheetValues): ComputedValues {
   };
 }
 
+/** Row formulas are separate from financial totals and never change the debt-service sums. */
+export function debtProgress(values: SheetValues): ComputedValues {
+  return Object.fromEntries(Object.keys(values).filter((key) => key.endsWith(".original_amount")).map((key) => {
+    const row = key.slice(0, key.lastIndexOf("."));
+    return [`${row}.paid_down_pct`, loanPaidDownPct(values[key], values[`${row}.balance`])];
+  }));
+}
+
 function pick(values: SheetValues, rows: ReadonlyArray<{ key: string }>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const row of rows) out[row.key] = values[row.key] ?? "";
@@ -83,7 +92,7 @@ export function recompute(kind: SheetKind, schema: SheetSchema | null | undefine
       return computeStatementTotals(schema, statementBody(schema, values)).values;
     }
     case "debt_schedule":
-      return debtTotals(values);
+      return { ...debtTotals(values), ...debtProgress(values) };
     case "pfs": {
       if (!schema || !("assets" in schema)) return {};
       return pfsTotals(schema, values);

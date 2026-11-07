@@ -40,7 +40,7 @@ describe("the debt schedule form", () => {
     // plus the one in the legend.
     expect(html.match(/class="fp-req"/g)?.length).toBe(8);
     // Optional fields carry none.
-    expect(html).toMatch(/Origin date<\/label>/);
+    expect(html).toMatch(/Origination date<\/label>/);
     expect(html).toMatch(/Type of collateral<\/label>/);
   });
 
@@ -80,5 +80,32 @@ describe("the debt schedule form", () => {
   it("shows the type beside the lender in the card title", () => {
     const html = render({ debts: [{ lender: "Fundbox", debt_type: "mca", balance: "12000" }] });
     expect(html).toContain("Merchant cash advance (MCA) · $12,000 owed");
+  });
+});
+
+
+describe("recorded debt progress in the shared borrower and staff form", () => {
+  it("shows a derived output, never another editable or submitted answer", () => {
+    const body = { debts: [{ id: "sba-001", lender: "SBA", original_amount: "10000", balance: "2500", originated_on: "2025-03-01", monthly_payment: "200" }] };
+    const before = JSON.stringify(body);
+    const html = renderToStaticMarkup(createElement(DebtScheduleForm, { value: body, onChange: noop, singleRow: true, rowEntry: true }));
+    expect(html).toContain("Origination date</label>");
+    expect(html).toContain('type="date"');
+    expect(html).toMatch(/<output[^>]*id="paid-down-0"[^>]*>75.0%<\/output>/);
+    expect(html).toContain("original amount − current balance");
+    expect(html).not.toMatch(/<input[^>]*(?:name|id)="paid.down/);
+    expect(JSON.stringify(body)).toBe(before);
+  });
+
+  it("distinguishes a zero balance, unknown amounts, and increased balance", () => {
+    const html = render({ debts: [
+      { lender: "Paid", original_amount: "100", balance: "0" },
+      { lender: "Unknown", original_amount: "100", balance: "" },
+      { lender: "Increased", original_amount: "100", balance: "120" },
+    ] });
+    expect(html).toMatch(/<output[^>]*id="paid-down-0"[^>]*>100.0%<\/output>/);
+    expect(html).toMatch(/<output[^>]*id="paid-down-1"[^>]*>—<\/output>/);
+    expect(html).toMatch(/<output[^>]*id="paid-down-2"[^>]*>-20.0%<\/output>/);
+    expect(html).toContain("Current balance is above the original amount.");
   });
 });

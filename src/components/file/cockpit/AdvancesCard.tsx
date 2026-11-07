@@ -13,6 +13,7 @@ import { Btn, CellChip, Input, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useAdvances, useSaveAdvances } from "@/hooks/useApi";
+import { formatLoanOriginationDate, formatLoanPaidDown, formatLoanPaidDownPct, loanPaidDownDescription } from "@/lib/loanProgress";
 import {
   cadenceLabel,
   money,
@@ -132,6 +133,7 @@ export function AdvancesCard({ profileId, cockpit, canEdit }: { profileId: strin
   }, [advances.data, dirty]);
 
   const reconciliation = cockpit.debt.reconciliation;
+  const recordedById = useMemo(() => new Map((advances.data?.rows ?? []).map((row) => [row.id, row])), [advances.data]);
   const byRowId = useMemo(() => new Map(reconciliation.rows.map((r) => [r.row_id, r])), [reconciliation.rows]);
   const suggestions: RecurringPayee[] = reconciliation.unmatched_observed;
 
@@ -209,8 +211,10 @@ export function AdvancesCard({ profileId, cockpit, canEdit }: { profileId: strin
             <thead>
               <tr>
                 <th>Funder</th>
+                <th>Origination date</th>
                 <th className="r">Approved</th>
                 <th className="r">Balance</th>
+                <th className="r">Paid down</th>
                 <th className="r">Payment</th>
                 <th>Cadence</th>
                 <th className="r">Per month</th>
@@ -225,6 +229,7 @@ export function AdvancesCard({ profileId, cockpit, canEdit }: { profileId: strin
                 const rec = row.id ? byRowId.get(row.id) : undefined;
                 const label = rec ? reconciliationLabel(rec) : null;
                 const locked = !row.editable || !canEdit;
+                const recorded = row.id ? recordedById.get(row.id) : undefined;
                 return (
                   <tr key={row.key} className={cx(!row.count_in_dscr && "is-muted")}>
                     <td>
@@ -237,8 +242,10 @@ export function AdvancesCard({ profileId, cockpit, canEdit }: { profileId: strin
                         <Input aria-label="Funder" placeholder="Funder" value={row.lender} onChange={(e) => update(row.key, { lender: e.target.value })} />
                       )}
                     </td>
+                    <td>{formatLoanOriginationDate(recorded?.originated_on)}</td>
                     <td className="r num">{locked ? money(num(row.original_amount)) : <Input aria-label="Approved amount" inputMode="decimal" placeholder="Approved" value={row.original_amount} onChange={(e) => update(row.key, { original_amount: e.target.value })} />}</td>
                     <td className="r num">{locked ? money(num(row.balance)) : <Input aria-label="Current balance" inputMode="decimal" placeholder="Balance" value={row.balance} onChange={(e) => update(row.key, { balance: e.target.value })} />}</td>
+                    <td className="r num" title={loanPaidDownDescription(locked && recorded && Object.hasOwn(recorded, "paid_down_pct") && recorded.paid_down_pct == null ? null : row.original_amount, row.balance)}>{locked && recorded && Object.hasOwn(recorded, "paid_down_pct") ? formatLoanPaidDownPct(recorded.paid_down_pct) : formatLoanPaidDown(row.original_amount, row.balance)}</td>
                     <td className="r num">{locked ? money(num(row.payment_amount)) : <Input aria-label="Payment amount" inputMode="decimal" placeholder="Payment" value={row.payment_amount} onChange={(e) => update(row.key, { payment_amount: e.target.value })} />}</td>
                     <td>
                       {locked ? (

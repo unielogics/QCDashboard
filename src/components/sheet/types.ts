@@ -7,7 +7,7 @@ export type SheetKind = "p_and_l" | "balance_sheet" | "debt_schedule" | "pfs" | 
 
 export type CellType = "label" | "text" | "money" | "date" | "select" | "rate" | "formula";
 
-export type CellFormat = "money" | "ratio" | "count" | "text" | "date";
+export type CellFormat = "money" | "ratio" | "percent" | "count" | "text" | "date";
 
 export type RowKind =
   | "title"

@@ -257,6 +257,8 @@ describe("recompute with nothing to compute from", () => {
   });
 
   it("still totals the debt schedule, which needs no schema", () => {
-    expect(recompute("debt_schedule", null, DEBT_CASE.values)).toEqual(DEBT_CASE.expected);
+    const values = recompute("debt_schedule", null, DEBT_CASE.values);
+    expect(values).toMatchObject(DEBT_CASE.expected);
+    for (const row of ["d1", "d2", "d3"]) expect(values[`${row}.paid_down_pct`]).toBeNull();
   });
 });

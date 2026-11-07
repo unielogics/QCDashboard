@@ -1,5 +1,8 @@
-.gridRowActions { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; }
-.gridRowActions > button { min-height: 28px; padding: 4px 6px; font-size: 10px; }
+.gridRowActions { display: flex; align-items: center; gap: 5px; flex-wrap: nowrap; }
+.gridRowActions > button { position: relative; flex: 0 0 28px; width: 28px; height: 28px; min-width: 28px; min-height: 28px; padding: 0; }
+.gridRowActions > button.currentPayoff { color: var(--ok); border-color: var(--ok); }
+.gridRowActions > button.payoffReview { color: var(--warn); border-color: var(--warn); }
+.documentCount { position: absolute; top: -5px; right: -5px; min-width: 13px; height: 13px; padding: 0 3px; box-sizing: border-box; display: grid; place-items: center; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); color: var(--ink2); font-size: 8px; line-height: 1; font-weight: 650; pointer-events: none; }
 .duplicatePicker, .uploadLinks { display: grid; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
 .duplicatePicker p { margin: 0; font-size: 12px; color: var(--muted); }
 .uploadLink { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(150px, 230px); gap: 8px; align-items: center; padding: 9px 0; border-bottom: 1px solid var(--line); }
@@ -14,6 +17,7 @@
 .newRowForm :global(.fp-stack) { max-width: none; }
 @media (max-width: 650px) { .uploadLink { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 700px) {
-  .worksheet :global(.sg-wrap) { --sg-details-track: 150px; }
+  .worksheet :global(.sg-wrap) { --sg-details-track: 128px; }
   .worksheet :global(.sg-row-details) { position: static; }
+  .worksheet :global(.sg-row > .sg-cell:first-child) { position: static; left: auto; }
 }

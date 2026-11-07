@@ -60,6 +60,7 @@
 .planContent > section > *, .planContent :global(.fc-grid) > * { min-width: 0; }
 .planContent :global(.grid) { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .planContent :global(.tbl-wrap) { min-width: 0; max-width: 100%; overflow-x: auto; }
+.obligationsTable { min-width: 850px; }
 .planContent .boundedTable { max-height: 300px; }
 .tabs button:focus-visible, .boundedTable:focus-visible, .textAction:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 @media (max-width: 760px) { .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .summaryStrip { grid-template-columns: 1fr; } .reviewBody { padding: 12px; } .metrics strong { font-size: 20px; } .statementSplit { grid-template-columns: 1fr; } }

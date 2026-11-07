@@ -196,6 +196,8 @@ export type CockpitExpenseLine = {
 
 export type CockpitDebtRow = {
   id: string;
+  original_amount?: number | null;
+  paid_down_pct?: number | null;
   lender: string;
   category: string;
   /** The type as a person reads it (`debt_types.debt_type_label`). */
@@ -223,6 +225,8 @@ export type CockpitDebtRow = {
 
 export type CockpitDocumentedDebt = {
   lender: string;
+  originated_on?: string | null;
+  paid_down_pct?: number | null;
   balance: number | null;
   original_amount: number | null;
   monthly_payment: number | null;
@@ -394,6 +398,8 @@ export type AdvanceFrequency = "daily" | "weekly" | "biweekly" | "monthly";
 
 export type AdvanceIn = {
   id?: string | null;
+  originated_on?: string | null;
+  paid_down_pct?: number | null;
   lender: string;
   original_amount: number | null;
   balance: number | null;
@@ -410,6 +416,9 @@ export type AdvanceIn = {
 
 export type Obligation = {
   id: string;
+  original_amount?: number | null;
+  originated_on?: string | null;
+  paid_down_pct?: number | null;
   kind: "row" | "document" | "schedule_document" | "payee";
   lender: string;
   category: string;

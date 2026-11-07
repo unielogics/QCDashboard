@@ -421,12 +421,14 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         <div className="grid g8">
           <div className="row"><Lbl>Saved and documented obligations ({accountLabel})</Lbl><span className="sp" />{canEdit ? <Btn size="sm" onClick={() => openDebt({ view: "form" })}><Icon name="pencil" size={13} />Open financial workspace</Btn> : null}</div>
           {obligations.length ? (
-            <div className="tbl-wrap">
-              <table className="tbl fc-obligations">
+            <div className="tbl-wrap" tabIndex={0} role="region" aria-label="Loan obligations, scroll across for origination dates and paid-down percentages">
+              <table className={`tbl fc-obligations ${styles.obligationsTable}`}>
                 <thead>
                   <tr>
                     <th>Pay off with the new loan</th>
                     <th>Lender</th>
+                    <th>Origination date</th>
+                    <th className="r">Paid down</th>
                     <th className="r">Per month</th>
                     <th className="r">Balance / payoff</th>
                     <th>In debt service</th>
