@@ -5,6 +5,15 @@ export function copyRepaymentConfig(value: RepaymentConfig | null | undefined): 
   return value == null ? null : { ...value, balloons: (value.balloons ?? []).map((row) => ({ ...row })) };
 }
 
+/** An independent amortization edit never changes maturity or removes principal-payment events. */
+export function applyAmortizationMonths(value: RepaymentConfig | null | undefined, months: number | null): RepaymentConfig | null {
+  if (value == null && months == null) return null;
+  const next = copyRepaymentConfig(value) ?? { balloons: [] };
+  if (months == null) delete next.amortization_months;
+  else next.amortization_months = months;
+  return next;
+}
+
 /** Invalid edits stay visible; a preview never silently prices the legacy schedule instead. */
 export function repaymentPreview(amount: number | null | undefined, rate: number | null | undefined, months: number | null | undefined, options: RepaymentOptions = {}): { schedule: LoanScheduleSummary | null; error: string | null } {
   try {

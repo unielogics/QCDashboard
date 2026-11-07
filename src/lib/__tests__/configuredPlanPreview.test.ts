@@ -47,4 +47,22 @@ describe("configured plan annual coverage", () => {
     expect(result.serviceBeforeNewPayment).toBe(83.33);
     expect(result.serviceAfterAnnual).toBe(101000);
   });
+
+  it("does not retire selected payments twice for recorded legacy refinance terms", () => {
+    const withPayoff = { ...cockpit, debt: { ...cockpit.debt, service: { monthly: 2000 }, obligations: [{ id: "old-loan", monthly: 1000, payoff: 2000, in_debt_service: true }] } } as FinancialCockpit;
+    const adopted = { ...plan, retire: ["old-loan"], new_loan_amount: 12000, new_loan_rate_pct: 0, new_loan_term_months: 24,
+      new_loan_structure: "amortizing", new_loan_interest_only: false, new_loan_repayment_config: null,
+      new_payment_source: "recorded_terms", terms_ref: { kind: "client_terms", id: "terms", version: 3, label: "Terms", treatment: "refinance", retained_annual_debt_service: 12000 },
+      overrides: { income_annual: null, income_note: null, debt_service_monthly: 1000, debt_service_note: "Refinance per client terms v3" },
+    } as FinancialPlanWrite;
+    const result = evaluatePlanLocally(withPayoff, adopted, []);
+    expect(result.retiredMonthly).toBe(1000);
+    expect(result.newPayment).toBe(500);
+    expect(result.serviceBeforeNewPayment).toBe(1000);
+    expect(result.serviceAfter).toBe(1500);
+    expect(result.serviceAfterAnnual).toBe(18000);
+    const changedByStaff = evaluatePlanLocally(withPayoff, { ...adopted, overrides: { ...adopted.overrides!, debt_service_monthly: 1050, debt_service_note: "Staff coverage basis" } }, []);
+    expect(changedByStaff.serviceBeforeNewPayment).toBe(50);
+    expect(changedByStaff.serviceAfter).toBe(550);
+  });
 });

@@ -170,6 +170,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const retire = new Set(plan.retire);
   const exclude = new Set(plan.exclude);
   const retired = obligations.filter((o) => retire.has(o.id));
+  const retiredPaymentUnknown = retired.some((o) => o.in_debt_service && (o.monthly == null || !Number.isFinite(o.monthly)));
   const retiredMonthly = r2(retired.filter((o) => o.in_debt_service).reduce((s, o) => s + (o.monthly ?? 0), 0));
   const payoffs = retired.map((o) => o.payoff).filter((v): v is number => v != null);
   const payoffTotal = payoffs.length ? r2(payoffs.reduce((a, b) => a + b, 0)) : null;
@@ -205,10 +206,12 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     source = null;
   }
   const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
-  const exactRetained = schedule?.repayment_config && source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
+  const recordedRetained = source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
+  const exactRetained = schedule?.repayment_config && recordedRetained;
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? null;
-  const coverageUnavailableReason = serviceBefore == null ? DSCR_SERVICE_MISSING : null;
-  const serviceBeforeNewPayment = serviceBefore == null ? null : r2(Math.max(0, exactRetained ? serviceBefore : serviceBefore - retiredMonthly));
+  const retirementUnknown = retiredPaymentUnknown && !recordedRetained;
+  const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : null;
+  const serviceBeforeNewPayment = serviceBefore == null || retirementUnknown ? null : r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
   const serviceAfter = serviceBeforeNewPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
   const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
   const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment == null ? null : serviceBeforeNewPayment * 12;

@@ -80,4 +80,38 @@ describe("financial plan earnings and missing debt service", () => {
     expect(result.serviceAfterAnnual).toBe(30000);
     expect(result.headlineAfter).toBe(1.73);
   });
+
+  it.each([0, 1500])("does not subtract an unknown payoff payment from a reviewed %s monthly base", (base) => {
+    const source = cockpit(2000);
+    source.debt.obligations = [
+      { id: "unknown", monthly: null, payoff: 10000, in_debt_service: true },
+      { id: "known", monthly: 300, payoff: 2000, in_debt_service: true },
+    ] as FinancialCockpit["debt"]["obligations"];
+    const result = evaluatePlanLocally(source, { ...plan, retire: ["unknown", "known"], new_payment_monthly: 500,
+      overrides: { income_annual: null, income_note: null, debt_service_monthly: base, debt_service_note: "Reviewed base" } }, []);
+    expect(result.retiredMonthly).toBe(300);
+    expect(result.serviceBefore).toBe(base);
+    expect(result.serviceBeforeNewPayment).toBeNull();
+    expect(result.serviceAfter).toBeNull();
+    expect(result.headlineAfter).toBeNull();
+    expect(result.coverageUnavailableReason).toMatch(/selected payoff.*unknown/i);
+  });
+
+  it.each([null, { balloons: [] }])("keeps an authoritative recorded retained basis with unknown selected payments (config %j)", (config) => {
+    const source = cockpit(null);
+    source.debt.obligations = [{ id: "unknown", monthly: null, payoff: 10000, in_debt_service: true }] as FinancialCockpit["debt"]["obligations"];
+    const result = evaluatePlanLocally(source, { ...plan, retire: ["unknown"], new_payment_source: "recorded_terms", new_payment_monthly: 500,
+      new_loan_repayment_config: config, terms_ref: { kind: "client_terms", id: "terms", version: 2, label: "Terms v2", treatment: "refinance", retained_annual_debt_service: 12000 },
+      overrides: { income_annual: null, income_note: null, debt_service_monthly: 1000, debt_service_note: "Refinance per terms v2" } }, []);
+    expect(result.serviceBeforeNewPayment).toBe(1000);
+    expect(result.serviceAfterAnnual).toBe(18000);
+    expect(result.headlineAfter).toBe(2.89);
+    expect(result.coverageUnavailableReason).toBeNull();
+  });
+
+  it("ignores unknown payments outside debt service when selected", () => {
+    const source = cockpit(1000);
+    source.debt.obligations = [{ id: "outside", monthly: null, payoff: 10000, in_debt_service: false }] as FinancialCockpit["debt"]["obligations"];
+    expect(evaluatePlanLocally(source, { ...plan, retire: ["outside"] }, []).serviceBeforeNewPayment).toBe(1000);
+  });
 });
