@@ -26,7 +26,7 @@ import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } f
 import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/financialSourcePreview";
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { balanceRiskMonths, riskCountLabel, riskTotals } from "@/lib/balanceRisk";
-import { ebitdaIsStaffCorrected, ebitdaKpi, metricCurrency } from "@/lib/financialMetrics";
+import { ebitdaIsStaffCorrected, ebitdaKpi, metricAmountLabel, metricCurrency } from "@/lib/financialMetrics";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
@@ -65,6 +65,7 @@ import { FinancialMetricReviewWorkspace } from "./FinancialMetricReviewWorkspace
 import { metricEntries, type FinancialKpiKey } from "@/lib/financialKpiReview";
 import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import financialReviewStyles from "./FinancialReview.module.css";
+import metricStyles from "./FinancialMetricReview.module.css";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
 
@@ -721,8 +722,9 @@ export function FinancialCockpit(props: Props) {
   const negativeIncomplete = !risks.negative.complete;
   const negativeUnit = risks.accountDays ? "account-days" : "days";
   const negativeCaption = negativeIncomplete && !risks.negative.value
-    ? "Negative-balance days not fully reported"
-    : `${riskCountLabel(risks.negative)} negative-balance ${negativeUnit}${negativeIncomplete ? " · partial detail" : ""}`;
+    ? "Negative days not fully reported"
+    : `${riskCountLabel(risks.negative)} negative ${negativeUnit}`;
+  const bankPeriod = summary.first_month && summary.last_month ? summary.first_month === summary.last_month ? monthShort(summary.first_month) : `${monthShort(summary.first_month)} – ${monthShort(summary.last_month)}` : "Period unconfirmed";
   return (
     <div className={cx("fin-cockpit", query.isFetching && "is-refreshing")}>
       <div className="fc-head">
@@ -761,17 +763,20 @@ export function FinancialCockpit(props: Props) {
           <span className="sub">Choose which accounts count on Evidence &amp; banking → Banking.</span>
         </div>
       ) : null}
-      <KpiRow>
+      <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
           const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
-          return <FinancialKpiCard key={entry.key} label={entry.title} value={entry.valueLabel} tone={tone} sub={entry.key === "deposits" ? <span className="fc-kpi-spark"><span>{entry.subLabel}</span><Sparkline values={depositValues} /></span> : entry.subLabel} onClick={() => openMetricReview(entry.key)} projection={entry.projection.source !== "none" ? <><span>{entry.projection.source === "filed_offer" ? "With filed offer · illustration" : entry.projection.source === "working_plan" ? "With working plan · unsaved" : "With saved plan"}</span><br /><strong>{entry.projection.valueLabel}</strong>{entry.projection.status === "partial" ? " · partial estimate" : entry.projection.status === "unavailable" ? " · needs inputs" : entry.projection.status === "unchanged" ? " · unchanged" : ""}</> : undefined}>
+          const valueLabel = entry.unit === "currency" && entry.currentValue != null ? metricAmountLabel(entry.currentValue, entry.currency, 0, false) : entry.valueLabel;
+          const afterLabel = entry.unit === "currency" && entry.projection.value != null ? metricAmountLabel(entry.projection.value, entry.currency, 0, false) : entry.projection.valueLabel;
+          const sub = ["deposits", "cash_flow", "average_balance", "nsf_overdrafts"].includes(entry.key) ? bankPeriod : entry.key === "ebitda" ? `${ebitda?.kind === "tax_estimate" ? "Tax estimate" : "P&L"} · ${ebitda?.period?.split(" (")[0] ?? "Period unconfirmed"}` : entry.subLabel;
+          return <FinancialKpiCard key={entry.key} label={entry.title} value={valueLabel} currencyNote={entry.unit === "currency" && !entry.currency ? "Currency unconfirmed" : undefined} tone={tone} sub={entry.key === "deposits" ? <span className="fc-kpi-spark"><span>{sub}</span><Sparkline values={depositValues} /></span> : sub} onClick={() => openMetricReview(entry.key)} projection={entry.projection.source !== "none" ? <><span>{entry.projection.source === "filed_offer" ? "Offer · illustration" : entry.projection.source === "working_plan" ? "Working plan · unsaved" : "Saved plan"}</span><br /><strong>{afterLabel}</strong>{entry.projection.status === "partial" ? " · partial estimate" : entry.projection.status === "unavailable" ? " · needs inputs" : entry.projection.status === "unchanged" ? " · unchanged" : ""}</> : undefined}>
             {entry.key === "deposits" && summary.deposit_trend_pct != null ? <span className="kdelta"><CellChip tone={summary.deposit_trend_pct >= 0 ? "ok" : "warn"}><Icon name={trendDirection(summary.deposit_trend_pct) === "down" ? "trendDn" : "trend"} size={11} />{signedPct(summary.deposit_trend_pct)}</CellChip></span> : null}
             {entry.key === "dscr" ? <span className="sub">{cockpit.dscr.no_debt ? "No outstanding debt confirmed" : dscrLabel(headline?.status)}</span> : null}
-            {entry.key === "nsf_overdrafts" ? <span className="sub">{negativeCaption}{nsfIncomplete ? " · incident detail incomplete" : ""}</span> : null}
-            {entry.key === "ebitda" ? <span className="sub">{ebitda?.months_covered != null ? `${ebitda.months_covered} reporting months · ` : ""}{ebitdaCurrency || "currency unknown"}{ebitdaTile.provisional ? " · provisional" : ""}{ebitdaCorrected ? " · source input corrected" : ""}{ebitdaTile.annualized ? " · annualized" : ""}</span> : null}
+            {entry.key === "nsf_overdrafts" ? <span className="sub">{negativeCaption}{nsfIncomplete || negativeIncomplete ? " · partial detail" : ""}</span> : null}
+            {entry.key === "ebitda" ? <span className="sub">{[ebitda?.months_covered != null ? `${ebitda.months_covered} months` : null, ebitdaCurrency, ebitdaTile.provisional ? "provisional" : null, ebitdaCorrected ? "source corrected" : null, ebitdaTile.annualized ? "annualized" : null].filter(Boolean).join(" · ")}</span> : null}
           </FinancialKpiCard>;
         })}
-      </KpiRow>
+      </KpiRow></div>
 
       <div className="fc-grid">
         <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
