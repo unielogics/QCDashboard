@@ -9,6 +9,7 @@ import loanStyles from "@/components/application/LoanScheduleReview.module.css";
 import { CoverageFundingGap } from "@/components/application/CoverageFundingGap";
 import { coverageCurrencyComparable, coverageReview } from "@/lib/coverageReview";
 import { loanScheduleRows } from "@/lib/loanScheduleView";
+import { parseIncomeOverride } from "@/lib/incomeOverrideInput";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
 // the plan on the right, and the plan itself in between: the obligations
@@ -656,7 +657,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           <Lbl>Overrides: set a figure outright</Lbl>
           <span className="sub">Banking control: when the desk knows better than the documents, set the income available for debt service or the existing debt service, and say why. An override replaces the computed figure, add-backs included.</span>
           <div className="fc-loan-terms">
-            <label className="grid g2"><span className="sub">Income available for debt service, $ a year</span><Input aria-label="Income override per year" type="number" inputMode="decimal" min={0} step="any" placeholder={money(headline?.numerator ?? null)} value={numberValue(overrides.income_annual)} disabled={!canEdit} onChange={(e) => setOverride({ income_annual: num(e.target.value) })} /></label>
+            <label className="grid g2"><span className="sub">Income available for debt service, $ a year</span><Input aria-label="Income override per year" type="number" inputMode="decimal" step="any" placeholder={money(headline?.numerator ?? null)} value={numberValue(overrides.income_annual)} disabled={!canEdit} onChange={(e) => setOverride({ income_annual: parseIncomeOverride(e.target.value) })} /></label>
             <label className="grid g2"><span className="sub">Why</span><Input aria-label="Income override note" placeholder="Per the CPA letter…" value={overrides.income_note ?? ""} disabled={!canEdit} onChange={(e) => setOverride({ income_note: e.target.value || null })} /></label>
             <label className="grid g2"><span className="sub">Existing debt service, $ a month</span><Input aria-label="Existing debt service override per month" type="number" inputMode="decimal" min={0} step="any" placeholder={money(serviceOriginal)} value={numberValue(overrides.debt_service_monthly)} disabled={!canEdit} onChange={(e) => setOverride({ debt_service_monthly: num(e.target.value) })} /></label>
             <label className="grid g2"><span className="sub">Why</span><Input aria-label="Debt service override note" placeholder="Includes the truck lease…" value={overrides.debt_service_note ?? ""} disabled={!canEdit} onChange={(e) => setOverride({ debt_service_note: e.target.value || null })} /></label>

@@ -609,7 +609,7 @@ export function ApplicationClientTermsPanel({
         {terms.repayment_config ? <p className="terms-preview-source">{repaymentConfigLabel(terms.repayment_config)}</p> : null}
         {terms.plan ? (
           <div className="terms-preview-plan">
-            <span className="lbl">Financials tab</span>
+            <span className="lbl">Saved financial scenario</span>
             <p className="terms-preview-source">
               {terms.plan.terms_link?.summary ?? "No link to the plan yet."}
               {terms.plan.dscr ? ` Coverage today ${ratio(terms.plan.dscr.before)}${terms.plan.active ? ` → with the plan ${ratio(terms.plan.dscr.after)}` : ""}.` : ""}
