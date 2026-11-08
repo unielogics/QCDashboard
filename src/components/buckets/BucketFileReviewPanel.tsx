@@ -10,6 +10,8 @@ import { isPdfPasswordError, lockedEvidencePresentation } from "@/lib/lockedEvid
 import { destroyPdfResource } from "@/lib/pdfLifecycle";
 import { scrollToPdfSourcePage, validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { dialogPortalHost, registerDialog } from "@/lib/dialogStack";
+import { citationRectangles, type CitationRectangle } from "./financialCitationHighlight";
+import { scrollEmbeddedPdfSource } from "./embeddedSourceNavigation";
 
 export type BucketReviewFile = {
   id: string;
@@ -94,6 +96,9 @@ export function BucketFileReviewPanel({
   annotationsEnabled = true,
   initialPage,
   pageRequestId = 0,
+  embedded = false,
+  sourceHighlight,
+  visible = true,
 }: {
   title?: string;
   downloadUrl?: string | null;
@@ -118,6 +123,11 @@ export function BucketFileReviewPanel({
   annotationsEnabled?: boolean;
   initialPage?: number;
   pageRequestId?: number;
+  /** Inside an existing review workspace: reuse the reader without another dialog. */
+  embedded?: boolean;
+  sourceHighlight?: { file_id: string; page?: number; quote?: string } | null;
+  /** The embedding tab may render the reader while it is not displayed. */
+  visible?: boolean;
 }) {
   const markerRef = useRef<HTMLSpanElement | null>(null);
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -126,11 +136,11 @@ export function BucketFileReviewPanel({
   const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
   const [dialogLayer, setDialogLayer] = useState({ zIndex: 500, topmost: false });
   useEffect(() => {
-    if (markerRef.current) setPortalHost(dialogPortalHost(markerRef.current));
-  }, []);
+    if (!embedded && markerRef.current) setPortalHost(dialogPortalHost(markerRef.current));
+  }, [embedded]);
   useEffect(() => {
     const panel = dialogRef.current;
-    if (minimized || !portalHost || !panel?.isConnected) return;
+    if (embedded || minimized || !portalHost || !panel?.isConnected) return;
     const registration = registerDialog(panel, () => onCloseRef.current(), {
       baseZIndex: 500,
       onTopmostChange: (topmost) => {
@@ -140,7 +150,7 @@ export function BucketFileReviewPanel({
     });
     setDialogLayer({ zIndex: registration.zIndex, topmost: registration.isTopmost() });
     return () => registration.unregister();
-  }, [minimized, portalHost]);
+  }, [embedded, minimized, portalHost]);
   const imageStageRef = useRef<HTMLDivElement | null>(null);
   const viewerRef = useRef<HTMLDivElement | null>(null);
   const pageStageRefs = useRef<Record<number, HTMLDivElement | null>>({});
@@ -150,6 +160,7 @@ export function BucketFileReviewPanel({
   const [status, setStatus] = useState("Loading file...");
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [renderedPages, setRenderedPages] = useState<Set<number>>(() => new Set());
+  const [citationPages, setCitationPages] = useState<Record<number, string>>({});
   const lastSourceJumpRef = useRef<string | null>(null);
   const [pageCount, setPageCount] = useState(1);
   const [pdfZoom, setPdfZoom] = useState(1);
@@ -167,19 +178,27 @@ export function BucketFileReviewPanel({
   const pageRendered = useCallback((page: number) => {
     setRenderedPages((current) => current.has(page) ? current : new Set([...current, page]));
   }, []);
+  const citationResolved = useCallback((page: number, status: string) => { setCitationPages((current) => current[page] === status ? current : { ...current, [page]: status }); }, []);
   useEffect(() => {
     setRenderedPages(new Set());
     lastSourceJumpRef.current = null;
-  }, [pdfDoc]);
+  }, [pdfDoc, viewerWidth, pdfZoom]);
+  useEffect(() => { setCitationPages({}); }, [pdfDoc]);
   useEffect(() => {
+    if (!visible) { lastSourceJumpRef.current = null; return; }
     if (!pdfDoc || minimized) return;
     const page = validPdfSourcePage(initialPage, pageCount);
     const requestKey = `${reviewKey}:${pageRequestId}:${page}`;
     if (page === null || lastSourceJumpRef.current === requestKey) return;
     const stage = pageStageRefs.current[page];
-    if (!scrollToPdfSourcePage(page, pageCount, renderedPages, stage)) return;
+    if (embedded) {
+      const quote = sourceHighlight && sourceHighlight.file_id === review?.file.id && sourceHighlight.page === page ? sourceHighlight.quote : undefined;
+      if (quote && !citationPages[page]) return;
+      const mark = quote && citationPages[page] === "matched" ? stage?.querySelector<HTMLElement>("[data-source-citation]") : null;
+      if (!scrollEmbeddedPdfSource(page, pageCount, renderedPages, visible, viewerRef.current, mark ?? stage ?? null, !!mark)) return;
+    } else if (!scrollToPdfSourcePage(page, pageCount, renderedPages, stage)) return;
     lastSourceJumpRef.current = requestKey;
-  }, [initialPage, pageCount, pageRequestId, pdfDoc, renderedPages, reviewKey, minimized]);
+  }, [initialPage, pageCount, pageRequestId, pdfDoc, renderedPages, reviewKey, minimized, embedded, visible, citationPages, sourceHighlight, review?.file.id]);
 
   // Callers may close over live query data, so callback identity is not a file
   // identity. Keep the newest loader without blanking and reloading the viewer.
@@ -410,13 +429,13 @@ export function BucketFileReviewPanel({
     fileRowRefs.current[currentFileId]?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [currentFileId, filteredFiles]);
 
-  return <><span ref={markerRef} hidden />{portalHost ? createPortal(
+  const content = (
     <div ref={dialogRef} className={cx("bucket-review-shell", minimized && "workspace-minimized")}
-      style={{ zIndex: dialogLayer.zIndex }}
-      role={!minimized ? "dialog" : undefined}
+      style={embedded ? { position: "relative", inset: "auto", zIndex: 0, height: "100%", minHeight: 480, border: "1px solid var(--line)", borderRadius: 10, overflow: "hidden" } : { zIndex: dialogLayer.zIndex }}
+      role={!embedded && !minimized ? "dialog" : undefined}
       aria-label={title}
-      aria-modal={!minimized && dialogLayer.topmost ? true : undefined}
-      aria-hidden={minimized || !dialogLayer.topmost || undefined}
+      aria-modal={!embedded && !minimized && dialogLayer.topmost ? true : undefined}
+      aria-hidden={minimized || !embedded && !dialogLayer.topmost || undefined}
       tabIndex={-1}>
       <section className="bucket-review-workspace">
         {/* `.filehd-b` and not `.panel-h`: this is a file identity block —
@@ -455,12 +474,17 @@ export function BucketFileReviewPanel({
               <span aria-hidden="true" className="workspace-minimize-glyph">-</span>
             </IconBtn>
           ) : null}
-          <IconBtn onClick={onClose} aria-label="Close review" title="Close review">
+          {!embedded ? <IconBtn onClick={onClose} aria-label="Close review" title="Close review">
             <Icon name="x" size={15} />
-          </IconBtn>
+          </IconBtn> : null}
           </div>
         </header>
         {reviewContext ? <div className="bucket-review-context">{reviewContext}</div> : null}
+        {sourceHighlight && sourceHighlight.file_id === review?.file.id ? <div className="hintbox" style={{ margin: "8px 12px" }}>
+          {sourceHighlight.page ? `Cited page ${sourceHighlight.page}. ` : "The extraction did not supply an exact page; review the document to locate this figure. "}
+          {sourceHighlight.page && pdfDoc && !validPdfSourcePage(sourceHighlight.page, pageCount) ? <span>The cited page is outside this document. No page or section was guessed. </span> : null}
+          {sourceHighlight.quote ? <><span>Cited excerpt: </span><q>{sourceHighlight.quote}</q></> : <span>No source excerpt was supplied, so a precise section cannot be highlighted.</span>}
+        </div> : null}
         {/* Bespoke track: a document that wants every pixel it can get beside a
             review rail that must not fall below a readable width. */}
         <div className={cx("bucket-review-layout", files.length > 0 && "with-navigator", !annotationsEnabled && "without-comments")}>
@@ -525,6 +549,8 @@ export function BucketFileReviewPanel({
                         pdfDoc={pdfDoc}
                         pageNumber={pageNumber}
                         onRendered={pageRendered}
+                        onCitationResolved={citationResolved}
+                        sourceQuote={sourceHighlight?.file_id === review?.file.id && validPdfSourcePage(sourceHighlight?.page, pageCount) === pageNumber ? sourceHighlight?.quote : undefined}
                         zoom={pdfZoom}
                         viewerWidth={viewerWidth}
                         annotations={(review.annotations ?? []).filter((annotation) => annotation.page_number === pageNumber)}
@@ -623,7 +649,8 @@ export function BucketFileReviewPanel({
           </aside> : null}
         </div>
       </section>
-    </div>, portalHost) : null}</>;
+    </div>);
+  return embedded ? content : <><span ref={markerRef} hidden />{portalHost ? createPortal(content, portalHost) : null}</>;
 }
 
 function PdfPage({
@@ -640,6 +667,8 @@ function PdfPage({
   onMouseMove,
   onMouseUp,
   onRendered,
+  sourceQuote,
+  onCitationResolved,
 }: {
   pdfDoc: any;
   pageNumber: number;
@@ -654,11 +683,27 @@ function PdfPage({
   onMouseMove: (event: MouseEvent<HTMLDivElement>, stage: HTMLDivElement | null) => void;
   onMouseUp: () => void;
   onRendered: (page: number) => void;
+  sourceQuote?: string;
+  onCitationResolved: (page: number, status: string) => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const localStageRef = useRef<HTMLDivElement | null>(null);
   const renderTaskRef = useRef<any>(null);
   const [renderStatus, setRenderStatus] = useState("");
+  const [citation, setCitation] = useState<{ rectangles: CitationRectangle[]; status: "matched" | "missing" | "ambiguous" } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCitation(null);
+    if (!sourceQuote || !pdfDoc) return;
+    void (async () => {
+      const page = await pdfDoc.getPage(pageNumber);
+      const text = await page.getTextContent();
+      const result = citationRectangles(text.items, sourceQuote, page.getViewport({ scale: 1 }));
+      if (!cancelled) { setCitation(result); onCitationResolved(pageNumber, result.status); }
+    })().catch(() => { if (!cancelled) { setCitation({ rectangles: [], status: "missing" }); onCitationResolved(pageNumber, "missing"); } });
+    return () => { cancelled = true; };
+  }, [pageNumber, pdfDoc, sourceQuote, onCitationResolved]);
 
   useEffect(() => {
     let cancelled = false;
@@ -721,9 +766,11 @@ function PdfPage({
       >
         {/* The canvas is sized in JS from the pdf.js viewport — measured geometry. */}
         <canvas ref={canvasRef} style={{ display: "block", maxWidth: "none" }} />
+        {citation?.rectangles.length ? <div className="marklayer" aria-label="Text regions containing the cited excerpt" style={{ pointerEvents: "none" }}>{citation.rectangles.map((rect, index) => <mark key={index} data-source-citation style={{ position: "absolute", left: `${rect.x * 100}%`, top: `${rect.y * 100}%`, width: `${rect.width * 100}%`, height: `${rect.height * 100}%`, background: "rgba(255, 213, 71, .35)", outline: "1px solid #ad7a0c" }} />)}</div> : null}
         <RectLayer annotations={annotations} draftRect={draftRect} activeId={activeId} onSelect={onSelect} />
       </ReviewStage>
       {renderStatus ? <StatusLine tone="warn">{renderStatus}</StatusLine> : null}
+      {sourceQuote ? <p className="sub" role="status">{!citation ? "Locating the cited excerpt…" : citation.status === "matched" ? "Highlighted the text region containing the cited excerpt." : citation.status === "ambiguous" ? "This excerpt occurs more than once on the cited page. Its exact section needs review; no position was guessed." : "The cited excerpt could not be matched to readable PDF text. Review the page and excerpt; no position was guessed."}</p> : null}
     </div>
   );
 }

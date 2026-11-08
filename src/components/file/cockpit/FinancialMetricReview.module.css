@@ -1,0 +1,47 @@
+.metricCard { width: 100%; min-width: 0; font: inherit; text-align: left; color: inherit; display: flex; flex-direction: column; gap: 5px; cursor: pointer; }
+.metricCard > span { display: block; }
+.metricCard:hover { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-100); }
+.metricCard:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.metricCard .metricHeading { display: flex; justify-content: space-between; gap: 8px; align-items: start; }
+.metricHeading > span:first-child { min-width: 0; }
+.metricHint { font-size: 11px; color: var(--muted); }
+.projection { border-top: 1px solid var(--line); padding-top: 7px; margin-top: auto; font-size: 11px; color: var(--muted); line-height: 1.5; }
+.projection strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.workspace { display: grid; gap: 16px; min-width: 0; }
+.intro { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.intro > div { border: 1px solid var(--line); border-radius: 9px; padding: 13px; display: grid; gap: 5px; }
+.intro strong { font-size: 24px; font-variant-numeric: tabular-nums; }
+.intro small, .note { color: var(--muted); font-size: 12px; line-height: 1.6; }
+.tabs { display: flex; gap: 5px; flex-wrap: wrap; border-bottom: 1px solid var(--line); padding: 6px 0 10px; position: sticky; top: 0; z-index: 5; background: var(--surface); }
+.tabs button { border: 0; background: transparent; color: var(--muted); font: inherit; font-weight: 650; font-size: 12px; padding: 8px 12px; border-radius: 7px; }
+.tabs button[aria-selected="true"] { background: var(--accent-100); color: var(--accent); }
+.tabPanel[hidden] { display: none; }
+.evidence { min-width: 0; display: grid; grid-template-columns: minmax(220px, 280px) minmax(0, 1fr); gap: 14px; min-height: 560px; }
+.sourceList { display: grid; align-content: start; gap: 7px; max-height: 74dvh; overflow: auto; }
+.source { border: 1px solid var(--line); border-radius: 8px; background: var(--surface); text-align: left; color: inherit; padding: 10px; display: grid; gap: 5px; font: inherit; cursor: pointer; }
+.source[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-100); }
+.source b { overflow-wrap: anywhere; font-size: 12px; }
+.source small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.sourcePreview { min-width: 0; height: min(76dvh, 920px); min-height: 500px; }
+.section { display: grid; gap: 12px; min-width: 0; }
+.reviewReason { display: grid; gap: 6px; min-width: 0; width: 100%; }
+.reviewReason textarea { width: 100%; min-width: 0; }
+.heading { display: flex; gap: 10px; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+.heading h3, .heading h4 { margin: 0; }
+.formula { padding: 12px; border-radius: 8px; background: var(--sunken2); white-space: pre-wrap; font-size: 12px; line-height: 1.7; margin: 0; }
+.component { display: flex; gap: 10px; align-items: start; padding: 9px; border: 1px solid var(--line); border-radius: 7px; }
+.component > input { margin-top: 3px; }
+.component > span { flex: 1; min-width: 0; display: grid; gap: 4px; }
+.component small { color: var(--muted); font-size: 11px; }
+.component strong { font-variant-numeric: tabular-nums; }
+.adjustment { display: grid; grid-template-columns: minmax(150px, 1fr) minmax(120px, 180px) auto; gap: 8px; align-items: end; }
+.adjustment label { display: grid; gap: 4px; font-size: 11px; color: var(--muted); }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.history { display: grid; gap: 10px; padding-left: 20px; font-size: 12px; }
+.history li { line-height: 1.7; }
+.operandTable { overflow: auto; max-height: 56dvh; border: 1px solid var(--line); border-radius: 8px; }
+.operandTable table { min-width: 640px; }
+.operandTable th { position: sticky; top: 0; background: var(--surface); }
+.operandTable td small, .operandTable th small, .operandTable td button { display: block; margin-top: 4px; }
+@media (max-width: 850px) { .evidence { grid-template-columns: minmax(0, 1fr); } .sourceList { max-height: 220px; } .sourcePreview { height: 68dvh; } }
+@media (max-width: 520px) { .intro { grid-template-columns: minmax(0, 1fr); } .adjustment { grid-template-columns: minmax(0, 1fr); } }

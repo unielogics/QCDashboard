@@ -126,13 +126,19 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, reviewRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: { profileId: string; plan: FinancialPlanWrite; dirty: boolean }) => void; reviewRequest?: number; onReviewClose?: () => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
   const canEdit = requestedCanEdit && !termsPending && !save.isPending;
   const queryClient = useQueryClient();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
+  const lastReviewRequest = useRef(reviewRequest);
+  useEffect(() => {
+    if (lastReviewRequest.current === reviewRequest) return;
+    lastReviewRequest.current = reviewRequest;
+    if (reviewRequest > 0) { setReviewTab("plan"); setReviewOpen(true); }
+  }, [reviewRequest]);
   const [debtEditor, setDebtEditor] = useState<DebtScheduleEditorTarget | null>(null);
   const [clientTermsOpen, setClientTermsOpen] = useState(false);
   const [clientTermsView, setClientTermsView] = useState<ClientTermsView>("terms");
@@ -170,6 +176,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const savedRecord = useMemo(() => fromRecord(cockpit), [cockpit]);
   const previousSavedRecord = useRef(savedRecord);
   const dirty = !same(plan, savedRecord);
+  const workingPlanListener = useRef(onWorkingPlanChange);
+  workingPlanListener.current = onWorkingPlanChange;
+  const lastBroadcastProfile = useRef(profileId);
+  useEffect(() => {
+    if (lastBroadcastProfile.current !== profileId) { lastBroadcastProfile.current = profileId; return; }
+    workingPlanListener.current?.({ profileId, plan, dirty });
+  }, [profileId, plan, dirty]);
   useEffect(() => {
     // A fresh read of the file (another tab saved, a re-read landed) replaces an untouched draft.
     if (same(plan, previousSavedRecord.current)) {
@@ -871,7 +884,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {repaymentIssue ? <StatusLine tone="bad">Repayment preview is invalid: {repaymentIssue} Resolve it before saving or using these projections.</StatusLine> : null}
       {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}
     </section>
-    <FinancialReviewDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
+    <FinancialReviewDrawer open={reviewOpen} onClose={() => { setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
     <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
   </>;

@@ -15,7 +15,7 @@
 
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Btn, Callout, CellChip, Kpi, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
+import { Btn, Callout, CellChip, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { ActionIcon } from "@/components/ds/ActionIcon";
@@ -26,7 +26,7 @@ import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } f
 import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/financialSourcePreview";
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { balanceRiskMonths, riskCountLabel, riskTotals } from "@/lib/balanceRisk";
-import { ebitdaIsStaffCorrected, ebitdaKpi, metricAmountLabel, metricCurrency } from "@/lib/financialMetrics";
+import { ebitdaIsStaffCorrected, ebitdaKpi, metricCurrency } from "@/lib/financialMetrics";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
@@ -60,6 +60,10 @@ import {
 } from "@/lib/financialCockpit";
 import { OfferPanel } from "./OfferPanel";
 import { CoverageCard } from "./CoverageCard";
+import { FinancialKpiCard } from "./FinancialKpiCard";
+import { FinancialMetricReviewWorkspace } from "./FinancialMetricReviewWorkspace";
+import { metricEntries, type FinancialKpiKey } from "@/lib/financialKpiReview";
+import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import financialReviewStyles from "./FinancialReview.module.css";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
@@ -624,6 +628,12 @@ export function FinancialCockpit(props: Props) {
   }, [profileId, onRefreshProgramReadiness, queryClient]);
   const marketplaceRef = useRef<HTMLElement>(null);
   const [accountChoice, setAccountChoice] = useState<string>("counted");
+  const [metricReview, setMetricReview] = useState<{ profileId: string; key: FinancialKpiKey; open: boolean } | null>(null);
+  const [workingPlan, setWorkingPlan] = useState<{ profileId: string; plan: FinancialPlanWrite; dirty: boolean } | null>(null);
+  const [metricDebtOpen, setMetricDebtOpen] = useState(false);
+  const [planReviewRequest, setPlanReviewRequest] = useState(0);
+  const returnToMetric = useRef(false);
+  const workingPlanChanged = useCallback((value: { profileId: string; plan: FinancialPlanWrite; dirty: boolean }) => { setWorkingPlan(value); }, []);
   const [sourcePreview, setSourcePreview] = useState<{ profileId: string; fileId: string; page?: number; requestId: number } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<BucketReviewFile[]>([]);
   const activeProfileRef = useRef(props.profileId);
@@ -642,6 +652,7 @@ export function FinancialCockpit(props: Props) {
     setSourcePreview(null);
     setSourceFiles([]);
     setAccountChoice("counted");
+    setMetricReview(null); setWorkingPlan(null); setMetricDebtOpen(false); setPlanReviewRequest(0); returnToMetric.current = false;
   }, [props.profileId]);
   const openSourcePreview = useCallback((fileId: string, page?: number) => {
     sourceFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -693,12 +704,16 @@ export function FinancialCockpit(props: Props) {
         ? { months: chosen.series, summary: chosen.summary, label: chosen.label, accountLabel: chosen.label as string | null }
         : { months: cockpit.bank.months, summary: cockpit.bank.summary, label: narrowed ? "Counted accounts" : "All accounts", accountLabel: null as string | null };
   const summary = selection.summary;
+  const metricOptions = { months: selection.months, summary, accountKey: resolvedAccountChoice, label: selection.label, plan: workingPlan?.profileId === props.profileId ? workingPlan.plan : undefined, dirty: workingPlan?.profileId === props.profileId ? workingPlan.dirty : false };
+  const metricCards = metricEntries(cockpit, metricOptions);
+  const openMetricReview = (key: FinancialKpiKey) => setMetricReview({ profileId: props.profileId, key, open: true });
+  const openMetricDebt = () => { setMetricReview((current) => current ? { ...current, open: false } : null); setMetricDebtOpen(true); };
+  const openMetricPlan = () => { returnToMetric.current = true; setMetricReview((current) => current ? { ...current, open: false } : null); setPlanReviewRequest((value) => value + 1); };
   const headline = cockpit.dscr.headline;
   const ebitda = cockpit.ebitda?.headline;
   const ebitdaTile = ebitdaKpi(ebitda);
   const ebitdaCorrected = ebitdaIsStaffCorrected(ebitda, cockpit.metric_review);
   const ebitdaCurrency = metricCurrency(ebitda?.currency, ebitda?.source_refs);
-  const conclusion = cockpit.net_profit.conclusion;
   const generated = new Date(cockpit.generated_at);
   const depositValues = selection.months.map((m) => m.deposits);
   const risks = riskTotals(balanceRiskMonths(selection.months));
@@ -747,33 +762,19 @@ export function FinancialCockpit(props: Props) {
         </div>
       ) : null}
       <KpiRow>
-        <Kpi
-          label="Average monthly deposits"
-          value={money(summary.avg_deposits)}
-          sub={
-            <span className="fc-kpi-spark">
-              <span>{summary.months} months{summary.annualized_deposits != null ? ` · ${compactMoney(summary.annualized_deposits)} a year` : ""}</span>
-              <Sparkline values={depositValues} />
-            </span>
-          }
-          delta={summary.deposit_trend_pct != null ? signedPct(summary.deposit_trend_pct) : undefined}
-          trend={trendDirection(summary.deposit_trend_pct)}
-          tone={summary.deposit_trend_pct == null ? "mut" : summary.deposit_trend_pct >= 0 ? "ok" : "warn"}
-        />
-        <Kpi label="Net cash flow per month" value={money(summary.avg_net)} sub={summary.annualized_net != null ? `${compactMoney(summary.annualized_net)} a year · deposits minus withdrawals` : "deposits minus withdrawals"} tone={toneForSign(summary.avg_net)} />
-        <Kpi label="Average balance" value={money(summary.average_balance)} sub={`begins ${compactMoney(summary.beginning_balance)} · ends ${compactMoney(summary.ending_balance)} · ${risks.accountDays ? "lowest account" : "low"} ${compactMoney(risks.lowest)}`} />
-        <Kpi label="NSF and overdrafts" value={riskCountLabel(risks.fees)} sub={negativeCaption} tone={risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok"} />
-        {cockpit.dscr.no_debt ? (
-          <Kpi label="DSCR · no debt" value="No debt" sub={cockpit.dscr.pro_forma_headline?.pro_forma_value != null ? `declared by the desk · ${multiple(cockpit.dscr.pro_forma_headline.pro_forma_value)} with the proposed payment` : "declared by the desk"} tone="ok" />
-        ) : (
-          <Kpi label={`DSCR · ${headline ? sourceLabel(headline.key) : "no basis"}`} value={multiple(headline?.value)} sub={dscrLabel(headline?.status)} tone={dscrTone(headline?.status)} />
-        )}
-        <Kpi label={`EBITDA${ebitda?.kind === "tax_estimate" ? " · tax estimate" : ebitdaTile.annualized ? " · annualized" : ""}`} value={ebitdaTile.value == null ? "—" : metricAmountLabel(ebitdaTile.value, ebitdaCurrency, 0, false)} sub={ebitda ? `${ebitda.kind === "tax_estimate" ? ebitda.label : "P&L"} · ${ebitda.period || "period unknown"}${ebitda.months_covered != null ? ` · ${ebitda.months_covered} reporting months` : ""} · ${ebitdaCurrency || "currency unknown"}${ebitdaTile.provisional ? " · provisional" : ""}${ebitdaCorrected ? " · staff corrected" : ""}` : cockpit.ebitda?.reason || "No documented EBITDA"} tone={ebitdaTile.provisional ? "warn" : toneForSign(ebitdaTile.value)} />
-        <Kpi label="Net profit" value={money(conclusion?.value)} sub={conclusion ? `${conclusion.label}${conclusion.period && conclusion.key !== "tax_return" ? ` · ${conclusion.period}` : ""}` : "No income figure yet"} tone={toneForSign(conclusion?.value)} />
+        {metricCards.map((entry) => {
+          const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
+          return <FinancialKpiCard key={entry.key} label={entry.title} value={entry.valueLabel} tone={tone} sub={entry.key === "deposits" ? <span className="fc-kpi-spark"><span>{entry.subLabel}</span><Sparkline values={depositValues} /></span> : entry.subLabel} onClick={() => openMetricReview(entry.key)} projection={entry.projection.source !== "none" ? <><span>{entry.projection.source === "filed_offer" ? "With filed offer · illustration" : entry.projection.source === "working_plan" ? "With working plan · unsaved" : "With saved plan"}</span><br /><strong>{entry.projection.valueLabel}</strong>{entry.projection.status === "partial" ? " · partial estimate" : entry.projection.status === "unavailable" ? " · needs inputs" : entry.projection.status === "unchanged" ? " · unchanged" : ""}</> : undefined}>
+            {entry.key === "deposits" && summary.deposit_trend_pct != null ? <span className="kdelta"><CellChip tone={summary.deposit_trend_pct >= 0 ? "ok" : "warn"}><Icon name={trendDirection(summary.deposit_trend_pct) === "down" ? "trendDn" : "trend"} size={11} />{signedPct(summary.deposit_trend_pct)}</CellChip></span> : null}
+            {entry.key === "dscr" ? <span className="sub">{cockpit.dscr.no_debt ? "No outstanding debt confirmed" : dscrLabel(headline?.status)}</span> : null}
+            {entry.key === "nsf_overdrafts" ? <span className="sub">{negativeCaption}{nsfIncomplete ? " · incident detail incomplete" : ""}</span> : null}
+            {entry.key === "ebitda" ? <span className="sub">{ebitda?.months_covered != null ? `${ebitda.months_covered} reporting months · ` : ""}{ebitdaCurrency || "currency unknown"}{ebitdaTile.provisional ? " · provisional" : ""}{ebitdaCorrected ? " · source input corrected" : ""}{ebitdaTile.annualized ? " · annualized" : ""}</span> : null}
+          </FinancialKpiCard>;
+        })}
       </KpiRow>
 
       <div className="fc-grid">
-        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} />
+        <CoverageCard cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
       </div>
 
       <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
@@ -826,6 +827,8 @@ export function FinancialCockpit(props: Props) {
       <div className="fc-grid">
         <OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} />
       </div>
+      {metricReview?.profileId === props.profileId ? <FinancialMetricReviewWorkspace key={props.profileId} open={metricReview.open} metricKey={metricReview.key} cockpit={cockpit} options={metricOptions} profileId={props.profileId} canEdit={props.canUnderwrite} onClose={() => setMetricReview((current) => current ? { ...current, open: false } : null)} onRefresh={refreshFinancialFacts} onOpenDebt={openMetricDebt} onOpenPlan={openMetricPlan} /> : null}
+      {metricDebtOpen ? <FinancialWorkspace open profileId={props.profileId} initialKind="debt_schedule" initialView="worksheet" onClose={() => { setMetricDebtOpen(false); setMetricReview((current) => current ? { ...current, open: true } : null); void refreshFinancialFacts(); }} onPublished={async () => { await refreshFinancialFacts(); }} /> : null}
       {sourcePreview && sourcePreview.profileId === props.profileId ? <BucketFileReviewPanel
         title="Bank statement evidence"
         files={sourceFiles}

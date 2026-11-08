@@ -738,6 +738,8 @@ export type FinancialCockpit = {
   bank: {
     months: CockpitMonth[];
     summary: CockpitBankSummary;
+    /** Original aggregate before source-bound staff review adjustments. */
+    source_summary?: CockpitBankSummary;
     accounts: CockpitAccount[];
     recurring: CockpitRecurring;
     recurring_credits: CockpitRecurring;
