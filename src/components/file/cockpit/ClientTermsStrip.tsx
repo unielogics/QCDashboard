@@ -5,7 +5,7 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Btn, CellChip } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
-import { ApplicationClientTermsPanel, draftFromTerms, draftWithScenarioLoan, payloadFromDraft, type ClientTermsWorkingDraft } from "@/components/application/ApplicationClientTermsPanel";
+import { ApplicationClientTermsPanel, draftFromTerms, draftWithScenarioLoan, payloadFromDraft, type ClientTermsView, type ClientTermsWorkingDraft } from "@/components/application/ApplicationClientTermsPanel";
 import { useAuthedApi, useClientTermsSummary } from "@/hooks/useApi";
 import { errorMessage } from "@/components/marketplace/shared";
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
@@ -17,7 +17,7 @@ import { money } from "@/lib/financialCockpit";
 /** The loan typed under the DSCR modifications, as the client terms: a line that says what is on file and
  *  whether it matches, one button to save the plan's loan as the terms, and the full editor in a drawer
  *  for the rest (funder, timing, co-branding, conditions) and the PDF. */
-export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canEdit, onOpenEditor, financialPlanDraft, refinanceContext, workingDraft, onSaved, onPending }: {
+export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canEdit, onOpenEditor, financialPlanDraft, refinanceContext, workingDraft, onSaved, onPending, showOpenEditor = true }: {
   profileId: string;
   loan: SyncedLoan | null;
   linkSummary: string | null;
@@ -29,6 +29,7 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
   workingDraft?: ClientTermsWorkingDraft | null;
   onSaved?: (terms: ApplicationClientTerms, plan?: FinancialPlanRead) => void;
   onPending?: (pending: boolean) => void;
+  showOpenEditor?: boolean;
 }) {
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -73,7 +74,7 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
             <Icon name="docCheck" size={14} />{saveFromPlan.isPending ? "Saving…" : onFile ? "Update the client terms from this loan" : "Save this loan as the client terms"}
           </Btn>
         ) : null}
-        <Btn size="sm" disabled={saveFromPlan.isPending} onClick={() => onOpenEditor ? onOpenEditor() : setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn>
+        {showOpenEditor ? <Btn size="sm" disabled={saveFromPlan.isPending} onClick={() => onOpenEditor ? onOpenEditor() : setOpen(true)}><Icon name="pencil" size={14} />{onFile ? "Open the full terms and the PDF" : "Open the full terms"}</Btn> : null}
         {loan ? <span className="sub">The current scenario loan opens as a working draft; Apply or Save version returns changes to the scenario.</span> : null}
         {pendingEditor ? <span className="sub">An unsaved editor draft is kept. Open the full terms to review it before saving.</span> : null}
         {saveFromPlan.error ? <span className="sub">{errorMessage(saveFromPlan.error, "The client terms could not be saved.")}</span> : saveFromPlan.isSuccess ? <span className="sub">Saved; the plan reads the terms.</span> : !planHasLoan && !onFile ? <span className="sub">Enter the loan above, then save it as the client terms.</span> : null}
@@ -83,7 +84,7 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
   );
 }
 
-export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLoan, financialPlanDraft, refinanceContext, workingDraft, onWorkingDraftChange, onApplyLoan, canEdit = true, scenarioPaymentOnly = false, previewScenario, onPending }: {
+export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLoan, financialPlanDraft, refinanceContext, workingDraft, onWorkingDraftChange, onApplyLoan, canEdit = true, scenarioPaymentOnly = false, previewScenario, onPending, initialView = "terms" }: {
   open: boolean; onClose: () => void; profileId: string; onSaved?: (terms: ApplicationClientTerms, plan?: FinancialPlanRead) => void;
   prefillLoan: SyncedLoan | null;
   financialPlanDraft?: FinancialPlanWrite; refinanceContext?: LoanRefinanceContext | null;
@@ -91,13 +92,17 @@ export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLo
   onApplyLoan?: (loan: SyncedLoan) => void; canEdit?: boolean; scenarioPaymentOnly?: boolean;
   previewScenario?: LoanScenarioPreviewer;
   onPending?: (pending: boolean) => void;
+  initialView?: ClientTermsView;
 }) {
   const [cached, setCached] = useState<ClientTermsWorkingDraft | null>(null);
   const [pending, setPending] = useState(false);
+  const [view, setView] = useState<ClientTermsView>(initialView);
+  const [expanded, setExpanded] = useState(initialView === "schedule");
   useEffect(() => { setCached(null); setPending(false); }, [profileId]);
+  useEffect(() => { if (open) { setView(initialView); setExpanded(initialView === "schedule"); } }, [open, initialView, profileId]);
   const remember = useCallback((next: ClientTermsWorkingDraft) => { setCached(next); onWorkingDraftChange?.(next); }, [onWorkingDraftChange]);
   const pendingChanged = useCallback((value: boolean) => { setPending(value); onPending?.(value); }, [onPending]);
-  return <Drawer open={open} onClose={() => { if (!pending) onClose(); }} title="Client terms" sub="The full record behind the loan in the plan: funder, repayment, timing, co-branding and conditions; the report is the client's PDF." width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
-    {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={onSaved} prefillLoan={prefillLoan} financialPlanDraft={financialPlanDraft} refinanceContext={refinanceContext} workingDraft={workingDraft === undefined ? cached : workingDraft} onWorkingDraftChange={remember} onApplyLoan={onApplyLoan} onPending={pendingChanged} canEdit={canEdit} scenarioPaymentOnly={scenarioPaymentOnly} previewScenario={previewScenario} /> : null}
+  return <Drawer open={open} onClose={() => { if (!pending) onClose(); }} title={view === "schedule" ? "Loan amortization and risk" : "Client terms"} sub="One working loan: terms, principal and interest, payoff progress and repayment risk." headerActions={<Btn size="sm" aria-label={expanded ? "Restore loan workspace size" : "Expand loan workspace"} onClick={() => setExpanded((value) => !value)}>{expanded ? "Restore" : "Expand"}</Btn>} fullscreen={expanded} width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
+    {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={onSaved} prefillLoan={prefillLoan} financialPlanDraft={financialPlanDraft} refinanceContext={refinanceContext} workingDraft={workingDraft === undefined ? cached : workingDraft} onWorkingDraftChange={remember} onApplyLoan={onApplyLoan} onPending={pendingChanged} canEdit={canEdit} scenarioPaymentOnly={scenarioPaymentOnly} previewScenario={previewScenario} activeView={view} onViewChange={setView} /> : null}
   </Drawer>;
 }

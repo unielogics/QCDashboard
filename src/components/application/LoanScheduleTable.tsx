@@ -1,16 +1,35 @@
 "use client";
 
 import { useState } from "react";
-import type { LoanScheduleSummary } from "@/lib/loanSchedule";
+import type { LoanScheduleSummary, RiskProfile } from "@/lib/loanSchedule";
+import { LOAN_SCHEDULE_PAGE_SIZE, loanScheduleRows } from "@/lib/loanScheduleView";
+import { Btn } from "@/components/ds";
+import styles from "./LoanScheduleReview.module.css";
 
 const money = (value: number | null | undefined, digits = 2) =>
   value == null || !Number.isFinite(value) ? "—" : new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: digits, minimumFractionDigits: digits }).format(value);
 
 /** The schedule as a table the terms preview can fold open: every period's payment, interest, principal and balance,
  *  rolled up by year past 36 periods so a ten-year loan stays readable. */
-export function LoanScheduleTable({ schedule, title }: { schedule: LoanScheduleSummary; title?: string }) {
+export function LoanScheduleTable({ schedule, title, full = false, risk, pageIndex = 0, onPageIndex, selectedPeriod, onSelectPeriod }: { schedule: LoanScheduleSummary; title?: string; full?: boolean; risk?: RiskProfile | null; pageIndex?: number; onPageIndex?: (page: number) => void; selectedPeriod?: number | null; onSelectPeriod?: (period: number) => void }) {
   const [open, setOpen] = useState(false);
   const [everyPayment, setEveryPayment] = useState(false);
+  if (full) {
+    const all = loanScheduleRows(schedule, risk);
+    const page = Math.min(Math.max(0, pageIndex), Math.max(0, Math.ceil(all.length / LOAN_SCHEDULE_PAGE_SIZE) - 1));
+    const first = page * LOAN_SCHEDULE_PAGE_SIZE;
+    const shown = all.slice(first, first + LOAN_SCHEDULE_PAGE_SIZE);
+    return <section className={styles.paymentTable} aria-label="Detailed amortization schedule">
+      <div className={styles.tableToolbar}><h3>{title ?? "Payment details"}</h3><span role="status">Payments {first + 1}–{Math.min(first + LOAN_SCHEDULE_PAGE_SIZE, all.length)} of {all.length}</span>{all.length > LOAN_SCHEDULE_PAGE_SIZE ? <><Btn size="sm" aria-label="Previous payment page" disabled={page === 0} onClick={() => onPageIndex?.(page - 1)}>Previous</Btn><Btn size="sm" aria-label="Next payment page" disabled={first + LOAN_SCHEDULE_PAGE_SIZE >= all.length} onClick={() => onPageIndex?.(page + 1)}>Next</Btn></> : null}</div>
+      <div className={styles.tableScroll} role="region" aria-label="Amortization payments, scroll across for payoff progress and coverage" tabIndex={0}>
+        <table><thead><tr><th>Payment / month</th><th>Phase</th><th>Cash due</th><th>Interest</th><th>Principal</th><th>Remaining principal</th><th>Paid down</th><th>Coverage</th></tr></thead><tbody>{shown.map((row) => <tr key={row.period} className={row.period === selectedPeriod ? styles.selectedRow : undefined}>
+          <td><button type="button" className={styles.periodButton} aria-label={`Inspect payment ${row.period}, month ${row.month}`} aria-pressed={row.period === selectedPeriod} onClick={() => onSelectPeriod?.(row.period)}>{row.period} · month {row.month}</button></td>
+          <td>{row.phase === "interest_only" ? "Interest-only" : row.phase === "amortizing" ? "Amortizing" : "Simple interest"}{row.maturity_balloon ? <small>Maturity balloon</small> : row.scheduled_balloon ? <small>Additional principal</small> : null}</td>
+          <td>{money(row.cash)}</td><td>{money(row.interest)}</td><td>{money(row.principal)}</td><td>{money(row.balance)}</td><td>{row.paidDownPct.toFixed(1)}%</td><td>{row.coverage == null ? "—" : `${row.coverage.toFixed(2)}x`}</td>
+        </tr>)}</tbody></table>
+      </div>
+    </section>;
+  }
   const perYear = Math.max(1, Math.round(schedule.periods_per_year));
   const rollUp = schedule.rows.length > 36 && !everyPayment;
   const rows = rollUp

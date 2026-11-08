@@ -8,6 +8,8 @@ export type LoanRefinanceContext = { treatment: "refinance"; retainedAnnualServi
 export type LoanScenarioPreviewer = (loan: SyncedLoan, context: { treatment: "additive" | "refinance"; retainedAnnualService: number | null }) => {
   before: number | null; after: number | null; basis: string; noDebtLeft?: boolean; unavailableReason?: string | null;
   incomeAnnual?: number | null; existingAnnual?: number | null;
+  coverageReview?: ReturnType<typeof import("./coverageReview").coverageReview>;
+  incomeCurrencyComparable?: boolean;
 };
 
 /** The same loan-field mapping is used by the strip and full terms editor. */

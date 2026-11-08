@@ -456,7 +456,8 @@ export const EMPTY_OVERRIDES: PlanOverrides = { income_annual: null, income_note
 /** Principal at risk and the coverage on every payment, as the server reads it (loan_schedule.risk_profile). */
 export type PlanRisk = {
   weighted_average_life_months: number | null; recovery_milestones: Record<string, number | null>; full_exposure_months: number | null; breakeven_month?: number | null; balloon: number; balloon_pct: number;
-  income_monthly: number | null; existing_service_monthly: number; coverage_by_period: Array<{ period: number; month: number; phase: string; payment_monthly: number; coverage: number | null }>;
+  income_monthly: number | null; existing_service_monthly: number | null; coverage_by_period: Array<{ period: number; month: number; phase: string; payment_monthly: number; coverage: number | null; debt_service_monthly?: number | null; cash_surplus_monthly?: number | null; cash_shortfall_monthly?: number | null }>;
+  peak_cash_shortfall_monthly?: number | null; peak_cash_shortfall_period?: number | null; peak_cash_shortfall_month?: number | null; coverage_note?: string | null; coverage_unavailable_reason?: string | null;
   coverage_during_interest_only: number | null; coverage_after_interest_only: number | null; lowest_coverage: number | null; lowest_coverage_month: number | null; words: string;
 };
 /** Desk only: the fees off the proceeds and the true cost of the money. Never on the package or the listing. */
@@ -592,7 +593,8 @@ export type PlanEvaluation = {
   cash_kept: number;
 };
 
-export type PlanLever = { key: string; label: string; detail: string; dscr_after: number | null; status_after: DscrStatus; apply: Partial<FinancialPlanRecord> | null; improves: boolean };
+export type PlanLever = { key: string; label: string; detail: string; dscr_after: number | null; status_after: DscrStatus; apply: Partial<FinancialPlanRecord> | null; improves: boolean;
+  income_after_annual?: number | null; debt_service_after_monthly?: number | null; cash_surplus_monthly?: number | null; cash_surplus_change_monthly?: number | null };
 
 export type FinancialPlanWrite = {
   expected_updated_at?: string | null;
@@ -664,6 +666,7 @@ export type CockpitProposedPayment = {
 };
 
 export type CockpitDscrCandidate = {
+  currency_comparable?: boolean; currency_status?: "comparable" | "mismatch" | "unknown"; numerator_currency?: string | null; denominator_currency?: string; currency_note?: string | null;
   key: "tax_return" | "profit_and_loss" | "bank_cash_flow";
   label: string;
   numerator: number | null;

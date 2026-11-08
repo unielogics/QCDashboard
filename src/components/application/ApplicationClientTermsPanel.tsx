@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Row, Select, Textarea, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -21,6 +21,9 @@ import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaym
 import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview, repaymentConfigLabel, termsCadenceForPeriods } from "@/lib/repaymentConfig";
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
+import { LoanScheduleReview } from "@/components/application/LoanScheduleReview";
+import scheduleStyles from "./LoanScheduleReview.module.css";
+import { CoverageFundingGap } from "./CoverageFundingGap";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 
 export type Draft = {
@@ -48,6 +51,7 @@ export type Draft = {
 };
 
 export type ClientTermsWorkingDraft = { profileId: string; draft: Draft; baseVersion: number; savedFingerprint: string; sourceFingerprint: string; editedInEditor: boolean };
+export type ClientTermsView = "terms" | "schedule";
 const cloneDraft = (draft: Draft): Draft => ({ ...draft, repayment_config: copyRepaymentConfig(draft.repayment_config) });
 export function draftWithScenarioLoan(draft: Draft, loan?: SyncedLoan | null, context?: LoanRefinanceContext | null): Draft {
   const fields = loan ? clientDraftLoanFields(loan) : null;
@@ -248,6 +252,8 @@ export function ApplicationClientTermsPanel({
   canEdit = true,
   scenarioPaymentOnly = false,
   previewScenario,
+  activeView,
+  onViewChange,
 }: {
   profileId: string;
   onSaved?: (terms: ApplicationClientTerms, plan?: FinancialPlanRead) => void;
@@ -268,6 +274,8 @@ export function ApplicationClientTermsPanel({
   canEdit?: boolean;
   scenarioPaymentOnly?: boolean;
   previewScenario?: LoanScenarioPreviewer;
+  activeView?: ClientTermsView;
+  onViewChange?: (view: ClientTermsView) => void;
 }) {
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -290,6 +298,17 @@ export function ApplicationClientTermsPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [localView, setLocalView] = useState<ClientTermsView>("terms");
+  const view = activeView ?? localView;
+  const viewId = useId();
+  const workspaceRef = useRef<HTMLElement | null>(null);
+  const viewScroll = useRef<Record<ClientTermsView, number>>({ terms: 0, schedule: 0 });
+  const changeView = (next: ClientTermsView) => {
+    const scrollHost = workspaceRef.current?.closest(".drawer-b");
+    if (scrollHost) viewScroll.current[view] = scrollHost.scrollTop;
+    setLocalView(next); onViewChange?.(next);
+  };
+  useEffect(() => { const scrollHost = workspaceRef.current?.closest(".drawer-b"); if (scrollHost) scrollHost.scrollTop = viewScroll.current[view]; }, [view]);
   const query = useQuery({
     queryKey: ["application-client-terms", profileId],
     queryFn: () => api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`),
@@ -496,12 +515,12 @@ export function ApplicationClientTermsPanel({
     </section>;
   }
 
-  return <section className="client-terms-shell" aria-label="Client financing terms">
+  return <section ref={workspaceRef} className={`client-terms-shell ${scheduleStyles.workspace}`} aria-label="Client financing terms">
     <header className="client-terms-heading">
       <div>
         <span className="lbl">Client-ready financing terms</span>
-        <h3>Structure the offer once. Payment, DSCR, PDF, and email stay in sync.</h3>
-        <p className="sub">APR and time drive the repayment schedule. DSCR is read-only and recalculated from file evidence.</p>
+        <h3>{view === "schedule" ? "Principal, interest, payoff progress and repayment risk." : "Structure the offer once. Payment, DSCR, PDF, and email stay in sync."}</h3>
+        <p className="sub">{view === "schedule" ? "This schedule follows the current working terms. Return to Loan terms to edit, apply or save a version." : "APR and time drive the repayment schedule. DSCR is read-only and recalculated from file evidence."}</p>
       </div>
       <div className="client-terms-heading-actions">
         <CellChip tone={terms.status === "issued" ? "ok" : terms.version ? "warn" : "mut"}>{terms.version ? `${terms.status === "issued" ? "Issued" : "Draft"} · v${terms.version}` : "Not started"}</CellChip>
@@ -519,6 +538,16 @@ export function ApplicationClientTermsPanel({
         <IconBtn className="pri" onClick={() => { setError(""); onSelectedChange?.(true); onCompose?.(); }} aria-label="Compose client email with financing terms" title="Add to client offer email" disabled={!offerSelection || terms.direct_client_contact_suppressed}><Icon name="mail" size={15} /></IconBtn>
       </div>
     </header>
+    <nav className={scheduleStyles.tabs} role="tablist" aria-label="Loan terms and amortization views" onKeyDown={(event) => {
+      if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const next: ClientTermsView = event.key === "Home" ? "terms" : event.key === "End" ? "schedule" : view === "terms" ? "schedule" : "terms";
+      changeView(next); document.getElementById(`${viewId}-${next}-tab`)?.focus();
+    }}>
+      <button type="button" id={`${viewId}-terms-tab`} role="tab" aria-selected={view === "terms"} aria-controls={`${viewId}-terms-panel`} tabIndex={view === "terms" ? 0 : -1} onClick={() => changeView("terms")}>Loan terms</button>
+      <button type="button" id={`${viewId}-schedule-tab`} role="tab" aria-selected={view === "schedule"} aria-controls={`${viewId}-schedule-panel`} tabIndex={view === "schedule" ? 0 : -1} onClick={() => changeView("schedule")}>Amortization &amp; risk</button>
+    </nav>
+    <div className={scheduleStyles.tabBody} id={`${viewId}-terms-panel`} role="tabpanel" aria-labelledby={`${viewId}-terms-tab`} hidden={view !== "terms"}>
     {terms.direct_client_contact_suppressed ? <Callout tone="warn">Direct client contact is suppressed on this referral-managed file. Download the PDF and route it through the referring professional.</Callout> : null}
     {!terms.loan_type_options.length ? <Callout tone="bad">No active loan type is scoped to this file. Publish or scope a funding program before creating client terms.</Callout> : null}
     {error ? <Callout tone="bad">{error}</Callout> : null}
@@ -573,13 +602,14 @@ export function ApplicationClientTermsPanel({
         <div className="terms-preview-hero"><span>Proposed amount</span><strong>{money(finite(draft.amount), 0)}</strong><div><b>{finite(draft.apr_pct) == null ? "—" : `${finite(draft.apr_pct)!.toFixed(2)}%`}</b><small>APR</small><b>{finite(draft.term_months) == null ? "—" : `${Math.round(finite(draft.term_months)!)} mo`}</b><small>Time</small></div></div>
         <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? `${money(preview.schedule.payment_io, 2)} for ${preview.schedule.interest_only_months} interest-only months, then ${money(preview.schedule.payment_after, 2)} · ` : ""}${preview.count} payments · ${preview.schedule.structure_label.toLowerCase()} · ${money(preview.annual, 0)} annual debt service${preview.schedule.repayment_config ? " (peak rolling 12 months of actual cash due)" : ""}${!preview.schedule.repayment_config && preview.schedule.payment_io != null && preview.schedule.payment_after != null ? " once principal starts" : ""}${preview.schedule.balloon ? ` · ${money(preview.schedule.balloon, 0)} due at maturity` : ""}` : "Enter amount, APR, and time to calculate"}</small></div>
         {preview ? <LoanScheduleTable schedule={preview.schedule} title={`Schedule: ${describeSchedule(preview.schedule)}`} /> : null}
-        {preview ? <p className="terms-preview-source terms-preview-risk"><strong>Principal at risk.</strong> {riskProfile(preview.schedule, riskIncomeAnnual != null && riskExistingAnnual != null ? riskIncomeAnnual / 12 : null, riskExistingAnnual == null ? null : riskExistingAnnual / 12)?.words}{riskExistingAnnual == null ? " Existing debt service must be established before calculating coverage." : ""}</p> : null}
+        {preview ? <p className="terms-preview-source terms-preview-risk"><strong>Principal at risk.</strong> {riskProfile(preview.schedule, riskIncomeAnnual == null ? null : riskIncomeAnnual / 12, riskExistingAnnual == null ? null : riskExistingAnnual / 12, scenarioCoverage?.incomeCurrencyComparable === true)?.words}{riskExistingAnnual == null ? " Existing debt service must be established before calculating coverage." : ""}</p> : null}
         <div className="terms-preview-dscr"><div><span>{previewScenario ? "Current coverage" : "Before acceptance"}</span><strong>{ratio(previewScenario ? scenarioCoverage?.before : terms.calculation.dscr_before)}</strong></div><i>→</i><div className="after"><span>{previewScenario ? "With this working loan" : "After acceptance"}</span><strong>{scenarioCoverage?.noDebtLeft ? "No debt left" : ratio(afterDscr)}</strong></div></div>
         <p className="terms-preview-source">{previewScenario ? `Working scenario · ${scenarioCoverage?.basis ?? "current inputs"}. ${scenarioCoverage?.unavailableReason ?? "Uses the current payoff selections, add-backs and calculation inputs."}` : <>{terms.calculation.dscr_explanation}<br />{terms.calculation.source}</>}</p>
+        <CoverageFundingGap value={scenarioCoverage?.coverageReview} basis={scenarioCoverage?.basis ?? "Selected earnings"} />
         {terms.repayment_config ? <p className="terms-preview-source">{repaymentConfigLabel(terms.repayment_config)}</p> : null}
         {terms.plan ? (
           <div className="terms-preview-plan">
-            <span className="lbl">Financials tab</span>
+            <span className="lbl">Saved financial scenario</span>
             <p className="terms-preview-source">
               {terms.plan.terms_link?.summary ?? "No link to the plan yet."}
               {terms.plan.dscr ? ` Coverage today ${ratio(terms.plan.dscr.before)}${terms.plan.active ? ` → with the plan ${ratio(terms.plan.dscr.after)}` : ""}.` : ""}
@@ -597,5 +627,9 @@ export function ApplicationClientTermsPanel({
       </aside>
     </div>
     </fieldset>
+    </div>
+    <div className={scheduleStyles.tabBody} id={`${viewId}-schedule-panel`} role="tabpanel" aria-labelledby={`${viewId}-schedule-tab`} hidden={view !== "schedule"}>
+      {preview && !repaymentIssue ? <><CoverageFundingGap value={scenarioCoverage?.coverageReview} basis={scenarioCoverage?.basis ?? "Selected earnings"} /><LoanScheduleReview schedule={preview.schedule} incomeMonthly={riskIncomeAnnual == null ? null : riskIncomeAnnual / 12} existingServiceMonthly={riskExistingAnnual == null ? null : riskExistingAnnual / 12} incomeCurrencyComparable={scenarioCoverage?.incomeCurrencyComparable === true} earningsBasis={scenarioCoverage?.basis ?? terms.calculation.source} /></> : <Callout tone="warn">{repaymentIssue ?? "Enter the principal, APR, maturity and repayment details in Loan terms to calculate the amortization schedule."}</Callout>}
+    </div>
   </section>;
 }
