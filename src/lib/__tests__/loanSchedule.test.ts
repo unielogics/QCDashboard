@@ -66,7 +66,7 @@ describe("principal at risk", () => {
     expect(s.rows[5].cash_at_risk_pct).toBe(94);
     expect(s.breakeven_month).toBe(21);
     expect(s.rows[20].cash_at_risk_pct).toBe(0);
-    expect(risk.words).toContain("capital is back by month 21");
+    expect(risk.words).toContain("receipts reach the original advance by month 21");
     expect(buildSchedule(100000, 10, 12, { structure: "interest_only" })!.breakeven_month).toBe(12);
     expect(effectiveRatePct(100000, Array(12).fill(8791.59))).toBe(10);
     expect(effectiveRatePct(200000 - 5500, s.rows.map((r) => r.payment))!).toBeGreaterThan(16);

@@ -149,7 +149,7 @@ export type LocalPlanEvaluation = {
   cashKept: number;
 };
 
-const r2 = (v: number) => Math.round(v * 100) / 100;
+const r2 = (v: number) => roundEbitdaMoney(v);
 
 export const DSCR_ADD_BACK_EXCLUSION = "Interest and depreciation/amortization are already accounted for in the earnings or bank cash-flow basis; adding them again would double count.";
 export const DSCR_SERVICE_MISSING = "Existing debt service is unknown. Complete the debt schedule or enter a reviewed debt-service override before calculating coverage.";
@@ -270,7 +270,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     addBacksMonthly,
     excludedAddBacks,
     coverageUnavailableReason,
-    incomeBefore: cockpit.dscr.headline?.numerator ?? null,
+    incomeBefore: headline?.numerator_before ?? null,
     incomeAfter: headline?.numerator_after ?? null,
     loanTerms,
     schedule,

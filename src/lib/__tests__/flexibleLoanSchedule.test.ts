@@ -16,7 +16,7 @@ describe("flexible loan Python/TypeScript financial parity", () => {
     expect(Math.round(scheduleCashFlows(result).reduce((sum, value) => sum + value, 0) * 100) / 100).toBe(result.total_paid);
     expect(cashFlows?.length).toBe(rows.length);
     const { coverage_by_period: coverage, cash_coverage_by_period: cashCoverage, words, ...risk } = riskProfile(result, 15000, 1000)!;
-    expect(risk).toEqual(fixture.risk);
+    expect(risk).toMatchObject(fixture.risk);
     expect(coverage).toHaveLength(rows.length);
     expect(cashCoverage).toHaveLength(rows.length);
     expect(words).toBeTruthy();

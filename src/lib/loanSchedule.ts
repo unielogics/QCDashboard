@@ -35,12 +35,15 @@ export type LoanScheduleSummary = {
   breakeven_month: number | null;
   rows: ScheduleRow[];
 };
-export type CoverageRow = { period: number; month: number; phase: ScheduleRow["phase"]; payment_monthly: number; coverage: number | null };
+export type CoverageCash = { debt_service_monthly: number | null; cash_surplus_monthly: number | null; cash_shortfall_monthly: number | null };
+export type CoverageRow = CoverageCash & { period: number; month: number; phase: ScheduleRow["phase"]; payment_monthly: number; coverage: number | null };
 export type RiskProfile = {
-  cash_coverage_by_period?: Array<{period: number; month: number; payment_monthly: number; coverage: number | null}>; lowest_cash_coverage?: number | null;
+  cash_coverage_by_period?: Array<CoverageCash & {period: number; month: number; payment_monthly: number; coverage: number | null}>; lowest_cash_coverage?: number | null;
+  peak_cash_shortfall_monthly?: number | null; peak_cash_shortfall_period?: number | null; peak_cash_shortfall_month?: number | null;
+  coverage_note?: string | null; coverage_unavailable_reason?: string | null;
   coverage_basis?: string; peak_rolling_12_month_debt_service?: number; maturity_balloon?: number; scheduled_balloons_total?: number;
   weighted_average_life_months: number; recovery_milestones: LoanScheduleSummary["recovery_milestones"]; full_exposure_months: number; breakeven_month: number | null; balloon: number; balloon_pct: number;
-  income_monthly: number | null; existing_service_monthly: number; coverage_by_period: CoverageRow[];
+  income_monthly: number | null; existing_service_monthly: number | null; coverage_by_period: CoverageRow[];
   coverage_during_interest_only: number | null; coverage_after_interest_only: number | null; lowest_coverage: number | null; lowest_coverage_month: number | null; words: string;
 };
 
@@ -305,35 +308,47 @@ export function buildSchedule(amount: number | null | undefined, ratePct: number
 }
 
 /** Principal at risk and the coverage on every payment: the same reading as app/services/loan_schedule.risk_profile. */
-export function riskProfile(summary: LoanScheduleSummary | null | undefined, incomeMonthly?: number | null, existingServiceMonthly?: number | null): RiskProfile | null {
+export function riskProfile(summary: LoanScheduleSummary | null | undefined, incomeMonthly?: number | null, existingServiceMonthly?: number | null, incomeCurrencyComparable = true): RiskProfile | null {
   if (!summary || !summary.rows.length) return null;
   const toMonthly = summary.periods_per_year / 12;
-  const income = incomeMonthly && incomeMonthly > 0 ? incomeMonthly : null;
-  const existing = Math.max(0, existingServiceMonthly ?? 0);
+  const income = incomeMonthly != null && Number.isFinite(incomeMonthly) ? incomeMonthly : null;
+  const existing = existingServiceMonthly != null && Number.isFinite(existingServiceMonthly) && existingServiceMonthly >= 0 ? existingServiceMonthly : null;
   const cashFlows = scheduleCashFlows(summary);
-  const coverage: CoverageRow[] = income == null ? [] : summary.rows.map((r, index) => {
+  const cash = (paymentMonthly: number): CoverageCash => {
+    const service = existing == null ? null : r2(existing + paymentMonthly);
+    const surplus = incomeCurrencyComparable && income != null && service != null ? r2(income - service) : null;
+    return { debt_service_monthly: service, cash_surplus_monthly: surplus, cash_shortfall_monthly: surplus == null ? null : Math.max(0, -surplus) };
+  };
+  const coverage: CoverageRow[] = income == null || existing == null ? [] : summary.rows.map((r, index) => {
     const paymentMonthly = r2((summary.repayment_config != null ? cashFlows[index] : r.payment) * toMonthly);
     const denominator = existing + paymentMonthly;
-    return { period: r.period, month: r.month, phase: r.phase, payment_monthly: paymentMonthly, coverage: denominator > 0 ? r2(income / denominator) : null };
+    return { period: r.period, month: r.month, phase: r.phase, payment_monthly: paymentMonthly, coverage: denominator > 0 ? r2(income / denominator) : null, ...cash(paymentMonthly) };
   });
   const withCov = coverage.filter((c) => c.coverage != null) as Array<CoverageRow & { coverage: number }>;
   const lowest = withCov.length ? withCov.reduce((a, b) => (b.coverage < a.coverage ? b : a)) : null;
   const ioCov = withCov.find((c) => c.phase === "interest_only")?.coverage ?? null;
   const afterCov = withCov.find((c) => c.phase !== "interest_only")?.coverage ?? null;
-  const cashCoverage = income == null ? [] : summary.rows.map((row, index) => ({ period: row.period, month: row.month, payment_monthly: r2(cashFlows[index] * toMonthly), coverage: existing + cashFlows[index] * toMonthly > 0 ? r2(income / (existing + cashFlows[index] * toMonthly)) : null }));
+  const cashCoverage = income == null || existing == null ? [] : summary.rows.map((row, index) => ({ period: row.period, month: row.month, payment_monthly: r2(cashFlows[index] * toMonthly), coverage: existing + cashFlows[index] * toMonthly > 0 ? r2(income / (existing + cashFlows[index] * toMonthly)) : null, ...cash(cashFlows[index] * toMonthly) }));
   const cashValues = cashCoverage.map((row) => row.coverage).filter((value): value is number => value !== null);
+  const withGap = cashCoverage.filter((row) => row.cash_shortfall_monthly != null);
+  const peakGap = withGap.length ? withGap.reduce((peak, row) => row.cash_shortfall_monthly! > peak.cash_shortfall_monthly! ? row : peak) : null;
+  const coverageUnavailableReason = income == null ? "Income available for debt service is unknown." : existing == null ? "Existing debt service is unknown; enter a reviewed amount, including an explicit zero when applicable." : !incomeCurrencyComparable ? "Coverage shortfalls require earnings comparable with USD debt service." : null;
+  const coverageNote = [income != null && income <= 0 ? "Earnings are nonpositive. Signed DSCR does not rank cash stress; use the coverage shortfall to assess earnings available for payments." : null,
+    !incomeCurrencyComparable ? "Confirm that earnings and debt service use the same currency before calculating coverage shortfalls. No currency conversion is assumed." : null].filter(Boolean).join(" ") || null;
   return {
     weighted_average_life_months: summary.weighted_average_life_months, recovery_milestones: summary.recovery_milestones, full_exposure_months: summary.full_exposure_months, breakeven_month: summary.breakeven_month,
-    balloon: summary.balloon, balloon_pct: summary.balloon_pct, income_monthly: income == null ? null : r2(income), existing_service_monthly: r2(existing), coverage_by_period: coverage,
+    balloon: summary.balloon, balloon_pct: summary.balloon_pct, income_monthly: income == null ? null : r2(income), existing_service_monthly: existing == null ? null : r2(existing), coverage_by_period: coverage,
     coverage_basis: summary.repayment_config != null ? "actual_cash_due_per_period" : "legacy_regular_payment", peak_rolling_12_month_debt_service: summary.peak_rolling_12_month_debt_service,
     maturity_balloon: summary.maturity_balloon ?? summary.balloon, scheduled_balloons_total: summary.scheduled_balloons_total ?? 0,
     cash_coverage_by_period: cashCoverage, lowest_cash_coverage: cashValues.length ? Math.min(...cashValues) : null,
+    peak_cash_shortfall_monthly: peakGap?.cash_shortfall_monthly ?? null, peak_cash_shortfall_period: peakGap?.period ?? null, peak_cash_shortfall_month: peakGap?.month ?? null,
+    coverage_note: coverageNote, coverage_unavailable_reason: coverageUnavailableReason,
     coverage_during_interest_only: ioCov, coverage_after_interest_only: afterCov, lowest_coverage: lowest?.coverage ?? null, lowest_coverage_month: lowest?.month ?? null,
-    words: riskWords(summary, lowest, ioCov, afterCov),
+    words: [riskWords(summary, lowest, ioCov, afterCov, income != null && income <= 0), coverageUnavailableReason, coverageNote].filter(Boolean).join(" "),
   };
 }
 
-export function riskWords(summary: LoanScheduleSummary, lowest?: { coverage: number } | null, ioCov?: number | null, afterCov?: number | null): string {
+export function riskWords(summary: LoanScheduleSummary, lowest?: { coverage: number } | null, ioCov?: number | null, afterCov?: number | null, incomeNonpositive = false): string {
   const io = summary.full_exposure_months;
   const m = summary.recovery_milestones;
   const month = (key: "25" | "50" | "75" | "100") => (m[key] ? `month ${m[key]}` : "never");
@@ -350,10 +365,11 @@ export function riskWords(summary: LoanScheduleSummary, lowest?: { coverage: num
     if (summary.balloon) parts.push(`${Math.round(summary.balloon).toLocaleString()} (${summary.balloon_pct}% of the loan) is due at maturity.`);
   }
   parts.push(`Weighted average life ${summary.weighted_average_life_months} months.`);
-  if (summary.breakeven_month) parts.push(`Counting the interest received, the capital is back by month ${summary.breakeven_month}; nothing is at risk after that.`);
+  if (summary.breakeven_month) parts.push(`Cumulative principal and interest receipts reach the original advance by month ${summary.breakeven_month}. Any unpaid principal remains credit exposure until it is repaid.`);
   if (lowest && lowest.coverage != null) {
-    if (summary.repayment_config != null) parts.push(`Lowest payment-period liquidity coverage ${lowest.coverage.toFixed(2)}x; annual coverage uses peak rolling twelve-month cash due.`);
-    else if (ioCov != null && afterCov != null && ioCov !== afterCov) parts.push(`Coverage on each payment: ${ioCov.toFixed(2)}x during the interest-only months, ${afterCov.toFixed(2)}x once principal starts; the lowest, ${lowest.coverage.toFixed(2)}x, is what underwriting stands on.`);
+    if (incomeNonpositive) parts.push(`The mathematical minimum signed payment coverage is ${lowest.coverage.toFixed(2)}x; this does not identify the largest payment or funding shortfall when earnings are nonpositive.`);
+    else if (summary.repayment_config != null) parts.push(`Lowest payment-period liquidity coverage ${lowest.coverage.toFixed(2)}x; annual coverage uses peak rolling twelve-month cash due.`);
+    else if (ioCov != null && afterCov != null && ioCov !== afterCov) parts.push(`Coverage on each payment: ${ioCov.toFixed(2)}x during the interest-only months, ${afterCov.toFixed(2)}x once principal starts; the numerically lowest ratio is ${lowest.coverage.toFixed(2)}x.`);
     else parts.push(`Coverage on each payment ${lowest.coverage.toFixed(2)}x.`);
   }
   return parts.join(" ");

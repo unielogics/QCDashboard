@@ -4,7 +4,11 @@ import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaym
 import { adoptRecordedLoan, applyWorkingLoan, mergeAcknowledgedLoan, recordedLoanCadence, recordedRetainedAnnual, releaseAutomaticRefinance, releaseRecordedLoan, workingLoanFromPlan, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
 import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview } from "@/lib/repaymentConfig";
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
-import type { ClientTermsWorkingDraft } from "@/components/application/ApplicationClientTermsPanel";
+import type { ClientTermsView, ClientTermsWorkingDraft } from "@/components/application/ApplicationClientTermsPanel";
+import loanStyles from "@/components/application/LoanScheduleReview.module.css";
+import { CoverageFundingGap } from "@/components/application/CoverageFundingGap";
+import { coverageCurrencyComparable, coverageReview } from "@/lib/coverageReview";
+import { loanScheduleRows } from "@/lib/loanScheduleView";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
 // the plan on the right, and the plan itself in between: the obligations
@@ -130,6 +134,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
   const [debtEditor, setDebtEditor] = useState<DebtScheduleEditorTarget | null>(null);
   const [clientTermsOpen, setClientTermsOpen] = useState(false);
+  const [clientTermsView, setClientTermsView] = useState<ClientTermsView>("terms");
   const [clientTermsDraft, setClientTermsDraft] = useState<ClientTermsWorkingDraft | null>(null);
   const [loanDraftTouched, setLoanDraftTouched] = useState(false);
   const activeProfile = useRef(profileId);
@@ -137,6 +142,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const legacySelectionKey = JSON.stringify(cockpit.plan.unresolved_previous_selections ?? []);
   useEffect(() => { setLegacySelectionsReviewed(false); }, [legacySelectionKey]);
   const returnToReview = useRef(false);
+  const openClientTerms = (view: ClientTermsView) => { returnToReview.current = reviewOpen; setClientTermsView(view); setReviewOpen(false); setClientTermsOpen(true); };
   const openDebt = (target: DebtScheduleEditorTarget) => { returnToReview.current = reviewOpen; setReviewOpen(false); setDebtEditor(target); };
   const refresh = () => onRefresh?.();
   const closeDebt = () => {
@@ -175,6 +181,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
 
   const local = useMemo(() => evaluatePlanLocally(cockpit, plan, months), [cockpit, plan, months]);
   const { headline, thresholds, candidates, reason, debt_service_source } = cockpit.dscr;
+  const incomeCurrencyComparable = coverageCurrencyComparable(cockpit, plan.overrides?.income_annual != null);
+  const currentAnnualService = headline?.annual_debt_service ?? cockpit.dscr.annual_debt_service ?? (cockpit.debt.service.monthly == null ? null : cockpit.debt.service.monthly * 12);
+  const coverageBasis = headline ?? candidates.find((candidate) => candidate.numerator != null);
+  const fundingReview = coverageReview({ incomeAnnual: local.incomeBefore, debtServiceAnnual: currentAnnualService }, { incomeAnnual: local.incomeAfter, debtServiceAnnual: local.serviceAfterAnnual }, { before: coverageCurrencyComparable(cockpit), after: incomeCurrencyComparable });
   const noDebt = Boolean(cockpit.dscr.no_debt);
   const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
   const obligations = cockpit.debt.obligations.filter((obligation) => obligation.kind !== "payee");
@@ -191,7 +201,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const scenarioPaymentOnly = plan.new_payment_source === "manual" && plan.new_loan_amount == null;
   const previewScenario: LoanScenarioPreviewer = (loan, context) => {
     const before = cockpit.dscr.headline?.value ?? null;
-    const basis = cockpit.dscr.headline?.label ?? "Working scenario inputs";
+    const basis = coverageBasis ? `${coverageBasis.label}${coverageBasis.period ? ` · ${coverageBasis.period}` : ""}` : "Working scenario inputs";
     const schedule = repaymentPreview(loan.amount, loan.ratePct, loan.termMonths, { structure: loan.structure, interestOnlyMonths: loan.interestOnlyMonths, periodsPerYear: loan.paymentsPerYear ?? 12, repaymentConfig: loan.repaymentConfig }).schedule;
     if (!schedule) return { before, after: null, basis, unavailableReason: "Complete the loan details to calculate scenario coverage." };
     if (context.treatment === "refinance" && context.retainedAnnualService == null) return { before, after: null, basis, unavailableReason: "The annual debt service remaining after payoff is not provided." };
@@ -205,6 +215,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     const evaluation = evaluatePlanLocally(cockpit, previewPlan, months);
     return { before, after: evaluation.headlineAfter, basis, noDebtLeft: evaluation.noDebtLeft,
       incomeAnnual: evaluation.incomeAfter, existingAnnual: context.treatment === "refinance" ? context.retainedAnnualService : evaluation.serviceBeforeNewPayment == null ? null : evaluation.serviceBeforeNewPayment * 12,
+      incomeCurrencyComparable,
+      coverageReview: coverageReview({ incomeAnnual: local.incomeBefore, debtServiceAnnual: currentAnnualService }, { incomeAnnual: evaluation.incomeAfter, debtServiceAnnual: evaluation.serviceAfterAnnual }, { before: coverageCurrencyComparable(cockpit), after: incomeCurrencyComparable }),
       unavailableReason: evaluation.coverageUnavailableReason };
   };
   function termsSaved(terms: ApplicationClientTerms, savedPlan?: FinancialPlanRead) {
@@ -244,7 +256,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const feeValid = (feePoints == null || (Number.isFinite(feePoints) && feePoints >= 0 && feePoints <= 100)) && (feeConsulting == null || (Number.isFinite(feeConsulting) && feeConsulting >= 0));
   // The strip prices on what is typed, so the true cost moves as the fee is set, before the save.
   const liveFees = (feeValid ? ((feePoints ?? 0) / 100) * (economics?.accepted_amount ?? economicsSchedule?.amount ?? 0) + (feeConsulting ?? 0) : null);
-  const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter != null && local.serviceBeforeNewPayment != null ? local.incomeAfter / 12 : null, local.serviceBeforeNewPayment), [local.schedule, local.incomeAfter, local.serviceBeforeNewPayment]);
+  const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter == null ? null : local.incomeAfter / 12, local.serviceBeforeNewPayment, incomeCurrencyComparable), [local.schedule, local.incomeAfter, local.serviceBeforeNewPayment, incomeCurrencyComparable]);
   const structureRate = useMemo(() => (economicsSchedule ? effectiveRatePct(economicsSchedule.amount, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule]);
   const totalFees = liveFees ?? economics?.total_fees ?? 0;
   const effectiveRate = useMemo(() => (economicsSchedule && economics ? effectiveRatePct(economicsSchedule.amount - totalFees, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule, economics, totalFees]);
@@ -490,6 +502,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         </div>
       </div>
 
+      <CoverageFundingGap value={fundingReview} basis={`${coverageBasis?.label ?? "Selected earnings"}${coverageBasis?.period ? ` · ${coverageBasis.period}` : ""}`} />
       <details className={styles.ebitdaDetails}>
         <summary>EBITDA sources and plan adjustments</summary>
         <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
@@ -538,7 +551,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
 
         </div>
         <div className="grid g8">
-          <Lbl>The new loan</Lbl>
+          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}><Btn size="sm" disabled={termsPending || save.isPending} onClick={() => openClientTerms("terms")}><Icon name="pencil" size={14} />Open full terms</Btn><Btn size="sm" disabled={termsPending || save.isPending} onClick={() => openClientTerms("schedule")}>Amortization schedule</Btn></div> : null}</div>
           <div className="fc-loan-terms">
             <label className="grid g2"><span className="sub">Amount, $</span><Input aria-label="New loan amount" type="number" inputMode="decimal" min={0} step="any" value={numberValue(plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => setLoan("amount", e.target.value)} /></label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
@@ -583,7 +596,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
               linkState={link?.state ?? null}
               canEdit={canEdit}
               financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onSaved={termsSaved} onPending={setTermsPending}
-              onOpenEditor={() => { returnToReview.current = reviewOpen; setReviewOpen(false); setClientTermsOpen(true); }}
+              showOpenEditor={false} onOpenEditor={() => openClientTerms("terms")}
             />
           ) : null}
           <Input aria-label="Or type the new monthly payment" inputMode="decimal" placeholder={cockpit.dscr.proposed ? `Or type the payment (term sheet: ${money(cockpit.dscr.proposed.monthly_payment)})` : "Or type the payment"} value={paymentText} disabled={!canEdit} onChange={(e) => setPayment(e.target.value)} />
@@ -652,7 +665,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         </div>
       </div>
 
-      {local.schedule ? (
+      {termsKind !== "client" && local.schedule ? (
         <ChartCard
           plain
           title={`Amortization schedule: ${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}`}
@@ -663,7 +676,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           table={{
             caption: "Payment by period",
             cols: ["Period", "Phase", local.schedule.repayment_config ? "Cash due" : "Payment", "Interest", "Principal", "Balance", "Still out", "Coverage"],
-            rows: local.schedule.rows.map((r, i) => ({ key: String(r.period), muted: r.phase === "interest_only", cells: [String(r.period), r.phase === "interest_only" ? "Interest-only" : r.phase === "amortizing" ? "Amortizing" : "Simple interest", money(local.schedule!.repayment_config ? r.cash_payment ?? r.payment : r.payment), money(r.interest), money(local.schedule!.repayment_config ? r.total_principal ?? r.principal : r.principal), r.balloon ? `${money(r.balance)} · ${money(r.balloon)} due` : money(r.balance), `${r.exposure_pct}%`, risk?.coverage_by_period[i]?.coverage != null ? `${risk.coverage_by_period[i].coverage!.toFixed(2)}x` : "—"] })),
+            rows: loanScheduleRows(local.schedule, risk).map((r) => ({ key: String(r.period), muted: r.phase === "interest_only", cells: [String(r.period), r.phase === "interest_only" ? "Interest-only" : r.phase === "amortizing" ? "Amortizing" : "Simple interest", money(r.cash), money(r.interest), money(r.principal), money(r.balance), `${r.principalExposurePct.toFixed(1)}%`, r.coverage == null ? "—" : `${r.coverage.toFixed(2)}x`] })),
           }}
           chart={
             <div className="grid g8">
@@ -672,7 +685,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                 bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period), muted: r.phase === "interest_only" }))}
                 series={[
                   { key: "interest", label: "Interest", color: SERIES.two, values: local.schedule.rows.map((r) => r.interest) },
-                  { key: "principal", label: "Principal", color: SERIES.one, values: local.schedule.rows.map((r) => r.principal), emphasis: true },
+                  { key: "principal", label: "Principal, including balloons", color: SERIES.one, values: loanScheduleRows(local.schedule).map((r) => r.principal), emphasis: true },
                 ]}
                 height={180}
               />
@@ -680,8 +693,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                 ariaLabel="Principal still out, as a share of the loan, by period"
                 bands={local.schedule.rows.map((r) => ({ key: String(r.period), label: `Period ${r.period}`, short: local.schedule!.rows.length > 36 ? (r.period % 12 === 1 ? String(r.period) : "") : String(r.period) }))}
                 series={[
-                  { key: "exposure", label: "Principal still out", color: SERIES.two, values: local.schedule.rows.map((r) => r.exposure_pct), emphasis: true },
-                  { key: "cash_at_risk", label: "Capital at risk, counting interest received", color: SERIES.one, values: local.schedule.rows.map((r) => r.cash_at_risk_pct) },
+                  { key: "exposure", label: "Principal still outstanding", color: SERIES.two, values: loanScheduleRows(local.schedule).map((r) => r.principalExposurePct), emphasis: true },
+                  { key: "cash_at_risk", label: "Original advance not recovered from receipts", color: SERIES.one, values: loanScheduleRows(local.schedule).map((r) => r.cashAtRiskPct) },
                 ]}
                 format={(v) => (v == null ? "—" : `${v}%`)}
                 axisFormat={(v) => `${Math.round(v)}%`}
@@ -859,6 +872,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     </section>
     <FinancialReviewDrawer open={reviewOpen} onClose={() => setReviewOpen(false)} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
-    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} />
+    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
   </>;
 }

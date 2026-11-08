@@ -14,6 +14,30 @@ function cockpit(monthly: number | null = 1000): FinancialCockpit {
 const adjustment = (kind: PlanAddBack["kind"], amount = 1000): PlanAddBack => ({ id: kind, kind, label: kind, amount_monthly: amount, source: "desk", note: "Reviewed operating assumption" });
 
 describe("financial plan earnings and missing debt service", () => {
+  it("retains losses while debt relief reduces the earnings shortfall and leaves source EBITDA unchanged", () => {
+    const source = cockpit(5000);
+    source.dscr.candidates = source.dscr.candidates.map((row) => ({ ...row, numerator: -12000, value: -0.2, annual_debt_service: 60000 }));
+    source.dscr.headline = source.dscr.candidates[1];
+    source.debt.obligations = [{ id: "loan", monthly: 4000, payoff: 10000, in_debt_service: true }] as FinancialCockpit["debt"]["obligations"];
+    source.plan.evaluation.ebitda = { ...structuredClone(source.plan.evaluation.ebitda!), before: -6000, after: -6000, annual_before: -12000, annual_after: -12000,
+      adjusted_annual: { ...source.plan.evaluation.ebitda!.adjusted_annual, before: -12000, after: -12000 } };
+    const result = evaluatePlanLocally(source, { ...plan, retire: ["loan"], new_payment_monthly: 1000, new_payment_source: "manual" }, []);
+    expect(result.incomeBefore).toBe(-12000);
+    expect(result.incomeAfter).toBe(-12000);
+    expect(result.serviceAfterAnnual).toBe(24000);
+    expect(result.headlineAfter).toBe(-0.5);
+    expect(result.noDebtLeft).toBe(false);
+    expect(result.ebitda?.annual_before).toBe(-12000);
+    expect(result.ebitda?.annual_after).toBe(-12000);
+    expect(result.ebitda?.debt_service_savings_monthly).toBe(3000);
+    expect(result.candidates.every((row) => row.status_after === "concerning")).toBe(true);
+  });
+
+  it("rounds a signed DSCR tie like Python instead of toward positive infinity", () => {
+    const result = evaluatePlanLocally(cockpit(), { ...plan, overrides: { income_annual: -16500, income_note: "Reviewed loss", debt_service_monthly: null, debt_service_note: null } }, []);
+    expect(result.headlineAfter).toBe(-1.38);
+  });
+
   it.each(["interest_refinanced", "depreciation"] as const)("does not add %s twice on any earnings basis and preserves the record", (kind) => {
     const row = adjustment(kind);
     const input = { ...plan, add_backs: [row] };
