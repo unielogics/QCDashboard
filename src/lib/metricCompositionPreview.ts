@@ -32,6 +32,7 @@ export function previewMetricComposition(recipe: MetricRecipe, components: Array
   const reported = "profit_and_loss.reported_ebitda";
   if (included.includes(reported) && included.length !== 1) error = "Choose reported EBITDA or the net-income reconciliation, not both.";
   if (!included.length || recipe.required_anchor && !included.includes(reported) && !included.includes(recipe.required_anchor)) error = "The source income anchor is required; correct that source input instead of removing the loss.";
+  if (!error && !included.includes(reported) && recipe.components.some((input) => input.required && !included.includes(input.input_key))) error = "Required source components must remain included; review their evidence before changing this calculation.";
   for (const input of recipe.components) {
     if (!(selected.get(input.input_key) ?? input.included) || input.role === "denominator" || input.role === "annualization") continue;
     const value = input.contribution !== undefined ? input.contribution : input.value == null ? null : input.value * (input.coefficient ?? 1);
@@ -47,10 +48,12 @@ export function previewMetricComposition(recipe: MetricRecipe, components: Array
   const factor = recipe.annualization_factor;
   if (factor == null || !Number.isFinite(factor) || factor <= 0) error = "The reporting-period annualization factor is not established.";
   if (missingInputs.length) error = "An included source component is unknown; review it before saving.";
-  const subtotalDecimal = error ? null : cents(add([...sourceValues, ...adjustmentValues]));
+  const unroundedSubtotal = error ? null : add([...sourceValues, ...adjustmentValues]);
+  const subtotalDecimal = unroundedSubtotal == null ? null : cents(unroundedSubtotal);
   const periodSubtotal = subtotalDecimal == null ? null : Number(subtotalDecimal.digits) / 100;
   const factorDecimal = factor != null && Number.isFinite(factor) ? decimal(factor) : null;
-  const numerator = subtotalDecimal == null || factorDecimal == null ? null : Number(cents({ digits: subtotalDecimal.digits * factorDecimal.digits, power: subtotalDecimal.power + factorDecimal.power }).digits) / 100;
+  const annualizationBase = recipe.annualize_before_rounding ? unroundedSubtotal : subtotalDecimal;
+  const numerator = annualizationBase == null || factorDecimal == null ? null : Number(cents({ digits: annualizationBase.digits * factorDecimal.digits, power: annualizationBase.power + factorDecimal.power }).digits) / 100;
   const denominator = recipe.denominator?.value;
   const value = recipe.kind === "dscr" || recipe.denominator ? numerator == null || denominator == null || !Number.isFinite(denominator) || denominator <= 0 ? null : roundEbitdaMoney(numerator / denominator) : numerator;
   return { value, numerator, subtotal: periodSubtotal, valid: !error, error, missingInputs };
