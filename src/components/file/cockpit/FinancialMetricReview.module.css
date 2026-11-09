@@ -59,5 +59,25 @@
 .operandTable table { min-width: 640px; }
 .operandTable th { position: sticky; top: 0; background: var(--surface); }
 .operandTable td small, .operandTable th small, .operandTable td button { display: block; margin-top: 4px; }
+.sourceControls { display: grid; gap: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.sourceChoices { display: grid; gap: 7px; max-height: 320px; overflow: auto; }
+.sourceChoice { display: flex; gap: 10px; align-items: start; padding: 9px; background: var(--sunken2); border-radius: 6px; }
+.sourceChoice label { display: flex; flex: 1; gap: 9px; min-width: 0; font-size: 12px; }
+.sourceChoice label > span { display: grid; gap: 4px; min-width: 0; }
+.sourceChoice input { flex-shrink: 0; margin-top: 3px; }
+.sourceChoice b { overflow-wrap: anywhere; }
+.sourceChoice small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.revenueTrend { border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; min-width: 0; }
+.revenueTrend > summary { cursor: pointer; font-size: 12px; line-height: 1.7; }
+.revenueTrend > summary b { margin-left: 12px; font-size: 11px; color: var(--muted); font-weight: 500; }
+.revenueTrend > .section { margin-top: 12px; }
+.trendPeriods { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 210px), 1fr)); gap: 9px; }
+.trendPeriods article, .forecast { border: 1px solid var(--line); border-radius: 7px; padding: 10px; display: grid; gap: 8px; }
+.forecast { background: var(--sunken2); }
+.trendNumbers { display: grid; gap: 6px; font-size: 12px; margin: 0; }
+.trendNumbers > div { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.trendNumbers dt { color: var(--muted); }
+.trendNumbers dd { margin: 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.trendAssumptions { font-size: 12px; line-height: 1.7; color: var(--muted); margin: 6px 0; padding-left: 20px; }
 @media (max-width: 850px) { .evidence { grid-template-columns: minmax(0, 1fr); } .sourceList { max-height: 220px; } .sourcePreview { height: 68dvh; } }
 @media (max-width: 520px) { .intro { grid-template-columns: minmax(0, 1fr); } .adjustment { grid-template-columns: minmax(0, 1fr); } }
