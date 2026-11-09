@@ -14,6 +14,9 @@
 .metrics span { color: var(--muted); font-size: 11px; line-height: 1.5; }
 .note { color: var(--muted); font-size: 12px; line-height: 1.6; margin: 7px 0; }
 .drawerBody { padding: 0 !important; overflow: hidden !important; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+.reviewHeader :global(.drawer-h-main) { min-width: 0; }
+.reviewTitle { display: block; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.5; }
+.reviewCompany { display: block; margin-top: 3px; color: var(--ink); font-size: 19px; font-weight: 700; line-height: 1.35; overflow-wrap: anywhere; }
 .tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); padding: 9px 12px; background: var(--surface); }
 .tabs button { flex: 0 0 auto; border: 0; padding: 8px 10px; border-radius: 7px; background: transparent; color: var(--muted); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .tabs .selectedTab { color: var(--accent); background: var(--accent-100); }

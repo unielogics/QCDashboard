@@ -516,8 +516,20 @@ export type PlanTermsLink = {
 /** One line of the plan in plain words, for the package, the listing and the review. */
 export type PlanModification = { kind: string; label: string; detail: string | null; monthly_effect: number | null; annual_effect: number | null };
 export type PlanPair = { before: number | null; after: number | null; change: number | null };
+export type CoverageComparison = {
+  before: { income_annual: number | null; debt_service_annual: number | null; dscr: number | null; cash_surplus_annual: number | null; cash_shortfall_annual: number | null };
+  after: CoverageComparison["before"];
+  has_nonpositive_earnings: boolean;
+  cash_surplus_change_annual: number | null;
+  debt_service_savings_annual: number | null;
+  shortfall_reduction_annual: number | null;
+  effect: "cash_relief" | "cash_worsens" | "unchanged" | "unavailable";
+  ratio_delta_direction_meaningful: boolean;
+  note: string | null;
+};
 /** Original, with the plan, and the difference. */
 export type PlanImpact = {
+  coverage_comparison?: CoverageComparison;
   ebitda?: RefinanceEbitda;
   active: boolean;
   dscr: PlanPair & { basis: string | null; status_before: DscrStatus; status_after: DscrStatus; no_debt_left: boolean };
@@ -554,6 +566,7 @@ export type PlanReplayRow = {
 export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
 export type PlanEvaluation = {
+  coverage_comparison?: CoverageComparison;
   new_regular_payment_monthly?: number | null; new_interest_only_payment_monthly?: number | null;
   debt_service_after_regular_monthly?: number | null; debt_service_after_interest_only_monthly?: number | null;
   net_regular_monthly_change?: number | null; net_interest_only_monthly_change?: number | null;

@@ -49,8 +49,9 @@ describe("full loan schedule workspace", () => {
     expect(html).toContain("Tax return 2025");
     expect(html).toContain("$120,000");
     expect(html).toContain("$60,000");
-    expect(html).toContain("Annual payment savings");
+    expect(html).toContain("Monthly debt-service relief (coverage basis)");
+    expect(html).toContain("$5,000.00");
     expect(html).toContain("lower payments can make the signed ratio more negative");
-    expect(html).toContain("Bank balances and dated cash movements are reviewed separately");
+    expect(html).toContain("It is separate from bank balances and dated cash movements");
   });
 });

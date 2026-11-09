@@ -3,6 +3,17 @@ import { coverageCurrencyComparable, coverageReview } from "../coverageReview";
 import type { FinancialCockpit } from "../financialCockpit";
 
 describe("signed earnings and debt funding needs", () => {
+  it("reconciles Body Good's exact saved schedule with the selected three payoffs", () => {
+    const review = coverageReview({ incomeAnnual: -54369, debtServiceAnnual: 210939.12 }, { incomeAnnual: -54369, debtServiceAnnual: 71738.04 });
+    expect(review.before.dscr).toBe(-0.26);
+    expect(review.after.dscr).toBe(-0.76);
+    expect(review.before.cashShortfallAnnual).toBe(265308.12);
+    expect(review.after.cashShortfallAnnual).toBe(126107.04);
+    expect(review.shortfallReductionAnnual).toBe(139201.08);
+    expect(review.debtServiceSavingsAnnual).toBe(139201.08);
+    expect(review.ratioDeltaDirectionMeaningful).toBe(false);
+    expect(review.effect).toBe("cash_relief");
+  });
   it("keeps a more-negative ratio when debt falls while recognizing cash relief", () => {
     const review = coverageReview({ incomeAnnual: -60000, debtServiceAnnual: 300000 }, { incomeAnnual: -60000, debtServiceAnnual: 120000 });
     expect(review.before.dscr).toBe(-0.2);
@@ -19,7 +30,10 @@ describe("signed earnings and debt funding needs", () => {
     expect(review.cashSurplusChangeAnnual).toBe(-180000);
   });
   it("preserves zero income and still shows operating losses after full payoff", () => {
-    expect(coverageReview({ incomeAnnual: 0, debtServiceAnnual: 12000 }, { incomeAnnual: 0, debtServiceAnnual: 12000 }).after.dscr).toBe(0);
+    const zero = coverageReview({ incomeAnnual: 0, debtServiceAnnual: 12000 }, { incomeAnnual: 0, debtServiceAnnual: 12000 });
+    expect(zero.after.dscr).toBe(0);
+    expect(zero.note).toContain("With zero earnings");
+    expect(zero.ratioDeltaDirectionMeaningful).toBe(false);
     const review = coverageReview({ incomeAnnual: -12000, debtServiceAnnual: 12000 }, { incomeAnnual: -12000, debtServiceAnnual: 0 });
     expect(review.after.dscr).toBeNull();
     expect(review.after.cashShortfallAnnual).toBe(12000);
@@ -32,6 +46,7 @@ describe("signed earnings and debt funding needs", () => {
     expect(review.after.dscr).toBe(-0.2);
     expect(review.after.cashShortfallAnnual).toBeNull();
     expect(review.effect).toBe("unavailable");
+    expect(review.ratioDeltaDirectionMeaningful).toBe(false);
   });
   it("uses signed nearest-even rounding consistently with Python", () => {
     expect(coverageReview({ incomeAnnual: -1375, debtServiceAnnual: 1000 }, { incomeAnnual: 0, debtServiceAnnual: 1000 }).before.dscr).toBe(-1.38);

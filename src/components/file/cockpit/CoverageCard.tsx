@@ -62,6 +62,7 @@ import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
 import { EbitdaRefinanceComparison } from "./EbitdaRefinanceComparison";
 import { RevenueTrendPanel } from "./RevenueTrendPanel";
 import { CoverageEbitdaMetric } from "./CoverageEbitdaMetric";
+import { CoverageMetric } from "./CoverageMetric";
 import { ebitdaIsStaffCorrected } from "@/lib/financialMetrics";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
 import styles from "./FinancialReview.module.css";
@@ -128,7 +129,7 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, reviewRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: { profileId: string; plan: FinancialPlanWrite; dirty: boolean }) => void; reviewRequest?: number; onReviewClose?: () => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, reviewRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: { profileId: string; plan: FinancialPlanWrite; dirty: boolean }) => void; reviewRequest?: number; onReviewClose?: () => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
   const canEdit = requestedCanEdit && !termsPending && !save.isPending;
@@ -200,12 +201,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const incomeCurrencyComparable = coverageCurrencyComparable(cockpit, plan.overrides?.income_annual != null);
   const currentAnnualService = headline?.annual_debt_service ?? cockpit.dscr.annual_debt_service ?? (cockpit.debt.service.monthly == null ? null : cockpit.debt.service.monthly * 12);
   const coverageBasis = headline ?? candidates.find((candidate) => candidate.numerator != null);
-  const fundingReview = coverageReview({ incomeAnnual: local.incomeBefore, debtServiceAnnual: currentAnnualService }, { incomeAnnual: local.incomeAfter, debtServiceAnnual: local.serviceAfterAnnual }, { before: coverageCurrencyComparable(cockpit), after: incomeCurrencyComparable });
   const noDebt = Boolean(cockpit.dscr.no_debt);
   const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
   const obligations = cockpit.debt.obligations.filter((obligation) => obligation.kind !== "payee");
   const pendingRetires = plan.retire.filter((id) => !obligations.some((obligation) => obligation.id === id));
   const unresolvedPayoffs = pendingRetires.length > 0 || !legacySelectionsReviewed && Boolean(cockpit.plan.unresolved_previous_selections?.length);
+  const fundingReview = coverageReview({ incomeAnnual: local.incomeBefore, debtServiceAnnual: currentAnnualService }, { incomeAnnual: local.incomeAfter, debtServiceAnnual: unresolvedPayoffs ? null : local.serviceAfterAnnual }, { before: coverageCurrencyComparable(cockpit), after: incomeCurrencyComparable });
+  const noDebtServiceAfter = !unresolvedPayoffs && local.serviceAfterAnnual === 0;
   const selectionTotals = refinanceSelectionTotals(obligations, plan.retire, local, {
     unresolvedSelections: unresolvedPayoffs,
     debtServiceKnown: plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null,
@@ -466,31 +468,26 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {dirty ? <StatusLine tone="acc">Unsaved plan: the figures below already reflect it; save to make the debt service, the offer and the advances follow.</StatusLine> : null}
       {onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
 
+      <CoverageFundingGap value={fundingReview} basis={`${coverageBasis?.label ?? "Selected earnings"}${coverageBasis?.period ? ` · ${coverageBasis.period}` : ""}`} />
       <div className="fc-grid">
         <div className="grid g8">
           <Lbl>Today</Lbl>
-          <div className="fc-hero">
-            {noDebt ? "No debt" : multiple(headline?.value)}
-            <small>{noDebt ? `declared ${declaredBy(schedule.voided)}` : headline ? headline.label : "not available"}</small>
-          </div>
+          <CoverageMetric incomeAnnual={local.incomeBefore} value={headline?.value ?? null} noDebt={noDebt || currentAnnualService === 0} basis={noDebt ? `declared ${declaredBy(schedule.voided)}` : headline?.label} />
           <div className="fc-chips">
             {noDebt ? <CellChip tone="ok">No debt to cover</CellChip> : <CellChip tone={dscrTone(headline?.status)}>{dscrLabel(headline?.status)}</CellChip>}
             {headlineConfidence ? <CellChip tone={confidenceTone(headlineConfidence)}>{confidenceLabel(headlineConfidence)}</CellChip> : null}
             <CellChip tone={debt_service_source === "none" ? "warn" : "mut"}>Debt service {money(local.serviceBefore)} / mo · {sourceLabel(debt_service_source)}</CellChip>
           </div>
           <CoverageEbitdaMetric value={local.ebitda} side="today" corrected={ebitdaIsStaffCorrected(cockpit.ebitda?.headline, cockpit.metric_review)} />
-          <Meter value={headline?.value ?? null} tone={meterTone(headline?.status)} marks={marks} label="Debt service coverage today" />
+          {local.incomeBefore == null || local.incomeBefore > 0 ? <Meter value={headline?.value ?? null} tone={meterTone(headline?.status)} marks={marks} label="Debt service coverage today" /> : null}
           {reason ? <StatusLine tone="warn">{reason}</StatusLine> : null}
           {headline?.note ? <div className="sub">{headline.note}</div> : null}
         </div>
         <div className="grid g8">
           <Lbl>With the plan</Lbl>
-          <div className="fc-hero">
-            {unresolvedPayoffs ? "Needs review" : local.noDebtLeft ? "No debt" : multiple(local.headlineAfter)}
-            <small>{local.noDebtLeft ? "service left" : headline ? headline.label : ""}</small>
-          </div>
+          <CoverageMetric incomeAnnual={local.incomeAfter} value={local.headlineAfter} noDebt={noDebtServiceAfter} pending={unresolvedPayoffs} basis={headline?.label} />
           <div className="fc-chips">
-            <CellChip tone={dscrTone(afterStatus)}>{local.noDebtLeft ? "Nothing left to cover" : dscrLabel(afterStatus)}</CellChip>
+            <CellChip tone={noDebtServiceAfter && local.incomeAfter != null && local.incomeAfter <= 0 ? "warn" : dscrTone(afterStatus)}>{noDebtServiceAfter ? "No scheduled debt payments" : dscrLabel(afterStatus)}</CellChip>
             <CellChip tone="mut">Underwriting debt-service equivalent {money(local.serviceAfter)} / mo</CellChip>
             {local.retiredMonthly ? <CellChip tone="ok">{money(local.retiredMonthly)} / mo stops</CellChip> : null}
             {local.excludedMonthly ? <CellChip tone="acc">{money(local.excludedMonthly)} / mo not spend</CellChip> : null}
@@ -506,7 +503,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
               <span className="sub">No plan yet: these are today's figures. Tick what the new loan pays off, enter the new loan or add the recorded loan terms, add back income the documents understate, or apply a lever on the right. Nothing is assumed until you choose it.</span>
             )}
           </div>
-          <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" />
+          {local.incomeAfter == null || local.incomeAfter > 0 ? <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" /> : null}
           {local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the regular payment equivalent after interest-only, without matching commencement dates to historical statement months. DSCR separately retains the underwriting stress basis, including principal due.</p> : null}
           <div className="fc-stat-list">
             <Stat label="Loan the plan needs">{local.loanAmountNeeded ? `${money(local.loanAmountNeeded)}${local.payoffTotal ? ` (payoffs ${money(local.payoffTotal)}${local.payoffUnknown ? `, ${local.payoffUnknown} unknown` : ""})` : ""}` : "—"}</Stat>
@@ -517,7 +514,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         </div>
       </div>
 
-      <CoverageFundingGap value={fundingReview} basis={`${coverageBasis?.label ?? "Selected earnings"}${coverageBasis?.period ? ` · ${coverageBasis.period}` : ""}`} />
       <details className={styles.ebitdaDetails}>
         <summary>EBITDA sources and plan adjustments</summary>
         <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
@@ -776,7 +772,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
               </tr>
             </thead>
             <tbody>
-              <tr><td>Debt service coverage{headline ? ` · ${headline.label}` : ""}</td><td className="r num">{multiple(headline?.value)}</td><td className="r num">{local.noDebtLeft ? "No debt left" : multiple(local.headlineAfter)}</td><td className="r num">{signedMultiple(change(headline?.value, local.headlineAfter))}</td></tr>
+              <tr><td>{fundingReview.hasNonpositiveEarnings ? "Signed DSCR · compare funding shortfall for plan impact" : "Debt service coverage"}{headline ? ` · ${headline.label}` : ""}</td><td className="r num">{multiple(headline?.value)}</td><td className="r num">{unresolvedPayoffs ? "Needs review" : noDebtServiceAfter ? "Not applicable · no debt service" : multiple(local.headlineAfter)}</td><td className="r num">{fundingReview.ratioDeltaDirectionMeaningful ? signedMultiple(change(headline?.value, local.headlineAfter)) : "See funding shortfall"}</td></tr>
               <tr><td>Income available for debt service, a year</td><td className="r num">{money(local.incomeBefore)}</td><td className="r num">{money(local.incomeAfter)}</td><td className="r num">{signedMoney(change(local.incomeBefore, local.incomeAfter))}</td></tr>
               <tr><td>Regular debt service, a month{local.newInterestOnlyPayment != null && local.schedule?.payment_after != null ? " · after interest-only" : ""}</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfterRegular)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfterRegular))}</td></tr>
               {local.newInterestOnlyPayment != null && local.schedule?.payment_after != null ? <tr><td>Debt service, a month · during interest-only</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfterInterestOnly)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfterInterestOnly))}</td></tr> : null}
@@ -879,8 +875,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         {balanceSheetIsEmpty(cockpit.balance_sheet) && onRequestStatement ? <Btn size="sm" onClick={() => onRequestStatement("balance_sheet")}>Request balance sheet</Btn> : null}
       </div></div>
       <div className={styles.metrics}>
-        <div><small>Current coverage</small><strong>{noDebt ? "No debt" : multiple(headline?.value)}</strong><span>{headline ? sourceLabel(headline.key) : "Income basis not available"} · {dscrLabel(headline?.status)}</span></div>
-        <div><small>With the plan</small><strong>{unresolvedPayoffs ? "Needs review" : local.noDebtLeft ? "No debt" : multiple(local.headlineAfter)}</strong><span>{dirty ? "Unsaved scenario preview" : "Saved scenario"}{unresolvedPayoffs ? " · unconfirmed payoff selections" : ""}</span></div>
+        <div><small>Current coverage</small><CoverageMetric compact incomeAnnual={local.incomeBefore} value={headline?.value ?? null} noDebt={noDebt || currentAnnualService === 0} basis={headline ? sourceLabel(headline.key) : "Income basis not available"} /></div>
+        <div><small>With the plan</small><CoverageMetric compact incomeAnnual={local.incomeAfter} value={local.headlineAfter} noDebt={noDebtServiceAfter} pending={unresolvedPayoffs} basis={dirty ? "Unsaved scenario preview" : "Saved scenario"} /></div>
         <div><small>{review?.published.complete ? "Saved debt service" : "Current service basis"}</small><strong>{money(review?.published.complete ? review.published.monthly : local.serviceBefore)}</strong><span>{review?.published.complete ? "Complete saved debt schedule / month" : `Provisional / month · ${sourceLabel(debt_service_source)}`}</span></div>
         <div><small>Working schedule</small><strong>{review ? `${review.working.active_rows} obligations` : "Open review"}</strong><span>{review ? review.working.complete ? "Complete · Save version publishes changes" : "Review the required answers" : "Uses the same draft as Evidence & banking"}</span></div>
       </div>
@@ -890,7 +886,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {repaymentIssue ? <StatusLine tone="bad">Repayment preview is invalid: {repaymentIssue} Resolve it before saving or using these projections.</StatusLine> : null}
       {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}
     </section>
-    <FinancialReviewDrawer open={reviewOpen} onClose={() => { setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
+    <FinancialReviewDrawer open={reviewOpen} onClose={() => { setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} businessName={businessName} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
     <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
   </>;

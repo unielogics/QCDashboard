@@ -1,0 +1,4 @@
+.hero, .compact { min-width: 0; display: grid; gap: 5px; align-content: start; }
+.hero strong { font-size: clamp(25px, 3vw, 38px); line-height: 1.2; letter-spacing: -.025em; overflow-wrap: anywhere; }
+.hero span, .hero small, .compact span, .compact small { font-size: 12px; line-height: 1.5; color: var(--muted); }
+.compact strong { font-size: 23px; line-height: 1.25; letter-spacing: -.025em; overflow-wrap: anywhere; }
