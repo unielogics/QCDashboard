@@ -6875,7 +6875,8 @@ select.vm-in {
 
 /* --- One file, one page: the detail panel at the full width of the screen. Its own
    header and tabs are the navigation; the bar above it only leads back. --- */
-.file-page { display: grid; gap: 10px; min-height: calc(100dvh - 95px - var(--pad-y)); }
+.file-page { display: grid; grid-template-columns: minmax(0, 1fr); min-width: 0; gap: 10px; min-height: calc(100dvh - 95px - var(--pad-y)); }
+.file-page > .intake-file, .file-page .intake-file-primary { min-width: 0; }
 .file-page-bar { display: flex; align-items: center; gap: 10px; }
 .file-page-back { font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
 

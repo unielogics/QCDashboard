@@ -13,6 +13,7 @@
 // leaves undone.
 
 import type { ApplicationRequirement, ApplicationRequirementEvidence } from "@/lib/applicationProfile";
+import { readUseOfFundsCollectionSummary } from "@/lib/requirementUseOfFunds";
 
 export type TriageGroup = "you" | "client" | "ai" | "done";
 
@@ -170,13 +171,14 @@ function askedOn(value: string | null | undefined): string {
 export function triageRequirement(requirement: TriageInput, extra?: TriageExtra): Triage {
   const files = requirement.evidence_files ?? [];
   const status = requirement.status;
+  const allocation = readUseOfFundsCollectionSummary(requirement);
 
   if (requirementIsComplete(requirement)) {
     if (requirement.collection_completion?.complete) return {
       group: "done", kind: "complete", label: "Complete", tone: "ok", owner: "none",
-      progress: progressOf(readCoverage(requirement.verified_coverage) ?? readCoverage(requirement.coverage)),
-      short: "Document collection complete",
-      next: "The required evidence is collected. Program qualification conditions remain separate.",
+      progress: allocation ? null : progressOf(readCoverage(requirement.verified_coverage) ?? readCoverage(requirement.coverage)),
+      short: allocation ? "Use of proceeds collection complete" : "Document collection complete",
+      next: allocation ? "The itemized allocation has been reviewed for collection. Program qualification conditions remain separate." : "The required evidence is collected. Program qualification conditions remain separate.",
     };
     if (status === "waived" || status === "not_applicable") {
       return { group: "done", kind: "not_needed", label: "Not needed", tone: "mut", owner: "none", progress: null, short: status === "waived" ? "Waived for this file" : "Marked not applicable", next: "Waived or marked not applicable for this file." };
@@ -195,6 +197,20 @@ export function triageRequirement(requirement: TriageInput, extra?: TriageExtra)
       progress: progressOf(readCoverage(requirement.verified_coverage) ?? readCoverage(requirement.coverage)),
       next: overridden ? "Accepted by your team as an override." : signedOff ? "Signed off by a person." : "Accepted by the AI.",
       short: overridden ? "Accepted by your team (override)" : signedOff ? "Signed off by a person" : "Accepted by the AI",
+    };
+  }
+
+  if (allocation) {
+    if (requirement.collection_completion?.can_complete) return {
+      group: "you", kind: "signoff", label: "Ready to complete", tone: "acc", owner: "you", progress: null,
+      short: "Budget saved · review collection",
+      next: "Review the saved itemized allocation, then choose Mark complete. Program qualification conditions remain separate.",
+    };
+    return {
+      group: allocation.item_count ? "you" : "client", kind: allocation.item_count ? "fill" : "not_asked",
+      label: allocation.item_count ? "Complete allocation" : "Budget needed", tone: "warn", owner: allocation.item_count ? "you" : "client", progress: null,
+      short: allocation.item_count ? "Saved allocation needs more detail" : "Itemized use of proceeds needed",
+      next: `${requirement.collection_completion?.reason ? `${requirement.collection_completion.reason} ` : ""}Fill in the intended uses and amounts, or share the secure link so the client can complete them.`,
     };
   }
 

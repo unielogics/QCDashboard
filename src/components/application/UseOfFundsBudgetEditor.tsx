@@ -10,22 +10,31 @@ import styles from "./UseOfFundsEditor.module.css";
 const dollars = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(cents / 100);
 
 export type BudgetSaveInput = { expected_revision: number; items: UseOfFundsRow[] };
-export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audience = "staff" }: {
+export type BudgetEditorControls = {
+  dirty: boolean; busy: boolean; saving: boolean; canSave: boolean; canEdit: boolean;
+  save: () => Promise<void>; discard: () => void;
+};
+export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audience = "staff", initiallyOpen = false, showActions = true, onControlsChange }: {
   loadBudget: () => Promise<UseOfFundsBudget>;
   saveBudget: (input: BudgetSaveInput) => Promise<UseOfFundsBudget>;
   onSaved?: () => Promise<unknown> | void;
   audience?: "staff" | "client";
+  initiallyOpen?: boolean;
+  showActions?: boolean;
+  onControlsChange?: (controls: BudgetEditorControls | null) => void;
 }) {
   const heading = useId();
   const [budget, setBudget] = useState<UseOfFundsBudget | null>(null);
   const [rows, setRows] = useState<UseOfFundsRow[]>([]);
   const [busy, setBusy] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [conflict, setConflict] = useState(false);
-  const [open, setOpen] = useState(audience === "client");
+  const [open, setOpen] = useState(initiallyOpen || audience === "client");
   const editState = useRef({ dirty, busy });
+  const savePending = useRef(false);
   editState.current = { dirty, busy };
   const apply = useCallback((next: UseOfFundsBudget) => { setBudget(next); setRows(budgetRows(next.items)); setDirty(false); setConflict(false); }, []);
   const load = useCallback(async () => {
@@ -51,11 +60,13 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
   const preview = budgetPreview(rows, budget?.requested_amount ?? null);
   const exactAllocationMissing = Boolean(budget?.requires_exact_allocation && !preview.complete);
   const readOnly = budget?.can_edit === false;
+  const canSave = Boolean(budget && dirty && !busy && !conflict && !readOnly && !exactAllocationMissing && !Object.keys(preview.errors).length);
   const change = (next: UseOfFundsRow[]) => { setRows(next); setDirty(true); setSaved(""); };
   const update = (id: string, patch: Partial<UseOfFundsRow>) => change(rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   async function save() {
-    if (!budget || Object.keys(preview.errors).length || exactAllocationMissing || busy || conflict || readOnly) return;
-    setBusy(true); setError(""); setSaved("");
+    if (!budget || !canSave || savePending.current) return;
+    savePending.current = true;
+    setBusy(true); setSaving(true); setError(""); setSaved("");
     try {
       const next = await saveBudget({
         expected_revision: budget.revision,
@@ -67,8 +78,16 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
     } catch (reason) {
       setConflict(reason instanceof ApiError && reason.status === 409);
       setError(reason instanceof ApiError && reason.status === 409 ? "This budget changed while you were editing. Your entries remain here. Reload the saved budget before making another change." : reason instanceof Error ? reason.message : "Budget could not be saved.");
-    } finally { setBusy(false); }
+    } finally { savePending.current = false; setBusy(false); setSaving(false); }
   }
+  const actionRef = useRef({ save, discard: () => { if (budget) apply(budget); setError(""); setSaved(""); } });
+  actionRef.current = { save, discard: () => { if (budget) apply(budget); setError(""); setSaved(""); } };
+  const saveControl = useCallback(() => actionRef.current.save(), []);
+  const discardControl = useCallback(() => actionRef.current.discard(), []);
+  useEffect(() => {
+    onControlsChange?.({ dirty, busy, saving, canSave, canEdit: !readOnly, save: saveControl, discard: discardControl });
+  }, [busy, canSave, dirty, discardControl, onControlsChange, readOnly, saveControl, saving]);
+  useEffect(() => () => onControlsChange?.(null), [onControlsChange]);
   return <section className="program-readiness-band" aria-labelledby={heading}>
     <div className={styles.layout}>
       <div className={styles.heading}><div><h3 id={heading}>How will the requested funds be used?</h3><p>{audience === "client" ? "Choose a category and amount for each planned use. Your file team sees the same budget." : "Itemize the financing request so program rules can use amounts and percentages."}</p></div>
@@ -101,7 +120,7 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
         {!readOnly ? <div><Btn disabled={busy || rows.length >= 50} onClick={() => change([...rows, { id: crypto.randomUUID(), category: "working_capital", label: "", amount: "" }])}><Icon name="plus" size={14} />Add a use</Btn></div> : null}
         <p className={styles.hint}>{audience === "client" ? "Use real estate for premises or property improvements, equipment for business equipment, and inventory for items you will sell. These categories help your team review suitable financing; they do not establish eligibility or guarantee a program." : "A published QC preference can prioritize SBA 504 when the fixed-asset share meets its configured threshold. This is not an SBA eligibility test. Working capital and inventory need another financing structure; equipment suitability, property use, and all lender criteria still require review."}</p>
         <p className={styles.hint}>{budget.requires_exact_allocation ? "Allocate the full current request before saving. Ask your file team if the requested amount needs to change." : "Partial budgets can be saved. Percentage-based recommendations stay off until the allocation exactly matches the requested amount."}</p>
-        {!readOnly ? <div className={styles.actions}><Btn disabled={!dirty || busy} onClick={() => { apply(budget); setError(""); setSaved(""); }}>Discard edits</Btn><Btn variant="pri" disabled={!dirty || busy || conflict || exactAllocationMissing || Boolean(Object.keys(preview.errors).length)} onClick={() => void save()}>{busy ? "Saving…" : "Save budget"}</Btn></div> : null}
+        {!readOnly && showActions ? <div className={styles.actions}><Btn disabled={!dirty || busy} onClick={() => actionRef.current.discard()}>Discard edits</Btn><Btn variant="pri" disabled={!canSave} onClick={() => void save()}>{saving ? "Saving…" : "Save budget"}</Btn></div> : null}
       </> : open && !error ? <p className={styles.hint}>Loading saved budget…</p> : null}
     </div>
   </section>;

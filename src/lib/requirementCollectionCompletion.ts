@@ -26,7 +26,7 @@ export function collectionCompletionWrite(profileId: string, requirement: Applic
   if (collection.fingerprint !== draft.fingerprint) throw new Error("Evidence changed. Reload before completing this item.");
   if (new Set(draft.fileIds).size !== draft.fileIds.length || draft.fileIds.some((id) => !collection.eligible_file_ids.includes(id))) throw new Error("Choose current evidence linked to this requirement.");
   if (collection.source === "files" && !draft.fileIds.length) throw new Error("Choose at least one current evidence file.");
-  return { file_ids: draft.fileIds, reason: "Reviewed the linked evidence for this checklist item", expected_fingerprint: draft.fingerprint, idempotency_key: draft.idempotencyKey };
+  return { file_ids: draft.fileIds, reason: collection.source === "use_of_funds" ? "Reviewed the saved itemized use-of-proceeds allocation" : "Reviewed the linked evidence for this checklist item", expected_fingerprint: draft.fingerprint, idempotency_key: draft.idempotencyKey };
 }
 
 export function completeRequirementCollection(api: AuthedApi, profileId: string, requirement: ApplicationRequirement, draft: CollectionCompletionDraft) {
