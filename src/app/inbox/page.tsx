@@ -20,6 +20,9 @@ import {
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { useVisibleMessageReceipts } from "@/components/communications/useVisibleMessageReceipts";
+import { MessageImagePicker, useMessageImages } from "@/components/communications/MessageImages";
+import { InlineImageStrip } from "@/components/InlineImages";
+import { outgoingDeliveryWarning } from "@/lib/messageImages";
 
 type InboxFilter = "all" | "unread" | "starred";
 
@@ -64,6 +67,8 @@ export default function InboxPage() {
   const [filter, setFilter] = useState<InboxFilter>("all");
   const [replyBody, setReplyBody] = useState("");
   const [replyBusy, setReplyBusy] = useState(false);
+  const [deliveryWarning, setDeliveryWarning] = useState("");
+  const images = useMessageImages(`gmail:${selectedThread || ""}`);
   const messageTimelineRef = useRef<HTMLDivElement | null>(null);
 
   const searching = search.trim().length >= 2;
@@ -141,16 +146,19 @@ export default function InboxPage() {
 
   async function doReply() {
     if (!selectedThread) return;
-    if (!replyBody.trim()) {
-      toast.show("Write a reply first");
+    if (!replyBody.trim() && !images.images.length) {
+      toast.show("Write a reply or attach an image first");
       return;
     }
     setReplyBusy(true);
     try {
-      const res = await reply.mutateAsync({ threadId: selectedThread, body: replyBody });
+      const image_ids = await images.flush();
+      const res = await reply.mutateAsync({ threadId: selectedThread, body: replyBody, image_ids });
       if (res.ok) {
-        toast.show("Reply sent");
+        const warning = outgoingDeliveryWarning(res);
+        toast.show(warning || "Reply sent"); setDeliveryWarning(warning || "");
         setReplyBody("");
+        images.reset();
       } else {
         toast.show(res.detail ? `Send failed: ${res.detail}` : "Send failed — check status");
       }
@@ -415,6 +423,7 @@ export default function InboxPage() {
                             </span>
                           )}
                         </div>
+                        <InlineImageStrip images={m.images} />
                       </div>
                     </div>
                   );
@@ -425,13 +434,17 @@ export default function InboxPage() {
               {/* reply */}
               {readReceipt.error ? <Callout tone="bad">Messages loaded, but read status could not be saved. <Btn size="sm" onClick={readReceipt.retry}>Retry read status</Btn></Callout> : null}
               <div className="composer" style={{ paddingLeft: 16, paddingRight: 16, paddingBottom: 14 }}>
+                {deliveryWarning ? <Callout tone="warn">{deliveryWarning}</Callout> : null}
                 <Lbl>Reply from your Gmail</Lbl>
                 <Textarea
                   value={replyBody}
+                  disabled={replyBusy}
+                  onPaste={images.onPaste}
                   onChange={(e) => setReplyBody(e.target.value)}
                   placeholder="Write a reply…"
                   rows={4}
                 />
+                <MessageImagePicker draft={images} disabled={replyBusy} />
                 <div className="composer-row">
                   <Btn variant="pri" disabled={replyBusy} onClick={doReply}>
                     {replyBusy ? "Sending…" : "Send reply"}

@@ -9,9 +9,8 @@
 // depending on which panel you were in.
 //
 // Attachments are opt-in per surface rather than assumed, because not every
-// transport can carry a file. Outbound SMS through the handset relay is text
-// only — the gateway's send API has no media field — so a text thread passes no
-// `onFiles` and gets no paperclip it cannot use.
+// transport can carry a file. SMS surfaces show whether their provider uses
+// picture messages or private image links before a person sends.
 //
 // Mirrors QCRep's components/ChatComposer.tsx. The two apps share no package,
 // so they share a shape and a set of rules instead; change both together.
@@ -38,6 +37,7 @@ export type ChatComposerProps = {
   placeholder?: string;
   disabled?: boolean;
   sending?: boolean;
+  sendDisabled?: boolean;
   /** Screen-reader name for the round button. Say what it sends. */
   sendLabel?: string;
   hint?: ReactNode;
@@ -66,6 +66,7 @@ export function ChatComposer({
   placeholder,
   disabled = false,
   sending = false,
+  sendDisabled = false,
   sendLabel = "Send message",
   hint,
   notice,
@@ -83,7 +84,7 @@ export function ChatComposer({
   // that keystroke would post half a word in Japanese or Chinese.
   const [composing, setComposing] = useState(false);
 
-  const canSend = (Boolean(value.trim()) || allowEmpty) && !disabled && !sending;
+  const canSend = (Boolean(value.trim()) || allowEmpty) && !disabled && !sending && !sendDisabled;
 
   // Grow to fit, up to a ceiling. Reset first so deleting text shrinks it back.
   useEffect(() => {
@@ -106,7 +107,7 @@ export function ChatComposer({
   };
 
   const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    if (!onFiles) return;
+    if (!onFiles || disabled || sending) return;
     // Only intercept when the clipboard actually carries a file. A normal text
     // paste must still land in the input untouched.
     const files = Array.from(event.clipboardData?.files ?? []);
@@ -152,7 +153,7 @@ export function ChatComposer({
           rows={1}
           value={value}
           placeholder={placeholder}
-          disabled={disabled}
+          disabled={disabled || sending}
           autoFocus={autoFocus}
           aria-label={placeholder || "Message"}
           onChange={(event) => onChange(event.target.value)}

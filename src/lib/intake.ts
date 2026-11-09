@@ -1,3 +1,5 @@
+import type { InlineImage } from "./inlineImages";
+
 // Shared, transport-agnostic types + pure helpers for the AI underwriter
 // intake cockpit. Extracted verbatim from
 // src/app/dealer-ai-underwriter/page.tsx so the same conversation cockpit can
@@ -117,6 +119,7 @@ export type IntakeResponse = {
     id: string;
     role: "assistant" | "user" | string;
     content: string;
+    images?: InlineImage[];
     created_at: string;
     sender_kind?: string | null;
     author_name?: string | null;

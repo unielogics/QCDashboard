@@ -339,7 +339,7 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
       runReview: () => post<IntakeResponse>("/run-review"),
       reload: () => call<IntakeResponse>(base),
       loadClientThread: () => call<ClientThreadResponse>(`${base}/client-thread`, { cache: "no-store" }),
-      replyClientThread: (message: string, alsoSms = false) => post<ClientThreadResponse>("/client-thread/reply", { message, also_sms: alsoSms }),
+      replyClientThread: (message: string, alsoSms = false, imageIds: string[] = []) => post<ClientThreadResponse>("/client-thread/reply", { message, also_sms: alsoSms, image_ids: imageIds }),
       resumeClientThreadAI: () => post<ClientThreadResponse>("/client-thread/resume", {}),
       // PFS/debt-schedule request + fill-in are dealer-only — real-estate
       // leads never see these fields, so the adapter omits them entirely.

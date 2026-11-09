@@ -1,5 +1,8 @@
 "use client";
 
+import { InlineImageStrip } from "@/components/InlineImages";
+import type { InlineImage } from "@/lib/inlineImages";
+
 import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "react";
 import { uploadFile } from "@/lib/fileUpload";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
@@ -135,6 +138,7 @@ type IntakeResponse = {
     id: string;
     role: "assistant" | "user" | string;
     content: string;
+    images?: InlineImage[];
     created_at: string;
     // "operator" when a person at the desk typed it. Null on borrower rows and
     // on rows written before the takeover work.
@@ -173,7 +177,7 @@ type SecureRoomHandoff = {
 };
 
 type WidgetType = Widget["type"];
-type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
+type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null; images?: InlineImage[] };
 type QueuedFile = {
   id: string;
   file: File;
@@ -221,11 +225,11 @@ const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }>
 // so it gets its own chat-line role. sender_kind is the only reliable test --
 // author_name has two spellings and a signed-in borrower also carries a user_id.
 function chatLineFrom(message: NonNullable<IntakeResponse["messages"]>[number]): ChatLine {
-  if (message.role === "assistant") return { id: message.id, role: "assistant", content: message.content };
+  if (message.role === "assistant") return { id: message.id, role: "assistant", content: message.content, images: message.images };
   if (message.sender_kind === "operator") {
-    return { id: message.id, role: "operator", content: message.content, authorName: message.author_name };
+    return { id: message.id, role: "operator", content: message.content, authorName: message.author_name, images: message.images };
   }
-  return { id: message.id, role: "user", content: message.content };
+  return { id: message.id, role: "user", content: message.content, images: message.images };
 }
 
 function useCompactViewport() {
@@ -1306,11 +1310,11 @@ export default function DealerAIUnderwriterPage() {
                         {line.role === "operator" ? (
                         <div key={line.id} style={operatorBubble}>
                           <span style={operatorName}>{line.authorName?.trim() || c.underwriterFallbackName}</span>
-                          {line.content}
+                          {line.content}<InlineImageStrip images={line.images} />
                         </div>
                       ) : (
                         <div key={line.id} style={line.role === "assistant" ? assistantBubble : userBubble}>
-                          {line.content}
+                          {line.content}<InlineImageStrip images={line.images} />
                         </div>
                         )}
                         {line.role === "assistant" ? (

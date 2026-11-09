@@ -1,6 +1,7 @@
 "use client";
 
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
+import type { InlineImage } from "@/lib/inlineImages";
 import { useCallback, useRef } from "react";
 import type { AttentionItemKind, AttentionQueue, AttentionQueueActionResult, AttentionQueueActionWrite, AttentionQueueView, BucketAIActionItemQueueItem } from "@/lib/types";
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -7358,8 +7359,8 @@ export function useShareBookingInvite() {
   });
 }
 
-export type ClientEmailPayload = { subject: string; body: string; cc_emails: string[] };
-export type ClientEmailResult = { ok: boolean; to_email: string; detail?: string | null };
+export type ClientEmailPayload = { subject: string; body: string; cc_emails: string[]; image_ids?: string[] };
+export type ClientEmailResult = { ok: boolean; to_email: string; detail?: string | null; delivery_warning?: string | null };
 
 /** Email the loan's borrower from the acting user's connected Gmail (SES fallback). */
 export function useSendClientEmail() {
@@ -7409,6 +7410,7 @@ export type InboxMessage = {
   is_read: boolean;
   is_starred: boolean;
   has_attachments: boolean;
+  images?: InlineImage[];
   loan_id: string | null;
   client_id: string | null;
   matched_party_role: string | null;
@@ -7421,8 +7423,8 @@ export type InboxThreadDetail = {
   matched_party_role: string | null;
   messages: InboxMessage[];
 };
-export type InboxReplyPayload = { body: string; to_emails?: string[]; cc_emails?: string[]; subject?: string };
-export type InboxReplyResult = { ok: boolean; detail?: string | null; message_id?: string | null };
+export type InboxReplyPayload = { body: string; to_emails?: string[]; cc_emails?: string[]; subject?: string; image_ids?: string[] };
+export type InboxReplyResult = { ok: boolean; detail?: string | null; message_id?: string | null; delivery_warning?: string | null };
 
 export function useInboxThreads(opts?: { unreadOnly?: boolean; starredOnly?: boolean }) {
   const devUser = useDevUser();
@@ -7511,6 +7513,7 @@ export type SmsMessageRow = {
   direction: "outbound" | "inbound";
   phone_e164: string;
   body: string | null;
+  images?: InlineImage[];
   provider: string;
   provider_message_id: string;
   status: "queued" | "sent" | "delivered" | "failed" | "blocked" | "received";
