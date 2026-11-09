@@ -304,6 +304,18 @@ export type ApplicationRequirement = {
   can_remove?: boolean;
   derived_required?: boolean;
   removal_reason?: string | null;
+  qualification_review?: import("./requirementCollectionCompletion").QualificationReview;
+  collection_completion?: {
+    complete: boolean;
+    can_complete: boolean;
+    fingerprint: string;
+    reason: string | null;
+    eligible_file_ids: string[];
+    suggested_file_ids: string[];
+    source: "files" | "linked_owner_credit";
+    completed_at?: string | null;
+    completed_by?: string | null;
+  };
 };
 
 export type ProgramReadinessItem = {
@@ -316,6 +328,9 @@ export type ProgramReadinessItem = {
   satisfied_count: number;
   blocking_requirement_keys: string[];
   requirement_keys: string[];
+  qualification_blocking_requirement_keys?: string[];
+  collection_complete?: boolean;
+  qualification_warnings?: string[];
 };
 
 export type MissingItemAutomation = {

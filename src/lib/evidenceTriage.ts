@@ -56,7 +56,7 @@ type FileLike = Pick<ApplicationRequirementEvidence, "ai_decision" | "ai_explana
   Partial<Pick<ApplicationRequirementEvidence, "decision_actor" | "file_name">>;
 
 export type TriageInput = Pick<ApplicationRequirement, "status" | "verification_required" | "state_reason"> &
-  Partial<Pick<ApplicationRequirement, "required_level" | "last_requested_at" | "label" | "source_program_keys" | "program_overrides">> & {
+  Partial<Pick<ApplicationRequirement, "required_level" | "last_requested_at" | "label" | "source_program_keys" | "program_overrides" | "collection_completion">> & {
     evidence_files?: FileLike[] | null;
     coverage?: Record<string, unknown> | null;
     verified_coverage?: Record<string, unknown> | null;
@@ -75,7 +75,7 @@ export const GROUP_ORDER: TriageGroup[] = ["you", "client", "ai", "done"];
 export const GROUPS: Record<TriageGroup, { title: string; blurb: string; empty: string }> = {
   you: {
     title: "Needs you",
-    blurb: "A file is in and a person has to decide: the AI could not accept it, or it is waiting for your sign-off.",
+    blurb: "Review received evidence, complete document collection, or resolve a file issue. Program qualification conditions are shown separately.",
     empty: "Nothing is waiting on you.",
   },
   client: {
@@ -90,7 +90,7 @@ export const GROUPS: Record<TriageGroup, { title: string; blurb: string; empty: 
   },
   done: {
     title: "Complete",
-    blurb: "Accepted by the AI or signed off by a person, or not needed for this file. These count toward readiness.",
+    blurb: "Document collection is complete or the item is not needed. Review any separate program qualification conditions before underwriting.",
     empty: "Nothing is complete yet.",
   },
 };
@@ -152,8 +152,9 @@ export function isDocumentRequirement(
 /** A requirement counts as done when it is accepted, waived or marked not applicable,
  *  or when every program that needs it has set it aside. */
 export function requirementIsComplete(
-  requirement: Pick<ApplicationRequirement, "status"> & Partial<Pick<ApplicationRequirement, "source_program_keys" | "program_overrides">>,
+  requirement: Pick<ApplicationRequirement, "status"> & Partial<Pick<ApplicationRequirement, "source_program_keys" | "program_overrides" | "collection_completion">>,
 ): boolean {
+  if (requirement.collection_completion?.complete) return true;
   if (["verified", "waived", "not_applicable"].includes(requirement.status)) return true;
   const keys = requirement.source_program_keys ?? [];
   return keys.length > 0 && keys.every((key) => ["waived", "not_applicable"].includes(requirement.program_overrides?.[key] || ""));
@@ -171,6 +172,12 @@ export function triageRequirement(requirement: TriageInput, extra?: TriageExtra)
   const status = requirement.status;
 
   if (requirementIsComplete(requirement)) {
+    if (requirement.collection_completion?.complete) return {
+      group: "done", kind: "complete", label: "Complete", tone: "ok", owner: "none",
+      progress: progressOf(readCoverage(requirement.verified_coverage) ?? readCoverage(requirement.coverage)),
+      short: "Document collection complete",
+      next: "The required evidence is collected. Program qualification conditions remain separate.",
+    };
     if (status === "waived" || status === "not_applicable") {
       return { group: "done", kind: "not_needed", label: "Not needed", tone: "mut", owner: "none", progress: null, short: status === "waived" ? "Waived for this file" : "Marked not applicable", next: "Waived or marked not applicable for this file." };
     }
@@ -216,6 +223,13 @@ export function triageRequirement(requirement: TriageInput, extra?: TriageExtra)
   const flagged = files.filter((file) => FLAGGED.has(file.ai_decision));
   const reading = files.filter((file) => file.ai_decision === "processing");
   const allAccepted = files.length > 0 && files.every((file) => file.ai_decision === "accepted");
+
+  if (requirement.collection_completion?.can_complete) return {
+    group: "you", kind: "signoff", label: "Ready to complete", tone: "acc", owner: "you",
+    progress: progressOf(readCoverage(requirement.coverage)),
+    short: "Current evidence is on file · mark collection complete",
+    next: "Review the selected source, then choose Mark complete. Earnings and other program conditions are separate from receiving this document.",
+  };
 
   if (status === "stale") {
     return {

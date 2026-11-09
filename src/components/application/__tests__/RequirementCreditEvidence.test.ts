@@ -56,16 +56,16 @@ describe("linked owner credit receipt", () => {
   it("offers separate owner, report and program actions without treating collection as qualification", () => {
     const proposed = { ...credit, review_fingerprint: "a".repeat(64), can_mark_met: false, required_minimum_score: 680, owners: [{ ...credit.owners[0], backfill_needs_review: true }] };
     const html = render("pull-a", proposed);
-    for (const label of ["Reports received", "Program review pending", "Review owner details", "Choose another existing report", "Review credit requirement", "Review selected program", "Quidity 10-year term", "minimum 680"]) expect(html).toContain(label);
+    for (const label of ["Reports received", "Program review pending", "Review owner details", "Choose another existing report", "Review program credit conditions", "Review selected program", "Quidity 10-year term", "minimum 680"]) expect(html).toContain(label);
     expect(html).not.toContain("Requirement met");
-    expect(render()).toMatch(/<button[^>]*disabled=""[^>]*>Review credit requirement<\/button>/);
+    expect(render()).toMatch(/<button[^>]*disabled=""[^>]*>Review program credit conditions<\/button>/);
   });
   it("keeps report viewing available to readers while hiding mutation actions", () => {
     actor.role = "borrower";
     try {
       const html = render("pull-a", { ...credit, review_fingerprint: "a".repeat(64), owners: [{ ...credit.owners[0], backfill_needs_review: true }] });
       expect(html).toContain("View linked credit report");
-      for (const label of ["Review owner details", "Review credit requirement", "Choose another existing report"]) expect(html).not.toContain(label);
+      for (const label of ["Review owner details", "Review program credit conditions", "Choose another existing report"]) expect(html).not.toContain(label);
     } finally { actor.role = "super_admin"; }
   });
   it("does not invent a bureau or compute a score difference across models", () => {
@@ -74,6 +74,6 @@ describe("linked owner credit receipt", () => {
   });
   it("does not repeat open-review warnings after a current met decision", () => {
     const html = render("pull-a", { ...credit, review_blockers: [], can_mark_met: true, last_review: { decision: "met", reason: "Reviewed exact published score evidence", reviewed_at: "2026-11-09T12:00:00Z", current: true } });
-    expect(html).toContain("Requirement met"); expect(html).not.toContain("Why this remains open"); expect(html).not.toContain(credit.staff_review_reasons[0]);
+    expect(html).toContain("Requirement met"); expect(html).not.toContain("Program and owner review details"); expect(html).not.toContain(credit.staff_review_reasons[0]);
   });
 });
