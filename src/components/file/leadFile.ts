@@ -162,6 +162,8 @@ export type LeadDetail = {
   secure_room_pin?: string | null;
   room_delivery_status?: string | null;
   room_delivery_detail?: string | null;
+  room_deliveries?: RoomDeliveryReceipt[];
+  creation_warning?: string;
 };
 
 export type UnderwritingDraft = {
@@ -435,11 +437,10 @@ export function numberOrNull(value: string): number | null {
 
 export type LeadVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
 
-export type CreateLeadPayload = NewBusinessProfile & {
+type CreateLeadBase = {
   variant: LeadVariant;
   full_name: string;
-  email: string;
-  phone: string;
+  invitation_channels: Array<"email" | "sms">;
   business_name?: string;
   investor_name?: string;
   target_property_address?: string;
@@ -454,6 +455,11 @@ export type CreateLeadPayload = NewBusinessProfile & {
   preferred_language: "en" | "es";
   secure_room_pin: string;
 };
+
+export type CreateLeadPayload = CreateLeadBase & (
+  | ({ application_completion: "client"; email?: string; phone?: string } & Partial<NewBusinessProfile>)
+  | ({ application_completion: "operator"; email: string; phone: string } & NewBusinessProfile)
+);
 
 // The lead list is a grid of <button> rows rather than a <table>: each row has
 // to stay focusable and Enter-activatable, which a <tr onClick> is not. The

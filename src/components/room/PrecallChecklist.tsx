@@ -18,6 +18,7 @@ export type RoomOwner = {
   email?: string | null; phone?: string | null;
 };
 export type RoomPrecall = {
+  scheduled?: boolean;
   enabled: boolean; starts_at: string | null; host_name: string | null; business_name: string | null;
   passcode_needs_setup: boolean; ownership_complete: boolean; ownership_total: number; contact_complete: boolean;
   owners: RoomOwner[]; max_owners: number; credit_threshold_pct: number; bank_complete: boolean; bank_detail: string;
@@ -84,9 +85,9 @@ export function PrecallChecklist({ token, passcode, precall, roomKind = "dealer"
   return <section className="application-room-section application-room-precall">
     <div className="application-room-section-head">
       <div>
-        <span className="application-room-eyebrow">Before your call{when ? ` · ${when}` : ""}{precall.host_name ? ` with ${precall.host_name}` : ""}</span>
+        <span className="application-room-eyebrow">{precall.scheduled === false ? "Owners and verification" : "Before your call"}{when ? ` · ${when}` : ""}{precall.host_name ? ` with ${precall.host_name}` : ""}</span>
         <h2>{precall.complete ? "You're all set" : `${precall.done_count} of 3 done`}</h2>
-        <p>{precall.complete ? "Everything is on your file. See you on the call." : `About 10 minutes. Doing this first lets ${precall.host_name || "your advisor"} talk real numbers instead of estimates.`}</p>
+        <p>{precall.scheduled === false ? "Complete the owners list, business banking, and each required owner's private credit authorization." : precall.complete ? "Everything is on your file. See you on the call." : `About 10 minutes. Doing this first lets ${precall.host_name || "your advisor"} talk real numbers instead of estimates.`}</p>
       </div>
     </div>
 
