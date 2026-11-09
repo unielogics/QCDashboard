@@ -22,6 +22,7 @@ import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview, repayme
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { LoanScheduleReview } from "@/components/application/LoanScheduleReview";
+import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import scheduleStyles from "./LoanScheduleReview.module.css";
 import { CoverageFundingGap } from "./CoverageFundingGap";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
@@ -168,18 +169,18 @@ export function clientTermsCoveragePreview(calculation: ApplicationClientTerms["
   return { existingAnnual, denominator, value };
 }
 
-function paymentPreview(draft: Draft) {
+export function paymentPreview(draft: Draft) {
   const amount = finite(draft.amount);
   const apr = finite(draft.apr_pct);
   const rawMonths = finite(draft.term_months);
-  const months = rawMonths == null ? null : Math.round(rawMonths);
+  const months = rawMonths;
   const periods = draft.repayment_frequency === "custom"
     ? (() => {
         const custom = finite(draft.custom_payments_per_year);
         return custom;
       })()
     : PERIODS[draft.repayment_frequency];
-  if (amount == null || amount <= 0 || apr == null || apr < 0 || months == null || months <= 0 || periods == null || periods <= 0) return null;
+  if (amount == null || amount <= 0 || apr == null || apr < 0 || months == null || months <= 0 || !Number.isInteger(months) || periods == null || periods <= 0) return null;
   // The same schedule the server prices on save (app/services/loan_schedule.py): the payment and the annual
   // service are the ones coverage stands on, after any interest-only months, so the preview, the saved
   // terms and the Financials tab agree.
@@ -198,13 +199,15 @@ export function payloadFromDraft(draft: Draft, expectedVersion: number): Applica
   if (!draft.loan_type || !draft.funder_type || amount == null || amount <= 0 || apr == null || apr < 0 || term == null || term < 1 || expiration == null || expiration < 1 || close == null || close < 0) {
     throw new Error("Complete the loan type, amount, APR, time, funder type, and timeline before saving.");
   }
+  if (!Number.isInteger(term)) throw new Error("Loan maturity must be a whole number of months.");
   const custom = finite(draft.custom_payments_per_year);
   if (draft.repayment_frequency === "custom" && (custom == null || custom < 1)) throw new Error("Enter how many payments occur per year for the custom schedule.");
   if (draft.repayment_frequency === "custom" && (custom! > 366 || Math.abs(custom! * 1000 - Math.round(custom! * 1000)) > 1e-7)) throw new Error("Custom payments per year must be from 1 to 366, with at most three decimal places.");
   const retained = finite(draft.retained_annual_debt_service);
   if (draft.debt_service_treatment === "refinance" && retained == null) throw new Error("Enter the annual debt service that remains after payoff. Enter 0 for a full payoff.");
   const ioMonths = finite(draft.interest_only_months);
-  if (draft.loan_structure !== "interest_only" && ioMonths != null && (ioMonths < 0 || ioMonths >= Math.round(term))) throw new Error("Interest-only months must be fewer than the term. For interest-only to maturity, choose that structure.");
+  if (ioMonths != null && !Number.isInteger(ioMonths)) throw new Error("Interest-only duration must be a whole number of months.");
+  if (draft.loan_structure !== "interest_only" && ioMonths != null && (ioMonths < 0 || ioMonths > term)) throw new Error("Interest-only months cannot exceed the loan maturity.");
   normalizeRepaymentConfig(draft.repayment_config, Math.round(term), { structure: draft.loan_structure || null, interestOnlyMonths: ioMonths, periodsPerYear: draft.repayment_frequency === "custom" ? custom! : PERIODS[draft.repayment_frequency] });
   const pricing = repaymentPreview(amount, apr, Math.round(term), { structure: draft.loan_structure || null, interestOnlyMonths: ioMonths, periodsPerYear: draft.repayment_frequency === "custom" ? custom! : PERIODS[draft.repayment_frequency], repaymentConfig: draft.repayment_config });
   if (pricing.error) throw new Error(pricing.error);
@@ -495,7 +498,6 @@ export function ApplicationClientTermsPanel({
   const loanCanApply = !!preview && !repaymentIssue && (finite(draft.amount) ?? 0) > 0 && finite(draft.apr_pct) != null
     && finite(draft.apr_pct)! >= 0 && finite(draft.apr_pct)! <= 100 && (finite(draft.term_months) ?? 0) >= 1 && finite(draft.term_months)! <= 480;
   const loanLabel = terms.loan_type_options.find((option) => option.value === draft.loan_type)?.label ?? "Select a loan type";
-  const cadenceLabel = FREQUENCY_OPTIONS.find(([value]) => value === draft.repayment_frequency)?.[1] ?? "Repayment";
 
   if (compact) {
     const onFile = Boolean(terms.version);
@@ -599,8 +601,8 @@ export function ApplicationClientTermsPanel({
       <aside className="terms-live-preview" aria-label="Live client terms preview">
         <div className="terms-preview-brand"><div className="qc-mini">QC</div><div><b>Qualified Commercial</b><span>Financing terms</span></div>{draft.co_brand_enabled ? <div className="terms-preview-sponsor"><small>with</small><b>{draft.sponsor_name || "UrChoice"}</b></div> : null}</div>
         <div className="terms-preview-title"><span>Prepared structure</span><h4>{loanLabel}</h4></div>
-        <div className="terms-preview-hero"><span>Proposed amount</span><strong>{money(finite(draft.amount), 0)}</strong><div><b>{finite(draft.apr_pct) == null ? "—" : `${finite(draft.apr_pct)!.toFixed(2)}%`}</b><small>APR</small><b>{finite(draft.term_months) == null ? "—" : `${Math.round(finite(draft.term_months)!)} mo`}</b><small>Time</small></div></div>
-        <div className="terms-preview-payment"><span>Estimated {draft.repayment_frequency === "custom" ? draft.custom_repayment_label || "custom" : cadenceLabel.toLowerCase()} payment</span><strong>{money(preview?.payment, 2)}</strong><small>{preview ? `${preview.schedule.payment_io != null && preview.schedule.payment_after != null ? `${money(preview.schedule.payment_io, 2)} for ${preview.schedule.interest_only_months} interest-only months, then ${money(preview.schedule.payment_after, 2)} · ` : ""}${preview.count} payments · ${preview.schedule.structure_label.toLowerCase()} · ${money(preview.annual, 0)} annual debt service${preview.schedule.repayment_config ? " (peak rolling 12 months of actual cash due)" : ""}${!preview.schedule.repayment_config && preview.schedule.payment_io != null && preview.schedule.payment_after != null ? " once principal starts" : ""}${preview.schedule.balloon ? ` · ${money(preview.schedule.balloon, 0)} due at maturity` : ""}` : "Enter amount, APR, and time to calculate"}</small></div>
+        <div className="terms-preview-hero"><span>Proposed amount</span><strong>{money(finite(draft.amount), 0)}</strong><div><b>{finite(draft.apr_pct) == null ? "—" : `${finite(draft.apr_pct)!.toFixed(2)}%`}</b><small>APR</small><b>{finite(draft.term_months) == null ? "—" : `${finite(draft.term_months)} mo`}</b><small>Time</small></div></div>
+        {preview ? <LoanPaymentPhases schedule={preview.schedule} /> : <div className="terms-preview-payment"><span>Scheduled payments</span><strong>Not available</strong><small>Enter principal, APR, maturity and valid repayment details to calculate.</small></div>}
         {preview ? <LoanScheduleTable schedule={preview.schedule} title={`Schedule: ${describeSchedule(preview.schedule)}`} /> : null}
         {preview ? <p className="terms-preview-source terms-preview-risk"><strong>Principal at risk.</strong> {riskProfile(preview.schedule, riskIncomeAnnual == null ? null : riskIncomeAnnual / 12, riskExistingAnnual == null ? null : riskExistingAnnual / 12, scenarioCoverage?.incomeCurrencyComparable === true)?.words}{riskExistingAnnual == null ? " Existing debt service must be established before calculating coverage." : ""}</p> : null}
         <div className="terms-preview-dscr"><div><span>{previewScenario ? "Current coverage" : "Before acceptance"}</span><strong>{ratio(previewScenario ? scenarioCoverage?.before : terms.calculation.dscr_before)}</strong></div><i>→</i><div className="after"><span>{previewScenario ? "With this working loan" : "After acceptance"}</span><strong>{scenarioCoverage?.noDebtLeft ? "No debt left" : ratio(afterDscr)}</strong></div></div>

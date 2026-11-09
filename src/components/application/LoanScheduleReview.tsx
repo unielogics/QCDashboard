@@ -5,6 +5,7 @@ import { ColumnChart, LineChart, SERIES } from "@/components/file/cockpit/Cockpi
 import { riskProfile, type LoanScheduleSummary } from "@/lib/loanSchedule";
 import { LOAN_SCHEDULE_PAGE_SIZE, loanScheduleRows } from "@/lib/loanScheduleView";
 import { LoanScheduleTable } from "./LoanScheduleTable";
+import { LoanPaymentPhases } from "./LoanPaymentPhases";
 import styles from "./LoanScheduleReview.module.css";
 
 const money = (value: number | null | undefined) => value == null || !Number.isFinite(value) ? "—" : new Intl.NumberFormat(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(value);
@@ -28,9 +29,10 @@ export function LoanScheduleReview({ schedule, incomeMonthly, existingServiceMon
     <div className={styles.metrics}>
       <div><span>Loan principal</span><strong>{money(schedule.amount)}</strong><small>{schedule.rate_pct}% APR · {schedule.structure_label}</small></div>
       <div><span>Loan maturity</span><strong>{schedule.term_months == null ? "Not set" : `${schedule.term_months} months`}</strong><small>{schedule.amortization_months != null ? `${schedule.amortization_months}-month amortization after ${schedule.interest_only_months} interest-only months` : schedule.interest_only_months ? `${schedule.interest_only_months} interest-only months first` : "Repayment follows the loan term"}</small></div>
-      <div><span>Regular payment after interest-only</span><strong>{money(schedule.payment_after ?? schedule.payment_io)}</strong><small>{schedule.payment_io != null && schedule.payment_after != null ? `${money(schedule.payment_io)} during the interest-only period` : "Per scheduled payment"}</small></div>
-      <div><span>Residual balloon at maturity</span><strong>{money(schedule.balloon)}</strong><small>{schedule.balloon_pct}% of original principal · included once in actual cash due</small></div>
+      <div><span>First-year actual cash due</span><strong>{money(schedule.first_year_actual_debt_service ?? schedule.annual_debt_service)}</strong><small>Scheduled installments and principal amounts due during the first year</small></div>
+      <div><span>Underwriting stress equivalent</span><strong>{money(schedule.coverage_payment_monthly)} / mo</strong><small>Coverage basis, including maturity principal when applicable; not the installment</small></div>
     </div>
+    <LoanPaymentPhases schedule={schedule} />
     <div className={styles.charts}>
       <section className={styles.chart}><h4>Principal and interest due</h4><ColumnChart ariaLabel="Actual principal and interest by payment, including balloon principal" bands={bands} series={[{ key: "interest", label: "Interest", color: SERIES.two, values: shown.map((row) => row.interest) }, { key: "principal", label: "Principal, including balloons", color: SERIES.one, values: shown.map((row) => row.principal), emphasis: true }]} height={210} /></section>
       <section className={styles.chart}><h4>Principal paid down and remaining exposure</h4><LineChart ariaLabel="Principal paid down and remaining principal as percentages of original loan" bands={bands} series={[{ key: "paid", label: "Principal paid down", color: SERIES.one, values: shown.map((row) => row.paidDownPct), emphasis: true }, { key: "remaining", label: "Principal still outstanding", color: SERIES.two, values: shown.map((row) => row.principalExposurePct) }]} format={(value) => value == null ? "—" : `${value.toFixed(1)}%`} axisFormat={(value) => `${Math.round(value)}%`} height={210} /></section>

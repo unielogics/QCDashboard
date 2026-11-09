@@ -3,6 +3,30 @@ import { FACILITY_CATALOG } from "../options";
 import { computePaymentSummary, defaultProgramCoverage, effectiveAnnualRate, periodsPerYear } from "../termSheetStructure";
 
 describe("term-sheet structured payment summary", () => {
+  it("keeps configured ordinary installments separate from stress coverage", () => {
+    const summary = computePaymentSummary({ amount: 89934, annualRatePct: 29.99, termMonths: 24, repaymentStructure: "fully_amortizing", paymentFrequency: "monthly", interestOnlyMonths: 6, repaymentConfig: { amortization_months: 60 } });
+    expect(summary.periodic_payment).toBe(2247.6);
+    expect(summary.monthly_equivalent_payment).toBe(2247.6);
+    expect(summary.post_io_payment).toBe(2909.12);
+    expect(summary.balloon_amount).toBe(75126.11);
+    expect(summary.coverage_monthly_equivalent_payment).toBe(9169.63);
+    expect(summary.coverage_annual_debt_service).toBe(110035.55);
+    expect(defaultProgramCoverage(summary)).toBe(9169.63);
+  });
+
+  it("preserves an initial IO phase on imported fully-amortizing terms", () => {
+    const summary = computePaymentSummary({ amount: 89934, annualRatePct: 29.99, termMonths: 24, repaymentStructure: "fully_amortizing", paymentFrequency: "monthly", interestOnlyMonths: 6, amortizationMonths: 60 });
+    expect(summary.periodic_payment).toBe(2247.6);
+    expect(summary.post_io_payment).toBe(2909.12);
+    expect(summary.balloon_amount).toBeCloseTo(75126.11, 1);
+  });
+
+  it("normalizes an IO period through maturity without invented amortization", () => {
+    const summary = computePaymentSummary({ amount: 100000, annualRatePct: 12, termMonths: 24, repaymentStructure: "fully_amortizing", paymentFrequency: "monthly", interestOnlyMonths: 24 });
+    expect(summary.periodic_payment).toBe(1000);
+    expect(summary.post_io_payment).toBeNull();
+    expect(summary.balloon_amount).toBe(100000);
+  });
   it("keeps the legacy fully-amortizing monthly calculation", () => {
     const summary = computePaymentSummary({
       amount: 500_000,

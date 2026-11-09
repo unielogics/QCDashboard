@@ -32,9 +32,10 @@ describe("advanced repayment integration", () => {
     const schedule = buildSchedule(100000, 10, 36, { structure: "amortizing", repaymentConfig: config })!;
     const production = computePaymentSummary({ amount: 100000, annualRatePct: 10, termMonths: 36, repaymentStructure: "balloon", paymentFrequency: "monthly", repaymentConfig: config });
     expect(production.periodic_payment).toBe(schedule.payment_after);
-    expect(production.monthly_equivalent_payment).toBe(schedule.coverage_payment_monthly);
+    expect(production.monthly_equivalent_payment).toBe(schedule.payment_after_monthly);
+    expect(production.coverage_monthly_equivalent_payment).toBe(schedule.coverage_payment_monthly);
     expect(production.balloon_amount).toBe(schedule.balloon);
-    expect(production.monthly_equivalent_payment).toBeGreaterThan(production.periodic_payment!);
+    expect(production.coverage_monthly_equivalent_payment).toBeGreaterThan(production.periodic_payment!);
   });
 
   it("does not produce financial figures for impossible fixed payments", () => {
@@ -51,7 +52,8 @@ describe("advanced repayment integration", () => {
     expect(production.periodic_payment).toBe(schedule.payment_io);
     expect(production.periodic_payment).toBe(833.33);
     expect(production.post_io_payment).toBe(schedule.payment_after);
-    expect(production.monthly_equivalent_payment).toBe(schedule.coverage_payment_monthly);
+    expect(production.monthly_equivalent_payment).toBe(schedule.payment_io_monthly);
+    expect(production.coverage_monthly_equivalent_payment).toBe(schedule.coverage_payment_monthly);
   });
 
   it("describes amortization as starting after interest-only and labels explicit principal payments", () => {

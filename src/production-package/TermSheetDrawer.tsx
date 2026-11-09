@@ -20,6 +20,7 @@ import type { RepaymentConfig } from "@/lib/loanSchedule";
 import { repaymentPreview, copyRepaymentConfig } from "@/lib/repaymentConfig";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
+import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import { Callout, KV, MoneySplit, Overlay, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
 import type {
   DebtServiceTreatment,
@@ -121,7 +122,7 @@ const COVERAGE_OPTIONS: Array<[ProgramCoverageBasis, string]> = [
   ["manual", "Manual coverage amount"],
 ];
 
-function usesInitialIo(repayment: RepaymentStructure, config: RepaymentConfig | null): boolean { return repayment === "interest_only_then_amortizing" || !!config && ["fully_amortizing", "balloon", "simple_interest"].includes(repayment); }
+function usesInitialIo(repayment: RepaymentStructure, _config: RepaymentConfig | null): boolean { return ["interest_only_then_amortizing", "fully_amortizing", "balloon", "simple_interest"].includes(repayment); }
 
 function isKind(v: string): v is FundingPartyKind { return (FUNDING_PARTIES as readonly string[]).includes(v); }
 function isFacilityKind(v: unknown): v is FacilityKind { return ["term_loan", "revolving_loc", "heloc", "hybrid", "other"].includes(String(v)); }
@@ -257,6 +258,7 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
   });
   const monthlySnapshot = roundedMoney(summary.monthly_equivalent_payment) ?? 0;
   const level = form.repayment_structure === "fully_amortizing"
+    && !(maybeNumber(form.interest_only_months) ?? 0)
     && form.payment_frequency === "monthly"
     && form.rate_structure === "fixed"
     && !form.lender_payment_override
@@ -268,7 +270,7 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
     facility_kind: form.facility_kind,
     facility_catalog_key: form.facility_catalog_key,
     funder_type: form.funder_type || null,
-    repayment_structure: form.repayment_structure,
+    repayment_structure: form.repayment_structure === "fully_amortizing" && (maybeNumber(form.interest_only_months) ?? 0) > 0 ? "interest_only_then_amortizing" : form.repayment_structure,
     payment_frequency: form.payment_frequency,
     payments_per_year: summary.payments_per_year,
     custom_payment_frequency: form.payment_frequency === "custom" ? form.custom_payment_frequency.trim() || null : null,
@@ -433,7 +435,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
 
   const programCoverage = useMemo(() => {
     if (!form || !summary) return 0;
-    if (form.repayment_config) return summary.monthly_equivalent_payment ?? 0;
+    if (form.repayment_config) return summary.coverage_monthly_equivalent_payment ?? defaultProgramCoverage(summary) ?? 0;
     const fullLimitInterest = approved * annualRate / 100 / 12;
     const drawInterest = (initialDraw ?? paymentBasis) * annualRate / 100 / 12;
     switch (form.monthly_program_coverage_basis) {
@@ -782,11 +784,11 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
                   <header><div><span className="pp-eyebrow">Payment preview</span><h5>{repaymentLabel(form.repayment_structure)}</h5></div><PChip tone={manualPayment ? "warn" : "acc"}>{manualPayment ? "Lender stated" : "Calculated"}</PChip></header>
                   <div className="pp-ts-payment-values">
                     <div><span>{frequencyLabel(form.payment_frequency)} payment</span><b>{summary.periodic_payment ? money(summary.periodic_payment, 2) : "—"}</b></div>
-                    <div><span>Monthly equivalent</span><b>{summary.monthly_equivalent_payment ? money(summary.monthly_equivalent_payment, 2) : "—"}</b></div>
-                    <div><span>After interest-only</span><b>{summary.post_io_payment ? money(summary.post_io_payment, 2) : "—"}</b></div>
+                    <div><span>{(maybeNumber(form.interest_only_months) ?? 0) > 0 && usesInitialIo(form.repayment_structure, form.repayment_config) ? "Initial IO monthly equivalent" : "Regular monthly equivalent"}</span><b>{summary.monthly_equivalent_payment != null ? money(summary.monthly_equivalent_payment, 2) : "—"}</b></div>
+                    {(maybeNumber(form.interest_only_months) ?? 0) > 0 && summary.post_io_payment != null ? <div><span>Principal and interest after IO</span><b>{money(summary.post_io_payment, 2)}</b></div> : null}
                     <div><span>Estimated balloon / principal due</span><b>{summary.balloon_amount ? money(summary.balloon_amount, 2) : "$0.00"}</b></div>
                   </div>
-                  {summary.lines.length ? <ul>{summary.lines.map((line) => <li key={line}>{line}</li>)}</ul> : <p>Complete the amount, rate, term and payment fields to calculate.</p>}
+                  {schedule ? <LoanPaymentPhases schedule={schedule} /> : summary.lines.length ? <ul>{summary.lines.map((line) => <li key={line}>{line}</li>)}</ul> : <p>Complete the amount, rate, term and payment fields to calculate.</p>}
                   {summary.assumptions.map((assumption) => <p className="pp-ts-assumption" key={assumption}>{assumption}</p>)}
                   {schedule ? <LoanScheduleTable schedule={schedule} title="Amortization schedule" /> : null}
                 </div>

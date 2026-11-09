@@ -425,6 +425,8 @@ export type ClientTermsRepaymentFrequency = "daily" | "weekly" | "biweekly" | "m
 export type ClientTermsDebtTreatment = "additive" | "refinance";
 
 export type ClientTermsCalculation = {
+  regular_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; repayment_payment_monthly?: number | null;
+  payment_phases?: import("./loanSchedule").LoanPaymentPhase[]; first_year_regular_debt_service?: number | null;
   /** The structure the payment stands on, the interest-only months first and the payment during them. */
   loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
   interest_only_months?: number;

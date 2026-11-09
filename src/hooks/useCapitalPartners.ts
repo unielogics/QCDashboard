@@ -49,11 +49,13 @@ export interface CpSourceRow {
 export interface CpListingRef { id: string; ref: string; status: CpListingStatus; name: string }
 /** One product offered on a listing: a program with suggested amount, rate and term; the primary one supplies the headline terms. */
 export interface CpListingProduct {
+  coverage_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; repayment_payment_monthly?: number | null; maturity_balance?: number | null;
   program_key: string | null; label: string; amount: number | string | null; rate_pct: number | string | null; factor_rate?: number | string | null;
   term_months: number | null; interest_only?: boolean; structure?: "amortizing" | "simple_interest" | "interest_only" | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_frequency: "monthly" | "weekly" | "biweekly" | "daily" | "custom" | null; monthly_payment: number | string | null; dscr: number | string | null;
   notes: string | null; primary: boolean;
 }
 export interface CpOfferSuggestion {
+  coverage_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; repayment_payment_monthly?: number | null; maturity_balance?: number | null;
   program_key: string | null; label: string; eligible: boolean | null; amount: number | null; rate_pct: number | null; factor_rate: number | null; term_months: number;
   interest_only?: boolean; structure?: string | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_frequency: string; monthly_payment: number | null; dscr: number | null; dscr_status: string; affordable_amount: number | null; room_monthly: number | null;
   requested_amount: number | null; requested_monthly_payment: number | null; requested_dscr: number | null; requested_dscr_status: string;
