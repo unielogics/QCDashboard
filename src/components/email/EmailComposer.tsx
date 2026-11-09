@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { Modal } from "@/components/design-system/Modal";
 import { useToast, Toast } from "@/components/design-system/primitives";
-import { Btn, Input, Sub, Textarea } from "@/components/ds";
+import { Btn, Callout, Input, Sub, Textarea } from "@/components/ds";
 import { ApiError } from "@/lib/api";
+import { MessageImagePicker, useMessageImages } from "@/components/communications/MessageImages";
+import { outgoingDeliveryWarning } from "@/lib/messageImages";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of a bare status.
 export function apiErrorMessage(error: unknown, fallback: string): string {
@@ -40,6 +42,7 @@ export type EmailComposerSend = {
   cc_emails: string[];
   subject: string;
   body: string;
+  image_ids: string[];
 };
 
 export function EmailComposer({
@@ -66,7 +69,7 @@ export function EmailComposer({
   toReadonly?: boolean;
   helpText?: string;
   sendLabel?: string;
-  onSend: (payload: EmailComposerSend) => Promise<{ ok?: boolean; detail?: string | null } | void>;
+  onSend: (payload: EmailComposerSend) => Promise<{ ok?: boolean; detail?: string | null; delivery_warning?: string | null } | void>;
 }) {
   const toast = useToast();
   const [to, setTo] = useState(defaultTo);
@@ -74,6 +77,9 @@ export function EmailComposer({
   const [subject, setSubject] = useState(defaultSubject);
   const [body, setBody] = useState(defaultBody);
   const [busy, setBusy] = useState(false);
+  const [deliveryWarning, setDeliveryWarning] = useState("");
+  const [deliverySent, setDeliverySent] = useState(false);
+  const images = useMessageImages(`email:${open}:${defaultTo}`);
 
   // Re-seed fields each time the composer opens (defaults may change per target).
   useEffect(() => {
@@ -83,11 +89,13 @@ export function EmailComposer({
       setSubject(defaultSubject);
       setBody(defaultBody);
       setBusy(false);
+      setDeliveryWarning(""); setDeliverySent(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   async function submit() {
+    if (busy || deliverySent) return;
     const toParsed = parseEmails(to);
     const ccParsed = parseEmails(cc);
     if (toParsed.invalid.length || ccParsed.invalid.length) {
@@ -98,23 +106,26 @@ export function EmailComposer({
       toast.show("Add at least one recipient email");
       return;
     }
-    if (!subject.trim() || !body.trim()) {
-      toast.show("Add a subject and body");
+    if (!subject.trim() || (!body.trim() && !images.images.length)) {
+      toast.show("Add a subject and a message or image");
       return;
     }
     if (subject.trim().length > 512) { toast.show("Subject is too long (max 512)"); return; }
     if (body.trim().length > 12000) { toast.show("Body is too long (max 12,000)"); return; }
     setBusy(true);
     try {
+      const image_ids = await images.flush();
       const res = await onSend({
         to_emails: toParsed.valid,
         cc_emails: ccParsed.valid,
         subject: subject.trim(),
         body: body.trim(),
+        image_ids,
       });
       const ok = !res || res.ok !== false;
-      toast.show(ok ? "Email sent" : (res && res.detail) ? `Send failed: ${res.detail}` : "Send failed — check status");
-      if (ok) onClose();
+      const warning = outgoingDeliveryWarning(res);
+      toast.show(warning || (ok ? "Email sent" : (res && res.detail) ? `Send failed: ${res.detail}` : "Send failed — check status"));
+      if (ok) { images.reset(); if (warning) { setDeliveryWarning(warning); setDeliverySent(true); } else onClose(); }
     } catch (error) {
       toast.show(apiErrorMessage(error, "Send failed"));
     } finally {
@@ -126,10 +137,11 @@ export function EmailComposer({
   // this composer from INSIDE its bucket detail modal (z-index 300); `.drawer`
   // sits at 61 and would render behind it.
   return (
-    <Modal open={open} onClose={onClose} title={title} icon="mail" size="lg">
+    <Modal open={open} onClose={() => { if (!busy) onClose(); }} title={title} icon="mail" size="lg">
       {/* Bespoke: Modal hands its children an unpadded box. */}
       <div className="grid" style={{ padding: 16 }}>
         {helpText ? <Sub>{helpText}</Sub> : null}
+        {deliveryWarning ? <Callout tone="warn">{deliveryWarning}</Callout> : null}
         <div className="fldgrid two">
           <label className="grid g4">
             <span className="lbl">To</span>
@@ -137,6 +149,7 @@ export function EmailComposer({
               value={to}
               onChange={(e) => setTo(e.target.value)}
               readOnly={toReadonly}
+              disabled={busy || deliverySent}
               placeholder="name@company.com"
             />
           </label>
@@ -144,12 +157,12 @@ export function EmailComposer({
             {/* `.lbl` uppercases its whole subtree, so the qualifier is part of
                 the label rather than a differently-cased span inside it. */}
             <span className="lbl">Cc — optional</span>
-            <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="comma-separated" />
+            <Input value={cc} disabled={busy || deliverySent} onChange={(e) => setCc(e.target.value)} placeholder="comma-separated" />
           </label>
         </div>
         <label className="grid g4">
           <span className="lbl">Subject</span>
-          <Input value={subject} maxLength={512} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject line" />
+          <Input value={subject} maxLength={512} disabled={busy || deliverySent} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject line" />
         </label>
         <label className="grid g4">
           <span className="lbl">Body</span>
@@ -158,15 +171,18 @@ export function EmailComposer({
           <Textarea
             value={body}
             maxLength={12000}
+            disabled={busy || deliverySent}
+            onPaste={images.onPaste}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Write your message"
             style={{ minHeight: 220 }}
           />
         </label>
+        <MessageImagePicker draft={images} disabled={busy || deliverySent} />
         <div className="row end">
-          <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
-          <Btn variant="pri" onClick={submit} disabled={busy}>
-            {busy ? "Sending…" : sendLabel}
+          <Btn onClick={onClose} disabled={busy}>{deliverySent ? "Close" : "Cancel"}</Btn>
+          <Btn variant="pri" onClick={submit} disabled={busy || deliverySent}>
+            {busy ? "Sending…" : deliverySent ? "Sent" : sendLabel}
           </Btn>
         </div>
       </div>

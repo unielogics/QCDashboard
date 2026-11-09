@@ -34,6 +34,7 @@ import {
   RiskStrengthTable,
 } from "@/components/intake/IntelligenceCharts";
 import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import type { InlineImage } from "@/lib/inlineImages";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import {
   evidenceRequirementIdentity,
@@ -49,11 +50,11 @@ import {
  * against the /admin/ai-underwriter-leads/{intake_id} endpoints, so this
  * component never touches auth or URLs directly.
  */
-export type ClientThreadMessage = { id: string; role: string; sender_kind?: string | null; author_name?: string | null; content: string; created_at: string };
-export type ClientSmsMessage = { id: string; direction: "inbound" | "outbound"; phone_e164: string; body: string | null; provider: string; provider_message_id: string; status: string; detail: string; context: string; portal_message_id?: string | null; created_at: string };
+export type ClientThreadMessage = { id: string; role: string; sender_kind?: string | null; author_name?: string | null; content: string; created_at: string; images?: InlineImage[] };
+export type ClientSmsMessage = { id: string; direction: "inbound" | "outbound"; phone_e164: string; body: string | null; provider: string; provider_message_id: string; status: string; detail: string; context: string; portal_message_id?: string | null; created_at: string; images?: InlineImage[] };
 export type ClientSmsState = { phone: string | null; can_send: boolean; transactional_consented: boolean; opted_out: boolean; provider_available: boolean; blocked_reason: string | null };
 /** `ai_paused_until` is set while the desk has taken the conversation over. */
-export type ClientThreadResponse = { messages: ClientThreadMessage[]; ai_paused_until?: string | null; sms_messages?: ClientSmsMessage[]; sms_state?: ClientSmsState };
+export type ClientThreadResponse = { messages: ClientThreadMessage[]; ai_paused_until?: string | null; sms_messages?: ClientSmsMessage[]; sms_state?: ClientSmsState; delivery_warning?: string | null; delivery_notice?: string | null };
 
 export type LeadCockpitAdapter = {
   sendChat: (message: string) => Promise<IntakeResponse>;
@@ -69,7 +70,7 @@ export type LeadCockpitAdapter = {
   /** The CLIENT-visible (uploader) thread — separate from the private admin chat. */
   loadClientThread: () => Promise<ClientThreadResponse>;
   /** Post a message on behalf into the client thread (attributed as underwriter). */
-  replyClientThread: (message: string, alsoSms?: boolean) => Promise<ClientThreadResponse>;
+  replyClientThread: (message: string, alsoSms?: boolean, imageIds?: string[]) => Promise<ClientThreadResponse>;
   /** Hand the conversation back to the AI before the takeover window lapses. */
   resumeClientThreadAI?: () => Promise<ClientThreadResponse>;
   /** Push a PFS/debt-schedule requested-document onto the lead (idempotent —

@@ -5,6 +5,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, Input, Lbl, Select, Sub, Textarea, WarnLine, cx } from "@/components/ds";
 import { ChatComposer } from "@/components/ds/ChatComposer";
+import { InlineImageStrip } from "@/components/InlineImages";
+import type { InlineImage } from "@/lib/inlineImages";
+import { MESSAGE_IMAGE_ACCEPT, outgoingDeliveryWarning, smsImageDeliveryNotice } from "@/lib/messageImages";
+import { MessageImageDrafts, MessageImagePicker, useMessageImages, useMessageImageCapabilities } from "./MessageImages";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { activeGrants, consentKindLabel, grantWords, smsStatusWords } from "@/lib/smsConsentWords";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -90,10 +94,11 @@ type EmailMessage = {
   delivery_status: string;
   delivery_detail: string | null;
   attachment_names?: string[];
+  images?: InlineImage[];
   created_at: string;
 };
 
-type EmailThreadDetail = { thread: EmailThread; messages: EmailMessage[] };
+type EmailThreadDetail = { thread: EmailThread; messages: EmailMessage[]; delivery_warning?: string | null };
 
 type EmailAttachmentKind = "merchant_offer" | "production_term_sheet" | "evidence_file";
 
@@ -266,9 +271,11 @@ export function AIIntakeClientConversation({
   const qc = useQueryClient();
   const [response, setResponse] = useState<ClientThreadResponse>({ messages: [] });
   const [draft, setDraft] = useState("");
+  const images = useMessageImages(`intake:${intakeId}`);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
+  const [deliveryWarning, setDeliveryWarning] = useState("");
   const [showConsent, setShowConsent] = useState(false);
   const [showManualConsent, setShowManualConsent] = useState(false);
   const smsPreferenceApplied = useRef(false);
@@ -296,6 +303,8 @@ export function AIIntakeClientConversation({
   const adoptAuthoritative = (next: ClientThreadResponse) => {
     clientThreadRequestVersion.current += 1;
     adopt(next);
+    const latest = [...(next.sms_messages || [])].reverse().find((message) => message.direction === "outbound");
+    setDeliveryWarning(outgoingDeliveryWarning(next) || outgoingDeliveryWarning({ detail: latest?.detail }) || "");
   };
 
   useEffect(() => {
@@ -335,6 +344,8 @@ export function AIIntakeClientConversation({
   const state = smsConsent.data ?? response.sms_state ?? null;
   const useSms = Boolean(smsConsent.data?.delivery_enabled);
   const sendBySms = Boolean(useSms && state?.can_send);
+  const imageCapabilities = useMessageImageCapabilities(sendBySms);
+  const imageDeliveryBlocked = images.images.length > 0 && sendBySms && (!imageCapabilities.data || imageCapabilities.data.sms.image_delivery === "unavailable");
 
   const smsPreference = useMutation({
     mutationFn: (enabled: boolean) => apiCall<SmsConsentState>(`/application-profiles/${profileId}/communications/sms-preference`, {
@@ -391,12 +402,14 @@ export function AIIntakeClientConversation({
 
   async function send() {
     const text = draft.trim();
-    if (!text || sending) return;
+    if ((!text && !images.images.length) || sending || imageDeliveryBlocked) return;
     setSending(true);
     setError("");
     try {
-      adoptAuthoritative(await adapter.replyClientThread(text, sendBySms));
+      const imageIds = await images.flush(sendBySms ? imageCapabilities.data?.sms.max_total_bytes : undefined);
+      adoptAuthoritative(await adapter.replyClientThread(text, sendBySms, imageIds));
       setDraft("");
+      images.reset();
       if (profileId) void qc.invalidateQueries({ queryKey: ["application-sms-consent", profileId] });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Reply failed.");
@@ -467,7 +480,8 @@ export function AIIntakeClientConversation({
               const inbound = item.sms.direction === "inbound";
               return <article key={item.key} data-communication-message-id={inbound ? item.sms.id : undefined} className={cx("msg", inbound ? "client-ch" : "mine", "transport-sms-only")}>
                 <div className="msg-h"><span className="msg-who">{inbound ? clientName || "Client" : "You"}</span><CellChip tone="pet">SMS</CellChip></div>
-                <div className="msg-b">{item.sms.body || "Text message"}</div>
+                {item.sms.body ? <div className="msg-b">{item.sms.body}</div> : null}
+                <InlineImageStrip images={item.sms.images} />
                 <div className="msg-delivery"><span>{when(item.sms.created_at)}</span><CellChip tone={deliveryTone(item.sms.status)}>{item.sms.status}</CellChip></div>
               </article>;
             }
@@ -478,6 +492,7 @@ export function AIIntakeClientConversation({
             return <article key={item.key} data-communication-message-id={item.sms?.direction === "inbound" ? item.sms.id : undefined} className={cx("msg", isAI ? "ai" : isClient ? "client-ch" : "mine")}>
               <div className="msg-h"><span className="msg-who">{label}</span><CellChip tone="acc">Portal</CellChip>{item.sms ? <CellChip tone={deliveryTone(item.sms.status)}>SMS · {item.sms.status}</CellChip> : null}</div>
               <div className="msg-b">{message.content}</div>
+              <InlineImageStrip images={message.images || item.sms?.images} />
               <div className="msg-delivery"><span>{when(message.created_at)}</span>{item.sms && ["failed", "blocked"].includes(item.sms.status) ? <button type="button" className="linky" onClick={() => void retrySms(message.id)}>Retry SMS</button> : null}</div>
             </article>;
           })}
@@ -493,16 +508,25 @@ export function AIIntakeClientConversation({
             {latestSmsFailure.portal_message_id ? <Btn size="sm" onClick={() => void retrySms(latestSmsFailure.portal_message_id as string)}>Retry SMS</Btn> : null}
           </Callout> : null}
           <Lbl>Reply on behalf (as underwriter)</Lbl>
+          {deliveryWarning ? <Callout tone="warn">{deliveryWarning}</Callout> : null}
           <ChatComposer
             value={draft}
             onChange={setDraft}
             onSend={() => void send()}
             sending={sending}
+            disabled={loading}
+            sendDisabled={imageDeliveryBlocked}
+            onFiles={images.add}
+            accept={MESSAGE_IMAGE_ACCEPT}
+            attachments={images.images.length || images.error ? <MessageImageDrafts draft={images} disabled={sending} /> : undefined}
+            allowEmpty={images.images.length > 0}
             placeholder="Write a text message"
             sendLabel={sendBySms ? "Send to portal and SMS" : "Send to portal"}
-            hint="Enter sends · Shift + Enter adds a line"
+            notice={images.images.length > 0 && sendBySms ? smsImageDeliveryNotice(imageCapabilities.data) : undefined}
+            hint="Enter sends · Shift + Enter adds a line · Paste or attach an image"
             autoFocus
           />
+          {images.images.length > 0 && sendBySms && imageCapabilities.isError ? <Callout tone="warn">The SMS image provider could not be checked. <Btn size="sm" onClick={() => void imageCapabilities.refetch()}>Retry provider check</Btn></Callout> : null}
           <div className="sms-delivery-row">
             <button
               type="button"
@@ -583,6 +607,9 @@ export function AIIntakeEmailWorkspace({
   const [reply, setReply] = useState("");
   const [composeAttachments, setComposeAttachments] = useState<EmailAttachmentOption[]>([]);
   const [replyAttachments, setReplyAttachments] = useState<EmailAttachmentOption[]>([]);
+  const [deliveryWarning, setDeliveryWarning] = useState("");
+  const composeImages = useMessageImages(`profile-email:${profileId}:compose:${composing}`);
+  const replyImages = useMessageImages(`profile-email:${profileId}:reply:${selectedThreadId || ""}`);
   const [linkKey, setLinkKey] = useState("");
   const [recipientLock, setRecipientLock] = useState<string | null>(null);
   const composeRef = useRef<HTMLTextAreaElement | null>(null);
@@ -644,8 +671,9 @@ export function AIIntakeEmailWorkspace({
   }, [latestEmailMessageId]);
 
   const createThread = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (directContactSuppressed) throw new Error(suppressionReason);
+      const image_ids = await composeImages.flush();
       return apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads`, {
         method: "POST",
         body: JSON.stringify({
@@ -654,30 +682,36 @@ export function AIIntakeEmailWorkspace({
           subject: subject.trim(),
           body: body.trim(),
           attachments: composeAttachments.map(attachmentRef),
+          image_ids,
         }),
       });
     },
     onSuccess: (created) => {
+      setDeliveryWarning(outgoingDeliveryWarning(created) || "");
       qc.setQueryData(["application-email-thread", profileId, created.thread.id], created);
       void qc.invalidateQueries({ queryKey: ["application-email-threads", profileId] });
       setSelectedThreadId(created.thread.id);
       setComposing(false);
       setSubject(""); setBody(""); setCcContactIds([]); setComposeAttachments([]); setLinkKey(""); setRecipientLock(null);
+      composeImages.reset();
     },
   });
   const sendReply = useMutation({
-    mutationFn: () => {
+    mutationFn: async () => {
       if (directContactSuppressed) throw new Error(suppressionReason);
+      const image_ids = await replyImages.flush();
       return apiCall<EmailThreadDetail>(`/application-profiles/${profileId}/communications/email/threads/${selectedThreadId}/messages`, {
         method: "POST",
-        body: JSON.stringify({ body: reply.trim(), attachments: replyAttachments.map(attachmentRef) }),
+        body: JSON.stringify({ body: reply.trim(), attachments: replyAttachments.map(attachmentRef), image_ids }),
       });
     },
     onSuccess: (next) => {
+      setDeliveryWarning(outgoingDeliveryWarning(next) || "");
       qc.setQueryData(["application-email-thread", profileId, selectedThreadId], next);
       void qc.invalidateQueries({ queryKey: ["application-email-threads", profileId] });
       setReply("");
       setReplyAttachments([]);
+      replyImages.reset();
     },
   });
   // Send a failed email again, as it was written. The body comes from the
@@ -725,6 +759,7 @@ export function AIIntakeEmailWorkspace({
   const resetCompose = () => {
     setComposing(false); setSubject(""); setBody(""); setCcContactIds([]); setComposeAttachments([]); setLinkKey(""); setRecipientLock(null);
     if (!selectedThreadId && threads.data?.[0]) setSelectedThreadId(threads.data[0].id);
+    composeImages.reset();
   };
   const selectedContact = availableContacts.find((item) => item.id === toContactId);
 
@@ -735,13 +770,14 @@ export function AIIntakeEmailWorkspace({
       {threads.isLoading ? <div className="empty"><span className="spinner solo" />Loading email…</div> : null}
       {threads.isError ? <Callout tone="bad">Email conversations could not be loaded. <Btn size="sm" onClick={() => void threads.refetch()}>Retry email list</Btn></Callout> : null}
       {!threads.isLoading && !threads.isError && !threads.data?.length ? <div className="empty">No email conversations yet.</div> : null}
-      {(threads.isError ? [] : threads.data ?? []).map((thread) => <button key={thread.id} type="button" className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); setReply(""); setReplyAttachments([]); onThreadNavigate?.(thread.id); }}>
+      {(threads.isError ? [] : threads.data ?? []).map((thread) => <button key={thread.id} type="button" disabled={createThread.isPending || sendReply.isPending} className={cx("ai-intake-email-thread-row", selectedThreadId === thread.id && !composing && "on")} onClick={() => { setSelectedThreadId(thread.id); setComposing(false); setReply(""); setReplyAttachments([]); onThreadNavigate?.(thread.id); }}>
         <span><b>{thread.subject}</b><small>{thread.participant_names.join(", ") || thread.to_email}</small></span>
         <div className={unreadStyles.threadMeta}><time>{when(thread.last_message_at || thread.created_at)}</time><CommunicationUnreadBadge count={thread.unread_count} channel="email" /></div>
       </button>)}
     </aside>
 
     <div className="ai-intake-email-main">
+      {deliveryWarning ? <Callout tone="warn">{deliveryWarning}</Callout> : null}
       {composing ? <div className="ai-intake-email-compose">
         <header><div><Lbl>New email</Lbl><Sub>Recipients are limited to contacts verified on this file.</Sub></div>{recipientLock ? <CellChip tone="warn">Private credit recipient locked</CellChip> : null}</header>
         <Field label="To">
@@ -758,8 +794,9 @@ export function AIIntakeEmailWorkspace({
         </Field>
         <Field label="Subject"><Input aria-label="Subject" value={subject} maxLength={200} disabled={directContactSuppressed} onChange={(event) => setSubject(event.target.value)} placeholder="Email subject" /></Field>
         <Field label="Message">
-          <textarea ref={composeRef} className="field" rows={10} value={body} disabled={directContactSuppressed} onChange={(event) => setBody(event.target.value)} placeholder="Write your email…" aria-label="Message" />
+          <textarea ref={composeRef} className="field" rows={10} value={body} disabled={directContactSuppressed || createThread.isPending} onPaste={composeImages.onPaste} onChange={(event) => setBody(event.target.value)} placeholder="Write your email…" aria-label="Message" />
         </Field>
+        <MessageImagePicker draft={composeImages} disabled={directContactSuppressed || createThread.isPending} />
         <EmailAttachmentPicker
           context="email"
           options={evidenceAttachmentOptions}
@@ -779,7 +816,7 @@ export function AIIntakeEmailWorkspace({
         </div>
         {addLink.isError ? <Callout tone="bad">{addLink.error instanceof Error ? addLink.error.message : "The secure link could not be created."}</Callout> : null}
         {createThread.isError ? <Callout tone="bad">{createThread.error instanceof Error ? createThread.error.message : "The email could not be sent."}</Callout> : null}
-        <div className="email-compose-actions"><Btn onClick={resetCompose}>Cancel</Btn><Btn variant="pri" disabled={directContactSuppressed || createThread.isPending || !selectedContact?.email || !subject.trim() || !body.trim()} onClick={() => createThread.mutate()}><Icon name="send" size={14} />{createThread.isPending ? "Sending…" : "Send email"}</Btn></div>
+        <div className="email-compose-actions"><Btn disabled={createThread.isPending} onClick={resetCompose}>Cancel</Btn><Btn variant="pri" disabled={directContactSuppressed || createThread.isPending || !selectedContact?.email || !subject.trim() || (!body.trim() && !composeImages.images.length)} onClick={() => createThread.mutate()}><Icon name="send" size={14} />{createThread.isPending ? "Sending…" : "Send email"}</Btn></div>
       </div> : selectedThreadId ? <div className="ai-intake-email-detail">
         {detail.isLoading ? <div className="empty"><span className="spinner solo" />Loading thread…</div> : null}
         {detail.isError ? <Callout tone="bad">{detail.error instanceof Error ? detail.error.message : "Email thread unavailable."} <Btn size="sm" onClick={() => void detail.refetch()}>Retry requested email</Btn></Callout> : null}
@@ -790,6 +827,7 @@ export function AIIntakeEmailWorkspace({
             {detail.data.messages.map((message) => <article key={message.id} data-communication-message-id={message.direction === "inbound" ? message.id : undefined} className={cx("email-message", message.direction)}>
               <div className="email-message-head"><b>{message.direction === "outbound" ? "You" : message.sender || "Client"}</b><span>{when(message.created_at)}</span></div>
               <p>{message.body}</p>
+              <InlineImageStrip images={message.images} />
               {message.attachment_names?.length ? <div className="email-message-attachments" aria-label="Attachments">{message.attachment_names.map((name, index) => <span key={`${name}:${index}`} className="email-attachment-chip"><Icon name="paperclip" size={12} /><span>{name}</span></span>)}</div> : null}
               <div className="email-message-meta"><CellChip tone={message.direction === "inbound" ? "acc" : deliveryTone(message.delivery_status)}>{message.direction === "inbound" ? "Reply received" : message.delivery_status}</CellChip>{message.provider ? <span>{message.provider}</span> : null}{message.delivery_detail && ["failed", "blocked", "bounced", "complained"].includes(message.delivery_status) ? <span>{message.delivery_detail}</span> : null}
                 {/* Only on a failure, and only outbound. A delivered message
@@ -804,11 +842,12 @@ export function AIIntakeEmailWorkspace({
             </article>)}
           </div>
           {detail.data.thread.can_reply ? <div className="ai-intake-email-reply">
-            <Textarea rows={4} value={reply} disabled={directContactSuppressed} onChange={(event) => setReply(event.target.value)} placeholder="Reply by email…" aria-label="Email reply" />
+            <Textarea rows={4} value={reply} disabled={directContactSuppressed || sendReply.isPending} onPaste={replyImages.onPaste} onChange={(event) => setReply(event.target.value)} placeholder="Reply by email…" aria-label="Email reply" />
+            <MessageImagePicker draft={replyImages} disabled={directContactSuppressed || sendReply.isPending} />
             <EmailAttachmentPicker context="reply" options={evidenceAttachmentOptions} selected={replyAttachments} onChange={setReplyAttachments} disabled={directContactSuppressed} loading={attachmentOptions.isLoading} error={attachmentOptions.isError} />
             {sendReply.isError ? <Callout tone="bad">{sendReply.error instanceof Error ? sendReply.error.message : "Reply failed."}</Callout> : null}
             {retrySend.isError ? <Callout tone="bad">{retrySend.error instanceof Error ? retrySend.error.message : "That retry did not go through."}</Callout> : null}
-            <div className="row"><span className="sub">Replies sync here when the connected mailbox receives them.</span><span className="sp" /><Btn variant="pri" disabled={directContactSuppressed || sendReply.isPending || !reply.trim()} onClick={() => sendReply.mutate()}><Icon name="send" size={14} />{sendReply.isPending ? "Sending…" : "Send reply"}</Btn></div>
+            <div className="row"><span className="sub">Replies sync here when the connected mailbox receives them.</span><span className="sp" /><Btn variant="pri" disabled={directContactSuppressed || sendReply.isPending || (!reply.trim() && !replyImages.images.length)} onClick={() => sendReply.mutate()}><Icon name="send" size={14} />{sendReply.isPending ? "Sending…" : "Send reply"}</Btn></div>
           </div> : <Callout tone="mut">This thread belongs to {detail.data.thread.owner_name || detail.data.thread.owner_email || "another mailbox"}. Start a new email to reply from your mailbox.</Callout>}
         </> : null}
       </div> : <div className="empty">Choose an email thread or start a new email.</div>}

@@ -10,6 +10,8 @@ import { useAuthedApi } from "@/hooks/useApi";
 import type { UnifiedCommunicationThreadDetail } from "@/lib/communications";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
 import { useVisibleMessageReceipts } from "./useVisibleMessageReceipts";
+import { MessageImageDrafts, useMessageImages, useMessageImageCapabilities } from "./MessageImages";
+import { MESSAGE_IMAGE_ACCEPT, outgoingDeliveryWarning, smsImageDeliveryNotice } from "@/lib/messageImages";
 
 /** A new calendar day between two messages earns a divider, as in iMessage. */
 function dayBreak(previousIso: string | null, currentIso: string): boolean {
@@ -38,6 +40,10 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
   const qc = useQueryClient();
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
+  const [deliveryWarning, setDeliveryWarning] = useState("");
+  const images = useMessageImages(`thread:${threadId}`);
+  const activeThread = useRef(threadId);
+  activeThread.current = threadId;
   const scroller = useRef<HTMLDivElement | null>(null);
   const key = ["unified-communication-thread", threadId];
   const thread = useQuery({
@@ -46,16 +52,23 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
     ...LIVE_MESSAGE_QUERY_OPTIONS,
   });
   const readReceipt = useVisibleMessageReceipts(scroller, { unifiedThreadId: threadId }, (thread.data?.messages ?? []).filter((message) => message.direction === "inbound").map((message) => message.id), Boolean(thread.data && !thread.isError));
+  const isSms = thread.data?.thread.channel === "sms";
+  const supportsImages = isSms || thread.data?.thread.channel === "email";
+  const capabilities = useMessageImageCapabilities(Boolean(thread.data?.thread.can_reply && isSms));
+  const imageDeliveryBlocked = images.images.length > 0 && isSms && (!capabilities.data || capabilities.data.sms.image_delivery === "unavailable");
   const send = useMutation({
-    mutationFn: (body: string) => apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${threadId}/messages`, { method: "POST", body: JSON.stringify({ body }) }),
-    onSuccess: (data) => {
-      qc.setQueryData(key, data);
-      setDraft("");
-      setError("");
+    mutationFn: async ({ body, id }: { body: string; id: string }) => {
+      const image_ids = await images.flush(isSms ? capabilities.data?.sms.max_total_bytes : undefined);
+      return apiCall<UnifiedCommunicationThreadDetail>(`/communications/threads/${encodeURIComponent(id)}/messages`, { method: "POST", body: JSON.stringify({ body, image_ids }) });
+    },
+    onSuccess: (data, variables) => {
+      qc.setQueryData(["unified-communication-thread", variables.id], data);
+      if (variables.id === activeThread.current) { setDraft(""); setError(""); setDeliveryWarning(outgoingDeliveryWarning(data) || ""); images.reset(); }
       void qc.invalidateQueries({ queryKey: ["unified-communication-threads"] });
     },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "The message could not be sent."),
   });
+  useEffect(() => { setDraft(""); setError(""); setDeliveryWarning(""); }, [threadId]);
   useEffect(() => {
     if (!scroller.current) return;
     scroller.current.scrollTop = scroller.current.scrollHeight;
@@ -69,6 +82,7 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
         <div><b>{thread.data?.thread.source_label || "Conversation"}</b><span>{thread.data?.thread.participant_name || thread.data?.thread.participant_email || "File channel"}</span></div>
         {thread.data ? <><CellChip tone="acc">{thread.data.thread.channel.replaceAll("_", " ")}</CellChip><CellChip tone="mut">{thread.data.messages.length} messages</CellChip></> : null}
       </header>
+      {deliveryWarning ? <Callout tone="warn">{deliveryWarning}</Callout> : null}
       <div className="unified-thread-messages" ref={scroller}>
         {thread.isLoading ? <div className="empty"><span className="spinner solo" />Loading conversation...</div> : null}
         {thread.data && !thread.data.messages.length ? <div className="empty">{emptyLabel}</div> : null}
@@ -106,14 +120,21 @@ export function UnifiedThreadConversation({ threadId, emptyLabel = "No messages 
       <ChatComposer
         value={draft}
         onChange={setDraft}
-        onSend={() => send.mutate(draft.trim())}
+        onSend={() => send.mutate({ body: draft.trim(), id: threadId })}
         sending={send.isPending}
         disabled={!thread.data?.thread.can_reply}
+        sendDisabled={imageDeliveryBlocked}
+        onFiles={supportsImages ? images.add : undefined}
+        accept={MESSAGE_IMAGE_ACCEPT}
+        attachments={images.images.length || images.error ? <MessageImageDrafts draft={images} disabled={send.isPending} /> : undefined}
+        allowEmpty={images.images.length > 0}
         placeholder={thread.data?.thread.can_reply ? "Write a message..." : "This conversation is read-only"}
         sendLabel="Send message"
         error={error || null}
-        hint="Enter sends, Shift + Enter adds a line."
+        notice={images.images.length > 0 && isSms ? smsImageDeliveryNotice(capabilities.data) : undefined}
+        hint="Enter sends, Shift + Enter adds a line. Paste or attach an image."
       />
+      {images.images.length > 0 && isSms && capabilities.isError ? <Callout tone="warn">The SMS image provider could not be checked. <Btn size="sm" onClick={() => void capabilities.refetch()}>Retry provider check</Btn></Callout> : null}
     </div>
   );
 }

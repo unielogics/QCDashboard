@@ -1485,12 +1485,12 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   async function sendShareEmail(payload: { to_emails: string[]; cc_emails: string[]; subject: string; body: string }) {
     if (!detail || !emailShare) return { ok: false };
-    const res = await call<{ ok: boolean; sent: number; detail?: string | null }>(
+    const res = await call<{ ok: boolean; sent: number; detail?: string | null; delivery_warning?: string | null }>(
       `/buckets/admin/${detail.id}/shares/${emailShare.id}/email`,
       { method: "POST", body: JSON.stringify(payload) },
     );
     if (res.ok) setNotice(`Share access emailed to ${res.sent} recipient(s) from your Gmail.`);
-    return { ok: res.ok, detail: res.detail };
+    return { ok: res.ok, detail: res.detail, delivery_warning: res.delivery_warning };
   }
 
   function copyUploadLink(link: UploadLink) {

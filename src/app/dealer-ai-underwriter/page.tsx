@@ -1,5 +1,8 @@
 "use client";
 
+import { InlineImageStrip } from "@/components/InlineImages";
+import type { InlineImage } from "@/lib/inlineImages";
+
 import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "react";
 import { uploadFile } from "@/lib/fileUpload";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -133,6 +136,7 @@ type IntakeResponse = {
     id: string;
     role: "assistant" | "user" | string;
     content: string;
+    images?: InlineImage[];
     created_at: string;
     // "operator" when a person at the desk typed it. Null on borrower rows and
     // on rows written before the takeover work.
@@ -166,7 +170,7 @@ type SecureRoomHandoff = {
 };
 
 type WidgetType = Widget["type"];
-type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null };
+type ChatLine = { id: string; role: "assistant" | "user" | "operator"; content: string; authorName?: string | null; images?: InlineImage[] };
 type QueuedFile = {
   id: string;
   file: File;
@@ -214,11 +218,11 @@ const REVIEW_PROGRESS_STAGES: Array<{ key: ReviewProgressStage; label: string }>
 // so it gets its own chat-line role. sender_kind is the only reliable test --
 // author_name has two spellings and a signed-in borrower also carries a user_id.
 function chatLineFrom(message: NonNullable<IntakeResponse["messages"]>[number]): ChatLine {
-  if (message.role === "assistant") return { id: message.id, role: "assistant", content: message.content };
+  if (message.role === "assistant") return { id: message.id, role: "assistant", content: message.content, images: message.images };
   if (message.sender_kind === "operator") {
-    return { id: message.id, role: "operator", content: message.content, authorName: message.author_name };
+    return { id: message.id, role: "operator", content: message.content, authorName: message.author_name, images: message.images };
   }
-  return { id: message.id, role: "user", content: message.content };
+  return { id: message.id, role: "user", content: message.content, images: message.images };
 }
 
 // "Underwriter - Jonathan Franco" -> "JF". The desk attribution puts the
@@ -1430,7 +1434,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                           <div key={line.id} style={assistantRow}>
                             <div className="qc-public-intake-avatar qc-public-intake-avatar--assistant" style={assistantAvatar} aria-hidden>QC</div>
                             <div className="qc-public-intake-bubble qc-public-intake-bubble--assistant" style={assistantBubble}>
-                              {line.content}
+                              {line.content}<InlineImageStrip images={line.images} />
                               <IntakeChatActions actions={response.chat_actions ?? []} sourceMessageId={line.id} busyActionId={chatActionBusy} onAction={(action) => void executeChatAction(action)} />
                             </div>
                           </div>
@@ -1443,14 +1447,14 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                             <div className="qc-public-intake-avatar qc-public-intake-avatar--operator" style={operatorAvatar} aria-hidden>{deskInitials(line.authorName)}</div>
                             <div className="qc-public-intake-bubble qc-public-intake-bubble--operator" style={operatorBubble}>
                               <span style={operatorName}>{who}</span>
-                              {line.content}
+                              {line.content}<InlineImageStrip images={line.images} />
                             </div>
                           </div>
                         );
                       }
                       return (
                         <div key={line.id} className="qc-public-intake-bubble qc-public-intake-bubble--user" style={userBubble}>
-                          {line.content}
+                          {line.content}<InlineImageStrip images={line.images} />
                         </div>
                       );
                     })}

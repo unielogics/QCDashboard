@@ -49,13 +49,14 @@ export type UnifiedCommunicationMessage = {
   created_at: string;
   seen: boolean;
   delivery_status: string | null;
-  /** Pictures on this message. Today that means an MMS the client sent us. */
+  /** Authorized thumbnails for images received or attached to this message. */
   images?: InlineImage[];
 };
 
 export type UnifiedCommunicationThreadDetail = {
   thread: UnifiedCommunicationThread;
   messages: UnifiedCommunicationMessage[];
+  delivery_warning?: string | null;
 };
 
 export type UnifiedCommunicationThreadPage = {
@@ -105,4 +106,5 @@ export type UnifiedComposeResult = {
   ok: boolean;
   results: ComposeChannelResult[];
   thread_id: string | null;
+  delivery_warning?: string | null;
 };

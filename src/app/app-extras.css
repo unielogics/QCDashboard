@@ -7337,3 +7337,23 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .ev-lib-custom { display: grid; gap: 10px; }
 .ev-lib-item.added { cursor: default; border-style: dashed; background: var(--sunken2); }
 .ev-lib-item.added:hover { background: var(--sunken2); }
+
+/* Images staged for an outgoing SMS/email remain beside their own draft. */
+.unified-thread-chat { display: flex; flex-direction: column; }
+.unified-thread-chat-head { flex: 0 0 auto; }
+.unified-thread-messages { flex: 1 1 0; min-height: 0; }
+.unified-thread-chat > .chat-composer { flex: 0 0 auto; max-height: 65dvh; overflow-y: auto; }
+.unified-thread-chat .chat-composer-attachments { max-height: min(28dvh, 220px); overflow-y: auto; }
+.global-inbox-thread { display: flex; flex-direction: column; }
+.global-inbox-thread > .thread-back { flex: 0 0 auto; }
+.global-inbox-thread > .unified-thread-chat { flex: 1 1 0; height: auto; min-height: 0; }
+.message-image-picker { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.message-image-drafts { display: flex; flex-wrap: wrap; gap: 10px; width: 100%; padding: 4px 0; }
+.message-image-draft { position: relative; display: grid; gap: 4px; width: 144px; padding: 6px; border: 1px solid var(--line); border-radius: 9px; background: var(--surface); }
+.message-image-draft > a { display: block; line-height: 0; }
+.message-image-draft img, .message-image-placeholder { display: flex; align-items: center; justify-content: center; flex-direction: column; gap: 6px; width: 130px; height: 100px; object-fit: contain; border-radius: 5px; background: var(--sunken2); }
+.message-image-draft > span:not(.message-image-placeholder) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--ink2); }
+.message-image-draft > button { position: absolute; right: 3px; top: 3px; display: grid; place-items: center; width: 24px; height: 24px; border: 1px solid var(--line); border-radius: 50%; background: var(--surface); color: var(--ink); cursor: pointer; }
+.message-image-draft > button:disabled { opacity: .5; cursor: default; }
+.message-image-draft small { font-size: 10px; color: var(--muted); }
+.message-image-draft small[role="alert"] { color: var(--danger); }

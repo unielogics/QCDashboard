@@ -13,6 +13,7 @@
 import { CellChip, Empty, Panel, Sub, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import type { SmsMessageRow } from "@/hooks/useApi";
+import { InlineImageStrip } from "@/components/InlineImages";
 
 const STATUS_TONE: Record<SmsMessageRow["status"], ChipTone> = {
   delivered: "ok",
@@ -90,6 +91,7 @@ export function SmsThreadTab({
                   // The reason IS the content for a message that never went.
                   <span className="sub">{m.detail}</span>
                 ) : null}
+                <InlineImageStrip images={m.images} />
               </div>
               <span className="sub trunc" title={m.delivered_at ? `Delivered ${fmt(m.delivered_at)}` : undefined}>
                 {fmt(m.created_at)}

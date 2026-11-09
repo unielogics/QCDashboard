@@ -319,8 +319,9 @@ export default function LoanDetailPage() {
               subject: payload.subject,
               body: payload.body,
               cc_emails: payload.cc_emails,
+              image_ids: payload.image_ids,
             });
-            return { ok: res.ok, detail: res.detail };
+            return { ok: res.ok, detail: res.detail, delivery_warning: res.delivery_warning };
           }}
         />
       ) : null}
