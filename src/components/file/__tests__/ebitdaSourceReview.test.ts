@@ -14,7 +14,7 @@ describe("EBITDA source review", () => {
     expect(ebitdaSourceStatus(selection.sources[0], selection)).toContain("not in current baseline");
     expect(ebitdaSourceStatus(selection.sources[1], selection)).toBe("Personal return · excluded automatically");
     expect(ebitdaSourceStatus(selection.sources[2], selection)).toBe("Current EBITDA baseline");
-    expect(ebitdaSourceStatus(selection.sources[0], { ...selection, excluded_file_ids: ["2024"] })).toBe("Excluded from EBITDA by staff");
+    expect(ebitdaSourceStatus(selection.sources[0], { ...selection, excluded_file_ids: ["2024"] })).toBe("Historical comparison only · not in current baseline");
   });
   it("selects one business period without deleting older source records or converting losses", () => {
     const payload = ebitdaSourceWrite("profile", selection, draft());
@@ -24,6 +24,11 @@ describe("EBITDA source review", () => {
   });
   it("rejects personal, missing and excluded manual baselines", () => {
     for (const selectedFileId of ["personal", "missing", "2024"]) expect(() => ebitdaSourceWrite("profile", selection, { ...draft(), selectedFileId })).toThrow("eligible, included business source");
+  });
+  it("keeps the latest business period even when the older source is allowed and current is excluded", () => {
+    expect(() => ebitdaSourceWrite("profile", selection, { ...draft(), selectedFileId: "2024", excludedFileIds: [] })).toThrow("latest reporting period");
+    expect(ebitdaSourceDraft("profile", { ...selection, mode: "manual", selected_file_id: "2024" })).toMatchObject({ mode: "automatic", selectedFileId: "" });
+    expect(ebitdaSourceStatus(selection.sources[0], { ...selection, excluded_file_ids: ["2025"] })).toContain("Historical comparison only");
   });
   it("binds the request to the current profile and exact evidence revision", () => {
     expect(() => ebitdaSourceWrite("another-profile", selection, draft())).toThrow("another file");

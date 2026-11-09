@@ -765,7 +765,7 @@ export function FinancialCockpit(props: Props) {
       ) : null}
       <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
-          const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
+          const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "noi", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
           const valueLabel = entry.unit === "currency" && entry.currentValue != null ? metricAmountLabel(entry.currentValue, entry.currency, 0, false) : entry.valueLabel;
           const afterLabel = entry.unit === "currency" && entry.projection.value != null ? metricAmountLabel(entry.projection.value, entry.currency, 0, false) : entry.projection.valueLabel;
           const sub = ["deposits", "cash_flow", "average_balance", "nsf_overdrafts"].includes(entry.key) ? bankPeriod : entry.key === "ebitda" ? ebitda ? `${ebitda.kind === "tax_estimate" ? "Tax estimate" : "P&L"} · ${ebitda.period?.split(" (")[0] ?? "Period unconfirmed"}` : "No earnings source" : entry.subLabel;

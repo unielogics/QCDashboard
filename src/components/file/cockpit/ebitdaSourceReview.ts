@@ -2,11 +2,20 @@ import type { EbitdaSource, EbitdaSourceSelection, EbitdaSourceWrite } from "@/l
 
 export type EbitdaSourceDraft = { profileId: string; forecast: boolean; growth: string; margin: string; mode: "automatic" | "manual"; selectedFileId: string; excludedFileIds: string[]; reason: string; revision: number; sourceStamp: string; idempotencyKey: string };
 
+export function ebitdaBaselineEligible(source: EbitdaSource, selection: EbitdaSourceSelection) {
+  if (!source.eligible || source.comparative_only) return false;
+  if (source.baseline_eligible != null) return source.baseline_eligible;
+  const period = (row: EbitdaSource) => row.period_end || row.period?.match(/\b\d{4}\b/)?.[0] || "";
+  const latest = selection.sources.filter((row) => row.eligible).map(period).sort().at(-1);
+  return !!latest && period(source) === latest;
+}
 export function ebitdaSourceDraft(profileId: string, selection: EbitdaSourceSelection): EbitdaSourceDraft {
-  return { profileId, forecast: !!selection.forecast_assumptions, growth: selection.forecast_assumptions ? String(selection.forecast_assumptions.revenue_growth_pct) : "", margin: selection.forecast_assumptions?.ebitda_margin_pct != null ? String(selection.forecast_assumptions.ebitda_margin_pct) : "", mode: selection.mode, selectedFileId: selection.mode === "manual" ? selection.selected_file_id ?? "" : "", excludedFileIds: [...selection.excluded_file_ids], reason: "", revision: selection.revision, sourceStamp: selection.source_stamp, idempotencyKey: crypto.randomUUID() };
+  const manual = selection.mode === "manual" && selection.sources.some((source) => source.file_id === selection.selected_file_id && ebitdaBaselineEligible(source, selection));
+  return { profileId, forecast: !!selection.forecast_assumptions, growth: selection.forecast_assumptions ? String(selection.forecast_assumptions.revenue_growth_pct) : "", margin: selection.forecast_assumptions?.ebitda_margin_pct != null ? String(selection.forecast_assumptions.ebitda_margin_pct) : "", mode: manual ? "manual" : "automatic", selectedFileId: manual ? selection.selected_file_id ?? "" : "", excludedFileIds: [...selection.excluded_file_ids], reason: "", revision: selection.revision, sourceStamp: selection.source_stamp, idempotencyKey: crypto.randomUUID() };
 }
 export function ebitdaSourceStatus(source: EbitdaSource, selection?: EbitdaSourceSelection) {
   if (!source.eligible) return source.kind === "personal_tax_return" ? "Personal return · excluded automatically" : "Not eligible for business EBITDA";
+  if (source.comparative_only || selection && !ebitdaBaselineEligible(source, selection)) return "Historical comparison only · not in current baseline";
   if (selection?.excluded_file_ids.includes(source.file_id)) return "Excluded from EBITDA by staff";
   if (source.selected) return "Current EBITDA baseline";
   return "Available business source · not in current baseline";
@@ -18,7 +27,7 @@ export function ebitdaSourceWrite(profileId: string, selection: EbitdaSourceSele
   if (draft.profileId !== profileId) throw new Error("This source selection belongs to another file. Reopen it on the current file.");
   if (ebitdaSourceDraftStale(draft, selection)) throw new Error("Financial sources changed. Reload the latest source selection before saving.");
   const eligible = new Set(selection.sources.filter((source) => source.eligible).map((source) => source.file_id));
-  if (draft.mode === "manual" && (!eligible.has(draft.selectedFileId) || draft.excludedFileIds.includes(draft.selectedFileId))) throw new Error("Choose an eligible, included business source for the EBITDA baseline.");
+  if (draft.mode === "manual" && (!selection.sources.some((source) => source.file_id === draft.selectedFileId && ebitdaBaselineEligible(source, selection)) || draft.excludedFileIds.includes(draft.selectedFileId))) throw new Error("Choose an eligible, included business source from the latest reporting period for the EBITDA baseline.");
   if (draft.reason.trim().length < 8) throw new Error("Explain the reviewed source selection in at least eight characters.");
   const growth = Number(draft.growth), margin = draft.margin.trim() ? Number(draft.margin) : null;
   if (draft.forecast && (!draft.growth.trim() || !Number.isFinite(growth) || growth < -100 || growth > 1000 || margin != null && (!Number.isFinite(margin) || margin < -1000 || margin > 100))) throw new Error("Enter reviewed revenue growth between -100% and 1,000%, and an EBITDA margin between -1,000% and 100% if supplied.");
