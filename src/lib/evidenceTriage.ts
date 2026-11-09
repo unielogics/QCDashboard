@@ -227,6 +227,7 @@ export function triageRequirement(requirement: TriageInput, extra?: TriageExtra)
   }
 
   if (!files.length) {
+    if (status === "received_unverified") return { group: "you", kind: "review", label: "Needs your review", tone: "warn", owner: "you", progress: progressOf(readCoverage(requirement.coverage)), short: "Information received · needs team review", next: sentence(requirement.state_reason) || "Information has been received. Your team needs to review it before this requirement can be completed." };
     const asked = askedOn(requirement.last_requested_at);
     if (status === "requested") {
       return {

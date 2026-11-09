@@ -25,7 +25,7 @@ function BorrowerTask({ task, save, openForm, busy }: { task: CollectionTask; sa
   const [reason, setReason] = useState("");
   const actionable = collectionTaskNeedsAnswer(task);
   const formUrl = safeFormUrl(task.config.form_url);
-  return <article className={task.status === "completed" ? "complete" : "needed"} style={{ display: "block" }}>
+  return <article className={task.status === "completed" ? "complete" : task.assignee === "internal" || task.status === "in_review" ? "checking" : "needed"} style={{ display: "block" }}>
     <div style={{ display: "flex", justifyContent: "space-between", gap: 16 }}><b>{task.label}</b><span className="application-room-task-state">{collectionTaskStatus(task)}</span></div>
     {task.description ? <p>{task.description}</p> : null}
     {task.state_reason && ["unavailable", "in_review", "escalated"].includes(task.status) ? <p>{task.state_reason}</p> : null}
