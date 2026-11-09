@@ -31,7 +31,8 @@ import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, typ
 import { readPublicIntakeAttribution, type PublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { readIntakeToken, rememberIntakeToken } from "@/lib/intakeSession";
 import { validPhone } from "@/lib/formCoerce";
-import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
+import { DESCRIPTION_MAX, emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { onboardingCopy } from "@/lib/onboardingCopy";
 import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import { clientMcaRequestedDocumentLayout, clientRequestedDocumentNeedsAction, clientRequestedDocumentReviewState, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
@@ -726,7 +727,7 @@ export default function McaRefinanceIntakePage() {
   const [, setToken] = useState<string>("");
 
   // Start screen
-  const [startForm, setStartForm] = useState({ full_name: "", business_name: "", email: "", phone: "", business_website: "", business_description: "" });
+  const [startForm, setStartForm] = useState({ ...emptyBusinessProfile(), full_name: "", business_name: "", email: "", phone: "", business_website: "", business_description: "" });
   const [legalAccepted, setLegalAccepted] = useState(false);
   const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [startBusy, setStartBusy] = useState(false);
@@ -1010,8 +1011,8 @@ export default function McaRefinanceIntakePage() {
       setStartError(c.errPhoneIncomplete);
       return;
     }
-    const profileProblem = businessProfileProblem(
-      { website: startForm.business_website, description: startForm.business_description },
+    const profileProblem = newBusinessProfileProblem(
+      startForm,
       language ?? "en",
     );
     if (profileProblem) {
@@ -1049,7 +1050,7 @@ export default function McaRefinanceIntakePage() {
       terms_accepted: true,
       privacy_accepted: true,
       ...smsChoicesBody(sms),
-      ...businessProfileBody({ website: startForm.business_website, description: startForm.business_description }),
+      ...newBusinessProfileBody(startForm),
       preferred_language: language ?? "en",
       phone: startForm.phone.trim(),
       ...attributionRef.current,
@@ -1627,6 +1628,7 @@ export default function McaRefinanceIntakePage() {
               required
             />
           </div>
+          <BusinessProfileFields value={startForm} onChange={(patch) => setStartForm((current) => ({ ...current, ...patch }))} language={language ?? "en"} includeWebsiteDescription={false} />
           <h3 className="vm-grp-t">{c.qualificationTitle}</h3>
           <p className="vm-sub">{c.qualificationIntro}</p>
           <div className="vm-fg2">
@@ -2241,7 +2243,7 @@ function TextArea({
       <textarea
         className="vm-in"
         rows={3}
-        maxLength={600}
+        maxLength={DESCRIPTION_MAX}
         required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}

@@ -5,7 +5,9 @@ import { useRef, useState } from "react";
 import { Btn, Callout, cx, Field, IconBtn, Input, Select, StatusLine } from "@/components/ds";
 import { Drawer, DrawerSteps } from "@/components/ds/Drawer";
 import { AddressInput, formatAddressParts } from "@/components/property/GoogleAddressInput";
-import { LENDING_INTENTS, MAIN_STREET_INDUSTRIES, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
+import { LENDING_INTENTS, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { Icon } from "@/components/design-system/Icon";
 import { validPhone } from "@/lib/formCoerce";
 import { CreateLeadPayload, LeadDetail, LeadVariant, formatSize, variantLabel } from "./leadFile";
@@ -20,7 +22,7 @@ export function CreateLeadModal({
   creating: boolean;
 }) {
   const [variant, setVariant] = useState<LeadVariant>("dealer");
-  const [industry, setIndustry] = useState<string>("other");
+  const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [intent, setIntent] = useState<string>("working_capital");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
@@ -53,6 +55,8 @@ export function CreateLeadModal({
     if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
     if (!phone.trim()) { setError("A client mobile number is required."); return; }
     if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
+    const profileProblem = newBusinessProfileProblem(businessProfile);
+    if (profileProblem) { setError(profileProblem); setStep(2); return; }
     setError("");
     const result = await onCreate({
       variant,
@@ -67,7 +71,7 @@ export function CreateLeadModal({
       estimated_value_or_purchase_price: isRE ? num(propertyValue) : undefined,
       monthly_rent: isRE ? num(monthlyRent) : undefined,
       estimated_credit_tier: isRE ? (creditTier.trim() || undefined) : undefined,
-      industry: isMS ? industry : undefined,
+      ...newBusinessProfileBody(businessProfile),
       intent: isMS ? intent : undefined,
       notify_client: notifyClient,
       preferred_language: preferredLanguage,
@@ -78,7 +82,7 @@ export function CreateLeadModal({
 
   function next() {
     if (step === 1) {
-      if (variant === "main_street" && (!industry || !intent)) { setError("Choose an industry and funding need."); return; }
+      if (variant === "main_street" && !intent) { setError("Choose a funding need."); return; }
       if (!/^\d{6}$/.test(roomPin)) { setError("Create a six-digit room PIN."); return; }
       if (roomPin !== roomPinConfirm) { setError("The room PIN entries do not match."); return; }
       setError(""); setStep(2); return;
@@ -89,6 +93,8 @@ export function CreateLeadModal({
       if (!phone.trim()) { setError("A client mobile number is required."); return; }
       if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
       if (!isRE && !businessName.trim()) { setError("Legal business name is required."); return; }
+      const profileProblem = newBusinessProfileProblem(businessProfile);
+      if (profileProblem) { setError(profileProblem); return; }
       setError(""); setStep(3); return;
     }
     if (step === 3) { setError(""); setStep(4); return; }
@@ -144,13 +150,6 @@ export function CreateLeadModal({
         <div className="fldgrid two"><Field label="Lead type"><Select value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street (operating business)</option><option value="mca_refinance">MCA refinance</option></Select></Field><Field label="Preferred language"><Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}><option value="en">English</option><option value="es">Spanish</option></Select></Field></div>
       {isMS ? (
         <div className="fldgrid two">
-          <Field label="Industry *">
-            <Select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-              {MAIN_STREET_INDUSTRIES.map((i) => (
-                <option key={i.slug} value={i.slug}>{i.label}</option>
-              ))}
-            </Select>
-          </Field>
           <Field label="What they need *">
             <Select value={intent} onChange={(e) => setIntent(e.target.value)}>
               {MAIN_STREET_INTENTS.map((i) => (
@@ -174,6 +173,7 @@ export function CreateLeadModal({
       {step === 2 ? <>
         <p className="sub">The client and legal entity anchor ownership, private credit links, bank evidence, and the secure room.</p>
         <div className="fldgrid two"><Field label="Client full name *"><Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" /></Field><Field label="Personal email *"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" /></Field><Field label="Personal mobile *"><Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(973) 555-0148" /></Field>{!isRE ? <Field label="Legal business name *"><Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Business LLC" /></Field> : <Field label="Investor / entity name"><Input value={investorName} onChange={(e) => setInvestorName(e.target.value)} placeholder="Holdings LLC" /></Field>}</div>
+        <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} />
       </> : null}
 
       {step === 3 && isRE ? (

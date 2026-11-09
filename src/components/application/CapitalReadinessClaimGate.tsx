@@ -3,13 +3,13 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Btn, Field, Input, PageHeader, Panel, StatusLine, Textarea } from "@/components/ds";
+import { Btn, Field, Input, PageHeader, Panel, StatusLine } from "@/components/ds";
 import { useAuthedApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
 import type { User } from "@/lib/types";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
-import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
-import { onboardingCopy } from "@/lib/onboardingCopy";
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import {
   clearPendingCapitalReadinessHandoff,
@@ -36,8 +36,7 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [consented, setConsented] = useState(false);
-  const [website, setWebsite] = useState("");
-  const [description, setDescription] = useState("");
+  const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +50,8 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
 
   if (!checked || !pending) return null;
   const es = pending.locale === "es";
-  const onb = onboardingCopy(pending.locale);
   const normalizedPhone = normalizePhone(phone);
-  const profileProblem = businessProfileProblem({ website, description }, pending.locale);
+  const profileProblem = newBusinessProfileProblem(businessProfile, pending.locale);
   const canSubmit = businessName.trim().length > 1 && normalizedPhone !== null && profileProblem === null && consented && !busy;
 
   async function claim() {
@@ -76,7 +74,7 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
           business_name: businessName.trim(),
           phone: normalizedPhone,
           full_name: user.name?.trim() || undefined,
-          ...businessProfileBody({ website, description }),
+          ...newBusinessProfileBody(businessProfile),
           terms_accepted: true,
           privacy_accepted: true,
           ...smsChoicesBody(sms),
@@ -119,13 +117,8 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
             <Field label={es ? "Teléfono de contacto" : "Contact phone"} hint={es ? "QC puede usar este número para comunicarse sobre este expediente." : "QC may use this number to contact you about this file."} req>
               <Input value={phone} type="tel" inputMode="tel" autoComplete="tel" onChange={(event) => setPhone(event.target.value)} />
             </Field>
-            <Field label={onb.fieldWebsite} hint={onb.fieldWebsiteHint} req>
-              <Input value={website} inputMode="url" autoComplete="url" placeholder={onb.fieldWebsitePlaceholder} onChange={(event) => setWebsite(event.target.value)} />
-            </Field>
-            <Field label={onb.fieldDescription} hint={onb.fieldDescriptionHint} req>
-              <Textarea value={description} rows={3} maxLength={600} placeholder={onb.fieldDescriptionPlaceholder} onChange={(event) => setDescription(event.target.value)} />
-            </Field>
-            {profileProblem && (website.trim() || description.trim()) ? <StatusLine tone="warn">{profileProblem}</StatusLine> : null}
+            <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} language={pending.locale} />
+            {profileProblem && Object.values(businessProfile).some((value) => value.trim()) ? <StatusLine tone="warn">{profileProblem}</StatusLine> : null}
             <OnboardingConsent
               language={pending.locale}
               legalAccepted={consented}

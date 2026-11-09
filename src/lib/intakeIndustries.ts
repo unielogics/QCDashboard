@@ -28,6 +28,22 @@ export const MAIN_STREET_INDUSTRIES = [
 
 export type MainStreetIndustry = (typeof MAIN_STREET_INDUSTRIES)[number]["slug"];
 
+const INDUSTRIES_ES: Record<MainStreetIndustry, string> = {
+  restaurant_food_service: "Restaurantes y servicios de comida",
+  auto_service: "Talleres mecánicos y servicios automotrices",
+  grocery_commodities: "Alimentos, productos agrícolas y materias primas",
+  trucking_logistics: "Transporte de carga y logística",
+  manufacturing: "Manufactura y fabricación",
+  retail_ecommerce: "Comercio minorista y comercio electrónico",
+  construction_trades: "Construcción y oficios",
+  professional_practice: "Servicios profesionales y médicos",
+  other: "Otro negocio operativo",
+};
+
+export const industryOptions = (language: "en" | "es" = "en") => MAIN_STREET_INDUSTRIES.map((item) => ({
+  value: item.slug, label: language === "es" ? INDUSTRIES_ES[item.slug] : item.label,
+}));
+
 /**
  * What brought the business here.
  *

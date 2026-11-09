@@ -1,5 +1,9 @@
-// The two answers every AI application asks for on its first screen: the
-// business's website (or "N/A") and a short description of what it does.
+import { MAIN_STREET_INDUSTRIES } from "@/lib/intakeIndustries";
+import { US_STATES } from "@/lib/usStates";
+
+// New applications collect the business location, an explicitly selected
+// industry, website (or "N/A"), and a description for industry classification.
+// The older two-answer helpers remain available for historical/partial edits.
 //
 // The website rule mirrors qcbackend `app/services/business_profile.py`, which
 // is the authority: it normalises what is sent and refuses what is not a web
@@ -9,7 +13,12 @@
 export type Lang = "en" | "es";
 
 export const DESCRIPTION_MIN = 10;
-export const DESCRIPTION_MAX = 600;
+export const DESCRIPTION_MAX = 1000;
+
+// Address capture follows backend clean_address. A valid mailing state/code
+// does not establish geographic eligibility for a particular lending program.
+export const BUSINESS_STATES = [...US_STATES, ...["AS", "GU", "MP", "PR", "VI", "AA", "AE", "AP"].map((code) => ({ code, name: code }))];
+export const BUSINESS_STATE_CODES = new Set(BUSINESS_STATES.map((state) => state.code));
 
 const NONE_WORDS = new Set([
   "n/a", "na", "n.a", "n a", "none", "no", "nope", "not applicable", "no website", "no site", "none yet", "-", "--",
@@ -80,5 +89,64 @@ export function businessProfileBody(answers: { website: string; description: str
   return {
     business_website: squash(answers.website),
     business_description: squash(answers.description),
+  };
+}
+
+export interface NewBusinessProfile {
+  business_street: string;
+  business_city: string;
+  business_state: string;
+  business_zip: string;
+  industry: string;
+  business_website: string;
+  business_description: string;
+}
+
+export const emptyBusinessProfile = (): NewBusinessProfile => ({
+  business_street: "", business_city: "", business_state: "", business_zip: "",
+  industry: "", business_website: "", business_description: "",
+});
+
+export type BusinessProfileField = "street" | "city" | "state" | "zip" | "industry" | "website" | "description";
+
+/** Validate one explicit answer. Partial editors may omit untouched fields. */
+export function businessProfileFieldProblem(field: BusinessProfileField, raw: string, language: Lang = "en"): string | null {
+  const value = squash(raw);
+  const es = language === "es";
+  switch (field) {
+    case "street": return !value || value.length > 255 ? (es ? "Escriba la dirección del negocio (máximo 255 caracteres)." : "Enter the business street address (up to 255 characters).") : null;
+    case "city": return !value || value.length > 120 ? (es ? "Escriba la ciudad del negocio (máximo 120 caracteres)." : "Enter the business city (up to 120 characters).") : null;
+    case "state": return !BUSINESS_STATE_CODES.has(value.toUpperCase()) ? (es ? "Seleccione el estado del negocio." : "Select the business state.") : null;
+    case "zip": return !/^\d{5}(?:-\d{4})?$/.test(value) ? (es ? "Escriba un código postal de 5 dígitos o ZIP+4." : "Enter a 5-digit ZIP code or ZIP+4.") : null;
+    case "industry": return !MAIN_STREET_INDUSTRIES.some((item) => item.slug === value) ? (es ? "Seleccione la industria del negocio." : "Select the business industry.") : null;
+    case "website": {
+      const website = readWebsite(raw);
+      return website.kind === "blank" ? MESSAGES[language].websiteRequired : website.kind === "invalid" ? MESSAGES[language].website : null;
+    }
+    case "description": return !value ? MESSAGES[language].descriptionRequired : value.length < DESCRIPTION_MIN ? MESSAGES[language].description : value.length > DESCRIPTION_MAX ? (es ? `Limite la descripción a ${DESCRIPTION_MAX} caracteres.` : `Keep the business description within ${DESCRIPTION_MAX} characters.`) : null;
+  }
+}
+
+/** Required only for NEW intake creation; never apply to historical reads. */
+export function newBusinessProfileProblem(answers: NewBusinessProfile, language: Lang = "en"): string | null {
+  const fields: [BusinessProfileField, string][] = [
+    ["street", answers.business_street], ["city", answers.business_city],
+    ["state", answers.business_state], ["zip", answers.business_zip],
+    ["industry", answers.industry], ["website", answers.business_website],
+    ["description", answers.business_description],
+  ];
+  for (const [field, value] of fields) {
+    const problem = businessProfileFieldProblem(field, value, language);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+export function newBusinessProfileBody(answers: NewBusinessProfile): NewBusinessProfile {
+  return {
+    business_street: squash(answers.business_street), business_city: squash(answers.business_city),
+    business_state: squash(answers.business_state).toUpperCase(), business_zip: squash(answers.business_zip),
+    industry: squash(answers.industry),
+    ...businessProfileBody({ website: answers.business_website, description: answers.business_description }),
   };
 }

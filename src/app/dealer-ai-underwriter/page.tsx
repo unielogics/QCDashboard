@@ -28,7 +28,8 @@ import {
 } from "@/lib/publicIntakeConversion";
 import { readCapitalReadinessHandoffFragment, toCapitalReadinessIntakePrefill, type CapitalReadinessDiagnosticHandoff } from "@/lib/capitalReadinessHandoff";
 import { validPhone } from "@/lib/formCoerce";
-import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { onboardingCopy } from "@/lib/onboardingCopy";
 import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import { metricProvenance } from "@/lib/intake";
@@ -241,7 +242,7 @@ function useCompactViewport() {
   return compact;
 }
 
-const initialContact = { full_name: "", email: "", phone: "", business_name: "", business_website: "", business_description: "" };
+const initialContact = { ...emptyBusinessProfile(), full_name: "", email: "", phone: "", business_name: "", business_website: "", business_description: "" };
 
 type IntakeExperience = "dealer" | "equipment";
 type EquipmentDetailsForm = {
@@ -556,8 +557,8 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
       setStatus(c.errPhoneIncomplete);
       return;
     }
-    const profileProblem = businessProfileProblem(
-      { website: contact.business_website, description: contact.business_description },
+    const profileProblem = newBusinessProfileProblem(
+      contact,
       language ?? "en",
     );
     if (profileProblem) {
@@ -595,7 +596,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
           email: contact.email.trim(),
           phone: contact.phone.trim(),
           business_name: contact.business_name.trim() || null,
-          ...businessProfileBody({ website: contact.business_website, description: contact.business_description }),
+          ...newBusinessProfileBody(contact),
           terms_accepted: true,
           privacy_accepted: true,
           ...smsChoicesBody(sms),
@@ -1654,6 +1655,7 @@ function ContactWidget({
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} required={equipmentDetails !== null} />
       </div>
+      <BusinessProfileFields value={contact} onChange={(patch) => setContact({ ...contact, ...patch })} language={language} includeWebsiteDescription={false} />
       <Field label={onb.fieldWebsite} value={contact.business_website} onChange={(value) => setContact({ ...contact, business_website: value })} placeholder={onb.fieldWebsitePlaceholder} inputMode="url" required />
       <div style={fieldHint}>{onb.fieldWebsiteHint}</div>
       <TextAreaField label={onb.fieldDescription} value={contact.business_description} onChange={(value) => setContact({ ...contact, business_description: value })} placeholder={onb.fieldDescriptionPlaceholder} required />
