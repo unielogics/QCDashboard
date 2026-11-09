@@ -45,4 +45,11 @@ describe("linked owner credit receipt", () => {
     const html = render("pull-a", proposed);
     expect(html).toContain("Equifax · FICO 9: 720"); expect(html).not.toContain("Required Equifax FICO 9:");
   });
+  it("never presents an identity-provider proxy value as a bureau score, while preserving a real source score", () => {
+    const proxy = { ...credit, staff_review_reasons: ["A verified bureau report is needed"], owners: [{ ...credit.owners[0], score: 720, score_verified: false, fico_source: "intelligence-proxy", score_models: [{ model: "Identity check score", score: 720 }] }] };
+    const html = render("pull-a", proxy);
+    expect(html).toContain("Bureau score unavailable · provider identity check only"); expect(html).not.toContain("720"); expect(html).not.toContain("Identity check score");
+    const actual = { ...credit, owners: [{ ...credit.owners[0], score: 650, score_verified: true, fico_source: "bureau-report", score_models: [{ model: "FICO 4", bureau: "TransUnion", score: 650 }] }] };
+    expect(render("pull-a", actual)).toContain("TransUnion · FICO 4: 650");
+  });
 });
