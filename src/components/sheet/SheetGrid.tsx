@@ -652,7 +652,7 @@ export function SheetGrid({
       ref={wrapRef}
       onPointerOver={notes.onPointerOver}
       onPointerOut={notes.onPointerOut}
-      onFocus={notes.onFocus}
+      onFocus={(event) => { if (!dragging.current) notes.onFocus(event); }}
       onBlur={notes.onBlur}
       onKeyDown={onKeyDown}
       onCopy={onCopy}
