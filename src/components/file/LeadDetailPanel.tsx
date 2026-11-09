@@ -59,6 +59,7 @@ import { PIPELINE_LIFECYCLE, underwritingStatusLabel, type PipelineMoveRequest, 
 import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 import { pipelineApprovalDraft, validatePipelineApprovalDraft, type PipelineApprovalDraft } from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
+import { creditStepProgress } from "@/lib/creditStepSync";
 import { calculateDealEarnings, parseDealEconomicsDraft } from "@/lib/dealEconomics";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
@@ -1686,8 +1687,9 @@ export function LeadDetailPanel({
   const reviewComplete = !mcaAutoReviewBlocked && (detail?.latest_review?.status === "completed" || detail?.intake.status === "reviewed");
   const reviewActive = !mcaAutoReviewBlocked && Boolean(detail && (rerunning || ["queued", "running"].includes(detail.latest_review?.status || "")));
   const sentCount = detail?.email_sends?.filter((send) => !send.ses_error).length ?? 0;
+  const ownerCreditProgress = creditStepProgress(profileVerification, programReadiness);
   const workflowSteps: Array<{ id: number; label: string; sub: string; status: "not-started" | "partial" | "complete" }> = [
-    { id: 1, label: "Ownership & credit", sub: "Identity, allocation and owner reports", status: profileVerification?.ready_for_step_2 && profileVerification?.owner_credit_complete ? "complete" : profileVerification?.owner_count ? "partial" : "not-started" },
+    { id: 1, label: "Ownership & credit", sub: ownerCreditProgress.sub, status: ownerCreditProgress.status },
     { id: 2, label: "Evidence & banking", sub: "Files, forms, AI decisions and bank coverage", status: evidenceAndBankingComplete ? "complete" : hasEvidence || hasBankingActivity ? "partial" : "not-started" },
     { id: 4, label: mcaAutoReviewBlocked ? mcaReview?.mode === "manual_review" ? "Manual desk review" : "Confirm MCA details" : "AI review", sub: mcaAutoReviewBlocked ? "Accepted application; automatic underwriting disabled" : "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
   ];
@@ -1816,7 +1818,7 @@ export function LeadDetailPanel({
             ) : null}
 
             <main className="grid intake-file-primary">
-              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} /> : null}
+              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} programReadiness={programReadiness} programReadinessLoading={underwritingLoading} onProgramReadinessChange={setProgramReadiness} onRefreshProgramReadiness={refreshProgramReadiness} onOpenPrograms={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 profileId ? <ApplicationEvidenceWorkspace
                   profileId={profileId}

@@ -543,6 +543,8 @@ export type FileOwner = {
   credit_pulled_at: string | null;
   credit_required: boolean;
   credit_complete: boolean;
+  credit_collection_status?: "collected" | "missing" | "processing" | "needs_review" | "stale";
+  credit_collection_reason?: string | null;
   credit_contact_complete: boolean;
   // How the owner's credit was linked (services/credit_links.py): the pull
   // behind the step, where its number came from, and the words to show when
