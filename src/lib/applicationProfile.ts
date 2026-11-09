@@ -197,6 +197,7 @@ export type UnlockedCopyRequestResult = UnlockedCopyRequestState & {
 };
 
 export type ApplicationRequirementEvidence = {
+  identity_association?: import("./documentAssociation").DocumentAssociation | null;
   file_id: string;
   file_name: string;
   bucket_id: string;
@@ -227,6 +228,7 @@ export type ApplicationRequirementEvidence = {
 };
 
 export type ApplicationBankEvidenceFile = {
+  identity_association?: import("./documentAssociation").DocumentAssociation | null;
   file_id: string;
   file_name: string;
   bucket_id: string;
@@ -700,6 +702,7 @@ export type ApplicationBankState = {
 };
 
 export type EvidenceWorkspaceFile = import("./documentVersions").DocumentVersionMetadata & {
+  identity_association?: import("./documentAssociation").DocumentAssociation | null;
   id: string;
   source_id: string;
   bucket_id: string;

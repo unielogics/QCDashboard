@@ -168,6 +168,7 @@ export function ApplicationEvidenceWorkspace({
   const [selectedRequirementKey, setSelectedRequirementKey] = useState<string | null>(null);
   const [action, setAction] = useState<ReviewAction | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
+  const [identityPending, setIdentityPending] = useState(false);
   const [requestingUnlockedCopyFileId, setRequestingUnlockedCopyFileId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [groupFocus, setGroupFocus] = useState<{ group: TriageGroup; requestId: number } | null>(null);
@@ -328,13 +329,15 @@ export function ApplicationEvidenceWorkspace({
   }, [apiCall, profileId, setReadinessAndRefresh]);
 
   const openEvidenceFile = useCallback((fileId: string, requirementKey?: string, page?: number, expectedContentHash?: string) => {
+    if (identityPending) return;
     setSelectedFileId(fileId);
     setSelectedRequirementKey(requirementKey ?? null);
     setSelectedPreviewPage(validPdfSourcePage(page) ?? undefined);
-    setSelectedPreviewHash(expectedContentHash);
+    const identity = files.find((file) => file.id === fileId)?.identity_association ?? requirements.flatMap((requirement) => requirement.evidence_files).find((file) => file.file_id === fileId)?.identity_association;
+    setSelectedPreviewHash(expectedContentHash ?? identity?.content_hash ?? undefined);
     setPreviewRequestId((current) => current + 1);
     setAction(null);
-  }, []);
+  }, [identityPending, files, requirements]);
 
   const startAction = useCallback((kind: ReviewActionKind) => {
     const requirement = currentAssignment;
@@ -653,9 +656,9 @@ export function ApplicationEvidenceWorkspace({
       reviewKey={`${selectedFile.id}:${selectedPreviewHash || ""}`}
       loadReview={loadSelectedReview}
       annotationsEnabled={false}
-      onClose={() => { setSelectedFileId(null); setSelectedRequirementKey(null); setSelectedPreviewPage(undefined); setSelectedPreviewHash(undefined); setAction(null); }}
+      onClose={() => { if (identityPending) return; setSelectedFileId(null); setSelectedRequirementKey(null); setSelectedPreviewPage(undefined); setSelectedPreviewHash(undefined); setAction(null); }}
       reviewContext={<>
-        {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} detail /> : null}
+        {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} detail review={{ profileId, fileId: selectedFile.id, canEdit: canAddRequirements, expectedContentHash: selectedPreviewHash, requirePreviewBinding: true, initialRecord: currentDecision?.identity_association ?? selectedFile.identity_association, onSaved: refresh, onPending: setIdentityPending, externallyBusy: identityPending }} /> : null}
         {currentDecision?.usability_status ? <div className="row g8"><CellChip tone={currentDecision.usability_status === "usable" ? "ok" : "warn"}>{evidenceUsabilityLabel(currentDecision.usability_status)}</CellChip>{currentDecision.document_type_candidates?.length ? <Sub>{currentDecision.document_type_candidates.map((candidate) => candidate.classification.replaceAll("_", " ")).join(" · ")}</Sub> : null}</div> : null}
         <div><b>{currentAssignment?.label || "Supporting / Other"}</b>{assignments.length > 1 ? <Select aria-label="Evidence requirement decision" value={currentAssignment?.requirement_key || ""} onChange={(event) => { setSelectedRequirementKey(event.target.value); setAction(null); }}>{assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}{decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}</option>; })}</Select> : null}<Sub>{currentDecision ? `${evidenceActorLabel(currentDecision.decision_actor)}${currentDecision.ai_confidence ? ` · ${currentDecision.ai_confidence} confidence` : ""}${currentDecision.verified ? " · Human verified" : ""}` : `${evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)} · This file is not assigned to a requirement.`}</Sub></div>
         {selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot review its contents.</span><small>This file cannot satisfy {currentAssignment?.label || "an evidence requirement"} until an unlocked replacement is uploaded.</small></div></Callout> : currentDecision ? <EvidenceReviewDetails file={{ ...currentDecision, detected_classification: currentDecision.detected_classification ?? selectedFile.analysis_classification, analysis_confidence: currentDecision.analysis_confidence ?? selectedFile.analysis_confidence }} requirementLabel={currentAssignment?.label || "Supporting / Other"} isDebtSchedule={Boolean(currentAssignment && formKindsOf(currentAssignment).includes("debt_schedule"))} expanded /> : null}

@@ -1,0 +1,18 @@
+.review { min-width: 0; width: 100%; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.toggle { width: 100%; display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 9px 11px; border: 0; background: transparent; color: var(--accent); font: inherit; text-align: left; cursor: pointer; }
+.toggle > span:first-child { flex: 1; font-weight: 650; }
+.body { padding: 0 12px 12px; display: grid; gap: 11px; min-width: 0; max-height: min(42dvh, 340px); overflow: auto; overscroll-behavior: contain; }
+.body[hidden] { display: none; }
+.body p { margin: 0; font-size: 12px; line-height: 1.6; }
+.facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 0; }
+.facts div { min-width: 0; display: grid; gap: 3px; }
+.facts dt { color: var(--muted); font-size: 11px; }
+.facts dd { margin: 0; font-size: 12px; overflow-wrap: anywhere; }
+.choices { display: grid; gap: 6px; border: 1px solid var(--line); padding: 10px; border-radius: 7px; min-width: 0; }
+.choices legend { padding: 0 4px; font-size: 12px; font-weight: 650; }
+.choices label { display: flex; align-items: start; gap: 7px; font-size: 12px; }
+.reason { display: grid; gap: 5px; min-width: 0; font-size: 12px; }
+.reason textarea { width: 100%; min-width: 0; }
+.actions { display: flex; gap: 7px; flex-wrap: wrap; }
+.history { padding-left: 18px; margin: 8px 0 0; display: grid; gap: 8px; font-size: 12px; line-height: 1.6; }
+@media (max-width: 550px) { .facts { grid-template-columns: minmax(0, 1fr); } }

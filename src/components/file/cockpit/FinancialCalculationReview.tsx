@@ -4,6 +4,7 @@ import { useRef, useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, Input, Textarea } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
+import { DocumentIdentityReview } from "@/components/application/DocumentIdentityReview";
 import { useAuthedApi, useDevUser } from "@/hooks/useApi";
 import { multiple, type FinancialCockpit } from "@/lib/financialCockpit";
 import { metricAmountLabel, metricCurrency, metricDraftIsStale, metricDraftValue, metricInputCurrency, metricInputProvenance, readFinancialMetrics, saveFinancialMetricCorrection, type FinancialMetricReview, type MetricCorrection, type MetricCorrectionDraft, type MetricInput, type MetricSourceRef } from "@/lib/financialMetrics";
@@ -19,9 +20,10 @@ function Sources({ sources, onPreview, onPreviewReference, disabled }: { sources
 }
 
 /** Keep source conflicts visible without promoting a later comparison over the original return. */
-export function FinancialSourceReviewNotices({ review, onPreview, disabled = false }: {
-  review: Pick<FinancialMetricReview, "excluded_income_sources" | "comparative_conflicts">;
+export function FinancialSourceReviewNotices({ review, onPreview, disabled = false, profileId, canReviewIdentity = false, onAssociationSaved, onPending, expandExcluded = false }: {
+  review: Pick<FinancialMetricReview, "excluded_income_sources" | "comparative_conflicts" | "document_associations">;
   onPreview?: (fileId: string, page?: number) => void; disabled?: boolean;
+  profileId?: string; canReviewIdentity?: boolean; onAssociationSaved?: () => Promise<unknown> | void; onPending?: (pending: boolean) => void; expandExcluded?: boolean;
 }) {
   const excluded = review.excluded_income_sources ?? [];
   const conflicts = review.comparative_conflicts ?? [];
@@ -39,10 +41,11 @@ export function FinancialSourceReviewNotices({ review, onPreview, disabled = fal
         <div className={styles.actions}>{source(conflict.file_id, `Open original ${conflict.year || "prior-year"} return`)}{source(conflict.comparative_file_id, "Open later return comparison")}</div>
       </div>
     </Callout>)}
-    {excluded.length ? <details><summary>{excluded.length} tax {excluded.length === 1 ? "file excluded" : "files excluded"} from business earnings</summary>
+    {excluded.length ? <details open={expandExcluded || undefined}><summary>{excluded.length} income {excluded.length === 1 ? "source excluded" : "sources excluded"} from business earnings</summary>
       <div className={styles.section}>{excluded.map((item, index) => <div key={`${item.file_id}:${index}`}>
         {source(item.file_id, item.file_name || "Review excluded tax file")}
         <p className={styles.note}>{item.reason}</p>
+        {profileId && item.file_id ? <DocumentIdentityReview key={`${profileId}:${item.file_id}`} profileId={profileId} fileId={item.file_id} canEdit={canReviewIdentity} externallyBusy={disabled} initialRecord={review.document_associations?.find((record) => record.file_id === item.file_id)} onSaved={onAssociationSaved} onPending={onPending} onPreview={onPreview ? () => onPreview(item.file_id!) : undefined} /> : null}
       </div>)}</div>
     </details> : null}
   </section>;
@@ -112,7 +115,7 @@ export function FinancialCalculationReview({ cockpit, profileId, canEdit, draft:
     {query.error ? <Callout tone="warn">Calculation sources could not be refreshed. Editing is unavailable until a fresh read succeeds.</Callout> : null}
     {notice ? <p className={styles.note} role="status">{notice}</p> : null}
     {!review ? <Callout tone="warn">Exact calculation inputs are not available for this read. Refresh the calculation sources.</Callout> : <>
-      {!hideSourceNotices ? <FinancialSourceReviewNotices review={review} onPreview={onPreviewSource} disabled={editingDisabled} /> : null}
+      {!hideSourceNotices ? <FinancialSourceReviewNotices review={review} onPreview={onPreviewSource} disabled={editingDisabled} profileId={profileId} canReviewIdentity={canEdit} onAssociationSaved={onRefresh} onPending={onPending} expandExcluded={calculationKeys?.length === 0} /> : null}
       {data.ebitda?.reason ? <p className={styles.note}>{data.ebitda.reason}</p> : null}
       <div className={styles.calculations}>{shownCalculations.map((calculation) => <article key={calculation.key} className={styles.calculation}>
         <div className={styles.heading}><h4>{calculation.label}</h4><strong>{valueLabel(calculation.value, calculation.unit ?? (calculation.key.startsWith("dscr") ? "ratio" : "currency"), metricCurrency(calculation.currency, calculation.source_refs))}</strong></div>
