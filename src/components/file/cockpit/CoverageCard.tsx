@@ -67,6 +67,7 @@ import { ebitdaIsStaffCorrected } from "@/lib/financialMetrics";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
 import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
+import { BankReplayNotice } from "./BankReplayNotice";
 import { RefinanceSelectionSummary } from "./RefinanceSelectionSummary";
 import { refinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
 import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
@@ -506,10 +507,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           {local.incomeAfter == null || local.incomeAfter > 0 ? <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" /> : null}
           {local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the regular payment equivalent after interest-only, without matching commencement dates to historical statement months. DSCR separately retains the underwriting stress basis, including principal due.</p> : null}
           <div className="fc-stat-list">
+            <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { setReviewOpen(false); onOpenEvidence(); } : undefined} />
             <Stat label="Loan the plan needs">{local.loanAmountNeeded ? `${money(local.loanAmountNeeded)}${local.payoffTotal ? ` (payoffs ${money(local.payoffTotal)}${local.payoffUnknown ? `, ${local.payoffUnknown} unknown` : ""})` : ""}` : "—"}</Stat>
             <Stat label="Net cash flow per month, today → plan">{money(summary.avg_net)} → {money(local.netAfterAverage)}</Stat>
             <Stat label="Ending balance, last month, today → plan">{money(summary.ending_balance)} → {money(local.endingAfterLast)}</Stat>
-            <Stat label="Months dipping below zero, today → plan">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length} → {local.monthsDippingNegativeAfter}</Stat>
+            <Stat label="Months dipping below zero, today → plan">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length} → {local.monthsDippingNegativeAfter ?? "—"}</Stat>
           </div>
         </div>
       </div>
@@ -541,7 +543,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                 </thead>
                 <tbody>
                   {obligations.map((o) => (
-                    <ObligationPlanRow key={o.id} o={o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} />
+                    <ObligationPlanRow key={o.id} o={o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} onReviewEvidence={onOpenEvidence ? () => { setReviewOpen(false); onOpenEvidence(); } : undefined} />
                   ))}
                 </tbody>
               </table>
@@ -779,7 +781,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
               {local.schedule?.repayment_config ? <tr><td>Underwriting stress equivalent, a month · DSCR basis</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfter)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfter))}</td></tr> : null}
               <tr><td>Net cash flow, a month ({accountLabel})</td><td className="r num">{money(summary.avg_net)}</td><td className="r num">{money(local.netAfterAverage)}</td><td className="r num">{signedMoney(change(summary.avg_net, local.netAfterAverage))}</td></tr>
               <tr><td>Ending balance, last month</td><td className="r num">{money(summary.ending_balance)}</td><td className="r num">{money(local.endingAfterLast)}</td><td className="r num">{signedMoney(change(summary.ending_balance, local.endingAfterLast))}</td></tr>
-              <tr><td>Months dipping below zero</td><td className="r num">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td><td className="r num">{local.monthsDippingNegativeAfter ?? "Needs details"}</td><td className="r num">{local.monthsDippingNegativeAfter == null ? "Needs details" : local.monthsDippingNegativeAfter - local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td></tr>
+              <tr><td>Months dipping below zero</td><td className="r num">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td><td className="r num">{local.monthsDippingNegativeAfter ?? "—"}</td><td className="r num">{local.monthsDippingNegativeAfter == null ? "—" : local.monthsDippingNegativeAfter - local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td></tr>
             </tbody>
           </table>
         </div>
@@ -831,6 +833,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         </div>
       ) : null}
 
+      {months.length ? <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { setReviewOpen(false); onOpenEvidence(); } : undefined} /> : null}
       {months.length ? (
         <ChartCard
           plain
@@ -881,6 +884,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         <div><small>Working schedule</small><strong>{review ? `${review.working.active_rows} obligations` : "Open review"}</strong><span>{review ? review.working.complete ? "Complete · Save version publishes changes" : "Review the required answers" : "Uses the same draft as Evidence & banking"}</span></div>
       </div>
       {local.coverageUnavailableReason ? <StatusLine tone="warn">{local.coverageUnavailableReason}</StatusLine> : null}
+      <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence} />
       <EbitdaRefinanceComparison value={local.ebitda} compact scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => onRequestStatement("profit_and_loss") : undefined} />
       <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
       {repaymentIssue ? <StatusLine tone="bad">Repayment preview is invalid: {repaymentIssue} Resolve it before saving or using these projections.</StatusLine> : null}

@@ -428,6 +428,9 @@ export type Obligation = {
   payoff: number | null;
   payoff_requires_review?: boolean;
   payoff_review_reason?: string | null;
+  replay_requires_review?: boolean;
+  replay_review_reason?: string | null;
+  candidate_payee_keys?: string[];
   published_payoff_amount?: number | null;
   in_debt_service: boolean;
   count_in_dscr: boolean;
@@ -566,6 +569,9 @@ export type PlanReplayRow = {
 export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
 export type PlanEvaluation = {
+  retirement_replay_unknown?: boolean;
+  replay_review_required_ids?: string[];
+  replay_unavailable_reason?: string | null;
   coverage_comparison?: CoverageComparison;
   new_regular_payment_monthly?: number | null; new_interest_only_payment_monthly?: number | null;
   debt_service_after_regular_monthly?: number | null; debt_service_after_interest_only_monthly?: number | null;
@@ -916,7 +922,7 @@ export function sourceLabel(key: string | null | undefined): string {
 export function confidenceLabel(key: CockpitConfidence | null | undefined): string {
   switch (key) {
     case "filed":
-      return "Filed return";
+      return "Tax return";
     case "statement":
       return "Statement";
     case "statement_unverified":

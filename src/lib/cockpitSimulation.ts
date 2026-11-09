@@ -154,6 +154,9 @@ export type LocalPlanEvaluation = {
   monthsDippingNegativeAfter: number | null;
   cashKept: number | null;
   replayProjectionAvailable: boolean;
+  replayUnavailableReason?: string | null;
+  retirementReplayUnknown?: boolean;
+  replayReviewRequiredIds?: string[];
 };
 
 const r2 = (v: number) => roundEbitdaMoney(v);
@@ -161,6 +164,7 @@ const r2 = (v: number) => roundEbitdaMoney(v);
 export const DSCR_ADD_BACK_EXCLUSION = "Interest and depreciation/amortization are already accounted for in the earnings or bank cash-flow basis; adding them again would double count.";
 export const DSCR_SERVICE_MISSING = "Existing debt service is unknown. Complete the debt schedule or enter a reviewed debt-service override before calculating coverage.";
 export const DSCR_NEW_PAYMENT_MISSING = "The new loan payment is unknown. Enter its rate and terms or a reviewed monthly payment before calculating coverage.";
+export const PAYOFF_REPLAY_REVIEW_REQUIRED = "Statement payments cannot be allocated uniquely to these loans. Review loan-level statement evidence before projecting payoff cash-flow or bank-balance changes.";
 export function isExcludedDscrAddBack(kind: PlanAddBack["kind"]): boolean {
   return kind === "interest_refinanced" || kind === "depreciation";
 }
@@ -178,6 +182,9 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const retire = new Set(plan.retire);
   const exclude = new Set(plan.exclude);
   const retired = obligations.filter((o) => retire.has(o.id));
+  const sharedPayeeKeys = new Set(obligations.map((o) => o.linked_payee_key).filter((key): key is string => Boolean(key)).filter((key, index, keys) => keys.indexOf(key) !== index));
+  const replayReviewRequiredIds = retired.filter((o) => o.replay_requires_review || Boolean(o.linked_payee_key && sharedPayeeKeys.has(o.linked_payee_key))).map((o) => o.id);
+  const retirementReplayUnknown = replayReviewRequiredIds.length > 0;
   const retiredPaymentUnknown = retired.some((o) => o.in_debt_service && (o.monthly == null || !Number.isFinite(o.monthly)));
   const retiredMonthly = r2(retired.filter((o) => o.in_debt_service).reduce((s, o) => s + (o.monthly ?? 0), 0));
   const payoffs = retired.map((o) => o.payoff).filter((v): v is number => v != null);
@@ -225,7 +232,8 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? null;
   const retirementUnknown = retiredPaymentUnknown && !recordedRetained;
   const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : newLoanPaymentUnknown ? DSCR_NEW_PAYMENT_MISSING : null;
-  const replayProjectionAvailable = !retirementUnknown && !newLoanPaymentUnknown;
+  const replayProjectionAvailable = !retirementUnknown && !newLoanPaymentUnknown && !retirementReplayUnknown;
+  const replayUnavailableReason = retirementReplayUnknown ? PAYOFF_REPLAY_REVIEW_REQUIRED : retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : newLoanPaymentUnknown ? DSCR_NEW_PAYMENT_MISSING : null;
   const serviceBeforeNewPayment = serviceBefore == null || retirementUnknown ? null : r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
   const serviceAfter = serviceBeforeNewPayment == null || newLoanPaymentUnknown ? null : r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
   const serviceAfterRegular = serviceBeforeNewPayment == null || newRegularPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + newRegularPayment));
@@ -273,7 +281,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
       endingAfter: !replayProjectionAvailable || m.ending_balance == null ? null : r2(m.ending_balance + cumulative),
       lowest: m.low_balance,
       lowestAfter: !replayProjectionAvailable || m.low_balance == null ? null : r2(m.low_balance + before + change / 2),
-      removed: retirementUnknown ? null : removedHere,
+      removed: retirementUnknown || retirementReplayUnknown ? null : removedHere,
       added: replayProjectionAvailable ? added : null,
       cumulative: replayProjectionAvailable ? cumulative : null,
     };
@@ -314,5 +322,8 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     monthsDippingNegativeAfter: replayProjectionAvailable ? rows.filter((r) => r.lowestAfter != null && r.lowestAfter < 0).length : null,
     cashKept: replayProjectionAvailable ? cumulative : null,
     replayProjectionAvailable,
+    replayUnavailableReason,
+    retirementReplayUnknown,
+    replayReviewRequiredIds,
   };
 }

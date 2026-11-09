@@ -28,4 +28,13 @@ describe("reviewed component preview matches saved arithmetic", () => {
     expect(adjusted.subtotal).toBe(948.90);
     expect(adjusted.numerator).toBe(1897.80);
   });
+  it("annualizes the unrounded bank subtotal and requires the identified-funding deduction", () => {
+    const components = [{ input_key: "bank.avg_net", label: "Average net", value: -2447.1916666666666, included: true, required: true }, { input_key: "debt.monthly", label: "Scheduled debt payments", value: 17578.26, included: true }, { input_key: "bank.identified_financing_credits_monthly", label: "Identified financing credits", value: 7883.5, coefficient: -1, contribution: -7883.5, included: true, required: true }];
+    const bank = { ...recipe, annualize_before_rounding: true, annualization_factor: 12, required_anchor: "bank.avg_net", denominator: { ...recipe.denominator!, value: 210939.12 }, components };
+    const selections = components.map((row) => ({ input_key: row.input_key, included: true }));
+    expect(previewMetricComposition(bank, selections, [])).toMatchObject({ subtotal: 7247.57, numerator: 86970.82, value: 0.41, valid: true });
+    expect(previewMetricComposition({ ...bank, annualize_before_rounding: false }, selections, []).numerator).toBe(86970.84);
+    const excludedFunding = selections.map((row) => row.input_key.includes("financing") ? { ...row, included: false } : row);
+    expect(previewMetricComposition(bank, excludedFunding, [])).toMatchObject({ valid: false, value: null });
+  });
 });
