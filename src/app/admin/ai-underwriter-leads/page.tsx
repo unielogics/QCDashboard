@@ -65,6 +65,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState("");
   const [economicsRow, setEconomicsRow] = useState<UnifiedFileRow | null>(null);
   const listShellRef = useRef<HTMLDivElement | null>(null);
   const leadListRequestRef = useRef(0);
@@ -151,12 +152,13 @@ export default function AdminAIUnderwriterLeadsPage() {
 
   async function createLead(payload: CreateLeadPayload, evidenceFiles: File[]): Promise<LeadDetail | undefined> {
     setCreating(true);
+    setCreateError("");
     setNotice("");
     try {
       const screened = await screenPdfUploads(evidenceFiles);
       const lockedNotice = screened.rejected.length ? passwordProtectedPdfUploadNotice(screened.rejected) : "";
       if (!screened.uploadable.length && screened.rejected.length) {
-        setNotice(lockedNotice);
+        setCreateError(lockedNotice);
         return;
       }
       const res = await call<LeadDetail>("/admin/ai-underwriter-leads", {
@@ -164,24 +166,32 @@ export default function AdminAIUnderwriterLeadsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      const profile = await call<ApplicationProfile>("/application-profiles/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_kind: "intake", source_id: res.intake.id }) });
-      await call(`/application-profiles/${profile.id}/draft`, { method: "POST" });
+      const warnings: string[] = [];
+      try {
+        const profile = await call<ApplicationProfile>("/application-profiles/resolve", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ source_kind: "intake", source_id: res.intake.id }) });
+        await call(`/application-profiles/${profile.id}/draft`, { method: "POST" });
+      } catch (error) {
+        warnings.push(apiErrorMessage(error, "The application workspace could not be prepared. Open the saved file to continue."));
+      }
       let uploaded = 0;
       for (const file of screened.uploadable) {
-        await uploadFile(
-          { initPath: `/admin/ai-underwriter-leads/${res.intake.id}/files/upload-init`, completePath: `/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, call },
-          file,
-          { requestedDocumentId: null, storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded. The draft was preserved.` },
-        );
-        uploaded += 1;
+        try {
+          await uploadFile(
+            { initPath: `/admin/ai-underwriter-leads/${res.intake.id}/files/upload-init`, completePath: `/admin/ai-underwriter-leads/${res.intake.id}/files/complete`, call },
+            file,
+            { requestedDocumentId: null, storageRejectedMessage: (rejected) => `${rejected.name} could not be uploaded. The draft was preserved.` },
+          );
+          uploaded += 1;
+        } catch (error) {
+          warnings.push(documentUploadErrorMessage(error, `${file.name} could not be uploaded. Upload it from the saved file.`));
+        }
       }
       setNotice([
         uploaded ? `${uploaded} evidence file${uploaded === 1 ? "" : "s"} uploaded. Extraction continues in the background.` : "",
-        lockedNotice,
+        lockedNotice, ...warnings,
       ].filter(Boolean).join(" "));
       await loadLeads(0);
-      router.push(fileHref(res.intake.id));
-      return res;
+      return { ...res, creation_warning: [lockedNotice, ...warnings].filter(Boolean).join(" ") || undefined };
     } catch (error) {
       // Duplicate email → backend returns 409 with the existing intake_id; open it.
       if (error instanceof ApiError && error.status === 409) {
@@ -193,7 +203,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           return;
         }
       }
-      setNotice(documentUploadErrorMessage(error, "Could not create the lead."));
+      setCreateError(documentUploadErrorMessage(error, "Could not create the file."));
     } finally {
       setCreating(false);
     }
@@ -311,7 +321,7 @@ export default function AdminAIUnderwriterLeadsPage() {
           <h1>Files</h1>
           <CellChip tone="mut">{counts.total} files</CellChip>
           <span className="sp" />
-          {canGovern ? <Btn variant="pri" size="sm" onClick={() => setCreateOpen(true)}><Icon name="plus" size={13} /> New file</Btn> : null}
+          {canGovern ? <Btn variant="pri" size="sm" onClick={() => { setCreateError(""); setCreateOpen(true); }}><Icon name="plus" size={13} /> New file</Btn> : null}
           <PageActionMenu label="File actions" items={[
             { label: "What changed", onSelect: () => setWhatsNewOpen(true) },
             ...(canGovern ? [{ label: "All documents", href: "/admin/buckets" }] : []),
@@ -551,6 +561,8 @@ export default function AdminAIUnderwriterLeadsPage() {
           onClose={() => setCreateOpen(false)}
           onCreate={createLead}
           creating={creating}
+          createError={createError}
+          onOpen={(id) => { setCreateOpen(false); openLead(id); }}
         />
       ) : null}
     </div>

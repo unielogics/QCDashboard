@@ -20,6 +20,7 @@ import { api, apiBase } from "@/lib/api";
 import { collectionTaskReadModelKey } from "@/lib/applicationCollection";
 import { DocumentVersionControl } from "@/components/documents/DocumentVersionControl";
 import { documentVersionService, latestDocumentFiles, type DocumentVersionMetadata, type DocumentVersionService } from "@/lib/documentVersions";
+import { RoomApplicationForm } from "@/components/room/RoomApplicationForm";
 import { clientActionNeeded, clientCoverageNeedsAnotherFile, clientRequirementProgress, type ClientRequirementCoverage, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
@@ -52,10 +53,11 @@ type ClientEvidenceBankingSummary = {
 };
 type ClientRoomKind = RoomKind | "basic";
 type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; passcode_needs_setup?: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
-type RoomTab = "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
+type RoomTab = "application" | "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" | "mail" }> = [
+  { id: "application", label: "Application", icon: "edit" },
   { id: "inbox", label: "Inbox", icon: "mail" },
   { id: "precall", label: "Before your call", icon: "cal" },
   // Shown only while a processing offer is waiting on (or answered from) this room.
@@ -112,6 +114,7 @@ export default function BucketRequestPage() {
   const [theme, setTheme] = useState<"light" | "obsidian">("light");
   const [offerOnlyAccess, setOfferOnlyAccess] = useState(false);
   const [structuredPending, setStructuredPending] = useState(0);
+  const [hasApplication, setHasApplication] = useState(false);
 
   useEffect(() => {
     // Theme is journey-local. A preference from another application on the
@@ -260,12 +263,14 @@ export default function BucketRequestPage() {
     roomKind: RoomKind | null;
     hasMerchantOffer: boolean;
     hasTimeline: boolean;
+    hasApplication: boolean;
   }> {
     const empty = {
       precall: null,
       roomKind: roomKind === "basic" ? null : roomKind,
       hasMerchantOffer: false,
       hasTimeline: false,
+      hasApplication: false,
     };
     if (roomKind === "basic") return empty;
     try {
@@ -283,17 +288,21 @@ export default function BucketRequestPage() {
         verification: { ownership_complete: boolean; ownership_total: number; owner_contact_complete: boolean; business_banking_complete: boolean; bank_connection_count: number; bank_statement_months: number; owner_credit_complete: boolean; required_credit_owner_count: number; completed_credit_owner_count: number };
         precall: { status: "in_progress" | "complete" | "stopped" | "disabled"; complete: boolean; done_count: number; missing: string[] } | null;
         merchant_offer?: { id: string; status: string } | null;
+        capabilities?: string[];
       };
-      if (!state.precall || state.precall.status === "disabled") {
-        return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true };
+      const hasApplication = state.capabilities?.includes("application") ?? false;
+      if ((!state.precall || state.precall.status === "disabled") && !hasApplication) {
+        return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication };
       }
       const verification = state.verification;
       return {
         roomKind: "application",
         hasMerchantOffer: Boolean(state.merchant_offer),
         hasTimeline: true,
+        hasApplication,
         precall: {
           enabled: true,
+          scheduled: Boolean(state.precall && state.precall.status !== "disabled"),
           starts_at: null,
           host_name: null,
           business_name: state.business_name,
@@ -326,8 +335,8 @@ export default function BucketRequestPage() {
           credit_complete: verification.owner_credit_complete,
           credit_required: verification.required_credit_owner_count,
           credit_done: verification.completed_credit_owner_count,
-          complete: state.precall.complete,
-          done_count: state.precall.done_count,
+          complete: state.precall?.complete ?? (verification.ownership_complete && verification.owner_contact_complete && verification.business_banking_complete && verification.owner_credit_complete),
+          done_count: state.precall?.done_count ?? Number(verification.ownership_complete && verification.owner_contact_complete) + Number(verification.business_banking_complete) + Number(verification.owner_credit_complete),
           completed_at: null,
         },
       };
@@ -352,6 +361,7 @@ export default function BucketRequestPage() {
     if (!session) return;
     const loaded = await fetchRoomContext(passcode.trim(), session.room_kind);
     setPrecall(loaded.precall);
+    setHasApplication(loaded.hasApplication);
     if (loaded.roomKind) setPrecallRoomKind(loaded.roomKind);
   }
   async function refreshRoom() {
@@ -363,6 +373,7 @@ export default function BucketRequestPage() {
     ]);
     setSession(nextSession);
     setPrecall(context.precall);
+    setHasApplication(context.hasApplication);
     if (context.roomKind) setPrecallRoomKind(context.roomKind);
     setOffer(nextOffer);
     setUpdates(nextUpdates);
@@ -384,6 +395,7 @@ export default function BucketRequestPage() {
         setSession(data); setName(""); setEmail(""); setStatus("");
         setPrecall(null); setPrecallLoaded(true); setOffer(null); setUpdates(null);
         setOfferOnlyAccess(true); setActiveTab("inbox");
+        setHasApplication(false);
         return;
       }
       const context = await fetchRoomContext(passcode.trim(), data.room_kind);
@@ -394,12 +406,16 @@ export default function BucketRequestPage() {
       setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus(""); setOfferOnlyAccess(false);
       setPrecall(context.precall); setPrecallRoomKind(context.roomKind ?? "dealer"); setPrecallLoaded(true);
       setOffer(waitingOffer); setUpdates(fileUpdates);
+      setHasApplication(context.hasApplication);
       // A booked call lands on its checklist until it is done; the URL still wins.
-      if (context.precall && !context.precall.complete && !searchParams.get("tab")) setActiveTab("precall");
+      if (!searchParams.get("tab")) {
+        if (context.hasApplication && context.precall?.scheduled === false) setActiveTab("application");
+        else if (context.precall && !context.precall.complete) setActiveTab("precall");
+      }
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)), [offerOnlyAccess, precall, offer, updates, session]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "application" || hasApplication) && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)).map((tab) => tab.id === "precall" && precall?.scheduled === false ? { ...tab, label: "Owners and verification" } : tab), [hasApplication, offerOnlyAccess, precall, offer, updates, session]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -484,11 +500,12 @@ export default function BucketRequestPage() {
       {status ? <div className={`application-room-status ${status.toLowerCase().includes("not") || status.toLowerCase().includes("unavailable") ? "bad" : ""}`}>{status}</div> : null}
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
     </section> : <section className={`application-room-shell${pinSetup === "required" ? " is-pin-setup" : ""}`}>
-      <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
+      <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending || (hasApplication && !precall?.complete) ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : hasApplication && !precall?.complete ? "Application in progress" : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
       {pinSetup !== "hidden" ? <RoomPinSetup token={token} passcode={passcode.trim()} required={pinSetup === "required"} onSaved={(pin) => { setPasscode(pin); setArrivedWithCode(false); setSession((current) => current ? { ...current, passcode_needs_setup: false } : current); }} onDismiss={() => setPinSetupDismissed(true)} /> : null}
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && totalPending ? <span>{totalPending}</span> : null}</button>)}</nav>
 
       {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}
+      {activeTab === "application" && hasApplication ? <RoomApplicationForm token={token} passcode={passcode.trim()} onChanged={refreshRoom} onContinue={() => setActiveTab(precall ? "precall" : "todo")} /> : null}
 
       {!offerOnlyAccess && session.room_kind !== "basic" && activeTab === "todo" ? <section className="application-room-section application-room-section--teaser"><div className="application-room-section-head"><div><h2>How will you use the funds?</h2><p>Add a category and amount for each planned use so your team can review financing options.</p></div><button className="application-room-secondary" onClick={() => setActiveTab("budget")}><Icon name="dollar" size={14} />Review use of funds</button></div></section> : null}
 
