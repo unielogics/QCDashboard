@@ -179,6 +179,8 @@ export function ApplicationCollectionTasks({
   onPreviewEvidence,
   onVerifyRequirement,
   onCreditRefresh,
+  onOpenPrograms,
+  programNames = {},
   title = "Other things we are collecting",
 }: {
   profileId: string;
@@ -190,6 +192,8 @@ export function ApplicationCollectionTasks({
   onPreviewEvidence?: (fileId: string, requirementKey: string) => void;
   onVerifyRequirement?: (requirement: ApplicationRequirement, fileIds: string[]) => void | Promise<void>;
   onCreditRefresh?: () => Promise<unknown> | void;
+  onOpenPrograms?: () => void;
+  programNames?: Record<string, string>;
   title?: string;
 }) {
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -220,7 +224,7 @@ export function ApplicationCollectionTasks({
         return { kind: kind as FormKind, requirementKey };
       }).filter((item, index, all) => all.findIndex((other) => other.kind === item.kind) === index);
       const statusTone = waiting ? waiting.tone : task.assignee === "internal" ? "warn" : "acc";
-      const verifyTarget = waiting?.kind === "needs_signoff" ? linked.find((item) => item.status === "received_unverified" && item.verification_required) : undefined;
+      const verifyTarget = waiting?.kind === "needs_signoff" ? linked.find((item) => item.status === "received_unverified" && item.verification_required && !requirementCreditCollection(item)) : undefined;
       const response = task.config.response;
       return <article key={task.id} className="requirement-row collection-task" data-status={task.status}>
         <div className="collection-task-head">
@@ -241,7 +245,7 @@ export function ApplicationCollectionTasks({
         <small className="collection-task-meta">{taskMeta(task)}</small>
         {waiting ? <p className="collection-task-hint">{waiting.hint}</p> : null}
         {task.state_reason && !waiting ? <p className="collection-task-hint">{task.state_reason}</p> : null}
-        {linked.map((requirement) => { const credit = requirementCreditCollection(requirement); return credit ? <RequirementCreditEvidence key={requirement.requirement_key} profileId={profileId} credit={credit} onRefresh={onCreditRefresh} /> : null; })}
+        {linked.map((requirement) => { const credit = requirementCreditCollection(requirement); return credit ? <RequirementCreditEvidence key={requirement.requirement_key} profileId={profileId} credit={credit} requirementKey={requirement.requirement_key} programNames={requirement.source_program_keys.map((key) => programNames[key] || key)} onOpenPrograms={onOpenPrograms} onRefresh={onCreditRefresh} /> : null; })}
         {taskFiles.length ? <ul className="collection-files" aria-label={`Files for ${task.label}`}>
           {shownFiles.map(({ file, requirement }) => <li key={file.file_id} className={`decision-${file.ai_decision}`}>
             <Icon name={file.origin === "filled_form" ? "docCheck" : "file"} size={15} />

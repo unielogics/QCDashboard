@@ -6,24 +6,25 @@ import { RequirementCreditEvidence } from "../RequirementCreditEvidence";
 import { requirementAllowsClientRequest, requirementCreditCollection, type RequirementCreditCollection } from "@/lib/requirementCredit";
 import type { FileOwner } from "@/lib/applicationProfile";
 
-vi.mock("@/hooks/useApi", () => ({ useAuthedApi: () => vi.fn() }));
+const actor = vi.hoisted(() => ({ role: "super_admin" }));
+vi.mock("@/hooks/useApi", () => ({ useAuthedApi: () => vi.fn(), useCurrentUser: () => ({ data: { role: actor.role } }) }));
 const credit: RequirementCreditCollection = { source: "linked_owner_credit_pulls", complete: true, required_owner_count: 1, collected_owner_count: 1, ownership_complete: true, owner_review_required: true, client_action_required: false, staff_review_reasons: ["The existing TransUnion FICO 4 score does not establish the required Equifax FICO 9 program minimum."], owners: [{ owner_id: "owner-a", credit_pull_id: "pull-a", status: "collected", reason: "A current owner report is linked", report_available: true, report_import_status: "completed", pulled_at: "2026-11-01T10:00:00Z", expires_at: null, score: 661, score_models: [{ model: "TransUnion FICO 4", score: 661 }], required_score_model: "Equifax FICO 9", required_score_model_present: false, backfill_needs_review: false }] };
 const render = (pullId = "pull-a", proposed = credit) => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(["application-profile-owners", "profile"], [{ id: "owner-a", full_name: "Example Owner", credit_pull_id: pullId }] as FileOwner[]);
-  return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(RequirementCreditEvidence, { profileId: "profile", credit: proposed })));
+  return renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(RequirementCreditEvidence, { profileId: "profile", credit: proposed, requirementKey: "soft_credit_pull", programNames: ["Quidity 10-year term"], onOpenPrograms: () => {} })));
 };
 describe("linked owner credit receipt", () => {
   it("shows source collection separately from the model gap and reuses the linked report action", () => {
     const html = render();
-    expect(html).toContain("1 of 1 owner report linked"); expect(html).toContain("Example Owner"); expect(html).toContain("TransUnion FICO 4: 661"); expect(html).toContain("Required Equifax FICO 9: not established"); expect(html).toContain(credit.staff_review_reasons[0]); expect(html).toContain("View linked credit report");
+    expect(html).toContain("1 of 1 owner report linked"); expect(html).toContain("Example Owner"); expect(html).toContain("TransUnion FICO 4: 661"); expect(html).toContain("Equifax FICO 9: not established"); expect(html).toContain(credit.staff_review_reasons[0]); expect(html).toContain("View linked credit report");
     expect(html).not.toContain("No file attached"); expect(html).not.toContain("Drop files"); expect(html).not.toContain("Qualified"); expect(html).not.toContain("680 - 661");
     expect(html).not.toContain("A current owner report is linked");
     const generic = "Staff must verify each required owner's bureau, score model and published minimum; collection is not program qualification";
     expect(render("pull-a", { ...credit, staff_review_reasons: [generic, ...credit.staff_review_reasons] })).not.toContain("Staff must verify each required owner");
     expect(render("pull-a", { ...credit, staff_review_reasons: [generic] })).toContain("Staff must verify each required owner");
     const needsReview = render("pull-a", { ...credit, owners: [{ ...credit.owners[0], status: "needs_review", reason: "Source identity needs review", backfill_needs_review: true }] });
-    expect(needsReview).toContain("Source identity needs review"); expect(needsReview).toContain("Import review"); expect(needsReview).not.toContain("staff review of its imported source information");
+    expect(needsReview).toContain("Source identity needs review"); expect(needsReview).toContain("Owner confirmation needed"); expect(needsReview).toContain("Review owner details"); expect(needsReview).not.toContain("staff review of its imported source information");
   });
   it("does not open a different pull if the profile's owner association changed", () => {
     expect(render("new-pull")).toMatch(/<button[^>]*disabled=""[^>]*>View linked credit report<\/button>/);
@@ -51,5 +52,28 @@ describe("linked owner credit receipt", () => {
     expect(html).toContain("Bureau score unavailable · provider identity check only"); expect(html).not.toContain("720"); expect(html).not.toContain("Identity check score");
     const actual = { ...credit, owners: [{ ...credit.owners[0], score: 650, score_verified: true, fico_source: "bureau-report", score_models: [{ model: "FICO 4", bureau: "TransUnion", score: 650 }] }] };
     expect(render("pull-a", actual)).toContain("TransUnion · FICO 4: 650");
+  });
+  it("offers separate owner, report and program actions without treating collection as qualification", () => {
+    const proposed = { ...credit, review_fingerprint: "a".repeat(64), can_mark_met: false, required_minimum_score: 680, owners: [{ ...credit.owners[0], backfill_needs_review: true }] };
+    const html = render("pull-a", proposed);
+    for (const label of ["Reports received", "Program review pending", "Review owner details", "Choose another existing report", "Review credit requirement", "Review selected program", "Quidity 10-year term", "minimum 680"]) expect(html).toContain(label);
+    expect(html).not.toContain("Requirement met");
+    expect(render()).toMatch(/<button[^>]*disabled=""[^>]*>Review credit requirement<\/button>/);
+  });
+  it("keeps report viewing available to readers while hiding mutation actions", () => {
+    actor.role = "borrower";
+    try {
+      const html = render("pull-a", { ...credit, review_fingerprint: "a".repeat(64), owners: [{ ...credit.owners[0], backfill_needs_review: true }] });
+      expect(html).toContain("View linked credit report");
+      for (const label of ["Review owner details", "Review credit requirement", "Choose another existing report"]) expect(html).not.toContain(label);
+    } finally { actor.role = "super_admin"; }
+  });
+  it("does not invent a bureau or compute a score difference across models", () => {
+    const html = render("pull-a", { ...credit, staff_review_reasons: [], owners: [{ ...credit.owners[0], score_models: [{ model: "FICO 4", score: 661 }] }] });
+    expect(html).toContain("FICO 4: 661"); expect(html).not.toContain("TransUnion"); expect(html).not.toContain("19 points");
+  });
+  it("does not repeat open-review warnings after a current met decision", () => {
+    const html = render("pull-a", { ...credit, review_blockers: [], can_mark_met: true, last_review: { decision: "met", reason: "Reviewed exact published score evidence", reviewed_at: "2026-11-09T12:00:00Z", current: true } });
+    expect(html).toContain("Requirement met"); expect(html).not.toContain("Why this remains open"); expect(html).not.toContain(credit.staff_review_reasons[0]);
   });
 });

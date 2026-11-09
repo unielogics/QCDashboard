@@ -556,6 +556,7 @@ export type FileOwner = {
   credit_expires_at: string | null;
   backfill_needs_review: boolean;
   source: "application" | "dealer";
+  review_fingerprint?: string;
 };
 
 export type OwnerCreditCandidate = {
