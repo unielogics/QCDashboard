@@ -1,25 +1,29 @@
 import React from "react";
 import type { ApplicationRequirement } from "@/lib/applicationProfile";
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
+import type { QualificationReview } from "@/lib/requirementCollectionCompletion";
 import styles from "./DocumentReviewChecks.module.css";
 
-export function DocumentReviewChecks({ checks, verified = false, staffRequired = true, assessment, onPreview }: {
+export function DocumentReviewChecks({ checks, verified = false, staffRequired = true, assessment, onPreview, qualification, collectionComplete }: {
   checks: ApplicationRequirement["review_checks"];
   verified?: boolean;
   staffRequired?: boolean;
   assessment?: unknown;
   onPreview?: (fileId: string, page?: number, expectedContentHash?: string) => void;
+  qualification?: QualificationReview | null;
+  collectionComplete?: boolean;
 }) {
   if (!checks?.length) return null;
   const review = assessment && typeof assessment === "object" ? assessment as Record<string, unknown> : null;
   const findings = Array.isArray(review?.checks) ? review.checks.filter((row): row is Record<string, unknown> => Boolean(row && typeof row === "object")).slice(0, 40) : [];
   return <details className={styles.panel}>
-    <summary>Document review criteria · {checks.length} {checks.length === 1 ? "check" : "checks"}<span>{verified ? !staffRequired && review?.status === "pass" ? "AI evidence verified" : staffRequired ? "Staff verified" : "Verified" : staffRequired ? "Staff review required" : "AI evidence review"}</span></summary>
+    <summary>{qualification ? "Program conditions" : "Document review criteria"} · {checks.length} {checks.length === 1 ? "check" : "checks"}<span>{qualification ? qualification.status === "met" ? "Conditions reviewed" : qualification.status === "failed" ? "Condition not met" : "Underwriting review" : verified ? !staffRequired && review?.status === "pass" ? "AI evidence verified" : staffRequired ? "Staff verified" : "Verified" : staffRequired ? "Staff review required" : "AI evidence review"}</span></summary>
     <div className={styles.body}>
-      <p>{staffRequired ? "Staff must verify these requirements. AI can assist but cannot complete this staff-only step." : "Run AI analysis to check the source documents. Every condition needs grounded evidence; missing, uncertain, or adverse results remain open for review."} A readable upload alone does not confirm qualification.</p>
+      <p>{qualification ? `${collectionComplete ? "Document collection is complete. " : "Use the collection controls above to link received evidence and mark it complete. "}These are separate program qualification conditions. Completing or removing a checklist item does not approve the program.` : <>{staffRequired ? "Staff must verify these requirements. AI can assist but cannot complete this staff-only step." : "Run AI analysis to check the source documents. Every condition needs grounded evidence; missing, uncertain, or adverse results remain open for review."} A readable upload alone does not confirm qualification.</>}</p>
+      {qualification?.reasons.length ? <ul>{qualification.reasons.map((reason, index) => <li key={`reason:${index}`}>{reason}</li>)}</ul> : null}
       {review && typeof review.reason === "string" ? <p><strong>Latest evidence review:</strong> {review.reason}</p> : null}
       <ul>{checks.map((check, index) => <li key={`${check.key}:${index}`}>
-        <strong>{check.label}</strong>{check.severity === "block" ? <small>Resolve before acceptance</small> : null}
+        <strong>{check.label}</strong>{check.severity === "block" ? <small>{qualification ? "Program qualification condition" : "Resolve before acceptance"}</small> : null}
         <p>{check.instructions}</p>
       </li>)}</ul>
       {findings.length ? <details><summary>AI findings and source pages</summary><ul>{findings.map((finding, index) => <li key={index}>

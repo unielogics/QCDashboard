@@ -243,3 +243,18 @@ describe("the four groups", () => {
     expect(triageSummary({ you: 0, client: 0, ai: 0, done: 0, total: 0 })).toBe("Nothing is required on this file yet.");
   });
 });
+
+describe("collection and qualification are separate", () => {
+  const collection = { complete: false, can_complete: true, fingerprint: "a".repeat(64), reason: null, eligible_file_ids: ["business-2025"], suggested_file_ids: ["business-2025"], source: "files" as const };
+  it("offers completion for staff-reviewed evidence instead of saying AI rejected the program earnings checks", () => {
+    const result = triageRequirement({ ...requirement({ evidence_files: [file("needs_more")], state_reason: "Published documentary checks explicitly require staff verification" }), collection_completion: collection });
+    expect(result).toMatchObject({ group: "you", kind: "signoff", label: "Ready to complete" });
+    expect(result.next).toContain("Mark complete");
+    expect(result.short).not.toContain("AI could not accept");
+  });
+  it("keeps completed collection in Complete even when source program checks still need review", () => {
+    const item = { ...requirement({ evidence_files: [file("needs_more")] }), collection_completion: { ...collection, complete: true, can_complete: false } };
+    expect(requirementIsComplete(item)).toBe(true);
+    expect(triageRequirement(item)).toMatchObject({ group: "done", kind: "complete", short: "Document collection complete" });
+  });
+});
