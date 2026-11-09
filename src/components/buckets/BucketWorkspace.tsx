@@ -1,5 +1,8 @@
 "use client";
 
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem, type NewBusinessProfile } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
+
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent, type ReactNode } from "react";
 import { uploadFile } from "@/lib/fileUpload";
 import { fileHref } from "@/lib/fileRoutes";
@@ -4432,7 +4435,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
 type ConvertLeadVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
 
-type ConvertLeadPayload = {
+type ConvertLeadPayload = NewBusinessProfile & {
   variant: ConvertLeadVariant;
   full_name: string;
   email: string;
@@ -4440,7 +4443,6 @@ type ConvertLeadPayload = {
   business_name?: string;
   // Main Street only. The bucket's documents stay as they are on this path, so
   // these steer the AI framing and the program screen rather than a checklist.
-  industry?: string;
   intent?: string;
   notify_client: boolean;
 };
@@ -4498,7 +4500,7 @@ function ConvertToLeadModal({
         : "dealer";
   const [step, setStep] = useState(1);
   const [variant, setVariant] = useState<ConvertLeadVariant>(guessedVariant);
-  const [industry, setIndustry] = useState<string>("other");
+  const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [intent, setIntent] = useState<string>("working_capital");
   const [fullName, setFullName] = useState(bucket.client_name || "");
   const [email, setEmail] = useState("");
@@ -4518,7 +4520,7 @@ function ConvertToLeadModal({
     if (!email.trim() || !email.includes("@")) return "A valid client email is required.";
     if (!phone.trim()) return "A client mobile number is required.";
     if (!validPhone(phone)) return "That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number.";
-    return null;
+    return newBusinessProfileProblem(businessProfile);
   }
 
   function goNext() {
@@ -4547,7 +4549,7 @@ function ConvertToLeadModal({
       email: email.trim(),
       phone: phone.trim(),
       business_name: businessName.trim() || undefined,
-      industry: variant === "main_street" ? industry : undefined,
+      ...newBusinessProfileBody(businessProfile),
       intent: variant === "main_street" ? intent : undefined,
       notify_client: notifyClient,
     });
@@ -4621,13 +4623,6 @@ function ConvertToLeadModal({
         <div className="grid g10">
           {variant === "main_street" ? (
             <div className="fldgrid two">
-              <Field label="Industry" hint="Required for Main Street.">
-                <Select value={industry} onChange={(e) => setIndustry(e.target.value)}>
-                  {MAIN_STREET_INDUSTRIES.map((i) => (
-                    <option key={i.slug} value={i.slug}>{i.label}</option>
-                  ))}
-                </Select>
-              </Field>
               <Field label="What they need" hint="Required for Main Street.">
                 <Select value={intent} onChange={(e) => setIntent(e.target.value)}>
                   {MAIN_STREET_INTENTS.map((i) => (
@@ -4675,6 +4670,7 @@ function ConvertToLeadModal({
               />
             </Field>
           </div>
+          <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} />
         </div>
       ) : null}
 
@@ -4706,7 +4702,7 @@ function ConvertToLeadModal({
               <div className="kv">
                 <span className="lbl">Screened as</span>
                 <span>
-                  {MAIN_STREET_INDUSTRIES.find((i) => i.slug === industry)?.label ?? industry}
+                  {MAIN_STREET_INDUSTRIES.find((i) => i.slug === businessProfile.industry)?.label ?? businessProfile.industry}
                   {" · "}
                   {MAIN_STREET_INTENTS.find((i) => i.slug === intent)?.label ?? intent}
                 </span>

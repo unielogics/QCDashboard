@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { businessProfileBody, businessProfileProblem, readWebsite } from "@/lib/businessProfile";
+import { businessProfileBody, businessProfileProblem, emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem, readWebsite, type NewBusinessProfile } from "@/lib/businessProfile";
 
 describe("readWebsite", () => {
   it("turns an address into a link, the way the server does", () => {
@@ -47,5 +47,49 @@ describe("businessProfileBody", () => {
       business_website: "N/A",
       business_description: "We repair HVAC systems.",
     });
+  });
+});
+
+const complete: NewBusinessProfile = {
+  business_street: "123 Main Street, Suite 2", business_city: "Miami", business_state: "FL", business_zip: "33101",
+  industry: "professional_practice", business_website: "N/A", business_description: "We provide pediatric physical therapy services.",
+};
+
+describe("new application business profile", () => {
+  it("requires each address part, an explicit industry, website answer and description", () => {
+    for (const field of Object.keys(complete) as (keyof NewBusinessProfile)[]) {
+      expect(newBusinessProfileProblem({ ...complete, [field]: "" }), field).toBeTruthy();
+    }
+    expect(newBusinessProfileProblem(emptyBusinessProfile())).toContain("street address");
+    expect(newBusinessProfileProblem(complete)).toBeNull();
+    expect(newBusinessProfileProblem({ ...complete, industry: "other" })).toBeNull();
+  });
+
+  it("does not silently treat an unknown industry or malformed location as valid", () => {
+    for (const industry of ["healthcare", "professional_practice ", "OTHER"]) {
+      if (industry.endsWith(" ")) continue; // Answers are trimmed on purpose.
+      expect(newBusinessProfileProblem({ ...complete, industry })).toContain("industry");
+    }
+    for (const business_state of ["Florida", "ZZ", "F"]) expect(newBusinessProfileProblem({ ...complete, business_state })).toContain("state");
+    for (const business_zip of ["1234", "123456", "12345 6789", "abcde"]) expect(newBusinessProfileProblem({ ...complete, business_zip })).toContain("ZIP");
+    expect(newBusinessProfileProblem({ ...complete, business_city: "x".repeat(120) })).toBeNull();
+    expect(newBusinessProfileProblem({ ...complete, business_city: "x".repeat(121) })).toContain("120");
+    expect(newBusinessProfileProblem({ ...complete, business_state: "fl", business_zip: "33101-1234" })).toBeNull();
+    for (const business_state of ["DC", "AS", "GU", "MP", "PR", "VI", "AA", "AE", "AP"]) expect(newBusinessProfileProblem({ ...complete, business_state })).toBeNull();
+  });
+
+  it("bounds new descriptions while retaining historical two-field validation", () => {
+    expect(newBusinessProfileProblem({ ...complete, business_description: "short" })).toContain("at least 10");
+    expect(newBusinessProfileProblem({ ...complete, business_description: "x".repeat(1000) })).toBeNull();
+    expect(newBusinessProfileProblem({ ...complete, business_description: "x".repeat(1001) })).toContain("1000");
+    expect(newBusinessProfileProblem({ ...complete, business_street: "" }, "es")).toContain("dirección");
+    expect(businessProfileProblem({ website: "N/A", description: complete.business_description })).toBeNull();
+  });
+
+  it("sends normalized explicit answers, retaining ZIP zeros and N/A without inventing NAICS", () => {
+    expect(newBusinessProfileBody({ ...complete, business_street: " 123  Main Street ", business_city: " Miami ", business_state: " fl ", business_zip: " 00123-4567 " })).toEqual({
+      ...complete, business_street: "123 Main Street", business_state: "FL", business_zip: "00123-4567",
+    });
+    expect(newBusinessProfileBody(complete)).not.toHaveProperty("naics_code");
   });
 });

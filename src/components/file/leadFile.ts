@@ -1,3 +1,4 @@
+import type { NewBusinessProfile } from "@/lib/businessProfile";
 import { type ChipTone } from "@/components/ds";
 import { ApiError } from "@/lib/api";
 import { semanticChipTone } from "@/lib/semanticStatus";
@@ -79,6 +80,12 @@ export type LeadRow = {
   /** True when the client answered N/A, so "has no website" reads differently from never asked. */
   business_website_none?: boolean;
   business_description?: string | null;
+  business_street?: string | null;
+  business_city?: string | null;
+  business_state?: string | null;
+  business_zip?: string | null;
+  /** Declared intake industry; reviewed NAICS remains on the application classification. */
+  industry?: string | null;
   created_at: string;
   updated_at: string;
   last_message_at?: string | null;
@@ -285,6 +292,11 @@ export type LeadContactUpdate = {
   /** The desk's correction of the website ("N/A" for none) and the description. */
   business_website?: string | null;
   business_description?: string | null;
+  business_street?: string | null;
+  business_city?: string | null;
+  business_state?: string | null;
+  business_zip?: string | null;
+  industry?: string | null;
 };
 
 export type RoomDeliveryReceipt = {
@@ -423,7 +435,7 @@ export function numberOrNull(value: string): number | null {
 
 export type LeadVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
 
-export type CreateLeadPayload = {
+export type CreateLeadPayload = NewBusinessProfile & {
   variant: LeadVariant;
   full_name: string;
   email: string;
@@ -436,10 +448,7 @@ export type CreateLeadPayload = {
   estimated_value_or_purchase_price?: number;
   monthly_rent?: number;
   estimated_credit_tier?: string;
-  // Main Street only. Both are required for the file to be screened correctly:
-  // industry gates the sector-restricted programs, and intent decides which
-  // documents get requested at all.
-  industry?: string;
+  // Main Street intent decides which documents get requested.
   intent?: string;
   notify_client: boolean;
   preferred_language: "en" | "es";

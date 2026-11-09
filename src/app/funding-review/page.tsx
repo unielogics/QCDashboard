@@ -18,7 +18,8 @@ import { realEstateCopy, getStoredLanguage, resolveCommunicationLanguage, setSto
 import { readPublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import { readCapitalReadinessHandoffFragment, readinessFundingPurposeLabel, toCapitalReadinessIntakePrefill, type CapitalReadinessDiagnosticHandoff } from "@/lib/capitalReadinessHandoff";
 import { validPhone } from "@/lib/formCoerce";
-import { businessProfileBody, businessProfileProblem } from "@/lib/businessProfile";
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { onboardingCopy } from "@/lib/onboardingCopy";
 import { NO_SMS_CHOICES, OnboardingConsent, smsChoicesBody, type SmsChoices } from "@/components/intake/OnboardingConsent";
 import { metricProvenance } from "@/lib/intake";
@@ -241,6 +242,7 @@ function useCompactViewport() {
 }
 
 const initialContact = {
+  ...emptyBusinessProfile(),
   full_name: "",
   email: "",
   phone: "",
@@ -500,8 +502,8 @@ export default function DealerAIUnderwriterPage() {
       setStatus(c.errPhoneIncomplete);
       return;
     }
-    const profileProblem = businessProfileProblem(
-      { website: contact.business_website, description: contact.business_description },
+    const profileProblem = newBusinessProfileProblem(
+      contact,
       language ?? "en",
     );
     if (profileProblem) {
@@ -528,7 +530,7 @@ export default function DealerAIUnderwriterPage() {
           estimated_value_or_purchase_price: numericOrNull(contact.estimated_value_or_purchase_price),
           monthly_rent: numericOrNull(contact.monthly_rent),
           estimated_credit_tier: contact.estimated_credit_tier.trim() || null,
-          ...businessProfileBody({ website: contact.business_website, description: contact.business_description }),
+          ...newBusinessProfileBody(contact),
           terms_accepted: true,
           privacy_accepted: true,
           ...smsChoicesBody(sms),
@@ -1532,6 +1534,7 @@ function ContactWidget({
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} />
       </div>
+      <BusinessProfileFields value={contact} onChange={(patch) => setContact({ ...contact, ...patch })} language={language} includeWebsiteDescription={false} />
       <Field label={onb.fieldWebsite} value={contact.business_website} onChange={(value) => setContact({ ...contact, business_website: value })} placeholder={onb.fieldWebsitePlaceholder} inputMode="url" required />
       <div style={fieldHint}>{onb.fieldWebsiteHint}</div>
       <TextAreaField label={onb.fieldDescription} value={contact.business_description} onChange={(value) => setContact({ ...contact, business_description: value })} placeholder={onb.fieldDescriptionPlaceholder} required />

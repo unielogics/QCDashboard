@@ -43,6 +43,7 @@ import { UnifiedThreadConversation } from "@/components/communications/UnifiedTh
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
 import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
+import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft } from "@/components/file/BusinessContactDetails";
 import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
 import { LeadNotesPanel } from "@/components/broker/LeadNotesPanel";
@@ -737,6 +738,7 @@ export function LeadDetailPanel({
   const [contactPopup, setContactPopup] = useState<"text" | "email" | null>(null);
   const [contactSaving, setContactSaving] = useState(false);
   const [contactDraft, setContactDraft] = useState({
+    ...businessContactDraft({}),
     full_name: "",
     business_name: "",
     email: "",
@@ -1271,6 +1273,7 @@ export function LeadDetailPanel({
     setCommunicationChannel(initialCommunicationChannel);
     setContextRailOpen(false);
     setContactDraft({
+      ...businessContactDraft(detail.intake),
       full_name: detail.intake.full_name || "",
       business_name: detail.intake.business_name || "",
       email: detail.intake.email || "",
@@ -1289,6 +1292,11 @@ export function LeadDetailPanel({
       toast.show("Principal name and email are required.");
       return;
     }
+    const businessChanges = businessContactChanges(contactDraft, detail?.intake || {});
+    if (businessChanges.problem) {
+      toast.show(businessChanges.problem);
+      return;
+    }
     setContactSaving(true);
     try {
       await onUpdateContact({
@@ -1300,10 +1308,7 @@ export function LeadDetailPanel({
         estimated_credit_score: contactDraft.estimated_credit_score ? Number(contactDraft.estimated_credit_score) : null,
         referral_source: contactDraft.referral_source.trim() || null,
         years_in_business: contactDraft.years_in_business.trim() ? Number(contactDraft.years_in_business.replace(",", ".")) : null,
-        // Only what the desk changed: sending the untouched client answer back
-        // would turn it into a desk correction.
-        ...(contactDraft.business_website.trim() !== businessWebsiteDraft(detail?.intake) ? { business_website: contactDraft.business_website.trim() } : {}),
-        ...(contactDraft.business_description.trim() !== (detail?.intake.business_description || "") ? { business_description: contactDraft.business_description.trim() } : {}),
+        ...businessChanges.changes,
       });
       setContactEditOpen(false);
       toast.show("Contact details updated.");
@@ -2113,15 +2118,7 @@ export function LeadDetailPanel({
                   }
                 >
                   <Line label="Legal entity / LLC" value={detail.intake.business_name || "-"} />
-                  <div className="kv">
-                    <span className="sub">Website</span>
-                    <b style={{ overflowWrap: "anywhere" }}>
-                      {detail.intake.business_website ? (
-                        <a href={detail.intake.business_website} target="_blank" rel="noopener noreferrer" title="Open the business website in a new tab">{detail.intake.business_website.replace(/^https?:\/\//, "")}</a>
-                      ) : detail.intake.business_website_none ? "None (client said N/A)" : "-"}
-                    </b>
-                  </div>
-                  {detail.intake.business_description ? <Line label="About the business" value={detail.intake.business_description} /> : null}
+                  <BusinessContactDetails values={detail.intake} />
                   <Line label="Principal" value={detail.intake.full_name} />
                   <EmailContact email={detail.intake.email} onCompose={canUnderwrite ? () => setContactPopup("email") : undefined} />
                   <PhoneContact phone={detail.intake.phone} firstName={(detail.intake.full_name || "").split(" ")[0]} onText={canUnderwrite ? () => setContactPopup("text") : undefined} />
@@ -2250,6 +2247,7 @@ export function LeadDetailPanel({
           <Field label="Legal entity / LLC"><Input aria-label="Legal entity / LLC" value={contactDraft.business_name} onChange={(event) => setContactDraft({ ...contactDraft, business_name: event.target.value })} /></Field>
           <Field label="Email"><Input aria-label="Email" type="email" value={contactDraft.email} onChange={(event) => setContactDraft({ ...contactDraft, email: event.target.value })} /></Field>
           <Field label="Mobile"><Input aria-label="Mobile" type="tel" value={contactDraft.phone} onChange={(event) => setContactDraft({ ...contactDraft, phone: event.target.value })} /></Field>
+          <BusinessContactFields value={contactDraft} onChange={(patch) => setContactDraft((current) => ({ ...current, ...patch }))} />
           <Field label="Current requested amount" hint="Use the edit icon next to Current request in File details to update the amount and its use of funds together."><Input aria-label="Requested amount (read only)" value={formatMoney(detail?.intake.requested_loan_amount)} readOnly /></Field>
           <Field label="Estimated credit"><Input aria-label="Estimated credit" type="number" min="300" max="850" value={contactDraft.estimated_credit_score} onChange={(event) => setContactDraft({ ...contactDraft, estimated_credit_score: event.target.value })} /></Field>
           <Field label="Years in business"><Input aria-label="Years in business" type="number" min="0" max="150" step="0.5" value={contactDraft.years_in_business} onChange={(event) => setContactDraft({ ...contactDraft, years_in_business: event.target.value })} /></Field>

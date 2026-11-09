@@ -1,5 +1,8 @@
 "use client";
 
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem, type NewBusinessProfile } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
+
 // Dealer-partner ("broker") portal: start dealer AI-intake applications on
 // behalf of your own clients, chat/upload/run-review on them, and leave
 // internal notes with the underwriting team. Curated subset of the admin
@@ -106,7 +109,7 @@ type LeadDetail = {
   notes?: LeadNote[];
 };
 
-type CreateLeadPayload = {
+type CreateLeadPayload = NewBusinessProfile & {
   full_name: string;
   email: string;
   phone: string;
@@ -719,6 +722,7 @@ function CreateBrokerLeadModal({
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
+  const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [notifyClient, setNotifyClient] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
@@ -728,12 +732,15 @@ function CreateBrokerLeadModal({
     if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
     if (!phone.trim()) { setError("A client mobile number is required."); return; }
     if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
+    const profileProblem = newBusinessProfileProblem(businessProfile);
+    if (profileProblem) { setError(profileProblem); return; }
     setError("");
     onCreate({
       full_name: fullName.trim(),
       email: email.trim(),
       phone: phone.trim(),
       business_name: businessName.trim() || undefined,
+      ...newBusinessProfileBody(businessProfile),
       notify_client: notifyClient,
       preferred_language: preferredLanguage,
     });
@@ -773,6 +780,8 @@ function CreateBrokerLeadModal({
             </Select>
           </Field>
         </div>
+
+        <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} />
 
         {/* `.row` owns the flex geometry; cursor is the one thing it does not. */}
         <label className="row" style={{ cursor: "pointer" }}>
