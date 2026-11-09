@@ -99,6 +99,7 @@ const TITLES: Record<SheetKind, string> = {
   debt_schedule: "Debt schedule",
   pfs: "Personal financial statement",
   real_estate_schedule: "Real estate schedule",
+  operating_plan: "Operating expenses and earnings plan",
 };
 
 /** The stacked branch's autosave. Longer than the grid's 700ms because a

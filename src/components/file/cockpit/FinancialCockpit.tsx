@@ -20,6 +20,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
+import { OperatingPlanEntry } from "./OperatingPlanEntry";
 import { RequestFilesDialog } from "@/components/application/RequestFilesDialog";
 import { balanceSheetIsEmpty, financialStatementRequest, profitAndLossIsEmpty, type FinancialStatementRequestKind } from "@/lib/financialStatementRequests";
 import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } from "@/components/buckets/BucketFileReviewPanel";
@@ -780,6 +781,7 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         <CoverageCard businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
+        <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       </div>
 
       <details className={`fc-card ${financialReviewStyles.mainDetails}`}>

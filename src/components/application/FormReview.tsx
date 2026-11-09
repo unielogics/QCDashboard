@@ -20,8 +20,10 @@ import { debtTypeLabel, isAdvanceType, isBlankDebtRow } from "@/lib/debtTypes";
 import { formatLoanOriginationDate, formatLoanPaidDown, loanPaidDownDescription } from "@/lib/loanProgress";
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
+import { OperatingPlanForm } from "./OperatingPlanForm";
+import type { OperatingPlanBody, OperatingPlanSchema } from "@/lib/operatingPlan";
 
-export type ReviewKind = "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule";
+export type ReviewKind = "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule" | "operating_plan";
 
 const num = (value: unknown) => {
   const parsed = Number.parseFloat(String(value ?? "").replace(/[,$\s%]/g, ""));
@@ -319,12 +321,13 @@ function StatementReview({ schema, body }: { schema: StatementSchema; body: Stat
 
 export function FormReview(props: {
   kind: ReviewKind;
-  schema: PfsSchema | StatementSchema | RealEstateSchema;
-  body: PfsBody & DebtBody & StatementBody & RealEstateBody;
+  schema: PfsSchema | StatementSchema | RealEstateSchema | OperatingPlanSchema;
+  body: PfsBody & DebtBody & StatementBody & RealEstateBody & OperatingPlanBody;
 }) {
   const { kind, schema, body } = props;
   if (kind === "debt_schedule") return <DebtReview body={body} />;
   if (kind === "pfs") return <PfsReview schema={schema as PfsSchema} body={body} />;
   if (kind === "real_estate_schedule") return <RealEstateScheduleForm schema={schema as RealEstateSchema} value={body} disabled onChange={() => undefined} />;
+  if (kind === "operating_plan") return <OperatingPlanForm value={body} disabled onChange={() => undefined} />;
   return <StatementReview schema={schema as StatementSchema} body={body} />;
 }

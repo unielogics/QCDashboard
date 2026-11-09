@@ -68,7 +68,7 @@ describe("recompute against the Python fixtures", () => {
   });
 
   it("produces every figure the layout's formula cells ask for", () => {
-    const produced: Record<Exclude<SheetKind, "real_estate_schedule">, ComputedValues> = {
+    const produced: Record<Exclude<SheetKind, "real_estate_schedule" | "operating_plan">, ComputedValues> = {
       p_and_l: recompute("p_and_l", PL_SCHEMA, PL_CASES.ebitda_reads_the_flags.values),
       balance_sheet: recompute("balance_sheet", BS_SCHEMA, BS_CASES.equity_implied.values),
       debt_schedule: recompute("debt_schedule", null, DEBT_CASE.values),

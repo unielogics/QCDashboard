@@ -760,6 +760,7 @@ export type CockpitCoverage = {
 export type UploadedScheduleLine = { lender?: string | null; debt_type?: string | null; current_balance?: number | null; balance?: number | null; monthly_payment?: number | null; rate_pct?: number | null; maturity_date?: string | null; original_amount?: number | null; secured_by?: string | null; current?: boolean | null; payment_frequency?: string | null } & Record<string, unknown>;
 
 export type FinancialCockpit = {
+  operating_plan?: { available: boolean; state?: string; version_number?: number; saved_at?: string; family_id?: string; version_id?: string; pdf_file_id?: string | null; evaluation?: import("./operatingPlan").OperatingEvaluation | null };
   profile_id: string;
   generated_at: string;
   requested_amount: number | null;

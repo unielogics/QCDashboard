@@ -28,7 +28,7 @@ import { FinancialWorkspace } from "./FinancialWorkspace";
 import { RequestFilesDialog } from "./RequestFilesDialog";
 import type { SheetKind } from "@/components/sheet/types";
 
-type FormKind = "pfs" | "debt_schedule" | "real_estate_schedule" | StatementKind;
+type FormKind = "pfs" | "debt_schedule" | "real_estate_schedule" | "operating_plan" | StatementKind;
 
 /** What a link can be minted for: any one form, or the packet of all four. */
 type LinkKind = FormKind | "packet";
@@ -131,6 +131,7 @@ function asOf(label: string): string {
  *  are already read — so they belong here beside the typed ones rather than
  *  behind a line saying there is nothing to see. */
 function summaryLines(form: FormStatus): string[] {
+  if (form.kind === "operating_plan") return [form.source === "none" ? "Disclose operating costs and propose documented earnings changes." : "Versioned operating costs and earnings proposals; staff review is separate from historical financials."];
   // A document is on file but the analyzer has not finished. "Coming" and
   // "absent" are different answers and the desk should not have to guess which.
   if (form.analysis_pending) {

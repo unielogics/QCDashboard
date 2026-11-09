@@ -32,13 +32,15 @@ describe("client financial corrections and immutable version saves", () => {
   });
 
   it("keeps stable row IDs for debt, PFS and real estate working tables", () => {
-    const body = publicFinancialBody({ debts: [{ lender: "New" }, { id: "kept", lender: "Source" }], schedules: { notes_payable: [{ lender: "Bank" }] }, properties: [{ address: "Example" }], mortgages: [{ lender: "Mortgage" }] });
+    const body = publicFinancialBody({ debts: [{ lender: "New" }, { id: "kept", lender: "Source" }], schedules: { notes_payable: [{ lender: "Bank" }] }, properties: [{ address: "Example" }], mortgages: [{ lender: "Mortgage" }], expenses: [{ label: "Rent" }], adjustments: [{ label: "Lower rent" }] });
     const again = publicFinancialBody(body);
     expect(body.debts[0].id).toMatch(/^[0-9a-f-]{36}$/);
     expect(body.debts[1].id).toBe("kept");
     expect((body.schedules.notes_payable[0] as { id?: string }).id).toBeTruthy();
     expect((body.properties[0] as { id?: string }).id).toBeTruthy();
     expect((body.mortgages[0] as { id?: string }).id).toBeTruthy();
+    expect((body.expenses[0] as { id?: string }).id).toBeTruthy();
+    expect((body.adjustments[0] as { id?: string }).id).toBeTruthy();
     expect(again).toEqual(body);
   });
 

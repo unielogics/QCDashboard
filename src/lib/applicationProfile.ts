@@ -224,7 +224,7 @@ export type ApplicationRequirementEvidence = {
    *  rendering of their answers), or a certificate generated when they signed. */
   origin?: "uploaded" | "filled_form" | "signed";
   /** For a filled form, which one. */
-  form_kind?: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule" | null;
+  form_kind?: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule" | "operating_plan" | null;
 };
 
 export type ApplicationBankEvidenceFile = {
@@ -765,7 +765,7 @@ export type ApplicationEvidenceCollection = {
 };
 
 export type FinancialFormSummary = {
-  kind: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule";
+  kind: "pfs" | "debt_schedule" | "p_and_l" | "balance_sheet" | "real_estate_schedule" | "operating_plan";
   label: string;
   requested: boolean;
   satisfied: boolean;

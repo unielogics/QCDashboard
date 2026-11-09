@@ -20,6 +20,15 @@ const body = {
 const snapshot = { kind: "debt_schedule", family_id: "family-a", body, draft: { revision: 7, base_version_id: "version-2" } } as unknown as FinancialWorkspaceSnapshot;
 
 describe("the shared financial draft", () => {
+  it("keeps operating expense and action rows linked across the form and worksheet", () => {
+    const sheet: SheetLayout = { ...layout, kind: "operating_plan", rows: [{ r: 1, kind: "data", row_key: "expense", block: "expenses", cells: [{ c: 1, type: "money", key: "expenses.expense.current_amount", path: ["expenses", "expense", "current_amount"] }] }, { r: 2, kind: "data", row_key: "action", block: "adjustments", cells: [{ c: 1, type: "money", key: "adjustments.action.proposed_amount", path: ["adjustments", "action", "proposed_amount"] }] }] };
+    const data = { expenses: [{ id: "expense", current_amount: "3000", cadence: "monthly" }], adjustments: [{ id: "action", expense_row_id: "expense", current_amount: "3000", proposed_amount: "2500", cadence: "monthly", status: "approved", review_source_stamp: "old" }] };
+    const next = applyFinancialCells(data, sheet, [{ sheet: "operating_plan", key: "expenses.expense.current_amount", value: "3200" }]);
+    expect((next.expenses as Array<{current_amount:string}>)[0].current_amount).toBe("3200");
+    expect((next.adjustments as unknown[])[0]).toMatchObject({ current_amount: "3200", proposed_amount: "2500", status: "proposed", review_source_stamp: null });
+    const empty = applyFinancialCells({}, sheet, [{ sheet: "operating_plan", key: "expenses.expense.current_amount", value: "3200" }]);
+    expect(Array.isArray(empty.expenses)).toBe(true);
+  });
   it("shows working draft counts separately from the accepted schedule", () => {
     const complete = { complete: true, missing_fields: [], reason: "Complete", no_debt: false, active_rows: 2 };
     const pending = { ...complete, complete: false, missing_fields: ["debt-a.monthly_payment"], active_rows: 1 };

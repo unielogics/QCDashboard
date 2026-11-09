@@ -15,6 +15,7 @@ const TYPES = [
   ["profit_and_loss", "Profit and loss statement", "files", 1],
   ["balance_sheet", "Balance sheet", "files", 1],
   ["real_estate_schedule", "Real estate schedule", "files", 1],
+  ["operating_plan", "Operating expenses and earnings plan", "files", 1],
   ["mortgage_statement", "Latest mortgage statement", "files", 1],
   ["payoff_letter", "Payoff letters", "files", 1],
   ["loan_agreement", "Loan agreements", "files", 1],
