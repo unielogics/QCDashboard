@@ -14,6 +14,7 @@ import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/ap
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
 import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDrawer";
 import { OwnerCreditReportDrawer } from "@/components/application/OwnerCreditReportDrawer";
+import { OwnerImportReview, canReviewOwnerCredit } from "@/components/application/OwnerImportReview";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
@@ -143,6 +144,7 @@ export function ApplicationVerificationWorkspace({
       qc.invalidateQueries({ queryKey: ["application-profile-owners", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-profile-verification", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-profile-banks", profileId] }),
+      qc.invalidateQueries({ queryKey: ["application-evidence-workspace", profileId] }),
     ]);
   };
 
@@ -202,6 +204,9 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   const apiCall = useAuthedApi();
   const [drafts, setDrafts] = useState<OwnerDraft[]>([]);
   const [saveStates, setSaveStates] = useState<Record<string, "saving" | "saved" | "invalid">>({});
+  const currentUser = useCurrentUser();
+  const [reviewOwnerId, setReviewOwnerId] = useState<string | null>(null);
+  const [reportOwnerId, setReportOwnerId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   const createOwner = useMutation({
@@ -330,7 +335,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
                     <td><Input aria-label={`${owner.full_name} personal email`} type="email" defaultValue={owner.email ?? ""} onBlur={(event) => save(owner, "email", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal phone`} type="tel" defaultValue={owner.phone ?? ""} onBlur={(event) => save(owner, "phone", event.target.value)} /></td>
                     <td><CellChip tone={owner.credit_complete ? ownerCreditStatus(owner).tone : owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_complete ? ownerCreditStatus(owner).label : owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
-                    <td><CellChip tone={saveState === "saved" ? "ok" : saveState === "invalid" ? "bad" : "mut"}>{saveState === "saving" ? "Saving..." : saveState === "invalid" ? "Fix row" : "Saved"}</CellChip></td>
+                    <td><CellChip tone={saveState === "saved" ? "ok" : saveState === "invalid" ? "bad" : "mut"}>{saveState === "saving" ? "Saving..." : saveState === "invalid" ? "Fix row" : "Saved"}</CellChip>{owner.backfill_needs_review ? <div className="grid g4"><small className="owner-row-warning">Imported · confirmation needed</small>{canReviewOwnerCredit(currentUser.data?.role) ? <Btn size="sm" onClick={() => setReviewOwnerId(owner.id)}>Review owner details</Btn> : null}</div> : null}</td>
                     <td className="r"><IconBtn aria-label={`Remove ${owner.full_name}`} title={locked ? "Credit activity preserves this owner" : "Remove owner"} disabled={locked || deleteOwner.isPending} onClick={() => deleteOwner.mutate(owner.id)}><Icon name="trash" size={14} /></IconBtn></td>
                   </tr>
                 );
@@ -355,6 +360,8 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
           </div>
         </TableWorkspace>
       )}
+      <OwnerImportReview profileId={profileId} owner={owners.find((owner) => owner.id === reviewOwnerId) ?? null} owners={owners} onClose={() => setReviewOwnerId(null)} onSaved={onRefresh} onViewReport={(owner) => setReportOwnerId(owner.id)} />
+      <OwnerCreditReportDrawer key={reportOwnerId ?? "closed"} profileId={profileId} owner={owners.find((owner) => owner.id === reportOwnerId) ?? null} onClose={() => setReportOwnerId(null)} onImported={onRefresh} />
       {error ? <Callout tone="bad" icon={<Icon name="alert" size={16} />}>{error}</Callout> : null}
       <footer className="verification-section-footer">
         <div className="verification-blockers">
