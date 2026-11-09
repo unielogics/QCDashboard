@@ -108,6 +108,8 @@ export type SheetCellViewProps = {
   /** The roving tabindex: exactly one cell in the grid holds 0. */
   tabbable: boolean;
   editing: Editing | null;
+  notePreview?: boolean;
+  describedBy?: string;
   /** A remote edit that was discarded because this cell was being typed into. */
   mark?: CellMark | null;
   onCommit: (next: string, how: CommitHow) => void;
@@ -129,6 +131,8 @@ function SheetCellViewInner({
   inRange,
   tabbable,
   editing,
+  notePreview,
+  describedBy,
   mark,
   onCommit,
   onCancel,
@@ -164,10 +168,12 @@ function SheetCellViewInner({
       aria-colspan={span > 1 ? span : undefined}
       aria-readonly={cell && !editable ? true : undefined}
       aria-selected={active || inRange ? true : undefined}
+      aria-describedby={describedBy}
+      data-note-preview={notePreview && !editing ? "1" : undefined}
       data-addr={`${addr.r}:${addr.c}`}
       data-editable={editable ? "1" : undefined}
       tabIndex={tabbable ? 0 : -1}
-      title={title}
+      title={describedBy ? undefined : title}
       className={className}
       style={span > 1 ? { gridColumn: `span ${span}` } : undefined}
     >

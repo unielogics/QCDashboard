@@ -43,6 +43,7 @@ import { useCallback, useEffect, useMemo, useRef, type CSSProperties, type Clipb
 import { cx } from "@/components/ds";
 import { cellAt, isEditable, normalizeRange, rangeCells, rowAt } from "./coords";
 import { cellText, parseTsv, planPaste, toTsv } from "./clipboard";
+import { useNoteTooltip } from "./useNoteTooltip";
 import { SheetCellView, SheetRowEnd, type CommitHow } from "./SheetCellView";
 import { useSelection, type SelectionState } from "./useSelection";
 import type { CellMark } from "./useSheetValues";
@@ -321,6 +322,9 @@ export function SheetGrid({
     [layout, values, canEdit, lockedRows],
   );
   const { state, dispatch, read } = useSelection(ctx);
+  const notes = useNoteTooltip(Boolean(state.editing));
+  const closeNotes = notes.close;
+  useEffect(closeNotes, [closeNotes, layout, values, state.editing]);
   const focusedRequest = useRef<number | null>(null);
   useEffect(() => {
     if (!focusRow || focusedRequest.current === focusRow.requestId) return;
@@ -646,6 +650,10 @@ export function SheetGrid({
       className="sg-wrap"
       style={wrapStyle}
       ref={wrapRef}
+      onPointerOver={notes.onPointerOver}
+      onPointerOut={notes.onPointerOut}
+      onFocus={notes.onFocus}
+      onBlur={notes.onBlur}
       onKeyDown={onKeyDown}
       onCopy={onCopy}
       onCut={onCut}
@@ -670,6 +678,7 @@ export function SheetGrid({
         ))}
       </div>
       {overlay}
+      {notes.tooltip}
       <textarea
         ref={catcherRef}
         className="sg-catcher"
@@ -727,6 +736,8 @@ export function SheetGrid({
           inRange={inRange}
           tabbable={active}
           editing={state.editing && active ? state.editing : null}
+          notePreview={layout.kind === "debt_schedule" && cell?.type === "text" && Boolean(key?.endsWith(".notes"))}
+          describedBy={notes.describedCell === `${addr.r}:${addr.c}` ? notes.id : undefined}
           mark={key ? marks?.[`${layout.kind}:${key}`] ?? null : null}
           onCommit={onCommit}
           onCancel={onCancel}
