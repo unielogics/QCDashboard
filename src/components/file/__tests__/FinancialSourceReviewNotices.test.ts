@@ -17,7 +17,7 @@ describe("financial source review notices", () => {
     expect(html).toContain("Later return comparison: -120,000.00");
     expect(html).toContain("Difference: 73,701.00");
     expect(html).toContain("original figures have been preserved");
-    expect(html).toContain("1 tax file excluded from business earnings");
+    expect(html).toContain("1 income source excluded from business earnings");
     expect(html).toContain("Owner return.pdf");
     expect(html).toContain("Open original 2024 return");
     expect(html).toContain("Open later return comparison");
