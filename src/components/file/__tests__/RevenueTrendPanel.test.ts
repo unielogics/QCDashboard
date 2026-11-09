@@ -30,4 +30,15 @@ describe("Revenue trend and operating outlook", () => {
     expect(html).not.toContain("$108,000");
     expect(html).not.toContain("+20%");
   });
+  it("uses the forecast evidence currency independently of older comparison evidence", () => {
+    const html = renderToStaticMarkup(createElement(RevenueTrendPanel, { value: {
+      ...trend,
+      periods: [{ ...trend.periods[0], currency: "CAD", source_refs: [{ file_id: "old", file_name: "2024.pdf", currency: "CAD" }] }, trend.periods[1]],
+      comparison: { ...trend.comparison!, comparable: false, reason: "Different reporting currencies" },
+      forecast: { ...trend.forecast!, source_refs: [{ file_id: "new", file_name: "2025.pdf", currency: "USD" }] },
+    } }));
+    expect(html).toContain("$108,000");
+    expect(html).toContain("-$7,560");
+    expect(html).toContain("Different reporting currencies");
+  });
 });
