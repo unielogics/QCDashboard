@@ -16,7 +16,7 @@ describe("Business NOI detail", () => {
     expect(html).toContain("Depreciation and amortization remain operating expenses");
     expect(html).toContain("Earlier years provide comparison only");
     expect(html).toContain("2024 → 2025");
-    expect(html).toContain("Cash after debt service");
+    expect(html).toContain("Operating income less debt service");
     expect(html).toContain("$5,000");
     expect(html).toContain("View source");
   });
