@@ -519,7 +519,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       <details className={styles.ebitdaDetails}>
         <summary>EBITDA sources and plan adjustments</summary>
         <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
-        <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
+        <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} potential={cockpit.ebitda?.potential} planIsCurrent={!dirty} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
       </details>
 
       <div className="fc-grid">
@@ -886,7 +886,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {local.coverageUnavailableReason ? <StatusLine tone="warn">{local.coverageUnavailableReason}</StatusLine> : null}
       <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence} />
       <EbitdaRefinanceComparison value={local.ebitda} compact scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => onRequestStatement("profit_and_loss") : undefined} />
-      <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
+      <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} potential={cockpit.ebitda?.potential} planIsCurrent={!dirty} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
       {repaymentIssue ? <StatusLine tone="bad">Repayment preview is invalid: {repaymentIssue} Resolve it before saving or using these projections.</StatusLine> : null}
       {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}
     </section>

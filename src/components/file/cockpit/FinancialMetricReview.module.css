@@ -17,7 +17,7 @@
 .metricCard :global(.fc-kpi-spark) > span { min-width: 0; }
 .metricCard :global(.kdelta) { margin-top: 2px; }
 @container financial-kpis (min-width: 680px) { .metricGrid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
-@container financial-kpis (min-width: 1260px) { .metricGrid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+@container financial-kpis (min-width: 1440px) { .metricGrid { grid-template-columns: repeat(8, minmax(0, 1fr)); } }
 @container financial-kpis (max-width: 599px) { .metricCard .metricValue { font-size: 21px; } .metricCard .metricProse { font-size: 15px; } }
 @container financial-kpis (max-width: 279px) { .metricGrid { grid-template-columns: minmax(0, 1fr); } }
 .metricHint { font-size: 11px; color: var(--muted); }

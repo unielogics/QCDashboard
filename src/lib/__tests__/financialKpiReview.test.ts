@@ -17,16 +17,28 @@ function setup() {
 }
 
 describe("financial KPI evidence and offer illustrations", () => {
-  it("maps all seven cards and uses principal-plus-interest cash separately from underwriting", () => {
+  it("maps all eight cards and uses principal-plus-interest cash separately from underwriting", () => {
     const { cockpit, options } = setup();
     const entries = metricEntries(cockpit, options);
-    expect(entries).toHaveLength(7);
+    expect(entries).toHaveLength(8);
     expect(entries.find((row) => row.key === "cash_flow")?.projection.value).toBe(3880);
     expect(entries.find((row) => row.key === "average_balance")?.projection.value).toBe(10280);
     expect(entries.find((row) => row.key === "dscr")?.projection.value).toBe(4.72);
     expect(entries.find((row) => row.key === "deposits")?.projection.value).toBe(10000);
     expect(entries.find((row) => row.key === "nsf_overdrafts")?.projection.status).toBe("unchanged");
     expect(entries.find((row) => row.key === "ebitda")?.projection.value).toBe(60000);
+    expect(entries.find((row) => row.key === "noi")?.currentValue).toBeNull();
+  });
+  it("uses operating-income evidence for NOI and keeps financing out of its core value", () => {
+    const { cockpit, options } = setup();
+    cockpit.noi = { definition: { formula: "Revenue minus COGS minus operating expenses" }, headline: { key: "noi:current", value: 30000, annualized_value: 30000, currency: "USD", period: "2026", input_keys: ["profit_and_loss.gross_revenue"], source_refs: [{ file_id: "operating", file_name: "Operating.pdf", currency: "USD", pages: [3] }], notes: [] } } as unknown as FinancialCockpit["noi"];
+    const entry = metricEntry(cockpit, "noi", options);
+    expect(entry.currentValue).toBe(30000);
+    expect(entry.projection.value).toBe(30000);
+    expect(entry.projection.status).toBe("unchanged");
+    expect(entry.sourceRefs.map((row) => row.file_id)).toEqual(["operating"]);
+    expect(entry.calculationKeys).toEqual(["noi:current"]);
+    expect(entry.formula).toContain("Revenue minus COGS");
   });
   it("does not put retired principal into profit or invent old interest", () => {
     const { cockpit, options } = setup();

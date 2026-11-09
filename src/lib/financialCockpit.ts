@@ -4,7 +4,7 @@ import type { LoanPaymentPhase, RepaymentConfig } from "./loanSchedule";
 // and the pure helpers the tiles and charts use. Nothing here fetches.
 import type { AccountMovements } from "./accountMovements";
 import type { FinancialDebtReview } from "./financialDebtReview";
-import type { FinancialEbitda, FinancialMetricReview } from "./financialMetrics";
+import type { FinancialEbitda, FinancialMetricReview, FinancialNoi } from "./financialMetrics";
 import type { RefinanceEbitda } from "./ebitdaRefinance";
 
 export type DscrStatus = "unavailable" | "concerning" | "acceptable" | "healthy" | "very_strong";
@@ -805,6 +805,7 @@ export type FinancialCockpit = {
   proposed_terms?: ProposedTerms | null;
   dscr: CockpitDscr;
   ebitda?: FinancialEbitda;
+  noi?: FinancialNoi;
   metric_review?: FinancialMetricReview;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];

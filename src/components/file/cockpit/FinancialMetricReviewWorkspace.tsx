@@ -23,6 +23,8 @@ import { compactMetricSources, metricSourceDocumentIdentity } from "./financialM
 import { EbitdaSourceSelection } from "./EbitdaSourceSelection";
 import { ebitdaSourceStatus, type EbitdaSourceDraft } from "./ebitdaSourceReview";
 import { RevenueTrendPanel } from "./RevenueTrendPanel";
+import { EarningsPotentialPanel } from "./EarningsPotentialPanel";
+import { NoiBreakdownPanel } from "./NoiBreakdownPanel";
 import styles from "./FinancialMetricReview.module.css";
 
 type View = "calculation" | "evidence" | "history";
@@ -31,7 +33,7 @@ const pageFor = (source: MetricSourceRef) => source.citations?.find((citation) =
 const quoteFor = (source: MetricSourceRef) => source.citations?.find((citation) => citation.page === pageFor(source) && citation.quote)?.quote;
 const dateLabel = (value: string) => Number.isNaN(new Date(value).getTime()) ? value : new Date(value).toLocaleString();
 
-/** The seven cockpit tiles use one source-bound review and one document reader. */
+/** The cockpit tiles use one source-bound review and one document reader. */
 export function FinancialMetricReviewWorkspace({ open, metricKey, cockpit, options, profileId, canEdit, onClose, onRefresh, onOpenDebt, onOpenPlan }: {
   open: boolean; metricKey: FinancialKpiKey; cockpit: FinancialCockpit; options: FinancialKpiOptions; profileId: string; canEdit: boolean;
   onClose: () => void; onRefresh: () => Promise<unknown> | void; onOpenDebt: () => void; onOpenPlan: () => void;
@@ -45,10 +47,10 @@ export function FinancialMetricReviewWorkspace({ open, metricKey, cockpit, optio
   const inspection = !entry.canEditScope && ["deposits", "cash_flow", "average_balance", "nsf_overdrafts"].includes(metricKey);
   const calculations = data.metric_review?.calculations.filter((calculation) => entry.calculationKeys.includes(calculation.key)) ?? [];
   const relevantInputs = new Set([...entry.inputKeys, ...calculations.flatMap((calculation) => calculation.input_keys)]);
-  const incomeIdentityReview = ["ebitda", "dscr", "net_profit"].includes(metricKey);
+  const incomeIdentityReview = ["ebitda", "dscr", "net_profit", "noi"].includes(metricKey);
   const sourceSelection = metricKey === "ebitda" ? data.ebitda?.source_selection : undefined;
-  const selectionRefs = sourceSelection?.sources.flatMap((source) => source.source_refs?.length ? source.source_refs : [{ file_id: source.file_id, file_name: source.file_name, analysis_id: source.analysis_id, content_hash: source.content_hash, entity: source.entity, currency: source.currency }]) ?? [];
-  const sourceRefs = compactMetricSources([...new Map([...entry.sourceRefs, ...selectionRefs, ...(incomeIdentityReview && !sourceSelection ? financialIdentitySources(data.metric_review) : []), ...(inspection ? [] : data.metric_review?.inputs.filter((input) => relevantInputs.has(input.key)).flatMap((input) => input.source_refs) ?? [])].map((source) => [sourceIdentity(source), source])).values()]);
+  const selectionRefs = sourceSelection?.sources.flatMap((source) => source.source_refs?.length ? source.source_refs : [{ file_id: source.file_id, file_name: source.file_name, analysis_id: source.analysis_id, content_hash: source.content_hash, entity: source.entity, currency: source.currency }]) ?? (metricKey === "noi" ? data.noi?.candidates.flatMap((candidate) => candidate.source_refs) ?? [] : []);
+  const sourceRefs = compactMetricSources([...new Map([...entry.sourceRefs, ...selectionRefs, ...(incomeIdentityReview && !sourceSelection && metricKey !== "noi" ? financialIdentitySources(data.metric_review) : []), ...(inspection ? [] : data.metric_review?.inputs.filter((input) => relevantInputs.has(input.key)).flatMap((input) => input.source_refs) ?? [])].map((source) => [sourceIdentity(source), source])).values()]);
   const [view, setView] = useState<View>(metricKey === "net_profit" ? "evidence" : "calculation");
   const [expanded, setExpanded] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
@@ -139,7 +141,8 @@ export function FinancialMetricReviewWorkspace({ open, metricKey, cockpit, optio
       {query.error ? <Callout tone="warn">The latest calculation evidence could not be read. Refresh before changing financial inputs.</Callout> : null}
       <section className={styles.tabPanel} id={`${id}-calculation-panel`} role="tabpanel" aria-labelledby={`${id}-calculation-tab`} hidden={view !== "calculation"}>
         <div className={styles.section}>{metricKey === "ebitda" && !data.ebitda?.headline ? <Callout tone="warn">No EBITDA can be calculated from the current eligible earnings evidence. Review the baseline source and any missing inputs. Selecting a source does not supply missing financial amounts.</Callout> : null}<div className={styles.heading}><h3>How the current figure is calculated</h3>{sourceSelection ? <Btn size="sm" disabled={pending} onClick={() => setView("evidence")}>Choose EBITDA sources</Btn> : null}</div><pre className={styles.formula}>{entry.formula}</pre>{entry.notes.map((note, index) => <p className={styles.note} key={index}>{note}</p>)}
-          {metricKey === "ebitda" ? <RevenueTrendPanel value={data.ebitda?.revenue_trend} onPreviewSource={selectSource} /> : null}
+          {metricKey === "ebitda" ? <RevenueTrendPanel value={data.ebitda?.revenue_trend} potential={data.ebitda?.potential} planIsCurrent={!options.dirty} onPreviewSource={selectSource} /> : metricKey === "dscr" ? <EarningsPotentialPanel value={data.ebitda?.potential} planIsCurrent={!options.dirty} /> : null}
+          {metricKey === "noi" ? <NoiBreakdownPanel value={data.noi} onPreviewSource={selectSource} planIsCurrent={!options.dirty} /> : null}
           {entry.projection.source !== "none" ? <details open><summary>Loan effect · {entry.projection.status}</summary><div className={styles.section}><pre className={styles.formula}>{entry.projection.formula}</pre>{entry.projection.inputs.map((input, index) => <p className={styles.note} key={index}>{input.label}: {input.value == null ? "Unknown" : input.unit === "ratio" ? `${input.value.toFixed(2)}x` : input.unit === "currency" ? metricAmountLabel(input.value, "USD") : input.value}</p>)}{entry.projection.notes.map((note, index) => <p className={styles.note} key={index}>{note}</p>)}<Btn size="sm" disabled={pending} onClick={onOpenPlan}>Review loan and scenario assumptions</Btn></div></details> : null}
           {!entry.canEditScope ? <Callout tone="warn">This account selection is an inspection view. Switch to the counted accounts to save a profile-wide financial correction.</Callout> : null}
           {!inspection && calculations.length > 1 ? <label>Calculation basis<Select aria-label="Metric calculation basis" disabled={pending} value={calculation?.key ?? ""} onChange={(event) => setCalculationKey(event.target.value)}>{calculations.map((item) => <option key={item.key} value={item.key}>{item.label}{item.selected ? " · current DSCR" : ""}</option>)}</Select></label> : null}
