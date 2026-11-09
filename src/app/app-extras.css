@@ -5896,6 +5896,16 @@ select.vm-in {
 }
 .sg-cell:last-child { border-right: 0; }
 .sg-text { overflow: hidden; text-overflow: ellipsis; }
+.sg-note-tooltip {
+  position: fixed; inset: auto; margin: 0; box-sizing: border-box;
+  max-width: calc(100vw - 24px); max-height: min(360px, calc(100dvh - 24px));
+  overflow: auto; overscroll-behavior: contain; padding: 12px 14px;
+  border: 1px solid var(--line2); border-radius: 8px;
+  background: var(--surface, white); color: var(--ink);
+  box-shadow: 0 8px 28px rgba(20, 32, 50, .18); z-index: 1000;
+  font: 12.8px/1.5 var(--fb, sans-serif); text-align: left;
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text;
+}
 .sg-right { justify-content: flex-end; text-align: right; }
 .sg-void { background: var(--surface); cursor: default; }
 .sg-label { color: var(--ink2); cursor: default; }
