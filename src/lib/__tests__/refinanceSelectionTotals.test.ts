@@ -18,6 +18,8 @@ describe("refinance selection totals", () => {
     expect(refinanceSelectionTotals(rows, ["one", "one"], evaluation(), known)).toEqual({
       selectedCount: 1, payoffTotal: 1100, payoffUnknown: 0, monthlyRemoved: 200, monthlyUnknown: 0,
       monthlyAdded: 100, netMonthly: -100, monthlyAfter: 900, remainingMonthly: 800,
+      monthlyAddedIo: null, monthlyAfterIo: null, netMonthlyIo: null,
+      stressMonthlyAdded: 100, stressMonthlyAfter: 900, stressNetMonthly: -100,
       basisAdjusted: false, needsReview: false,
     });
   });

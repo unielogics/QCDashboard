@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clientTermsCoveragePreview, draftFromTerms, draftWithScenarioLoan, emptyDraft, payloadFromDraft } from "../ApplicationClientTermsPanel";
+import { clientTermsCoveragePreview, draftFromTerms, draftWithScenarioLoan, emptyDraft, payloadFromDraft, paymentPreview } from "../ApplicationClientTermsPanel";
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 
 const saved = {
@@ -9,6 +9,30 @@ const saved = {
 } as unknown as ApplicationClientTerms;
 
 describe("versioned client terms repayment", () => {
+  it("round-trips independent maturity, IO and amortization without changing the payment phases", () => {
+    const source = { ...saved, amount: 89934, apr_pct: 29.99, term_months: 24, interest_only_months: 6, repayment_frequency: "monthly", repayment_config: { amortization_months: 60 } } as ApplicationClientTerms;
+    const draft = draftFromTerms(source);
+    const preview = paymentPreview(draft)!;
+    expect(preview.schedule.payment_io).toBe(2247.6);
+    expect(preview.payment).toBe(2909.12);
+    expect(preview.schedule.balloon).toBe(75126.11);
+    expect(preview.schedule.first_year_actual_debt_service).toBe(30940.32);
+    expect(preview.annual).toBe(110035.55);
+    const payload = payloadFromDraft(draft, 7);
+    expect(payload).toMatchObject({ term_months: 24, interest_only_months: 6, repayment_config: { amortization_months: 60 }, expected_version: 7 });
+    const reopened = paymentPreview(draftFromTerms({ ...source, ...payload } as ApplicationClientTerms))!;
+    expect(reopened.schedule).toEqual(preview.schedule);
+  });
+
+  it("rejects fractional months instead of silently changing the working quote", () => {
+    const draft = { ...draftFromTerms(saved), repayment_config: null, term_months: "24.5" };
+    expect(paymentPreview(draft)).toBeNull();
+    expect(() => payloadFromDraft(draft, 4)).toThrow(/whole number/);
+    draft.term_months = "24";
+    draft.interest_only_months = "6.5";
+    expect(paymentPreview(draft)).toBeNull();
+    expect(() => payloadFromDraft(draft, 4)).toThrow(/whole number/);
+  });
   it("retains the complete saved schedule and cadence when only the client note changes", () => {
     const draft = draftFromTerms(saved);
     draft.client_note = "Reviewed financing proposal";

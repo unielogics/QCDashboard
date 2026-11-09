@@ -2,7 +2,8 @@ import type { LocalPlanEvaluation } from "./cockpitSimulation";
 import type { Obligation } from "./financialCockpit";
 
 type Evaluation = Pick<LocalPlanEvaluation, "retiredMonthly" | "payoffTotal" | "payoffUnknown" | "newPayment"
-  | "serviceBefore" | "serviceAfter" | "serviceBeforeNewPayment">;
+  | "serviceBefore" | "serviceAfter" | "serviceBeforeNewPayment"> & Partial<Pick<LocalPlanEvaluation,
+    "newRegularPayment" | "newInterestOnlyPayment" | "serviceAfterRegular" | "serviceAfterInterestOnly">>;
 
 export type RefinanceSelectionTotals = {
   selectedCount: number;
@@ -11,6 +12,12 @@ export type RefinanceSelectionTotals = {
   monthlyRemoved: number | null;
   monthlyUnknown: number;
   monthlyAdded: number | null;
+  monthlyAddedIo: number | null;
+  monthlyAfterIo: number | null;
+  netMonthlyIo: number | null;
+  stressMonthlyAdded: number | null;
+  stressMonthlyAfter: number | null;
+  stressNetMonthly: number | null;
   netMonthly: number | null;
   monthlyAfter: number | null;
   remainingMonthly: number | null;
@@ -31,9 +38,11 @@ export function refinanceSelectionTotals(
   const needsReview = options.unresolvedSelections || [...requested].some((id) => !shown.has(id));
   const inService = selected.filter((row) => row.in_debt_service);
   const monthlyUnknown = inService.filter((row) => row.monthly == null || !Number.isFinite(row.monthly)).length;
-  const monthlyAdded = evaluation.newPayment;
+  const phased = "newRegularPayment" in evaluation;
+  const monthlyAdded = phased ? evaluation.newRegularPayment ?? null : evaluation.newPayment;
+  const monthlyAddedIo = evaluation.newInterestOnlyPayment ?? null;
   const selectionKnown = !needsReview && monthlyUnknown === 0;
-  const before = evaluation.serviceBefore, after = evaluation.serviceAfter;
+  const before = evaluation.serviceBefore, after = phased ? evaluation.serviceAfterRegular : evaluation.serviceAfter;
   const evaluatedChange = before != null && after != null && Number.isFinite(before) && Number.isFinite(after)
     ? round2(after - before) : null;
   const remainingKnown = selectionKnown && options.debtServiceKnown && before != null && Number.isFinite(before)
@@ -41,6 +50,10 @@ export function refinanceSelectionTotals(
   const afterKnown = remainingKnown && monthlyAdded != null && Number.isFinite(monthlyAdded) && evaluatedChange != null;
   const netMonthly = afterKnown ? evaluatedChange : null;
   const basisAdjusted = afterKnown && monthlyAdded != null && round2(monthlyAdded - evaluation.retiredMonthly) !== evaluatedChange;
+  const ioAfter = evaluation.serviceAfterInterestOnly;
+  const ioKnown = remainingKnown && monthlyAddedIo != null && Number.isFinite(monthlyAddedIo) && ioAfter != null && Number.isFinite(ioAfter);
+  const stressAfter = evaluation.serviceAfter;
+  const stressKnown = remainingKnown && evaluation.newPayment != null && Number.isFinite(evaluation.newPayment) && stressAfter != null && Number.isFinite(stressAfter);
 
   return {
     selectedCount: selected.length,
@@ -50,8 +63,14 @@ export function refinanceSelectionTotals(
       ? null : selected.length ? evaluation.retiredMonthly : 0,
     monthlyUnknown,
     monthlyAdded,
+    monthlyAddedIo,
+    monthlyAfterIo: ioKnown ? ioAfter : null,
+    netMonthlyIo: ioKnown ? round2(ioAfter - before!) : null,
+    stressMonthlyAdded: evaluation.newPayment,
+    stressMonthlyAfter: stressKnown ? stressAfter : null,
+    stressNetMonthly: stressKnown ? round2(stressAfter - before!) : null,
     netMonthly,
-    monthlyAfter: afterKnown ? evaluation.serviceAfter : null,
+    monthlyAfter: afterKnown ? after! : null,
     remainingMonthly: remainingKnown ? evaluation.serviceBeforeNewPayment : null,
     basisAdjusted,
     needsReview,

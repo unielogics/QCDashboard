@@ -7,6 +7,7 @@ import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import type { ClientTermsView, ClientTermsWorkingDraft } from "@/components/application/ApplicationClientTermsPanel";
 import loanStyles from "@/components/application/LoanScheduleReview.module.css";
 import { CoverageFundingGap } from "@/components/application/CoverageFundingGap";
+import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import { coverageCurrencyComparable, coverageReview } from "@/lib/coverageReview";
 import { loanScheduleRows } from "@/lib/loanScheduleView";
 import { parseIncomeOverride } from "@/lib/incomeOverrideInput";
@@ -24,7 +25,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
 import type { DebtScheduleEditorTarget } from "@/components/application/DebtScheduleReviewPanel";
-import { Btn, CellChip, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
+import { Btn, CellChip, IconBtn, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { useSaveFinancialPlan, useSaveFileEconomics } from "@/hooks/useApi";
@@ -318,7 +319,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       if (field === "amount") next.new_loan_amount = value;
       else if (field === "rate") next.new_loan_rate_pct = value;
       else if (field === "term") {
-        const term = value == null ? null : Math.round(value);
+        const term = value;
         next.new_loan_term_months = term;
         if (p.new_loan_structure == null && term != null && (p.new_loan_repayment_config?.amortization_months ?? 0) > term - (p.new_loan_interest_only_months ?? 0)) next.new_loan_structure = "amortizing";
       } else if (field === "structure") {
@@ -327,8 +328,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         next.new_loan_interest_only = structure === "interest_only";
         if (structure === "interest_only") next.new_loan_interest_only_months = null;
       } else if (field === "io_months") {
-        const months = value == null ? null : Math.max(0, Math.round(value));
-        next.new_loan_interest_only_months = months != null && p.new_loan_term_months ? Math.min(months, p.new_loan_term_months) : months;
+        next.new_loan_interest_only_months = value;
       } else {
         next.new_loan_interest_only = raw === true;
         next.new_loan_structure = raw === true ? "interest_only" : defaultStructure(p.new_loan_term_months);
@@ -490,10 +490,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           </div>
           <div className="fc-chips">
             <CellChip tone={dscrTone(afterStatus)}>{local.noDebtLeft ? "Nothing left to cover" : dscrLabel(afterStatus)}</CellChip>
-            <CellChip tone="mut">Debt service {money(local.serviceAfter)} / mo</CellChip>
+            <CellChip tone="mut">Underwriting debt-service equivalent {money(local.serviceAfter)} / mo</CellChip>
             {local.retiredMonthly ? <CellChip tone="ok">{money(local.retiredMonthly)} / mo stops</CellChip> : null}
             {local.excludedMonthly ? <CellChip tone="acc">{money(local.excludedMonthly)} / mo not spend</CellChip> : null}
-            {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo {local.schedule?.repayment_config ? "coverage equivalent" : "new payment"}{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (recorded loan terms)" : ""}</CellChip> : null}
+            {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo {local.schedule?.repayment_config ? "underwriting stress equivalent" : "coverage basis"}{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (recorded loan terms)" : ""}</CellChip> : null}
           </div>
           <CoverageEbitdaMetric value={local.ebitda} side="plan" unsaved={dirty} scenarioActive={Boolean(cockpit.plan.evaluation.active)} corrected={ebitdaIsStaffCorrected(cockpit.ebitda?.headline, cockpit.metric_review)} />
           {local.coverageUnavailableReason ? <StatusLine tone="warn">{local.coverageUnavailableReason}</StatusLine> : null}
@@ -506,7 +506,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             )}
           </div>
           <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" />
-          {local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the coverage-normalized cash burden, without matching commencement dates to historical statement months. Review actual principal payments in the loan schedule.</p> : null}
+          {local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the regular payment equivalent after interest-only, without matching commencement dates to historical statement months. DSCR separately retains the underwriting stress basis, including principal due.</p> : null}
           <div className="fc-stat-list">
             <Stat label="Loan the plan needs">{local.loanAmountNeeded ? `${money(local.loanAmountNeeded)}${local.payoffTotal ? ` (payoffs ${money(local.payoffTotal)}${local.payoffUnknown ? `, ${local.payoffUnknown} unknown` : ""})` : ""}` : "—"}</Stat>
             <Stat label="Net cash flow per month, today → plan">{money(summary.avg_net)} → {money(local.netAfterAverage)}</Stat>
@@ -548,7 +548,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                 </tbody>
               </table>
             </div>
-            <RefinanceSelectionSummary totals={selectionTotals} coverageEquivalent={Boolean(local.schedule?.repayment_config) || (local.schedule?.periods_per_year != null && local.schedule.periods_per_year !== 12)} />
+            <RefinanceSelectionSummary totals={selectionTotals} interestOnlyMonths={local.schedule?.interest_only_months ?? 0} hasRepayment={local.schedule?.payment_after != null} coverageEquivalent={Boolean(local.schedule?.repayment_config) || (local.schedule?.periods_per_year != null && local.schedule.periods_per_year !== 12)} />
             </div>
           ) : (
             <div className="fc-empty fc-empty-actions">
@@ -565,7 +565,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
 
         </div>
         <div className="grid g8">
-          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}><Btn size="sm" disabled={termsPending || save.isPending} onClick={() => openClientTerms("terms")}><Icon name="pencil" size={14} />Open full terms</Btn><Btn size="sm" disabled={termsPending || save.isPending} onClick={() => openClientTerms("schedule")}>Amortization schedule</Btn></div> : null}</div>
+          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}><IconBtn disabled={termsPending || save.isPending} aria-label="Expand full loan terms" title="Expand full loan terms" onClick={() => openClientTerms("terms")}><Icon name="maximize" size={16} /></IconBtn><IconBtn disabled={termsPending || save.isPending} aria-label="Expand amortization schedule" title="Expand amortization schedule" onClick={() => openClientTerms("schedule")}><Icon name="calc" size={16} /></IconBtn></div> : null}</div>
           <div className="fc-loan-terms">
             <label className="grid g2"><span className="sub">Amount, $</span><Input aria-label="New loan amount" type="number" inputMode="decimal" min={0} step="any" value={numberValue(plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => setLoan("amount", e.target.value)} /></label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
@@ -583,10 +583,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             <label className="grid g2"><span className="sub">Amortization after interest-only, months</span><Input aria-label="Amortization after interest-only (months)" type="number" inputMode="numeric" min={1} max={1200} placeholder="Use remaining loan term" value={numberValue(plan.new_loan_repayment_config?.amortization_months)} disabled={!canEdit || structureNow === "interest_only"} onChange={(event) => setAmortization(event.target.value)} /><small className="sub">Independent of maturity; this period begins after any interest-only months.</small>{structureNow === "interest_only" && plan.new_loan_repayment_config?.amortization_months != null ? <Btn size="sm" disabled={!canEdit} onClick={() => setAmortization("")}>Remove amortization; keep principal payments</Btn> : null}</label>
             <div className="grid g2"><span className="sub">Residual balloon at maturity</span><strong className="num">{local.schedule ? money(local.schedule.balloon, 2) : "Enter loan details to calculate"}</strong><small className="sub">Unpaid principal is due at maturity{plan.new_loan_term_months != null ? ` in month ${plan.new_loan_term_months}` : ""}; additional principal payments are set below.</small></div>
           </div>
+          {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
-            {local.schedule?.repayment_config ? `Regular payment ${money(local.schedule.payment_io ?? local.schedule.payment_after)} per period; ${money(local.schedule.balloon)} residual due at maturity. Coverage uses ${money(local.schedule.coverage_annual_debt_service)} of peak rolling 12-month actual cash due (${money(local.newPayment)} monthly equivalent), including scheduled principal payments.` : local.schedule && !termsAdopted ? `${money(local.schedule.amount)} at ${local.schedule.rate_pct}% ${describeOf(local.schedule)}: ${local.schedule.payment_io_monthly != null && local.schedule.payment_after_monthly != null ? `${money(local.schedule.payment_io_monthly)} a month for ${local.schedule.interest_only_months} months, then ${money(local.schedule.payment_after_monthly)}` : `${money(local.newPayment)} a month${local.schedule.structure === "interest_only" ? " of interest; the principal is due at maturity" : ""}`}. Coverage stands on ${money(local.newPayment)} a month.` : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
+            {local.schedule ? "Scheduled installments, maturity principal and the underwriting stress basis are shown separately above." : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month for coverage.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month for coverage${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
             {canRecordTerms ? <> <button type="button" className="linky" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record loan terms</button></> : null}
           </span>
           {recorded ? (
@@ -775,10 +776,12 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             <tbody>
               <tr><td>Debt service coverage{headline ? ` · ${headline.label}` : ""}</td><td className="r num">{multiple(headline?.value)}</td><td className="r num">{local.noDebtLeft ? "No debt left" : multiple(local.headlineAfter)}</td><td className="r num">{signedMultiple(change(headline?.value, local.headlineAfter))}</td></tr>
               <tr><td>Income available for debt service, a year</td><td className="r num">{money(local.incomeBefore)}</td><td className="r num">{money(local.incomeAfter)}</td><td className="r num">{signedMoney(change(local.incomeBefore, local.incomeAfter))}</td></tr>
-              <tr><td>Debt service, a month</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfter)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfter))}</td></tr>
+              <tr><td>Regular debt service, a month{local.newInterestOnlyPayment != null && local.schedule?.payment_after != null ? " · after interest-only" : ""}</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfterRegular)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfterRegular))}</td></tr>
+              {local.newInterestOnlyPayment != null && local.schedule?.payment_after != null ? <tr><td>Debt service, a month · during interest-only</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfterInterestOnly)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfterInterestOnly))}</td></tr> : null}
+              {local.schedule?.repayment_config ? <tr><td>Underwriting stress equivalent, a month · DSCR basis</td><td className="r num">{money(serviceOriginal)}</td><td className="r num">{money(local.serviceAfter)}</td><td className="r num">{signedMoney(change(serviceOriginal, local.serviceAfter))}</td></tr> : null}
               <tr><td>Net cash flow, a month ({accountLabel})</td><td className="r num">{money(summary.avg_net)}</td><td className="r num">{money(local.netAfterAverage)}</td><td className="r num">{signedMoney(change(summary.avg_net, local.netAfterAverage))}</td></tr>
               <tr><td>Ending balance, last month</td><td className="r num">{money(summary.ending_balance)}</td><td className="r num">{money(local.endingAfterLast)}</td><td className="r num">{signedMoney(change(summary.ending_balance, local.endingAfterLast))}</td></tr>
-              <tr><td>Months dipping below zero</td><td className="r num">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td><td className="r num">{local.monthsDippingNegativeAfter}</td><td className="r num">{local.monthsDippingNegativeAfter - local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td></tr>
+              <tr><td>Months dipping below zero</td><td className="r num">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td><td className="r num">{local.monthsDippingNegativeAfter ?? "Needs details"}</td><td className="r num">{local.monthsDippingNegativeAfter == null ? "Needs details" : local.monthsDippingNegativeAfter - local.rows.filter((r) => r.lowest != null && r.lowest < 0).length}</td></tr>
             </tbody>
           </table>
         </div>

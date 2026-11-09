@@ -18,6 +18,8 @@ export function applyAmortizationMonths(value: RepaymentConfig | null | undefine
 export function repaymentPreview(amount: number | null | undefined, rate: number | null | undefined, months: number | null | undefined, options: RepaymentOptions = {}): { schedule: LoanScheduleSummary | null; error: string | null } {
   try {
     if (options.repaymentConfig != null) normalizeRepaymentConfig(options.repaymentConfig, months, options);
+    // A blank APR is not a zero-interest quote. Zero itself remains valid.
+    if (rate == null) return { schedule: null, error: null };
     return { schedule: buildSchedule(amount, rate, months, options), error: null };
   } catch (error) {
     return { schedule: null, error: error instanceof Error ? error.message : "Review the repayment schedule." };

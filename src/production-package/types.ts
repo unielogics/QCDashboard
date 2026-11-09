@@ -277,6 +277,9 @@ export type ProgramCoverageBasis =
 export type TermSheetPaymentSummary = {
   periodic_payment: number | null;
   monthly_equivalent_payment: number | null;
+  /** Cash stress is separate from the actual installment equivalents. */
+  coverage_monthly_equivalent_payment?: number | null;
+  coverage_annual_debt_service?: number | null;
   post_io_payment: number | null;
   post_io_monthly_equivalent: number | null;
   balloon_amount: number | null;

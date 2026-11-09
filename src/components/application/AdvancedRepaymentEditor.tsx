@@ -44,7 +44,7 @@ export function AdvancedRepaymentEditor({ value, onChange, amount, ratePct, term
       {error ? <p className={styles.error} role="alert">{error} Changes cannot be saved until this is resolved.</p> : null}
       {!error && preview.schedule && value ? <div className={styles.preview}>
         {events.map((row) => <div key={row.id}>Month {row.month}{row.due_month !== row.month ? ` (applied at ${row.due_month} months)` : ""}: {money(row.amount)} principal payment · {money(row.balance_after)} remaining{row.recast_payment != null && row.recast_effective_period != null ? ` · recast payment ${money(row.recast_payment)} from period ${row.recast_effective_period}` : " · regular payment retained"}</div>)}
-        <div>Residual principal at maturity: <b>{money(preview.schedule.balloon)}</b> · coverage annual service: <b>{money(preview.schedule.coverage_annual_debt_service)}</b> (includes principal due).</div>
+        <div>Residual principal at maturity: <b>{money(preview.schedule.balloon)}</b> · underwriting stress annual basis: <b>{money(preview.schedule.coverage_annual_debt_service)}</b> (includes principal due; not the regular installment).</div>
       </div> : null}
     </div>
   </details>;

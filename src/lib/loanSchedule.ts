@@ -14,9 +14,12 @@ const MAX_PERIODS = 20_000;
 export type LoanBalloon = { id: string; month: number; type: "amount" | "percent_balance"; value: number };
 export type RepaymentConfig = { amortization_months?: number; after_balloon?: "keep_payment" | "recast"; balloons?: LoanBalloon[] };
 export type ScheduledBalloon = LoanBalloon & { period: number; due_month: number; balance_before: number; amount: number; balance_after: number; basis: string; recast_payment: number | null; recast_payment_monthly: number | null; recast_effective_period: number | null };
+export type LoanPaymentPhase = { phase: "interest_only" | "repayment"; start_period: number; end_period: number; start_month: number; end_month: number; payment_count: number; payment: number; monthly_equivalent: number; payment_min: number; payment_max: number; regular_debt_service: number; scheduled_balloon: number; maturity_balloon: number; cash_due: number };
 
 export type ScheduleRow = { regular_payment?: number; regular_principal?: number; scheduled_balloon?: number; maturity_balloon?: number; cash_payment?: number; total_principal?: number; balance_after_cash?: number; period: number; month: number; phase: "interest_only" | "amortizing" | "simple_interest"; payment: number; interest: number; principal: number; balance: number; balloon?: number; cumulative_principal: number; cumulative_interest: number; cumulative_paid: number; exposure_pct: number; recovered_pct: number; /** Counting every dollar received, interest included: what is still out until the payments return the investment. */ cash_at_risk_pct: number };
 export type LoanScheduleSummary = {
+  payment_phases?: LoanPaymentPhase[]; ordinary_payment_monthly?: number | null; interest_only_monthly_equivalent?: number | null; repayment_monthly_equivalent?: number | null; first_year_regular_debt_service?: number;
+  requested_interest_only_months?: number | null; requested_maturity_months?: number | null; cadence_adjustment_note?: string | null;
   repayment_config?: RepaymentConfig | null; amortization_months?: number | null; after_balloon?: "keep_payment" | "recast" | null; contractual_periods?: number;
   scheduled_balloons?: ScheduledBalloon[]; scheduled_balloons_total?: number; maturity_balloon?: number; maturity_exposure_pct?: number;
   cash_flows?: number[]; first_year_actual_debt_service?: number; peak_rolling_12_month_debt_service?: number; peak_rolling_12_month_end?: number | null;
@@ -202,14 +205,38 @@ export function scheduleCashFlows(summary: LoanScheduleSummary | null | undefine
   return summary.rows.map((row, index) => row.cash_payment ?? r2(row.payment + (index === summary.rows.length - 1 ? summary.balloon : 0)));
 }
 
-function cashMetadata(summary: LoanScheduleSummary, advanced: boolean): LoanScheduleSummary {
+function cashMetadata(summary: LoanScheduleSummary, advanced: boolean, requested: { io: number; maturity: number | null }): LoanScheduleSummary {
   const rows = summary.rows, principal = summary.amount, ppy = summary.periods_per_year;
+  summary.requested_interest_only_months = requested.io;
+  summary.requested_maturity_months = requested.maturity;
+  const mappedMaturity = (summary.contractual_periods ?? summary.periods) * 12 / ppy;
+  const cadenceAdjusted = (requested.maturity != null && requested.maturity > 0 && Math.abs(mappedMaturity - requested.maturity) > .01)
+    || (summary.structure !== "interest_only" && Math.abs(halfUp(requested.io * ppy / 12) * 12 / ppy - requested.io) > .01);
+  summary.cadence_adjustment_note = cadenceAdjusted ? "Requested months are mapped to the nearest scheduled payment period at this cadence; review the first principal payment and maturity dates in the schedule." : null;
   rows.forEach((row, index) => {
     const residual = index === rows.length - 1 ? summary.balloon : 0;
     row.regular_payment ??= row.payment; row.regular_principal ??= row.principal; row.scheduled_balloon ??= 0;
     row.maturity_balloon = residual; row.cash_payment = r2(row.payment + residual); row.total_principal = r2(row.principal + residual); row.balance_after_cash = r2(Math.max(0, row.balance - residual));
   });
   const flows = rows.map((row) => row.cash_payment!);
+  const groups: ScheduleRow[][] = [];
+  for (const row of rows) {
+    const previous = groups.at(-1);
+    if (!previous || (previous[0].phase === "interest_only") !== (row.phase === "interest_only")) groups.push([row]);
+    else previous.push(row);
+  }
+  summary.payment_phases = groups.map((group) => {
+    const first = group[0], last = group[group.length - 1];
+    const payments = group.map((row) => row.regular_payment!);
+    return { phase: first.phase === "interest_only" ? "interest_only" : "repayment", start_period: first.period, end_period: last.period,
+      start_month: first.month, end_month: last.month, payment_count: group.length, payment: first.regular_payment!, monthly_equivalent: r2(first.regular_payment! * ppy / 12),
+      payment_min: Math.min(...payments), payment_max: Math.max(...payments), regular_debt_service: r2(group.reduce((sum, row) => sum + row.regular_payment!, 0)),
+      scheduled_balloon: r2(group.reduce((sum, row) => sum + row.scheduled_balloon!, 0)), maturity_balloon: r2(group.reduce((sum, row) => sum + row.maturity_balloon!, 0)), cash_due: r2(group.reduce((sum, row) => sum + row.cash_payment!, 0)) };
+  });
+  summary.ordinary_payment_monthly = summary.payment_after_monthly ?? summary.payment_io_monthly;
+  summary.interest_only_monthly_equivalent = summary.payment_io_monthly;
+  summary.repayment_monthly_equivalent = summary.payment_after_monthly;
+  summary.first_year_regular_debt_service = r2(rows.filter((row) => row.period <= ppy + 1e-9).reduce((sum, row) => sum + row.regular_payment!, 0));
   const firstYear = r2(rows.filter((row) => row.period <= ppy + 1e-9).reduce((sum, row) => sum + row.cash_payment!, 0));
   let peak = 0, running = 0, left = 0, peakEnd: number | null = null;
   rows.forEach((row) => {
@@ -250,12 +277,15 @@ export function buildSchedule(amount: number | null | undefined, ratePct: number
   if (!Number.isFinite(ppy) || ppy < 1 || ppy > 366) throw new Error("Payment periods per year must be finite and between 1 and 366");
   if (!Number.isFinite(rate) || rate < 0) throw new Error("The annual rate must be finite and nonnegative");
   if (termMonths != null) integer(termMonths, "Maturity months", 0, 600);
+  const requestedIo = options.interestOnlyMonths ?? 0;
+  integer(requestedIo, "Interest-only months", 0, termMonths && termMonths > 0 ? termMonths : 600);
+  if (termMonths && termMonths * ppy / 12 < 1 - 1e-9) throw new Error("Maturity must include at least one payment period at the selected cadence");
   const config = normalizeRepaymentConfig(options.repaymentConfig, termMonths, options);
   if (config === null) {
     const legacy = buildLegacySchedule(amount, ratePct, termMonths, options);
     if (!legacy) return null;
     Object.assign(legacy, { repayment_config: null, scheduled_balloons: [], after_balloon: null, amortization_months: null, contractual_periods: legacy.periods });
-    return cashMetadata(legacy, false);
+    return cashMetadata(legacy, false, { io: requestedIo, maturity: termMonths ?? null });
   }
   principal = r2(principal);
   if (principal <= 0) throw new Error("The loan amount must be at least one cent");
@@ -304,7 +334,7 @@ export function buildSchedule(amount: number | null | undefined, ratePct: number
     balloon_pct: pyRound(balloon / principal * 100, 1), rows, repayment_config: config, scheduled_balloons: applied, after_balloon: config.after_balloon,
     amortization_months: kind === "interest_only" ? null : config.amortization_months ?? halfUp(amortPeriods * 12 / ppy), coverage_payment_monthly: 0, coverage_annual_debt_service: 0, annual_debt_service: 0,
     weighted_average_life_months: 0, recovery_milestones: { "25": null, "50": null, "75": null, "100": null }, full_exposure_months: 0, breakeven_month: null };
-  return cashMetadata(summary, true);
+  return cashMetadata(summary, true, { io: requestedIo, maturity: termMonths ?? null });
 }
 
 /** Principal at risk and the coverage on every payment: the same reading as app/services/loan_schedule.risk_profile. */

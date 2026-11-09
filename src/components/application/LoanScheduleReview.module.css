@@ -40,6 +40,14 @@
 .tabBody[hidden] { display: none; }
 .loanHeader { display: flex; align-items: center; justify-content: space-between; gap: 9px; flex-wrap: wrap; }
 .loanHeaderActions { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.paymentPhases { display: grid; gap: 8px; min-width: 0; }
+.phaseCards { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.phaseCards > div { min-width: 0; display: grid; gap: 5px; align-content: start; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.phaseCards span, .phaseCards small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+.phaseCards strong { color: var(--ink); font-size: 18px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.phaseCards strong small { font-weight: 400; font-size: 10px; }
+.paymentPhases p { margin: 0; font-size: 11px; line-height: 1.6; color: var(--muted); }
+.phaseStress { padding: 8px 0; border-top: 1px solid var(--line); }
 .headerStrip { display: grid; gap: 8px; min-width: 0; }
 .coverageGap { min-width: 0; display: grid; gap: 8px; margin: 10px 0; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
 .coverageGap h4 { margin: 0; font-size: 12px; }

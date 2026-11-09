@@ -20,9 +20,9 @@ export type SimulationRow = {
   endingAfter: number | null;
   lowest: number | null;
   lowestAfter: number | null;
-  removed: number;
-  added: number;
-  cumulative: number;
+  removed: number | null;
+  added: number | null;
+  cumulative: number | null;
 };
 
 export type SimulationResult = {
@@ -92,7 +92,7 @@ export function simulateRemovals(months: CockpitMonth[], payees: RecurringPayee[
   };
   return {
     rows,
-    removedMonthlyAverage: rows.length ? round2(rows.reduce((s, r) => s + r.removed, 0) / rows.length) : 0,
+    removedMonthlyAverage: rows.length ? round2(rows.reduce((s, r) => s + (r.removed ?? 0), 0) / rows.length) : 0,
     addedMonthly: added,
     netBeforeAverage: mean(rows.map((r) => r.net)),
     netAfterAverage: mean(rows.map((r) => r.netAfter)),
@@ -133,6 +133,12 @@ export type LocalPlanEvaluation = {
   loanTerms: PlanLoanTerms | null;
   schedule: LoanScheduleSummary | null;
   newPayment: number | null;
+  newRegularPayment: number | null;
+  newInterestOnlyPayment: number | null;
+  serviceAfterRegular: number | null;
+  serviceAfterInterestOnly: number | null;
+  netRegularMonthlyChange: number | null;
+  netInterestOnlyMonthlyChange: number | null;
   newPaymentSource: string | null;
   loanAmountNeeded: number | null;
   serviceBefore: number | null;
@@ -145,8 +151,9 @@ export type LocalPlanEvaluation = {
   rows: SimulationRow[];
   netAfterAverage: number | null;
   endingAfterLast: number | null;
-  monthsDippingNegativeAfter: number;
-  cashKept: number;
+  monthsDippingNegativeAfter: number | null;
+  cashKept: number | null;
+  replayProjectionAvailable: boolean;
 };
 
 const r2 = (v: number) => roundEbitdaMoney(v);
@@ -189,7 +196,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
       ? repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct, plan.new_loan_term_months ?? 0, { structure: interestOnly ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months ?? 0, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).schedule
       : adoptedTerms?.repayment_config && adoptedTerms.amount && adoptedTerms.rate_pct != null ? repaymentPreview(adoptedTerms.amount, adoptedTerms.rate_pct, adoptedTerms.term_months, { structure: adoptedTerms.structure, interestOnlyMonths: adoptedTerms.interest_only_months, periodsPerYear: adoptedTerms.payments_per_year ?? 12, repaymentConfig: adoptedTerms.repayment_config }).schedule : null;
   const loanTerms: PlanLoanTerms | null = schedule
-    ? { amount: schedule.amount, rate_pct: schedule.rate_pct, term_months: schedule.term_months, interest_only: schedule.structure === "interest_only", structure: schedule.structure, interest_only_months: schedule.interest_only_months, repayment_config: schedule.repayment_config, payments_per_year: schedule.periods_per_year, payment_io: schedule.payment_io_monthly, payment_after: schedule.payment_after_monthly, annual_debt_service: schedule.repayment_config ? schedule.coverage_annual_debt_service : schedule.annual_debt_service, total_interest: schedule.total_interest, total_paid: schedule.total_paid, balloon: schedule.balloon, describe: describeSchedule(schedule) }
+    ? { amount: schedule.amount, rate_pct: schedule.rate_pct, term_months: schedule.term_months, interest_only: schedule.structure === "interest_only", structure: schedule.structure, interest_only_months: schedule.interest_only_months, repayment_config: schedule.repayment_config, payments_per_year: schedule.periods_per_year, payment_io: schedule.payment_io_monthly, payment_after: schedule.payment_after_monthly, payment_phases: schedule.payment_phases, actual_regular_payment_monthly: schedule.ordinary_payment_monthly, annual_debt_service: schedule.repayment_config ? schedule.coverage_annual_debt_service : schedule.annual_debt_service, total_interest: schedule.total_interest, total_paid: schedule.total_paid, balloon: schedule.balloon, describe: describeSchedule(schedule) }
     : !plan.new_loan_amount && plan.new_payment_source === "term_sheet" && plan.new_payment_monthly == null && proposed?.amount && proposed.rate_pct != null
       ? { amount: proposed.amount, rate_pct: proposed.rate_pct ?? 0, term_months: proposed.term_months ?? null, interest_only: false }
       : null;
@@ -208,14 +215,23 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   }
   const configuredScheduleUnpriced = ((!!plan.new_loan_amount && plan.new_loan_repayment_config != null) || (!!adoptedTerms?.amount && adoptedTerms.repayment_config != null)) && schedule == null;
   const newLoanPaymentUnknown = (!!plan.new_loan_amount && newPayment == null) || configuredScheduleUnpriced;
+  const legacyStatedOrdinary = plan.new_payment_monthly != null && !schedule?.repayment_config;
+  const manualOrdinary = source === "manual" && legacyStatedOrdinary;
+  const newRegularPayment = newLoanPaymentUnknown ? null : legacyStatedOrdinary ? plan.new_payment_monthly : schedule ? schedule.ordinary_payment_monthly ?? null : newPayment ?? 0;
+  const newInterestOnlyPayment = newLoanPaymentUnknown || manualOrdinary ? null : schedule?.payment_io_monthly ?? null;
   const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
   const recordedRetained = source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
   const exactRetained = schedule?.repayment_config && recordedRetained;
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? null;
   const retirementUnknown = retiredPaymentUnknown && !recordedRetained;
   const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : newLoanPaymentUnknown ? DSCR_NEW_PAYMENT_MISSING : null;
+  const replayProjectionAvailable = !retirementUnknown && !newLoanPaymentUnknown;
   const serviceBeforeNewPayment = serviceBefore == null || retirementUnknown ? null : r2(Math.max(0, recordedRetained ? serviceBefore : serviceBefore - retiredMonthly));
   const serviceAfter = serviceBeforeNewPayment == null || newLoanPaymentUnknown ? null : r2(Math.max(0, serviceBeforeNewPayment + (newPayment ?? 0)));
+  const serviceAfterRegular = serviceBeforeNewPayment == null || newRegularPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + newRegularPayment));
+  const serviceAfterInterestOnly = serviceBeforeNewPayment == null || newInterestOnlyPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + newInterestOnlyPayment));
+  const netRegularMonthlyChange = serviceBefore == null || serviceAfterRegular == null ? null : r2(serviceAfterRegular - serviceBefore);
+  const netInterestOnlyMonthlyChange = serviceBefore == null || serviceAfterInterestOnly == null ? null : r2(serviceAfterInterestOnly - serviceBefore);
   const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
   const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment == null ? null : serviceBeforeNewPayment * 12;
   const serviceAfterAnnual = existingAnnualService == null || newLoanPaymentUnknown ? null : r2(Math.max(0, existingAnnualService + newAnnualService));
@@ -235,7 +251,9 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const headlineKey = cockpit.dscr.headline?.key ?? candidates[0]?.key ?? null;
   const headline = candidates.find((c) => c.key === headlineKey) ?? candidates[0] ?? null;
   // Replay with the retired obligations taken out, month by month.
-  const added = newPayment ?? 0;
+  // A historical bank replay is an ordinary-payment proxy, not a dated loan
+  // forecast. Maturity principal stays in the separate DSCR stress calculation.
+  const added = newRegularPayment ?? 0;
   let cumulative = 0;
   const rows: SimulationRow[] = months.map((m) => {
     const removedHere = r2(retired.reduce((s, o) => s + obligationAmountInMonth(o, m.month, payees, monthsRead), 0));
@@ -248,21 +266,21 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
       label: m.label,
       deposits: m.deposits,
       withdrawals: m.withdrawals,
-      withdrawalsAfter,
+      withdrawalsAfter: replayProjectionAvailable ? withdrawalsAfter : null,
       net: m.net,
-      netAfter: m.deposits == null || withdrawalsAfter == null ? null : r2(m.deposits - withdrawalsAfter),
+      netAfter: !replayProjectionAvailable || m.deposits == null || withdrawalsAfter == null ? null : r2(m.deposits - withdrawalsAfter),
       ending: m.ending_balance,
-      endingAfter: m.ending_balance == null ? null : r2(m.ending_balance + cumulative),
+      endingAfter: !replayProjectionAvailable || m.ending_balance == null ? null : r2(m.ending_balance + cumulative),
       lowest: m.low_balance,
-      lowestAfter: m.low_balance == null ? null : r2(m.low_balance + before + change / 2),
-      removed: removedHere,
-      added,
-      cumulative,
+      lowestAfter: !replayProjectionAvailable || m.low_balance == null ? null : r2(m.low_balance + before + change / 2),
+      removed: retirementUnknown ? null : removedHere,
+      added: replayProjectionAvailable ? added : null,
+      cumulative: replayProjectionAvailable ? cumulative : null,
     };
   });
   const netAfter = rows.map((r) => r.netAfter).filter((v): v is number => v != null);
   return {
-    ebitda: evaluateRefinanceEbitda(cockpit, plan, { serviceAfter, netBefore: mean(months.map((row) => row.net)), netAfter: netAfter.length ? r2(netAfter.reduce((a, b) => a + b, 0) / netAfter.length) : null, retiredCount: retired.length, newPayment: newPayment ?? null }),
+    ebitda: evaluateRefinanceEbitda(cockpit, plan, { serviceAfter: serviceAfterRegular, netBefore: mean(months.map((row) => row.net)), netAfter: netAfter.length ? r2(netAfter.reduce((a, b) => a + b, 0) / netAfter.length) : null, retiredCount: retired.length, newPayment: newPayment == null ? null : newRegularPayment }),
     retiredMonthly,
     payoffTotal,
     payoffUnknown: retired.filter((o) => o.payoff == null).length,
@@ -275,6 +293,12 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     loanTerms,
     schedule,
     newPayment: newPayment == null ? null : r2(newPayment),
+    newRegularPayment: newRegularPayment == null ? null : r2(newRegularPayment),
+    newInterestOnlyPayment: newInterestOnlyPayment == null ? null : r2(newInterestOnlyPayment),
+    serviceAfterRegular,
+    serviceAfterInterestOnly,
+    netRegularMonthlyChange,
+    netInterestOnlyMonthlyChange,
     newPaymentSource: newPayment == null ? null : source,
     loanAmountNeeded: Math.max(payoffTotal ?? 0, cockpit.requested_amount ?? 0) || null,
     serviceBefore,
@@ -287,7 +311,8 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     rows,
     netAfterAverage: netAfter.length ? r2(netAfter.reduce((a, b) => a + b, 0) / netAfter.length) : null,
     endingAfterLast: rows.length ? rows[rows.length - 1].endingAfter : null,
-    monthsDippingNegativeAfter: rows.filter((r) => r.lowestAfter != null && r.lowestAfter < 0).length,
-    cashKept: cumulative,
+    monthsDippingNegativeAfter: replayProjectionAvailable ? rows.filter((r) => r.lowestAfter != null && r.lowestAfter < 0).length : null,
+    cashKept: replayProjectionAvailable ? cumulative : null,
+    replayProjectionAvailable,
   };
 }

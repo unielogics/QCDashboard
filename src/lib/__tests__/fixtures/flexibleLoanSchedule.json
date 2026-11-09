@@ -50,9 +50,50 @@
       "principal_repaid": 200000.0,
       "maturity_exposure_pct": 0.0,
       "regular_coverage_payment_monthly": 13111.13,
+      "ordinary_payment_monthly": 13111.11,
+      "interest_only_monthly_equivalent": 2000.0,
+      "repayment_monthly_equivalent": 13111.11,
+      "first_year_regular_debt_service": 90666.66,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 6,
+          "start_month": 1.0,
+          "end_month": 6.0,
+          "payment_count": 6,
+          "payment": 2000.0,
+          "monthly_equivalent": 2000.0,
+          "payment_min": 2000.0,
+          "payment_max": 2000.0,
+          "regular_debt_service": 12000.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 12000.0
+        },
+        {
+          "phase": "repayment",
+          "start_period": 7,
+          "end_period": 24,
+          "start_month": 7.0,
+          "end_month": 24.0,
+          "payment_count": 18,
+          "payment": 13111.11,
+          "monthly_equivalent": 13111.11,
+          "payment_min": 13111.11,
+          "payment_max": 13111.13,
+          "regular_debt_service": 236000.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 236000.0
+        }
+      ],
       "coverage_basis": "legacy_regular_payment",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
-      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period"
+      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
+      "requested_interest_only_months": 6,
+      "requested_maturity_months": 24,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -207,9 +248,34 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 0.0,
       "regular_coverage_payment_monthly": 2125.0,
+      "ordinary_payment_monthly": 2124.7,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 2124.7,
+      "first_year_regular_debt_service": 25496.4,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 60,
+          "start_month": 1.0,
+          "end_month": 60.0,
+          "payment_count": 60,
+          "payment": 2124.7,
+          "monthly_equivalent": 2124.7,
+          "payment_min": 2124.7,
+          "payment_max": 2125.0,
+          "regular_debt_service": 127482.3,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 127482.3
+        }
+      ],
       "coverage_basis": "legacy_regular_payment",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
-      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period"
+      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 60,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -365,9 +431,34 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 100.0,
       "regular_coverage_payment_monthly": 1000.0,
+      "ordinary_payment_monthly": 1000.0,
+      "interest_only_monthly_equivalent": 1000.0,
+      "repayment_monthly_equivalent": null,
+      "first_year_regular_debt_service": 12000.0,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 12,
+          "start_month": 1.0,
+          "end_month": 12.0,
+          "payment_count": 12,
+          "payment": 1000.0,
+          "monthly_equivalent": 1000.0,
+          "payment_min": 1000.0,
+          "payment_max": 1000.0,
+          "regular_debt_service": 12000.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 100000.0,
+          "cash_due": 112000.0
+        }
+      ],
       "coverage_basis": "legacy_regular_payment",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
-      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period"
+      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 12,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -524,9 +615,34 @@
       "principal_repaid": 10000.0,
       "maturity_exposure_pct": 0.0,
       "regular_coverage_payment_monthly": 625.0,
+      "ordinary_payment_monthly": 625.0,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 625.0,
+      "first_year_regular_debt_service": 7500.0,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 16,
+          "start_month": 1.0,
+          "end_month": 16.0,
+          "payment_count": 16,
+          "payment": 625.0,
+          "monthly_equivalent": 625.0,
+          "payment_min": 625.0,
+          "payment_max": 625.0,
+          "regular_debt_service": 10000.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 10000.0
+        }
+      ],
       "coverage_basis": "legacy_regular_payment",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
-      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period"
+      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 16,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -682,9 +798,34 @@
       "principal_repaid": 10000.0,
       "maturity_exposure_pct": 0.0,
       "regular_coverage_payment_monthly": 466.67,
+      "ordinary_payment_monthly": 466.67,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 466.67,
+      "first_year_regular_debt_service": 5600.0,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 64,
+          "start_month": 0.38,
+          "end_month": 24.0,
+          "payment_count": 64,
+          "payment": 175.0,
+          "monthly_equivalent": 466.67,
+          "payment_min": 175.0,
+          "payment_max": 175.0,
+          "regular_debt_service": 11200.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 11200.0
+        }
+      ],
       "coverage_basis": "legacy_regular_payment",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
-      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period"
+      "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 24,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -835,6 +976,28 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 93.1,
       "regular_coverage_payment_monthly": 599.55,
+      "ordinary_payment_monthly": 599.55,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 599.55,
+      "first_year_regular_debt_service": 7194.6,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 60,
+          "start_month": 1.0,
+          "end_month": 60.0,
+          "payment_count": 60,
+          "payment": 599.55,
+          "monthly_equivalent": 599.55,
+          "payment_min": 599.55,
+          "payment_max": 599.55,
+          "regular_debt_service": 35973.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 93054.36,
+          "cash_due": 129027.36
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -849,7 +1012,10 @@
         "75": 60.0,
         "100": 60.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 60,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -1057,6 +1223,28 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 40.0,
       "regular_coverage_payment_monthly": 1000.0,
+      "ordinary_payment_monthly": 1000.0,
+      "interest_only_monthly_equivalent": 1000.0,
+      "repayment_monthly_equivalent": null,
+      "first_year_regular_debt_service": 6600.0,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 12,
+          "start_month": 1.0,
+          "end_month": 12.0,
+          "payment_count": 12,
+          "payment": 1000.0,
+          "monthly_equivalent": 1000.0,
+          "payment_min": 400.0,
+          "payment_max": 1000.0,
+          "regular_debt_service": 6600.0,
+          "scheduled_balloon": 60000.0,
+          "maturity_balloon": 40000.0,
+          "cash_due": 106600.0
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -1071,7 +1259,10 @@
         "75": 12.0,
         "100": 12.0
       },
-      "full_exposure_months": 2
+      "full_exposure_months": 2,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 12,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -1308,6 +1499,44 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 68.1,
       "regular_coverage_payment_monthly": 500.0,
+      "ordinary_payment_monthly": 479.64,
+      "interest_only_monthly_equivalent": 500.0,
+      "repayment_monthly_equivalent": 479.64,
+      "first_year_regular_debt_service": 5400.0,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 12,
+          "start_month": 1.0,
+          "end_month": 12.0,
+          "payment_count": 12,
+          "payment": 500.0,
+          "monthly_equivalent": 500.0,
+          "payment_min": 400.0,
+          "payment_max": 500.0,
+          "regular_debt_service": 5400.0,
+          "scheduled_balloon": 20000.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 25400.0
+        },
+        {
+          "phase": "repayment",
+          "start_period": 13,
+          "end_period": 60,
+          "start_month": 13.0,
+          "end_month": 60.0,
+          "payment_count": 48,
+          "payment": 479.64,
+          "monthly_equivalent": 479.64,
+          "payment_min": 431.68,
+          "payment_max": 479.64,
+          "regular_debt_service": 21296.16,
+          "scheduled_balloon": 7901.76,
+          "maturity_balloon": 68122.37,
+          "cash_due": 97320.29
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -1322,7 +1551,10 @@
         "75": 60.0,
         "100": 60.0
       },
-      "full_exposure_months": 5
+      "full_exposure_months": 5,
+      "requested_interest_only_months": 12,
+      "requested_maturity_months": 60,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -1555,6 +1787,28 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 80.3,
       "regular_coverage_payment_monthly": 599.55,
+      "ordinary_payment_monthly": 599.55,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 599.55,
+      "first_year_regular_debt_service": 7194.6,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 60,
+          "start_month": 1.0,
+          "end_month": 60.0,
+          "payment_count": 60,
+          "payment": 599.55,
+          "monthly_equivalent": 599.55,
+          "payment_min": 599.55,
+          "payment_max": 599.55,
+          "regular_debt_service": 35973.0,
+          "scheduled_balloon": 10000.0,
+          "maturity_balloon": 80349.52,
+          "cash_due": 126322.52
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -1569,7 +1823,10 @@
         "75": 60.0,
         "100": 60.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 60,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -1779,6 +2036,44 @@
       "principal_repaid": 10000.0,
       "maturity_exposure_pct": 37.1,
       "regular_coverage_payment_monthly": 377.78,
+      "ordinary_payment_monthly": 377.78,
+      "interest_only_monthly_equivalent": 100.0,
+      "repayment_monthly_equivalent": 377.78,
+      "first_year_regular_debt_service": 3518.16,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 3,
+          "start_month": 1.0,
+          "end_month": 3.0,
+          "payment_count": 3,
+          "payment": 100.0,
+          "monthly_equivalent": 100.0,
+          "payment_min": 100.0,
+          "payment_max": 100.0,
+          "regular_debt_service": 300.0,
+          "scheduled_balloon": 0.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 300.0
+        },
+        {
+          "phase": "repayment",
+          "start_period": 4,
+          "end_period": 24,
+          "start_month": 4.0,
+          "end_month": 24.0,
+          "payment_count": 21,
+          "payment": 377.78,
+          "monthly_equivalent": 377.78,
+          "payment_min": 347.47,
+          "payment_max": 377.78,
+          "regular_debt_service": 7387.8,
+          "scheduled_balloon": 1000.0,
+          "maturity_balloon": 3712.2,
+          "cash_due": 12100.0
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -1793,7 +2088,10 @@
         "75": 24.0,
         "100": 24.0
       },
-      "full_exposure_months": 3
+      "full_exposure_months": 3,
+      "requested_interest_only_months": 3,
+      "requested_maturity_months": 24,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -2026,6 +2324,28 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 40.0,
       "regular_coverage_payment_monthly": 0.0,
+      "ordinary_payment_monthly": 0.0,
+      "interest_only_monthly_equivalent": 0.0,
+      "repayment_monthly_equivalent": null,
+      "first_year_regular_debt_service": 0.0,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 12,
+          "start_month": 1.0,
+          "end_month": 12.0,
+          "payment_count": 12,
+          "payment": 0.0,
+          "monthly_equivalent": 0.0,
+          "payment_min": 0.0,
+          "payment_max": 0.0,
+          "regular_debt_service": 0.0,
+          "scheduled_balloon": 60000.0,
+          "maturity_balloon": 40000.0,
+          "cash_due": 100000.0
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -2040,7 +2360,10 @@
         "75": 12.0,
         "100": 12.0
       },
-      "full_exposure_months": 11
+      "full_exposure_months": 11,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 12,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -2221,6 +2544,28 @@
       "principal_repaid": 10000.0,
       "maturity_exposure_pct": 0.0,
       "regular_coverage_payment_monthly": 0.0,
+      "ordinary_payment_monthly": 0.0,
+      "interest_only_monthly_equivalent": 0.0,
+      "repayment_monthly_equivalent": null,
+      "first_year_regular_debt_service": 0.0,
+      "payment_phases": [
+        {
+          "phase": "interest_only",
+          "start_period": 1,
+          "end_period": 2,
+          "start_month": 1.0,
+          "end_month": 2.0,
+          "payment_count": 2,
+          "payment": 0.0,
+          "monthly_equivalent": 0.0,
+          "payment_min": 0.0,
+          "payment_max": 0.0,
+          "regular_debt_service": 0.0,
+          "scheduled_balloon": 10000.0,
+          "maturity_balloon": 0.0,
+          "cash_due": 10000.0
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -2235,7 +2580,10 @@
         "75": 2.0,
         "100": 2.0
       },
-      "full_exposure_months": 1
+      "full_exposure_months": 1,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 12,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -2420,6 +2768,28 @@
       "principal_repaid": 100.01,
       "maturity_exposure_pct": 45.0,
       "regular_coverage_payment_monthly": 4.5,
+      "ordinary_payment_monthly": 4.5,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 4.5,
+      "first_year_regular_debt_service": 49.2,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 12,
+          "start_month": 1.0,
+          "end_month": 12.0,
+          "payment_count": 12,
+          "payment": 4.5,
+          "monthly_equivalent": 4.5,
+          "payment_min": 3.9,
+          "payment_max": 4.5,
+          "regular_debt_service": 49.2,
+          "scheduled_balloon": 11.26,
+          "maturity_balloon": 44.96,
+          "cash_due": 105.42
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -2434,7 +2804,10 @@
         "75": 12.0,
         "100": 12.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 12,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -2695,6 +3068,28 @@
       "principal_repaid": 52000.0,
       "maturity_exposure_pct": 75.7,
       "regular_coverage_payment_monthly": 685.92,
+      "ordinary_payment_monthly": 685.92,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 685.92,
+      "first_year_regular_debt_service": 8231.08,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 104,
+          "start_month": 0.23,
+          "end_month": 24.0,
+          "payment_count": 104,
+          "payment": 158.29,
+          "monthly_equivalent": 685.92,
+          "payment_min": 158.29,
+          "payment_max": 158.29,
+          "regular_debt_service": 16462.16,
+          "scheduled_balloon": 5326.71,
+          "maturity_balloon": 39356.5,
+          "cash_due": 61145.37
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -2709,7 +3104,10 @@
         "75": 24.0,
         "100": 24.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 24,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -2971,6 +3369,28 @@
       "principal_repaid": 52000.0,
       "maturity_exposure_pct": 77.6,
       "regular_coverage_payment_monthly": 685.61,
+      "ordinary_payment_monthly": 685.61,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 685.61,
+      "first_year_regular_debt_service": 8003.43,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 104,
+          "start_month": 0.23,
+          "end_month": 24.02,
+          "payment_count": 104,
+          "payment": 158.34,
+          "monthly_equivalent": 685.61,
+          "payment_min": 141.13,
+          "payment_max": 158.34,
+          "regular_debt_service": 15499.0,
+          "scheduled_balloon": 5334.53,
+          "maturity_balloon": 40375.14,
+          "cash_due": 61208.67
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -2985,7 +3405,10 @@
         "75": 25.0,
         "100": 25.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 24,
+      "cadence_adjustment_note": "Requested months are mapped to the nearest scheduled payment period at this cadence; review the first principal payment and maturity dates in the schedule."
     },
     "rows": [
       {
@@ -3219,6 +3642,28 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 0.0,
       "regular_coverage_payment_monthly": 666.9,
+      "ordinary_payment_monthly": 666.9,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 666.9,
+      "first_year_regular_debt_service": 8002.8,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 2014,
+          "start_month": 0.23,
+          "end_month": 464.77,
+          "payment_count": 2014,
+          "payment": 153.9,
+          "monthly_equivalent": 666.9,
+          "payment_min": 44.7,
+          "payment_max": 153.9,
+          "regular_debt_service": 309845.4,
+          "scheduled_balloon": 9995.71,
+          "maturity_balloon": 0.0,
+          "cash_due": 319841.11
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -3233,7 +3678,10 @@
         "75": 422.0,
         "100": 465.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 600,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {
@@ -3442,6 +3890,28 @@
       "principal_repaid": 100000.0,
       "maturity_exposure_pct": 88.2,
       "regular_coverage_payment_monthly": 666.96,
+      "ordinary_payment_monthly": 666.96,
+      "interest_only_monthly_equivalent": null,
+      "repayment_monthly_equivalent": 666.96,
+      "first_year_regular_debt_service": 8003.52,
+      "payment_phases": [
+        {
+          "phase": "repayment",
+          "start_period": 1,
+          "end_period": 12600,
+          "start_month": 0.05,
+          "end_month": 600.0,
+          "payment_count": 12600,
+          "payment": 31.76,
+          "monthly_equivalent": 666.96,
+          "payment_min": 28.58,
+          "payment_max": 31.76,
+          "regular_debt_service": 368121.6,
+          "scheduled_balloon": 9994.67,
+          "maturity_balloon": 88195.69,
+          "cash_due": 466311.96
+        }
+      ],
       "coverage_basis": "peak_rolling_12_month_actual_cash_due",
       "cash_flow_convention": "payment includes scheduled balloons; maturity residual is separate; cash_payment includes both",
       "balloon_period_mapping": "nearest scheduled cadence period, half up; list order within a period",
@@ -3456,7 +3926,10 @@
         "75": 600.0,
         "100": 600.0
       },
-      "full_exposure_months": 0
+      "full_exposure_months": 0,
+      "requested_interest_only_months": 0,
+      "requested_maturity_months": 600,
+      "cadence_adjustment_note": null
     },
     "rows": [
       {

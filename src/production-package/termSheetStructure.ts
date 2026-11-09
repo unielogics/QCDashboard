@@ -106,14 +106,33 @@ export function computePaymentSummary(input: StructuredPaymentInput): TermSheetP
     const structure = ["interest_only", "revolving_interest_only"].includes(input.repaymentStructure) ? "interest_only" : input.repaymentStructure === "simple_interest" ? "simple_interest" : "amortizing";
     const preview = repaymentPreview(basis, rate, term, { structure, interestOnlyMonths: ["interest_only", "revolving_interest_only"].includes(input.repaymentStructure) ? 0 : ioMonths, periodsPerYear: periods, repaymentConfig: input.repaymentConfig });
     const schedule = preview.schedule;
-    return { periodic_payment: schedule?.payment_io ?? schedule?.payment_after ?? null, monthly_equivalent_payment: schedule?.coverage_payment_monthly ?? null, post_io_payment: schedule?.payment_after ?? null, post_io_monthly_equivalent: schedule?.payment_after_monthly ?? null, balloon_amount: schedule?.balloon ?? null, payment_basis_amount: basis, payments_per_year: periods, lines: schedule ? [`Regular payment ${money(schedule.payment_io ?? schedule.payment_after ?? 0)} ${input.paymentFrequency}`, `Residual at maturity ${money(schedule.balloon)}`] : [], assumptions: preview.error ? [preview.error] : ["Coverage includes the peak rolling 12 months of actual cash payments, including principal due."] };
+    const phaseLines = schedule ? [
+      ...(schedule.payment_io != null ? [`Interest-only payment ${money(schedule.payment_io)} ${input.paymentFrequency}, then ${schedule.payment_after != null ? `${money(schedule.payment_after)} principal and interest` : "principal due at maturity"}`] : [`Principal and interest ${money(schedule.payment_after ?? 0)} ${input.paymentFrequency}`]),
+      `Residual at ${term}-month maturity ${money(schedule.balloon)}`,
+    ] : [];
+    return {
+      periodic_payment: schedule?.payment_io ?? schedule?.payment_after ?? null,
+      monthly_equivalent_payment: schedule?.payment_io_monthly ?? schedule?.payment_after_monthly ?? null,
+      coverage_monthly_equivalent_payment: schedule?.coverage_payment_monthly ?? null,
+      coverage_annual_debt_service: schedule?.coverage_annual_debt_service ?? null,
+      post_io_payment: schedule?.payment_after ?? null,
+      post_io_monthly_equivalent: schedule?.payment_after_monthly ?? null,
+      balloon_amount: schedule?.balloon ?? null,
+      payment_basis_amount: basis, payments_per_year: periods,
+      lines: phaseLines,
+      assumptions: preview.error ? [preview.error] : ["Underwriting stress includes the peak rolling 12 months of actual cash payments, including principal due. It is not the regular installment."],
+    };
   }
   const periodicInterest = basis * (rate / 100) / periods;
   let calculatedPeriodic: number | null = null;
   let postIo: number | null = null;
   let balloon: number | null = null;
 
-  switch (input.repaymentStructure) {
+  // Imported fully-amortizing terms can carry an initial IO phase. Preserve it
+  // instead of silently pricing a full term of principal-and-interest payments.
+  const effectiveStructure = ["fully_amortizing", "interest_only_then_amortizing"].includes(input.repaymentStructure) && ioMonths === term && input.amortizationMonths == null
+    ? "interest_only" : input.repaymentStructure === "fully_amortizing" && ioMonths > 0 ? "interest_only_then_amortizing" : input.repaymentStructure;
+  switch (effectiveStructure) {
     case "fully_amortizing": {
       calculatedPeriodic = amortizingPayment(basis, rate, amortizationMonths, periods);
       const paymentsMade = countForMonths(term, periods);
@@ -199,6 +218,7 @@ export function computePaymentSummary(input: StructuredPaymentInput): TermSheetP
 }
 
 export function defaultProgramCoverage(summary: TermSheetPaymentSummary): number | null {
+  if (summary.coverage_monthly_equivalent_payment != null) return summary.coverage_monthly_equivalent_payment;
   const scheduled = positive(summary.monthly_equivalent_payment);
   const postIo = positive(summary.post_io_monthly_equivalent);
   if (scheduled === null) return postIo;

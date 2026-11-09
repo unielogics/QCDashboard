@@ -7,6 +7,8 @@ import type { RefinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
 const base: RefinanceSelectionTotals = {
   selectedCount: 2, payoffTotal: 27500, payoffUnknown: 0, monthlyRemoved: 3000, monthlyUnknown: 0,
   monthlyAdded: 750, netMonthly: -2250, monthlyAfter: 750, remainingMonthly: 0,
+  monthlyAddedIo: null, monthlyAfterIo: null, netMonthlyIo: null,
+  stressMonthlyAdded: 750, stressMonthlyAfter: 750, stressNetMonthly: -2250,
   basisAdjusted: false, needsReview: false,
 };
 const render = (values: Partial<RefinanceSelectionTotals> = {}, coverageEquivalent = false) => renderToStaticMarkup(createElement(RefinanceSelectionSummary, { totals: { ...base, ...values }, coverageEquivalent }));
@@ -52,7 +54,16 @@ describe("live refinance selection summary", () => {
   });
   it("labels coverage-equivalent payments and keeps advanced-basis differences explicit", () => {
     const html = render({ basisAdjusted: true }, true);
-    expect(html).toContain("+ New monthly equivalent");
+    expect(html).toContain("+ New regular monthly equivalent");
     expect(html).toContain("Net change follows the current debt-service calculation inputs and overrides");
+  });
+  it("keeps both actual payment phases separate from the balloon stress equivalent", () => {
+    const html = renderToStaticMarkup(createElement(RefinanceSelectionSummary, { totals: { ...base, monthlyAdded: 2909.12, netMonthly: -90.88, monthlyAfter: 2909.12, monthlyAddedIo: 2247.6, monthlyAfterIo: 2247.6, netMonthlyIo: -752.4, stressMonthlyAdded: 9169.63, stressMonthlyAfter: 9169.63 }, interestOnlyMonths: 6, hasRepayment: true, coverageEquivalent: true }));
+    expect(html).toContain("Interest-only monthly equivalent · first 6 months");
+    expect(html).toContain("Principal-and-interest monthly equivalent");
+    expect(html).toContain("+$2,909");
+    expect(html).toContain("$2,248");
+    expect(html).toContain("Underwriting stress, separate from installments");
+    expect(html).toContain("$9,170");
   });
 });
