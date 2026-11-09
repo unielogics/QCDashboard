@@ -61,6 +61,13 @@ const DEBT_SCHEDULE = requirement({
 });
 
 describe("who acts next on a requirement", () => {
+  it("sends a received owner report without a bucket-file row to staff with its source coverage and exact review reason", () => {
+    const reason = "Existing TransUnion FICO 4 report is linked; Equifax FICO 9 is not established. Staff review is required.";
+    const result = triageRequirement(requirement({ status: "received_unverified", evidence_files: [], coverage: { current: 1, required: 1, unit: "owner reports" }, verified_coverage: { current: 0, required: 1, unit: "owner reports" }, state_reason: reason }));
+    expect(result).toMatchObject({ group: "you", owner: "you", kind: "review", label: "Needs your review", next: reason });
+    expect(result.progress?.text).toBe("1 of 1 owner reports");
+    expect(result.next).not.toContain("client needs to send");
+  });
   it("calls an accepted, fully covered requirement complete, and says who accepted it", () => {
     const bank = triageRequirement(BANK_STATEMENTS);
     expect(bank).toMatchObject({ group: "done", kind: "complete", label: "Complete", tone: "ok", next: "Accepted by the AI." });

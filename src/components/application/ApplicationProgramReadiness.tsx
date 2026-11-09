@@ -32,7 +32,7 @@ import type {
   RoomDeliveryReceipt,
   UnlockedCopyRequestState,
 } from "@/lib/applicationProfile";
-import type { CollectionTask } from "@/lib/applicationCollection";
+import { collectionTaskReadModelKey, type CollectionTask } from "@/lib/applicationCollection";
 import { groupRequirements, isDocumentRequirement, requirementIsComplete, type Triage, type TriageExtra, type TriageGroup } from "@/lib/evidenceTriage";
 import { formKindsOf, formLabel, type FormKind } from "@/lib/formAnswers";
 import { ActionIcon } from "@/components/ds/ActionIcon";
@@ -40,6 +40,10 @@ import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { semanticStatusClass } from "@/lib/semanticStatus";
 import { manualProgramDraftMatches, type FundingProgramCatalogItem, type FundingProgramVersion, type FundingProgramVertical } from "@/lib/fundingPrograms";
 import { requirementCanBeRemoved, updateRequirementLifecycle } from "@/lib/requirementLifecycle";
+import { requirementOverridePayload, validRequirementOverride, type RequirementOverrideDraft as OverrideDraft } from "@/lib/requirementOverride";
+import { RequirementOverrideEditor } from "./RequirementOverrideEditor";
+import { requirementAllowsClientRequest, requirementCreditCollection } from "@/lib/requirementCredit";
+import { RequirementCreditEvidence } from "./RequirementCreditEvidence";
 
 type EvidenceFile = {
   id: string;
@@ -50,13 +54,6 @@ type EvidenceFile = {
   analysis_detail?: string | null;
   is_password_protected?: boolean;
   unlocked_copy_request?: UnlockedCopyRequestState | null;
-};
-type OverrideDraft = {
-  requirementKey: string;
-  action: "waive" | "not_applicable";
-  reason: string;
-  allPrograms: boolean;
-  programKeys: string[];
 };
 type EvidenceOverrideDraft = {
   requirementKey: string;
@@ -178,6 +175,10 @@ export function ApplicationProgramReadiness({
   const [selectedRequestKeys, setSelectedRequestKeys] = useState<string[]>([]);
   const [expandedRequirements, setExpandedRequirements] = useState<string[]>([]);
   const [overrideDraft, setOverrideDraft] = useState<OverrideDraft | null>(null);
+  const activeProfile = useRef(profileId);
+  activeProfile.current = profileId;
+  const overridePending = useRef(new Set<string>());
+  const requirementPending = useRef(new Set<string>());
   const [removalDraft, setRemovalDraft] = useState<{ requirementKey: string; reason: string } | null>(null);
   const [evidenceOverride, setEvidenceOverride] = useState<EvidenceOverrideDraft | null>(null);
   const [reassignDraft, setReassignDraft] = useState<ReassignDraft | null>(null);
@@ -186,6 +187,7 @@ export function ApplicationProgramReadiness({
   const [busy, setBusy] = useState("");
   const [identityPending, setIdentityPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  useEffect(() => { setOverrideDraft(null); setBusy(""); setError(null); }, [profileId]);
   const [customProgramOpen, setCustomProgramOpen] = useState(false);
   const [customProgram, setCustomProgram] = useState<CustomProgramDraft>({ name: "", programKey: "", description: "", vertical: programVertical, requirements: "", reason: "" });
 
@@ -253,6 +255,7 @@ export function ApplicationProgramReadiness({
   const requestableRequirements = useMemo(
     () => (readiness?.requirements ?? []).filter(
       (requirement) => requirement.client_visible
+        && requirementAllowsClientRequest(requirement)
         && !requirementIsComplete(requirement)
         && (requirement.status === "stale" || requirement.status === "failed" || !requirement.verified_coverage_complete)
         && (blockingKeys.has(requirement.requirement_key) || requirement.source_policy_keys.length > 0),
@@ -264,7 +267,7 @@ export function ApplicationProgramReadiness({
     return readiness.candidates.filter((candidate) => selectedSet.has(candidate.program_key) && !candidate.eligible);
   }, [readiness, selectedSet]);
 
-  const taskRefreshKey = (readiness?.requirements ?? []).map((item) => `${item.requirement_key}:${item.status}`).join("|");
+  const taskRefreshKey = collectionTaskReadModelKey(readiness?.requirements ?? []);
   const taskController = useCollectionTasks(profileId, taskRefreshKey, load, section === "documents");
   const [openGroups, setOpenGroups] = useState<Partial<Record<TriageGroup, boolean>>>({});
   const [answersFor, setAnswersFor] = useState<{ kind: FormKind; requirementKey: string } | null>(null);
@@ -502,6 +505,9 @@ export function ApplicationProgramReadiness({
   }
 
   async function mutateRequirement(requirementKey: string, payload: Record<string, unknown>, notice: string) {
+    const requestedProfile = profileId;
+    if (requirementPending.current.has(requestedProfile)) return null;
+    requirementPending.current.add(requestedProfile);
     setBusy(`requirement:${requirementKey}`);
     setError(null);
     try {
@@ -509,15 +515,16 @@ export function ApplicationProgramReadiness({
         `/application-profiles/${profileId}/requirements/${encodeURIComponent(requirementKey)}`,
         { method: "PATCH", body: JSON.stringify({ ...payload, confirmed: true }) },
       );
+      if (activeProfile.current !== requestedProfile) return next;
       storeReadiness(next);
-      setOverrideDraft(null);
       onNotice?.(notice);
       return next;
     } catch (reason) {
-      setError(errorMessage(reason));
+      if (activeProfile.current === requestedProfile) setError(`${errorMessage(reason)}${payload.action === "waive" || payload.action === "not_applicable" ? " Your override reason and scope are retained. Review the error, then retry." : ""}`);
       return null;
     } finally {
-      setBusy("");
+      requirementPending.current.delete(requestedProfile);
+      if (activeProfile.current === requestedProfile) setBusy("");
     }
   }
 
@@ -543,7 +550,8 @@ export function ApplicationProgramReadiness({
     if (!confirmed) return;
     const selectedEvidenceId = evidenceSelections[requirement.requirement_key];
     const selectedIds = action === "link_evidence" ? selectedEvidenceId ? [selectedEvidenceId] : [] : evidenceFileIds;
-    await mutateRequirement(requirement.requirement_key, { action, evidence_file_ids: selectedIds }, `${requirement.label} updated.`);
+    const next = await mutateRequirement(requirement.requirement_key, { action, evidence_file_ids: selectedIds }, `${requirement.label} updated.`);
+    if (!next || activeProfile.current !== profileId) return;
     if (action === "link_evidence") {
       setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: "" }));
       setExpandedRequirements((current) => [...new Set([...current, requirement.requirement_key])]);
@@ -551,23 +559,21 @@ export function ApplicationProgramReadiness({
   }
 
   async function applyOverride() {
-    if (!overrideDraft || overrideDraft.reason.trim().length < 8) return;
-    const requirement = requirementByKey.get(overrideDraft.requirementKey);
+    if (!overrideDraft || !validRequirementOverride(overrideDraft) || overridePending.current.has(profileId) || busy || identityPending) return;
+    const submitted = overrideDraft;
+    const requestedProfile = profileId;
+    const requirement = requirementByKey.get(submitted.requirementKey);
     if (!requirement) return;
-    const scope = overrideDraft.allPrograms ? "all selected programs" : `${overrideDraft.programKeys.length} selected program(s)`;
-    const confirmed = await confirmAction({
-      title: overrideDraft.action === "waive" ? "Waive this requirement?" : "Mark not applicable?",
-      body: `${requirement.label} will be overridden for ${scope}. Reason: ${overrideDraft.reason.trim()}`,
-      confirmLabel: overrideDraft.action === "waive" ? "Confirm waiver" : "Confirm not applicable",
-      tone: "danger",
-    });
-    if (!confirmed) return;
-    await mutateRequirement(requirement.requirement_key, {
-      action: overrideDraft.action,
-      reason: overrideDraft.reason.trim(),
-      all_programs: overrideDraft.allPrograms,
-      program_keys: overrideDraft.allPrograms ? [] : overrideDraft.programKeys,
-    }, `${requirement.label} override recorded.`);
+    overridePending.current.add(requestedProfile);
+    setBusy(`requirement:${requirement.requirement_key}`);
+    try {
+      const scope = submitted.allPrograms ? requirement.source_program_keys.length ? "all selected programs" : "this evidence requirement" : `${submitted.programKeys.length} selected program(s)`;
+      const policyNote = requirement.source_program_keys.length && requirement.source_policy_keys.some((key) => key !== "staff_added") ? " Independent policy requirements remain in effect." : "";
+      const confirmed = await confirmAction({ title: submitted.action === "waive" ? "Waive this requirement?" : "Mark not applicable?", body: `${requirement.label} will be overridden for ${scope}.${policyNote} Reason: ${submitted.reason.trim()}`, confirmLabel: submitted.action === "waive" ? "Confirm waiver" : "Confirm not applicable", tone: "danger" });
+      if (!confirmed || activeProfile.current !== requestedProfile) return;
+      const next = await mutateRequirement(requirement.requirement_key, requirementOverridePayload(submitted), `${requirement.label} override recorded.`);
+      if (next && activeProfile.current === requestedProfile) setOverrideDraft((current) => current === submitted ? null : current);
+    } finally { overridePending.current.delete(requestedProfile); if (activeProfile.current === requestedProfile) setBusy(""); }
   }
 
   async function applyEvidenceOverride() {
@@ -810,6 +816,7 @@ export function ApplicationProgramReadiness({
   const topRecommended = readiness.candidates.find((candidate) => candidate.recommendation_status === "recommended");
   const preferredAlternative = topRecommended && (topRecommended.preference_score ?? 0) > 0 && !readiness.selections.some((selection) => selection.program_key === topRecommended.program_key) ? topRecommended : null;
   const selectedRequestSet = new Set(selectedRequestKeys);
+  const selectedRequestCount = requestableRequirements.filter((item) => selectedRequestSet.has(item.requirement_key)).length;
   const allRequestableSelected = requestableRequirements.length > 0 && requestableRequirements.every((item) => selectedRequestSet.has(item.requirement_key));
   const openProgramPicker = () => {
     setSelectedPrograms(readiness.selections.map((selection) => selection.program_key));
@@ -845,6 +852,7 @@ export function ApplicationProgramReadiness({
     const isBusy = busy.endsWith(requirement.requirement_key);
     const hasOverrides = Object.keys(requirement.program_overrides).length > 0;
     const linkedEvidence = requirement.evidence_files ?? [];
+    const creditCollection = requirementCreditCollection(requirement);
     const availableEvidence = readiness.available_evidence_files ?? [];
     const linkedIds = new Set(linkedEvidence.map((file) => file.file_id));
     const evidenceOptions = (availableEvidence.length ? availableEvidence.map((file) => ({ id: file.file_id, file_name: file.file_name })) : files).filter((file) => !linkedIds.has(file.id));
@@ -855,7 +863,7 @@ export function ApplicationProgramReadiness({
     const task = tasksByRequirement.get(requirement.requirement_key) ?? null;
     const formKinds = formKindsOf(requirement);
     const unsignedFileIds = linkedEvidence.filter((file) => file.ai_decision === "accepted" && !file.verified).map((file) => file.file_id);
-    const askClient = triage.group === "client";
+    const askClient = triage.group === "client" && requirementAllowsClientRequest(requirement);
     const staffAdded = requirement.source_policy_keys.includes("staff_added");
     const isDebt = formKinds.includes("debt_schedule");
     const debtHasWork = isDebt && (linkedEvidence.length > 0 || debtSummary.hasSource || debtSummary.hasDraft || debtSummary.onSchedule > 0);
@@ -865,7 +873,7 @@ export function ApplicationProgramReadiness({
       <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" disabled={identityPending} aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
         <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={triage.tone} title={triage.next}>{triage.label}</CellChip></span>
         <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}{staffAdded ? <em className="ev-optional">Added by your team</em> : null}</strong><small>{triage.short}</small></span>
-        <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
+        <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{creditCollection ? "Linked owner reports" : linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
       </button>
       {expanded ? <div className="requirement-expanded-body ev-row-body">
         {triage.kind === "fill" && debtHasWork ? null : <p className="ev-next">{triage.next}</p>}
@@ -880,6 +888,7 @@ export function ApplicationProgramReadiness({
         </div>
         {removalDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><strong>Remove {requirement.label} from this checklist?</strong><p className="sub">Client to-dos and reminders for this item stop. Uploaded files and financial rows stay available. Restore it below when needed.</p><Field label="Removal reason"><Textarea aria-label="Removal reason" autoFocus rows={2} value={removalDraft.reason} onChange={(event) => setRemovalDraft({ ...removalDraft, reason: event.target.value })} placeholder="Explain why this item is no longer needed" /></Field><div className="program-readiness-actions"><Btn disabled={Boolean(busy)} onClick={() => setRemovalDraft(null)}>Cancel removal</Btn><Btn disabled={Boolean(busy) || removalDraft.reason.trim().length < 8} onClick={() => void changeRequirementLifecycle(requirement, "remove")}>Confirm removal</Btn></div></div> : null}
         {isDebt ? <DebtScheduleReviewPanel profileId={profileId} compact onSaved={() => void load()} /> : null}
+        {creditCollection ? <RequirementCreditEvidence key={`${profileId}:${requirement.requirement_key}`} profileId={profileId} credit={creditCollection} onRefresh={load} /> : null}
         <DocumentReviewChecks checks={requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />
         {linkedEvidence.length ? <div className="requirement-evidence-files" aria-label={`Linked evidence for ${requirement.label}`}>{linkedEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;
@@ -911,17 +920,17 @@ export function ApplicationProgramReadiness({
                     {!locked ? <EvidenceReviewDetails file={file} requirementLabel={requirement.label} isDebtSchedule={isDebt} onPreview={onPreviewEvidence ? () => onPreviewEvidence(file.file_id, requirement.requirement_key) : undefined} /> : null}
                     {editingThisFile ? <div className="requirement-override-editor requirement-evidence-action-editor"><div className="fldgrid two"><Field label="Decision"><Select value={evidenceOverride.decision} onChange={(event) => { const decision = event.target.value as EvidenceOverrideDraft["decision"]; setEvidenceOverride({ ...evidenceOverride, decision, reasonCode: decision === "accepted" ? "ai_override" : evidenceOverride.reasonCode === "ai_override" ? decision === "needs_more" ? "incomplete" : "wrong_document" : evidenceOverride.reasonCode }); }}><option value="rejected">Reject evidence</option><option value="needs_more">Needs more</option><option value="accepted">Override AI and accept</option></Select></Field><Field label="Reason code"><Select value={evidenceOverride.reasonCode} disabled={evidenceOverride.decision === "accepted"} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reasonCode: event.target.value as EvidenceOverrideDraft["reasonCode"] })}>{evidenceOverride.decision === "accepted" ? <option value="ai_override">AI override</option> : <><option value="wrong_document">Wrong document</option><option value="wrong_entity">Wrong entity</option><option value="wrong_period">Wrong period</option><option value="incomplete">Incomplete</option><option value="unreadable">Unreadable</option><option value="duplicate">Duplicate</option><option value="other">Other</option></>}</Select></Field></div><Field label="Reviewed reason"><Textarea autoFocus rows={2} value={evidenceOverride.reason} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reason: event.target.value })} placeholder={evidenceOverride.decision === "accepted" ? "Explain why this file should be accepted" : evidenceOverride.decision === "needs_more" ? "Explain what additional evidence is needed" : "Explain why this file should be rejected"} /></Field><div className="program-readiness-actions"><Btn onClick={() => setEvidenceOverride(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyEvidenceOverride()} disabled={fileBusy || evidenceOverride.reason.trim().length < 8}>{fileBusy ? "Saving..." : "Review decision"}</Btn></div></div> : null}
                   </Fragment>;
-                })}</div> : <div className="requirement-evidence-empty">No evidence is assigned. Drop files on this requirement or choose an existing bucket file.</div>}
+                })}</div> : creditCollection ? null : <div className="requirement-evidence-empty">No evidence is assigned. Drop files on this requirement or choose an existing bucket file.</div>}
         <details className="ev-more">
           <summary>More options</summary>
           <div className="ev-more-body">
 
         {task ? <RequirementRequest task={task} controller={taskController} /> : null}
-        <div className="ev-block"><span className="ev-block-title">Add a document or set this item aside</span><div className="requirement-controls"><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><ActionIcon icon="plus" label="Link the chosen document to this requirement" disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")} /><PageActionMenu label={`More actions for ${requirement.label}`} items={[{ label: "Waive this requirement", hidden: !requirement.can_waive, onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Mark not applicable", onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Restore the original requirement", hidden: !hasOverrides, onSelect: () => void reviewRequirementAction(requirement, "restore") }]} /></div></div>
+        <div className="ev-block"><span className="ev-block-title">{creditCollection ? "Requirement review options" : "Add a document or set this item aside"}</span><div className="requirement-controls">{!creditCollection ? <><Select aria-label={`Add evidence for ${requirement.label}`} value={selectedEvidenceId} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Add an existing document...</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select><ActionIcon icon="plus" label="Link the chosen document to this requirement" disabled={isBusy || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")} /></> : null}<PageActionMenu label={`More actions for ${requirement.label}`} items={[{ label: "Waive this requirement", hidden: !requirement.can_waive, onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "waive", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Mark not applicable", onSelect: () => setOverrideDraft({ requirementKey: requirement.requirement_key, action: "not_applicable", reason: "", allPrograms: true, programKeys: [] }) }, { label: "Restore the original requirement", hidden: !hasOverrides, onSelect: () => void reviewRequirementAction(requirement, "restore") }]} /></div></div>
         {showReason ? <small className="ev-reason">System note: {reasonNote}</small> : null}
           </div>
         </details>
-        {overrideDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label={overrideDraft.action === "waive" ? "Waiver reason" : "Not-applicable reason"}><Textarea rows={2} value={overrideDraft.reason} onChange={(event) => setOverrideDraft({ ...overrideDraft, reason: event.target.value })} placeholder="Required for the immutable audit trail" /></Field><label className="checkline"><input type="checkbox" checked={overrideDraft.allPrograms} onChange={(event) => setOverrideDraft({ ...overrideDraft, allPrograms: event.target.checked, programKeys: [] })} />Apply to all selected programs and policies</label>{!overrideDraft.allPrograms ? <div className="override-programs">{requirement.source_program_keys.map((key) => <label key={key} className="checkline"><input type="checkbox" checked={overrideDraft.programKeys.includes(key)} onChange={() => setOverrideDraft({ ...overrideDraft, programKeys: overrideDraft.programKeys.includes(key) ? overrideDraft.programKeys.filter((item) => item !== key) : [...overrideDraft.programKeys, key] })} />{readiness.selections.find((item) => item.program_key === key)?.program_name || key}</label>)}</div> : null}<div className="program-readiness-actions"><Btn onClick={() => setOverrideDraft(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyOverride()} disabled={overrideDraft.reason.trim().length < 8 || (!overrideDraft.allPrograms && !overrideDraft.programKeys.length)}>Review override</Btn></div></div> : null}
+        {overrideDraft?.requirementKey === requirement.requirement_key ? <RequirementOverrideEditor draft={overrideDraft} programs={requirement.source_program_keys.map((key) => ({ key, label: readiness.selections.find((item) => item.program_key === key)?.program_name || key }))} hasPolicy={requirement.source_policy_keys.some((key) => key !== "staff_added")} busy={Boolean(busy) || identityPending} onDraft={setOverrideDraft} onCancel={() => setOverrideDraft(null)} onReview={() => void applyOverride()} /> : null}
                 {reassignDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label="Reassign to"><Select value={reassignDraft.targetKey} onChange={(event) => setReassignDraft({ ...reassignDraft, targetKey: event.target.value })}><option value="">Select another requirement...</option>{readiness.requirements.filter((item) => item.requirement_key !== requirement.requirement_key).map((item) => <option key={item.requirement_key} value={item.requirement_key}>{item.label}</option>)}</Select></Field><div className="program-readiness-actions"><Btn onClick={() => setReassignDraft(null)}>Cancel</Btn><Btn variant="pri" disabled={!reassignDraft.targetKey} onClick={() => void applyReassignment()}>Review reassignment</Btn></div></div> : null}
       </div> : null}
     </div>;
@@ -971,7 +980,7 @@ export function ApplicationProgramReadiness({
           {onRunAiReview ? <ActionIcon icon="refresh" label="Re-read the intake with the AI" disabled={Boolean(busy) || aiReviewRunning} busy={aiReviewRunning} onClick={onRunAiReview} /> : null}
           {canAddRequirements ? <span title="Add a document or a form from the library to this file's checklist"><Btn onClick={() => setAddOpen(true)}><Icon name="plus" size={14} />Add a requirement</Btn></span> : null}
           <span title="The AI asks the client for everything that is missing, following the communication window and reminder limits"><Btn onClick={() => void taskController.collect()} disabled={Boolean(taskController.busy)}>{taskController.busy === "collect" ? "Scheduling..." : "Let the AI ask for what is missing"}</Btn></span>
-          {requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}<Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestKeys.length || Boolean(busy)}>{busy === "batch-request" ? "Sending one email..." : `Email selected (${selectedRequestKeys.length})`}</Btn>
+          {requestableRequirements.length ? <label className="checkline requirement-select-all"><input type="checkbox" checked={allRequestableSelected} onChange={(event) => setSelectedRequestKeys(event.target.checked ? requestableRequirements.map((item) => item.requirement_key) : [])} />Select all open</label> : null}<Btn variant="pri" onClick={() => void sendSelectedRequests()} disabled={!selectedRequestCount || Boolean(busy)}>{busy === "batch-request" ? "Sending one email..." : `Email selected (${selectedRequestCount})`}</Btn>
         </div>
       </header>
       {taskController.error ? <Callout tone="warn">{taskController.error}</Callout> : null}
@@ -990,7 +999,7 @@ export function ApplicationProgramReadiness({
       })}
       {!documentRequirements.length ? <div className="empty">No evidence policy or selected program currently requires documents.</div> : null}
       {canAddRequirements && readiness.inactive_requirements?.length ? <details className="ev-more"><summary>Removed checklist items ({readiness.inactive_requirements.length})</summary><div className="ev-more-body">{readiness.inactive_requirements.map((requirement) => <div className="row" key={requirement.requirement_key}><div className="grow grid g4"><strong>{requirement.label}</strong><span className="sub">{requirement.removal_reason || "Removed by your team. Files and financial rows are preserved."}</span></div><Btn size="sm" disabled={Boolean(busy)} onClick={() => void changeRequirementLifecycle(requirement, "restore")}>Restore {requirement.label}</Btn></div>)}</div></details> : null}
-      <ApplicationCollectionTasks profileId={profileId} controller={taskController} tasks={otherTasks} requirements={readiness.requirements} onPreviewEvidence={onPreviewEvidence ? (fileId, requirementKey) => onPreviewEvidence(fileId, requirementKey) : undefined} onVerifyRequirement={(requirement, fileIds) => reviewRequirementAction(requirement, "verify", fileIds)} />
+      <ApplicationCollectionTasks profileId={profileId} controller={taskController} tasks={otherTasks} requirements={readiness.requirements} onCreditRefresh={load} onPreviewEvidence={onPreviewEvidence ? (fileId, requirementKey) => onPreviewEvidence(fileId, requirementKey) : undefined} onVerifyRequirement={(requirement, fileIds) => reviewRequirementAction(requirement, "verify", fileIds)} />
       <section className="program-readiness-band automation-band ev-reminders" aria-labelledby="automation-heading"><div><h4 id="automation-heading">Automatic reminders</h4><p>{readiness.automation.stop_reason || `Next: ${readiness.automation.next_requirement_key?.replaceAll("_", " ") || "nothing"} · ${when(readiness.automation.next_send_at)}`}</p><small>One combined email at most every 24 hours, up to {readiness.automation.max_attempts} attempts. Last sent {when(readiness.automation.last_sent_at)} · {readiness.automation.attempts} of {readiness.automation.max_attempts} used.</small></div><div className="program-readiness-actions"><CellChip tone={readiness.automation.enabled && readiness.automation.eligible ? "ok" : readiness.automation.enabled ? "warn" : "mut"}>{readiness.automation.enabled ? readiness.automation.eligible ? "Active" : "Paused by readiness" : "Off"}</CellChip><Btn onClick={() => void toggleAutomation()} disabled={busy === "automation"}>{readiness.automation.enabled ? "Turn off" : "Turn on"}</Btn></div></section>
       <FormAnswersDrawer
         profileId={profileId}

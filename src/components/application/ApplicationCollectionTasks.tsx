@@ -10,7 +10,7 @@
 // requests that have no document row (missing fields, forms, consents, internal
 // reviews).
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Field, Textarea } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { Icon } from "@/components/design-system/Icon";
@@ -21,6 +21,8 @@ import { collectionTaskStatus, type CollectionTask } from "@/lib/applicationColl
 import { evidenceDecisionLabel, evidenceDecisionTone } from "@/lib/evidenceDecision";
 import { formKindsOf, formLabel, type FormKind } from "@/lib/formAnswers";
 import { evidenceOriginLabel, mostUrgentWaiting, requirementWaiting, type RequirementWaiting } from "@/lib/requirementWaiting";
+import { requirementCreditCollection } from "@/lib/requirementCredit";
+import { RequirementCreditEvidence } from "./RequirementCreditEvidence";
 
 const FILES_SHOWN = 3;
 
@@ -62,9 +64,14 @@ export function useCollectionTasks(profileId: string, refreshKey?: string, onCha
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const currentProfile = useRef(profileId);
+  currentProfile.current = profileId;
+  const readRequest = useRef(0);
+  useEffect(() => { setTasks([]); setError(""); setNotice(""); }, [profileId]);
   const load = useCallback(async () => {
+    const request = ++readRequest.current;
     const result = await api<{ tasks: CollectionTask[] }>(`/application-profiles/${profileId}/collection-tasks`);
-    setTasks(result.tasks);
+    if (currentProfile.current === profileId && request === readRequest.current) setTasks(result.tasks);
   }, [api, profileId]);
   useEffect(() => {
     if (!enabled) return;
@@ -171,6 +178,7 @@ export function ApplicationCollectionTasks({
   requirements = [],
   onPreviewEvidence,
   onVerifyRequirement,
+  onCreditRefresh,
   title = "Other things we are collecting",
 }: {
   profileId: string;
@@ -181,6 +189,7 @@ export function ApplicationCollectionTasks({
   requirements?: ApplicationRequirement[];
   onPreviewEvidence?: (fileId: string, requirementKey: string) => void;
   onVerifyRequirement?: (requirement: ApplicationRequirement, fileIds: string[]) => void | Promise<void>;
+  onCreditRefresh?: () => Promise<unknown> | void;
   title?: string;
 }) {
   const [expanded, setExpanded] = useState<string[]>([]);
@@ -195,7 +204,7 @@ export function ApplicationCollectionTasks({
     </header>
     <div className="requirement-table compact collection-task-list">{tasks.map((task) => {
       const linked = (task.requirement_keys ?? []).map((key) => requirementByKey.get(key)).filter((item): item is ApplicationRequirement => Boolean(item));
-      const waiting: RequirementWaiting | null = task.status === "in_review"
+      const waiting: RequirementWaiting | null = task.assignee !== "internal" && task.status === "in_review"
         ? mostUrgentWaiting(linked.filter((item) => item.status === "received_unverified").map(requirementWaiting))
         : null;
       const seen = new Set<string>();
@@ -232,6 +241,7 @@ export function ApplicationCollectionTasks({
         <small className="collection-task-meta">{taskMeta(task)}</small>
         {waiting ? <p className="collection-task-hint">{waiting.hint}</p> : null}
         {task.state_reason && !waiting ? <p className="collection-task-hint">{task.state_reason}</p> : null}
+        {linked.map((requirement) => { const credit = requirementCreditCollection(requirement); return credit ? <RequirementCreditEvidence key={requirement.requirement_key} profileId={profileId} credit={credit} onRefresh={onCreditRefresh} /> : null; })}
         {taskFiles.length ? <ul className="collection-files" aria-label={`Files for ${task.label}`}>
           {shownFiles.map(({ file, requirement }) => <li key={file.file_id} className={`decision-${file.ai_decision}`}>
             <Icon name={file.origin === "filled_form" ? "docCheck" : "file"} size={15} />
