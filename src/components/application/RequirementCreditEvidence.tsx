@@ -1,20 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip } from "@/components/ds";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import type { FileOwner } from "@/lib/applicationProfile";
-import { creditReviewLabel, requirementCreditScoreWords, type RequirementCreditCollection } from "@/lib/requirementCredit";
+import { creditReviewLabel, requirementCreditScoreWords, type RequirementCreditCollection, type RequirementCreditOwner } from "@/lib/requirementCredit";
 import { OwnerCreditReportDrawer } from "./OwnerCreditReportDrawer";
 import { CreditPullLinkDrawer } from "./CreditPullLinkDrawer";
 import { OwnerImportReview, canReviewOwnerCredit } from "./OwnerImportReview";
 import { CreditRequirementReview } from "./CreditRequirementReview";
 import styles from "./RequirementCreditEvidence.module.css";
 
-export function RequirementCreditEvidence({ profileId, credit, requirementKey, programNames = [], onRefresh, onOpenPrograms }: {
+export function RequirementCreditEvidence({ profileId, credit, requirementKey, programNames = [], onRefresh, onOpenPrograms, omitOwnerIds = [], collectionActions }: {
   profileId: string; credit: RequirementCreditCollection; requirementKey?: string; programNames?: string[];
   onRefresh?: () => Promise<unknown> | void; onOpenPrograms?: () => void;
+  omitOwnerIds?: string[];
+  collectionActions?: (owner: FileOwner, source: RequirementCreditOwner) => ReactNode;
 }) {
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -47,7 +49,7 @@ export function RequirementCreditEvidence({ profileId, credit, requirementKey, p
     {credit.complete ? <p className={styles.reviewNote}>Collection is complete. The linked report stays on file; the remaining actions below are for your team.</p> : null}
     {!credit.ownership_complete ? <Callout tone="warn">The ownership list needs review before owner-report coverage is final.</Callout> : null}
     <div className={styles.facts}><div className={styles.fact}><span>Selected program{programNames.length === 1 ? "" : "s"}</span><strong>{programNames.length ? programNames.join(" · ") : "Program or evidence policy on this file"}</strong></div><div className={styles.fact}><span>Credit evidence required</span><strong>{required}</strong></div></div>
-    {credit.owners.map((source, index) => {
+    {credit.owners.filter((source) => !omitOwnerIds.includes(source.owner_id)).map((source, index) => {
       const owner = owners.data?.find((item) => item.id === source.owner_id && item.credit_pull_id === source.credit_pull_id);
       return <div className={styles.owner} key={source.owner_id}>
         <div className={styles.ownerHeading}><b>{owner?.full_name || `Owner ${index + 1}`}</b><CellChip tone={source.status === "collected" ? "acc" : "warn"}>{source.status === "collected" ? "Report linked" : source.status.replaceAll("_", " ")}</CellChip>{source.backfill_needs_review ? <CellChip tone="warn">Owner confirmation needed</CellChip> : null}</div>
@@ -59,6 +61,7 @@ export function RequirementCreditEvidence({ profileId, credit, requirementKey, p
           {source.backfill_needs_review && canReview ? <Btn size="sm" variant="pri" disabled={!owner || owners.isFetching} onClick={() => setReviewOwnerId(source.owner_id)}>Review owner details</Btn> : null}
           {source.credit_pull_id ? <Btn size="sm" disabled={!owner || owners.isFetching} onClick={() => setReportOwnerId(source.owner_id)}>{owners.isFetching ? "Loading linked report…" : "View linked credit report"}</Btn> : null}
           {canReview ? <Btn size="sm" disabled={!owner || owners.isFetching} onClick={() => setLinkOwnerId(source.owner_id)}>Choose another existing report</Btn> : null}
+          {owner && collectionActions ? collectionActions(owner, source) : null}
         </div>
         {!owners.isFetching && !owner ? <small className="sub">The owner/report link changed. Refresh before opening this source.</small> : null}
       </div>;

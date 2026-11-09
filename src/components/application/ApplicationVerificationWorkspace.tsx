@@ -15,6 +15,7 @@ import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdenti
 import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDrawer";
 import { OwnerCreditReportDrawer } from "@/components/application/OwnerCreditReportDrawer";
 import { OwnerImportReview, canReviewOwnerCredit } from "@/components/application/OwnerImportReview";
+import { RequirementCreditEvidence } from "@/components/application/RequirementCreditEvidence";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
@@ -22,6 +23,7 @@ import type {
   ApplicationBankState,
   ApplicationBankEvidenceFile,
   ApplicationProfile,
+  ApplicationProgramReadiness,
   ApplicationRequirementEvidence,
   ApplicationSourceKind,
   FileCreditInvite,
@@ -42,7 +44,8 @@ import {
 import { lockedEvidencePresentation } from "@/lib/lockedEvidence";
 import { documentUploadErrorMessage, passwordProtectedPdfUploadNotice, screenPdfUploads } from "@/lib/documentUpload";
 import { validateOwnerField, type EditableOwnerField } from "@/lib/ownerFieldValidation";
-import { ownerCreditStatus, ownerCreditWords, reportWords } from "@/lib/creditLinks";
+import { ownerCreditWords, reportWords } from "@/lib/creditLinks";
+import { creditRequirementReceipts, creditStepCollection, ownerReportCollection, ownerStepReportCollection } from "@/lib/creditStepSync";
 
 type OwnerDraft = {
   key: string;
@@ -79,12 +82,22 @@ export function ApplicationVerificationWorkspace({
   mode = "full",
   onReadyForStep2,
   onStateChange,
+  programReadiness,
+  programReadinessLoading = false,
+  onProgramReadinessChange,
+  onRefreshProgramReadiness,
+  onOpenPrograms,
 }: {
   sourceKind: ApplicationSourceKind;
   sourceId: string;
   mode?: "full" | "owners" | "owners-credit" | "credit" | "banking" | "verification";
   onReadyForStep2?: () => void;
   onStateChange?: (state: FileOwnerRequirementState) => void;
+  programReadiness?: ApplicationProgramReadiness | null;
+  programReadinessLoading?: boolean;
+  onProgramReadinessChange?: (readiness: ApplicationProgramReadiness) => void;
+  onRefreshProgramReadiness?: () => Promise<unknown> | void;
+  onOpenPrograms?: () => void;
 }) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
@@ -100,6 +113,18 @@ export function ApplicationVerificationWorkspace({
     enabled: Boolean(sourceId),
   });
   const profileId = profileQuery.data?.id ?? "";
+  const activeProfileId = useRef(profileId);
+  activeProfileId.current = profileId;
+  const [creditReadinessError, setCreditReadinessError] = useState("");
+  useEffect(() => {
+    if (programReadiness === undefined || programReadiness?.profile_id === profileId || programReadinessLoading || !profileId || !onProgramReadinessChange) return;
+    let current = true;
+    setCreditReadinessError("");
+    void apiCall<ApplicationProgramReadiness>(`/application-profiles/${profileId}/program-readiness`)
+      .then((next) => { if (current) onProgramReadinessChange(next); })
+      .catch((reason) => { if (current) setCreditReadinessError(reason instanceof Error ? reason.message : "The current credit conditions could not be loaded."); });
+    return () => { current = false; };
+  }, [apiCall, onProgramReadinessChange, profileId, programReadiness, programReadinessLoading]);
   const owners = useQuery({
     queryKey: ["application-profile-owners", profileId],
     queryFn: () => apiCall<FileOwner[]>(`/application-profiles/${profileId}/owners`),
@@ -140,12 +165,17 @@ export function ApplicationVerificationWorkspace({
   }, [verification.data, onStateChange]);
 
   const refresh = async () => {
+    const requestedProfileId = profileId;
     await Promise.all([
       qc.invalidateQueries({ queryKey: ["application-profile-owners", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-profile-verification", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-profile-banks", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-evidence-workspace", profileId] }),
     ]);
+    if (programReadiness !== undefined && onProgramReadinessChange && profileId) {
+      const next = await apiCall<ApplicationProgramReadiness>(`/application-profiles/${profileId}/program-readiness`);
+      if (activeProfileId.current === requestedProfileId) { onProgramReadinessChange(next); setCreditReadinessError(""); }
+    } else if (onRefreshProgramReadiness) await onRefreshProgramReadiness();
   };
 
   if (profileQuery.isLoading) return <div className="empty"><span className="spinner solo" />Preparing the application profile...</div>;
@@ -169,6 +199,7 @@ export function ApplicationVerificationWorkspace({
           loading={owners.isLoading || verification.isLoading}
           onRefresh={refresh}
           showContinue={mode === "owners"}
+          readiness={programReadiness && programReadiness.profile_id === profileId ? programReadiness : programReadiness === undefined ? undefined : null}
           onReadinessChange={setOwnershipReady}
           onContinue={() => {
             if (mode === "full") setView("credit");
@@ -183,6 +214,9 @@ export function ApplicationVerificationWorkspace({
           state={verification.data}
           loading={owners.isLoading || verification.isLoading}
           onRefresh={refresh}
+          readiness={programReadiness && programReadiness.profile_id === profileId ? programReadiness : programReadiness === undefined ? undefined : null}
+          onOpenPrograms={onOpenPrograms}
+          readinessError={creditReadinessError}
         />
       ) : null}
       {mode === "owners-credit" || (mode === "full" && view === "owners") ? <div className="row" style={{ justifyContent: "flex-end" }}><Btn variant="pri" disabled={!ownershipReady} onClick={() => { if (mode === "full") setView("banking"); else onReadyForStep2?.(); }}>{mode === "full" ? "Continue to banking" : "Continue to evidence"}<Icon name="arrowR" size={14} /></Btn></div> : null}
@@ -191,7 +225,7 @@ export function ApplicationVerificationWorkspace({
   );
 }
 
-function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue, showContinue = true, onReadinessChange }: {
+function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContinue, showContinue = true, onReadinessChange, readiness }: {
   profileId: string;
   owners: FileOwner[];
   state?: FileOwnerRequirementState;
@@ -200,6 +234,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   onContinue: () => void;
   showContinue?: boolean;
   onReadinessChange?: (ready: boolean) => void;
+  readiness?: ApplicationProgramReadiness | null;
 }) {
   const apiCall = useAuthedApi();
   const [drafts, setDrafts] = useState<OwnerDraft[]>([]);
@@ -207,6 +242,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   const currentUser = useCurrentUser();
   const [reviewOwnerId, setReviewOwnerId] = useState<string | null>(null);
   const [reportOwnerId, setReportOwnerId] = useState<string | null>(null);
+  const creditReceipts = creditRequirementReceipts(readiness);
   const [error, setError] = useState("");
 
   const createOwner = useMutation({
@@ -322,11 +358,12 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
           <div className="tblwrap ownership-table-wrap">
             <table className="tbl ownership-table">
             <caption className="sr-only">Business ownership</caption>
-            <thead><tr><th>First name</th><th>Last name</th><th>Ownership %</th><th>Personal email</th><th>Personal phone</th><th>Credit requirement</th><th>Save</th><th aria-label="Actions" /></tr></thead>
+            <thead><tr><th>First name</th><th>Last name</th><th>Ownership %</th><th>Personal email</th><th>Personal phone</th><th>Report collection</th><th>Save</th><th aria-label="Actions" /></tr></thead>
             <tbody>
               {owners.map((owner) => {
                 const saveState = saveStates[owner.id] ?? "saved";
                 const locked = owner.has_invite || Boolean(owner.credit_pulled_at);
+                const collection = ownerStepReportCollection(owner, creditReceipts);
                 return (
                   <tr key={owner.id}>
                     <td><Input aria-label={`${owner.full_name} first name`} defaultValue={owner.first_name} onBlur={(event) => save(owner, "first_name", event.target.value)} /></td>
@@ -334,7 +371,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
                     <td><Input aria-label={`${owner.full_name} ownership percentage`} className="num owner-percent" inputMode="decimal" defaultValue={owner.ownership_pct ?? ""} onBlur={(event) => save(owner, "ownership_pct", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal email`} type="email" defaultValue={owner.email ?? ""} onBlur={(event) => save(owner, "email", event.target.value)} /></td>
                     <td><Input aria-label={`${owner.full_name} personal phone`} type="tel" defaultValue={owner.phone ?? ""} onBlur={(event) => save(owner, "phone", event.target.value)} /></td>
-                    <td><CellChip tone={owner.credit_complete ? ownerCreditStatus(owner).tone : owner.credit_required ? (owner.credit_contact_complete ? "warn" : "bad") : "mut"}>{owner.credit_complete ? ownerCreditStatus(owner).label : owner.credit_required ? "iSoftPull required" : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
+                    <td><CellChip tone={readiness === null ? "mut" : owner.credit_required ? collection.tone : "mut"}>{readiness === null ? "Checking report context…" : owner.credit_required ? collection.label : "Not required"}</CellChip>{owner.credit_required && !owner.credit_contact_complete ? <small className="owner-row-warning">Email + phone needed</small> : null}</td>
                     <td><CellChip tone={saveState === "saved" ? "ok" : saveState === "invalid" ? "bad" : "mut"}>{saveState === "saving" ? "Saving..." : saveState === "invalid" ? "Fix row" : "Saved"}</CellChip>{owner.backfill_needs_review ? <div className="grid g4"><small className="owner-row-warning">Imported · confirmation needed</small>{canReviewOwnerCredit(currentUser.data?.role) ? <Btn size="sm" onClick={() => setReviewOwnerId(owner.id)}>Review owner details</Btn> : null}</div> : null}</td>
                     <td className="r"><IconBtn aria-label={`Remove ${owner.full_name}`} title={locked ? "Credit activity preserves this owner" : "Remove owner"} disabled={locked || deleteOwner.isPending} onClick={() => deleteOwner.mutate(owner.id)}><Icon name="trash" size={14} /></IconBtn></td>
                   </tr>
@@ -373,16 +410,23 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   );
 }
 
-function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
+function CreditPanel({ profileId, owners, state, loading, onRefresh, readiness, onOpenPrograms, readinessError }: {
   profileId: string;
   owners: FileOwner[];
   state?: FileOwnerRequirementState;
   loading: boolean;
   onRefresh: () => Promise<void>;
+  readiness?: ApplicationProgramReadiness | null;
+  onOpenPrograms?: () => void;
+  readinessError?: string;
 }) {
   const apiCall = useAuthedApi();
+  const currentUser = useCurrentUser();
   const requiredOwners = owners.filter((owner) => owner.credit_required);
-  const scoredOwners = requiredOwners.filter((owner) => ownerCreditStatus(owner).tone === "ok");
+  const receipts = creditRequirementReceipts(readiness);
+  const collection = creditStepCollection(owners, receipts);
+  const legacyOwners = requiredOwners.filter((owner) => !collection.coveredOwnerIds.has(owner.id));
+  const shownOwnerIds = new Set<string>();
   const [links, setLinks] = useState<Record<string, string>>({});
   const [alsoText, setAlsoText] = useState(false);
   const [error, setError] = useState("");
@@ -423,7 +467,7 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
     onError: (reason) => setError(reason instanceof Error ? reason.message : "The authorization could not be sent."),
   });
   const inviteAll = useMutation({
-    mutationFn: () => apiCall<{ items: FileCreditInvite[] }>(`/application-profiles/${profileId}/owners/credit-invites`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email" }) }),
+    mutationFn: () => apiCall<{ items: FileCreditInvite[] }>(`/application-profiles/${profileId}/owners/credit-invites`, { method: "POST", body: JSON.stringify({ channel: alsoText ? "sms" : "email", owner_ids: collection.missingOwnerIds }) }),
     onSuccess: async (result) => {
       const next: Record<string, string> = {};
       result.items.forEach((item) => { if (item.path) next[item.owner_id] = `${window.location.origin}${item.path}`; });
@@ -439,21 +483,32 @@ function CreditPanel({ profileId, owners, state, loading, onRefresh }: {
     <div className="verification-stack">
       <section className="verification-section">
         <header className="verification-section-head">
-          <div><h3>Owner credit</h3><Sub>Link an existing report or request authorization for each required owner.</Sub></div>
-          <CellChip tone={scoredOwners.length === requiredOwners.length && scoredOwners.length > 0 ? "ok" : "warn"}>{scoredOwners.length} of {requiredOwners.length} scores imported</CellChip>
-          <Btn disabled={autoLink.isPending || !requiredOwners.length} onClick={() => autoLink.mutate()} title="Match each owner to a completed pull under the same name on this client"><Icon name="link" size={14} />{autoLink.isPending ? "Matching..." : "Link automatically"}</Btn><Btn variant="pri" disabled={!state?.ready_for_step_2 || !state?.pending_credit_owner_ids.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send all pending</Btn>
+          <div><h3>{readiness === undefined ? "Owner credit reports" : "Owner reports and program credit"}</h3><Sub>{readiness === undefined ? "Link an existing report or request authorization for each required owner." : "Report collection and the selected program's credit conditions use the same records as Documents."}</Sub></div>
+          <CellChip tone={readiness === null ? "mut" : collection.complete ? "ok" : "warn"}>{readiness === null ? "Checking report collection…" : `${collection.received} of ${collection.required} reports received`}</CellChip>
+          <Btn disabled={!currentUser.data || autoLink.isPending || !collection.missingOwnerIds.length} onClick={() => autoLink.mutate()} title="Match missing owners to an existing completed pull"><Icon name="link" size={14} />{autoLink.isPending ? "Matching..." : "Link automatically"}</Btn><Btn variant="pri" disabled={!currentUser.data || readiness === null || !state?.ready_for_step_2 || !collection.missingOwnerIds.length || inviteAll.isPending} onClick={() => inviteAll.mutate()}><Icon name="send" size={14} />Send missing authorizations</Btn>
         </header>
+        {readiness === null ? <Callout tone="warn">{readinessError || "The selected program's credit conditions are loading. Refresh before recording a program decision."}<div><Btn size="sm" onClick={() => void onRefresh().catch((reason) => setError(reason instanceof Error ? reason.message : "Credit details could not refresh."))}>Refresh credit details</Btn></div></Callout> : null}
+        {receipts.map(({ requirement, credit, programNames }) => {
+          const omitOwnerIds = credit.owners.filter((source) => shownOwnerIds.has(source.owner_id)).map((source) => source.owner_id);
+          credit.owners.forEach((source) => shownOwnerIds.add(source.owner_id));
+          return <RequirementCreditEvidence key={requirement.requirement_key} profileId={profileId} credit={credit} requirementKey={requirement.requirement_key} programNames={programNames} omitOwnerIds={omitOwnerIds} onRefresh={onRefresh} onOpenPrograms={onOpenPrograms} collectionActions={(owner, source) => <>
+            {source.status === "missing" && !source.credit_pull_id && !owner.credit_pull_id ? <Btn size="sm" disabled={!currentUser.data || !state?.ready_for_step_2 || !owner.credit_contact_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />Send authorization</Btn> : null}
+            {currentUser.data && !canReviewOwnerCredit(currentUser.data.role) ? <Btn size="sm" onClick={() => setLinkOwner(owner)}><Icon name="link" size={13} />{owner.credit_pull_id ? "Change pull" : "Link a pull"}</Btn> : null}
+            {currentUser.data && owner.credit_pull_id ? <Btn size="sm" disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="Unlink the owner; the existing report stays on record">Unlink</Btn> : null}
+            {links[owner.id] ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(links[owner.id])}><Icon name="copy" size={14} /></IconBtn> : null}
+          </>} />;
+        })}
         <div className="credit-owner-grid">
-          {requiredOwners.map((owner) => {
-            const status = ownerCreditStatus(owner);
+          {(readiness === null ? [] : legacyOwners).map((owner) => {
+            const status = ownerReportCollection(owner);
             const freshLink = links[owner.id];
             return (
               <article key={owner.id} className={cx("credit-owner-box", status.tone === "ok" && "complete")}>
                 <header><span className="credit-owner-avatar">{owner.first_name.slice(0, 1)}{owner.last_name.slice(0, 1)}</span><div className="grow"><b>{owner.full_name}</b><Sub>{Number(owner.ownership_pct ?? 0).toFixed(2)}% ownership</Sub></div><CellChip tone={status.tone}>{status.label}</CellChip></header>
                 <dl><div><dt>Email</dt><dd>{maskEmail(owner.email)}</dd></div><div><dt>Phone</dt><dd>{maskPhone(owner.phone)}</dd></div><div><dt>Last activity</dt><dd>{when(owner.credit_pulled_at || owner.invite_opened_at || owner.invite_sent_at)}</dd></div>{owner.credit_pulled_at ? <div><dt>Result</dt><dd>{owner.credit_tier ? `${owner.credit_tier} · ` : ""}{ownerCreditWords(owner)}</dd></div> : null}</dl>
-                {owner.credit_attention ? <div className="warnline credit-owner-attention">{owner.credit_attention}</div> : null}
+                {owner.credit_collection_reason || owner.credit_attention ? <div className="warnline credit-owner-attention">{owner.credit_collection_reason || owner.credit_attention}</div> : null}
                 {owner.credit_risk ? <button type="button" className={`credit-risk-link ${owner.credit_risk.high_count ? "is-high" : ""}`} onClick={() => setReportOwnerId(owner.id)}><Icon name="alert" size={14} />{owner.credit_risk.flag_count ? `${owner.credit_risk.flag_count} review flags · ${owner.credit_risk.high_count} high priority` : "No supported risk flags detected"}<Icon name="arrowR" size={13} /></button> : null}
-                <footer>{owner.credit_pull_id ? <Btn onClick={() => setReportOwnerId(owner.id)}><Icon name="doc" size={13} />View credit report</Btn> : null}<Btn disabled={!owner.credit_contact_complete || owner.credit_complete || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn onClick={() => setLinkOwner(owner)} title={owner.credit_complete ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_complete ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
+                <footer>{owner.credit_pull_id ? <Btn onClick={() => setReportOwnerId(owner.id)}><Icon name="doc" size={13} />View credit report</Btn> : null}<Btn disabled={!currentUser.data || !state?.ready_for_step_2 || !owner.credit_contact_complete || !collection.missingOwnerIds.includes(owner.id) || Boolean(owner.credit_pull_id) || invite.isPending} onClick={() => invite.mutate({ ownerId: owner.id })}><Icon name="mail" size={13} />{owner.invite_sent_at ? "Resend" : "Send authorization"}</Btn>{freshLink ? <IconBtn aria-label={`Copy ${owner.full_name} secure link`} title="Copy secure link" onClick={() => void navigator.clipboard.writeText(freshLink)}><Icon name="copy" size={14} /></IconBtn> : null}<Btn disabled={!currentUser.data} onClick={() => setLinkOwner(owner)} title={owner.credit_pull_id ? "Point the owner at a different pull" : "Point the owner at a completed pull"}><Icon name="link" size={13} />{owner.credit_pull_id ? "Change pull" : "Link a pull"}</Btn>{owner.credit_pull_id ? <Btn disabled={!currentUser.data || unlink.isPending} onClick={() => unlink.mutate({ ownerId: owner.id })} title="The credit step goes back to pending; the pull stays on record">Unlink</Btn> : null}</footer>
               </article>
             );
           })}
