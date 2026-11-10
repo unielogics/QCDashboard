@@ -29,7 +29,7 @@ test("collateral keeps unknowns and entries through disable, remove/restore and 
   await page.goto("http://localhost/?fail");
   await expect(page.getByLabel("Property 1 estimated property value", { exact: true })).toHaveValue("250000.00");
   await expect(page.getByLabel("Property 1 available lien amount", { exact: true })).toHaveValue("");
-  await page.getByLabel("Include real estate collateral in the investor report", { exact: true }).uncheck();
+  await page.getByLabel("Include collateral in the financing proposal", { exact: true }).uncheck();
   await expect(page.getByLabel("Property 1 street address", { exact: true })).toHaveValue("12 Example St");
   await page.getByRole("button", { name: "Remove collateral property 1", exact: true }).click();
   await page.getByText("Removed in this edit", { exact: false }).click();
@@ -65,6 +65,29 @@ test("a conflict retains edits until an explicit reload", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Save collateral", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Discard edits and reload saved collateral", exact: true }).click();
   await expect(page.getByLabel("Property 1 available lien amount", { exact: true })).toHaveValue("");
+});
+
+test("other assets can be offered without real estate and keep supporting files through removal and restoration", async ({ page }) => {
+  await page.goto("http://localhost/");
+  await page.getByRole("button", { name: "Remove collateral property 1", exact: true }).click();
+  await page.getByRole("button", { name: "Add asset", exact: true }).click();
+  await page.getByLabel("Asset 1 type", { exact: true }).selectOption("equipment");
+  await page.getByLabel("Asset 1 description", { exact: true }).fill("Commercial equipment and fixtures");
+  await page.getByLabel("Asset 1 estimated asset value", { exact: true }).fill("42500.75");
+  await page.getByLabel("Asset 1 existing liens", { exact: true }).fill("0");
+  await page.getByText("Supporting files · 0 linked", { exact: true }).click();
+  await page.getByLabel("Property valuation.pdf", { exact: true }).check();
+  await page.getByRole("button", { name: "Remove collateral asset 1", exact: true }).click();
+  await page.getByText("Assets removed in this edit · 1", { exact: true }).click();
+  await page.getByRole("button", { name: "Restore asset", exact: true }).click();
+  await expect(page.getByLabel("Asset 1 description", { exact: true })).toHaveValue("Commercial equipment and fixtures");
+  await page.getByRole("button", { name: "Save collateral", exact: true }).click();
+  const saved = JSON.parse(await page.getByLabel("Saved collateral payload").innerText());
+  expect(saved.properties).toEqual([]); expect(saved.assets).toHaveLength(1);
+  expect(saved.assets[0]).toMatchObject({ estimated_value: 42500.75, existing_liens_total: 0, available_lien_amount: null, source_file_ids: ["source"] });
+  expect(saved.assets[0]).not.toHaveProperty("address");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: test.info().outputPath("other-asset-collateral.png") });
 });
 
 test("source references are bounded, searchable and keep credit labels private", async ({ page }) => {

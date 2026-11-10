@@ -41,6 +41,8 @@ import { ApplicationMissingItemCommunications } from "@/components/application/A
 import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
 import { FundingRequestControl } from "@/components/application/FundingRequestControl";
 import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
+import { FinancingProposalSummary } from "@/components/file/FinancingProposalSummary";
+import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
@@ -715,6 +717,16 @@ export function LeadDetailPanel({
   // read from `underwriting`, which only fills once the Underwriting tab has
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [workingFinancing, setWorkingFinancing] = useState<WorkingFinancing | null>(null);
+  const [financingTermsRequest, setFinancingTermsRequest] = useState<{ profileId: string; sequence: number } | null>(null);
+  const [financingCoverageRequest, setFinancingCoverageRequest] = useState<{ profileId: string; sequence: number } | null>(null);
+  const currentFinancing = workingFinancing?.profileId === profileId ? workingFinancing : null;
+  useEffect(() => { setFinancingTermsRequest(null); setFinancingCoverageRequest(null); }, [profileId]);
+  const requestSharedTerms = () => {
+    if (isDealerFile) { openTermSheet(); return; }
+    if (profileId) setFinancingTermsRequest((previous) => ({ profileId, sequence: previous?.profileId === profileId ? previous.sequence + 1 : 1 }));
+  };
+  const requestSharedCoverage = () => { if (profileId) setFinancingCoverageRequest((previous) => ({ profileId, sequence: previous?.profileId === profileId ? previous.sequence + 1 : 1 })); };
   const communicationProfileId = underwriting?.profile_id ?? profileId;
   const [programReadiness, setProgramReadiness] = useState<ApplicationProgramReadiness | null>(null);
   const [underwritingDraft, setUnderwritingDraft] = useState<UnderwritingDraft>(() => emptyUnderwritingDraft());
@@ -1121,7 +1133,6 @@ export function LeadDetailPanel({
   }, [onCockpitResponse, refreshProgramReadiness]);
 
   function openTermSheet() {
-    setPrototypeView("production");
     setProductionTermSheetOpen(true);
   }
 
@@ -1987,10 +1998,15 @@ export function LeadDetailPanel({
                   </section>
                 </Panel>
               ) : null}
-              {prototypeView === "financials" && canUnderwrite ? (
-                profileId ? (
+              {canUnderwrite ? (
+                <div hidden={prototypeView !== "financials"}>
+                {profileId ? (
                   <FinancialCockpit
+                    key={profileId}
                     profileId={profileId}
+                    termsRequest={financingTermsRequest?.profileId === profileId ? financingTermsRequest.sequence : 0}
+                    coverageRequest={financingCoverageRequest?.profileId === profileId ? financingCoverageRequest.sequence : 0}
+                    onWorkingFinancingChange={setWorkingFinancing}
                     businessName={detail.intake.business_name || detail.intake.full_name}
                     canPublish={currentUser?.role === Role.SUPER_ADMIN}
                     canRecordTerms={isDealerFile && canUnderwrite}
@@ -2017,7 +2033,8 @@ export function LeadDetailPanel({
                     onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
                     onOpenPackage={() => { setPackageTab("summary"); setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
                   />
-                ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
+                ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>}
+                </div>
               ) : null}
               {prototypeView === "financials" && canUnderwrite && profileId ? (
                 <div className="grid g12">
@@ -2037,7 +2054,7 @@ export function LeadDetailPanel({
                 <div className="grid g12">
                 <Panel
                   title="Underwriting"
-                  sub="Terms on file, offer sent, accepted, close: one flow, reading the terms the Financials tab saved."
+                  sub="Structure the shared loan, review collateral, send the offer and record the client’s acceptance."
                   actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}</Row>}
                 >
                   {underwritingLoading || !underwriting?.profile_id ? <div className="empty">Loading underwriting…</div> : (
@@ -2045,18 +2062,21 @@ export function LeadDetailPanel({
                       profileId={underwriting.profile_id}
                       terms={termsOnFile}
                       termsLoading={!isDealerFile && clientTermsQuery.isLoading}
+                      financing={currentFinancing}
+                      requestedAmount={detail.intake.requested_loan_amount}
+                      onCoveragePlan={requestSharedCoverage}
                       termsActions={isDealerFile && termSheet?.current ? (
                         <DealerTermSheetDocumentActions
                           profileId={underwriting.profile_id}
                           terms={termSheet.current}
                           contactSuppressed={Boolean(detail.intake.client_contact_suppressed)}
-                          onEdit={() => setPrototypeView("financials")}
+                          onEdit={openTermSheet}
                           selected={Boolean(productionTermSelection && selectedOfferKeys.includes(productionTermSelection.key))}
                           onSelectedChange={(selected) => setOfferSelected(productionTermSelection, selected)}
                           onCompose={() => openOfferComposer(productionTermSelection)}
                         />
                       ) : null}
-                      onEditTerms={() => setPrototypeView("financials")}
+                      onEditTerms={requestSharedTerms}
                       underwriting={underwriting}
                       statusLabel={underwritingStatusLabel(underwriting?.underwriting_status ?? underwritingDraft.underwriting_status)}
                       draft={underwritingDraft}
@@ -2119,6 +2139,7 @@ export function LeadDetailPanel({
                   {underwritingLoading ? <div className="empty">Loading reviewer controls...</div> : (
                     <div className="grid g12">
                       <div className="terms-review-controls">
+                        <FinancingProposalSummary value={currentFinancing} saved={underwriting?.financing} requestedAmount={detail.intake.requested_loan_amount} onEdit={requestSharedTerms} onCoverage={requestSharedCoverage} />
                         <div className="fldgrid two">
                           <Field label="Lifecycle status">
                             <Select aria-label="Lifecycle status" value={underwritingDraft.underwriting_status} onChange={(event) => setUnderwritingDraft({ ...underwritingDraft, underwriting_status: event.target.value as UnderwritingLifecycleStatus })}>
@@ -2163,8 +2184,10 @@ export function LeadDetailPanel({
                 </div>
               ) : null}
 
-              {prototypeView === "production" && isDealerFile ? (
+              {isDealerFile ? (
+                <div hidden={prototypeView !== "production"}>
                 <ProductionPackageTab intakeId={detail.intake.id} shareOpen={productionShareOpen} onShareClose={() => setProductionShareOpen(false)} termSheetOpen={productionTermSheetOpen} onTermSheetClose={closeTermSheet} />
+                </div>
               ) : null}
 
               {prototypeView === "audit" ? (

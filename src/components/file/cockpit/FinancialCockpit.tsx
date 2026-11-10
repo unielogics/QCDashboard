@@ -32,6 +32,7 @@ import { useConfirmAction } from "@/components/design-system/ConfirmationProvide
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
+import type { WorkingFinancing } from "@/lib/workingFinancing";
 import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import type { FundingProgramVertical } from "@/lib/fundingPrograms";
 import {
@@ -98,6 +99,10 @@ type Props = {
   onEconomicsSaved?: () => void;
   /** Which record the loan in the plan becomes. */
   termsKind?: "production" | "client";
+  /** Open the same mounted editor from Underwriting without leaving that tab. */
+  termsRequest?: number;
+  coverageRequest?: number;
+  onWorkingFinancingChange?: (value: WorkingFinancing) => void;
 };
 
 const toneForSign = (value: number | null | undefined): ChipTone => (value == null ? "mut" : value < 0 ? "bad" : "ok");
@@ -615,7 +620,7 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 // ---------------------------------------------------------------------------
 
 export function FinancialCockpit(props: Props) {
-  const { profileId, onRefreshProgramReadiness } = props;
+  const { profileId, onRefreshProgramReadiness, onWorkingFinancingChange } = props;
   const query = useFinancialCockpit(props.profileId);
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -632,11 +637,15 @@ export function FinancialCockpit(props: Props) {
   const marketplaceRef = useRef<HTMLElement>(null);
   const [accountChoice, setAccountChoice] = useState<string>("counted");
   const [metricReview, setMetricReview] = useState<{ profileId: string; key: FinancialKpiKey; open: boolean } | null>(null);
-  const [workingPlan, setWorkingPlan] = useState<{ profileId: string; plan: FinancialPlanWrite; dirty: boolean } | null>(null);
+  const [workingPlan, setWorkingPlan] = useState<WorkingFinancing | null>(null);
   const [metricDebtOpen, setMetricDebtOpen] = useState(false);
   const [planReviewRequest, setPlanReviewRequest] = useState(0);
+  const [termsOpenRequest, setTermsOpenRequest] = useState(0);
   const returnToMetric = useRef(false);
-  const workingPlanChanged = useCallback((value: { profileId: string; plan: FinancialPlanWrite; dirty: boolean }) => { setWorkingPlan(value); }, []);
+  const workingPlanChanged = useCallback((value: WorkingFinancing) => { setWorkingPlan(value); onWorkingFinancingChange?.(value); }, [onWorkingFinancingChange]);
+  useEffect(() => { if (props.termsRequest) setTermsOpenRequest((value) => value + 1); }, [props.termsRequest]);
+  useEffect(() => { if (props.coverageRequest) setPlanReviewRequest((value) => value + 1); }, [props.coverageRequest]);
+  const structureLoan = () => props.termsKind === "production" ? props.onRecordTerms() : setTermsOpenRequest((value) => value + 1);
   const [sourcePreview, setSourcePreview] = useState<{ profileId: string; fileId: string; page?: number; requestId: number } | null>(null);
   const [sourceFiles, setSourceFiles] = useState<BucketReviewFile[]>([]);
   const activeProfileRef = useRef(props.profileId);
@@ -782,29 +791,11 @@ export function FinancialCockpit(props: Props) {
       </KpiRow></div>
 
       <div className="fc-grid">
-        <CoverageCard businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
-        <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
-      </div>
-
-      <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
-        <summary>Bank trends and cash flow · {summary.months} statement months</summary>
-        <div className="fc-grid fc-grid-charts"><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
-      </details>
-
-      <div className="fc-grid fc-grid-charts">
-        <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
-        <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
-        <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
-      </div>
-
-      <div className="fc-grid">
-        <NetProfitCard cockpit={cockpit} />
-        <ExpensesCard cockpit={cockpit} />
-      </div>
-
+        <CoverageCard key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest} onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
       {props.programReadiness ? (
-        <div className="fc-grid">
-          <section className="fc-card fc-wide" id="fc-programs">
+        <>
+          <details className="fc-card fc-wide" id="fc-programs">
+            <summary><strong>Program criteria and use of funds</strong><span className="sub"> · {props.programReadiness.selections?.map((row) => row.program_name).join(", ") || "Choose programs"}</span></summary>
             <div className="fc-card-h">
               <div>
                 <h4>Programs and use of funds</h4>
@@ -825,16 +816,36 @@ export function FinancialCockpit(props: Props) {
               programVertical={props.programVertical}
               intakeVariant={props.intakeVariant}
             />
-          </section>
-        </div>
+          </details>
+        </>
       ) : null}
+        <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
+      </div>
+
+      <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
+        <summary>Bank trends and cash flow · {summary.months} statement months</summary>
+        <div className="fc-grid fc-grid-charts"><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
+      </details>
+
+      <div className="fc-grid fc-grid-charts">
+        <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
+        <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
+        <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
+      </div>
+
+      <div className="fc-grid">
+        <NetProfitCard cockpit={cockpit} />
+        <ExpensesCard cockpit={cockpit} />
+      </div>
+
+
 
       <div className="fc-grid">
         <ApplicationLenderSubmissions key={props.profileId} profileId={props.profileId} />
       </div>
 
       <div className="fc-grid">
-        {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} />}
+        {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} innerRef={marketplaceRef} />}
       </div>
       {metricReview?.profileId === props.profileId ? <FinancialMetricReviewWorkspace key={props.profileId} open={metricReview.open} metricKey={metricReview.key} cockpit={cockpit} options={metricOptions} profileId={props.profileId} canEdit={props.canUnderwrite} onClose={() => setMetricReview((current) => current ? { ...current, open: false } : null)} onRefresh={refreshFinancialFacts} onOpenDebt={openMetricDebt} onOpenPlan={openMetricPlan} /> : null}
       {metricDebtOpen ? <FinancialWorkspace open profileId={props.profileId} initialKind="debt_schedule" initialView="worksheet" onClose={() => { setMetricDebtOpen(false); setMetricReview((current) => current ? { ...current, open: true } : null); void refreshFinancialFacts(); }} onPublished={async () => { await refreshFinancialFacts(); }} /> : null}

@@ -19,9 +19,12 @@ import { computePaymentSummary, defaultProgramCoverage, effectiveAnnualRate, per
 import type { RepaymentConfig } from "@/lib/loanSchedule";
 import { repaymentPreview, copyRepaymentConfig } from "@/lib/repaymentConfig";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
+import { FileCollateralSection } from "@/components/file/FileCollateralSection";
+import { useTermsCollateral } from "@/hooks/useTermsCollateral";
+import { Drawer } from "@/components/ds/Drawer";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
-import { Callout, KV, MoneySplit, Overlay, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
+import { Callout, KV, MoneySplit, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
 import type {
   DebtServiceTreatment,
   FacilityKind,
@@ -342,6 +345,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   pkg?: ProductionPackage | null;
   onSaved?: (result: TermSheetResult) => void;
 }) {
+  const collateral = useTermsCollateral(profileId);
   const [state, setState] = useState<TermSheetState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -511,7 +515,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     if (!form || !summary || !client.saveTermSheet || validationErrors.length) return;
     setBusy("save"); setErrors([]); setDone(null);
     try {
-      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: current?.version ?? 0 });
+      const expectedCollateralRevision = await collateral.verifyRevision();
+      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: current?.version ?? 0, expected_collateral_revision: expectedCollateralRevision });
       setState(result.state);
       setForm(formFrom(result.state.current, result.state.defaults));
       const version = result.state.current?.version;
@@ -635,13 +640,15 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const showPaymentBasis = Boolean(form && (["interest_only", "interest_only_then_amortizing", "balloon", "revolving_interest_only"].includes(form.repayment_structure) || isRevolving));
 
   return (
-    <Overlay open={open} onClose={onClose} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} wide>
+    <Drawer open={open} onClose={() => { if (!busy) onClose(); }} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} width="xl" bodyClass="pp-root" closeOnBackdrop={false} ariaLabel="Production loan terms">
       {loadError ? <div className="pp-notice t-warn"><span>{loadError}</span><PBtn size="sm" onClick={() => load()}>Try again</PBtn></div> : null}
       {!state || !form || !summary ? (!loadError ? <p className="pp-sub">Loading…</p> : null) : (
         <div className="pp-ts-form">
           <p className="pp-sub">
             Choose the approved product, rate and repayment schedule. We calculate the lender payment and its monthly equivalent; if the dealer program uses a different monthly coverage amount, record it separately below.
           </p>
+          {current && collateral.data?.revision != null && storedNumber(current.extra?.collateral_revision) !== collateral.data.revision ? <Callout tone="warn">The current collateral differs from this saved term sheet. Review its properties and assets, then record a new version to include them in the terms PDF.</Callout> : null}
+          <FileCollateralSection profileId={profileId} disabled={!canEdit || Boolean(busy)} compact title="Collateral for these terms" />
           {current ? (
             <div className="pp-row">
               <PChip tone="ok">Current · v{current.version}</PChip>
@@ -863,6 +870,6 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
           ) : <p className="pp-sub">No versions yet.</p>}
         </div>
       )}
-    </Overlay>
+    </Drawer>
   );
 }

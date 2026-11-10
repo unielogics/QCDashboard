@@ -32,8 +32,11 @@ import { compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money
 import { STRUCTURE_LABELS, defaultStructure, type LoanScheduleSummary, type LoanStructure, type RepaymentConfig } from "@/lib/loanSchedule";
 import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
-import { copyRepaymentConfig, repaymentPreview, termsCadenceForPeriods } from "@/lib/repaymentConfig";
+import { copyRepaymentConfig, repaymentPreview } from "@/lib/repaymentConfig";
 import type { CockpitPackageState } from "./FinancialCockpit";
+import type { WorkingFinancing } from "@/lib/workingFinancing";
+import { workingLoanFromPlan } from "@/lib/loanTermsSync";
+import { sharedFinancingOfferFields } from "@/lib/sharedFinancingOffer";
 
 type Props = {
   profileId: string;
@@ -45,9 +48,11 @@ type Props = {
   onRecordTerms: () => void;
   onOpenEvidence: () => void;
   onOpenPackage: () => void;
+  onStructureLoan?: () => void;
 };
 
 type ProductDraft = {
+  financing_source?: "canonical_financing" | null;
   key: string;
   program_key: string | null;
   label: string;
@@ -76,13 +81,14 @@ const num = (value: string | number | null | undefined): number | null => {
 const text = (value: number | string | null | undefined) => (value == null ? "" : String(value));
 
 function fromListing(product: CpListingProduct): ProductDraft {
-  return { key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, structure: (product.structure as LoanStructure | null) ?? (product.interest_only ? "interest_only" : null), interest_only_months: text(product.interest_only_months ?? null), repayment_config: copyRepaymentConfig(product.repayment_config), payment_frequency: product.payment_frequency, payments_per_year: text(product.payments_per_year), primary: product.primary, notes: product.notes, eligible: null };
+  return { financing_source: product.financing_source, key: nextKey(), program_key: product.program_key, label: product.label, amount: text(product.amount), rate_pct: text(product.rate_pct), factor_rate: num(product.factor_rate ?? null), term_months: text(product.term_months), interest_only: !!product.interest_only, structure: (product.structure as LoanStructure | null) ?? (product.interest_only ? "interest_only" : null), interest_only_months: text(product.interest_only_months ?? null), repayment_config: copyRepaymentConfig(product.repayment_config), payment_frequency: product.payment_frequency, payments_per_year: text(product.payments_per_year), primary: product.primary, notes: product.notes, eligible: null };
 }
 function fromSuggestion(item: CpOfferSuggestion, primary: boolean): ProductDraft {
   return { key: nextKey(), program_key: item.program_key, label: item.label, amount: text(item.amount), rate_pct: text(item.rate_pct), factor_rate: item.factor_rate, term_months: text(item.term_months), interest_only: !!item.interest_only, structure: (item.structure as LoanStructure | null) ?? null, interest_only_months: text(item.interest_only_months ?? null), repayment_config: copyRepaymentConfig(item.repayment_config), payment_frequency: (["daily", "weekly", "biweekly", "custom"].includes(item.payment_frequency) ? item.payment_frequency : "monthly") as ProductDraft["payment_frequency"], payments_per_year: text(item.payments_per_year), primary, notes: item.reading, eligible: item.eligible };
 }
 function toProduct(draft: ProductDraft, payment: number | null, dscr: number | null, coveragePayment: number | null, schedule: LoanScheduleSummary | null): CpListingProduct {
   return {
+    financing_source: draft.financing_source,
     program_key: draft.program_key,
     label: draft.label.trim() || "Loan",
     amount: num(draft.amount),
@@ -108,7 +114,7 @@ function toProduct(draft: ProductDraft, payment: number | null, dscr: number | n
 
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
-export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement>; embedded?: boolean }) {
+export function OfferPanel({ cockpit, props, innerRef, embedded = false, workingFinancing }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement>; embedded?: boolean; workingFinancing?: WorkingFinancing | null }) {
   const { profileId, programReadiness, termSheet, packageState, canPublish, canRecordTerms, onRecordTerms, onOpenEvidence, onOpenPackage } = props;
   const api = useAuthedApi();
   const lookup = useCpSourceLookup({ profile_id: profileId }, canPublish);
@@ -125,6 +131,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [productSearch, setProductSearch] = useState("");
 
   // Seed from the listing when there is one, else from the suggestions, until the desk edits.
   useEffect(() => {
@@ -133,9 +140,11 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
       setProducts(listing.data.products.map(fromListing));
       setHead({ name: listing.data.name ?? "", offered_amount: text(listing.data.offered_amount), minimum_investment: text(listing.data.minimum_investment), summary: listing.data.summary ?? "" });
     } else if (!listingId && suggestions.data) {
-      setProducts(suggestions.data.products.map((item, index) => fromSuggestion(item, index === 0)));
+      const selected = new Set(programReadiness?.selections?.map((row) => row.program_key) ?? []);
+      const first = suggestions.data.products.find((item) => item.program_key != null && selected.has(item.program_key));
+      setProducts(first ? [fromSuggestion(first, true)] : []);
     }
-  }, [dirty, listing.data, listingId, suggestions.data]);
+  }, [dirty, listing.data, listingId, suggestions.data, programReadiness]);
 
   // The plan's income (add-backs, exclusions, overrides) and its debt service after retirements are what the offer stands on.
   const evaluation = cockpit.plan?.evaluation;
@@ -144,11 +153,22 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
   const existingMonthly = suggestions.data?.existing_debt_service_monthly ?? evaluation?.debt_service_before_new_payment_monthly ?? cockpit.debt.service.monthly ?? null;
   const incomeLabel = suggestions.data?.income_label ?? (planIncome != null ? `${cockpit.dscr.headline?.numerator_label ?? "Income"} with the desk's plan` : cockpit.dscr.headline?.numerator_label ?? null);
   const incomeBasis = suggestions.data?.income_basis ?? cockpit.dscr.headline?.key ?? null;
-  const planLoan = cockpit.plan?.impact?.loan ?? null;
+  const sharedLoan = workingFinancing?.profileId === profileId ? workingLoanFromPlan(workingFinancing.plan) : null;
+  const recordedReferenceOnly = !sharedLoan && cockpit.proposed_terms?.active_proposal === false;
+  const canonicalProgram = cockpit.proposed_terms?.program_key ?? null;
+  const canonicalProgramName = cockpit.proposed_terms?.program_name ?? null;
+  const mirroredProducts = useMemo(() => {
+    if (!sharedLoan) return products;
+    const existing = canonicalProgram ? products.find((row) => row.program_key === canonicalProgram) : products.find((row) => row.primary) ?? products[0];
+    const base: ProductDraft = existing ?? { key: `canonical-${profileId}`, program_key: canonicalProgram, label: canonicalProgramName || "Loan in coverage plan", amount: "", rate_pct: "", factor_rate: null, term_months: "", interest_only: false, structure: null, interest_only_months: "", repayment_config: null, payment_frequency: "monthly", payments_per_year: "", primary: true, notes: null, eligible: null };
+    const primary = { ...base, ...sharedFinancingOfferFields(sharedLoan), program_key: canonicalProgram ?? base.program_key, label: canonicalProgramName || base.label, primary: true, financing_source: "canonical_financing" as const };
+    return [primary, ...products.filter((row) => row.key !== existing?.key).map((row) => ({ ...row, primary: false, financing_source: null }))];
+  }, [products, sharedLoan, canonicalProgram, canonicalProgramName, profileId]);
+  const openPrograms = () => { const section = document.getElementById("fc-programs"); if (section instanceof HTMLDetailsElement) section.open = true; section?.scrollIntoView({ behavior: "smooth", block: "start" }); };
 
   const computed = useMemo(
     () =>
-      products.map((draft) => {
+      mirroredProducts.map((draft) => {
         const amount = num(draft.amount);
         const term = num(draft.term_months);
         const preview = repaymentPreview(amount, num(draft.rate_pct), term, { structure: draft.interest_only ? "interest_only" : draft.structure, interestOnlyMonths: num(draft.interest_only_months), periodsPerYear: draft.payment_frequency === "custom" ? num(draft.payments_per_year) ?? 0 : draft.payment_frequency === "daily" ? 252 : draft.payment_frequency === "weekly" ? 51.96 : draft.payment_frequency === "biweekly" ? 25.98 : 12, repaymentConfig: draft.repayment_config });
@@ -160,22 +180,11 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
         // Do not round the annual underwriting basis through its displayed
         // monthly equivalent; maturity principal remains part of stress DSCR.
         const coverageMonthlyExact = repaymentError ? null : factorPayment ?? (preview.schedule ? preview.schedule.coverage_annual_debt_service / 12 : null);
-        const dscr = dscrWithPayment(income, existingMonthly, coverageMonthlyExact);
+        const dscr = sharedLoan && draft.primary ? workingFinancing?.projectedDscr ?? null : dscrWithPayment(income, existingMonthly, coverageMonthlyExact);
         return { draft, payment, coveragePayment, dscr, schedule: preview.schedule, repaymentError };
       }),
-    [products, income, existingMonthly],
+    [mirroredProducts, income, existingMonthly, sharedLoan, workingFinancing?.projectedDscr],
   );
-  const usePlanLoan = () => {
-    if (!planLoan) return;
-    setDirty(true);
-    setProducts((current) => {
-      const index = current.findIndex((p) => p.primary);
-      const base = index >= 0 ? current[index] : { key: nextKey(), program_key: null, label: "Loan", amount: "", rate_pct: "", factor_rate: null, term_months: "", interest_only: false, primary: true, notes: null, eligible: null };
-      const cadence = termsCadenceForPeriods(planLoan.payments_per_year ?? 12);
-      const next = { ...base, amount: text(planLoan.amount), rate_pct: text(planLoan.rate_pct), term_months: text(planLoan.term_months), interest_only: planLoan.interest_only, structure: ((planLoan as { structure?: string | null }).structure as LoanStructure | null) ?? (planLoan.interest_only ? "interest_only" : null), interest_only_months: text((planLoan as { interest_only_months?: number | null }).interest_only_months ?? null), repayment_config: copyRepaymentConfig(planLoan.repayment_config), payment_frequency: cadence.repayment_frequency, payments_per_year: cadence.custom_payments_per_year, factor_rate: null, notes: "From the desk's plan on the file." };
-      return index >= 0 ? current.map((p, i) => (i === index ? next : p)) : [...current, next];
-    });
-  };
 
   const candidates = useMemo(() => {
     const seen = new Set<string>();
@@ -191,6 +200,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
       seen.add(cand.program_key);
       rows.push({ key: cand.program_key, name: cand.program_name, eligible: cand.eligible, selected: false });
     }
+    if (!seen.has("private_loan_bridge")) rows.push({ key: "private_loan_bridge", name: "Private Loan / Bridge", eligible: null, selected: false });
     return rows;
   }, [programReadiness]);
 
@@ -200,7 +210,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
   };
   const makePrimary = (key: string) => {
     setDirty(true);
-    setProducts((current) => current.map((p) => ({ ...p, primary: p.key === key })));
+    setProducts((current) => current.map((p) => ({ ...p, primary: p.key === key, financing_source: p.key === key ? p.financing_source : null })));
   };
   const remove = (key: string) => {
     setDirty(true);
@@ -252,6 +262,9 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
   const repaymentError = computed.find((item) => item.repaymentError)?.repaymentError;
   const payload = () => { if (repaymentError) throw new Error(repaymentError); return computed.map(({ draft, payment, dscr, coveragePayment, schedule }) => toProduct(draft, payment, dscr, coveragePayment, schedule)); };
   const primary = computed.find(({ draft }) => draft.primary) ?? computed[0] ?? null;
+  const listedPrimary = listing.data?.products.find((product) => product.primary) ?? listing.data?.products[0];
+  const loanFingerprint = (product: Partial<CpListingProduct> | null | undefined) => JSON.stringify(product ? [product.program_key, num(product.amount), num(product.rate_pct), num(product.term_months), product.structure, num(product.interest_only_months) ?? 0, product.payment_frequency, num(product.payments_per_year), product.repayment_config ?? null, product.dscr] : null);
+  const sharedProposalChanged = Boolean(sharedLoan && primary && listing.data && loanFingerprint(toProduct(primary.draft, primary.payment, primary.dscr, primary.coveragePayment, primary.schedule)) !== loanFingerprint(listedPrimary));
   const headlinePatch = () => ({
     products: payload(),
     // Decimals travel as strings on the listing API.
@@ -274,6 +287,9 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
     setNotice(null);
     setBusy(true);
     try {
+      if (workingFinancing?.dirty) throw new Error("Save the shared coverage plan or terms before updating the marketplace proposal.");
+      if (recordedReferenceOnly) throw new Error("The active coverage loan was cleared. Structure and save a new proposal before updating the marketplace listing; the old terms remain a historical reference.");
+      if (!primary) throw new Error("Choose a primary product before creating its marketplace proposal.");
       if (!listingId && (!packageState.generated || !packageState.inSync)) throw new Error("Generate a current investor package before creating its marketplace listing.");
       if (listingId) {
         await patch.mutateAsync({ id: listingId, ...headlinePatch() });
@@ -318,10 +334,11 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
         <div>
           <h4>{embedded ? "Offering terms & marketplace listing" : "Investor package & capital partners"}</h4>
           <div className="sub">
-            Pick the products to offer and the terms to publish. For a file that is not funded yet these are suggested terms: the system proposes the amount the income covers at {suggestions.data?.target_dscr?.toFixed(2) ?? "1.25"}x on each program's longest published term, and the desk changes anything before publishing.
+            The primary offer uses the loan in the coverage plan. Choose its product here; program qualification stays with the file’s evidence and criteria.
           </div>
         </div>
         <div className="row" style={{ gap: 8, alignItems: "center" }}>
+          {props.onStructureLoan ? <Btn size="sm" variant="pri" onClick={props.onStructureLoan}><Icon name="pencil" size={13} />Structure loan / Coverage plan</Btn> : null}
           {lookup.data?.listing ? (
             <>
               <CellChip tone={LISTING_TONE[lookup.data.listing.status] ?? "mut"}>{lookup.data.listing.ref} · {lookup.data.listing.status.replace(/_/g, " ")}</CellChip>
@@ -340,7 +357,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
         <div className="fc-listing-item">
           <Lbl>Program on the file</Lbl>
           <strong>{selection?.program_name ?? "None selected"}</strong>
-          <div className="fc-chips"><CellChip tone={eligibility.tone}>{eligibility.label}</CellChip> <button type="button" className="linky" onClick={() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" })}>{selection ? "Change programs" : "Choose programs"}</button></div>
+          <div className="fc-chips"><CellChip tone={eligibility.tone}>{eligibility.label}</CellChip> <button type="button" className="linky" onClick={openPrograms}>Review program criteria</button></div>
         </div>
         <div className="fc-listing-item">
           <Lbl>Evidence</Lbl>
@@ -353,9 +370,9 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
         </div>
         <div className="fc-listing-item">
           <Lbl>Loan terms on record</Lbl>
-          <strong>{sheet ? `${money(sheet.approved_amount)} at ${sheet.rate_pct}% for ${sheet.term_months} mo` : "Not recorded"}</strong>
-          <div className="sub">{sheet ? `${sheet.funding_party_name} · v${sheet.version}` : "Without a term sheet the listing carries the suggested terms below."}</div>
-          {canRecordTerms ? <Btn size="sm" onClick={onRecordTerms}>{sheet ? "Update loan terms" : "Record loan terms"}</Btn> : null}
+          <strong>{sharedLoan ? `${money(sharedLoan.amount)} at ${sharedLoan.ratePct ?? "—"}% for ${sharedLoan.termMonths ?? "—"} mo` : sheet ? `${money(sheet.approved_amount)} at ${sheet.rate_pct}% for ${sheet.term_months} mo` : cockpit.proposed_terms ? `${money(cockpit.proposed_terms.amount)} at ${cockpit.proposed_terms.rate_pct ?? "—"}%` : "Not recorded"}</strong>
+          <div className="sub">{sharedLoan ? workingFinancing?.dirty ? "Working loan · save before updating the listing" : "Mirrored from the saved coverage plan" : recordedReferenceOnly ? "Historical terms reference · no active proposal" : sheet ? `${sheet.funding_party_name} · v${sheet.version}` : "Structure the shared loan before preparing its offering."}</div>
+          {canRecordTerms && !props.onStructureLoan ? <Btn size="sm" onClick={onRecordTerms}>{sheet ? "Update loan terms" : "Record loan terms"}</Btn> : null}
         </div>
         <div className="fc-listing-item">
           <Lbl>Package</Lbl>
@@ -379,29 +396,23 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
 
       {canPublish ? (
         <>
-          <div className="grid g6">
-            <Lbl>Products to offer</Lbl>
-            <div className="fc-chips">
-              {candidates.map((c) => {
-                const already = products.some((p) => p.program_key === c.key);
-                return (
-                  <Btn key={c.key} size="sm" disabled={already || !editable} onClick={() => void addProgram(c.key, c.name, c.eligible)} aria-label={`${already ? "Offered: " : "Offer "}${c.name}${c.eligible === false ? ", not eligible on today's facts" : ""}`}>
-                    <Icon name={already ? "check" : "plus"} size={12} /> {c.name}
-                    {c.eligible === false ? " · not eligible" : c.selected ? " · on the file" : ""}
-                  </Btn>
-                );
-              })}
-              {!candidates.length ? <span className="sub">No programs on the file yet. <button type="button" className="linky" onClick={() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" })}>Choose one in Programs and use of funds above</button>.</span> : null}
-              <Btn size="sm" variant="pri" onClick={() => void suggestAll()} disabled={!products.length || !editable || suggestions.isLoading}>
-                <Icon name="sparkles" size={12} /> Suggest terms
-              </Btn>
-              {planLoan ? (
-                <Btn size="sm" onClick={usePlanLoan} disabled={!editable}>
-                  <Icon name="copy" size={12} /> Use the plan's loan: {money(planLoan.amount)} at {planLoan.rate_pct}%{planLoan.interest_only ? " interest-only" : ` over ${planLoan.term_months} mo`}
-                </Btn>
-              ) : null}
-            </div>
+          <div className="grid g8" aria-label="Selected offering product">
+            <div className="row" style={{ gap: 8, flexWrap: "wrap" }}><Lbl>Product to offer</Lbl><strong>{primary?.draft.label || "Choose a product"}</strong>{primary ? <span className="sub">{money(num(primary.draft.amount))} · {multiple(primary.dscr)} projected DSCR</span> : null}{sharedLoan ? <CellChip tone="acc">Shared coverage loan</CellChip> : null}{sharedProposalChanged ? <CellChip tone="warn">Listing needs the current proposal</CellChip> : null}</div>
+            <details>
+              <summary>Choose product / add an alternative</summary>
+              <div className="grid g8" style={{ paddingTop: 8, maxWidth: 620 }}>
+                <Input aria-label="Search offering products" placeholder="Search products…" value={productSearch} onChange={(event) => setProductSearch(event.target.value)} />
+                <Select aria-label="Add offering product" value="" disabled={!editable || mirroredProducts.length >= (sharedLoan ? 9 : 8)} onChange={(event) => { const candidate = candidates.find((row) => row.key === event.target.value); if (candidate) void addProgram(candidate.key, candidate.name, candidate.eligible); }}>
+                  <option value="">{primary ? "Add an alternative product…" : "Choose the primary product…"}</option>
+                  {candidates.filter((row) => !mirroredProducts.some((product) => product.program_key === row.key) && row.name.toLowerCase().includes(productSearch.toLowerCase())).map((row) => <option key={row.key} value={row.key}>{row.name}{row.eligible === false ? " · criteria not met" : row.eligible == null ? " · qualification unconfirmed" : ""}</option>)}
+                </Select>
+                <p className="sub">Choosing a product does not establish program eligibility. Private Loan / Bridge is reviewed individually. Choose the primary product in the shared loan terms; alternatives keep their own terms here.</p>
+                {!sharedLoan && products.length ? <Btn size="sm" onClick={() => void suggestAll()} disabled={!editable || suggestions.isLoading}>Suggest alternative terms</Btn> : null}
+              </div>
+            </details>
           </div>
+          <details>
+            <summary>Product details and alternative terms · {computed.length} product{computed.length === 1 ? "" : "s"}</summary>
           {computed.length ? (
             <div className="tbl-wrap">
               <table className="tbl fc-adv-table fc-offer-table">
@@ -423,22 +434,22 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
                     const status = dscrStatusOf(dscr);
                     return (
                       <tr key={draft.key}>
-                        <td><input type="radio" name="primary-product" aria-label={`Make ${draft.label} the primary product`} checked={draft.primary} disabled={!editable} onChange={() => makePrimary(draft.key)} /></td>
+                        <td><input type="radio" name="primary-product" aria-label={`Make ${draft.label} the primary product`} checked={draft.primary} disabled={!editable || Boolean(sharedLoan && canonicalProgram)} onChange={() => makePrimary(draft.key)} /></td>
                         <td>
-                          <Input aria-label="Product label" value={draft.label} disabled={!editable} onChange={(e) => update(draft.key, { label: e.target.value })} />
+                          <Input aria-label="Product label" value={draft.label} disabled={!editable || Boolean(sharedLoan && draft.primary)} onChange={(e) => update(draft.key, { label: e.target.value })} />
                           {draft.eligible === false ? <small className="sub" style={{ display: "block" }}>Not eligible on today's facts</small> : null}
                           {draft.notes ? <small className="sub" style={{ display: "block" }}>{draft.notes}</small> : null}
                         </td>
-                        <td className="r num"><Input aria-label="Amount" inputMode="decimal" value={draft.amount} disabled={!editable} onChange={(e) => update(draft.key, { amount: e.target.value })} /></td>
-                        <td className="r num">{draft.factor_rate ? <span>{draft.factor_rate.toFixed(2)} factor</span> : <Input aria-label="Rate percent" inputMode="decimal" value={draft.rate_pct} disabled={!editable} onChange={(e) => update(draft.key, { rate_pct: e.target.value })} />}</td>
-                        <td className="r num"><Input aria-label="Term in months" inputMode="numeric" value={draft.term_months} disabled={!editable} onChange={(e) => update(draft.key, { term_months: e.target.value })} /></td>
+                        <td className="r num"><Input aria-label="Amount" inputMode="decimal" value={draft.amount} disabled={!editable || Boolean(sharedLoan && draft.primary)} onChange={(e) => update(draft.key, { amount: e.target.value })} /></td>
+                        <td className="r num">{draft.factor_rate ? <span>{draft.factor_rate.toFixed(2)} factor</span> : <Input aria-label="Rate percent" inputMode="decimal" value={draft.rate_pct} disabled={!editable || Boolean(sharedLoan && draft.primary)} onChange={(e) => update(draft.key, { rate_pct: e.target.value })} />}</td>
+                        <td className="r num"><Input aria-label="Term in months" inputMode="numeric" value={draft.term_months} disabled={!editable || Boolean(sharedLoan && draft.primary)} onChange={(e) => update(draft.key, { term_months: e.target.value })} /></td>
                         <td>
                           {draft.factor_rate ? <span className="sub">Factor</span> : (
                             <div className="grid g2">
-                              <Select aria-label="Loan structure" value={draft.interest_only ? "interest_only" : (draft.structure ?? defaultStructure(num(draft.term_months)))} disabled={!editable} onChange={(e) => update(draft.key, { structure: e.target.value as LoanStructure, interest_only: e.target.value === "interest_only" })}>
+                              <Select aria-label="Loan structure" value={draft.interest_only ? "interest_only" : (draft.structure ?? defaultStructure(num(draft.term_months)))} disabled={!editable || Boolean(sharedLoan && draft.primary)} onChange={(e) => update(draft.key, { structure: e.target.value as LoanStructure, interest_only: e.target.value === "interest_only" })}>
                                 {(Object.keys(STRUCTURE_LABELS) as LoanStructure[]).map((k) => <option key={k} value={k}>{STRUCTURE_LABELS[k]}</option>)}
                               </Select>
-                              {!(draft.interest_only || draft.structure === "interest_only") ? <Input aria-label="Interest-only months first" inputMode="numeric" placeholder="IO months first" value={draft.interest_only_months} disabled={!editable} onChange={(e) => update(draft.key, { interest_only_months: e.target.value })} /> : null}
+                              {!(draft.interest_only || draft.structure === "interest_only") ? <Input aria-label="Interest-only months first" inputMode="numeric" placeholder="IO months first" value={draft.interest_only_months} disabled={!editable || Boolean(sharedLoan && draft.primary)} onChange={(e) => update(draft.key, { interest_only_months: e.target.value })} /> : null}
                             </div>
                           )}
                         </td>
@@ -449,7 +460,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
                             <CellChip tone={dscrTone(status)}>{dscrLabel(status).split(" (")[0]}</CellChip>
                           </span>
                         </td>
-                        <td>{editable ? <button type="button" className="fc-adv-remove" aria-label={`Remove ${draft.label}`} onClick={() => remove(draft.key)}><Icon name="x" size={13} /></button> : null}</td>
+                        <td>{editable && !(sharedLoan && draft.primary) ? <button type="button" className="fc-adv-remove" aria-label={`Remove ${draft.label}`} onClick={() => remove(draft.key)}><Icon name="x" size={13} /></button> : null}</td>
                       </tr>
                     );
                   })}
@@ -459,7 +470,10 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
           ) : (
             <div className="fc-empty">{suggestions.isLoading ? "Working out what the income supports…" : "No products yet. Add one above; the suggestion fills in the terms the income supports."}</div>
           )}
-          {computed.map(({ draft, schedule, repaymentError: issue }) => <section key={draft.key} aria-label={`${draft.label} repayment details`}><span className="sub">{draft.label || "Loan"} repayment</span><Select aria-label={`${draft.label} payment frequency`} value={draft.payment_frequency ?? "monthly"} disabled={!editable} onChange={(event) => update(draft.key, { payment_frequency: event.target.value as ProductDraft["payment_frequency"] })}><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="daily">Daily (business days)</option><option value="custom">Custom</option></Select>{draft.payment_frequency === "custom" ? <label>Payments per year<Input aria-label={`${draft.label} custom payments per year`} type="number" min={1} max={366} step="any" value={draft.payments_per_year} disabled={!editable} onChange={(event) => update(draft.key, { payments_per_year: event.target.value })} /></label> : null}<AdvancedRepaymentEditor value={draft.repayment_config} onChange={(config) => update(draft.key, { repayment_config: config })} amount={num(draft.amount)} ratePct={num(draft.rate_pct)} termMonths={num(draft.term_months)} structure={draft.interest_only ? "interest_only" : draft.structure ?? defaultStructure(num(draft.term_months))} interestOnlyMonths={num(draft.interest_only_months)} periodsPerYear={draft.payment_frequency === "custom" ? num(draft.payments_per_year) ?? 0 : draft.payment_frequency === "daily" ? 252 : draft.payment_frequency === "weekly" ? 51.96 : draft.payment_frequency === "biweekly" ? 25.98 : 12} disabled={!editable} unsupportedReason={draft.factor_rate ? "Advanced repayment requires an APR-based offer; factor pricing keeps its stated repayment." : null} />{schedule && !issue && !draft.factor_rate ? <LoanPaymentPhases schedule={schedule} /> : null}</section>)}
+          {computed.filter(({ draft }) => !(sharedLoan && draft.primary)).map(({ draft, schedule, repaymentError: issue }) => <section key={draft.key} aria-label={`${draft.label} repayment details`}><span className="sub">{draft.label || "Loan"} repayment</span><Select aria-label={`${draft.label} payment frequency`} value={draft.payment_frequency ?? "monthly"} disabled={!editable} onChange={(event) => update(draft.key, { payment_frequency: event.target.value as ProductDraft["payment_frequency"] })}><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="daily">Daily (business days)</option><option value="custom">Custom</option></Select>{draft.payment_frequency === "custom" ? <label>Payments per year<Input aria-label={`${draft.label} custom payments per year`} type="number" min={1} max={366} step="any" value={draft.payments_per_year} disabled={!editable} onChange={(event) => update(draft.key, { payments_per_year: event.target.value })} /></label> : null}<AdvancedRepaymentEditor value={draft.repayment_config} onChange={(config) => update(draft.key, { repayment_config: config })} amount={num(draft.amount)} ratePct={num(draft.rate_pct)} termMonths={num(draft.term_months)} structure={draft.interest_only ? "interest_only" : draft.structure ?? defaultStructure(num(draft.term_months))} interestOnlyMonths={num(draft.interest_only_months)} periodsPerYear={draft.payment_frequency === "custom" ? num(draft.payments_per_year) ?? 0 : draft.payment_frequency === "daily" ? 252 : draft.payment_frequency === "weekly" ? 51.96 : draft.payment_frequency === "biweekly" ? 25.98 : 12} disabled={!editable} unsupportedReason={draft.factor_rate ? "Advanced repayment requires an APR-based offer; factor pricing keeps its stated repayment." : null} />{schedule && !issue && !draft.factor_rate ? <LoanPaymentPhases schedule={schedule} /> : null}</section>)}
+          </details>
+          {workingFinancing?.dirty ? <StatusLine tone="warn">The shared loan has unsaved changes. Save the coverage plan or terms before updating the marketplace listing.</StatusLine> : null}
+          {recordedReferenceOnly ? <StatusLine tone="warn">No active loan proposal. The earlier terms are retained for history; structure and save a loan in the coverage plan before updating the listing.</StatusLine> : null}
           <div className="fc-listing-grid">
             <div className="fc-listing-item">
               <Lbl>Listing name (never the borrower's name)</Lbl>
@@ -481,7 +495,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { coc
           {repaymentError ? <StatusLine tone="bad">{repaymentError} Resolve the repayment schedule before saving.</StatusLine> : null}
           {listingId && !embedded ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || !!repaymentError || (!!listingId && !dirty) || (!listingId && (!packageState.generated || !packageState.inSync))}>
+            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || !primary || recordedReferenceOnly || !!repaymentError || !!workingFinancing?.dirty || (!!listingId && !dirty && !sharedProposalChanged) || (!listingId && (!packageState.generated || !packageState.inSync))}>
               {busy ? "Saving…" : listingId ? "Save terms to the listing" : "Create marketplace listing draft"}
             </Btn>
             {dirty ? <span className="sub">Unsaved changes.</span> : null}

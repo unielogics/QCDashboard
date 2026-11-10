@@ -18,6 +18,8 @@ import { useActiveProfile } from "@/store/role";
 import { STRUCTURE_LABELS, normalizeRepaymentConfig, defaultStructure, describeSchedule, riskProfile, type LoanStructure, type RepaymentConfig } from "@/lib/loanSchedule";
 import { applyWorkingLoan, clientDraftLoanFields, loanFromClientDraft, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
+import { FileCollateralSection } from "@/components/file/FileCollateralSection";
+import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview, repaymentConfigLabel, termsCadenceForPeriods } from "@/lib/repaymentConfig";
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
@@ -281,6 +283,7 @@ export function ApplicationClientTermsPanel({
   onViewChange?: (view: ClientTermsView) => void;
 }) {
   const api = useAuthedApi();
+  const collateral = useTermsCollateral(profileId);
   const queryClient = useQueryClient();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = visualQaUser(useActiveProfile().email);
@@ -374,7 +377,8 @@ export function ApplicationClientTermsPanel({
   const riskExistingAnnual = previewScenario ? scenarioCoverage?.existingAnnual ?? null : coveragePreview.existingAnnual;
   const riskIncomeAnnual = previewScenario ? scenarioCoverage?.incomeAnnual ?? null : query.data?.calculation.cash_flow_value ?? null;
 
-  const dirty = savedFingerprint !== JSON.stringify(draft);
+  const collateralChanged = Boolean(query.data?.version && collateral.data?.revision != null && collateral.data.revision !== query.data.collateral_revision);
+  const dirty = savedFingerprint !== JSON.stringify(draft) || collateralChanged;
   const offerSelection = useMemo<OfferSelection | null>(() => {
     const terms = query.data;
     if (!terms?.term_sheet_id || !terms.version || dirty || sourceConflict) return null;
@@ -394,6 +398,7 @@ export function ApplicationClientTermsPanel({
   const save = useMutation({
     mutationFn: async (submitted: { draft: Draft; version: number; plan?: FinancialPlanWrite }) => {
       const payload = payloadFromDraft(submitted.draft, submitted.version);
+      payload.expected_collateral_revision = await collateral.verifyRevision();
       if (submitted.plan) payload.financial_plan = { ...applyWorkingLoan(submitted.plan, loanFromClientDraft(submitted.draft)), expected_updated_at: submitted.plan.expected_updated_at ?? null };
       return api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`, { method: "PUT", body: JSON.stringify(payload) });
     },
@@ -554,6 +559,8 @@ export function ApplicationClientTermsPanel({
     {!terms.loan_type_options.length ? <Callout tone="bad">No active loan type is scoped to this file. Publish or scope a funding program before creating client terms.</Callout> : null}
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {notice ? <Callout tone="ok">{notice}</Callout> : null}
+    {collateralChanged ? <Callout tone="warn">The file’s collateral differs from saved terms v{terms.version}. Review the current properties and assets below. Save a new terms version to include the current collateral in its PDF.</Callout> : null}
+    {collateral.isError ? <Callout tone="bad">Collateral could not be loaded. Reload the current collateral before saving terms.</Callout> : null}
     {sourceConflict ? <Callout tone="warn"><div className="grid g8"><span>The scenario loan changed after this editor draft was kept. Your pending editor fields are preserved. Choose which loan to continue editing.</span><Row><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(true)}>Use current scenario loan</Btn><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(false)}>Keep editor loan</Btn></Row></div></Callout> : null}
     {onApplyLoan ? <p className="sub">Loan edits stay in this editor until you Apply loan to scenario or Save new version. Closing keeps this editor draft; it does not issue or send terms.</p> : null}
     {scenarioPaymentOnly ? <Callout tone="warn">The scenario has a manually entered monthly payment. It does not establish a principal amount, APR or loan term; enter those details to calculate matching terms.</Callout> : null}
@@ -584,6 +591,7 @@ export function ApplicationClientTermsPanel({
             {draft.debt_service_treatment === "refinance" ? <Field label="Annual debt service remaining after payoff"><Input aria-label="Annual debt service remaining after payoff" inputMode="decimal" value={draft.retained_annual_debt_service} onChange={(event) => patch("retained_annual_debt_service", event.target.value)} placeholder="0 for a full payoff" /></Field> : null}
           </div>
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={draft.repayment_config} onChange={(config) => patch("repayment_config", config)} amount={finite(draft.amount)} ratePct={finite(draft.apr_pct)} termMonths={finite(draft.term_months)} structure={draft.loan_structure || defaultStructure(finite(draft.term_months))} interestOnlyMonths={finite(draft.interest_only_months)} periodsPerYear={draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) ?? 0 : PERIODS[draft.repayment_frequency]} />
+          <FileCollateralSection profileId={profileId} disabled={!canEdit || save.isPending} compact title="Collateral included when saving these terms" />
         </section>
         <section className="terms-form-section">
           <div className="terms-section-title"><span>3</span><div><b>Timing and presentation</b><small>Set validity, closing expectation, and co-branding.</small></div></div>
@@ -596,7 +604,7 @@ export function ApplicationClientTermsPanel({
           <Field label="Client note (optional)"><Textarea aria-label="Client note" rows={3} value={draft.client_note} onChange={(event) => patch("client_note", event.target.value)} placeholder="A short, client-facing explanation of this structure." /></Field>
           <Field label="Conditions (one per line)"><Textarea aria-label="Conditions" rows={4} value={draft.conditions} onChange={(event) => patch("conditions", event.target.value)} placeholder={"Final verification of financial information\nSatisfactory closing documentation"} /></Field>
         </section>
-        <Row>{onApplyLoan ? <Btn onClick={() => onApplyLoan(loanFromClientDraft(draftRef.current))} disabled={save.isPending || sourceConflict || !loanCanApply}>Apply loan to scenario</Btn> : null}<Btn variant="pri" onClick={() => { setError(""); save.mutate({ draft: cloneDraft(draftRef.current), version: draftVersionRef.current, plan: financialPlanDraft }); }} disabled={save.isPending || !dirty || sourceConflict || versionConflict || !!repaymentIssue}>{save.isPending ? "Recalculating..." : terms.version ? "Save new version" : "Save client terms"}</Btn>{dirty ? <span className="terms-unsaved">Unsaved changes</span> : <span className="sub">Everything shown in the PDF matches version {terms.version || "—"}.</span>}</Row>
+        <Row>{onApplyLoan ? <Btn onClick={() => onApplyLoan(loanFromClientDraft(draftRef.current))} disabled={save.isPending || sourceConflict || !loanCanApply}>Apply loan to scenario</Btn> : null}<Btn variant="pri" onClick={() => { setError(""); save.mutate({ draft: cloneDraft(draftRef.current), version: draftVersionRef.current, plan: financialPlanDraft }); }} disabled={save.isPending || collateral.isPending || collateral.isError || !dirty || sourceConflict || versionConflict || !!repaymentIssue}>{save.isPending ? "Recalculating..." : terms.version ? "Save new version" : "Save client terms"}</Btn>{dirty ? <span className="terms-unsaved">Unsaved changes</span> : <span className="sub">Everything shown in the PDF matches version {terms.version || "—"}.</span>}</Row>
       </div>
       <aside className="terms-live-preview" aria-label="Live client terms preview">
         <div className="terms-preview-brand"><div className="qc-mini">QC</div><div><b>Qualified Commercial</b><span>Financing terms</span></div>{draft.co_brand_enabled ? <div className="terms-preview-sponsor"><small>with</small><b>{draft.sponsor_name || "UrChoice"}</b></div> : null}</div>

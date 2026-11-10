@@ -15,10 +15,13 @@ export type InvestorCollateralProperty = {
   real_estate_property_id?: string | null;
 };
 export type CollateralPropertyOption = Partial<Omit<InvestorCollateralProperty, "id" | "currency">> & { id: string; label: string; currency?: string | null };
+export const collateralAssetTypes = { equipment: "Equipment", vehicle: "Vehicle", inventory: "Inventory", receivables: "Receivables", cash: "Cash", securities: "Securities", other: "Other asset" } as const;
+export type InvestorCollateralAsset = Omit<InvestorCollateralProperty, "address" | "property_type" | "real_estate_property_id"> & { asset_type: keyof typeof collateralAssetTypes; description: string };
 export type InvestorCollateral = {
   profile_id: string;
   enabled: boolean;
   properties: InvestorCollateralProperty[];
+  assets?: InvestorCollateralAsset[];
   revision: number;
   updated_at?: string | null;
   updated_by_user_id?: string | null;
@@ -26,7 +29,7 @@ export type InvestorCollateral = {
   property_options: CollateralPropertyOption[];
   source_file_options: Array<{ id: string; label: string }>;
 };
-export type InvestorCollateralSave = Pick<InvestorCollateral, "enabled" | "properties"> & { expected_revision: number };
+export type InvestorCollateralSave = Pick<InvestorCollateral, "enabled" | "properties" | "assets"> & { expected_revision: number };
 export type CollateralPropertyDraft = Omit<InvestorCollateralProperty, "estimated_value" | "existing_liens_total" | "available_lien_amount" | "proposed_lien_position"> & {
   estimated_value: string;
   existing_liens_total: string;
@@ -41,12 +44,26 @@ export function collateralPropertyPayload(row: CollateralPropertyDraft): Investo
   const amount = (value: string) => value.trim() ? Number(value.replace(/,/g, "")) : null;
   return { ...row, address: Object.fromEntries(Object.entries(row.address).map(([key, value]) => [key, value.trim()])) as CollateralAddress, owner_name: row.owner_name?.trim() || null, property_type: row.property_type?.trim() || null, estimated_value: amount(row.estimated_value), existing_liens_total: amount(row.existing_liens_total), available_lien_amount: amount(row.available_lien_amount), proposed_lien_position: amount(row.proposed_lien_position), valuation_date: row.valuation_date || null, currency: row.currency.trim().toUpperCase(), notes: row.notes?.trim() || null };
 }
-export function collateralDraftErrors(enabled: boolean, properties: CollateralPropertyDraft[]): string[] {
+export type CollateralAssetDraft = Omit<InvestorCollateralAsset, "estimated_value" | "existing_liens_total" | "available_lien_amount" | "proposed_lien_position"> & Pick<CollateralPropertyDraft, "estimated_value" | "existing_liens_total" | "available_lien_amount" | "proposed_lien_position">;
+export function collateralAssetDraft(row?: Partial<InvestorCollateralAsset>): CollateralAssetDraft {
+  const { address: _address, property_type: _type, real_estate_property_id: _propertyId, ...common } = collateralPropertyDraft(row);
+  return { ...common, asset_type: row?.asset_type ?? "equipment", description: row?.description ?? "" };
+}
+export function collateralAssetPayload(row: CollateralAssetDraft): InvestorCollateralAsset {
+  const { address: _address, property_type: _type, real_estate_property_id: _propertyId, ...common } = collateralPropertyPayload({ ...row, address: { street: "", city: "", state: "", postal_code: "" } });
+  return { ...common, asset_type: row.asset_type, description: row.description.trim() };
+}
+export function collateralDraftErrors(enabled: boolean, properties: CollateralPropertyDraft[], assets: CollateralAssetDraft[] = []): string[] {
   const errors: string[] = [];
-  if (enabled && !properties.length) errors.push("Add a property before including real estate collateral.");
+  if (enabled && !properties.length && !assets.length) errors.push("Add a property or other asset before including collateral.");
   properties.forEach((row, index) => {
-    const prefix = `Property ${index + 1}: `;
-    if (enabled && Object.values(row.address).some(value => !value.trim())) errors.push(prefix + "complete the street, city, state and postal code.");
+    if (enabled && Object.values(row.address).some(value => !value.trim())) errors.push(`Property ${index + 1}: complete the street, city, state and postal code.`);
+  });
+  assets.forEach((row, index) => {
+    if (!row.description.trim()) errors.push(`Asset ${index + 1}: enter an asset description.`);
+    if (!(row.asset_type in collateralAssetTypes)) errors.push(`Asset ${index + 1}: select an asset type.`);
+  });
+  [...properties.map((row, index) => ({ row, prefix: `Property ${index + 1}: ` })), ...assets.map((row, index) => ({ row, prefix: `Asset ${index + 1}: ` }))].forEach(({row, prefix}) => {
     if (!/^[A-Z]{3}$/.test(row.currency.trim().toUpperCase())) errors.push(prefix + "enter a three-letter currency code.");
     for (const [key, label] of [["estimated_value", "estimated value"], ["existing_liens_total", "existing liens"], ["available_lien_amount", "available lien amount"]] as const) {
       const raw = row[key].replace(/,/g, "").trim();

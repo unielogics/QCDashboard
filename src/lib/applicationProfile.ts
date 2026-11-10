@@ -394,6 +394,21 @@ export type ApplicationRequirementAIReviewResult = {
 export type AcceptedTermsRef = { kind: "production_term_sheet" | "application_term_sheet"; id: string; version: number; amount: number | null; rate_pct: number | null; term_months: number | null; label: string };
 
 export type ApplicationUnderwritingState = {
+  /** Read-only projection from the shared plan and current financial evidence. */
+  financing?: {
+    proposed_amount?: number | null;
+    current_dscr?: number | null;
+    with_plan_dscr?: number | null;
+    current_annual_debt_service?: number | null;
+    with_plan_annual_debt_service?: number | null;
+    source?: string | null;
+    terms_ref?: unknown;
+    terms_state?: string | null;
+    plan_updated_at?: string | null;
+    collateral_revision?: number | null;
+    terms_collateral_revision?: number | null;
+    collateral_stale?: boolean;
+  };
   profile_id: string;
   source_kind: ApplicationSourceKind | null;
   source_id: string | null;
@@ -476,6 +491,11 @@ export type ClientTermsCalculation = {
 };
 
 export type ApplicationClientTerms = {
+  collateral_snapshot?: Partial<Pick<import("./investorCollateral").InvestorCollateral, "enabled" | "properties" | "assets" | "revision" | "updated_at">>;
+  collateral_revision?: number | null;
+  current_collateral?: Partial<import("./investorCollateral").InvestorCollateral>;
+  current_collateral_revision?: number;
+  collateral_stale?: boolean;
   /** Returned by an atomic terms + working financial-plan save. */
   financial_plan?: import("./financialCockpit").FinancialPlanRead;
   profile_id: string;
@@ -524,6 +544,7 @@ export type ApplicationClientTerms = {
 };
 
 export type ApplicationClientTermsWrite = {
+  expected_collateral_revision?: number;
   financial_plan?: import("./financialCockpit").FinancialPlanWrite;
   expected_version: number;
   loan_type: string;
