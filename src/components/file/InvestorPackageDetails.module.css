@@ -1,0 +1,42 @@
+.summary { display: flex; align-items: center; flex-wrap: wrap; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 10px; margin-bottom: 12px; background: var(--surface); min-width: 0; }
+.summary > div:first-child { display: grid; gap: 4px; min-width: 0; }
+.summary strong { font-size: 13px; }
+.summary small, .hint { color: var(--muted); font-size: 11px; line-height: 1.55; overflow-wrap: anywhere; }
+.summaryActions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.toggle { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.toggle input { flex: 0 0 auto; }
+.editor { display: grid; gap: 14px; min-width: 0; }
+.fieldset { display: grid; gap: 14px; min-width: 0; border: 0; padding: 0; margin: 0; }
+.fieldset > button { justify-self: start; }
+.fieldset p { margin: 0; }
+.properties { display: grid; gap: 16px; }
+.property { display: grid; gap: 14px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 11px; }
+.property header { display: flex; align-items: start; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 12px; }
+.property header strong { font-size: 13px; overflow-wrap: anywhere; }
+.property header button { flex: 0 0 auto; }
+.grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.grid > *, .grid input, .grid select { min-width: 0; }
+.files { font-size: 12px; }
+.files summary, .removed summary { cursor: pointer; color: var(--accent); }
+.files > div { display: grid; gap: 8px; max-height: 180px; overflow: auto; padding: 10px 0; }
+.files label { display: flex; align-items: start; gap: 8px; overflow-wrap: anywhere; }
+.files input { flex: 0 0 auto; }
+.removed { padding: 10px 12px; background: var(--sunken2); border-radius: 8px; font-size: 12px; }
+.removed > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 10px; }
+.errors { color: var(--bad); margin: 0; padding-left: 20px; font-size: 12px; }
+.references { display: grid; gap: 12px; min-width: 0; }
+.referenceTabs { display: flex; flex-wrap: wrap; gap: 8px; border-bottom: 1px solid var(--line); padding-bottom: 10px; }
+.referenceTabs button { padding: 8px 11px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--muted); font: inherit; font-size: 12px; cursor: pointer; }
+.referenceTabs button[aria-selected="true"] { background: var(--sunken2); color: var(--accent); border-color: var(--accent); font-weight: 600; }
+.analysisText { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; font-size: 12px; line-height: 1.65; }
+.referenceList { display: grid; gap: 10px; max-height: min(57vh, 640px); overflow: auto; overscroll-behavior: contain; padding: 1px; }
+.reference { display: grid; gap: 7px; border: 1px solid var(--line); padding: 12px; border-radius: 9px; font-size: 12px; overflow-wrap: anywhere; }
+.reference header { display: flex; gap: 9px; align-items: start; }
+.reference header strong { flex: 1; }
+.reference dl { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 5px 10px; margin: 0; }
+.reference dt { color: var(--muted); }
+.reference dd { margin: 0; }
+.reference code { font-size: 10px; }
+.refId { color: var(--accent); font-variant-numeric: tabular-nums; }
+@media(max-width:700px) { .grid { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media(max-width:480px) { .grid { grid-template-columns: 1fr; } .property { padding: 12px; } .reference dl { grid-template-columns: 78px minmax(0,1fr); } }

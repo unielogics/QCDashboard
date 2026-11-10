@@ -55,6 +55,7 @@ import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFi
 import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
 import { FinancialCockpit } from "@/components/file/cockpit/FinancialCockpit";
 import { FundingPackageWorkspace, type FundingPackageTab, type PackagePreparation } from "./FundingPackageWorkspace";
+import { InvestorPackageDetails, InvestorReportReferenceButton } from "./InvestorPackageDetails";
 import type { FinancialCockpit as FinancialCockpitData } from "@/lib/financialCockpit";
 import type { IntakeResponse } from "@/lib/intake";
 import { leadCockpitNonDocumentMissingRows, leadCockpitOutstandingDocuments, preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
@@ -185,12 +186,12 @@ export function PackageArtifactCard({ artifact, label, description, version, cur
   </article>;
 }
 
-export function PackageVersionList({ label, artifacts }: { label: string; artifacts: Artifact[] }) {
+export function PackageVersionList({ label, artifacts, renderReferences }: { label: string; artifacts: Artifact[]; renderReferences?: (artifact: Artifact) => ReactNode }) {
   return <section className="package-version-list"><header><span className="lbl">{label}</span><strong>{artifacts.length ? `${artifacts.length} version${artifacts.length === 1 ? "" : "s"}` : "Not generated"}</strong></header>{artifacts.length ? artifacts.map((artifact, index) => {
     const version = artifactVersion(artifact, artifacts.length - index);
     const previewUrl = artifact.preview_url || artifact.download_url;
     const current = index === 0 && artifact.status !== "superseded";
-    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Room PDF" : " · Legacy artifact"}</small></span></div>{previewUrl ? <a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Preview ${label} version ${version}`} aria-label={`Preview ${label} version ${version}`}><Icon name="eye" size={14} /></a> : null}</div>;
+    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Room PDF" : " · Legacy artifact"}</small></span></div><div>{renderReferences?.(artifact)}{previewUrl ? <a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Preview ${label} version ${version}`} aria-label={`Preview ${label} version ${version}`}><Icon name="eye" size={14} /></a> : null}</div></div>;
   }) : <div className="empty">No PDF versions yet.</div>}</section>;
 }
 
@@ -821,6 +822,8 @@ export function LeadDetailPanel({
   const summary = summaryHistory[0];
   const presentationHistory = artifacts.filter((artifact) => artifact.artifact_type === "investor_presentation");
   const presentation = presentationHistory[0];
+  const investorReportFormat = asRecord(presentation?.body_json?.investor_report_format);
+  const condensedInvestorReport = investorReportFormat?.max_pages === 5 && Number(investorReportFormat.page_count) > 0 && Number(investorReportFormat.page_count) <= 5;
   const packet = packetHistory[0];
   const packageInSync = Boolean(
     summary?.generation_id
@@ -1763,6 +1766,7 @@ export function LeadDetailPanel({
   ];
 
   const renderFundingPackage = (marketplace: ReactNode, cockpit: FinancialCockpitData) => profileId ? <FundingPackageWorkspace key={profileId} profileId={profileId} cockpit={cockpit} activeTab={packageTab} onTab={(tab) => { setPackageTab(tab); if (tab === "marketplace") setCockpitFocus("marketplace"); }} busy={busy !== "" || zipBusy} generating={busy === "package-all"} preparation={packagePreparation} generated={Boolean(summary && packet)} current={packageInSync} error={packageError} onGenerate={(options) => void refreshFullPackage(true, options)}
+    packageDetails={<InvestorPackageDetails profileId={profileId} intakeId={detail!.intake.id} report={presentation ?? null} disabled={busy !== "" || zipBusy} onSaved={onFundingRequestSaved} onOpenEvidence={openEvidenceFiles} />}
     packageContent={summary && packet ? <div className="package-readiness-overview">
                     {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild the presentation and supporting PDFs from the current Package Readiness snapshot.</Callout> : null}
                     <div className="package-readiness-status">
@@ -1772,8 +1776,8 @@ export function LeadDetailPanel({
                     </div>
                     <div className="package-document-grid">
                       <PackageArtifactCard artifact={summary} label="Executive summary" description="Concise credit brief with decision metrics, strengths, risks, and next action." version={artifactVersion(summary, summaryHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(summary))} />
-                      {presentation ? <PackageArtifactCard artifact={presentation} label="Investor presentation" description="Visual financing story: investment amount, contractual return, repayment risks, client impact and earnings actions." version={artifactVersion(presentation, presentationHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(presentation))} /> : null}
-                      <PackageArtifactCard artifact={packet} label="Lender package" description="Branded underwriting packet with month-by-month cash-flow charts and supporting schedules." version={artifactVersion(packet, packetHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(packet))} />
+                      {presentation ? <PackageArtifactCard artifact={presentation} label={condensedInvestorReport ? "Investor report · up to 5 pages" : "Investor report · legacy layout"} description={condensedInvestorReport ? "Confidential branded report: financing, monthly statements, earnings impact, credit overview, collateral and source references." : "Refresh the package to create the condensed five-page report with charts and a full source register."} version={artifactVersion(presentation, presentationHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(presentation))} /> : null}
+                      <PackageArtifactCard artifact={packet} label="Detailed underwriting packet" description="Supporting underwriting schedules and evidence detail. The condensed investor report is available separately." version={artifactVersion(packet, packetHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(packet))} />
                     </div>
                     <UnderwriterDigest artifact={summary} />
                   </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate the investor presentation, executive summary and lender package from one evidence snapshot. Each PDF is versioned and saved in this file&apos;s room.</p></div>}
@@ -1781,7 +1785,7 @@ export function LeadDetailPanel({
     historyContent={<div className="package-version-workspace">
                     <Callout tone="acc">The current generation is the active package in the room. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
                     <div className="package-version-columns">
-                      <PackageVersionList label="Investor presentation" artifacts={presentationHistory} />
+                      <PackageVersionList label="Investor report" artifacts={presentationHistory} renderReferences={artifact => <InvestorReportReferenceButton intakeId={detail!.intake.id} artifact={artifact} compact onOpenEvidence={openEvidenceFiles} />} />
                       <PackageVersionList label="Executive summary" artifacts={summaryHistory} />
                       <PackageVersionList label="Lender package" artifacts={packetHistory} />
                     </div>
