@@ -679,17 +679,17 @@ export function FinancialCockpit(props: Props) {
     }
   }, [focus, onFocusHandled, query.data]);
 
-  if (query.isLoading && !query.data) {
+  const cockpit = query.data?.profile_id === props.profileId ? query.data : undefined;
+  if (query.isLoading && !cockpit) {
     return (
       <section className="fc-card">
         <Loading>Reading the file's numbers…</Loading>
       </section>
     );
   }
-  if (query.error || !query.data) {
+  if (!cockpit) {
     return <StatusLine tone="bad">{errorMessage(query.error, "The financial cockpit could not be read.")}</StatusLine>;
   }
-  const cockpit = query.data;
   const coverage = cockpit.coverage;
   const narrowed = cockpit.bank.all_months != null;
   const accountOptions = [
@@ -747,6 +747,7 @@ export function FinancialCockpit(props: Props) {
         </div>
       </div>
 
+      {query.error ? <Callout tone="warn"><div className="row" style={{ justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}><span>Financial figures could not be refreshed. Showing the last loaded figures; your open edits are preserved.</span><Btn size="sm" disabled={query.isFetching} onClick={() => void query.refetch()}>{query.isFetching ? "Retrying…" : "Retry financial figures"}</Btn></div></Callout> : null}
       {cockpit.notes.length ? (
         <Callout tone="warn">
           <ul className="fc-notes">
