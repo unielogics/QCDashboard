@@ -13,6 +13,7 @@ import { loanScheduleRows } from "@/lib/loanScheduleView";
 import { parseIncomeOverride } from "@/lib/incomeOverrideInput";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
+import { useAutomaticFinancedPrincipal } from "@/hooks/useAutomaticFinancedPrincipal";
 import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
 import { withBudgetEvaluation } from "@/lib/budgetPlanEvaluation";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
@@ -349,6 +350,8 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       return next;
     });
   };
+  useAutomaticFinancedPrincipal(budgetPreview, plan.new_loan_amount, amount => setLoan("amount", String(amount)), canEdit);
+  const targetNetMode = budgetPreview.value?.loan_amount_mode === "target_net";
   const repaymentIssue = plan.new_loan_term_months != null && plan.new_loan_term_months < 1 ? "Loan maturity must be at least one month." : repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct, plan.new_loan_term_months, { structure: plan.new_loan_interest_only ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).error;
   const structureNow: LoanStructure = plan.new_loan_interest_only ? "interest_only" : (plan.new_loan_structure ?? defaultStructure(plan.new_loan_term_months));
   const setAmortization = (raw: string) => {
@@ -575,7 +578,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         <div className="grid g8">
           <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}><IconBtn disabled={termsPending || save.isPending} aria-label="Expand full loan terms" title="Expand full loan terms" onClick={() => openClientTerms("terms")}><Icon name="maximize" size={16} /></IconBtn><IconBtn disabled={termsPending || save.isPending} aria-label="Expand amortization schedule" title="Expand amortization schedule" onClick={() => openClientTerms("schedule")}><Icon name="calc" size={16} /></IconBtn></div> : null}</div>
           <div className="fc-loan-terms">
-            <label className="grid g2"><span className="sub">Amount, $</span><Input aria-label="New loan amount" type="number" inputMode="decimal" min={0} step="any" value={numberValue(plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => setLoan("amount", e.target.value)} /></label>
+            <label className="grid g2"><span className="sub">{targetNetMode ? "Net to client, $" : "Total loan amount, $"}</span><Input aria-label={targetNetMode ? "Net to client" : "New loan amount"} type="number" inputMode="decimal" min={0} step="any" value={numberValue(targetNetMode ? budgetPreview.value?.target_net_amount : plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => targetNetMode ? budgetPreview.updateBudget({ target_net_amount: num(e.target.value) }) : setLoan("amount", e.target.value)} />{targetNetMode ? <small>Total loan including fees: {budgetPending ? "Calculating…" : money(plan.new_loan_amount, 2)}</small> : null}</label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
             <label className="grid g2"><span className="sub">Loan term / maturity, months</span><Input aria-label="New loan term in months" type="number" inputMode="numeric" min={1} max={600} step={1} value={numberValue(plan.new_loan_term_months)} disabled={!canEdit} onChange={(e) => setLoan("term", e.target.value)} /></label>
             <label className="grid g2"><span className="sub">Payments per year</span><Input aria-label="New loan payments per year" type="number" inputMode="decimal" min={1} max={366} step="any" placeholder="12 (monthly)" value={numberValue(plan.new_loan_payments_per_year)} disabled={!canEdit} onChange={(event) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_payments_per_year: event.target.value === "" ? null : Number(event.target.value), new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} /></label>

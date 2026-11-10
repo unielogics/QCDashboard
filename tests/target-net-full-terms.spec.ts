@@ -27,6 +27,8 @@ test.beforeAll(async () => {
     window.fixtureApi=async(url,options)=>{if(url.endsWith('/deal-budget/preview'))return structuredClone(priced(JSON.parse(options.body)));if(url.endsWith('/deal-budget/apply-principal')){const body=JSON.parse(options.body);window.atomicBody=body;const result=priced(body);savedPlan={...savedPlan,record:{...savedPlan.record,...body.financial_plan,new_loan_amount:result.calculation.gross_loan_amount,updated_at:'2026-11-10T13:00:00Z'}};budget={...budget,...body,revision:budget.revision+1};return structuredClone(priced(budget))}if(url.endsWith('/deal-budget')&&!options?.method)return structuredClone(priced(budget));return originalApi(url,options)};
     const loan={amount:380000,ratePct:29.99,termMonths:24,structure:'amortizing',interestOnlyMonths:6,repaymentConfig:{amortization_months:60,balloons:[]},paymentsPerYear:12};
     window.useSavedFeeBudget=()=>{budget={...budget,loan_amount_mode:'target_net',target_net_amount:400000,rows:[{id:'saved-fee',label:'Financed closing charge',category:'closing_cost',payer:'borrower',method:'fixed',value:1000,basis:'loan_amount',timing:'closing',settlement:'financed',enabled:true,reserve_release:'unknown'}]};};
+    const previousCombinedApi=window.fixtureApi;
+    window.fixtureApi=async(url,options)=>{if(url.endsWith('/client-terms')&&options?.method==='PUT'){const body=JSON.parse(options.body);if(body.deal_budget){if(body.expected_version!==terms.version)throw Error('Terms revision conflict');if(body.deal_budget.expected_revision!==budget.revision)throw Error('Budget revision conflict');window.lastTermsSave=body;const changed=JSON.stringify(body.deal_budget.rows)!==JSON.stringify(budget.rows)||body.deal_budget.loan_amount_mode!==budget.loan_amount_mode||body.deal_budget.target_net_amount!==budget.target_net_amount;budget={...budget,...body.deal_budget,revision:budget.revision+(changed?1:0)};const result=priced({...budget,loan:{amount:body.amount}});savedPlan={...savedPlan,record:{...savedPlan.record,...body.financial_plan,new_loan_amount:result.calculation.gross_loan_amount,updated_at:'2026-11-10T13:00:00Z'}};terms={...terms,...body,amount:result.calculation.gross_loan_amount,version:terms.version+1,collateral_revision:collateral.revision,deal_budget_revision:budget.revision,current_deal_budget:budget,current_deal_budget_revision:budget.revision,deal_budget_calculation:result.calculation,financial_plan:savedPlan};return structuredClone(terms)}}return previousCombinedApi(url,options)};
     let delayDealerA=false,releaseDealerA=null;window.delayDealerLoad=()=>{delayDealerA=true};window.releaseDealerLoad=()=>releaseDealerA?.();
     const dealerData=id=>({current:null,history:[],can_edit:true,defaults:{funding_party_name:'Synthetic Capital '+id,funder_type:'private_capital',approved_amount:id==='inline-b'?220000:100000,min_activation_amount:100000,rate_pct:id==='inline-b'?11:15,term_months:24},defaults_source:{},facility_types:[],funding_party_kinds:[],lenders:[]});
     const dealerClient={mode:'operator',termSheet:async id=>{if(id==='inline-a'&&delayDealerA){delayDealerA=false;return new Promise(resolve=>{releaseDealerA=()=>resolve(dealerData(id))})}return dealerData(id)}};
@@ -37,43 +39,21 @@ test.beforeAll(async () => {
 test.beforeEach(async ({ page }) => { await page.route("http://localhost:3408/**", route => { const path = new URL(route.request().url()).pathname; return route.fulfill(path === "/app.js" ? { contentType: "text/javascript", body: script } : path === "/app.css" ? { contentType: "text/css", body: css } : { contentType: "text/html", body: '<html><head><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>' }); }); });
 
 
-test("full terms preserves manual metadata through local gross apply, atomic save and version publication", async ({page},info)=>{
+test("full terms preserves manual metadata through automatic gross pricing and one version save", async ({page},info)=>{
  await page.goto('http://localhost:3408/');await page.getByRole('button',{name:'Open standard full terms',exact:true}).click();const editor=page.getByRole('dialog',{name:'Client terms editor',exact:true});
  await editor.getByLabel('Funder name',{exact:true}).fill('Synthetic reviewed capital');await editor.getByLabel('Client note',{exact:true}).fill('Keep this reviewed client explanation');
- await editor.getByRole('tab',{name:'Investment & closing costs',exact:true}).click();await editor.getByRole('button',{name:'Add cost',exact:true}).click();await editor.getByLabel('Cost 1 label',{exact:true}).fill('Closing charge');await editor.getByLabel('Cost 1 value',{exact:true}).fill('1000');await editor.getByLabel('Cost 1 collection',{exact:true}).selectOption('financed');await editor.getByLabel('Loan amount basis').selectOption('target_net');await editor.getByLabel('Target client net at funding').fill('400000');await expect(editor.getByRole('region',{name:'Live financing waterfall'})).toContainText('$401,000.00');
- await editor.getByRole('button',{name:'Apply gross amount to working loan',exact:true}).click();await expect(page.getByLabel('Shared gross')).toHaveText('401000');await editor.getByRole('button',{name:'Save budget & loan',exact:true}).click();await expect(editor).toContainText('revision 2 and the shared loan were saved');await expect(page.getByRole('dialog')).toHaveCount(1);
+ await editor.getByRole('tab',{name:'Investment & closing costs',exact:true}).click();await editor.getByRole('button',{name:'Add cost',exact:true}).click();await editor.getByLabel('Cost 1 label',{exact:true}).fill('Closing charge');await editor.getByLabel('Cost 1 value',{exact:true}).fill('1000');await editor.getByLabel('Cost 1 collection',{exact:true}).selectOption('financed');await editor.getByLabel('Target client net at funding').fill('400000');
+ await expect(page.getByLabel('Shared gross')).toHaveText('401000');await expect(editor.getByRole('button',{name:/Apply gross|Save budget/,exact:false})).toHaveCount(0);
  await editor.getByRole('tab',{name:'Loan terms',exact:true}).click();await expect(editor.getByLabel('Funder name',{exact:true})).toHaveValue('Synthetic reviewed capital');await expect(editor.getByLabel('Client note',{exact:true})).toHaveValue('Keep this reviewed client explanation');await expect(editor).not.toContainText('scenario loan changed');await editor.getByRole('button',{name:'Save new version',exact:true}).click();await expect(editor).toContainText('Client terms v2 saved');
- const result=await page.evaluate(()=>(window as unknown as {lastTermsSave:Record<string,unknown>}).lastTermsSave);expect(result).toMatchObject({amount:401000,expected_deal_budget_revision:2,client_note:'Keep this reviewed client explanation',funder_name:'Synthetic reviewed capital',financial_plan:{retire:['keep-this-payoff'],expected_updated_at:'2026-11-10T13:00:00Z',new_loan_term_months:24,new_loan_repayment_config:{amortization_months:60}}});await page.screenshot({path:info.outputPath('target-full-terms-saved.png'),fullPage:true});
+ const result=await page.evaluate(()=>(window as unknown as {lastTermsSave:Record<string,unknown>}).lastTermsSave);expect(result).toMatchObject({amount:401000,expected_deal_budget_revision:1,deal_budget:{target_net_amount:400000},client_note:'Keep this reviewed client explanation',funder_name:'Synthetic reviewed capital',financial_plan:{retire:['keep-this-payoff'],expected_updated_at:'2026-11-10T12:00:00Z',new_loan_term_months:24,new_loan_repayment_config:{amortization_months:60}}});
+ expect(await page.evaluate(()=>(window as unknown as {atomicBody?:unknown}).atomicBody)).toBeUndefined();await page.screenshot({path:info.outputPath('automatic-full-terms-saved.png'),fullPage:true});
 });
 
-test("saved fee budget explains the mismatch and applies the exact total directly from loan terms", async ({page},info)=>{
- await page.goto('http://localhost:3408/');
- await page.evaluate(()=>(window as unknown as {useSavedFeeBudget:()=>void}).useSavedFeeBudget());
- await page.getByRole('button',{name:'Open standard full terms',exact:true}).click();
- const editor=page.getByRole('dialog',{name:'Client terms editor',exact:true});
- const notice=editor.getByRole('region',{name:'Loan amount and fee budget'});
- await expect(notice).toContainText('$380,000.00');
- await expect(notice).toContainText('$401,000.00');
- await expect(notice).toContainText('$400,000.00');
- await expect(editor.getByRole('button',{name:'Save new version',exact:true})).toBeDisabled();
- await editor.getByLabel('Funder name',{exact:true}).fill('Reviewed capital provider');
- await editor.getByLabel('Client note',{exact:true}).fill('Retain this financing explanation');
- await editor.getByLabel('Repayment frequency',{exact:true}).selectOption('weekly');
- await expect(notice.getByRole('button',{name:'Use $401,000.00 total loan',exact:true})).toBeVisible();
- await notice.scrollIntoViewIfNeeded();
- await page.screenshot({path:info.outputPath('actionable-principal-notice.png'),fullPage:true});
- await notice.getByRole('button',{name:'Use $401,000.00 total loan',exact:true}).click();
- await expect(editor.getByLabel('Amount',{exact:true})).toHaveValue('401000');
- await expect(editor.getByLabel('Funder name',{exact:true})).toHaveValue('Reviewed capital provider');
- await expect(editor.getByLabel('Client note',{exact:true})).toHaveValue('Retain this financing explanation');
- await expect(editor.getByLabel('Repayment frequency',{exact:true})).toHaveValue('weekly');
- await expect(editor.getByLabel('Loan term / maturity in months',{exact:true})).toHaveValue('24');
- await expect(editor.getByLabel('Interest-only months first',{exact:true})).toHaveValue('6');
- await expect(editor.getByLabel('Amortization after interest-only (months)',{exact:true})).toHaveValue('60');
- await expect(notice).toHaveCount(0);
- await editor.getByRole('button',{name:'Save new version',exact:true}).click();
- await expect(editor).toContainText('Client terms v2 saved');
- const body=await page.evaluate(()=>(window as unknown as {lastTermsSave:Record<string,unknown>}).lastTermsSave);
- expect(body).toMatchObject({amount:401000,expected_deal_budget_revision:1,repayment_frequency:'weekly',client_note:'Retain this financing explanation',funder_name:'Reviewed capital provider',financial_plan:{retire:['keep-this-payoff'],new_loan_amount:401000,new_loan_term_months:24,new_loan_interest_only_months:6,new_loan_repayment_config:{amortization_months:60},new_loan_payments_per_year:51.96}});
- await expect(editor).not.toContainText('Apply the calculated gross principal');
+test("saved fee budget automatically synchronizes terms while preserving repayment and notes", async ({page})=>{
+ await page.goto('http://localhost:3408/');await page.evaluate(()=>(window as unknown as {useSavedFeeBudget:()=>void}).useSavedFeeBudget());await page.getByRole('button',{name:'Open standard full terms',exact:true}).click();
+ const editor=page.getByRole('dialog',{name:'Client terms editor',exact:true});await expect(page.getByLabel('Shared gross')).toHaveText('401000');await expect(editor.getByLabel('Net to client',{exact:true})).toHaveValue('400000');
+ await editor.getByLabel('Funder name',{exact:true}).fill('Reviewed capital provider');await editor.getByLabel('Client note',{exact:true}).fill('Retain this financing explanation');await editor.getByLabel('Repayment frequency',{exact:true}).selectOption('weekly');
+ await expect(editor.getByLabel('Loan term / maturity in months',{exact:true})).toHaveValue('24');await expect(editor.getByLabel('Interest-only months first',{exact:true})).toHaveValue('6');await expect(editor.getByLabel('Amortization after interest-only (months)',{exact:true})).toHaveValue('60');
+ await editor.getByRole('button',{name:'Save new version',exact:true}).click();await expect(editor).toContainText('Client terms v2 saved');const body=await page.evaluate(()=>(window as unknown as {lastTermsSave:Record<string,unknown>}).lastTermsSave);
+ expect(body).toMatchObject({amount:401000,expected_deal_budget_revision:1,repayment_frequency:'weekly',client_note:'Retain this financing explanation',funder_name:'Reviewed capital provider',financial_plan:{retire:['keep-this-payoff'],new_loan_amount:401000,new_loan_term_months:24,new_loan_interest_only_months:6,new_loan_repayment_config:{amortization_months:60},new_loan_payments_per_year:51.96}});await expect(editor).not.toContainText('Apply the calculated gross principal');
 });

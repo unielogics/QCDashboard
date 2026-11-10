@@ -22,6 +22,10 @@ import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { dealBudgetPlan } from "@/lib/dealBudgetPlan";
+import { useAutomaticFinancedPrincipal } from "@/hooks/useAutomaticFinancedPrincipal";
+import { termsSaveIntent } from "@/lib/termsSaveIntent";
+import { acknowledgeTermsBudget } from "@/lib/acknowledgeTermsBudget";
+import type { DealBudgetWrite } from "@/lib/dealBudget";
 import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { PrincipalBudgetNotice } from "@/components/file/PrincipalBudgetNotice";
@@ -399,7 +403,7 @@ export function ApplicationClientTermsPanel({
   const principalSolution = principalBudgetSolution(costPreview.data?.calculation);
   const principalUnresolved = Boolean(principalSolution && principalSolution.status !== "calculated");
   const principalPending = costPreview.pending || costPreview.isFetching;
-  const principalSaveBlocked = principalPending || costPreview.isError || principalMismatch || principalUnresolved || budgetDirty;
+  const principalSaveBlocked = principalPending || costPreview.isError || principalMismatch || principalUnresolved;
   const costEvaluation = costPreview.data?.financial_plan_evaluation;
   const afterDscr = costPreview.pending || costPreview.isError ? null : costEvaluation ? costEvaluation.headline_after : previewScenario ? scenarioCoverage?.after ?? null : coveragePreview.value;
   const riskExistingAnnual = previewScenario ? scenarioCoverage?.existingAnnual ?? null : coveragePreview.existingAnnual;
@@ -410,7 +414,7 @@ export function ApplicationClientTermsPanel({
   const dirty = savedFingerprint !== JSON.stringify(draft) || collateralChanged || budgetChanged || budgetDirty;
   const offerSelection = useMemo<OfferSelection | null>(() => {
     const terms = query.data;
-    if (!terms?.term_sheet_id || !terms.version || dirty || sourceConflict) return null;
+    if (!terms?.term_sheet_id || !terms.version || dirty || sourceConflict || principalSaveBlocked) return null;
     return {
       key: `application_term_sheet:${terms.term_sheet_id}:${terms.version}`,
       ref: { kind: "application_term_sheet", term_sheet_id: terms.term_sheet_id, expected_version: terms.version },
@@ -418,21 +422,38 @@ export function ApplicationClientTermsPanel({
       description: `${money(terms.amount, 0)} at ${terms.apr_pct == null ? "—" : `${terms.apr_pct}% APR`} for ${terms.term_months || "—"} months · version ${terms.version}`,
       fileName: `financing-terms-v${terms.version}.pdf`,
     };
-  }, [dirty, query.data, sourceConflict]);
+  }, [dirty, query.data, sourceConflict, principalSaveBlocked]);
 
   useEffect(() => {
     onOfferReady?.(offerSelection);
   }, [offerSelection, onOfferReady]);
 
+  type Submission = { draft: Draft; version: number; plan?: FinancialPlanWrite; budget?: DealBudgetWrite; retry?: boolean };
+  const saveAttempt = useRef<{ signature: string; intent: string; payload: ApplicationClientTermsWrite; submitted: Submission } | null>(null);
+  const targetNetMode = costPreview.value?.loan_amount_mode === "target_net";
+  const enteredAmount = targetNetMode ? costPreview.value?.target_net_amount ?? null : editorLoan.amount;
+  const changeEnteredAmount = (raw: string) => {
+    if (targetNetMode) costPreview.updateBudget({ target_net_amount: finite(raw) });
+    else patch("amount", raw);
+  };
   const save = useMutation({
-    mutationFn: async (submitted: { draft: Draft; version: number; plan?: FinancialPlanWrite }) => {
-      const payload = payloadFromDraft(submitted.draft, submitted.version);
-      payload.expected_collateral_revision = await collateral.verifyRevision();
-      payload.expected_deal_budget_revision = await dealBudget.verifyRevision();
-      if (submitted.plan) payload.financial_plan = { ...applyWorkingLoan(submitted.plan, loanFromClientDraft(submitted.draft)), expected_updated_at: submitted.plan.expected_updated_at ?? null };
+    mutationFn: async (submitted: Submission) => {
+      const signature = JSON.stringify({ profileId, ...submitted });
+      let payload = submitted.retry || saveAttempt.current?.signature === signature ? saveAttempt.current?.payload ?? null : null;
+      if (!payload) {
+        payload = payloadFromDraft(submitted.draft, submitted.version);
+        payload.expected_collateral_revision = await collateral.verifyRevision();
+        if (submitted.budget) { payload.deal_budget = submitted.budget; payload.expected_deal_budget_revision = submitted.budget.expected_revision; payload.idempotency_key = crypto.randomUUID(); }
+        else payload.expected_deal_budget_revision = await dealBudget.verifyRevision();
+        if (submitted.plan) payload.financial_plan = { ...applyWorkingLoan(submitted.plan, loanFromClientDraft(submitted.draft)), expected_updated_at: submitted.plan.expected_updated_at ?? null };
+        saveAttempt.current = { signature, intent: termsSaveIntent(submitted.draft, submitted.plan, submitted.budget), payload, submitted };
+      }
       return api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`, { method: "PUT", body: JSON.stringify(payload) });
     },
     onSuccess: (data, submitted) => {
+      acknowledgeTermsBudget(queryClient, profileId, submitted.budget, data.current_deal_budget, data.current_deal_budget_revision, costPreview.data?.calculation, data.financial_plan);
+      if (data.financial_plan) { queryClient.setQueryData(["financial-plan", profileId], data.financial_plan); queryClient.setQueryData(["financial-plan-applied", profileId], data.financial_plan); }
+      saveAttempt.current = null;
       const next = draftFromTerms(data);
       const fingerprint = JSON.stringify(next);
       const unchanged = JSON.stringify(draftRef.current) === JSON.stringify(submitted.draft);
@@ -444,7 +465,7 @@ export function ApplicationClientTermsPanel({
       setError("");
       setNotice(`Client terms v${data.version} saved.${data.financial_plan ? " The scenario and loan were saved together." : " Payment and DSCR were recalculated from the stored evidence."}${unchanged ? "" : " Further edits remain unsaved."}`);
       queryClient.setQueryData(["application-client-terms", profileId], data);
-      for (const key of ["financial-cockpit", "financial-plan", "advances"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+      for (const key of ["file-deal-budget", "financial-cockpit", "financial-plan", "financial-metrics", "application-underwriting", "advances"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
       remember(draftRef.current);
       onSaved?.(data, data.financial_plan);
     },
@@ -458,6 +479,8 @@ export function ApplicationClientTermsPanel({
     },
   });
 
+  useAutomaticFinancedPrincipal(costPreview, editorLoan.amount, applyCalculatedPrincipal, canEdit && !sourceConflict && !supportingPending && !save.isPending && !downloading);
+  const retryableSave = Boolean(error && saveAttempt.current && saveAttempt.current.intent === termsSaveIntent(draft, editorPlan, costPreview.value));
   useEffect(() => { onPending?.(save.isPending || downloading || supportingPending); }, [save.isPending, downloading, supportingPending, onPending]);
   useEffect(() => () => onPending?.(false), [onPending]);
 
@@ -508,6 +531,7 @@ export function ApplicationClientTermsPanel({
   }
 
   function applyCalculatedPrincipal(amount: number) {
+    if (save.isPending || downloading || !canEdit) return;
     const next = { ...draftRef.current, amount: String(amount) };
     replaceDraft(next);
     const loan = loanFromClientDraft(next);
@@ -543,8 +567,7 @@ export function ApplicationClientTermsPanel({
   if (query.isError || !query.data) return <Callout tone="bad">Client terms are unavailable for this file.</Callout>;
   const terms = query.data;
   const versionConflict = terms.version !== draftVersion;
-  const loanCanApply = !!preview && !repaymentIssue && (finite(draft.amount) ?? 0) > 0 && finite(draft.apr_pct) != null
-    && finite(draft.apr_pct)! >= 0 && finite(draft.apr_pct)! <= 100 && (finite(draft.term_months) ?? 0) >= 1 && finite(draft.term_months)! <= 480;
+
   const loanLabel = terms.loan_type_options.find((option) => option.value === draft.loan_type)?.label ?? "Select a loan type";
 
   if (compact) {
@@ -584,7 +607,7 @@ export function ApplicationClientTermsPanel({
           disabled={!offerSelection}
           onClick={() => onSelectedChange(!selected)}
         ><span aria-hidden="true">{selected ? <Icon name="check" size={13} /> : null}</span><span>Financing terms</span></button> : null}
-        <Btn onClick={downloadPdf} disabled={!terms.version || dirty || sourceConflict || save.isPending || supportingPending || downloading || (!canEdit && terms.status !== "issued")}>{downloading ? "Building PDF..." : terms.status === "issued" ? "Download issued PDF" : "Issue & download"}</Btn>
+        <Btn onClick={downloadPdf} disabled={!terms.version || dirty || sourceConflict || principalSaveBlocked || save.isPending || supportingPending || downloading || (!canEdit && terms.status !== "issued")}>{downloading ? "Building PDF..." : terms.status === "issued" ? "Download issued PDF" : "Issue & download"}</Btn>
         <IconBtn className="pri" onClick={() => { setError(""); onSelectedChange?.(true); onCompose?.(); }} aria-label="Compose client email with financing terms" title="Add to client offer email" disabled={!offerSelection || terms.direct_client_contact_suppressed}><Icon name="mail" size={15} /></IconBtn>
       </div>
     </header>
@@ -600,8 +623,8 @@ export function ApplicationClientTermsPanel({
       <button type="button" id={`${viewId}-budget-tab`} role="tab" aria-selected={view === "budget"} aria-controls={`${viewId}-budget-panel`} tabIndex={view === "budget" ? 0 : -1} onClick={() => changeView("budget")}>Investment &amp; closing costs</button>
       <button type="button" id={`${viewId}-schedule-tab`} role="tab" aria-selected={view === "schedule"} aria-controls={`${viewId}-schedule-panel`} tabIndex={view === "schedule" ? 0 : -1} onClick={() => changeView("schedule")}>Amortization &amp; risk</button>
     </nav>
-    {error && !isPrincipalBudgetError(error) ? <Callout tone="bad">{error}</Callout> : null}
-    <PrincipalBudgetNotice calculation={costPreview.isError ? undefined : costPreview.data?.calculation} currentAmount={editorLoan.amount} pending={principalPending} budgetDirty={budgetDirty} canApply={canEdit && !save.isPending && !supportingPending && !sourceConflict && !downloading} onApply={applyCalculatedPrincipal} onReview={() => { changeView("budget"); window.requestAnimationFrame(() => document.getElementById(`${viewId}-budget-tab`)?.focus()); }} fallback={isPrincipalBudgetError(error) || costPreview.isError} />
+    {error && !isPrincipalBudgetError(error) ? <Callout tone="bad">{error}{retryableSave ? <Btn disabled={save.isPending || supportingPending} onClick={() => { const submitted = saveAttempt.current?.submitted; if (submitted) save.mutate({ ...submitted, retry: true }); }}>Retry this save</Btn> : null}</Callout> : null}
+    <PrincipalBudgetNotice automatic calculation={costPreview.isError ? undefined : costPreview.data?.calculation} currentAmount={editorLoan.amount} pending={principalPending} budgetDirty={budgetDirty} canApply={canEdit && !save.isPending && !supportingPending && !sourceConflict && !downloading} onApply={applyCalculatedPrincipal} onReview={() => { changeView("budget"); window.requestAnimationFrame(() => document.getElementById(`${viewId}-budget-tab`)?.focus()); }} fallback={isPrincipalBudgetError(error) || costPreview.isError} />
     {notice ? <Callout tone="ok">{notice}</Callout> : null}
     <div className={scheduleStyles.tabBody} id={`${viewId}-terms-panel`} role="tabpanel" aria-labelledby={`${viewId}-terms-tab`} hidden={view !== "terms"}>
     {terms.direct_client_contact_suppressed ? <Callout tone="warn">Direct client contact is suppressed on this referral-managed file. Download the PDF and route it through the referring professional.</Callout> : null}
@@ -610,7 +633,7 @@ export function ApplicationClientTermsPanel({
     {budgetChanged ? <Callout tone="warn">The financing budget differs from saved terms v{terms.version}. Review the current funding and cost rows, then save a new version to include them in its PDF.</Callout> : null}
     {collateral.isError ? <Callout tone="bad">Collateral could not be loaded. Reload the current collateral before saving terms.</Callout> : null}
     {sourceConflict ? <Callout tone="warn"><div className="grid g8"><span>The scenario loan changed after this editor draft was kept. Your pending editor fields are preserved. Choose which loan to continue editing.</span><Row><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(true)}>Use current scenario loan</Btn><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(false)}>Keep editor loan</Btn></Row></div></Callout> : null}
-    {onApplyLoan ? <p className="sub">Loan edits stay in this editor until you Apply loan to scenario or Save new version. Closing keeps this editor draft; it does not issue or send terms.</p> : null}
+    {onApplyLoan ? <p className="sub">Financed costs update the total loan automatically. One Save records the loan, fee budget and terms version. Closing retains your working edits.</p> : null}
     {scenarioPaymentOnly ? <Callout tone="warn">The scenario has a manually entered monthly payment. It does not establish a principal amount, APR or loan term; enter those details to calculate matching terms.</Callout> : null}
     <fieldset disabled={!canEdit || save.isPending || downloading} style={{ border: 0, padding: 0, margin: 0, minWidth: 0 }}>
     <div className="client-terms-layout">
@@ -619,7 +642,7 @@ export function ApplicationClientTermsPanel({
           <div className="terms-section-title"><span>1</span><div><b>Offer basics</b><small>Amount, APR, and time are the calculation anchors.</small></div></div>
           <div className="fldgrid two">
             <Field label="Loan type"><Select aria-label="Loan type" value={draft.loan_type} onChange={(event) => patch("loan_type", event.target.value)}><option value="">Choose from funding catalog</option>{terms.loan_type_options.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>
-            <Field label="Amount"><Input aria-label="Amount" inputMode="decimal" value={draft.amount} onChange={(event) => patch("amount", event.target.value)} placeholder="750,000" /></Field>
+            <Field label={targetNetMode ? "Net to client at funding" : "Total loan amount"}><Input aria-label={targetNetMode ? "Net to client" : "Amount"} inputMode="decimal" value={enteredAmount == null ? "" : String(enteredAmount)} onChange={(event) => changeEnteredAmount(event.target.value)} placeholder="750,000" />{targetNetMode ? <small>Total loan including fees: {principalPending ? "Calculating…" : money(editorLoan.amount, 2)}</small> : null}</Field>
             <Field label="APR"><div className="terms-input-suffix"><Input aria-label="APR" inputMode="decimal" value={draft.apr_pct} onChange={(event) => patch("apr_pct", event.target.value)} placeholder="12.99" /><span>%</span></div></Field>
             <Field label="Loan term / maturity"><div className="terms-input-suffix"><Input aria-label="Loan term / maturity in months" inputMode="numeric" value={draft.term_months} onChange={(event) => patch("term_months", event.target.value)} placeholder="24" /><span>months</span></div></Field>
           </div>
@@ -690,11 +713,11 @@ export function ApplicationClientTermsPanel({
           <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || save.isPending} compact title="Collateral included when saving these terms" />
     </div>
     <div className={scheduleStyles.tabBody} id={`${viewId}-budget-panel`} role="tabpanel" aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
-          <DealBudgetSection inline financialPlan={editorPlan} onGrossAmountChange={amount => replaceDraft({ ...draftRef.current, amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={applyCalculatedPrincipal} onFinancingSaved={result => { const amount = result.record.new_loan_amount; if (amount != null) { const next = { ...draftRef.current, amount: String(amount) }; replaceDraft(next); const nextLoan = loanFromClientDraft(next); ownLoanUpdate.current = onFinancingSaved && !sameWorkingLoan(nextLoan, prefillLoan ?? null) ? nextLoan : null; } onFinancingSaved?.(result); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
+          <DealBudgetSection inline saveWithTerms financialPlan={editorPlan} onGrossAmountChange={amount => replaceDraft({ ...draftRef.current, amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={applyCalculatedPrincipal} onFinancingSaved={result => { const amount = result.record.new_loan_amount; if (amount != null) { const next = { ...draftRef.current, amount: String(amount) }; replaceDraft(next); const nextLoan = loanFromClientDraft(next); ownLoanUpdate.current = onFinancingSaved && !sameWorkingLoan(nextLoan, prefillLoan ?? null) ? nextLoan : null; } onFinancingSaved?.(result); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
     </div>
     <div className={scheduleStyles.tabBody} id={`${viewId}-schedule-panel`} role="tabpanel" aria-labelledby={`${viewId}-schedule-tab`} hidden={view !== "schedule"}>
       {preview && !repaymentIssue ? <><CoverageFundingGap value={scenarioCoverage?.coverageReview} basis={scenarioCoverage?.basis ?? "Selected earnings"} /><LoanScheduleReview schedule={preview.schedule} incomeMonthly={riskIncomeAnnual == null ? null : riskIncomeAnnual / 12} existingServiceMonthly={riskExistingAnnual == null ? null : riskExistingAnnual / 12} incomeCurrencyComparable={scenarioCoverage?.incomeCurrencyComparable === true} earningsBasis={scenarioCoverage?.basis ?? terms.calculation.source} /></> : <Callout tone="warn">{repaymentIssue ?? "Enter the principal, APR, maturity and repayment details in Loan terms to calculate the amortization schedule."}</Callout>}
     </div>
-        <Row>{onApplyLoan ? <Btn onClick={() => onApplyLoan(loanFromClientDraft(draftRef.current))} disabled={!canEdit || save.isPending || supportingPending || sourceConflict || !loanCanApply || principalSaveBlocked}>Apply loan to scenario</Btn> : null}<Btn variant="pri" onClick={() => { setError(""); save.mutate({ draft: cloneDraft(draftRef.current), version: draftVersionRef.current, plan: financialPlanDraft }); }} disabled={!canEdit || supportingPending || save.isPending || collateral.isPending || collateral.isError || !dirty || sourceConflict || versionConflict || !!repaymentIssue || principalSaveBlocked}>{save.isPending ? "Recalculating..." : terms.version ? "Save new version" : "Save client terms"}</Btn>{dirty ? <span className="terms-unsaved">Unsaved changes</span> : <span className="sub">Everything shown in the PDF matches version {terms.version || "—"}.</span>}</Row>
+        <Row><Btn variant="pri" onClick={() => { setError(""); save.mutate({ draft: cloneDraft(draftRef.current), version: draftVersionRef.current, plan: editorPlan ?? undefined, budget: costPreview.value ?? undefined }); }} disabled={!canEdit || supportingPending || save.isPending || collateral.isPending || collateral.isError || !dirty || sourceConflict || versionConflict || !!repaymentIssue || principalSaveBlocked}>{save.isPending ? "Recalculating..." : terms.version ? "Save new version" : "Save client terms"}</Btn>{dirty ? <span className="terms-unsaved">Unsaved changes</span> : <span className="sub">Everything shown in the PDF matches version {terms.version || "—"}.</span>}</Row>
   </section>;
 }

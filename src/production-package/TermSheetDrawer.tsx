@@ -24,6 +24,10 @@ import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { dealBudgetPlan } from "@/lib/dealBudgetPlan";
+import { useAutomaticFinancedPrincipal } from "@/hooks/useAutomaticFinancedPrincipal";
+import { termsSaveIntent } from "@/lib/termsSaveIntent";
+import { acknowledgeTermsBudget } from "@/lib/acknowledgeTermsBudget";
+import type { DealBudget } from "@/lib/dealBudget";
 import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
 import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
@@ -434,10 +438,15 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
 
   const approved = form ? toNumber(form.approved_amount) : 0;
   const initialDraw = form ? maybeNumber(form.initial_draw_amount) : null;
+  const explicitBasis = form ? maybeNumber(form.payment_basis_amount) : null;
+  const independentlyLimitedKind = Boolean(form && ["revolving_loc", "heloc", "hybrid"].includes(form.facility_kind));
+  const independentDraw = Boolean((initialDraw != null && Math.abs(initialDraw - approved) > 0.005) || (explicitBasis != null && Math.abs(explicitBasis - approved) > 0.005) || independentlyLimitedKind && (initialDraw != null || explicitBasis != null));
+  const fundedPrincipal = independentDraw ? explicitBasis ?? initialDraw ?? approved : approved;
+  const partialNeedsReview = independentDraw && (!independentlyLimitedKind || Boolean(form?.lender_payment_override) || ["fixed_payment", "custom"].includes(form?.repayment_structure ?? "") || explicitBasis != null && initialDraw != null && Math.abs(explicitBasis - initialDraw) > 0.005);
   const revolvingFacility = Boolean(form && (form.facility_kind === "revolving_loc" || form.facility_kind === "heloc"));
   const isRevolving = Boolean(form && (revolvingFacility || form.repayment_structure === "revolving_interest_only"));
   const usesPaymentBasis = Boolean(form && (isRevolving || ["interest_only", "interest_only_then_amortizing", "balloon"].includes(form.repayment_structure)));
-  const paymentBasis = form ? ((usesPaymentBasis ? maybeNumber(form.payment_basis_amount) : null) ?? (isRevolving ? initialDraw : null) ?? approved) : 0;
+  const paymentBasis = independentDraw ? fundedPrincipal : form ? ((usesPaymentBasis ? maybeNumber(form.payment_basis_amount) : null) ?? (isRevolving ? initialDraw : null) ?? approved) : 0;
   const annualRate = form ? effectiveAnnualRate({
     structure: form.rate_structure,
     fixedOrCustomRatePct: toNumber(form.rate_pct),
@@ -446,26 +455,36 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     floorPct: maybeNumber(form.rate_floor_pct),
     capPct: maybeNumber(form.rate_cap_pct),
   }) : 0;
-  const editorLoan = loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null;
+  const editorLoan = loadedProfileId === profileId && form ? { amount: fundedPrincipal, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null;
   const editorPlan = dealBudgetPlan(financialPlanDraft ?? dealBudget.data?.financial_plan, editorLoan);
   const costPreview = useDealBudgetPreview(profileId, { enabled: open && loadedProfileId === profileId, loan: editorLoan, financialPlan: editorPlan });
   const principalCalculation = costPreview.isError ? undefined : costPreview.data?.calculation;
   const budgetDirty = Boolean(dealBudget.data && costPreview.value && dealBudgetChanged(costPreview.value, dealBudget.data));
   const principalPending = costPreview.pending || costPreview.isFetching || dealBudget.isPending;
-  const principalMismatch = hasPrincipalBudgetMismatch(principalCalculation, form ? maybeNumber(form.approved_amount) : null);
-  const principalSolution = principalCalculation?.principal_solution as { status?: string } | undefined;
+  const principalMismatch = hasPrincipalBudgetMismatch(principalCalculation, fundedPrincipal);
+  const principalSolution = principalCalculation?.principal_solution as { status?: string; gross_loan_amount?: number } | undefined;
   const principalUnresolved = costPreview.isError || Boolean(principalSolution && principalSolution.status !== "calculated");
-  const principalBlocked = principalPending || principalMismatch || principalUnresolved || budgetDirty;
+  const calculatedGross = typeof principalSolution?.gross_loan_amount === "number" ? principalSolution.gross_loan_amount : null;
+  const partialLimitExceeded = independentDraw && calculatedGross != null && calculatedGross > approved + 0.005;
+  const principalBlocked = principalPending || principalMismatch || principalUnresolved || partialNeedsReview || partialLimitExceeded;
   const principalError = errors.some(isPrincipalBudgetError);
   const visibleErrors = errors.filter(error => !isPrincipalBudgetError(error));
   const applyCalculatedPrincipal = (amount: number) => {
-    upd({ approved_amount: String(amount) });
+    if (partialNeedsReview || independentDraw && amount > approved + 0.005) return;
+    upd(independentDraw ? { payment_basis_amount: String(amount), initial_draw_amount: String(amount) } : { approved_amount: String(amount) });
     setErrors(previous => previous.filter(error => !isPrincipalBudgetError(error)));
     setDone(null);
   };
   const reviewPrincipalBudget = () => {
     changeView("budget");
     requestAnimationFrame(() => document.getElementById(`${viewId}-budget-panel`)?.querySelector<HTMLElement>('[aria-label="Loan amount basis"]')?.focus());
+  };
+  useAutomaticFinancedPrincipal(costPreview, fundedPrincipal, applyCalculatedPrincipal, canEdit && !busy && !supportingPending && !partialNeedsReview && !partialLimitExceeded);
+  const targetNetMode = costPreview.value?.loan_amount_mode === "target_net";
+  const enteredAmount = targetNetMode ? costPreview.value?.target_net_amount ?? null : fundedPrincipal;
+  const changeEnteredAmount = (raw: string) => {
+    if (targetNetMode) costPreview.updateBudget({ target_net_amount: maybeNumber(raw) });
+    else upd(independentDraw ? { payment_basis_amount: raw, initial_draw_amount: raw } : { approved_amount: raw });
   };
   const summary = useMemo(() => form ? computePaymentSummary({
     amount: approved,
@@ -571,13 +590,28 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     return issues;
   }, [annualRate, approved, form, isRevolving, paymentBasis, programCoverage, summary]);
 
-  const save = async () => {
-    if (loadedProfileId !== profileId || !form || !summary || !client.saveTermSheet || validationErrors.length || supportingPending || versionConflict || principalBlocked) return;
+  const saveAttempt = useRef<{ signature: string; intent: string; payload: TermSheetBody } | null>(null);
+  const retryableSave = Boolean(errors.length && saveAttempt.current && saveAttempt.current.intent === termsSaveIntent(form, editorPlan, costPreview.value));
+  const save = async (retry = false) => {
+    if (loadedProfileId !== profileId || !form || !summary || !client.saveTermSheet || validationErrors.length || supportingPending || !retry && (versionConflict || principalBlocked) || retry && !retryableSave) return;
     setBusy("save"); setErrors([]); setDone(null);
     try {
-      const expectedCollateralRevision = await collateral.verifyRevision();
-      const expectedBudgetRevision = await dealBudget.verifyRevision();
-      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: draftBaseVersion, expected_collateral_revision: expectedCollateralRevision, expected_deal_budget_revision: expectedBudgetRevision });
+      const submittedBudget = costPreview.value ?? undefined;
+      const signature = JSON.stringify({ profileId, form, version: draftBaseVersion, plan: editorPlan, budget: submittedBudget });
+      let payload = retry || saveAttempt.current?.signature === signature ? saveAttempt.current?.payload ?? null : null;
+      if (!payload) {
+        const expectedCollateralRevision = await collateral.verifyRevision();
+        payload = { ...toBody(form, summary, annualRate, programCoverage), expected_version: draftBaseVersion, expected_collateral_revision: expectedCollateralRevision,
+          ...(submittedBudget ? { deal_budget: submittedBudget, expected_deal_budget_revision: submittedBudget.expected_revision, idempotency_key: crypto.randomUUID(), financial_plan: editorPlan ?? undefined, expected_plan_updated_at: editorPlan?.expected_updated_at ?? null } : { expected_deal_budget_revision: await dealBudget.verifyRevision() }) };
+        saveAttempt.current = { signature, intent: termsSaveIntent(form, editorPlan, submittedBudget), payload };
+      }
+      const result = await client.saveTermSheet(profileId, payload);
+      const frozenBudget = result.state.current?.extra?.deal_budget_snapshot as Partial<DealBudget> | undefined;
+      const frozenRevision = result.state.current?.extra?.deal_budget_revision;
+      acknowledgeTermsBudget(queryClient, profileId, payload.deal_budget, result.deal_budget ?? frozenBudget, result.deal_budget?.revision ?? (typeof frozenRevision === "number" ? frozenRevision : undefined), result.deal_budget?.calculation ?? costPreview.data?.calculation, result.financial_plan);
+      if (result.financial_plan) { queryClient.setQueryData(["financial-plan", profileId], result.financial_plan); queryClient.setQueryData(["financial-plan-applied", profileId], result.financial_plan); }
+      saveAttempt.current = null;
+      void queryClient.invalidateQueries({ queryKey: ["file-deal-budget", profileId] });
       if (activeProfile.current !== profileId) { queryClient.removeQueries({ queryKey: draftKey }); return; }
       setState(result.state);
       setForm(formFrom(result.state.current, result.state.defaults));
@@ -720,7 +754,9 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
       }}>
         {([['terms','Loan terms'],['collateral','Collateral'],['budget','Investment & closing costs']] as const).map(([key,label]) => <button type="button" key={key} role="tab" id={`${viewId}-${key}-tab`} aria-selected={view === key} aria-controls={`${viewId}-${key}-panel`} tabIndex={view === key ? 0 : -1} onClick={() => changeView(key)}>{label}</button>)}
       </nav>
-      <PrincipalBudgetNotice calculation={principalCalculation} currentAmount={form ? maybeNumber(form.approved_amount) : null} pending={principalPending} budgetDirty={budgetDirty} canApply={canEdit && !busy && !supportingPending && !principalUnresolved} onApply={applyCalculatedPrincipal} onReview={reviewPrincipalBudget} fallback={principalError || principalUnresolved} />
+      {retryableSave ? <Callout tone="warn">The save result is not confirmed. Retry the identical save to check its recorded version without creating another.<PBtn onClick={() => void save(true)} disabled={Boolean(busy) || supportingPending}>Retry this save</PBtn></Callout> : null}
+      {partialNeedsReview || partialLimitExceeded ? <Callout tone="warn"><section aria-label="Independent facility draw review"><strong>Review the independently approved facility</strong><p>The approved limit remains {money(approved, 2)}. {partialNeedsReview ? "The funded draw and payment-estimate balance must agree, and automatic fee funding requires a rate-based line, HELOC or hybrid facility. Resolve the draw or repayment structure before saving." : "The total funded draw including fees exceeds that limit. Revise the client net target or explicitly review the approved limit before saving."}</p></section></Callout> : null}
+      <PrincipalBudgetNotice automatic calculation={principalCalculation} currentAmount={fundedPrincipal} pending={principalPending} budgetDirty={budgetDirty} canApply={canEdit && !busy && !supportingPending && !principalUnresolved && !partialNeedsReview && !partialLimitExceeded} onApply={applyCalculatedPrincipal} onReview={reviewPrincipalBudget} fallback={principalError || principalUnresolved} />
       {versionConflict ? <Callout tone="warn">A newer terms version is available. Your working loan was preserved.<PBtn onClick={() => { queryClient.removeQueries({ queryKey: draftKey }); void load(); }}>Discard draft and load current terms</PBtn></Callout> : null}
       <div role="tabpanel" id={`${viewId}-terms-panel`} aria-labelledby={`${viewId}-terms-tab`} hidden={view !== "terms"}>
       {loadError ? <div className="pp-notice t-warn"><span>{loadError}</span><PBtn size="sm" onClick={() => load()}>Try again</PBtn></div> : null}
@@ -810,8 +846,9 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
                   </label>
                   <div className="pp-field"><span className="pp-lbl">Facility family</span><div className="pp-static">{form.facility_kind.replace(/_/g, " ")}</div></div>
                   {form.facility_catalog_key === "other" ? <label className="pp-field span-3"><span className="pp-lbl">Custom product name</span><input className="pp-input" value={form.facility_type} onChange={(event) => upd({ facility_type: event.target.value })} placeholder="Describe the facility as it should print" /></label> : null}
-                  <label className="pp-field"><span className="pp-lbl">{isRevolving ? "Credit limit" : "Approved amount"} <SrcChip k="approved_amount" /></span>
-                    <span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={form.approved_amount} onChange={(event) => upd({ approved_amount: decimal(event.target.value) })} /></span></label>
+                  {independentDraw ? <label className="pp-field"><span className="pp-lbl">Independently approved facility limit</span><span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" aria-label="Approved facility limit" inputMode="decimal" value={form.approved_amount} onChange={event => upd({ approved_amount: decimal(event.target.value) })} /></span></label> : null}
+                  <label className="pp-field"><span className="pp-lbl">{targetNetMode ? "Net to client at funding" : independentDraw ? "Funded draw amount" : isRevolving ? "Credit limit" : "Total loan amount"} <SrcChip k="approved_amount" /></span>
+                    <span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" aria-label={targetNetMode ? "Net to client" : "Total loan amount"} value={enteredAmount == null ? "" : String(enteredAmount)} onChange={(event) => changeEnteredAmount(decimal(event.target.value))} /></span>{targetNetMode ? <small>Total loan including fees: {principalPending ? "Calculating…" : money(fundedPrincipal, 2)}</small> : null}</label>
                   <label className="pp-field"><span className="pp-lbl">{isRevolving ? "Minimum initial draw / activation" : "Minimum activation amount"} <SrcChip k="min_activation_amount" /></span>
                     <span className="pp-num u-money"><span className="pp-affix">$</span><input className="pp-input" inputMode="decimal" value={form.min_activation_amount} onChange={(event) => upd({ min_activation_amount: decimal(event.target.value) })} /></span></label>
                   <label className="pp-field"><span className="pp-lbl">Facility term <SrcChip k="term_months" /></span>
@@ -923,7 +960,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
               {visibleErrors.length ? <ul className="pp-errors">{visibleErrors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
               {done ? <Callout tone="ok">{done}</Callout> : null}
               <div className="pp-row">
-                <PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked} title={validationErrors[0]}>Record term sheet v{nextVersion}</PBtn>
+                <PBtn variant="pri" onClick={() => void save()} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked} title={validationErrors[0]}>Record term sheet v{nextVersion}</PBtn>
                 {current && !withdrawAsk ? <PBtn variant="danger" size="sm" onClick={() => setWithdrawAsk(true)} disabled={Boolean(current.consumed_by_package_id)} title={current.consumed_by_package_id ? "Void the final that uses this term sheet first" : undefined}>Withdraw v{current.version}</PBtn> : null}
               </div>
               {withdrawAsk ? (
@@ -958,9 +995,9 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
         <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} title="Collateral for these terms" />
       </div>
       <div role="tabpanel" id={`${viewId}-budget-panel`} aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
-        <DealBudgetSection inline financialPlan={editorPlan} onGrossAmountChange={amount => upd({ approved_amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={applyCalculatedPrincipal} onFinancingSaved={result => { if (result.record.new_loan_amount != null) applyCalculatedPrincipal(result.record.new_loan_amount); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
+        <DealBudgetSection inline saveWithTerms financialPlan={editorPlan} onGrossAmountChange={amount => upd(independentDraw ? { payment_basis_amount: amount == null ? "" : String(amount), initial_draw_amount: amount == null ? "" : String(amount) } : { approved_amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={applyCalculatedPrincipal} onFinancingSaved={result => { if (result.record.new_loan_amount != null) applyCalculatedPrincipal(result.record.new_loan_amount); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: fundedPrincipal, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
       </div>
-      {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">Save collateral and budget edits first, then record a terms version with both snapshots.</span></div> : null}
+      {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={() => void save()} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">One Save records these terms, the fee budget and shared loan together.</span></div> : null}
       {view !== "terms" && visibleErrors.length ? <ul className="pp-errors" role="alert">{visibleErrors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
     </Drawer>
   );
