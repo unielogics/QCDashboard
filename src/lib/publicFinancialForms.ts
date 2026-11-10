@@ -1,4 +1,5 @@
 import { apiBase } from "@/lib/api";
+import { normalizeOperatingPlanBody } from "@/lib/operatingPlan";
 
 export type PublicFinancialVersion = {
   id: string;
@@ -61,7 +62,7 @@ export function publicFinancialBody<T extends Record<string, unknown>>(body: T):
   if (next.schedules && typeof next.schedules === "object" && !Array.isArray(next.schedules)) {
     next.schedules = Object.fromEntries(Object.entries(next.schedules).map(([key, value]) => [key, rows(value)]));
   }
-  return next as T;
+  return (next.schema_version === "operating-plan-v1" || Array.isArray(next.expenses) || Array.isArray(next.adjustments) ? normalizeOperatingPlanBody(next) : next) as T;
 }
 
 /** One tab's ordered writes. A late autosave never runs after a newer submit. */
@@ -79,7 +80,7 @@ export class PublicFinancialFormWriter {
   flush(): Promise<unknown> { return this.tail; }
 
   write(mode: "draft" | "submit", body: Record<string, unknown>): Promise<PublicFinancialReply> {
-    const serialized = JSON.stringify(body);
+    const serialized = JSON.stringify(body.schema_version === "operating-plan-v1" || Array.isArray(body.expenses) || Array.isArray(body.adjustments) ? normalizeOperatingPlanBody(body) : body);
     if (mode === "submit" && this.submitting?.body === serialized) return this.submitting.promise;
     const run = this.tail.catch(() => undefined).then(async () => {
       if (this.conflict) throw this.conflict;

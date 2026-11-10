@@ -13,6 +13,14 @@ const json = (value: unknown, status = 200) => new Response(JSON.stringify(value
 afterEach(() => vi.unstubAllGlobals());
 
 describe("client financial corrections and immutable version saves", () => {
+  it("sends unknown operating-plan amounts as null and preserves zero and false flags", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json({ workspace: workspace(2) }));
+    vi.stubGlobal("fetch", fetcher);
+    await new PublicFinancialFormWriter("/form", workspace()).write("draft", { schema_version: "operating-plan-v1", expenses: [{ id: "unknown", label: "Payroll", current_amount: "", essential: "true", excluded: "false", source_file_ids: ["statement"] }, { id: "zero", current_amount: "0", excluded: "false" }] });
+    const payload = JSON.parse(fetcher.mock.calls[0][1].body);
+    expect(payload.body.expenses[0]).toMatchObject({ id: "unknown", current_amount: null, essential: true, excluded: false, source_file_ids: ["statement"] });
+    expect(payload.body.expenses[1]).toMatchObject({ id: "zero", current_amount: 0, excluded: false });
+  });
   it("lets scoped imported rows be corrected while keeping their provenance", () => {
     const html = renderToStaticMarkup(createElement(DebtScheduleForm, { value: { debts: [{ id: "source", owner: "ai_draft", editable: true, lender: "Imported lender", balance: "12000", monthly_payment: "500" }] }, onChange: () => undefined, scheduleCompletion: true }));
     expect(html).toContain("Imported from a document");

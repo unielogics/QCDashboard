@@ -5,7 +5,7 @@ import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
 import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
 import { loanPaidDownPct } from "@/lib/loanProgress";
 import { orderDebtScheduleColumns } from "@/lib/debtWorksheetLayout";
-import { clearOperatingReview, type OperatingAction, type OperatingExpense } from "@/lib/operatingPlan";
+import { clearOperatingReview, normalizeOperatingPlanBody, type OperatingAction, type OperatingExpense } from "@/lib/operatingPlan";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
@@ -45,13 +45,14 @@ export type DebtAction = {
 const root = (profileId: string) => `/application-profiles/${encodeURIComponent(profileId)}/financial-workspace`;
 export const FINANCIAL_LABELS: Record<SheetKind, string> = { debt_schedule: "Business debt schedule", pfs: "Personal financial statement", p_and_l: "Profit and loss", balance_sheet: "Balance sheet", real_estate_schedule: "Real estate schedule", operating_plan: "Operating expenses and earnings plan" };
 export const FINANCIAL_ORDER: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule", "p_and_l", "balance_sheet", "operating_plan"];
-export function readFinancialWorkspace(api: AuthedApi, profileId: string, kind: SheetKind, familyId?: string) {
+export async function readFinancialWorkspace(api: AuthedApi, profileId: string, kind: SheetKind, familyId?: string) {
   const query = new URLSearchParams({ kind });
   if (familyId) query.set("family_id", familyId);
-  return api<FinancialWorkspaceSnapshot>(`${root(profileId)}?${query}`);
+  const result = await api<FinancialWorkspaceSnapshot>(`${root(profileId)}?${query}`);
+  return result.kind === "operating_plan" ? { ...result, body: normalizeOperatingPlanBody(result.body) } : result;
 }
 export function saveFinancialDraft(api: AuthedApi, profileId: string, snapshot: FinancialWorkspaceSnapshot, body: FinancialBody) {
-  return api<FinancialWorkspaceSnapshot>(`${root(profileId)}/draft`, { method: "PUT", body: JSON.stringify({ kind: snapshot.kind, family_id: snapshot.family_id, body, expected_revision: snapshot.draft.revision }) });
+  return api<FinancialWorkspaceSnapshot>(`${root(profileId)}/draft`, { method: "PUT", body: JSON.stringify({ kind: snapshot.kind, family_id: snapshot.family_id, body: snapshot.kind === "operating_plan" ? normalizeOperatingPlanBody(body) : body, expected_revision: snapshot.draft.revision }) });
 }
 export function createFinancialFamily(api: AuthedApi, profileId: string, kind: SheetKind, label: string, identity: { subject?: string; period_start?: string; period_end?: string; as_of?: string }) {
   return api<FinancialWorkspaceSnapshot>(`${root(profileId)}/families`, { method: "POST", body: JSON.stringify({ kind, label, identity }) });
@@ -214,7 +215,7 @@ export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, ed
       return expenseChanged || JSON.stringify(before) !== JSON.stringify(row) ? clearOperatingReview(updated) : updated;
     });
   }
-  return next;
+  return layout.kind === "operating_plan" ? normalizeOperatingPlanBody(next) : next;
 }
 /** A native correction must not retain an extracted-field badge for the replaced value. */
 export function clearEditedDebtSources(previous: FinancialBody, next: FinancialBody): FinancialBody {
