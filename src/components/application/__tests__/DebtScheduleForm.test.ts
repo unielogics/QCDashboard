@@ -10,7 +10,7 @@ const render = (value: DebtBody, showProblems = false) =>
 describe("the debt schedule form", () => {
   it("retains MCA questions beside distinct factor and payment cadence fields", () => {
     const html = render({ debts: [{ lender: "Fundbox", debt_type: "mca", factor_rate: "1.375", payment_amount: "100", payment_frequency: "daily", monthly_payment: "2100", monthly_payment_source: "native_terms" }] });
-    expect(html).toContain("Modified for lower sales?");
+    expect(html).toContain("MCA modified?");
     expect(html).toContain("Factor rate (×)");
     expect(html).toContain('value="1.375"');
     expect(html).toContain("≈ Monthly: payment amount × 21.");
@@ -48,7 +48,7 @@ describe("the debt schedule form", () => {
     expect(render({ debts: [{ lender: "Chase", debt_type: "term_loan" }] })).not.toContain("fp-mca");
     const html = render({ debts: [{ lender: "Fundbox", debt_type: "mca" }] });
     expect(html).toContain("fp-mca");
-    expect(html).toContain("Modified for lower sales?");
+    expect(html).toContain("MCA modified?");
     expect(html).toContain('id="mca-0"');
     expect(html).toContain("not the factor");
     // The "what changed" box appears once the answer is yes.
@@ -56,6 +56,14 @@ describe("the debt schedule form", () => {
     expect(render({ debts: [{ lender: "Fundbox", debt_type: "mca", mca_modified: "yes" }] })).toContain('id="mca-note-0"');
     // A value typed before the list existed still asks.
     expect(render({ debts: [{ lender: "Fundbox", debt_type: "Merchant Cash Advance" }] })).toContain("fp-mca");
+  });
+
+  it("keeps an unconfirmed MCA modification answer distinct from a reviewed no", () => {
+    const unknown = render({ debts: [{ lender: "Advance lender", debt_type: "mca" }] });
+    expect(unknown).toMatch(/<option value="" selected="">Not confirmed<\/option>/);
+    const reviewed = render({ debts: [{ lender: "Advance lender", debt_type: "mca", mca_modified: "no" }] });
+    expect(reviewed).toMatch(/<option value="no" selected="">No modification<\/option>/);
+    expect(reviewed).not.toContain('id="mca-note-0"');
   });
 
   it("keeps a type typed before the list existed as a selectable option, but not the old default", () => {

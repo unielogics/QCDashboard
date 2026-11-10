@@ -4,7 +4,7 @@ const TOKEN = "room.client-invitation";
 const PIN = "482691";
 type Application = Record<string, unknown>;
 
-async function mockApplicationRoom(page: Page, vertical = "dealer", failFirstSubmit = false, amountEditable = true) {
+async function mockApplicationRoom(page: Page, vertical = "dealer", failFirstSubmit = false, amountEditable = true, fundingNeed?: string) {
   const patches: Application[] = [];
   const owners: Application[] = [];
   let application: Application = {
@@ -12,7 +12,8 @@ async function mockApplicationRoom(page: Page, vertical = "dealer", failFirstSub
     business_street: null, business_city: null, business_state: null, business_zip: null,
     business_website: null, business_description: null, loan_purpose: null, requested_loan_amount: amountEditable ? null : 75000,
     years_in_business: null, target_property_address: null, transaction_type: null,
-    estimated_value_or_purchase_price: null, monthly_rent: null, industry: null, funding_need: null,
+    estimated_value_or_purchase_price: null, monthly_rent: null, industry: null, funding_need: fundingNeed ?? null,
+    funding_need_editable: !fundingNeed,
     submitted_at: null, requested_amount_editable: amountEditable,
   };
   let submitRejected = false;
@@ -102,6 +103,21 @@ async function fillBusinessApplication(page: Page, lending = true, industry = "a
   }
   return form;
 }
+
+test("an MCA client keeps the selected funding product when saving application details", async ({ page }) => {
+  const { patches } = await mockApplicationRoom(page, "main_street", false, true, "merchant_cash_advance");
+  const form = page.getByRole("region", { name: "Your application", exact: true });
+  const fundingNeed = form.getByRole("combobox", { name: "Funding need *", exact: true });
+  await expect(fundingNeed).toHaveValue("merchant_cash_advance");
+  await expect(fundingNeed).toBeDisabled();
+  await expect(fundingNeed.locator("option:checked")).toHaveText("MCA funding");
+  await expect(form.getByLabel("Requested amount ($) *", { exact: true })).toBeVisible();
+  await form.getByRole("button", { name: "Save progress", exact: true }).click();
+  await expect(form).toContainText("Progress saved.");
+  expect(patches).toHaveLength(1);
+  expect(patches[0].funding_need).toBe("merchant_cash_advance");
+  expect(patches[0].funding_need_editable).toBeUndefined();
+});
 
 test("an invited client saves, resumes, and submits the application before any call is booked", async ({ page }, testInfo) => {
   const { patches, owners } = await mockApplicationRoom(page);

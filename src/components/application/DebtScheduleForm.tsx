@@ -414,20 +414,20 @@ export function DebtScheduleForm({
                 // sales fell has changed what this row reports.
                 <div className="fp-mca" role="group" aria-labelledby={`mca-q-${index}`}>
                   <p id={`mca-q-${index}`}>
-                    <strong>This is an advance against future sales.</strong> Has the funder modified it
-                    because of lower sales or revenue — a reduced daily or weekly pull, a pause, a
-                    reconciliation?
+                    <strong>This is an advance against future sales.</strong> Has the funder modified
+                    its terms — for example, a reduced daily or weekly pull, a pause, a reconciliation,
+                    or a changed repayment schedule?
                   </p>
-                  <Field id={`mca-${index}`} label="Modified for lower sales?" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "mca_modified")} source={renderFieldSource?.(row, "mca_modified")}>
+                  <Field id={`mca-${index}`} label="MCA modified?" required={!singleRow && !scheduleCompletion} invalid={invalid(index, "mca_modified")} source={renderFieldSource?.(row, "mca_modified")}>
                     <select
                       id={`mca-${index}`}
                       disabled={locked}
                       value={row.mca_modified ?? ""}
                       onChange={(event) => patch(index, { mca_modified: event.target.value })}
                     >
-                      <option value="">—</option>
-                      <option value="yes">Yes</option>
-                      <option value="no">No</option>
+                      <option value="">Not confirmed</option>
+                      <option value="yes">Modified</option>
+                      <option value="no">No modification</option>
                     </select>
                   </Field>
                   {row.mca_modified === "yes" ? (

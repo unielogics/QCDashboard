@@ -139,6 +139,36 @@ test("supports an SMS invitation without email or business details", async ({ pa
   expect(creates[0].business_name).toBeUndefined();
 });
 
+for (const operator of [false, true]) {
+  test(`preserves the MCA funding product when ${operator ? "staff completes" : "inviting the client"}`, async ({ page }) => {
+    const creates = await mockFiles(page, "created");
+    const dialog = await chooseFileType(page, "mca_funding", operator);
+    await dialog.getByPlaceholder("Jane Doe").fill("MCA Product Test");
+    if (!operator) await dialog.getByLabel("Email invitation", { exact: true }).uncheck();
+    if (operator) {
+      await dialog.getByPlaceholder("client@example.com").fill("mca-product@example.com");
+      await dialog.getByPlaceholder("(973) 555-0148").fill("9735550148");
+      await dialog.getByPlaceholder("Business LLC").fill("MCA Product Example LLC");
+      await dialog.getByRole("textbox", { name: /^Business street address \*/ }).fill("100 Market Street");
+      await dialog.getByRole("textbox", { name: "City *", exact: true }).fill("Newark");
+      await dialog.getByRole("combobox", { name: /^State \*/ }).selectOption("NJ");
+      await dialog.getByRole("textbox", { name: "ZIP code *", exact: true }).fill("07102");
+      await dialog.getByRole("combobox", { name: /^Business industry \*/ }).selectOption("auto_service");
+      await dialog.getByRole("textbox", { name: /^Business website \*/ }).fill("N/A");
+      await dialog.getByRole("textbox", { name: /^What does your business do\? \*/ }).fill("We service vehicles for local businesses.");
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    }
+    await reviewAndCreate(dialog);
+    await expect(page.getByRole("heading", { name: "Application invitation ready" })).toBeVisible();
+    expect(creates).toHaveLength(1);
+    expect(creates[0]).toMatchObject({
+      variant: "main_street", intent: "merchant_cash_advance",
+      application_completion: operator ? "operator" : "client", invitation_channels: [],
+    });
+    expect(creates[0].variant).not.toBe("mca_refinance");
+  });
+}
+
 test("creates a direct link without sending or requiring contact details", async ({ page }) => {
   const creates = await mockFiles(page, "created");
   const dialog = await chooseFileType(page);
