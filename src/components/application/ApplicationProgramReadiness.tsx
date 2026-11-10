@@ -1003,7 +1003,7 @@ export function ApplicationProgramReadiness({
 
     {section === "documents" ? (readiness.lending_applicable ? <>
       <header className="ev-doc-head">
-        <div><h3 id="shared-evidence-heading" tabIndex={-1}>Documents this file needs</h3><p>{checklistCaption}{onOpenFinancials ? <> <button type="button" className="linky" onClick={onOpenFinancials}>Choose programs in Financials</button></> : null}</p></div>
+        <div><h3 id="shared-evidence-heading" tabIndex={-1}>Documents this file needs</h3><p>{checklistCaption}{onOpenFinancials ? <> <button type="button" className="linky" onClick={onOpenFinancials}>Open program setup in Coverage plan</button></> : null}</p></div>
         <div className="program-readiness-actions requirement-bulk-actions">
           {onRunAiReview ? <ActionIcon icon="refresh" label="Re-read the intake with the AI" disabled={Boolean(busy) || aiReviewRunning} busy={aiReviewRunning} onClick={onRunAiReview} /> : null}
           {canAddRequirements ? <span title="Add a document or a form from the library to this file's checklist"><Btn onClick={() => setAddOpen(true)}><Icon name="plus" size={14} />Add a requirement</Btn></span> : null}

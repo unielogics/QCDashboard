@@ -10,7 +10,8 @@ export function fundingPackageEvidenceGaps(cockpit: Pick<FinancialCockpit, "requ
   }
   const noi = cockpit.noi?.headline;
   if (noi?.annualized_value == null) {
-    gaps.push({ key: "noi", label: "Annual NOI needs a P&L", detail: cockpit.noi?.reason || (noi?.value != null ? "A source-period operating result is available. Confirm a dated six-to-twelve-month P&L before using an annual comparison." : "Review or add the latest business P&L with operating income or revenue, COGS and operating expenses, plus its reporting period, currency and accounting basis.") });
+    const sourceReason = cockpit.noi?.reason || (noi?.value != null ? "A source-period operating result is available, but its annual basis has not been established." : "An annual operating-income basis has not been saved.");
+    gaps.push({ key: "noi", label: "Annual NOI needs review", detail: `${sourceReason} Open NOI > Calculate / override NOI to review a business tax return or P&L, or enter a manual annual amount with its year, currency and reason.` });
   } else if (noi.provisional || !noi.complete) {
     gaps.push({ key: "noi", label: "NOI needs source review", detail: "The operating result is visible but provisional. Review its source and reconcile the operating expenses before relying on it." });
   }

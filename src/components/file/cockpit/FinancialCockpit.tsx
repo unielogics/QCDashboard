@@ -792,19 +792,7 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         <CoverageCard key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest}
-          programSelection={props.programReadiness ? <ApplicationProgramReadiness
-            section="programs" profileId={props.profileId} files={[]}
-            value={props.programReadiness} onValueChange={props.onProgramReadinessChange}
-            onRefresh={props.onRefreshProgramReadiness} showUploader={false}
-            canEditPrograms={props.canUnderwrite} canCreatePrograms={props.canCreatePrograms}
-            programVertical={props.programVertical} intakeVariant={props.intakeVariant}
-            onPreviewFinancialEvidence={openSourcePreview}
-            onRequestFinancialEvidence={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined}
-          /> : null}
-          onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
-      {props.programReadiness ? (
-        <>
-          <details className="fc-card fc-wide" id="fc-programs">
+          programSelection={props.programReadiness ? <details className="fc-card fc-wide" id="fc-programs" open>
             <summary><strong>Program criteria and use of funds</strong><span className="sub"> · {props.programReadiness.selections?.map((row) => row.program_name).join(", ") || "Choose programs"}</span></summary>
             <div className="fc-card-h">
               <div>
@@ -827,9 +815,8 @@ export function FinancialCockpit(props: Props) {
               programVertical={props.programVertical}
               intakeVariant={props.intakeVariant}
             />
-          </details>
-        </>
-      ) : null}
+          </details> : null}
+          onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
         <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       </div>
 
