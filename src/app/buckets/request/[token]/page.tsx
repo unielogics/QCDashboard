@@ -21,6 +21,7 @@ import { collectionTaskReadModelKey } from "@/lib/applicationCollection";
 import { DocumentVersionControl } from "@/components/documents/DocumentVersionControl";
 import { documentVersionService, latestDocumentFiles, type DocumentVersionMetadata, type DocumentVersionService } from "@/lib/documentVersions";
 import { RoomApplicationForm } from "@/components/room/RoomApplicationForm";
+import { McaRoomReview } from "@/components/room/McaRoomReview";
 import { clientActionNeeded, clientCoverageNeedsAnotherFile, clientRequirementProgress, type ClientRequirementCoverage, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
@@ -53,10 +54,11 @@ type ClientEvidenceBankingSummary = {
 };
 type ClientRoomKind = RoomKind | "basic";
 type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; passcode_needs_setup?: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
-type RoomTab = "application" | "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
+type RoomTab = "ai-review" | "application" | "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
-const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" | "mail" }> = [
+const ROOM_TABS: Array<{ id: RoomTab; label: string; icon: "check" | "file" | "building" | "edit" | "cal" | "dollar" | "note" | "mail" | "chat" }> = [
+  { id: "ai-review", label: "MCA AI review", icon: "chat" },
   { id: "application", label: "Application", icon: "edit" },
   { id: "inbox", label: "Inbox", icon: "mail" },
   { id: "precall", label: "Before your call", icon: "cal" },
@@ -115,6 +117,9 @@ export default function BucketRequestPage() {
   const [offerOnlyAccess, setOfferOnlyAccess] = useState(false);
   const [structuredPending, setStructuredPending] = useState(0);
   const [hasApplication, setHasApplication] = useState(false);
+  const [hasMcaReview, setHasMcaReview] = useState(false);
+  const [hasMcaAgreements, setHasMcaAgreements] = useState(false);
+  const [hasMcaPayments, setHasMcaPayments] = useState(false);
 
   useEffect(() => {
     // Theme is journey-local. A preference from another application on the
@@ -264,6 +269,8 @@ export default function BucketRequestPage() {
     hasMerchantOffer: boolean;
     hasTimeline: boolean;
     hasApplication: boolean;
+    hasMcaReview: boolean;
+    hasAgreements: boolean;
   }> {
     const empty = {
       precall: null,
@@ -271,6 +278,8 @@ export default function BucketRequestPage() {
       hasMerchantOffer: false,
       hasTimeline: false,
       hasApplication: false,
+      hasMcaReview: false,
+      hasAgreements: false,
     };
     if (roomKind === "basic") return empty;
     try {
@@ -289,10 +298,13 @@ export default function BucketRequestPage() {
         precall: { status: "in_progress" | "complete" | "stopped" | "disabled"; complete: boolean; done_count: number; missing: string[] } | null;
         merchant_offer?: { id: string; status: string } | null;
         capabilities?: string[];
+        signable?: unknown[]; contracts?: unknown[]; envelopes?: unknown[];
       };
       const hasApplication = state.capabilities?.includes("application") ?? false;
+      const hasMcaReview = state.capabilities?.includes("mca_ai_review") ?? false;
+      if (hasMcaReview) return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication, hasMcaReview, hasAgreements: Boolean(state.signable?.length || state.contracts?.length || state.envelopes?.length) };
       if ((!state.precall || state.precall.status === "disabled") && !hasApplication) {
-        return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication };
+        return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication, hasMcaReview };
       }
       const verification = state.verification;
       return {
@@ -300,6 +312,8 @@ export default function BucketRequestPage() {
         hasMerchantOffer: Boolean(state.merchant_offer),
         hasTimeline: true,
         hasApplication,
+        hasMcaReview,
+        hasAgreements: false,
         precall: {
           enabled: true,
           scheduled: Boolean(state.precall && state.precall.status !== "disabled"),
@@ -362,6 +376,8 @@ export default function BucketRequestPage() {
     const loaded = await fetchRoomContext(passcode.trim(), session.room_kind);
     setPrecall(loaded.precall);
     setHasApplication(loaded.hasApplication);
+    setHasMcaReview(loaded.hasMcaReview);
+    setHasMcaAgreements(loaded.hasAgreements);
     if (loaded.roomKind) setPrecallRoomKind(loaded.roomKind);
   }
   async function refreshRoom() {
@@ -374,6 +390,8 @@ export default function BucketRequestPage() {
     setSession(nextSession);
     setPrecall(context.precall);
     setHasApplication(context.hasApplication);
+    setHasMcaReview(context.hasMcaReview);
+    setHasMcaAgreements(context.hasAgreements);
     if (context.roomKind) setPrecallRoomKind(context.roomKind);
     setOffer(nextOffer);
     setUpdates(nextUpdates);
@@ -396,6 +414,8 @@ export default function BucketRequestPage() {
         setPrecall(null); setPrecallLoaded(true); setOffer(null); setUpdates(null);
         setOfferOnlyAccess(true); setActiveTab("inbox");
         setHasApplication(false);
+        setHasMcaReview(false);
+        setHasMcaAgreements(false); setHasMcaPayments(false);
         return;
       }
       const context = await fetchRoomContext(passcode.trim(), data.room_kind);
@@ -407,15 +427,20 @@ export default function BucketRequestPage() {
       setPrecall(context.precall); setPrecallRoomKind(context.roomKind ?? "dealer"); setPrecallLoaded(true);
       setOffer(waitingOffer); setUpdates(fileUpdates);
       setHasApplication(context.hasApplication);
+      setHasMcaReview(context.hasMcaReview);
+      setHasMcaAgreements(context.hasAgreements);
       // A booked call lands on its checklist until it is done; the URL still wins.
       if (!searchParams.get("tab")) {
-        if (context.hasApplication && context.precall?.scheduled === false) setActiveTab("application");
+        if (context.hasMcaReview) setActiveTab("ai-review");
+        else if (context.hasApplication && context.precall?.scheduled === false) setActiveTab("application");
         else if (context.precall && !context.precall.complete) setActiveTab("precall");
+      } else if (searchParams.get("tab") === "ai-review" && !context.hasMcaReview) {
+        setActiveTab(context.hasApplication ? "application" : "documents");
       }
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (tab.id !== "application" || hasApplication) && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)).map((tab) => tab.id === "precall" && precall?.scheduled === false ? { ...tab, label: "Owners and verification" } : tab), [hasApplication, offerOnlyAccess, precall, offer, updates, session]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (!hasMcaReview || !["precall", "budget"].includes(tab.id) && (tab.id !== "agreements" || hasMcaAgreements) && (tab.id !== "payments" || hasMcaPayments) && (tab.id !== "inbox" || Boolean(offer))) && (tab.id !== "ai-review" || hasMcaReview) && (tab.id !== "application" || hasApplication) && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)).map((tab) => tab.id === "precall" && precall?.scheduled === false ? { ...tab, label: "Owners and verification" } : tab), [hasApplication, hasMcaReview, hasMcaAgreements, hasMcaPayments, offerOnlyAccess, precall, offer, updates, session]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -500,14 +525,16 @@ export default function BucketRequestPage() {
       {status ? <div className={`application-room-status ${status.toLowerCase().includes("not") || status.toLowerCase().includes("unavailable") ? "bad" : ""}`}>{status}</div> : null}
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
     </section> : <section className={`application-room-shell${pinSetup === "required" ? " is-pin-setup" : ""}`}>
-      <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending || (hasApplication && !precall?.complete) ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : hasApplication && !precall?.complete ? "Application in progress" : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
+      <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending || (hasApplication && !precall?.complete) ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : hasMcaReview ? "Source verification pending" : hasApplication && !precall?.complete ? "Application in progress" : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
       {pinSetup !== "hidden" ? <RoomPinSetup token={token} passcode={passcode.trim()} required={pinSetup === "required"} onSaved={(pin) => { setPasscode(pin); setArrivedWithCode(false); setSession((current) => current ? { ...current, passcode_needs_setup: false } : current); }} onDismiss={() => setPinSetupDismissed(true)} /> : null}
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && totalPending ? <span>{totalPending}</span> : null}</button>)}</nav>
+
+      {hasMcaReview ? <div hidden={activeTab !== "ai-review"}><McaRoomReview key={token} token={token} passcode={passcode.trim()} active={activeTab === "ai-review"} onPaymentMethods={setHasMcaPayments} refreshKey={collectionTaskReadModelKey(session.evidence_banking_summary?.requirements ?? [], [processingFileCount, uploadedFiles.length, missingDocs.length])} onUpload={() => { setActiveRequestedDocumentId(""); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }} onApplication={() => setActiveTab("application")} onDebtSchedule={() => setActiveTab("todo")} /></div> : null}
 
       {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}
       {activeTab === "application" && hasApplication ? <RoomApplicationForm token={token} passcode={passcode.trim()} onChanged={refreshRoom} onContinue={() => setActiveTab(precall ? "precall" : "todo")} /> : null}
 
-      {!offerOnlyAccess && session.room_kind !== "basic" && activeTab === "todo" ? <section className="application-room-section application-room-section--teaser"><div className="application-room-section-head"><div><h2>How will you use the funds?</h2><p>Add a category and amount for each planned use so your team can review financing options.</p></div><button className="application-room-secondary" onClick={() => setActiveTab("budget")}><Icon name="dollar" size={14} />Review use of funds</button></div></section> : null}
+      {!hasMcaReview && !offerOnlyAccess && session.room_kind !== "basic" && activeTab === "todo" ? <section className="application-room-section application-room-section--teaser"><div className="application-room-section-head"><div><h2>How will you use the funds?</h2><p>Add a category and amount for each planned use so your team can review financing options.</p></div><button className="application-room-secondary" onClick={() => setActiveTab("budget")}><Icon name="dollar" size={14} />Review use of funds</button></div></section> : null}
 
       {activeTab === "precall" && precall ? <PrecallChecklist token={token} passcode={passcode.trim()} precall={precall} roomKind={precallRoomKind} onChanged={refreshPrecall} onGoToDocuments={() => setActiveTab("documents")} /> : null}
       {activeTab === "precall" && !precall && precallLoaded ? <section className="application-room-section"><p>This room has no call to prepare for.</p></section> : null}
@@ -524,11 +551,11 @@ export default function BucketRequestPage() {
 
       {activeTab === "documents" && activeRequestedDocument ? <div className="application-room-upload-target" aria-live="polite"><span><Icon name="check" size={15} aria-hidden="true" /></span><div><b>Adding files to {activeRequestedDocument.name}</b><small>Files selected below will be attached to this exact request.</small></div><button onClick={() => setActiveRequestedDocumentId("")}>Clear selection</button></div> : null}
       {activeTab === "documents" ? <section className="application-room-section application-room-documents"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Documents</span><h2>Upload and review file history</h2></div><span className="application-room-count">{versionedFiles.length} documents</span></div><div className="application-room-document-grid"><div className="application-room-upload-column"><div className="application-room-identity"><label className="application-room-field"><span>Your name</span><input value={name} onChange={(event) => setName(event.target.value)} /></label><label className="application-room-field"><span>Email optional</span><input type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></label></div><input ref={fileInputRef} type="file" multiple hidden onChange={(event) => event.target.files && addFiles(event.target.files)} /><button className={`application-room-dropzone ${isDragging ? "dragging" : ""}`} onClick={() => fileInputRef.current?.click()} onDragEnter={(event) => { event.preventDefault(); setIsDragging(true); }} onDragOver={(event) => event.preventDefault()} onDragLeave={() => setIsDragging(false)} onDrop={onDrop}><Icon name="upload" size={24} /><b>Drop files here or click to browse</b><span>PDF, spreadsheet, image, CSV, or ZIP</span></button>{files.length ? <div className="application-room-queue">{files.map((item) => <div key={item.id}><span className="application-room-file-icon"><Icon name="file" size={15} /></span><div className="application-room-file-name"><b>{item.file.name}</b><small>{formatSize(item.file.size)} · {item.message || item.status}</small></div><select value={item.requestedDocumentId} onChange={(event) => { const requestedDocumentId = event.target.value; updateFileState(item.id, { requestedDocumentId, status: "ready", message: undefined, requiresRetarget: false }); if (requestedDocumentId) { setActiveRequestedDocumentId(requestedDocumentId); setRequiresExplicitUploadTarget(false); } }} disabled={isUploading || item.status === "uploaded"}>{item.requiresRetarget ? <option value="" disabled>Choose the current request...</option> : !supportingDoc ? <option value="">Supporting / Other</option> : null}{session.requested_documents.map((doc) => <option key={doc.id} value={doc.id}>{doc.name}</option>)}</select>{item.status === "uploaded" ? <span className="application-room-received">Received</span> : <button className="application-room-icon-button" aria-label={`Remove ${item.file.name}`} onClick={() => setFiles((current) => current.filter((row) => row.id !== item.id))}><Icon name="x" size={14} /></button>}</div>)}</div> : null}{session.allow_notes ? <label className="application-room-field"><span>Note for this upload</span><textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Optional context for the review team" /></label> : null}<button className="application-room-primary" disabled={!canSubmit || isUploading} onClick={() => void submitDocuments()}>{isUploading ? "Submitting securely..." : `Submit ${files.filter((item) => item.status !== "uploaded").length || ""} file${files.filter((item) => item.status !== "uploaded").length === 1 ? "" : "s"}`}</button>{status ? <div className={`application-room-alert ${isUploadErrorStatus(status) ? "bad" : "good"}`}>{status}</div> : null}</div><aside className="application-room-history"><div className="application-room-history-head"><h3>Received files</h3><span>{versionedFiles.length}</span></div><div className="application-room-history-list">{versionedFiles.map((file) => <ReceivedFileRow key={file.id} file={file} versions={documentVersionService(api, `/buckets/request/${encodeURIComponent(token)}`, { historyMethod: "POST", credential: { passcode: passcode.trim() }, uploadTarget: { initPath: `/buckets/request/${encodeURIComponent(token)}/upload-init`, completePath: `/buckets/request/${encodeURIComponent(token)}/complete`, call: api }, extraInit: { uploader_name: name.trim(), uploader_email: email.trim() || null } })} onChanged={refreshRoom} />)}{!uploadedFiles.length ? <div className="application-room-empty">Uploaded files will appear here.</div> : null}</div></aside></div></section> : null}
-      {!offerOnlyAccess && session.room_kind !== "basic" ? <div hidden={activeTab !== "budget" && activeTab !== "documents"}><RoomUseOfFunds token={token} passcode={passcode.trim()} secondary={activeTab === "documents"} /></div> : null}
+      {!hasMcaReview && !offerOnlyAccess && session.room_kind !== "basic" ? <div hidden={activeTab !== "budget" && activeTab !== "documents"}><RoomUseOfFunds token={token} passcode={passcode.trim()} secondary={activeTab === "documents"} /></div> : null}
 
       {activeTab === "banking" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">LLC accounts only</span><h2>Business banking</h2><p>Connect the company&apos;s operating accounts, read-only through Plaid, in about two minutes. Or upload the last six months of business bank statements.</p></div></div>{bankEvidence?.banking_access_complete ? <div className="application-room-alert good"><b>Banking evidence complete.</b> {bankEvidence.statement_coverage_complete ? `${bankEvidence.accepted_statement_months.length} of ${bankEvidence.required_statement_months} statement months accepted.` : `${bankEvidence.connected_institutions} institution${bankEvidence.connected_institutions === 1 ? "" : "s"} connected.`}</div> : null}{session.room_kind !== "basic" && (!bankEvidence?.statement_coverage_complete || Boolean(bankEvidence.connected_institutions)) ? <RoomActions token={token} passcode={passcode.trim()} roomKind={session.room_kind} view="banking" onChanged={() => { void refreshRoom(); }} /> : null}<button className="application-room-secondary" onClick={() => setActiveTab("documents")}><Icon name="upload" size={14} />{bankEvidence?.statement_coverage_complete ? "View uploaded statements" : "Upload bank statements instead"}</button></section> : null}
       {activeTab === "agreements" ? <section className="application-room-section"><div className="application-room-section-head"><div><span className="application-room-eyebrow">Electronic signatures</span><h2>Agreements</h2><p>Review and sign only the documents assigned to this application room.</p></div></div>{session.room_kind !== "basic" ? <RoomActions token={token} passcode={passcode.trim()} roomKind={session.room_kind} view="agreements" focusRequestId={focusedAgreementId} onChanged={() => { void refreshRoom(); }} /> : null}</section> : null}
-      {activeTab === "payments" && session.room_kind !== "basic" ? <ClientPaymentsPanel token={token} passcode={passcode.trim()} defaultPayerName={name || session.recipient_name} onOpenFeeAgreement={(requestedDocumentId) => { setFocusedAgreementId(requestedDocumentId); setActiveTab("agreements"); }} /> : null}
+      {activeTab === "payments" && session.room_kind !== "basic" && (!hasMcaReview || hasMcaPayments) ? <ClientPaymentsPanel token={token} passcode={passcode.trim()} defaultPayerName={name || session.recipient_name} onOpenFeeAgreement={(requestedDocumentId) => { setFocusedAgreementId(requestedDocumentId); setActiveTab("agreements"); }} /> : null}
       <footer className="application-room-footer"><span><Icon name="lock" size={14} />Encrypted in transit and at rest</span><span>Qualified Commercial</span></footer>
     </section>}
   </main>;

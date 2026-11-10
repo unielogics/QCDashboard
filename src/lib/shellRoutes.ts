@@ -41,6 +41,7 @@ export const BARE_ROUTE_PREFIXES = [
   "/dealer-ai-underwriter",
   "/funding-review",
   "/mca-refinance-intake",
+  "/mca-funding-intake",
   "/equipment-financing-intake",
   "/buckets/request",
   "/lender-submissions",
