@@ -16,11 +16,13 @@ import type {
 } from "@/lib/applicationProfile";
 import { useActiveProfile } from "@/store/role";
 import { STRUCTURE_LABELS, normalizeRepaymentConfig, defaultStructure, describeSchedule, riskProfile, type LoanStructure, type RepaymentConfig } from "@/lib/loanSchedule";
-import { applyWorkingLoan, clientDraftLoanFields, loanFromClientDraft, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
+import { sameWorkingLoan, applyWorkingLoan, clientDraftLoanFields, loanFromClientDraft, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
+import { dealBudgetPlan } from "@/lib/dealBudgetPlan";
+import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview, repaymentConfigLabel, termsCadenceForPeriods } from "@/lib/repaymentConfig";
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
@@ -255,6 +257,8 @@ export function ApplicationClientTermsPanel({
   workingDraft,
   onWorkingDraftChange,
   onApplyLoan,
+  onUpdateLoan,
+  onFinancingSaved,
   onPending,
   canEdit = true,
   scenarioPaymentOnly = false,
@@ -277,6 +281,8 @@ export function ApplicationClientTermsPanel({
   workingDraft?: ClientTermsWorkingDraft | null;
   onWorkingDraftChange?: (draft: ClientTermsWorkingDraft) => void;
   onApplyLoan?: (loan: SyncedLoan) => void;
+  onUpdateLoan?: (loan: SyncedLoan) => void;
+  onFinancingSaved?: (plan: FinancialPlanRead) => void;
   onPending?: (pending: boolean) => void;
   canEdit?: boolean;
   scenarioPaymentOnly?: boolean;
@@ -297,6 +303,7 @@ export function ApplicationClientTermsPanel({
   const sourceFingerprint = JSON.stringify({ loan: prefillLoan ?? null, refinance: refinanceContext ?? null });
   const sourceFingerprintRef = useRef(sourceFingerprint);
   const editorEditedRef = useRef(false);
+  const ownLoanUpdate = useRef<SyncedLoan | null>(null);
   const onWorkingDraftRef = useRef(onWorkingDraftChange);
   onWorkingDraftRef.current = onWorkingDraftChange;
   const [sourceConflict, setSourceConflict] = useState(false);
@@ -362,7 +369,9 @@ export function ApplicationClientTermsPanel({
         remember(saved);
       }
       if (sourceFingerprint !== sourceFingerprintRef.current) {
-        if (editorEditedRef.current) setSourceConflict(true);
+        if (ownLoanUpdate.current && sameWorkingLoan(ownLoanUpdate.current, prefillLoan ?? null)) {
+          ownLoanUpdate.current = null; sourceFingerprintRef.current = sourceFingerprint; setSourceConflict(false); remember(draftRef.current);
+        } else if (editorEditedRef.current) setSourceConflict(true);
         else {
           const next = draftWithScenarioLoan(draftRef.current, prefillLoan, refinanceContext);
           sourceFingerprintRef.current = sourceFingerprint;
@@ -379,7 +388,11 @@ export function ApplicationClientTermsPanel({
   const preview = useMemo(() => paymentPreview(draft), [draft]);
   const scenarioCoverage = previewScenario?.(loanFromClientDraft(draft), { treatment: draft.debt_service_treatment, retainedAnnualService: finite(draft.retained_annual_debt_service) });
   const coveragePreview = useMemo(() => clientTermsCoveragePreview(query.data?.calculation, draft.debt_service_treatment, finite(draft.retained_annual_debt_service), preview?.annual ?? null), [draft.debt_service_treatment, draft.retained_annual_debt_service, preview, query.data?.calculation]);
-  const afterDscr = previewScenario ? scenarioCoverage?.after ?? null : coveragePreview.value;
+  const editorLoan = { amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] };
+  const editorPlan = dealBudgetPlan(financialPlanDraft ?? dealBudget.data?.financial_plan, editorLoan);
+  const costPreview = useDealBudgetPreview(profileId, { loan: editorLoan, financialPlan: editorPlan });
+  const costEvaluation = costPreview.data?.financial_plan_evaluation;
+  const afterDscr = costPreview.pending || costPreview.isError ? null : costEvaluation ? costEvaluation.headline_after : previewScenario ? scenarioCoverage?.after ?? null : coveragePreview.value;
   const riskExistingAnnual = previewScenario ? scenarioCoverage?.existingAnnual ?? null : coveragePreview.existingAnnual;
   const riskIncomeAnnual = previewScenario ? scenarioCoverage?.incomeAnnual ?? null : query.data?.calculation.cash_flow_value ?? null;
 
@@ -654,7 +667,7 @@ export function ApplicationClientTermsPanel({
           <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || save.isPending} compact title="Collateral included when saving these terms" />
     </div>
     <div className={scheduleStyles.tabBody} id={`${viewId}-budget-panel`} role="tabpanel" aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
-          <DealBudgetSection inline onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
+          <DealBudgetSection inline financialPlan={editorPlan} onGrossAmountChange={amount => replaceDraft({ ...draftRef.current, amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={amount => { const next = { ...draftRef.current, amount: String(amount) }; replaceDraft(next); const loan = loanFromClientDraft(next); ownLoanUpdate.current = onUpdateLoan && !sameWorkingLoan(loan, prefillLoan ?? null) ? loan : null; onUpdateLoan?.(loan); }} onFinancingSaved={result => { const amount = result.record.new_loan_amount; if (amount != null) { const next = { ...draftRef.current, amount: String(amount) }; replaceDraft(next); const nextLoan = loanFromClientDraft(next); ownLoanUpdate.current = onFinancingSaved && !sameWorkingLoan(nextLoan, prefillLoan ?? null) ? nextLoan : null; } onFinancingSaved?.(result); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
     </div>
     <div className={scheduleStyles.tabBody} id={`${viewId}-schedule-panel`} role="tabpanel" aria-labelledby={`${viewId}-schedule-tab`} hidden={view !== "schedule"}>
       {preview && !repaymentIssue ? <><CoverageFundingGap value={scenarioCoverage?.coverageReview} basis={scenarioCoverage?.basis ?? "Selected earnings"} /><LoanScheduleReview schedule={preview.schedule} incomeMonthly={riskIncomeAnnual == null ? null : riskIncomeAnnual / 12} existingServiceMonthly={riskExistingAnnual == null ? null : riskExistingAnnual / 12} incomeCurrencyComparable={scenarioCoverage?.incomeCurrencyComparable === true} earningsBasis={scenarioCoverage?.basis ?? terms.calculation.source} /></> : <Callout tone="warn">{repaymentIssue ?? "Enter the principal, APR, maturity and repayment details in Loan terms to calculate the amortization schedule."}</Callout>}

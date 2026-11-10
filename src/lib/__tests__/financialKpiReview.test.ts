@@ -109,4 +109,38 @@ describe("financial KPI evidence and offer illustrations", () => {
     expect(entry.currentValue).toBe(65000);
     expect(cockpit.ebitda!.headline!.value).toBe(60000);
   });
+  it("uses the matching server's solved loan, fee-inclusive coverage and cost-adjusted earnings once", () => {
+    const { cockpit, options } = setup();
+    cockpit.noi = { headline: { key: "noi", annualized_value: 30000, currency: "USD", source_refs: [], input_keys: [] }, definition: {} } as unknown as FinancialCockpit["noi"];
+    const budgetEvaluation = { headline_after: 2.2, income_after_annual: 118000, debt_service_after_annual: 53636.36, debt_service_after_monthly: 4469.7, new_payment_monthly: 2240, no_debt_left: false,
+      loan_terms: { amount: 24000, rate_pct: 12, term_months: 12, structure: "simple_interest", payments_per_year: 12 }, annual_new_operating_expenses: 2000,
+      ebitda: { annual_after: 58000, adjusted_annual: { after: 58000 } }, noi_scenario: { current: 30000, plan: 28000 },
+      financing_budget_calculation: { borrower_fee_cash_flows: [{month: 1, amount: 1000}], borrower_operating_expense_cash_flows: [{month: 1, amount: 200}] } } as unknown as NonNullable<FinancialKpiOptions["budgetEvaluation"]>;
+    const entries = metricEntries(cockpit, { ...options, budgetEvaluation });
+    expect(entries.find(row => row.key === "dscr")?.projection.value).toBe(2.2);
+    expect(entries.find(row => row.key === "ebitda")?.projection.value).toBe(58000);
+    expect(entries.find(row => row.key === "noi")?.projection.value).toBe(28000);
+    expect(entries.find(row => row.key === "cash_flow")?.projection.value).toBe(2660);
+    expect(entries.find(row => row.key === "net_profit")?.projection.value).toBe(35920);
+    expect(cockpit.ebitda?.headline?.annualized_value).toBe(60000);
+    expect(cockpit.noi?.headline?.annualized_value).toBe(30000);
+  });
+  it("withholds old scenario results immediately while a changed budget is calculating", () => {
+    const { cockpit, options } = setup();
+    const entries = metricEntries(cockpit, { ...options, budgetPending: true });
+    for (const key of ["dscr", "ebitda", "noi", "cash_flow", "average_balance", "net_profit"]) {
+      expect(entries.find(row => row.key === key)?.projection.value).toBeNull();
+      expect(entries.find(row => row.key === key)?.projection.formula).toContain("Calculating current");
+    }
+    expect(entries.find(row => row.key === "deposits")?.currentValue).toBe(10000);
+  });
+
+  it("keeps unknown recurring charges and explicit unknown NOI projections unavailable", () => {
+    const { cockpit, options } = setup();
+    cockpit.noi = { headline: { key: "noi", annualized_value: 30000, currency: "USD", source_refs: [], input_keys: [] }, definition: {} } as unknown as FinancialCockpit["noi"];
+    const budgetEvaluation = { annual_new_financing_fees: null, annual_new_operating_expenses: null, noi_scenario: { current: 30000, plan: null } } as unknown as NonNullable<FinancialKpiOptions["budgetEvaluation"]>;
+    const entries = metricEntries(cockpit, { ...options, budgetEvaluation });
+    for (const key of ["cash_flow", "average_balance", "net_profit", "noi"]) expect(entries.find(row => row.key === key)?.projection.value).toBeNull();
+  });
+
 });

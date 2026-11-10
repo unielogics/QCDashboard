@@ -23,6 +23,9 @@ import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaym
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
+import { dealBudgetPlan } from "@/lib/dealBudgetPlan";
+import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
+import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { Drawer } from "@/components/ds/Drawer";
 import workspaceStyles from "@/components/application/LoanScheduleReview.module.css";
@@ -341,13 +344,14 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
   };
 }
 
-export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved }: {
+export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved, financialPlanDraft }: {
   client: PackageClient;
   profileId: string;
   open: boolean;
   onClose: () => void;
   pkg?: ProductionPackage | null;
   onSaved?: (result: TermSheetResult) => void;
+  financialPlanDraft?: FinancialPlanWrite;
 }) {
   const collateral = useTermsCollateral(profileId);
   const dealBudget = useDealBudget(profileId);
@@ -412,7 +416,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const current = loadedProfileId === profileId ? state?.current ?? null : null;
   const versionConflict = Boolean(loadedProfileId === profileId && state && draftBaseVersion !== (current?.version ?? 0));
   const dscrBefore = storedNumber(current?.dscr_before ?? current?.extra?.dscr_before);
-  const dscrAfter = storedNumber(current?.dscr_after ?? current?.extra?.dscr_after);
+  const recordedDscrAfter = storedNumber(current?.dscr_after ?? current?.extra?.dscr_after);
   const dscrStatus = current?.dscr_status ?? current?.extra?.dscr_status;
   const dscrExplanation = current?.dscr_explanation ?? current?.extra?.dscr_explanation;
   const canEdit = Boolean(loadedProfileId === profileId && state?.can_edit);
@@ -439,6 +443,9 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     floorPct: maybeNumber(form.rate_floor_pct),
     capPct: maybeNumber(form.rate_cap_pct),
   }) : 0;
+  const editorLoan = loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null;
+  const editorPlan = dealBudgetPlan(financialPlanDraft ?? dealBudget.data?.financial_plan, editorLoan);
+  const costPreview = useDealBudgetPreview(profileId, { enabled: open && loadedProfileId === profileId, loan: editorLoan, financialPlan: editorPlan });
   const summary = useMemo(() => form ? computePaymentSummary({
     amount: approved,
     termMonths: toNumber(form.term_months),
@@ -709,7 +716,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
           {current ? (
             <div className={`pp-ts-dscr${dscrStatus === "ready" ? " ready" : ""}`}>
               <div><span>DSCR before</span><b>{dscrBefore == null ? "—" : `${dscrBefore.toFixed(2)}×`}</b></div>
-              <div><span>DSCR with these terms</span><b>{dscrAfter == null ? "—" : `${dscrAfter.toFixed(2)}×`}</b></div>
+              <div><span>DSCR with these terms</span><b>{costPreview.pending || costPreview.isError ? "Calculating…" : costPreview.data?.financial_plan_evaluation ? costPreview.data.financial_plan_evaluation.headline_after?.toFixed(2) ?? "—" : recordedDscrAfter == null ? "—" : `${recordedDscrAfter.toFixed(2)}×`}</b></div>
               <p>{typeof dscrExplanation === "string" && dscrExplanation ? dscrExplanation : "Add the required cash-flow and existing-debt evidence to calculate before-and-after DSCR."}</p>
             </div>
           ) : null}
@@ -925,7 +932,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
         <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} title="Collateral for these terms" />
       </div>
       <div role="tabpanel" id={`${viewId}-budget-panel`} aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
-        <DealBudgetSection inline onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
+        <DealBudgetSection inline financialPlan={editorPlan} onGrossAmountChange={amount => upd({ approved_amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={amount => upd({ approved_amount: String(amount) })} onFinancingSaved={result => { if (result.record.new_loan_amount != null) upd({ approved_amount: String(result.record.new_loan_amount) }); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
       </div>
       {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">Save collateral and budget edits first, then record a terms version with both snapshots.</span></div> : null}
       {view !== "terms" && errors.length ? <ul className="pp-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
