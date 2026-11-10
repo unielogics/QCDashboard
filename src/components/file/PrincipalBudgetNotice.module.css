@@ -1,0 +1,9 @@
+.notice { margin: 16px 22px; min-width: 0; }
+.body { display: grid; gap: 10px; min-width: 0; }
+.body p { margin: 0; }
+.figures { display: flex; flex-wrap: wrap; gap: 12px 30px; }
+.figures div { display: grid; gap: 3px; min-width: 0; }
+.figures small { color: var(--mut); }
+.figures strong { overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 600px) { .notice { margin: 12px; } .figures { gap: 10px 20px; } }
