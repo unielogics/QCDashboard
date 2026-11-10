@@ -20,6 +20,8 @@ import { applyWorkingLoan, clientDraftLoanFields, loanFromClientDraft, type Loan
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
+import { useDealBudget } from "@/hooks/useDealBudget";
+import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { applyAmortizationMonths, copyRepaymentConfig, repaymentPreview, repaymentConfigLabel, termsCadenceForPeriods } from "@/lib/repaymentConfig";
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
@@ -284,6 +286,7 @@ export function ApplicationClientTermsPanel({
 }) {
   const api = useAuthedApi();
   const collateral = useTermsCollateral(profileId);
+  const dealBudget = useDealBudget(profileId);
   const queryClient = useQueryClient();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = visualQaUser(useActiveProfile().email);
@@ -378,7 +381,8 @@ export function ApplicationClientTermsPanel({
   const riskIncomeAnnual = previewScenario ? scenarioCoverage?.incomeAnnual ?? null : query.data?.calculation.cash_flow_value ?? null;
 
   const collateralChanged = Boolean(query.data?.version && collateral.data?.revision != null && collateral.data.revision !== query.data.collateral_revision);
-  const dirty = savedFingerprint !== JSON.stringify(draft) || collateralChanged;
+  const budgetChanged = Boolean(query.data?.version && dealBudget.data?.revision != null && dealBudget.data.revision !== query.data.deal_budget_revision);
+  const dirty = savedFingerprint !== JSON.stringify(draft) || collateralChanged || budgetChanged;
   const offerSelection = useMemo<OfferSelection | null>(() => {
     const terms = query.data;
     if (!terms?.term_sheet_id || !terms.version || dirty || sourceConflict) return null;
@@ -399,6 +403,7 @@ export function ApplicationClientTermsPanel({
     mutationFn: async (submitted: { draft: Draft; version: number; plan?: FinancialPlanWrite }) => {
       const payload = payloadFromDraft(submitted.draft, submitted.version);
       payload.expected_collateral_revision = await collateral.verifyRevision();
+      payload.expected_deal_budget_revision = await dealBudget.verifyRevision();
       if (submitted.plan) payload.financial_plan = { ...applyWorkingLoan(submitted.plan, loanFromClientDraft(submitted.draft)), expected_updated_at: submitted.plan.expected_updated_at ?? null };
       return api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`, { method: "PUT", body: JSON.stringify(payload) });
     },
@@ -560,6 +565,7 @@ export function ApplicationClientTermsPanel({
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {notice ? <Callout tone="ok">{notice}</Callout> : null}
     {collateralChanged ? <Callout tone="warn">The file’s collateral differs from saved terms v{terms.version}. Review the current properties and assets below. Save a new terms version to include the current collateral in its PDF.</Callout> : null}
+    {budgetChanged ? <Callout tone="warn">The financing budget differs from saved terms v{terms.version}. Review the current funding and cost rows, then save a new version to include them in its PDF.</Callout> : null}
     {collateral.isError ? <Callout tone="bad">Collateral could not be loaded. Reload the current collateral before saving terms.</Callout> : null}
     {sourceConflict ? <Callout tone="warn"><div className="grid g8"><span>The scenario loan changed after this editor draft was kept. Your pending editor fields are preserved. Choose which loan to continue editing.</span><Row><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(true)}>Use current scenario loan</Btn><Btn size="sm" disabled={!canEdit || save.isPending} onClick={() => resolveScenarioSource(false)}>Keep editor loan</Btn></Row></div></Callout> : null}
     {onApplyLoan ? <p className="sub">Loan edits stay in this editor until you Apply loan to scenario or Save new version. Closing keeps this editor draft; it does not issue or send terms.</p> : null}
@@ -592,6 +598,7 @@ export function ApplicationClientTermsPanel({
           </div>
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={draft.repayment_config} onChange={(config) => patch("repayment_config", config)} amount={finite(draft.amount)} ratePct={finite(draft.apr_pct)} termMonths={finite(draft.term_months)} structure={draft.loan_structure || defaultStructure(finite(draft.term_months))} interestOnlyMonths={finite(draft.interest_only_months)} periodsPerYear={draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) ?? 0 : PERIODS[draft.repayment_frequency]} />
           <FileCollateralSection profileId={profileId} disabled={!canEdit || save.isPending} compact title="Collateral included when saving these terms" />
+          <DealBudgetSection profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
         </section>
         <section className="terms-form-section">
           <div className="terms-section-title"><span>3</span><div><b>Timing and presentation</b><small>Set validity, closing expectation, and co-branding.</small></div></div>

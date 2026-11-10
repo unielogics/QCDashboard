@@ -21,6 +21,8 @@ import { repaymentPreview, copyRepaymentConfig } from "@/lib/repaymentConfig";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
+import { useDealBudget } from "@/hooks/useDealBudget";
+import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { Drawer } from "@/components/ds/Drawer";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
@@ -346,6 +348,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   onSaved?: (result: TermSheetResult) => void;
 }) {
   const collateral = useTermsCollateral(profileId);
+  const dealBudget = useDealBudget(profileId);
   const [state, setState] = useState<TermSheetState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -516,7 +519,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     setBusy("save"); setErrors([]); setDone(null);
     try {
       const expectedCollateralRevision = await collateral.verifyRevision();
-      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: current?.version ?? 0, expected_collateral_revision: expectedCollateralRevision });
+      const expectedBudgetRevision = await dealBudget.verifyRevision();
+      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: current?.version ?? 0, expected_collateral_revision: expectedCollateralRevision, expected_deal_budget_revision: expectedBudgetRevision });
       setState(result.state);
       setForm(formFrom(result.state.current, result.state.defaults));
       const version = result.state.current?.version;
@@ -649,6 +653,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
           </p>
           {current && collateral.data?.revision != null && storedNumber(current.extra?.collateral_revision) !== collateral.data.revision ? <Callout tone="warn">The current collateral differs from this saved term sheet. Review its properties and assets, then record a new version to include them in the terms PDF.</Callout> : null}
           <FileCollateralSection profileId={profileId} disabled={!canEdit || Boolean(busy)} compact title="Collateral for these terms" />
+          <DealBudgetSection profileId={profileId} disabled={!canEdit || Boolean(busy)} />
+          {current && dealBudget.data?.revision != null && storedNumber(current.extra?.deal_budget_revision) !== dealBudget.data.revision ? <Callout tone="warn">The funding or cost budget has changed. The existing terms PDF retains its recorded budget; record a new terms version after reviewing the current costs.</Callout> : null}
           {current ? (
             <div className="pp-row">
               <PChip tone="ok">Current · v{current.version}</PChip>

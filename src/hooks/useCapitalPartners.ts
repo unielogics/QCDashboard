@@ -55,6 +55,17 @@ export interface CpListingProduct {
   term_months: number | null; interest_only?: boolean; structure?: "amortizing" | "simple_interest" | "interest_only" | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_frequency: "monthly" | "weekly" | "biweekly" | "daily" | "custom" | null; monthly_payment: number | string | null; dscr: number | string | null;
   notes: string | null; primary: boolean;
 }
+export type CpListingAiDraft = {
+  draft_id: string; status: "ai_draft" | "file_prefill"; profile_id: string | null; loan_id: string | null;
+  existing_listing?: CpListingRef | null; source_fingerprint: string; deal_budget_revision: number;
+  draft: { name: string; summary: string; loan_amount: string | number | null; offered_amount: string | number | null; minimum_investment: string | number | null; program_label: string | null; city: string | null; state: string | null };
+  field_provenance: Array<{ field: string; source: string; explanation: string }>;
+  missing: string[]; warnings: string[]; preserved_fields: string[];
+};
+export function useCpListingAiDraft() {
+  const api = useAuthedApi();
+  return useMutation({ mutationFn: (body: { profile_id?: string; loan_id?: string; intake_id?: string; listing_id?: string; expected_deal_budget_revision?: number; current_title?: string; current_summary?: string; preserve_title?: boolean; preserve_summary?: boolean }) => api<CpListingAiDraft>("/capital/admin/listings/ai-draft", { method: "POST", body: JSON.stringify(body) }) });
+}
 export interface CpOfferSuggestion {
   coverage_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; repayment_payment_monthly?: number | null; maturity_balance?: number | null;
   program_key: string | null; label: string; eligible: boolean | null; amount: number | null; rate_pct: number | null; factor_rate: number | null; term_months: number;
@@ -109,6 +120,7 @@ export interface CpListing extends CpListingCard {
   updated_at: string; investor_count: number; subscriptions: CpSubscription[]; participations: CpParticipation[]; events: CpListingEvent[]; publish_blockers: string[];
 }
 export type CpListingPatch = Partial<{
+  expected_deal_budget_revision: number; ai_draft_id: string; expected_source_fingerprint: string;
   source_kind: "loan" | "profile" | "manual"; loan_id: string | null; profile_id: string | null; vertical: CpVertical; program_label: string; name: string;
   summary: string | null; city: string | null; state: string | null; collateral_type: string | null; lien_position: "first" | "second"; note_rate_pct: string | null;
   term_months: number | null; ltv_pct: string | null; ltv_kind: "ltv" | "ltc" | "cltv"; loan_amount: string | null; offered_amount: string | null;

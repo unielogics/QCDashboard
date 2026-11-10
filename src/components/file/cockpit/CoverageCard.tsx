@@ -12,6 +12,7 @@ import { coverageCurrencyComparable, coverageReview } from "@/lib/coverageReview
 import { loanScheduleRows } from "@/lib/loanScheduleView";
 import { parseIncomeOverride } from "@/lib/incomeOverrideInput";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
+import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
@@ -30,7 +31,7 @@ import type { DebtScheduleEditorTarget } from "@/components/application/DebtSche
 import { Btn, CellChip, IconBtn, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
-import { useSaveFinancialPlan, useSaveFileEconomics } from "@/hooks/useApi";
+import { useSaveFinancialPlan } from "@/hooks/useApi";
 import { evaluatePlanLocally, isExcludedDscrAddBack } from "@/lib/cockpitSimulation";
 import { balanceSheetIsEmpty, profitAndLossIsEmpty } from "@/lib/financialStatementRequests";
 import {
@@ -72,7 +73,7 @@ import { ObligationPlanRow } from "./ObligationRowEditor";
 import { BankReplayNotice } from "./BankReplayNotice";
 import { RefinanceSelectionSummary } from "./RefinanceSelectionSummary";
 import { refinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
-import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, effectiveRatePct, riskProfile } from "@/lib/loanSchedule";
+import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, riskProfile } from "@/lib/loanSchedule";
 
 const EXCLUDABLE: PayeeKind[] = ["transfer", "owner_draw"];
 const meterTone = (status: Parameters<typeof dscrTone>[0]): "ok" | "warn" | "bad" | "mut" => {
@@ -261,31 +262,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   }
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
-  const economics = cockpit.plan?.economics ?? null;
-  // The fees are set against the loan in the plan; with no loan in the plan, against the recorded terms
-  // (the term sheet or the client terms), which is what the package and the offering print.
-  const proposedTerms = cockpit.proposed_terms ?? null;
-  const proposedSchedule = useMemo(() => (proposedTerms?.amount && proposedTerms.rate_pct != null ? repaymentPreview(proposedTerms.amount, proposedTerms.rate_pct, proposedTerms.term_months, { structure: proposedTerms.structure ?? null, interestOnlyMonths: proposedTerms.interest_only_months ?? 0, periodsPerYear: proposedTerms.payments_per_year ?? 12, repaymentConfig: proposedTerms.repayment_config }).schedule : null), [proposedTerms]);
-  const economicsSchedule = local.schedule ?? proposedSchedule;
-  const economicsBasis = local.schedule ? "the loan in the plan" : proposedTerms?.label ? `the recorded terms (${proposedTerms.label})` : "the recorded terms";
-  const saveEconomics = useSaveFileEconomics(profileId);
-  const [feeDraft, setFeeDraft] = useState<{ points: string; consulting: string }>({ points: "", consulting: "" });
-  const [feeDraftKey, setFeeDraftKey] = useState("");
-  const economicsKey = `${economics?.origination_points ?? ""}|${economics?.consulting_fee ?? ""}`;
-  if (economicsKey !== feeDraftKey) {
-    setFeeDraftKey(economicsKey);
-    setFeeDraft({ points: economics?.origination_points == null ? "" : String(economics.origination_points), consulting: economics?.consulting_fee == null ? "" : String(economics.consulting_fee) });
-  }
-  const feeDirty = feeDraft.points !== (economics?.origination_points == null ? "" : String(economics.origination_points)) || feeDraft.consulting !== (economics?.consulting_fee == null ? "" : String(economics.consulting_fee));
-  const feePoints = feeDraft.points.trim() === "" ? null : Number(feeDraft.points);
-  const feeConsulting = feeDraft.consulting.trim() === "" ? null : Number(feeDraft.consulting);
-  const feeValid = (feePoints == null || (Number.isFinite(feePoints) && feePoints >= 0 && feePoints <= 100)) && (feeConsulting == null || (Number.isFinite(feeConsulting) && feeConsulting >= 0));
-  // The strip prices on what is typed, so the true cost moves as the fee is set, before the save.
-  const liveFees = (feeValid ? ((feePoints ?? 0) / 100) * (economics?.accepted_amount ?? economicsSchedule?.amount ?? 0) + (feeConsulting ?? 0) : null);
   const risk = useMemo(() => riskProfile(local.schedule, local.incomeAfter == null ? null : local.incomeAfter / 12, local.serviceBeforeNewPayment, incomeCurrencyComparable), [local.schedule, local.incomeAfter, local.serviceBeforeNewPayment, incomeCurrencyComparable]);
-  const structureRate = useMemo(() => (economicsSchedule ? effectiveRatePct(economicsSchedule.amount, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule]);
-  const totalFees = liveFees ?? economics?.total_fees ?? 0;
-  const effectiveRate = useMemo(() => (economicsSchedule && economics ? effectiveRatePct(economicsSchedule.amount - totalFees, economicsSchedule.rows.map((r) => r.payment), economicsSchedule.balloon, economicsSchedule.periods_per_year) : null), [economicsSchedule, economics, totalFees]);
   const headlineKey = headline?.key ?? candidates[0]?.key ?? null;
   const headlineConfidence = headline?.confidence ?? candidates[0]?.confidence ?? null;
   const afterStatus = local.noDebtLeft ? "very_strong" : local.headlineAfter == null ? "unavailable" : local.headlineAfter < 1 ? "concerning" : local.headlineAfter < 1.25 ? "acceptable" : local.headlineAfter < 1.5 ? "healthy" : "very_strong";
@@ -592,6 +569,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           </div>
           {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
           <FileCollateralSection profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
+          <DealBudgetSection profileId={profileId} disabled={!canEdit} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
@@ -736,37 +714,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             </div>
           }
         />
-      ) : null}
-
-      {economicsSchedule && economics ? (
-        <div className="fc-economics" aria-label="Deal economics, internal">
-          <div className="fc-economics-head">
-            <Lbl>What the money really costs, with QC&apos;s fees in · on {economicsBasis}</Lbl>
-            <CellChip tone="warn">Internal · desk and underwriters only · not in the package or the listing</CellChip>
-          </div>
-          <div className="fc-economics-grid">
-            <div><span className="sub">Loan</span><strong>{money(economicsSchedule.amount)}</strong></div>
-            <div><span className="sub">Origination{feePoints != null ? ` (${feePoints} pts${economics.accepted_amount == null ? ", on the proposed amount" : ""})` : ""}</span><strong>{feePoints != null && economicsSchedule.amount ? money((feePoints / 100) * (economics.accepted_amount ?? economicsSchedule.amount)) : "—"}</strong></div>
-            <div><span className="sub">Consulting fee</span><strong>{feeConsulting != null ? money(feeConsulting) : "—"}</strong></div>
-            <div><span className="sub">Fees, % of the loan</span><strong>{economicsSchedule.amount ? `${(Math.round((totalFees / economicsSchedule.amount) * 1000) / 10).toFixed(1)}%` : "—"}</strong></div>
-            <div><span className="sub">Net to the client</span><strong>{money(economicsSchedule.amount - totalFees)}</strong></div>
-            <div><span className="sub">Interest over the term</span><strong>{money(economicsSchedule.total_interest)}</strong></div>
-            <div><span className="sub">Client&apos;s total cost</span><strong>{money(economicsSchedule.total_interest + totalFees)}</strong></div>
-            <div><span className="sub">Stated · structure · with fees</span><strong>{economicsSchedule.rate_pct}% · {structureRate != null ? `${structureRate}%` : "—"} · {effectiveRate != null ? `${effectiveRate}%` : "—"}</strong></div>
-          </div>
-          <div className="fc-economics-bar" role="img" aria-label={`Of ${money(economicsSchedule.amount)}, ${money(totalFees)} in fees and ${money(economicsSchedule.amount - totalFees)} to the client`}>
-            <span className="fees" style={{ width: `${Math.min(100, (totalFees / Math.max(1, economicsSchedule.amount)) * 100)}%` }} />
-          </div>
-          <p className="sub">{totalFees ? `${money(totalFees)} comes off the proceeds at funding, so the client nets ${money(economicsSchedule.amount - totalFees)}; the rate that equates what the client receives with what the client pays back is ${effectiveRate != null ? `${effectiveRate}%` : "—"} against the stated ${economicsSchedule.rate_pct}%${structureRate != null && Math.abs(structureRate - economicsSchedule.rate_pct) > 0.5 ? ` (the structure itself costs ${structureRate}%: interest on the original principal)` : ""}.` : "No origination points or consulting fee yet: the client nets the full loan."}{!feeDirty && economics.qc_earnings != null ? ` QC earns ${money(economics.qc_earnings)}.` : ""}</p>
-          <div className="fc-economics-inputs">
-            <label className="grid g2"><span className="sub">Origination fee, % of the accepted amount</span><Input aria-label="Origination fee percentage" type="number" inputMode="decimal" min={0} max={100} step="any" placeholder="For example, 2.5" value={feeDraft.points} disabled={!canEdit} onChange={(e) => setFeeDraft((d) => ({ ...d, points: e.target.value }))} /></label>
-            <label className="grid g2"><span className="sub">Consulting fee, $</span><Input aria-label="Consulting fee" type="number" inputMode="decimal" min={0} step="any" placeholder="Fixed fee, blank for none" value={feeDraft.consulting} disabled={!canEdit} onChange={(e) => setFeeDraft((d) => ({ ...d, consulting: e.target.value }))} /></label>
-            <div className="actions">
-              <Btn variant="pri" size="sm" disabled={!canEdit || !feeDirty || !feeValid || saveEconomics.isPending} onClick={() => saveEconomics.mutate({ forecast_fee_points: feePoints, forecast_consulting_fee: feeConsulting }, { onSuccess: () => onEconomicsSaved?.() })}>{saveEconomics.isPending ? "Saving…" : "Save fees"}</Btn>
-              {saveEconomics.error ? <span className="sub">{errorMessage(saveEconomics.error, "The fees could not be saved.")}</span> : feeDirty ? <span className="sub">{feeValid ? "Unsaved: the Underwriting tab's offer acceptance and the fee allocation read these once saved." : "Points run 0 to 100; the fee is zero or more."}</span> : <span className="sub">Reflected under Offer accepted on the Underwriting tab and in the fee allocation.</span>}
-            </div>
-          </div>
-        </div>
       ) : null}
 
       <div className="grid g6">

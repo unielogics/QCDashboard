@@ -14,6 +14,7 @@ import type { UnderwritingDraft } from "./leadFile";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { FinancingProposalSummary } from "./FinancingProposalSummary";
 import { FileCollateralSection } from "./FileCollateralSection";
+import { DealBudgetSection } from "./DealBudgetSection";
 
 /** The loan terms saved on the Financials tab, as the Underwriting flow reads them. */
 export type TermsOnFile = {
@@ -55,7 +56,7 @@ function Step({ n, title, state, chip, sub, children, id }: { n: number; title: 
 
 /** Terms on file → offer sent → accepted → close: one flow, in the order the deal moves, every step reading
  *  the terms the Financials tab saved. The desk acts once per step; everything else is a reflection. */
-export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onEditFees, forecastEarnings, feeInfo, offer, loanId, onCreateFundingFile, canUnderwrite }: {
+export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onBudgetSaved, forecastEarnings, feeInfo, offer, loanId, onCreateFundingFile, canUnderwrite }: {
   profileId: string;
   terms: TermsOnFile | null;
   termsLoading: boolean;
@@ -74,6 +75,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
   onRecordAcceptance: (patch: ApplicationUnderwritingPatch) => void;
   onStatusChange: (status: UnderwritingLifecycleStatus) => void;
   onEditFees: () => void;
+  onBudgetSaved?: () => Promise<unknown> | void;
   forecastEarnings: number | null;
   feeInfo: { vertical?: "real_estate" | "main_street" | "dealer" | "mca"; capPercent?: number | null; reviewRequired?: boolean; reviewReason?: string | null; label?: string | null };
   offer: {
@@ -154,6 +156,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
       <Step n={1} id="uw-terms" title="Terms on file" state={states.terms} chip={terms ? (terms.status === "draft" ? `Draft v${terms.version}` : `v${terms.version} on file`) : "None yet"} sub="One loan shared with the coverage plan, including its repayment schedule and collateral.">
         <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
         <FileCollateralSection profileId={profileId} disabled={!canUnderwrite || saving} compact title="Collateral for this loan" />
+        <DealBudgetSection profileId={profileId} disabled={!canUnderwrite || saving} onSaved={onBudgetSaved} />
         {termsLoading ? <div className="empty">Reading the terms…</div> : terms ? (
           <div className="uw-terms">
             <div className="uw-terms-figures">
@@ -216,12 +219,12 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
           <div className="grid g2">
             <span className="sub">{feeInfo.label || "Origination fee"}{points != null ? ` · ${points}%` : ""}</span>
             <strong>{originationFee != null ? money(originationFee) : points != null ? `${points}% of the accepted amount` : "Not set"}</strong>
-            <button type="button" className="linklike" onClick={onEditFees}>Set on Financials</button>
+            <span className="sub">Proposed origination, consulting and other costs are maintained once in the shared deal budget above. Recorded acceptance remains separate.</span>
           </div>
           <div className="grid g2">
             <span className="sub">Consulting fee</span>
             <strong>{consulting != null ? money(consulting) : "None"}</strong>
-            <span className="sub">Expected QC earnings {forecastEarnings != null ? money(forecastEarnings) : "—"}</span>
+            <span className="sub">Accepted-basis origination and consulting projection {forecastEarnings != null ? money(forecastEarnings) : "—"}. Proposed platform and management revenue are shown in the budget.</span>
           </div>
         </div>
         {feeInfo.reviewRequired ? <Callout tone="bad">{feeInfo.reviewReason || `This fee requires review against the ${(feeInfo.capPercent ?? 100).toFixed(2)}% file cap.`}</Callout> : null}

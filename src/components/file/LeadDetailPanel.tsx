@@ -52,7 +52,6 @@ import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection }
 import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
 import { LeadNotesPanel } from "@/components/broker/LeadNotesPanel";
 import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
-import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
 import { FinancialCockpit } from "@/components/file/cockpit/FinancialCockpit";
@@ -67,7 +66,7 @@ import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSh
 import { pipelineApprovalDraft, validatePipelineApprovalDraft, type PipelineApprovalDraft } from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
 import { creditStepProgress } from "@/lib/creditStepSync";
-import { calculateDealEarnings, parseDealEconomicsDraft } from "@/lib/dealEconomics";
+import { calculateDealEarnings } from "@/lib/dealEconomics";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, PackageGenerationOptions, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
 
@@ -789,15 +788,6 @@ export function LeadDetailPanel({
     underwriting?.forecast_consulting_fee,
   );
   const dealEconomicsVertical = programVerticalForVariant(detail?.intake.variant);
-  const dealEconomicsFeeCap = dealEconomicsVertical === "mca" ? 3 : underwriting?.qc_fee_cap_percent ?? 100;
-  const draftEconomics = parseDealEconomicsDraft(
-    {
-      acceptedAmount: underwritingDraft.accepted_amount,
-      originationFeePoints: underwritingDraft.forecast_fee_points,
-      consultingFee: underwritingDraft.forecast_consulting_fee,
-    },
-    { maxOriginationFeePoints: dealEconomicsFeeCap },
-  );
   const evidence = asRecord(result?.document_evidence_map);
   const missing = arrayOfRecords(result?.missing_or_incomplete_items);
   const canonicalMissingDocuments = useMemo(
@@ -1220,9 +1210,7 @@ export function LeadDetailPanel({
       underwriting_status: underwritingDraft.underwriting_status,
       target_dscr: numberOrNull(underwritingDraft.target_dscr),
       reviewer_notes: underwritingDraft.reviewer_notes.trim() || null,
-      forecast_fee_points: numberOrNull(underwritingDraft.forecast_fee_points),
       accepted_amount: numberOrNull(underwritingDraft.accepted_amount),
-      forecast_consulting_fee: numberOrNull(underwritingDraft.forecast_consulting_fee),
       estimated_close_date: underwritingDraft.estimated_close_date || null,
       funded_amount: numberOrNull(underwritingDraft.funded_amount),
     };
@@ -1233,24 +1221,9 @@ export function LeadDetailPanel({
     void saveUnderwritingPatch(patch);
   }
 
-  function saveDealEconomics() {
-    if (!draftEconomics.valid) {
-      setUnderwritingError("Correct the highlighted deal economics fields before saving.");
-      return;
-    }
-    void saveUnderwritingPatch({
-      accepted_amount: draftEconomics.acceptedAmount,
-      forecast_fee_points: draftEconomics.originationFeePoints,
-      forecast_consulting_fee: draftEconomics.consultingFee,
-      estimated_close_date: underwritingDraft.estimated_close_date || null,
-    });
-  }
-
   function changeUnderwritingStatus(statusValue: UnderwritingLifecycleStatus) {
-    const forecastPatch: Pick<ApplicationUnderwritingPatch, "forecast_fee_points" | "accepted_amount" | "forecast_consulting_fee" | "estimated_close_date" | "funded_amount"> = {
-      forecast_fee_points: numberOrNull(underwritingDraft.forecast_fee_points),
+    const forecastPatch: Pick<ApplicationUnderwritingPatch, "accepted_amount" | "estimated_close_date" | "funded_amount"> = {
       accepted_amount: numberOrNull(underwritingDraft.accepted_amount),
-      forecast_consulting_fee: numberOrNull(underwritingDraft.forecast_consulting_fee),
       estimated_close_date: underwritingDraft.estimated_close_date || null,
       funded_amount: numberOrNull(underwritingDraft.funded_amount),
     };
@@ -2085,6 +2058,7 @@ export function LeadDetailPanel({
                       error={underwritingError}
                       onRecordAcceptance={(patch) => { void saveUnderwritingPatch(patch); }}
                       onStatusChange={changeUnderwritingStatus}
+                      onBudgetSaved={loadUnderwritingState}
                       onEditFees={() => setPrototypeView("financials")}
                       forecastEarnings={forecastEarnings}
                       feeInfo={{ vertical: dealEconomicsVertical, capPercent: underwriting?.qc_fee_cap_percent, reviewRequired: underwriting?.qc_fee_review_required, reviewReason: underwriting?.qc_fee_review_reason, label: underwriting?.fee_label }}
@@ -2222,7 +2196,7 @@ export function LeadDetailPanel({
                   <Line label="Accepted" value={underwriting?.accepted_amount == null ? "Not recorded" : formatMoney(underwriting.accepted_amount)} />
                   <Line label="Origination fee" value={underwriting?.forecast_fee_points == null ? "Not configured" : `${underwriting.forecast_fee_points.toFixed(2)}%`} />
                   <Line label="Consulting fee" value={underwriting?.forecast_consulting_fee == null ? "None" : formatMoney(underwriting.forecast_consulting_fee)} />
-                  <Line label="Expected earnings" value={formatMoney(forecastEarnings)} />
+                  <Line label="Accepted-basis fee projection" value={formatMoney(forecastEarnings)} />
                   <Line label="Estimated closing" value={underwriting?.estimated_close_date ? new Date(`${underwriting.estimated_close_date}T12:00:00`).toLocaleDateString() : "Not scheduled"} />
                   <Line label="Purpose" value={detail.intake.loan_purpose || "-"} />
                   <Line label="Credit" value={detail.intake.estimated_credit_score ? String(detail.intake.estimated_credit_score) : "-"} />
