@@ -14,6 +14,7 @@ import type { UnderwritingDraft } from "./leadFile";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { currentTermsDelivery, termsReferenceMatches, type OfferDelivery } from "@/lib/offerDeliveryState";
 import { FinancingProposalSummary } from "./FinancingProposalSummary";
+import { liveFinancingPreview } from "@/lib/liveFinancingPreview";
 
 /** The immutable terms saved by the same editor used in Financials. */
 export type TermsOnFile = {
@@ -67,9 +68,10 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
   const stips = useClosingStipulations(profileId, accepted);
   const openStips = stips.data?.open_count ?? null;
   const readyToClose = Boolean(stips.data?.ready_to_close);
+  const preview = liveFinancingPreview(financing, terms);
   const responseLabel = declined ? "Client declined" : currentAccepted ? "Accepted" : termsMoved ? "Review accepted version" : offerSent ? "Awaiting client response" : "Not delivered";
   const states: Record<StepKey, StepState> = {
-    terms: terms ? "done" : "current", offer: publication?.published ? "done" : terms ? "current" : "todo",
+    terms: financing?.dirty ? "warn" : terms ? "done" : "current", offer: publication?.published ? "done" : terms ? "current" : "todo",
     accepted: declined || termsMoved ? "warn" : currentAccepted ? "done" : offerSent ? "current" : "todo",
     close: closed ? "done" : currentAccepted ? "current" : "todo",
   };
@@ -84,7 +86,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
   const originationFee = underwriting?.accepted_amount != null && points != null ? underwriting.accepted_amount * points / 100 : null;
   const ref: AcceptedTermsRef | null = terms ? { kind: terms.kind, id: terms.id, version: terms.version, amount: terms.amount, rate_pct: terms.ratePct, term_months: terms.termMonths, label: terms.label } : null;
   const rail = [
-    { key: "terms", title: "Client terms", summary: terms ? `v${terms.version} · ${money(terms.amount)}${terms.ratePct != null ? ` · ${terms.ratePct}%` : ""}` : "Create the loan and preview" },
+    { key: "terms", title: "Client terms", summary: preview.working ? `${financing?.dirty ? "Working draft" : "Current plan"} · ${preview.pending ? "Calculating…" : preview.hasLoan ? money(preview.amount) : "No working loan"}` : terms ? `v${terms.version} · ${money(terms.amount)}${terms.ratePct != null ? ` · ${terms.ratePct}%` : ""}` : "Create the loan and preview" },
     { key: "offer", title: "Offer published", summary: publication?.label ?? "Prepare and share marketplace offer" },
     { key: "accepted", title: "Client response", summary: responseLabel },
     { key: "close", title: "Closing", summary: closed ? "Closed / funded" : currentAccepted ? (openStips == null ? "Review closing conditions" : readyToClose ? "Ready to close" : `${openStips} conditions open`) : "After client acceptance" },
@@ -99,18 +101,18 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
     </div>
     {error ? <Callout tone="bad">{error}</Callout> : null}
 
-    <Step n={1} step="terms" active={active} title="Client terms" state={states.terms} chip={terms ? `Saved v${terms.version}` : "Not started"} sub="Preview the saved offer, then open the full editor to adjust the loan, collateral and closing costs.">
+    <Step n={1} step="terms" active={active} title="Client terms" state={states.terms} chip={financing?.dirty ? "Working draft" : terms ? `Saved v${terms.version}` : "Not started"} sub="Preview the current loan, then open the full editor to adjust terms, collateral and closing costs.">
       {programSelection}
       <div className="uw-terms-layout">
         <div className="grid g12">
-          <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
+          <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} terms={terms} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
           <div className="uw-actions"><Btn variant="pri" onClick={onEditTerms} disabled={termsLoading || saving}><Icon name="maximize" size={14} />Open full terms</Btn><span className="sub">Loan terms · Amortization & risk · Collateral · Investment & costs</span></div>
-          {financing?.dirty ? <Callout tone="warn">The working loan has unsaved changes. The preview shows the last saved terms version. Open full terms to review the draft and save a new version.</Callout> : null}
+          {financing?.dirty ? <Callout tone="warn">The preview follows your working loan and fee calculations. Save a new terms version to record these changes.</Callout> : null}
           {termsActions ? <div className="uw-terms-actions">{termsActions}</div> : null}
         </div>
-        <button className="uw-terms-preview" type="button" onClick={onEditTerms} disabled={termsLoading || saving} aria-label={terms ? `Preview and edit client terms version ${terms.version}` : "Create client terms"}>
+        <button className="uw-terms-preview" type="button" onClick={onEditTerms} disabled={termsLoading || saving} aria-label={preview.working ? "Working financing preview" : terms ? `Preview and edit client terms version ${terms.version}` : "Create client terms"}>
           <div className="uw-preview-brand"><span className="qc-mini">QC</span><span><b>Qualified Commercial</b><small>Financing terms</small></span><Icon name="maximize" size={16} /></div>
-          <div className="uw-preview-content"><small>{termsLoading ? "Reading saved terms…" : terms ? `Saved terms · version ${terms.version}` : "Client-ready offer preview"}</small><strong>{terms ? money(terms.amount) : "Create client terms"}</strong><span>{terms?.label ?? "Structure the loan in the full editor"}</span><div className="uw-terms-figures"><div><small>Rate</small><b>{terms?.ratePct != null ? `${terms.ratePct}%` : "—"}</b></div><div><small>Maturity</small><b>{terms?.termMonths ? `${terms.termMonths} months` : "—"}</b></div><div><small>{terms?.paymentLabel ?? "Payment / month"}</small><b>{money(terms?.paymentAmount ?? terms?.paymentMonthly, 2)}</b></div><div><small>Coverage after</small><b>{ratio(terms?.coverageAfter)}</b></div></div><small>{terms?.structureLabel}{terms?.interestOnlyMonths ? ` · ${terms.interestOnlyMonths} interest-only months` : ""}{terms?.recordedAt ? ` · ${when(terms.recordedAt)}` : ""}</small><span className="uw-preview-edit"><Icon name="pencil" size={13} />Open to edit and view the full preview</span></div>
+          <div className="uw-preview-content"><small>{!preview.working && termsLoading ? "Reading saved terms…" : preview.label}</small><strong>{preview.pending ? "Calculating…" : preview.working ? preview.hasLoan ? money(preview.amount) : "No working loan" : terms ? money(preview.amount) : "Create client terms"}</strong><span>{preview.working ? "Shared financing plan" : terms?.label ?? "Structure the loan in the full editor"}</span><div className="uw-terms-figures"><div><small>Rate</small><b>{preview.ratePct != null ? `${preview.ratePct}%` : "—"}</b></div><div><small>Maturity</small><b>{preview.termMonths ? `${preview.termMonths} months` : "—"}</b></div><div><small>{preview.paymentLabel}</small><b>{preview.pending ? "Calculating…" : money(preview.paymentAmount, 2)}</b></div><div><small>Coverage after</small><b>{preview.pending ? "Calculating…" : ratio(preview.coverageAfter)}</b></div></div><small>{preview.structureLabel}{preview.interestOnlyMonths ? ` · ${preview.interestOnlyMonths} interest-only months` : ""}{!preview.working && terms?.recordedAt ? ` · ${when(terms.recordedAt)}` : ""}</small>{preview.working && terms ? <small aria-label="Saved terms reference">Saved terms v{terms.version} · {money(terms.amount)}. Delivery and acceptance remain linked to that version.</small> : null}<span className="uw-preview-edit"><Icon name="pencil" size={13} />Open to edit and view the full preview</span></div>
         </button>
       </div>
     </Step>
