@@ -8,15 +8,16 @@ import { draftForNoiSource, initialNoiReviewDraft, noiReviewDraftStale, noiRevie
 import type { FinancialCockpit } from "@/lib/financialCockpit";
 import styles from "./NoiReviewEditor.module.css";
 
-export function NoiReviewEditor({ profileId, review, draft: keptDraft, onDraft, canEdit, externallyBusy = false, onPending, onSaved, onReload, onPreviewSource }: {
+export function NoiReviewEditor({ profileId, review, currentSourceFileId, draft: keptDraft, onDraft, canEdit, externallyBusy = false, onPending, onSaved, onReload, onPreviewSource }: {
   profileId: string; review?: NoiReviewRead; draft: NoiReviewDraft | null; onDraft: (draft: NoiReviewDraft | null) => void;
+  currentSourceFileId?: string | null;
   canEdit: boolean; externallyBusy?: boolean; onPending: (pending: boolean) => void;
   onSaved: (next: FinancialCockpit) => Promise<unknown> | void; onReload: () => Promise<unknown> | void;
   onPreviewSource?: (source: MetricSourceRef) => void;
 }) {
   const api = useAuthedApi();
   const validationId = useId();
-  const seed = useMemo(() => review ? initialNoiReviewDraft(review, crypto.randomUUID()) : null, [review]);
+  const seed = useMemo(() => review ? initialNoiReviewDraft(review, crypto.randomUUID(), currentSourceFileId) : null, [currentSourceFileId, review]);
   const draft = keptDraft ?? seed;
   const [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -37,7 +38,9 @@ export function NoiReviewEditor({ profileId, review, draft: keptDraft, onDraft, 
   const chooseMode = (mode: NoiReviewMode) => {
     if (!draft || !review) return;
     const next = { ...draft, mode };
-    const candidate = review.sources.find((item) => item.file_id === draft.selectedFileId && item.eligible) ?? review.sources.find((item) => item.eligible);
+    const candidate = review.sources.find((item) => item.file_id === draft.selectedFileId && item.eligible)
+      ?? review.sources.find((item) => item.file_id === currentSourceFileId && item.eligible && item.automatic_eligible !== false)
+      ?? review.sources.find((item) => item.eligible && item.automatic_eligible !== false);
     change(mode === "source" && candidate ? draftForNoiSource(next, candidate) : next);
   };
   const chooseSource = (fileId: string) => {
@@ -72,8 +75,8 @@ export function NoiReviewEditor({ profileId, review, draft: keptDraft, onDraft, 
   return <section className={styles.editor} aria-label="Calculate or override NOI">
     <header className={styles.heading}><div><h3>Calculate / override NOI</h3><p>Review a business tax return or P&amp;L, or enter a documented annual NOI amount.</p></div><Btn size="sm" disabled={busy || externallyBusy} onClick={() => void onReload()}>Refresh NOI sources</Btn></header>
     {!review || !draft ? <Callout tone="warn">NOI review sources are not available yet. Refresh the sources to continue.</Callout> : <>
-      {review.current ? <div className={styles.saved}><strong>{review.stale ? "Previous NOI review · evidence changed" : "Saved NOI review"}</strong><span>{review.current.mode === "automatic" ? "Automatic source calculation" : `${metricAmountLabel(review.current.annual_value, review.current.currency)} annually · ${review.current.year ?? "Year unknown"}`}</span><small>{review.current.reason}</small></div> : null}
-      {review.stale ? <Callout tone="warn">Evidence changed since the saved NOI review. Review the current source and annual amount before saving again.</Callout> : null}
+      {review.current ? <div className={styles.saved}><strong>{review.stale ? "Previous NOI review · not current" : "Saved NOI review"}</strong><span>{review.current.mode === "automatic" ? "Automatic source calculation" : `${metricAmountLabel(review.current.annual_value, review.current.currency)} annually · ${review.current.year ?? "Year unknown"}`}</span><small>{review.current.reason}</small></div> : null}
+      {review.stale ? <Callout tone="warn">Relevant evidence changed since this NOI review. The previous amount is retained in history and is not the current NOI. Review the source and annual amount, then save a new review or restore automatic calculation.</Callout> : null}
       {error ? <Callout tone="warn"><span role="alert">{error}</span></Callout> : null}
       {notice ? <p role="status" className={styles.notice}>{notice}</p> : null}
       {stale || conflict ? <Callout tone="warn">Your entries are retained. Review the latest evidence, then acknowledge it before saving.<div className={styles.actions}><Btn size="sm" disabled={disabled} onClick={() => void onReload()}>Reload latest NOI evidence</Btn><Btn size="sm" disabled={disabled} onClick={() => { change({ revision: review.revision, sourceStamp: review.source_stamp }); setConflict(false); }}>Use latest evidence, keep entries</Btn></div></Callout> : null}
@@ -95,7 +98,7 @@ export function NoiReviewEditor({ profileId, review, draft: keptDraft, onDraft, 
       <label className={styles.reason}>NOI review reason<Textarea aria-label="NOI review reason" rows={3} maxLength={2000} value={draft.reason} disabled={disabled} onChange={(event) => change({ reason: event.target.value })} placeholder="Identify the source, calculation and any reviewed adjustments" /></label>
       {canEdit && issues.length ? <ul id={validationId} className={styles.validation} aria-label="NOI review requirements">{issues.map((issue) => <li key={issue}>{issue}</li>)}</ul> : null}
       {canEdit ? <div className={styles.actions}><Btn variant="pri" aria-describedby={issues.length ? validationId : undefined} disabled={disabled || stale || conflict || issues.length > 0} onClick={() => void save()}>{busy ? "Saving NOI…" : draft.mode === "automatic" ? "Restore automatic NOI" : "Save current NOI"}</Btn>{keptDraft ? <Btn disabled={busy || externallyBusy} onClick={() => { onDraft(null); setError(""); setNotice(""); setConflict(false); }}>Discard NOI edits</Btn> : null}</div> : <p className={styles.note}>This review is read only.</p>}
-      <p className={styles.note}>Saving updates current NOI and its loan illustration. Source documents, historical source periods, and EBITDA remain separately recorded.</p>
+      <p className={styles.note}>A saved source or manual review sets the current annual NOI until relevant evidence changes or you restore automatic calculation. Automatic calculation uses the latest supported business period, preferring P&amp;L within that period. A business tax return fallback remains provisional. Saving does not accept source documents or approve program criteria. EBITDA remains separately recorded.</p>
     </>}
   </section>;
 }

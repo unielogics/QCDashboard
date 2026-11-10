@@ -723,8 +723,9 @@ export function LeadDetailPanel({
   const [marketplacePublication, setMarketplacePublication] = useState<MarketplacePublicationState | null>(null);
   const [financingTermsRequest, setFinancingTermsRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const [financingCoverageRequest, setFinancingCoverageRequest] = useState<{ profileId: string; sequence: number } | null>(null);
+  const [noiReviewRequest, setNoiReviewRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const currentFinancing = workingFinancing?.profileId === profileId ? workingFinancing : null;
-  useEffect(() => { setFinancingTermsRequest(null); setFinancingCoverageRequest(null); }, [profileId]);
+  useEffect(() => { setFinancingTermsRequest(null); setFinancingCoverageRequest(null); setNoiReviewRequest(null); }, [profileId]);
   const requestSharedTerms = () => {
     if (isDealerFile) { openTermSheet(); return; }
     if (profileId) setFinancingTermsRequest((previous) => ({ profileId, sequence: previous?.profileId === profileId ? previous.sequence + 1 : 1 }));
@@ -1600,6 +1601,12 @@ export function LeadDetailPanel({
   }
 
   function openReviewDestination(destination: ReviewDestination) {
+    if (destination.kind === "noi") {
+      if (!canUnderwrite || !profileId) return;
+      setPrototypeView("financials");
+      setNoiReviewRequest((previous) => ({ profileId, sequence: previous?.profileId === profileId ? previous.sequence + 1 : 1 }));
+      return;
+    }
     if (destination.kind === "profile") {
       setContactEditOpen(true);
       return;
@@ -1973,7 +1980,7 @@ export function LeadDetailPanel({
                     <details className="ai-review-breakdown">
                       <summary>Full breakdown: capital readiness, intelligence and extracted facts</summary>
                       {profileId ? <CapitalReadinessPanel profileId={profileId} refreshKey={financingRefreshRevision} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
-                      <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
+                      <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} canReviewNoi={canUnderwrite} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
                       <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                     </details>
                   </section>
@@ -1987,6 +1994,7 @@ export function LeadDetailPanel({
                     profileId={profileId}
                     termsRequest={financingTermsRequest?.profileId === profileId ? financingTermsRequest.sequence : 0}
                     coverageRequest={financingCoverageRequest?.profileId === profileId ? financingCoverageRequest.sequence : 0}
+                    noiReviewRequest={noiReviewRequest?.profileId === profileId ? noiReviewRequest.sequence : 0}
                     onWorkingFinancingChange={setWorkingFinancing}
                     businessName={detail.intake.business_name || detail.intake.full_name}
                     canPublish={currentUser?.role === Role.SUPER_ADMIN}

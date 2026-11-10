@@ -49,7 +49,7 @@ describe("direct annual NOI review", () => {
     expect(html).toContain("Year 2025 (annual staff review)");
     expect(html).toContain("Source annual calculation before review");
     expect(html).toContain("Review reason: Reviewed the 2025");
-    expect(html).toContain("Automatic P&amp;L basis retained on file");
+    expect(html).toContain("Automatic source basis retained on file");
     expect(html).toContain("Tax estimate selected by staff");
     const history = renderToStaticMarkup(createElement(NoiReviewHistory, { review: value.review }));
     expect(history).toContain("$340,000");

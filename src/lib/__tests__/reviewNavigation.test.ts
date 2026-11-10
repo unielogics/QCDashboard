@@ -31,6 +31,7 @@ describe("AI review navigation", () => {
 
   it("routes known metrics to their exact action", () => {
     expect(intelligenceActionDestination("edit_profile")).toEqual({ kind: "profile" });
+    expect(intelligenceActionDestination("review_noi")).toEqual({ kind: "noi" });
     expect(intelligenceActionDestination("request_debt_schedule")).toEqual({ kind: "requirement", query: "business debt schedule debt payments" });
   });
 

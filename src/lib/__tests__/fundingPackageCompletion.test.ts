@@ -30,4 +30,13 @@ describe("report completion evidence gaps", () => {
       expect(fundingPackageEvidenceGaps(input).map(gap => gap.key)).toEqual(["ebitda"]);
     }
   });
+  it("uses canonical review status without repeatedly reopening an explicit reviewed basis", () => {
+    const input = { requested_amount: 100_000, noi: { status: "reviewed", review_needed: false, headline: { annualized_value: 0, complete: false, provisional: true } } } as unknown as Inputs;
+    expect(fundingPackageEvidenceGaps(input).map(gap => gap.key)).toEqual(["ebitda"]);
+    input.noi!.status = "stale";
+    input.noi!.review_needed = true;
+    input.noi!.status_reason = "The selected tax return version changed.";
+    input.noi!.headline = null;
+    expect(fundingPackageEvidenceGaps(input).find(gap => gap.key === "noi")).toMatchObject({ label: "NOI needs re-review", detail: expect.stringContaining("selected tax return version changed") });
+  });
 });

@@ -6,6 +6,21 @@ const review: NoiReviewRead = { revision: 7, source_stamp: "a".repeat(64), mode:
 const draft = (patch: Partial<NoiReviewDraft> = {}): NoiReviewDraft => ({ ...initialNoiReviewDraft(review, "request-1"), reason: "Reviewed evidence", ...patch });
 
 describe("NOI annual review contract", () => {
+  it("defaults to the canonical source and skips future or forecast sources for automatic seeding", () => {
+    const forecast = { ...source, file_id: "forecast-2027", year: 2027, automatic_eligible: false };
+    const candidates = { ...review, sources: [forecast, ...review.sources] };
+    expect(initialNoiReviewDraft(candidates, "draft-1", "pnl-2026")).toMatchObject({ selectedFileId: "pnl-2026", year: "2026" });
+    expect(initialNoiReviewDraft(candidates, "draft-2")).toMatchObject({ selectedFileId: "tax-2025", year: "2025" });
+    expect(initialNoiReviewDraft({ ...review, sources: [forecast] }, "draft-3")).toMatchObject({ mode: "manual", selectedFileId: "", annualValue: "" });
+  });
+  it("restores a pinned forecast review and still permits deliberate explicit source selection", () => {
+    const forecast = { ...source, file_id: "forecast-2027", year: 2027, automatic_eligible: false };
+    const candidates: NoiReviewRead = { ...review, sources: [forecast, source], current: { id: "forecast-review", revision: 7, at: "2026-11-10T10:00:00Z", mode: "source", selected_file_id: forecast.file_id, annual_value: 5000, year: 2027, currency: "USD", reason: "Explicit forecast review", source_stamp: review.source_stamp, source_refs: [] } };
+    expect(initialNoiReviewDraft(candidates, "draft-1", source.file_id)).toMatchObject({ selectedFileId: forecast.file_id, annualValue: "5000", year: "2027" });
+    const explicit = draftForNoiSource(draft(), forecast);
+    expect(noiReviewIssues(explicit, candidates)).toEqual([]);
+    expect(noiReviewPayload(explicit, candidates).selected_file_id).toBe(forecast.file_id);
+  });
   it("prefills an explicit last-year tax review even when a newer P&L is available, without inventing dates", () => {
     const value = draftForNoiSource(draft(), source);
     expect(value).toMatchObject({ mode: "source", selectedFileId: "tax-2025", annualValue: "340000", year: "2025", currency: "USD", periodStart: "", periodEnd: "" });
