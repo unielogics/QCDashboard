@@ -51,7 +51,7 @@ export type ReleasedCashFlowEvaluation = {
   allocations?: ReleasedCashFlowAllocation[];
 };
 export type OperatingPlanSchema = { kind?: string; [key: string]: unknown };
-export type OperatingProjection = { earnings: number | null; first_year_earnings?: number | null; noi: number | null; dscr_current: number | null; dscr_with_refinance: number | null; annual_debt_service: number | null; refinance_annual_debt_service: number | null; target_gap_current: number | null; target_gap_refinance: number | null; status?: string };
+export type OperatingProjection = { earnings: number | null; first_year_earnings?: number | null; first_year_dscr_current?: number | null; first_year_dscr_with_refinance?: number | null; coverage_basis?: string; noi: number | null; dscr_current: number | null; dscr_with_refinance: number | null; annual_debt_service: number | null; refinance_annual_debt_service: number | null; target_gap_current: number | null; target_gap_refinance: number | null; status?: string };
 export type OperatingEvaluation = {
   released_cash_flow?: ReleasedCashFlowEvaluation;
   context_stamp?: string; disclosure: { operating_monthly: number | null; cogs_monthly: number | null; operating_cash_monthly: number | null; non_operating_monthly: number | null; one_time_total: number | null; active_count: number; excluded_count: number; missing_inputs: string[]; complete: boolean };
