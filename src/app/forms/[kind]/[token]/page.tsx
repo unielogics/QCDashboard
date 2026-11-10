@@ -452,7 +452,7 @@ export default function FinancialFormPage() {
           ) : state?.kind === "real_estate_schedule" ? (
             <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "operating_plan" ? (
-            <OperatingPlanForm value={body} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} />
+            <OperatingPlanForm value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}

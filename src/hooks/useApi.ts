@@ -1292,6 +1292,7 @@ export function useSaveFinancialPlan(profileId: string | null | undefined) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
       void queryClient.invalidateQueries({ queryKey: ["advances", profileId] });
+      void queryClient.invalidateQueries({ queryKey: ["operating-plan-summary", profileId] });
     },
   });
 }

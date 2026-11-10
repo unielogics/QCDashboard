@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } from "@/components/ds";
@@ -39,7 +39,7 @@ import { formKindsOf, formLabel, type FormKind } from "@/lib/formAnswers";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { semanticStatusClass } from "@/lib/semanticStatus";
-import { manualProgramDraftMatches, type FundingProgramCatalogItem, type FundingProgramVersion, type FundingProgramVertical } from "@/lib/fundingPrograms";
+import { manualProgramDraftMatches, programSelectionChanged, type FundingProgramCatalogItem, type FundingProgramVersion, type FundingProgramVertical } from "@/lib/fundingPrograms";
 import { requirementCanBeRemoved, updateRequirementLifecycle } from "@/lib/requirementLifecycle";
 import { requirementOverridePayload, validRequirementOverride, type RequirementOverrideDraft as OverrideDraft } from "@/lib/requirementOverride";
 import { RequirementOverrideEditor } from "./RequirementOverrideEditor";
@@ -123,6 +123,7 @@ export function ApplicationProgramReadiness({
   focusRequirementQuery,
   focusRequestId = 0,
   canCreatePrograms = false,
+  canEditPrograms = true,
   programVertical = "main_street",
   intakeVariant,
   section = "documents",
@@ -150,10 +151,11 @@ export function ApplicationProgramReadiness({
   focusRequirementQuery?: string | null;
   focusRequestId?: number;
   canCreatePrograms?: boolean;
+  canEditPrograms?: boolean;
   programVertical?: FundingProgramVertical;
   intakeVariant?: string | null;
   /** Which half to show: the documents the file needs, or the programs and use of funds that decide them. */
-  section?: "documents" | "setup";
+  section?: "documents" | "setup" | "programs";
   /** Open and scroll to one group of documents (from the overview tiles). */
   focusGroup?: { group: TriageGroup; requestId: number } | null;
   /** Programs are chosen on the Financials tab; the Documents list links there. */
@@ -168,6 +170,7 @@ export function ApplicationProgramReadiness({
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
+  const selectionHeadingId = useId();
   const uploadRef = useRef<HTMLInputElement>(null);
   const lastFocusRequestRef = useRef(0);
   const controlled = value !== undefined;
@@ -356,13 +359,9 @@ export function ApplicationProgramReadiness({
   }, [readiness]);
 
   async function savePrograms(returnToAi = false) {
-    if (!readiness) return;
-    const changed = selectedPrograms.length !== readiness.selections.length || readiness.selections.some((item) => !selectedSet.has(item.program_key));
+    if (!readiness || !canEditPrograms || busy) return;
+    const changed = programSelectionChanged(selectedPrograms, readiness.selections, readiness.candidates);
     if (!returnToAi && !changed) return;
-    if (!returnToAi && ineligibleSelected.length && programReason.trim().length < 8) {
-      setError("Explain why the reviewed file should use an AI-ineligible program.");
-      return;
-    }
     // Applying the reviewed picker is the confirmation for a manual selection.
     // Avoid stacking a second focus-trapping dialog over the program picker.
     if (returnToAi && !await confirmAction({
@@ -829,7 +828,7 @@ export function ApplicationProgramReadiness({
   if (!readiness && busy === "load") return <div className="empty">Loading program readiness...</div>;
   if (!readiness) return <Callout tone="warn">{error || "Program readiness is unavailable."}</Callout>;
 
-  const programsChanged = selectedPrograms.length !== readiness.selections.length || readiness.selections.some((item) => !selectedSet.has(item.program_key));
+  const programsChanged = programSelectionChanged(selectedPrograms, readiness.selections, readiness.candidates);
   const topRecommended = readiness.candidates.find((candidate) => candidate.recommendation_status === "recommended");
   const preferredAlternative = topRecommended && (topRecommended.preference_score ?? 0) > 0 && !readiness.selections.some((selection) => selection.program_key === topRecommended.program_key) ? topRecommended : null;
   const selectedRequestSet = new Set(selectedRequestKeys);
@@ -967,20 +966,20 @@ export function ApplicationProgramReadiness({
 
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
-    {section === "setup" ? <>
-    {readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} /> : null}
+    {section === "setup" || section === "programs" ? <>
+    {section === "setup" && readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} /> : null}
     <details className="program-readiness-programs" open>
       <summary>
         <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "Choose a catalog program or add one manually"}</small></span>
         <CellChip tone={readiness.selection_mode === "manual" ? "warn" : "acc"}>{readiness.selection_mode === "manual" ? "Manual selection" : "AI selection"}</CellChip>
       </summary>
-    <section className="program-readiness-band" aria-labelledby="program-selection-heading">
-      <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id="program-selection-heading">Program selection</h3><p>{readiness.selections.length ? `${readiness.selections.length} selected. Review fit and compare other programs when needed.` : "Choose a funding program to build this file’s evidence checklist."}</p></div><div className="program-readiness-actions">{canCreatePrograms ? <Btn onClick={() => setCustomProgramOpen(true)} disabled={Boolean(busy)}><Icon name="plus" size={14} />Add program</Btn> : null}{readiness.selection_mode === "manual" ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={openProgramPicker} disabled={Boolean(busy)} aria-haspopup="dialog"><Icon name="search" size={14} />{readiness.selections.length ? "Manage programs" : "Choose programs"}</Btn></div></div>
-      {readiness.selections.length ? <div className={pickerStyles.summary} aria-label="Selected funding programs">{readiness.selections.map((selection) => <span key={selection.id} className={pickerStyles.selection}><strong>{selection.program_name}</strong><small>v{selection.playbook_version} · {selection.source === "ai_auto" ? "AI selected" : "Staff selected"}{selection.program_retired ? " · retired" : ""}</small></span>)}</div> : null}
-      {preferredAlternative ? <Callout tone="acc"><strong>Consider {preferredAlternative.program_name}</strong><p>{preferredAlternative.preference_reasons?.join(" · ") || "Matches a published program preference."} Your existing selection has not changed. Review the fit before switching; this is not an approval.</p><Btn onClick={openProgramPicker} disabled={Boolean(busy)}>Review suggested program</Btn></Callout> : null}
-      {readiness.selection_mode === "manual" ? <Callout tone="warn"><strong>Manual selection is on for this file.</strong><p>Staff chose these programs{manualSince ? ` on ${manualSince}` : ""}. The AI will not add, remove or re-rank them, and new published programs will not be suggested here, until the file returns to AI selection.</p><Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn></Callout> : null}
+    <section className="program-readiness-band" aria-labelledby={selectionHeadingId}>
+      <div className="program-readiness-heading"><div><span className="lbl">Funding programs</span><h3 id={selectionHeadingId}>Program selection</h3><p>{readiness.selections.length ? `${readiness.selections.length} selected. Review fit and compare other programs when needed.` : "Choose a funding program to build this file’s evidence checklist."}</p></div><div className="program-readiness-actions">{canCreatePrograms && canEditPrograms ? <Btn onClick={() => setCustomProgramOpen(true)} disabled={Boolean(busy)}><Icon name="plus" size={14} />Add program</Btn> : null}{readiness.selection_mode === "manual" && canEditPrograms ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}<Btn variant="pri" onClick={openProgramPicker} disabled={!canEditPrograms || Boolean(busy)} aria-haspopup="dialog"><Icon name="search" size={14} />{readiness.selections.length ? "Manage programs" : "Choose programs"}</Btn></div></div>
+      {readiness.selections.length ? <div className={pickerStyles.summary} aria-label="Selected funding programs">{readiness.selections.map((selection) => <span key={selection.id} className={pickerStyles.selection}><strong>{selection.program_name}</strong><small>{selection.playbook_version ? `Criteria v${selection.playbook_version}` : "Criteria unavailable"} · {selection.source === "ai_auto" ? "AI selected" : "Staff selected"}{selection.program_retired ? " · retired" : ""}</small></span>)}</div> : null}
+      {preferredAlternative ? <Callout tone="acc"><strong>Consider {preferredAlternative.program_name}</strong><p>{preferredAlternative.preference_reasons?.join(" · ") || "Matches a published program preference."} Your existing selection has not changed. Review the fit before switching; this is not an approval.</p><Btn onClick={openProgramPicker} disabled={!canEditPrograms || Boolean(busy)}>Review suggested program</Btn></Callout> : null}
+      {readiness.selection_mode === "manual" ? <Callout tone="warn"><strong>Manual selection is on for this file.</strong><p>Staff chose these programs{manualSince ? ` on ${manualSince}` : ""}. The AI will not add, remove or re-rank them, and new published programs will not be suggested here, until the file returns to AI selection.</p>{canEditPrograms ? <Btn onClick={() => void savePrograms(true)} disabled={Boolean(busy)}>Return to AI selection</Btn> : null}</Callout> : null}
       {readiness.selections.some((selection) => selection.needs_scope_review) ? <Callout tone="warn">A staff-selected program is outside the AI fit or file scope. The manual override is active and remains flagged for underwriting review.</Callout> : null}
-      {readiness.selections.some((selection) => selection.program_retired) ? <Callout tone="warn"><strong>{readiness.selections.filter((selection) => selection.program_retired).map((selection) => selection.program_name).join(", ")} {readiness.selections.filter((selection) => selection.program_retired).length === 1 ? "has" : "have"} been retired from the catalog.</strong><p>This file keeps the criteria version it was selected on, so nothing has changed for the client. New files cannot choose it. Swap or remove it when you are ready.</p><Btn onClick={openProgramPicker} disabled={Boolean(busy)}>Manage programs</Btn></Callout> : null}
+      {readiness.selections.some((selection) => selection.program_retired) ? <Callout tone="warn"><strong>{readiness.selections.filter((selection) => selection.program_retired).map((selection) => selection.program_name).join(", ")} {readiness.selections.filter((selection) => selection.program_retired).length === 1 ? "has" : "have"} been retired from the catalog.</strong><p>This file keeps the criteria version it was selected on, so nothing has changed for the client. New files cannot choose it. Swap or remove it when you are ready.</p><Btn onClick={openProgramPicker} disabled={!canEditPrograms || Boolean(busy)}>Manage programs</Btn></Callout> : null}
       {!readiness.candidates.length ? <div className="empty">{readiness.lending_applicable ? canCreatePrograms ? "No published program matches this file yet. Add a program manually or update the file classification." : "No in-scope program has published criteria yet. Ask a super admin to add one, or update the file classification." : "This enquiry is not a lending request, so lending programs do not apply."}</div> : null}
     </section>
     </details>
@@ -997,7 +996,7 @@ export function ApplicationProgramReadiness({
         <Field label="Required review reason"><Textarea rows={3} value={customProgram.reason} onChange={(event) => setCustomProgram((current) => ({ ...current, reason: event.target.value }))} placeholder="Explain why this program is being added and applied to the file." /></Field>
       </div>
     </Drawer>
-    {readiness.lending_applicable ? <>
+    {section === "setup" && readiness.lending_applicable ? <>
       <section className="program-readiness-band" aria-labelledby="program-progress-heading"><div className="program-readiness-heading"><div><span className="lbl">Independent readiness</span><h3 id="program-progress-heading">Program completion</h3></div><CellChip tone={readiness.can_advance ? "ok" : "warn"}>{readiness.can_advance ? "Ready for underwriting" : readiness.programs.some((program) => program.qualification_blocking_requirement_keys?.length) ? "Program conditions need review" : readiness.selections.length ? "Evidence still required" : "No program selected"}</CellChip></div><div className="program-progress-grid">{readiness.programs.map((program) => <div key={program.selection_id} className={semanticStatusClass(program.complete ? "ready" : program.completion_percent ? "processing" : "missing")}><div><strong>{program.program_name}</strong><span>{program.satisfied_count} of {program.required_count} required items collected</span></div><div className="program-progress-track" aria-label={`${program.completion_percent}% complete`}><span style={{ width: `${program.completion_percent}%` }} /></div><b>{program.completion_percent}%</b>{program.qualification_blocking_requirement_keys?.length ? <small className="sub">Document collection and qualification are separate · {program.qualification_blocking_requirement_keys.length} program condition{program.qualification_blocking_requirement_keys.length === 1 ? " needs" : "s need"} review</small> : null}</div>)}{!readiness.programs.length ? <div className="empty">No real product is selected. AI will select the highest-confidence eligible program after sufficient facts are available.</div> : null}</div></section>
     </> : null}
     </> : null}

@@ -5,6 +5,7 @@ import { Btn, Callout, Panel } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { PreparationProgress, type PreparationStep } from "@/components/design-system/PreparationProgress";
 import { money, multiple, type FinancialCockpit } from "@/lib/financialCockpit";
+import { fundingPackageEvidenceGaps } from "@/lib/fundingPackageCompletion";
 import type { PackageGenerationOptions } from "./leadFile";
 import styles from "./FundingPackageWorkspace.module.css";
 
@@ -42,6 +43,7 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
   const tabs: Array<[FundingPackageTab, string]> = [["summary", "Package & presentation"], ["marketplace", "Marketplace listing"], ["delivery", "Delivery"], ["package", "Version history"]];
   const impact = cockpit.plan?.impact;
   const amount = impact?.loan?.amount ?? cockpit.requested_amount;
+  const evidenceGaps = fundingPackageEvidenceGaps(cockpit);
   return <Panel id="package-readiness" className={`fc-wide ${styles.workspace}`} title="Investor package & capital partners" sub="Build a branded investor report in up to five pages, with linked evidence and supporting underwriting files."
     actions={<Btn variant="pri" disabled={busy || generating} onClick={() => onGenerate({ include_operating_plan: includePlan, include_working_operating_plan: includePlan && includeWorkingPlan })}><Icon name="reports" size={14} />{generating ? "Building package…" : generated ? "Refresh package + preview" : "Generate package + preview"}</Btn>}>
     <nav className={styles.tabs} role="tablist" aria-label="Investor package workflow">{tabs.map(([key, label], index) => <button key={key} type="button" role="tab" id={`funding-tab-${key}`} aria-selected={activeTab === key} aria-controls={`funding-panel-${key}`} className={activeTab === key ? styles.active : undefined} onClick={() => onTab(key)}><span>{index + 1}</span>{label}</button>)}</nav>
@@ -49,6 +51,17 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
     {preparation ? <PreparationProgress {...preparation} /> : null}
     <section role="tabpanel" id="funding-panel-summary" aria-labelledby="funding-tab-summary" hidden={activeTab !== "summary"}>
       <div className={styles.metrics} aria-label="Package financial context"><div><span>Requested / planned financing</span><strong>{money(amount)}</strong><small>{impact?.loan?.amount != null ? "Saved refinance scenario" : "Current request · proposed terms may still be missing"}</small></div><div><span>Current DSCR</span><strong>{multiple(dscr)}</strong><small>{cockpit.dscr.headline?.label ?? "Evidence needed"}</small></div><div><span>DSCR with refinance plan</span><strong>{multiple(impact?.active ? impact.dscr.after : null)}</strong><small>{impact?.active ? "Saved scenario · verify terms and payoffs" : "Save a loan scenario to show its effect"}</small></div></div>
+      <details className={styles.completion} open={evidenceGaps.length > 0}>
+        <summary>Complete this report{evidenceGaps.length ? ` · ${evidenceGaps.length} financial inputs need attention` : " · review and refresh"}</summary>
+        {evidenceGaps.length ? <ul>{evidenceGaps.map(gap => <li key={gap.key}><strong>{gap.label}.</strong> {gap.detail}</li>)}</ul> : <p>Current P&L figures are available. Confirm the remaining evidence and program conditions before relying on the package.</p>}
+        <ol>
+          <li>Confirm the current request and planned uses. Keep proposed gross financing, closing costs and net proceeds separate.</li>
+          <li>Review the latest P&L and debt obligations. Missing or provisional inputs must be resolved in the financial review.</li>
+          <li>Choose funding programs and save the coverage plan. Allocate any released monthly cash flow in the operating expenses and earnings plan, then save its version.</li>
+          <li>Confirm current terms, costs and supporting evidence, then select Refresh package + preview. Review the new PDF's open conditions before delivery.</li>
+        </ol>
+        <p>A generated PDF is a dated snapshot. New evidence, plan changes and program selections require a fresh package; Finalize file does not fill missing financial inputs.</p>
+      </details>
       <div className={styles.options}>
         <label><input type="checkbox" checked={includePlan} disabled={generating} onChange={event => setIncludePlan(event.target.checked)} />Include operating expenses and earnings plan</label>
         <small>{recommended ? belowThreshold ? `Recommended: current DSCR ${multiple(dscr)} is below 1.10x${negativeEarnings || dscr! < 0 ? " and earnings are negative" : ""}.` : "Recommended: current earnings are negative. Confirm the source and debt-service inputs before relying on coverage." : "The desk can include an earnings plan for any file. The 1.10x planning trigger does not replace program underwriting requirements."}</small>

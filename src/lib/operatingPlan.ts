@@ -39,10 +39,20 @@ export type OperatingPlanBody = Record<string, unknown> & {
   basis?: "cash" | "accrual" | "unknown"; no_operating_expenses_confirmed?: boolean; notes?: string;
   projection_start?: string | null;
   expenses?: OperatingExpense[]; adjustments?: OperatingAction[];
+  released_cash_flow?: { source_fingerprint: string | null; allocations: ReleasedCashFlowAllocation[] };
+};
+export type ReleasedCashFlowAllocation = { id: string; label: string; amount_monthly: PlanAmount; expense_row_id?: string | null; notes: string };
+export type ReleasedCashFlowEvaluation = {
+  required: boolean; available: boolean; status: string; source_fingerprint: string | null;
+  currency: string; amount_monthly: number | null; allocated_monthly: number; unallocated_monthly: number | null;
+  complete: boolean; missing: string[];
+  source: { updated_at: string | null; before_monthly: number | null; after_monthly: number | null; new_operating_expenses_monthly?: number | null; new_financing_fees_monthly?: number | null } | null;
+  allocations?: ReleasedCashFlowAllocation[];
 };
 export type OperatingPlanSchema = { kind?: string; [key: string]: unknown };
 export type OperatingProjection = { earnings: number | null; first_year_earnings?: number | null; noi: number | null; dscr_current: number | null; dscr_with_refinance: number | null; annual_debt_service: number | null; refinance_annual_debt_service: number | null; target_gap_current: number | null; target_gap_refinance: number | null; status?: string };
 export type OperatingEvaluation = {
+  released_cash_flow?: ReleasedCashFlowEvaluation;
   context_stamp?: string; disclosure: { operating_monthly: number | null; cogs_monthly: number | null; operating_cash_monthly: number | null; non_operating_monthly: number | null; one_time_total: number | null; active_count: number; excluded_count: number; missing_inputs: string[]; complete: boolean };
   actions: Array<{ id: string; label: string; kind: string; status: string; review_state: string; gross_annual_impact: number | null; implementation_recurring_annual: number | null; implementation_one_time: number | null; net_annual_impact: number | null; first_year_impact: number | null; monthly_impact: number | null; included_in_approved_projection: boolean; issues: string[]; risk_flags: string[]; source_file_ids: string[] }>;
   totals: Record<"proposed" | "approved", { annual_impact: number | null; monthly_impact: number | null; first_year_impact: number | null; one_time_cost: number | null; complete: boolean; count: number; expected_count?: number; known_annual_subtotal?: number; known_first_year_subtotal?: number }>;
@@ -65,6 +75,15 @@ const OPERATING_NUMERIC_FIELDS = new Set(["current_amount", "proposed_amount", "
 /** Normalize known numeric fields individually. A bad cell must never erase its rows. */
 export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(body: T): T {
   const next = { ...body } as Record<string, unknown>;
+  if (next.released_cash_flow && typeof next.released_cash_flow === "object" && !Array.isArray(next.released_cash_flow)) {
+    const release = next.released_cash_flow as Record<string, unknown>;
+    next.released_cash_flow = { ...release, allocations: Array.isArray(release.allocations) ? release.allocations.map((item) => {
+      if (!item || typeof item !== "object" || Array.isArray(item)) return item;
+      const row = item as Record<string, unknown>;
+      const amount = operatingNumber(row.amount_monthly);
+      return { ...row, amount_monthly: row.amount_monthly == null || String(row.amount_monthly).trim() === "" ? null : amount ?? row.amount_monthly };
+    }) : [] };
+  }
   for (const key of ["no_operating_expenses_confirmed", "client_attestation"]) {
     if (next[key] === "true" || next[key] === "false") next[key] = next[key] === "true";
   }

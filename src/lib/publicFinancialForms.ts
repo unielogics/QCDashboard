@@ -1,5 +1,5 @@
 import { apiBase } from "@/lib/api";
-import { normalizeOperatingPlanBody } from "@/lib/operatingPlan";
+import { normalizeOperatingPlanBody, type ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
 
 export type PublicFinancialVersion = {
   id: string;
@@ -24,7 +24,8 @@ export type PublicFinancialReply = {
   can_edit?: boolean;
   permission?: "edit" | "view";
   completed?: boolean;
-  completion?: { complete: boolean; active_rows: number; no_debt: boolean; missing_fields: string[]; reason: string } | null;
+  released_cash_flow?: ReleasedCashFlowEvaluation | null;
+  completion?: { complete: boolean; active_rows: number; no_debt: boolean; missing_fields: string[]; reason: string; released_cash_flow?: ReleasedCashFlowEvaluation } | null;
 };
 
 export class PublicFinancialFormError extends Error {

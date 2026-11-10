@@ -5,7 +5,7 @@ import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
 import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
 import { loanPaidDownPct } from "@/lib/loanProgress";
 import { orderDebtScheduleColumns } from "@/lib/debtWorksheetLayout";
-import { clearOperatingReview, normalizeOperatingPlanBody, type OperatingAction, type OperatingExpense } from "@/lib/operatingPlan";
+import { clearOperatingReview, normalizeOperatingPlanBody, type OperatingAction, type OperatingExpense, type ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
@@ -22,7 +22,7 @@ export type FinancialWorkspaceSnapshot = {
   families: Array<{ id: string; kind: SheetKind; label: string; current_version_id: string | null }>;
   evidence: FinancialEvidence[];
   saved_version?: FinancialVersion;
-  completion?: { complete: boolean; missing_fields: string[]; reason: string; no_debt: boolean; active_rows: number } | null;
+  completion?: { complete: boolean; missing_fields: string[]; reason: string; no_debt: boolean; active_rows: number; released_cash_flow?: ReleasedCashFlowEvaluation } | null;
   accepted_completion?: FinancialWorkspaceSnapshot["completion"];
   saved_completion?: FinancialWorkspaceSnapshot["completion"];
 };

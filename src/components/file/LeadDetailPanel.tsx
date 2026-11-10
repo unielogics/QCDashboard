@@ -63,6 +63,7 @@ import type { IntakeResponse } from "@/lib/intake";
 import { leadCockpitNonDocumentMissingRows, leadCockpitOutstandingDocuments, preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
 import { mcaRefinanceReviewState } from "@/lib/mcaRefinanceReview";
 import { PIPELINE_LIFECYCLE, underwritingStatusLabel, type PipelineMoveRequest, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
+import { ApplicationProgramReadiness as FundingProgramSetup } from "@/components/application/ApplicationProgramReadiness";
 import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 import { pipelineApprovalDraft, validatePipelineApprovalDraft, type PipelineApprovalDraft } from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
@@ -2046,6 +2047,13 @@ export function LeadDetailPanel({
                       financing={currentFinancing}
                       requestedAmount={detail.intake.requested_loan_amount}
                       onCoveragePlan={requestSharedCoverage}
+                      programSelection={programReadiness ? <FundingProgramSetup
+                        section="programs" profileId={underwriting.profile_id} files={[]}
+                        value={programReadiness} onValueChange={setProgramReadiness}
+                        onRefresh={refreshProgramReadiness} showUploader={false}
+                        canEditPrograms={canUnderwrite} canCreatePrograms={currentUser?.role === Role.SUPER_ADMIN}
+                        programVertical={programVerticalForVariant(detail.intake.variant)} intakeVariant={detail.intake.variant}
+                      /> : null}
                       termsActions={isDealerFile && termSheet?.current ? (
                         <DealerTermSheetDocumentActions
                           profileId={underwriting.profile_id}
