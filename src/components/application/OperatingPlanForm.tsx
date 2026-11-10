@@ -9,7 +9,7 @@ import { metricAmountLabel } from "@/lib/financialMetrics";
 import { NoiGovernanceSummary } from "@/components/file/cockpit/NoiGovernanceSummary";
 import { OperatingPlanGuide } from "./OperatingPlanGuide";
 import { OperatingAmountInput } from "./OperatingAmountInput";
-import { addOperatingCandidate, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
+import { addOperatingCandidate, operatingRecurringSubtotal, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
 
 export type OperatingSource = { file_id: string; file_name: string };
 type Tab = "expenses" | "actions" | "impact";
@@ -23,7 +23,7 @@ function WrappedCell({ label, value, disabled, placeholder, onChange }: { label:
 }
 
 /** Staff and clients edit the same versioned body; approvals belong to staff review. */
-export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, releasedCashFlow, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference, guidance, evidence, guidedDefault = false, onGuidedModeChange, guidedStepRequest }: {
+export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, releasedCashFlow, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference, guidance, evidence, guidedDefault = false, onGuidedModeChange, guidedStepRequest, sourceDraftRequest = 0, onOpenSources }: {
   value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void; disabled?: boolean;
   sources?: OperatingSource[]; onPreviewSource?: (id: string) => void;
   evaluation?: OperatingEvaluation | null; evaluating?: boolean; reviewControls?: ReactNode; staff?: boolean;
@@ -32,14 +32,32 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
   onProcessingReference?: (row: OperatingAction, sourceKey: string, offerId: string) => void;
   guidance?: OperatingGuidance | null; evidence?: OperatingGuidanceEvidence | null; guidedDefault?: boolean;
   onGuidedModeChange?: (guided: boolean) => void; guidedStepRequest?: { index: number; key: number } | null;
+  sourceDraftRequest?: number; onOpenSources?: () => void;
 }) {
   const value = normalizeOperatingPlanBody(rawValue);
   const [tab, setTab] = useState<Tab>("expenses");
   const [selected, setSelected] = useState<{ collection: "expenses" | "adjustments"; id: string } | null>(null);
   const [showExcluded, setShowExcluded] = useState(false);
   const [guided, setGuided] = useState(guidedDefault);
+  const formElement = useRef<HTMLDivElement>(null);
+  const lastSourceDraft = useRef(0);
+  useEffect(() => {
+    if (!sourceDraftRequest || lastSourceDraft.current === sourceDraftRequest) return;
+    lastSourceDraft.current = sourceDraftRequest;
+    setTab("expenses"); setSelected(null);
+    const frame = requestAnimationFrame(() => {
+      const target = formElement.current?.querySelector<HTMLElement>(guided ? '[aria-label="Guided operating expenses and earnings plan"] h4' : '[aria-label^="Operating expenses table"]');
+      target?.scrollIntoView({ block: "start", behavior: "smooth" });
+      target?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [guided, sourceDraftRequest]);
   const expenses = value.expenses ?? []; const actions = value.adjustments ?? [];
   const totals = operatingExpenseTotal(expenses); const currency = value.currency || "USD";
+  const activeExpenses = expenses.filter(row => !row.excluded && !row.duplicate_of);
+  const recurringSubtotal = operatingRecurringSubtotal(expenses);
+  const noCostsConfirmed = !activeExpenses.length && value.no_operating_expenses_confirmed === true;
+  const recurringAnnual = noCostsConfirmed ? 0 : recurringSubtotal.annual;
   const money = (number: number | null | undefined) => operatingMoney(number, currency);
   const active = <T extends { excluded?: boolean; duplicate_of?: string | null }>(rows: T[]) => rows.filter((row) => showExcluded || !row.excluded && !row.duplicate_of);
   const change = (patch: Partial<OperatingPlanBody>) => onChange({ ...value, schema_version: "operating-plan-v1", ...patch });
@@ -80,7 +98,7 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
     {sources.length ? <select multiple aria-label={`Supporting files for ${row.label || "row"}`} disabled={disabled} value={row.source_file_ids ?? []} onChange={(event) => commit([...event.target.selectedOptions].map((option) => option.value))}>{sources.map((file) => <option key={file.file_id} value={file.file_id}>{file.file_name}</option>)}</select> : <small>Files can be attached by your team. Describe the supporting evidence below.</small>}
     {(row.source_file_ids ?? []).map((id) => <button key={id} type="button" className={styles.link} onClick={() => onPreviewSource?.(id)} disabled={!onPreviewSource}>{sources.find((file) => file.file_id === id)?.file_name ?? "Linked supporting file"}</button>)}
   </div>;
-  return <div className={styles.plan}>
+  return <div ref={formElement} className={styles.plan}>
     <ReleasedCashFlowAllocation value={value} onChange={onChange} source={evaluation?.released_cash_flow ?? releasedCashFlow} disabled={disabled} evaluating={evaluating} />
     <div className={styles.toolbar} aria-label="Operating plan mode"><button type="button" aria-pressed={guided} onClick={() => { setGuided(true); onGuidedModeChange?.(true); }}>Guided steps</button><button type="button" aria-pressed={!guided} onClick={() => { setGuided(false); onGuidedModeChange?.(false); }}>Advanced tables</button><span className={styles.muted}>Both views edit the same working plan.</span></div>
     {guided ? <OperatingPlanGuide value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} reviewControls={reviewControls} stepRequest={guidedStepRequest} detailedImpact={<OperatingPlanImpact evaluation={evaluation} evaluating={evaluating} currency={currency} client={!staff} />} /> : <>
@@ -108,8 +126,8 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
           <td>{row.cost_basis === "per_unit" ? <><strong>{linked ? money(operatingExpenseAmount(linked, true)) : "—"}</strong><button type="button" className={styles.link} onClick={() => setSelected({ collection: "expenses", id: row.id })}>Edit unit costs</button></> : number(`Proposed amount for ${row.label || "expense"}`, linked?.proposed_amount, (text) => onChange(proposeExpense(value, row.id, text, uid)))}</td>
           <td>{cadence(`Frequency for ${row.label || "expense"}`, row.cadence, (text) => changeExpense(row.id, { cadence: text }))}</td>
           <td className={styles.amount}>{linked ? money(result?.net_annual_impact ?? illustrativeActionImpact(linked)) : "—"}</td><td>{evidenceLinks(row.source_file_ids)}</td><td>{linked ? operatingLabel(result?.review_state ?? linked.status ?? "proposed") : "Disclosure"}</td><td>{rowTools("expenses", row)}</td>
-        </tr>; })}{!active(expenses).length ? <tr><td colSpan={10} className={styles.empty}>No operating expenses entered. Add a line or confirm there are none.</td></tr> : null}</tbody>
-        <tfoot><tr><th>{totals.missing ? "Known disclosed subtotal" : "Current disclosed totals"}</th><td colSpan={3}>{money(totals.annual / 12)} / month</td><td colSpan={2}>{money(totals.annual)} / year</td><td colSpan={4}>{totals.missing ? `${totals.missing} unknown amount(s) · ` : ""}{money(totals.oneTime)} one time</td></tr></tfoot>
+        </tr>; })}{!active(expenses).length ? <tr><td colSpan={10} className={styles.empty}>{staff ? <>No costs drafted yet. Use Draft from tax/P&amp;L above, or add an expense manually.{onOpenSources ? <button type="button" onClick={onOpenSources}>Go to source costs</button> : null}</> : "No operating expenses entered. Add a line or confirm there are none."}</td></tr> : null}</tbody>
+        <tfoot><tr><th>{!activeExpenses.length && !noCostsConfirmed ? "No costs drafted yet" : recurringSubtotal.incomplete ? "Incomplete known recurring subtotal" : "Current disclosed totals"}</th><td colSpan={3}>{recurringAnnual == null ? "Unknown" : money(recurringAnnual / 12)} / month</td><td colSpan={2}>{recurringAnnual == null ? "Unknown" : money(recurringAnnual)} / year</td><td colSpan={4}>{totals.missing ? `${totals.missing} unknown amount(s) · ` : ""}{!activeExpenses.length && !noCostsConfirmed ? "Unknown" : money(totals.oneTime)} one time</td></tr></tfoot>
       </table></div>
       {!expenses.some((row) => !row.excluded && !row.duplicate_of) ? <label className={styles.check}><input type="checkbox" checked={value.no_operating_expenses_confirmed ?? false} disabled={disabled} onChange={(event) => change({ no_operating_expenses_confirmed: event.target.checked })} />The business has no operating expenses for this period.</label> : null}
     </> : tab === "actions" ? <>
