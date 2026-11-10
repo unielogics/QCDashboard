@@ -520,7 +520,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             {planLines.length ? (
               <ul className="fc-notes">{planLines.map((line) => <li key={line}>{line}</li>)}</ul>
             ) : (
-              <span className="sub">No plan yet: these are today's figures. Tick what the new loan pays off, enter the new loan or add the recorded loan terms, add back income the documents understate, or apply a lever on the right. Nothing is assumed until you choose it.</span>
+              <span className="sub">{local.operatingPlan?.applied ? "No refinancing changes selected. The reviewed earnings-plan effect is shown above." : "No plan yet: these are today's figures. Tick what the new loan pays off, enter the new loan or add the recorded loan terms, add back income the documents understate, or apply a lever on the right. Nothing is assumed until you choose it."}</span>
             )}
           </div>
           {local.incomeAfter == null || local.incomeAfter > 0 ? <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" /> : null}
