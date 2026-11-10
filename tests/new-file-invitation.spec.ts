@@ -84,6 +84,7 @@ async function chooseFileType(page: Page, variant = "dealer", operator = false) 
   await expect(dialog).toBeVisible();
   if (operator) await dialog.getByLabel("Complete with staff", { exact: true }).check();
   await dialog.locator("select").first().selectOption(variant);
+  if (variant === "mca_funding") await expect(dialog.locator('optgroup[label="Main Street"] option[value="mca_funding"]')).toHaveCount(1);
   await dialog.getByPlaceholder("000000").nth(0).fill("482691");
   await dialog.getByPlaceholder("000000").nth(1).fill("482691");
   await dialog.getByRole("button", { name: "Continue", exact: true }).click();
