@@ -1221,6 +1221,7 @@ export function useSaveFileEconomics(profileId: string | null | undefined) {
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ["financial-cockpit", profileId] });
       void queryClient.invalidateQueries({ queryKey: ["closing-stipulations", profileId] });
+      void queryClient.invalidateQueries({ queryKey: profileId ? ["file-deal-budget", profileId] : ["file-deal-budget"] });
     },
   });
 }
@@ -7808,6 +7809,8 @@ export function useUpdateOperatorFileEconomics() {
       body: JSON.stringify(body),
     }),
     onSuccess: (result, vars) => {
+      qc.invalidateQueries({ queryKey: result.profile_id ? ["file-deal-budget", result.profile_id] : ["file-deal-budget"] });
+      qc.invalidateQueries({ queryKey: result.profile_id ? ["financial-cockpit", result.profile_id] : ["financial-cockpit"] });
       qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
       qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
       qc.invalidateQueries({ queryKey: ["application-profile"] });

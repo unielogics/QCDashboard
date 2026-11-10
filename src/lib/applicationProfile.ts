@@ -491,6 +491,11 @@ export type ClientTermsCalculation = {
 };
 
 export type ApplicationClientTerms = {
+  deal_budget_snapshot?: Partial<import("./dealBudget").DealBudget>;
+  deal_budget_revision?: number | null;
+  current_deal_budget_revision?: number;
+  deal_budget_stale?: boolean;
+  current_deal_budget?: Partial<import("./dealBudget").DealBudget>;
   collateral_snapshot?: Partial<Pick<import("./investorCollateral").InvestorCollateral, "enabled" | "properties" | "assets" | "revision" | "updated_at">>;
   collateral_revision?: number | null;
   current_collateral?: Partial<import("./investorCollateral").InvestorCollateral>;
@@ -544,6 +549,7 @@ export type ApplicationClientTerms = {
 };
 
 export type ApplicationClientTermsWrite = {
+  expected_deal_budget_revision?: number;
   expected_collateral_revision?: number;
   financial_plan?: import("./financialCockpit").FinancialPlanWrite;
   expected_version: number;

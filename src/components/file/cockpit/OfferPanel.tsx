@@ -9,7 +9,7 @@
 // editor, where the PPM is attached. Readiness, loan terms on record and the
 // package sit above the products so nothing is sent out blind.
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn, CellChip, Input, Lbl, Select, StatusLine, Textarea, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LISTING_TONE, errorMessage } from "@/components/marketplace/shared";
@@ -22,6 +22,7 @@ import {
   useCpPrefill,
   useCpSourceLookup,
   useCpSuggestTerms,
+  useCpListingAiDraft,
   type CpListingProduct,
   type CpListingStatus,
   type CpOfferSuggestion,
@@ -37,6 +38,9 @@ import type { CockpitPackageState } from "./FinancialCockpit";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { workingLoanFromPlan } from "@/lib/loanTermsSync";
 import { sharedFinancingOfferFields } from "@/lib/sharedFinancingOffer";
+import { DealBudgetSection } from "@/components/file/DealBudgetSection";
+import { useDealBudget } from "@/hooks/useDealBudget";
+import { PreparationProgress } from "@/components/design-system/PreparationProgress";
 
 type Props = {
   profileId: string;
@@ -124,6 +128,16 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const prefill = useCpPrefill();
   const create = useCpCreateListing();
   const patch = useCpPatchListing();
+  const budget = useDealBudget(profileId);
+  const aiDraft = useCpListingAiDraft();
+  const sectionRef = useRef<HTMLElement | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [draftChoice, setDraftChoice] = useState({ title: true, summary: true });
+  const [appliedDraft, setAppliedDraft] = useState<{ id: string; fingerprint: string } | null>(null);
+  const touched = useRef({ title: false, summary: false });
+  const autoRequested = useRef(false);
+  const activeProfile = useRef(profileId);
+  activeProfile.current = profileId;
 
   const [products, setProducts] = useState<ProductDraft[]>([]);
   const [head, setHead] = useState({ name: "", offered_amount: "", minimum_investment: "", summary: "" });
@@ -132,6 +146,29 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [productSearch, setProductSearch] = useState("");
+  const generateListingDraft = () => {
+    const requestedProfile = profileId;
+    aiDraft.mutate({ profile_id: profileId, ...(listingId ? { listing_id: listingId } : {}), expected_deal_budget_revision: budget.data?.revision, current_title: head.name, current_summary: head.summary, preserve_title: true, preserve_summary: true }, { onSuccess: () => { if (activeProfile.current === requestedProfile) setDraftChoice({ title: !touched.current.title, summary: !touched.current.summary }); } });
+  };
+  const generateRef = useRef(generateListingDraft); generateRef.current = generateListingDraft;
+  useEffect(() => { autoRequested.current = false; touched.current = { title: false, summary: false }; setAppliedDraft(null); aiDraft.reset(); }, [profileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    const element = sectionRef.current;
+    if (!element || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(entries => setVisible(entries.some(entry => entry.isIntersecting && entry.target.getClientRects().length > 0)), { threshold: 0.01 });
+    observer.observe(element); return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (!canPublish || !visible || lookup.isLoading || listingId || !budget.data || autoRequested.current) return;
+    autoRequested.current = true; generateRef.current();
+  }, [canPublish, visible, lookup.isLoading, listingId, budget.data]);
+  const applyListingDraft = () => {
+    if (!aiDraft.data || aiDraft.data.profile_id && aiDraft.data.profile_id !== profileId) return;
+    if (budget.data && aiDraft.data.deal_budget_revision !== budget.data.revision) { setError("The budget changed after this listing draft was prepared. Regenerate the draft before applying it."); return; }
+    setHead(current => ({ ...current, ...(draftChoice.title ? { name: aiDraft.data!.draft.name } : {}), ...(draftChoice.summary ? { summary: aiDraft.data!.draft.summary } : {}) }));
+    setAppliedDraft({ id: aiDraft.data.draft_id, fingerprint: aiDraft.data.source_fingerprint }); setDirty(true);
+    setNotice("The reviewed text was applied to this working listing. Save the listing draft when ready.");
+  };
 
   // Seed from the listing when there is one, else from the suggestions, until the desk edits.
   useEffect(() => {
@@ -263,9 +300,12 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const payload = () => { if (repaymentError) throw new Error(repaymentError); return computed.map(({ draft, payment, dscr, coveragePayment, schedule }) => toProduct(draft, payment, dscr, coveragePayment, schedule)); };
   const primary = computed.find(({ draft }) => draft.primary) ?? computed[0] ?? null;
   const listedPrimary = listing.data?.products.find((product) => product.primary) ?? listing.data?.products[0];
+  const unreviewedExistingFunding = Boolean(listing.data && budget.data?.revision === 0);
   const loanFingerprint = (product: Partial<CpListingProduct> | null | undefined) => JSON.stringify(product ? [product.program_key, num(product.amount), num(product.rate_pct), num(product.term_months), product.structure, num(product.interest_only_months) ?? 0, product.payment_frequency, num(product.payments_per_year), product.repayment_config ?? null, product.dscr] : null);
   const sharedProposalChanged = Boolean(sharedLoan && primary && listing.data && loanFingerprint(toProduct(primary.draft, primary.payment, primary.dscr, primary.coveragePayment, primary.schedule)) !== loanFingerprint(listedPrimary));
   const headlinePatch = () => ({
+    expected_deal_budget_revision: budget.data?.revision,
+    ...(appliedDraft ? { ai_draft_id: appliedDraft.id, expected_source_fingerprint: appliedDraft.fingerprint } : {}),
     products: payload(),
     // Decimals travel as strings on the listing API.
     ...(primary
@@ -274,11 +314,11 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
           note_rate_pct: num(primary.draft.rate_pct) == null ? undefined : String(num(primary.draft.rate_pct)),
           term_months: num(primary.draft.term_months) == null ? undefined : num(primary.draft.term_months) as number,
           loan_amount: num(primary.draft.amount) == null ? undefined : String(num(primary.draft.amount)),
-          offered_amount: (num(head.offered_amount) ?? num(primary.draft.amount)) == null ? undefined : String(num(head.offered_amount) ?? num(primary.draft.amount)),
+          ...(!unreviewedExistingFunding ? { offered_amount: num(budget.data?.calculation.investor_funding_amount as number | string | null) == null ? undefined : String(budget.data?.calculation.investor_funding_amount) } : {}),
         }
       : {}),
     ...(head.name.trim() ? { name: head.name.trim() } : {}),
-    ...(num(head.minimum_investment) != null ? { minimum_investment: String(num(head.minimum_investment)) } : {}),
+    ...(!unreviewedExistingFunding && num(budget.data?.calculation.minimum_investor_contribution as number | string | null) != null ? { minimum_investment: String(budget.data?.calculation.minimum_investor_contribution) } : {}),
     ...(head.summary.trim() ? { summary: head.summary.trim() } : {}),
   });
 
@@ -287,6 +327,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
     setNotice(null);
     setBusy(true);
     try {
+      await budget.verifyRevision();
       if (workingFinancing?.dirty) throw new Error("Save the shared coverage plan or terms before updating the marketplace proposal.");
       if (recordedReferenceOnly) throw new Error("The active coverage loan was cleared. Structure and save a new proposal before updating the marketplace listing; the old terms remain a historical reference.");
       if (!primary) throw new Error("Choose a primary product before creating its marketplace proposal.");
@@ -329,7 +370,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const editable = canPublish && (!status || status === "draft" || status === "open");
 
   return (
-    <section className={embedded ? "grid g12" : "fc-card fc-wide"} id="fc-marketplace" ref={innerRef}>
+    <section className={embedded ? "grid g12" : "fc-card fc-wide"} id="fc-marketplace" ref={node => { sectionRef.current = node; if (typeof innerRef === "function") innerRef(node); else if (innerRef) (innerRef as { current: HTMLElement | null }).current = node; }}>
       <div className="fc-card-h">
         <div>
           <h4>{embedded ? "Offering terms & marketplace listing" : "Investor package & capital partners"}</h4>
@@ -396,6 +437,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
 
       {canPublish ? (
         <>
+          <DealBudgetSection profileId={profileId} disabled={!editable} compact={false} existingFunding={listing.data ? { capital: num(listing.data.offered_amount), minimum: num(listing.data.minimum_investment) } : undefined} />
           <div className="grid g8" aria-label="Selected offering product">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}><Lbl>Product to offer</Lbl><strong>{primary?.draft.label || "Choose a product"}</strong>{primary ? <span className="sub">{money(num(primary.draft.amount))} · {multiple(primary.dscr)} projected DSCR</span> : null}{sharedLoan ? <CellChip tone="acc">Shared coverage loan</CellChip> : null}{sharedProposalChanged ? <CellChip tone="warn">Listing needs the current proposal</CellChip> : null}</div>
             <details>
@@ -476,22 +518,37 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
           {recordedReferenceOnly ? <StatusLine tone="warn">No active loan proposal. The earlier terms are retained for history; structure and save a loan in the coverage plan before updating the listing.</StatusLine> : null}
           <div className="fc-listing-grid">
             <div className="fc-listing-item">
-              <Lbl>Listing name (never the borrower's name)</Lbl>
-              <Input aria-label="Listing name" value={head.name} disabled={!editable} placeholder={listing.data?.name ?? "Set on save from the program and location"} onChange={(e) => { setDirty(true); setHead({ ...head, name: e.target.value }); }} />
+              <Lbl>Deal title</Lbl>
+              <Input aria-label="Deal title" value={head.name} disabled={!editable} placeholder="Review the title drafted from this file" onChange={(e) => { touched.current.title = true; setDraftChoice(current => ({ ...current, title: false })); setDirty(true); setHead({ ...head, name: e.target.value }); }} />
             </div>
             <div className="fc-listing-item">
-              <Lbl>Offered to members, $</Lbl>
-              <Input aria-label="Offered amount" inputMode="decimal" value={head.offered_amount} disabled={!editable} placeholder={primary ? text(num(primary.draft.amount)) : ""} onChange={(e) => { setDirty(true); setHead({ ...head, offered_amount: e.target.value }); }} />
+              <Lbl>Capital to raise from investors</Lbl>
+              <strong>{money(unreviewedExistingFunding ? num(listing.data?.offered_amount) : num(budget.data?.calculation.investor_funding_amount as number | string | null))}</strong><small className="sub">{unreviewedExistingFunding ? "Existing listing capital · review the budget before changing its funding." : "Shared deal budget · full loan funding by default."}</small>
             </div>
             <div className="fc-listing-item">
-              <Lbl>Minimum subscription, $</Lbl>
-              <Input aria-label="Minimum subscription" inputMode="decimal" value={head.minimum_investment} disabled={!editable} placeholder="1% of the offer, at least 10,000" onChange={(e) => { setDirty(true); setHead({ ...head, minimum_investment: e.target.value }); }} />
+              <Lbl>{unreviewedExistingFunding || budget.data?.funding_mode === "multiple_investors" ? "Smallest investor contribution" : "One investor contributes"}</Lbl>
+              <strong>{money(unreviewedExistingFunding ? num(listing.data?.minimum_investment) : num(budget.data?.calculation.minimum_investor_contribution as number | string | null))}</strong><small className="sub">{unreviewedExistingFunding ? "Existing listing minimum is preserved until you review and save the budget." : "Choose Multiple investors in the deal budget to split the raise."}</small>
             </div>
           </div>
           <div className="grid g4">
             <Lbl>Summary members read</Lbl>
-            <Textarea rows={2} aria-label="Listing summary" value={head.summary} disabled={!editable} placeholder="Operating business and what the statements show; the prefill writes a first line." onChange={(e) => { setDirty(true); setHead({ ...head, summary: e.target.value }); }} />
+            <Textarea rows={2} aria-label="Listing summary" value={head.summary} disabled={!editable} placeholder="Review the investor summary drafted from this file." onChange={(e) => { touched.current.summary = true; setDraftChoice(current => ({ ...current, summary: false })); setDirty(true); setHead({ ...head, summary: e.target.value }); }} />
           </div>
+          <section className="grid g8" aria-label="AI listing draft">
+            <div className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><strong>Listing draft from the file</strong><Btn size="sm" disabled={!editable || aiDraft.isPending || !budget.data} onClick={generateListingDraft}><Icon name="sparkles" size={13} />{aiDraft.isPending ? "Preparing draft…" : aiDraft.data ? "Regenerate listing draft" : "Draft listing from file"}</Btn></div>
+            {aiDraft.isPending ? <PreparationProgress compact title="Preparing the investor listing" description="Reading the structured loan, reviewed budget and financial evidence. Nothing is published." /> : null}
+            {aiDraft.error ? <StatusLine tone="warn">{errorMessage(aiDraft.error, "The listing draft could not be prepared. Your edits are retained.")}<Btn size="sm" onClick={generateListingDraft}>Retry listing draft</Btn></StatusLine> : null}
+            {aiDraft.data && (!aiDraft.data.profile_id || aiDraft.data.profile_id === profileId) ? <div className="grid g8" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 12 }}>
+              <div className="fc-chips"><CellChip tone="acc">{aiDraft.data.status === "ai_draft" ? "AI text draft · review before saving" : "File-based draft · review before saving"}</CellChip><span className="sub">Budget revision {aiDraft.data.deal_budget_revision}</span></div>
+              <label className="row"><input type="checkbox" aria-label="Use drafted deal title" checked={draftChoice.title} onChange={event => setDraftChoice(current => ({ ...current, title: event.target.checked }))} /><strong>{aiDraft.data.draft.name}</strong></label>
+              <label style={{ display: "flex", gap: 8, alignItems: "start" }}><input type="checkbox" aria-label="Use drafted listing summary" checked={draftChoice.summary} onChange={event => setDraftChoice(current => ({ ...current, summary: event.target.checked }))} /><span style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{aiDraft.data.draft.summary}</span></label>
+              <p className="sub">Your manual title and summary are retained. Select a drafted field explicitly to replace it. Investor funding and costs come from the shared budget.</p>
+              {budget.data && aiDraft.data.deal_budget_revision !== budget.data.revision ? <StatusLine tone="warn">The budget changed after this draft was prepared. Regenerate it before applying or saving its text.</StatusLine> : null}
+              {[...aiDraft.data.missing, ...aiDraft.data.warnings].length ? <StatusLine tone="warn">{[...aiDraft.data.missing, ...aiDraft.data.warnings].join(" · ")}</StatusLine> : null}
+              <details><summary>Sources used for this draft</summary>{aiDraft.data.field_provenance.map((source, index) => <p key={index} className="sub"><strong>{source.field}</strong> · {source.source}: {source.explanation}</p>)}</details>
+              <Btn size="sm" onClick={applyListingDraft} disabled={!editable || !draftChoice.title && !draftChoice.summary || Boolean(budget.data && aiDraft.data.deal_budget_revision !== budget.data.revision)}>Apply selected draft text</Btn>
+            </div> : null}
+          </section>
           {repaymentError ? <StatusLine tone="bad">{repaymentError} Resolve the repayment schedule before saving.</StatusLine> : null}
           {listingId && !embedded ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>

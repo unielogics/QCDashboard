@@ -26,6 +26,8 @@ import {
 import { DOC_KINDS, FREQ_LABEL, LIEN_LABEL, LISTING_TONE, SERVICER_TONE, SUB_TONE, Status, SuperAdminOnly, VERTICAL_LABEL, day, errorMessage, label, money, pct, when } from "@/components/marketplace/shared";
 import { SourceSnapshotCard } from "@/components/marketplace/SourceSnapshotCard";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
+import { DealBudgetSection } from "@/components/file/DealBudgetSection";
+import { useDealBudget } from "@/hooks/useDealBudget";
 
 export default function ListingEditorPage() {
   return (
@@ -163,6 +165,7 @@ function toDraft(l: CpListing): Draft {
 }
 
 function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void }) {
+  const budget = useDealBudget(listing.profile_id ?? "");
   const [d, setD] = useState<Draft>(() => toDraft(listing));
   const dirtyRef = useRef(false);
   useEffect(() => { if (!dirtyRef.current) setD(toDraft(listing)); }, [listing]);
@@ -183,6 +186,7 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
       title_status: d.title_status || null, servicer_label: d.servicer_label || null, maturity_date: d.maturity_date || null, closes_at: d.closes_at ? new Date(d.closes_at).toISOString() : null,
     };
     try {
+      if (listing.profile_id) body.expected_deal_budget_revision = await budget.verifyRevision();
       await patch.mutateAsync({ id: listing.id, ...body });
       dirtyRef.current = false;
       onMessage({ tone: "ok", text: "Saved." });
@@ -193,16 +197,17 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
 
   const F = ({ k, label: l, type = "text", hint }: { k: keyof Draft; label: string; type?: string; hint?: string }) => (
     <Field label={l} hint={hint}>
-      <Input type={type} value={String(d[k] ?? "")} onChange={(e) => set(k, e.target.value as never)} disabled={readOnly} className={type === "number" ? "num" : undefined} />
+      <Input type={type} value={String(d[k] ?? "")} onChange={(e) => set(k, e.target.value as never)} disabled={readOnly || Boolean(listing.profile_id && ["loan_amount", "note_rate_pct", "term_months", "offered_amount", "minimum_investment"].includes(k))} className={type === "number" ? "num" : undefined} />
     </Field>
   );
 
   return (
     <div className="grid">
+      {listing.profile_id ? <DealBudgetSection profileId={listing.profile_id} disabled={readOnly} compact={false} existingFunding={{ capital: listing.offered_amount == null ? null : Number(listing.offered_amount), minimum: listing.minimum_investment == null ? null : Number(listing.minimum_investment) }} /> : null}
       <Panel title="Terms" bodyClass="grid cols-auto">
         <Field label="Vertical"><Select value={d.vertical} onChange={(e) => set("vertical", e.target.value)} disabled={readOnly}><option value="real_estate">Real estate</option><option value="auto">Auto</option><option value="business">Business</option></Select></Field>
         <F k="program_label" label="Program label" hint="What members see: Bridge, Fix and flip, Floorplan, Equipment…" />
-        <F k="name" label="Listing name" hint="Describes the loan, never the borrower by name." />
+        <F k="name" label="Deal title" hint="Describes the financing proposal and location." />
         <F k="city" label="City" />
         <F k="state" label="State (2 letters)" />
         <F k="collateral_type" label="Collateral type" hint="Multifamily, Residential 1-4, Vehicle inventory, Equipment, Receivables…" />
@@ -212,8 +217,8 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
         <F k="ltv_pct" label="LTV / LTC / CLTV, %" type="number" />
         <Field label="Ratio kind"><Select value={d.ltv_kind} onChange={(e) => set("ltv_kind", e.target.value)} disabled={readOnly}><option value="ltv">LTV</option><option value="ltc">LTC</option><option value="cltv">CLTV</option></Select></Field>
         <F k="loan_amount" label="Loan amount, $" type="number" />
-        <F k="offered_amount" label="Offered to members, $" type="number" hint="The part of the loan members may fund." />
-        <F k="minimum_investment" label="Minimum subscription, $" type="number" />
+        <F k="offered_amount" label="Capital to raise from investors, $" type="number" hint={listing.profile_id ? "Set once in the shared deal budget above; defaults to full loan funding." : "Investor capital funding this loan."} />
+        <F k="minimum_investment" label="Smallest investor contribution, $" type="number" hint="One investor contributes the full amount unless multiple investors are configured." />
         <Field label="Payment frequency"><Select value={d.payment_frequency} onChange={(e) => set("payment_frequency", e.target.value)} disabled={readOnly}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="at_maturity">At maturity</option></Select></Field>
         <F k="maturity_date" label="Maturity date" type="date" />
         <F k="closes_at" label="Subscriptions close" type="datetime-local" hint="Drives the members' days-left counter." />
