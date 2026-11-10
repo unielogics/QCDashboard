@@ -120,6 +120,7 @@ import { describeSchedule, type LoanScheduleSummary } from "@/lib/loanSchedule";
 import { evaluateRefinanceEbitda, roundEbitdaMoney, type RefinanceEbitda } from "@/lib/ebitdaRefinance";
 
 export type LocalPlanEvaluation = {
+  operatingPlan?: import("./financialCockpit").OperatingPlanCoverage | null;
   ebitda?: RefinanceEbitda;
   retiredMonthly: number;
   payoffTotal: number | null;
@@ -194,6 +195,10 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const addBacksMonthly = r2((plan.add_backs ?? []).filter((a) => !isExcludedDscrAddBack(a.kind)).reduce((s, a) => s + (Number.isFinite(a.amount_monthly) ? a.amount_monthly : 0), 0));
   const addBacksAnnual = r2(addBacksMonthly * 12);
   const incomeOverride = plan.overrides?.income_annual ?? null;
+  const publishedOperatingPlan = cockpit.plan?.evaluation?.operating_plan;
+  const operatingPlan = publishedOperatingPlan?.applied && (incomeOverride != null || plan.add_backs?.some(row => !isExcludedDscrAddBack(row.kind) && Number.isFinite(row.amount_monthly) && row.amount_monthly > 0))
+    ? { ...publishedOperatingPlan, status: "blocked" as const, applied: false, applied_annual_impact: 0, candidate_impacts: {}, reason: "Reconcile manual earnings overrides and add-backs with the operating plan before applying both." }
+    : publishedOperatingPlan;
   const serviceOverride = plan.overrides?.debt_service_monthly ?? null;
   const interestOnly = !!plan.new_loan_interest_only || plan.new_loan_structure === "interest_only";
   const proposed = cockpit.dscr.proposed;
@@ -247,7 +252,8 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     .filter((c) => c.numerator != null)
     .map((c) => {
       // Only additional operating adjustments raise earnings. Interest and D&A are already accounted for.
-      const adjusted = r2((c.numerator as number) + addBacksAnnual + (c.key === "bank_cash_flow" ? excludedMonthly * 12 : 0));
+      const operatingImpact = operatingPlan?.applied ? operatingPlan.candidate_impacts?.[c.key] ?? 0 : 0;
+      const adjusted = r2((c.numerator as number) + addBacksAnnual + operatingImpact + (c.key === "bank_cash_flow" ? excludedMonthly * 12 : 0));
       const numeratorAfter = incomeOverride != null ? r2(incomeOverride) : adjusted;
       const valueAfter = serviceAfterAnnual != null && serviceAfterAnnual > 0 ? r2(numeratorAfter / serviceAfterAnnual) : null;
       return { key: c.key, label: c.label, numerator_before: c.numerator as number, numerator_after: numeratorAfter, value_before: c.value, value_after: valueAfter, status_after: dscrStatusOf(valueAfter), no_debt_left: serviceAfterAnnual != null && serviceAfterAnnual <= 0 && numeratorAfter > 0, overridden: incomeOverride != null };
@@ -288,6 +294,7 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   });
   const netAfter = rows.map((r) => r.netAfter).filter((v): v is number => v != null);
   return {
+    operatingPlan,
     ebitda: evaluateRefinanceEbitda(cockpit, plan, { serviceAfter: serviceAfterRegular, netBefore: mean(months.map((row) => row.net)), netAfter: netAfter.length ? r2(netAfter.reduce((a, b) => a + b, 0) / netAfter.length) : null, retiredCount: retired.length, newPayment: newPayment == null ? null : newRegularPayment }),
     retiredMonthly,
     payoffTotal,

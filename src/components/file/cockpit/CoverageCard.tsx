@@ -15,7 +15,7 @@ import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { useAutomaticFinancedPrincipal } from "@/hooks/useAutomaticFinancedPrincipal";
 import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
-import { withBudgetEvaluation } from "@/lib/budgetPlanEvaluation";
+import { withBudgetEvaluation, withSavedEarningsEvaluation } from "@/lib/budgetPlanEvaluation";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
@@ -68,6 +68,7 @@ import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
 import { EbitdaRefinanceComparison } from "./EbitdaRefinanceComparison";
 import { RevenueTrendPanel } from "./RevenueTrendPanel";
 import { CoverageEbitdaMetric } from "./CoverageEbitdaMetric";
+import { OperatingCoverageSummary } from "./OperatingCoverageSummary";
 import { CoverageMetric } from "./CoverageMetric";
 import { ebitdaIsStaffCorrected } from "@/lib/financialMetrics";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
@@ -218,7 +219,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const budgetLoan = workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null;
   const budgetPreview = useDealBudgetPreview(profileId, { enabled: requestedCanEdit || canRecordTerms, loan: budgetLoan, financialPlan: plan });
   const budgetPending = (requestedCanEdit || canRecordTerms) && (budgetPreview.pending || budgetPreview.budget.isPending || budgetPreview.isError || budgetPreview.budget.isError);
-  const local = useMemo(() => withBudgetEvaluation(evaluatePlanLocally(cockpit, plan, months), budgetPreview.data?.financial_plan_evaluation, budgetPending), [cockpit, plan, months, budgetPreview.data, budgetPending]);
+  const local = useMemo(() => {
+    const scoped = evaluatePlanLocally(cockpit, plan, months);
+    const server = budgetPreview.data?.financial_plan_evaluation;
+    return withBudgetEvaluation(!server && !dirty ? withSavedEarningsEvaluation(scoped, cockpit.plan.evaluation) : scoped, server, budgetPending);
+  }, [cockpit, plan, months, budgetPreview.data, budgetPending, dirty]);
   const { headline, thresholds, candidates, reason, debt_service_source } = cockpit.dscr;
   const incomeCurrencyComparable = coverageCurrencyComparable(cockpit, plan.overrides?.income_annual != null);
   const currentAnnualService = headline?.annual_debt_service ?? cockpit.dscr.annual_debt_service ?? (cockpit.debt.service.monthly == null ? null : cockpit.debt.service.monthly * 12);
@@ -506,6 +511,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             {local.newPayment ? <CellChip tone="warn">+{money(local.newPayment)} / mo {local.schedule?.repayment_config ? "underwriting stress equivalent" : "coverage basis"}{loanTerms ? ` (${loanTerms})` : local.newPaymentSource === "term_sheet" ? " (recorded loan terms)" : ""}</CellChip> : null}
           </div>
           <CoverageEbitdaMetric value={local.ebitda} side="plan" unsaved={dirty} scenarioActive={Boolean(cockpit.plan.evaluation.active)} corrected={ebitdaIsStaffCorrected(cockpit.ebitda?.headline, cockpit.metric_review)} />
+          <OperatingCoverageSummary coverage={local.operatingPlan} currentDscr={headline?.value} projectedDscr={local.headlineAfter} currency={cockpit.operating_plan?.evaluation?.baseline.currency} pending={budgetPending || unresolvedPayoffs} />
           {local.coverageUnavailableReason ? <StatusLine tone="warn">{local.coverageUnavailableReason}</StatusLine> : null}
           <div className="fc-plan-words">
             <span className="lbl">The plan</span>
