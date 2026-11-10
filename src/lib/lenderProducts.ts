@@ -49,6 +49,7 @@ export const LENDER_PRODUCT_GROUPS: ReadonlyArray<{
       { value: "real_estate_backed", label: "Real-estate-backed" },
       { value: "jumbo_dscr", label: "Jumbo DSCR" },
       { value: "reinsurance_backed", label: "Reinsurance-backed" },
+      { value: "merchant_cash_advance", label: "Merchant Cash Advance" },
       { value: "mca_refinance", label: "MCA Refinance" },
       { value: "arf_bankroll", label: "ARF Bankroll" },
       { value: "arf_io_bankroll", label: "ARF IO-Bankroll" },

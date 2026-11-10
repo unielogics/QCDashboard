@@ -14,9 +14,9 @@ type Application = { [K in keyof NewBusinessProfile]: string | null } & {
   requested_loan_amount: number | null; years_in_business: number | null;
   target_property_address: string | null; transaction_type: string | null;
   estimated_value_or_purchase_price: number | null; monthly_rent: number | null; submitted_at: string | null;
-  funding_need: string | null; requested_amount_editable?: boolean;
+  funding_need: string | null; funding_need_editable?: boolean; requested_amount_editable?: boolean;
 };
-type FieldKey = Exclude<keyof Application, "vertical" | "submitted_at" | "requested_amount_editable">;
+type FieldKey = Exclude<keyof Application, "vertical" | "submitted_at" | "requested_amount_editable" | "funding_need_editable">;
 const NUMBER_FIELDS = new Set<FieldKey>(["requested_loan_amount", "years_in_business", "estimated_value_or_purchase_price", "monthly_rent"]);
 const ANSWER_FIELDS: readonly FieldKey[] = ["full_name", "email", "phone", "business_name", "business_street", "business_city", "business_state", "business_zip", "industry", "business_website", "business_description", "loan_purpose", "requested_loan_amount", "years_in_business", "target_property_address", "transaction_type", "estimated_value_or_purchase_price", "monthly_rent", "funding_need"];
 
@@ -90,7 +90,8 @@ export function RoomApplicationForm({ token, passcode, onChanged, onContinue }: 
       </div>
       <BusinessProfileFields value={businessProfile} onChange={(patch) => setAnswers((current) => ({ ...current, ...patch }))} disabled={busy} />
       {application.vertical === "main_street" ? <div className="application-room-identity">
-        <label className="application-room-field"><span>Funding need *</span><select value={answers.funding_need || ""} onChange={(event) => setAnswers((current) => ({ ...current, funding_need: event.target.value }))} required disabled={busy}><option value="">Choose what you need</option>{MAIN_STREET_INTENTS.map((option) => <option key={option.slug} value={option.slug}>{option.label}</option>)}</select></label>
+        <label className="application-room-field"><span>Funding need *</span><select value={answers.funding_need || ""} onChange={(event) => setAnswers((current) => ({ ...current, funding_need: event.target.value }))} required disabled={busy || application.funding_need_editable === false}><option value="">Choose what you need</option>{MAIN_STREET_INTENTS.map((option) => <option key={option.slug} value={option.slug}>{option.label}</option>)}</select></label>
+        {application.funding_need_editable === false ? <p className="application-room-note">This application is for MCA funding. Contact your advisor if you need a different product.</p> : null}
       </div> : null}
       <div className="application-room-identity" style={{ marginTop: 16 }}>
         {field("loan_purpose", lending ? "Funding purpose" : "What would you like help with?", { required: lending, placeholder: "How will you use the funds?" })}

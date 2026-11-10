@@ -46,6 +46,8 @@ import { deriveExperienceMode } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
+import { ClientMcaFileModal } from "@/components/file/ClientMcaFileModal";
+import { fileHref } from "@/lib/fileRoutes";
 import { usePinnedRows } from "@/lib/tablePinning";
 import type { Broker, Client, ClientExperienceMode, ClientExperienceModeLockedBy, ClientExperienceModeReason, ClientStage, Document, Loan } from "@/lib/types";
 
@@ -80,6 +82,7 @@ export default function ClientDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [intakeLinkStatus, setIntakeLinkStatus] = useState<{ tone: "ok" | "error"; text: string } | null>(null);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const [mcaFileOpen, setMcaFileOpen] = useState(false);
   const [prequalErr, setPrequalErr] = useState<string | null>(null);
   const [chatPickerOpen, setChatPickerOpen] = useState(false);
   // Confirmation modal — shows the handoff packet summary before
@@ -111,6 +114,7 @@ export default function ClientDetailPage() {
 
   const canEdit = profile.role !== "client";
   const isInternal = profile.role === "super_admin" || profile.role === "loan_exec";
+  const canCreateMca = profile.role === "super_admin";
   // CLIENT-role users can't add a file from inside their own page;
   // every other operator role gets the "+ New file" affordance.
   // Agents (BROKER) see "Ready for Prequalification" instead — that's
@@ -240,8 +244,8 @@ export default function ClientDetailPage() {
               <Icon name="chat" size={12} /> Message client
             </Btn>
           )}
-          {canStartDeal && (
-            <Btn variant="pri" onClick={() => setIntakeOpen(true)}>
+          {canStartDeal && (client.source_channel !== "mca_funding" || canCreateMca) && (
+            <Btn variant="pri" onClick={() => client.source_channel === "mca_funding" ? setMcaFileOpen(true) : setIntakeOpen(true)}>
               <Icon name="plus" size={12} /> New file
             </Btn>
           )}
@@ -253,7 +257,7 @@ export default function ClientDetailPage() {
               memory-aware message, and drops an AITask in the
               funding queue. The agent doesn't pick a loan program —
               funding does that on review. */}
-          {canRequestPrequal && client.lead_promotion_status !== "agent_requested_review" && (
+          {canRequestPrequal && client.source_channel !== "mca_funding" && client.lead_promotion_status !== "agent_requested_review" && (
             <Btn variant="pri" onClick={() => setHandoffOpen(true)} disabled={requestPrequal.isPending}>
               <Icon name="bolt" size={12} />
               {requestPrequal.isPending ? "Handing off…" : "Ready for Lending"}
@@ -293,6 +297,7 @@ export default function ClientDetailPage() {
           client_type: client.client_type ?? null,
         }}
       />
+      {mcaFileOpen && canCreateMca ? <ClientMcaFileModal key={client.id} client={client} onClose={() => setMcaFileOpen(false)} onOpen={(intakeId) => router.push(fileHref(intakeId))} /> : null}
       <LoanChatPicker
         open={chatPickerOpen}
         loans={chatLoans}
@@ -316,7 +321,7 @@ export default function ClientDetailPage() {
         }}
       />
 
-      <ClientStageCard client={client} canEdit={canEdit} clientLoans={clientLoans} />
+      <ClientStageCard client={client} canEdit={canEdit} clientLoans={clientLoans} onStartMca={canCreateMca ? () => setMcaFileOpen(true) : undefined} />
 
       {/* Realtor-phase AI Plan card. The Realtor Elara is for
           nurturing pre-funding leads — once the client has any active
@@ -324,7 +329,7 @@ export default function ClientDetailPage() {
           AI surface and this card just shows stale "0% Ready" noise.
           Hide it when the client has active loans so super-admin /
           underwriter views stay focused on funding state. */}
-      {clientLoans.some((l) => l.stage !== "funded") ? null : (
+      {client.source_channel === "mca_funding" || clientLoans.some((l) => l.stage !== "funded") ? null : (
         <ClientAIPlanCard clientId={client.id} loanId={null} />
       )}
 
@@ -341,7 +346,7 @@ export default function ClientDetailPage() {
           Realtor AI writes this every conversational turn; the card
           surfaces what's known, what's missing, and the AI's next
           best action. Only renders when the AI has populated something. */}
-      {client.realtor_profile && client.realtor_profile.client_type !== "unknown" && (
+      {client.source_channel !== "mca_funding" && client.realtor_profile && client.realtor_profile.client_type !== "unknown" && (
         <RealtorReadinessCard profile={client.realtor_profile} />
       )}
 
@@ -983,10 +988,12 @@ function ClientStageCard({
   client,
   canEdit,
   clientLoans,
+  onStartMca,
 }: {
   client: Client;
   canEdit: boolean;
   clientLoans: Loan[];
+  onStartMca?: () => void;
 }) {
   const confirmAction = useConfirmAction();
   const updateStage = useUpdateClientStage();
@@ -995,6 +1002,7 @@ function ClientStageCard({
 
   const activeLoans = clientLoans.filter((l) => l.stage !== "funded").length;
   const stage = inferStage(client, activeLoans);
+  const mcaFunding = client.source_channel === "mca_funding";
 
   const advance = async (next: ClientStage) => {
     setError(null);
@@ -1006,6 +1014,10 @@ function ClientStageCard({
   };
 
   const handleStartFunding = async () => {
+    if (mcaFunding) {
+      onStartMca?.();
+      return;
+    }
     setError(null);
     const confirmed = await confirmAction({
       title: "Start funding for this client",
@@ -1053,7 +1065,7 @@ function ClientStageCard({
               Mark verified →
             </Btn>
           )}
-          {stage === "verified" && (
+          {stage === "verified" && (!mcaFunding || onStartMca) && (
             <Btn variant="pri" onClick={handleStartFunding} disabled={busy}>
               <Icon name="bolt" size={13} />
               {startFunding.isPending ? "Starting…" : "Start Funding"}
@@ -1077,10 +1089,10 @@ function ClientStageCard({
       )}
 
       <div className="sub mt">
-        Use the <strong>Documents</strong> section below to upload on the client&apos;s
+        {mcaFunding ? <>MCA funding · 1.22–1.38× factor. The Funding Team reviews six months of bank statements, a debt schedule, and last year&apos;s business tax return.{!onStartMca && canEdit ? " Ask the Funding Team to open this MCA file." : " Start Funding opens the MCA application and secure room setup."}</> : <>Use the <strong>Documents</strong> section below to upload on the client&apos;s
         behalf when needed — funding docs verify only by the Funding Team, but
         you can always add transaction-side docs (purchase agreement, inspection,
-        etc.) to keep the file moving.
+        etc.) to keep the file moving.</>}
       </div>
     </Panel>
   );
@@ -1173,7 +1185,7 @@ function AssignedAgentCard({ client }: { client: Client }) {
 
   return (
     <Panel
-      title="Real estate agent"
+      title={client.source_channel === "mca_funding" ? "Relationship agent" : "Real estate agent"}
       actions={
         <>
           <CellChip tone={assigned ? "acc" : "warn"}>

@@ -69,6 +69,19 @@ describe("the shared financial draft", () => {
     expect(financialMappingConfidence("needs_review")).toBe("Needs review");
     expect(financialMappingConfidence(0.92)).toBe("92% confidence");
   });
+
+  it("round trips explicit and unconfirmed MCA modification answers by debt identity", () => {
+    const source: SheetLayout = { ...layout, columns: [{ c: 1 }], rows: [{ r: 1, kind: "data", row_key: "advance", block: "debts", cells: [{ c: 1, type: "select", key: "advance.mca_modified", path: ["debts", "advance", "mca_modified"] }] }] };
+    const value = { debts: [{ id: "advance", lender: "Advance lender", debt_type: "mca", mca_modified: "", evidence_links: [{ file_id: "contract", role: "agreement" }] }, { id: "other", lender: "Another lender", debt_type: "mca", mca_modified: "" }] };
+    for (const answer of ["no", "yes", ""]) {
+      const next = applyFinancialCells(value, source, [{ sheet: "debt_schedule", key: "advance.mca_modified", value: answer }]);
+      expect(financialValues(next, source)["advance.mca_modified"]).toBe(answer);
+      expect(next.debts).toEqual([{ ...value.debts[0], mca_modified: answer }, value.debts[1]]);
+    }
+    const cell = financialLayout(value, source).rows.find((row) => row.row_key === "advance")!.cells![0];
+    expect(cell.options).toEqual(["yes", "no"]);
+    expect(cell.option_labels).toMatchObject({ yes: "Modified", no: "No modification" });
+  });
   it("addresses debt cells by stable identity even when rows reorder", () => {
     const next = applyFinancialCells(body, layout, [{ sheet: "debt_schedule", key: "debt-a.balance", value: "75000" }]);
     expect(next.debts).toEqual([body.debts[0], { ...body.debts[1], balance: "75000" }]);

@@ -12,27 +12,40 @@ import { Icon } from "@/components/design-system/Icon";
 import { validPhone } from "@/lib/formCoerce";
 import { CreateLeadPayload, LeadDetail, LeadVariant, formatSize } from "./leadFile";
 
+export type LeadCreationClient = {
+  id: string;
+  name: string;
+  email?: string | null;
+  phone?: string | null;
+  business_name?: string | null;
+  language?: string | null;
+};
+
 export function CreateLeadModal({
   onClose,
   onCreate,
   creating,
   createError,
   onOpen,
+  initialVariant = "dealer",
+  sourceClient,
 }: {
   onClose: () => void;
   onCreate: (payload: CreateLeadPayload, evidenceFiles: File[]) => Promise<LeadDetail | undefined>;
   creating: boolean;
   createError?: string;
   onOpen: (id: string) => void;
+  initialVariant?: LeadVariant;
+  sourceClient?: LeadCreationClient;
 }) {
   const [completion, setCompletion] = useState<"client" | "operator">("client");
-  const [variant, setVariant] = useState<LeadVariant>("dealer");
+  const [variant, setVariant] = useState<LeadVariant>(initialVariant);
   const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [intent, setIntent] = useState<string>("working_capital");
-  const [fullName, setFullName] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
-  const [businessName, setBusinessName] = useState("");
+  const [fullName, setFullName] = useState(sourceClient?.name ?? "");
+  const [email, setEmail] = useState(sourceClient?.email ?? "");
+  const [phone, setPhone] = useState(sourceClient?.phone ?? "");
+  const [businessName, setBusinessName] = useState(sourceClient?.business_name ?? "");
   const [investorName, setInvestorName] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
   const [transactionType, setTransactionType] = useState("");
@@ -40,9 +53,9 @@ export function CreateLeadModal({
   const [propertyValue, setPropertyValue] = useState("");
   const [monthlyRent, setMonthlyRent] = useState("");
   const [creditTier, setCreditTier] = useState("");
-  const [emailInvite, setEmailInvite] = useState(true);
+  const [emailInvite, setEmailInvite] = useState(!sourceClient || Boolean(sourceClient.email));
   const [smsInvite, setSmsInvite] = useState(false);
-  const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
+  const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">(sourceClient?.language === "es" ? "es" : "en");
   const [error, setError] = useState("");
   const [step, setStep] = useState(1);
   const [evidenceFiles, setEvidenceFiles] = useState<File[]>([]);
@@ -56,10 +69,11 @@ export function CreateLeadModal({
 
   const isRE = variant === "real_estate";
   const isMS = variant === "main_street";
+  const isMcaFunding = variant === "mca_funding";
   const clientCompletes = completion === "client";
   const steps = clientCompletes ? ["File type", "Client and invite", "Review"] : ["File type", "Client and entity", "Evidence", "Review"];
   const reviewStep = steps.length;
-  const typeLabel = ({ dealer: "Dealer", real_estate: "Real estate", main_street: "Main Street", mca_refinance: "MCA refinance" } as const)[variant];
+  const typeLabel = ({ dealer: "Dealer", real_estate: "Real estate", main_street: "Main Street", mca_funding: "MCA funding", mca_refinance: "MCA refinance" } as const)[variant];
   const num = (s: string) => (s.trim() === "" ? undefined : Number(s));
 
   function contactError() {
@@ -81,7 +95,8 @@ export function CreateLeadModal({
     submitting.current = true;
     try {
       const shared = {
-        variant,
+        variant: isMcaFunding ? "main_street" as const : variant,
+        client_id: sourceClient?.id,
         invitation_channels: [...(emailInvite ? ["email" as const] : []), ...(smsInvite ? ["sms" as const] : [])],
         full_name: fullName.trim(),
         business_name: isRE ? undefined : (businessName.trim() || undefined),
@@ -92,7 +107,7 @@ export function CreateLeadModal({
         estimated_value_or_purchase_price: isRE ? num(propertyValue) : undefined,
         monthly_rent: isRE ? num(monthlyRent) : undefined,
         estimated_credit_tier: isRE ? (creditTier.trim() || undefined) : undefined,
-        intent: isMS && !clientCompletes ? intent : undefined,
+        intent: isMcaFunding ? "merchant_cash_advance" : isMS && !clientCompletes ? intent : undefined,
         notify_client: false,
         preferred_language: preferredLanguage,
         secure_room_pin: roomPin,
@@ -187,7 +202,8 @@ export function CreateLeadModal({
           <label className={cx("pick", !clientCompletes && "on")}><input type="radio" name="application-completion" checked={!clientCompletes} onChange={() => { setCompletion("operator"); setEmailInvite(false); setSmsInvite(false); }} />Complete with staff</label>
         </div>
         <p className="sub">Choose the application type. {clientCompletes ? "Create the file with basic contact details and let the client complete the rest." : "Enter the client details and add any initial evidence before creating the file."}</p>
-        <div className="fldgrid two"><Field label="File type"><Select aria-label="File type" value={variant} onChange={(e) => setVariant(e.target.value as LeadVariant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street (operating business)</option><option value="mca_refinance">MCA refinance</option></Select></Field><Field label="Preferred language"><Select aria-label="Preferred language" value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}><option value="en">English</option><option value="es">Spanish</option></Select></Field></div>
+        <div className="fldgrid two"><Field label="File type"><Select aria-label="File type" value={variant} disabled={Boolean(sourceClient)} onChange={(e) => setVariant(e.target.value as LeadVariant)}><option value="dealer">Dealer</option><option value="real_estate">Real estate</option><option value="main_street">Main Street (operating business)</option><option value="mca_funding">MCA funding</option><option value="mca_refinance">MCA refinance</option></Select></Field><Field label="Preferred language"><Select aria-label="Preferred language" value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}><option value="en">English</option><option value="es">Spanish</option></Select></Field></div>
+      {isMcaFunding ? <Callout tone="acc">MCA funding · 1.22–1.38× factor. Collect six months of bank statements, a debt schedule, and last year&apos;s business tax return. Staff review confirms no more than two existing MCAs, no modified MCA, and nonnegative reported ordinary business income before addbacks.</Callout> : null}
       {isMS && !clientCompletes ? (
         <div className="fldgrid two">
           <Field label="What they need *">

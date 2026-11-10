@@ -135,7 +135,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
         const categories: Record<string, Record<string, string>> = {
           debt_type: Object.fromEntries(DEBT_TYPES.map((option) => [option.value, option.label])),
           payment_frequency: { daily: "Business day", weekly: "Week", biweekly: "Every two weeks", monthly: "Month" },
-          secured: { secured: "Secured", unsecured: "Unsecured" }, payment_status: { current: "Current", delinquent: "Delinquent" }, mca_modified: { yes: "Yes", no: "No" },
+          secured: { secured: "Secured", unsecured: "Unsecured" }, payment_status: { current: "Current", delinquent: "Delinquent" }, mca_modified: { yes: "Modified", no: "No modification" },
         };
         const options = categories[field];
         const legacy = options && row[field] != null && String(row[field]).trim() && !(String(row[field]) in options) ? String(row[field]) : null;
