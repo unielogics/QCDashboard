@@ -25,6 +25,7 @@ import { ebitdaSourceStatus, type EbitdaSourceDraft } from "./ebitdaSourceReview
 import { RevenueTrendPanel } from "./RevenueTrendPanel";
 import { EarningsPotentialPanel } from "./EarningsPotentialPanel";
 import { NoiBreakdownPanel } from "./NoiBreakdownPanel";
+import { NoiGovernanceSummary } from "./NoiGovernanceSummary";
 import { NoiReviewEditor, NoiReviewHistory } from "./NoiReviewEditor";
 import type { NoiReviewDraft } from "@/lib/noiReview";
 import styles from "./FinancialMetricReview.module.css";
@@ -134,6 +135,7 @@ export function FinancialMetricReviewWorkspace({ open, metricKey, cockpit, optio
     footer={<div className={styles.heading}><span className={styles.note}>{pending ? "Saving reviewed calculation…" : dirty ? "Working review changes are kept here until explicitly saved." : "Source figures, reviewed math and scenario effects are identified separately."}</span><Btn size="sm" disabled={pending} onClick={onClose}>Close review</Btn></div>}>
     {!scope.available ? <Callout tone="warn">This account selection is no longer available in the current financial evidence. Close this review and choose an available account before inspecting or correcting its figures.</Callout> : <div className={styles.workspace}>
       <div className={styles.intro}><div><span className="sub">Current financial figure</span><strong>{entry.valueLabel}</strong><small>{entry.subLabel}</small></div><div><span className="sub">{entry.projection.source === "none" ? "Loan effect" : labelAfter}</span><strong>{entry.projection.source === "none" ? "No loan scenario applied" : entry.projection.valueLabel}</strong><small>{entry.projection.basis}</small></div></div>
+      {metricKey === "noi" ? <NoiGovernanceSummary value={data.noi} /> : null}
       <nav className={styles.tabs} role="tablist" aria-label="Metric review views" onKeyDown={(event) => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault(); const views: View[] = ["calculation", "evidence", "history"], index = views.indexOf(view);
@@ -143,7 +145,7 @@ export function FinancialMetricReviewWorkspace({ open, metricKey, cockpit, optio
       {query.isFetching ? <p className={styles.note} role="status">Refreshing current calculation evidence…</p> : null}
       {query.error ? <Callout tone="warn">The latest calculation evidence could not be read. Refresh before changing financial inputs.</Callout> : null}
       <section className={styles.tabPanel} id={`${id}-calculation-panel`} role="tabpanel" aria-labelledby={`${id}-calculation-tab`} hidden={view !== "calculation"}>
-          {metricKey === "noi" ? <NoiReviewEditor profileId={profileId} review={data.noi?.review} draft={noiDraft} onDraft={setNoiDraft} canEdit={canEdit && !query.isFetching && !query.error} externallyBusy={pending} onPending={setPending} onSaved={saved} onReload={() => query.refetch()} onPreviewSource={selectSource} /> : null}
+          {metricKey === "noi" ? <NoiReviewEditor profileId={profileId} review={data.noi?.review} currentSourceFileId={data.noi?.headline?.source_refs.find((source) => source.file_id)?.file_id} draft={noiDraft} onDraft={setNoiDraft} canEdit={canEdit && !query.isFetching && !query.error} externallyBusy={pending} onPending={setPending} onSaved={saved} onReload={() => query.refetch()} onPreviewSource={selectSource} /> : null}
         <div className={styles.section}>{metricKey === "ebitda" && !data.ebitda?.headline ? <Callout tone="warn">No EBITDA can be calculated from the current eligible earnings evidence. Review the baseline source and any missing inputs. Selecting a source does not supply missing financial amounts.</Callout> : null}<div className={styles.heading}><h3>How the current figure is calculated</h3>{sourceSelection ? <Btn size="sm" disabled={pending} onClick={() => setView("evidence")}>Choose EBITDA sources</Btn> : null}</div><pre className={styles.formula}>{entry.formula}</pre>{entry.notes.map((note, index) => <p className={styles.note} key={index}>{note}</p>)}
           {metricKey === "ebitda" ? <RevenueTrendPanel value={data.ebitda?.revenue_trend} potential={data.ebitda?.potential} planIsCurrent={!options.dirty} onPreviewSource={selectSource} /> : metricKey === "dscr" ? <EarningsPotentialPanel value={data.ebitda?.potential} planIsCurrent={!options.dirty} /> : null}
           {metricKey === "noi" ? <NoiBreakdownPanel value={data.noi} onPreviewSource={selectSource} planIsCurrent={!options.dirty} /> : null}

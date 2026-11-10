@@ -17,6 +17,7 @@ export type ReviewDestination =
   | { kind: "owners" }
   | { kind: "credit" }
   | { kind: "banking" }
+  | { kind: "noi" }
   | { kind: "requirement"; query: string };
 
 const SEARCH_STOP_WORDS = new Set([
@@ -94,6 +95,7 @@ export function reviewDestination(query: string): ReviewDestination {
 }
 
 export function intelligenceActionDestination(action: string): ReviewDestination {
+  if (action === "review_noi") return { kind: "noi" };
   if (action === "edit_profile") return { kind: "profile" };
   if (action === "request_debt_schedule") return { kind: "requirement", query: "business debt schedule debt payments" };
   if (action === "request_bank_or_tax_evidence") return { kind: "requirement", query: "business bank statements business tax returns revenue" };

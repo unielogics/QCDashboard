@@ -33,6 +33,7 @@ import { ApplicationLenderSubmissions } from "@/components/application/Applicati
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import type { BudgetEditorControls } from "@/components/application/UseOfFundsBudgetEditor";
 import { createUseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
+import { noiGovernancePresentation } from "@/lib/noiGovernance";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
@@ -104,6 +105,7 @@ type Props = {
   /** Open the same mounted editor from Underwriting without leaving that tab. */
   termsRequest?: number;
   coverageRequest?: number;
+  noiReviewRequest?: number;
   onWorkingFinancingChange?: (value: WorkingFinancing) => void;
 };
 
@@ -676,6 +678,9 @@ export function FinancialCockpit(props: Props) {
     setAccountChoice("counted");
     setMetricReview(null); setWorkingPlan(null); setMetricDebtOpen(false); setPlanReviewRequest(0); returnToMetric.current = false;
   }, [props.profileId]);
+  useEffect(() => {
+    if (props.noiReviewRequest) setMetricReview({ profileId: props.profileId, key: "noi", open: true });
+  }, [props.noiReviewRequest, props.profileId]);
   const openSourcePreview = useCallback((fileId: string, page?: number) => {
     sourceFocusRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setSourcePreview((current) => ({ profileId: props.profileId, fileId, page: validPdfSourcePage(page) ?? undefined, requestId: (current?.requestId ?? 0) + 1 }));
@@ -787,12 +792,13 @@ export function FinancialCockpit(props: Props) {
       ) : null}
       <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
-          const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "noi", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
+          const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "noi" && noiGovernancePresentation(cockpit.noi).tone === "warn" ? "warn" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "noi", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
           const valueLabel = entry.unit === "currency" && entry.currentValue != null ? metricAmountLabel(entry.currentValue, entry.currency, 0, false) : entry.valueLabel;
           const afterLabel = entry.unit === "currency" && entry.projection.value != null ? metricAmountLabel(entry.projection.value, entry.currency, 0, false) : entry.projection.valueLabel;
           const sub = ["deposits", "cash_flow", "average_balance", "nsf_overdrafts"].includes(entry.key) ? bankPeriod : entry.key === "ebitda" ? ebitda ? `${ebitda.kind === "tax_estimate" ? "Tax estimate" : "P&L"} · ${ebitda.period?.split(" (")[0] ?? "Period unconfirmed"}` : "No earnings source" : entry.subLabel;
           return <FinancialKpiCard key={entry.key} label={entry.title} value={valueLabel} currencyNote={entry.unit === "currency" && !entry.currency ? "Currency unconfirmed" : undefined} tone={tone} sub={entry.key === "deposits" ? <span className="fc-kpi-spark"><span>{sub}</span><Sparkline values={depositValues} /></span> : sub} onClick={() => openMetricReview(entry.key)} projection={entry.projection.source !== "none" ? <><span>{entry.projection.source === "filed_offer" ? "Offer · illustration" : entry.projection.source === "working_plan" ? "Working plan · unsaved" : "Saved plan"}</span><br /><strong>{afterLabel}</strong>{entry.projection.status === "partial" ? " · partial estimate" : entry.projection.status === "unavailable" ? " · needs inputs" : entry.projection.status === "unchanged" ? " · unchanged" : ""}</> : undefined}>
             {entry.key === "deposits" && summary.deposit_trend_pct != null ? <span className="kdelta"><CellChip tone={summary.deposit_trend_pct >= 0 ? "ok" : "warn"}><Icon name={trendDirection(summary.deposit_trend_pct) === "down" ? "trendDn" : "trend"} size={11} />{signedPct(summary.deposit_trend_pct)}</CellChip></span> : null}
+            {entry.key === "noi" ? <span className="sub" title={noiGovernancePresentation(cockpit.noi).reason}><CellChip tone={noiGovernancePresentation(cockpit.noi).tone}>{noiGovernancePresentation(cockpit.noi).label}</CellChip></span> : null}
             {entry.key === "dscr" ? <span className="sub">{cockpit.dscr.no_debt ? "No outstanding debt confirmed" : dscrLabel(headline?.status)}</span> : null}
             {entry.key === "nsf_overdrafts" ? <span className="sub">{negativeCaption}{nsfIncomplete || negativeIncomplete ? " · partial detail" : ""}</span> : null}
             {entry.key === "ebitda" ? <span className="sub">{[ebitda?.months_covered != null ? `${ebitda.months_covered} months` : null, ebitdaCurrency, ebitdaTile.provisional ? "provisional" : null, ebitdaCorrected ? "source corrected" : null, ebitdaTile.annualized ? "annualized" : null].filter(Boolean).join(" · ")}</span> : null}

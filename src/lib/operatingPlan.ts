@@ -1,5 +1,6 @@
 import type { FileRequestItem } from "./fileRequestsApi";
 import type { FinancialWorkspaceSnapshot } from "./financialWorkspaceApi";
+import type { NoiBaselineGovernance } from "./noiGovernance";
 
 export type PlanAmount = string | number | null;
 export type OperatingCadence = "weekly" | "biweekly" | "semi_monthly" | "monthly" | "quarterly" | "annual" | "one_time";
@@ -56,7 +57,7 @@ export type OperatingEvaluation = {
   context_stamp?: string; disclosure: { operating_monthly: number | null; cogs_monthly: number | null; operating_cash_monthly: number | null; non_operating_monthly: number | null; one_time_total: number | null; active_count: number; excluded_count: number; missing_inputs: string[]; complete: boolean };
   actions: Array<{ id: string; label: string; kind: string; status: string; review_state: string; gross_annual_impact: number | null; implementation_recurring_annual: number | null; implementation_one_time: number | null; net_annual_impact: number | null; first_year_impact: number | null; monthly_impact: number | null; included_in_approved_projection: boolean; issues: string[]; risk_flags: string[]; source_file_ids: string[] }>;
   totals: Record<"proposed" | "approved", { annual_impact: number | null; monthly_impact: number | null; first_year_impact: number | null; one_time_cost: number | null; complete: boolean; count: number; expected_count?: number; known_annual_subtotal?: number; known_first_year_subtotal?: number }>;
-  baseline: { period: string | null; currency: string | null; basis: string | null; revenue: number | null; earnings: number | null; earnings_kind: string | null; noi: number | null; dscr: number | null; annual_debt_service: number | null; provisional: boolean };
+  baseline: { noi_governance?: NoiBaselineGovernance; noi_kind?: string | null; noi_label?: string | null; noi_year?: string | number | null; noi_basis?: string | null; noi_staff_reviewed?: boolean; noi_provisional?: boolean; period: string | null; currency: string | null; basis: string | null; revenue: number | null; earnings: number | null; earnings_kind: string | null; noi: number | null; dscr: number | null; annual_debt_service: number | null; provisional: boolean };
   projection: Record<"proposed" | "approved", OperatingProjection>;
   targets?: { current: Array<{ ratio: number; earnings_required: number | null }>; refinance: Array<{ ratio: number; earnings_required: number | null }> };
   missing: string[]; risk_flags: string[]; notes: string[]; all_actions_reviewed: boolean;

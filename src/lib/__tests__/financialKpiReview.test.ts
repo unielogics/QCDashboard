@@ -17,6 +17,22 @@ function setup() {
 }
 
 describe("financial KPI evidence and offer illustrations", () => {
+  it("does not label a source-period NOI amount as annual when annualization is unavailable", () => {
+    const { cockpit, options } = setup();
+    cockpit.noi = { headline: { key: "noi:short", value: 12345, annualized_value: null, period: "Partial period", source_refs: [], input_keys: [] }, definition: {} } as unknown as FinancialCockpit["noi"];
+    const entry = metricEntry(cockpit, "noi", options);
+    expect(entry.currentValue).toBeNull();
+    expect(entry.valueLabel).toBe("Unavailable");
+    expect(entry.projection.value).toBeNull();
+  });
+  it("does not reuse an older scenario NOI after its canonical review becomes stale", () => {
+    const { cockpit, options } = setup();
+    cockpit.noi = { status: "stale", review_needed: true, headline: null, scenario: { current: 99999, plan: 99999 }, definition: {} } as unknown as FinancialCockpit["noi"];
+    const entry = metricEntry(cockpit, "noi", { ...options, budgetEvaluation: { noi_scenario: { current: 99999, plan: 99999 } } as FinancialKpiOptions["budgetEvaluation"] });
+    expect(entry.currentValue).toBeNull();
+    expect(entry.projection.value).toBeNull();
+    expect(entry.projection.status).toBe("unavailable");
+  });
   it("maps all eight cards and uses principal-plus-interest cash separately from underwriting", () => {
     const { cockpit, options } = setup();
     const entries = metricEntries(cockpit, options);

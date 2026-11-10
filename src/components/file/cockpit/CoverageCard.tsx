@@ -68,6 +68,7 @@ import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
 import { EbitdaRefinanceComparison } from "./EbitdaRefinanceComparison";
 import { RevenueTrendPanel } from "./RevenueTrendPanel";
 import { CoverageEbitdaMetric } from "./CoverageEbitdaMetric";
+import { NoiGovernanceSummary } from "./NoiGovernanceSummary";
 import { CoverageMetric } from "./CoverageMetric";
 import { ebitdaIsStaffCorrected } from "@/lib/financialMetrics";
 import { FinancialReviewDrawer, type FinancialReviewTab } from "./FinancialReviewDrawer";
@@ -480,6 +481,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {dirty ? <StatusLine tone="acc">Unsaved plan: the figures below already reflect it; save to make the debt service, the offer and the advances follow.</StatusLine> : null}
       {onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
 
+      <NoiGovernanceSummary value={cockpit.noi} showAmount />
       <CoverageFundingGap value={fundingReview} basis={`${coverageBasis?.label ?? "Selected earnings"}${coverageBasis?.period ? ` · ${coverageBasis.period}` : ""}`} />
       <div className="fc-grid">
         <div className="grid g8">

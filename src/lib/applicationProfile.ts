@@ -928,7 +928,7 @@ export type TaxonomySearch = { items: TaxonomyEntry[]; total: number; page: numb
 export type FundingCategory = { id: string; vertical: string; slug: string; label: string; status: string; is_system: boolean };
 export type ExtractedFact = { id: string; field_key: string; canonical_field_key?: string | null; value: { value?: unknown }; normalized_value: string | null; confidence: number | null; source_file_id: string | null; status: string; extraction_method: string; created_at: string };
 export type ApplicationDraftAnalysisStatus = { profile_id: string; uploaded_file_count: number; analyzed_file_count: number; processing_file_count: number; failed_file_count: number; suggested_fact_count: number; reviewed_fact_count: number; can_finalize: boolean };
-export type ApplicationIntelligence = { profile_id: string; metrics: Array<{ key: string; label: string; applicable: boolean; value: string | number | null; unit: string | null; status: "ready" | "needs_evidence" | "not_applicable"; confidence: number | null; period: string | null; source: string | null; action: string | null }>; dscr_inputs: Record<string, unknown> };
+export type ApplicationIntelligence = { profile_id: string; metrics: Array<{ key: string; label: string; applicable: boolean; value: string | number | null; unit: string | null; status: "ready" | "needs_evidence" | "not_applicable"; confidence: number | null; period: string | null; source: string | null; action: string | null; calculation_status?: string | null; review_needed?: boolean; status_reason?: string | null }>; dscr_inputs: Record<string, unknown> };
 
 export type ClassificationPreview = {
   profile_id: string;

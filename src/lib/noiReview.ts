@@ -7,6 +7,7 @@ export type NoiReviewSource = {
   file_id: string; file_name: string | null; kind: "profit_and_loss" | "business_tax_return";
   year: number | null; currency: string | null; period_start?: string | null; period_end?: string | null;
   proposed_annual_value: number | null; eligible: boolean; reason: string | null; notes: string[];
+  automatic_eligible?: boolean; automatic_reason?: string | null;
   source_stamp?: string; citation_status?: string; source_refs: MetricSourceRef[];
 };
 export type NoiReviewReceipt = {
@@ -32,10 +33,11 @@ export function draftForNoiSource(draft: NoiReviewDraft, source: NoiReviewSource
     periodStart: pairedDates ? source.period_start! : "", periodEnd: pairedDates ? source.period_end! : "" };
 }
 
-export function initialNoiReviewDraft(review: NoiReviewRead, idempotencyKey: string): NoiReviewDraft {
+export function initialNoiReviewDraft(review: NoiReviewRead, idempotencyKey: string, currentSourceFileId?: string | null): NoiReviewDraft {
   const current = review.current?.mode === "automatic" ? null : review.current;
   const source = review.sources.find((item) => item.file_id === current?.selected_file_id && item.eligible)
-    ?? review.sources.find((item) => item.eligible);
+    ?? review.sources.find((item) => item.file_id === currentSourceFileId && item.eligible && item.automatic_eligible !== false)
+    ?? review.sources.find((item) => item.eligible && item.automatic_eligible !== false);
   const draft: NoiReviewDraft = {
     mode: current && current.mode !== "automatic" ? current.mode : source ? "source" : "manual",
     selectedFileId: current?.selected_file_id ?? "", annualValue: current?.annual_value == null ? "" : String(current.annual_value),
