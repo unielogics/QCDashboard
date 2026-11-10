@@ -571,7 +571,26 @@ export type PlanReplayRow = {
 
 export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
+export type OperatingPlanCoverage = {
+  status: "applied" | "awaiting_review" | "blocked" | "none";
+  applied: boolean;
+  source?: string;
+  reason?: string | null;
+  version_number?: number | null;
+  version_id?: string | null;
+  applied_count?: number;
+  annual_impact?: number | null;
+  first_year_impact?: number | null;
+  proposed_first_year_impact?: number | null;
+  applied_annual_impact?: number | null;
+  baseline_annual?: number | null;
+  candidate_impacts?: Record<string, number>;
+  proposed_dscr?: number | null;
+  projected_dscr?: number | null;
+};
+
 export type PlanEvaluation = {
+  operating_plan?: OperatingPlanCoverage | null;
   financing_budget_calculation?: import("./dealBudget").DealBudgetCalculation;
   principal_solution?: Record<string, unknown> | null;
   financing_fee_coverage?: Record<string, unknown> | null;
