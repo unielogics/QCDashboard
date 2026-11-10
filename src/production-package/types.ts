@@ -348,6 +348,10 @@ export type TermSheetExtra = TermSheetStructuredFields & {
 export type TermSheetUseOfFunds = Partial<Record<UseOfFundsKey, number | null>> & { other_label?: string | null };
 
 export type TermSheetBody = {
+  deal_budget?: import("@/lib/dealBudget").DealBudgetWrite;
+  idempotency_key?: string;
+  financial_plan?: import("@/lib/financialCockpit").FinancialPlanWrite;
+  expected_plan_updated_at?: string | null;
   expected_deal_budget_revision?: number;
   expected_collateral_revision?: number;
   expected_version?: number | null;
@@ -401,7 +405,7 @@ export type TermSheetState = {
   funder_types?: FunderType[];
 };
 
-export type TermSheetResult = { state: TermSheetState; final: ProductionPackage | null };
+export type TermSheetResult = { state: TermSheetState; final: ProductionPackage | null; financial_plan?: import("@/lib/financialCockpit").FinancialPlanRead | null; deal_budget?: import("@/lib/dealBudget").DealBudget | null };
 
 // ---- original vs final ----
 

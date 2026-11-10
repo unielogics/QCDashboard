@@ -549,6 +549,8 @@ export type ApplicationClientTerms = {
 };
 
 export type ApplicationClientTermsWrite = {
+  deal_budget?: import("./dealBudget").DealBudgetWrite;
+  idempotency_key?: string;
   expected_deal_budget_revision?: number;
   expected_collateral_revision?: number;
   financial_plan?: import("./financialCockpit").FinancialPlanWrite;

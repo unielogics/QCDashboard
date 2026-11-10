@@ -32,7 +32,7 @@ export type DealBudget = Omit<DealBudgetWrite, "expected_revision"> & {
   financial_plan?: import("./financialCockpit").FinancialPlanRead;
   financial_plan_evaluation?: import("./financialCockpit").PlanEvaluation | null;
 };
-export type DealBudgetDraft = { profileId: string; value: DealBudgetWrite; removed: DealCostRow[] };
+export type DealBudgetDraft = { profileId: string; value: DealBudgetWrite; removed: DealCostRow[]; amountModeExplicit?: boolean };
 export type DealBudgetLoan = { amount: number | null; rate_pct: number | null; term_months: number | null; structure: string; interest_only_months: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null };
 export const dealBudgetKey = (profileId: string) => ["file-deal-budget", profileId] as const;
 export const dealBudgetDraftKey = (profileId: string) => ["file-deal-budget-draft", profileId] as const;
