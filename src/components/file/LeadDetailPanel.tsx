@@ -1387,8 +1387,8 @@ export function LeadDetailPanel({
     setBusy("preview");
     try {
       // No recipients needed — this drafts a subject + body the operator copies
-      // into their own mail client. The lender packet is regenerated so the draft
-      // references the current evidence.
+      // into their own mail client. The primary package PDF is selected from
+      // the current evidence generation by the delivery service.
       const preview = await onPreviewEmail({
         to_emails: [],
         cc_emails: [],
@@ -1790,7 +1790,7 @@ export function LeadDetailPanel({
                       <PackageVersionList label="Lender package" artifacts={packetHistory} />
                     </div>
                   </div>}
-    deliveryContent={<div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild the presentation and supporting PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync || busy !== ""}>{zipBusy ? "Building..." : "Download package"}</Btn></Row>{artifactOperation === "zip" && artifactPreparation ? <PreparationProgress {...artifactPreparation} compact /> : null}</div>}
+    deliveryContent={<div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild the presentation and supporting PDFs from the latest evidence and program conditions before delivery."}</Callout><p className="sub">{condensedInvestorReport ? "The condensed investor report is the primary delivery PDF. The detailed underwriting packet and full ZIP remain available as supporting files." : "The current lender packet is the primary delivery PDF. Refresh the package to create the condensed investor report."}</p><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync || busy !== ""}>{zipBusy ? "Building..." : "Download package"}</Btn></Row>{artifactOperation === "zip" && artifactPreparation ? <PreparationProgress {...artifactPreparation} compact /> : null}</div>}
   /> : null;
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -2277,7 +2277,7 @@ export function LeadDetailPanel({
       <Toast msg={toast.msg} />
       <DriveFilePicker open={ingestPickerOpen} mode="ingest" busy={busy === "ingest"} maxSelect={50} onClose={() => setIngestPickerOpen(false)} selectedIds={ingestFiles.map((file) => file.id)} onPick={(file) => setIngestFiles((current) => current.some((item) => item.id === file.id) ? current : [...current, file])} onUnpick={(id) => setIngestFiles((current) => current.filter((file) => file.id !== id))} onConfirm={runIngest} />
       {detail && canDelete ? <ConfirmDeleteLeadModal open={confirmDeleteOpen} onClose={() => setConfirmDeleteOpen(false)} expectedName={detail.intake.business_name || detail.intake.full_name} onConfirm={async (name) => { await onConfirmDeletion(name); setConfirmDeleteOpen(false); }} /> : null}
-      <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send lender package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
+      <ConfirmDialog open={sendReviewOpen} onClose={() => setSendReviewOpen(false)} title={`Send investor package to ${toEmails || "recipient"}`} body="This sends the reviewed message and selected package from the connected desk mailbox and records the delivery result." confirmLabel="Send package" busy={busy === "send"} onConfirm={() => { void sendEmail().then(() => setSendReviewOpen(false)); }} />
       <Drawer
         open={contactPopup === "text"}
         onClose={() => setContactPopup(null)}
@@ -2726,7 +2726,7 @@ export function LeadDetailPanel({
               <InfoBlock title="4 · Email — draft, then copy or send">
                 <div className="grid g10">
                   <span className="sub">
-                    Draft a lender/vendor email from the analyzed evidence. Copy the subject and body into your own mail client, or add recipients below and send it straight from your connected Gmail with the lender packet plus any Google Drive files attached.
+                    Draft a lender/vendor email from the analyzed evidence. Copy the subject and body into your own mail client, or add recipients below and send it from your connected Gmail with the current investor report or legacy lender packet and any selected Google Drive files attached.
                   </span>
 
                   <div className="grid g6">
@@ -2780,7 +2780,7 @@ export function LeadDetailPanel({
                     <Lbl>Attach to the email</Lbl>
                     <div>
                       <label className={cx("pick", attachPacket && "on")}>
-                        <input type="checkbox" checked={attachPacket} onChange={(e) => setAttachPacket(e.target.checked)} /> Lender packet PDF
+                        <input type="checkbox" checked={attachPacket} onChange={(e) => setAttachPacket(e.target.checked)} /> {condensedInvestorReport ? "Investor report PDF (up to 5 pages)" : "Lender packet PDF"}
                       </label>
                       <label className={cx("pick", attachSummary && "on")}>
                         <input type="checkbox" checked={attachSummary} onChange={(e) => setAttachSummary(e.target.checked)} /> Executive summary PDF
