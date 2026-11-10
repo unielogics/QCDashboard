@@ -11,7 +11,7 @@ import styles from "./FundingPackageWorkspace.module.css";
 export type FundingPackageTab = "summary" | "marketplace" | "delivery" | "package";
 export type PackagePreparation = { title: string; description?: string; state: "loading" | "complete" | "error"; steps?: PreparationStep[] };
 
-export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, busy, generating = false, preparation, generated, current, error, onGenerate, packageContent, marketplaceContent, deliveryContent, historyContent }: {
+export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, busy, generating = false, preparation, generated, current, error, onGenerate, packageContent, packageDetails, marketplaceContent, deliveryContent, historyContent }: {
   profileId: string;
   cockpit: FinancialCockpit;
   activeTab: FundingPackageTab;
@@ -24,6 +24,7 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
   error?: string | null;
   onGenerate: (options: PackageGenerationOptions) => void;
   packageContent: ReactNode;
+  packageDetails?: ReactNode;
   marketplaceContent: ReactNode;
   deliveryContent: ReactNode;
   historyContent: ReactNode;
@@ -41,7 +42,7 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
   const tabs: Array<[FundingPackageTab, string]> = [["summary", "Package & presentation"], ["marketplace", "Marketplace listing"], ["delivery", "Delivery"], ["package", "Version history"]];
   const impact = cockpit.plan?.impact;
   const amount = impact?.loan?.amount ?? cockpit.requested_amount;
-  return <Panel id="package-readiness" className={`fc-wide ${styles.workspace}`} title="Investor package & capital partners" sub="Build and review the presentation and supporting PDFs, then prepare a marketplace listing or send the package."
+  return <Panel id="package-readiness" className={`fc-wide ${styles.workspace}`} title="Investor package & capital partners" sub="Build a branded investor report in up to five pages, with linked evidence and supporting underwriting files."
     actions={<Btn variant="pri" disabled={busy || generating} onClick={() => onGenerate({ include_operating_plan: includePlan, include_working_operating_plan: includePlan && includeWorkingPlan })}><Icon name="reports" size={14} />{generating ? "Building package…" : generated ? "Refresh package + preview" : "Generate package + preview"}</Btn>}>
     <nav className={styles.tabs} role="tablist" aria-label="Investor package workflow">{tabs.map(([key, label], index) => <button key={key} type="button" role="tab" id={`funding-tab-${key}`} aria-selected={activeTab === key} aria-controls={`funding-panel-${key}`} className={activeTab === key ? styles.active : undefined} onClick={() => onTab(key)}><span>{index + 1}</span>{label}</button>)}</nav>
     {error && preparation?.state !== "error" ? <Callout tone="bad">{error} Your prior package remains available. Retry generation after correcting the issue.</Callout> : null}
@@ -54,6 +55,7 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
         {includePlan ? <label><input type="checkbox" checked={includeWorkingPlan} disabled={generating} onChange={event => setIncludeWorkingPlan(event.target.checked)} />Include the current working plan as an unreviewed draft</label> : null}
         {includePlan ? <small>{includeWorkingPlan ? "Draft actions, assumptions and missing inputs will be identified separately from reviewed projections." : "Uses the latest published plan. Select the working-draft option to include edits awaiting Save version."}</small> : null}
       </div>
+      {packageDetails}
       {packageContent}
       <div className={styles.next}><span>{current ? "Package ready for review. Continue to the marketplace or delivery when you choose." : "Generate a current package before creating a marketplace listing."}</span><Btn size="sm" onClick={() => onTab("marketplace")} disabled={!generated}>Continue to marketplace <Icon name="arrowR" size={13} /></Btn></div>
     </section>
