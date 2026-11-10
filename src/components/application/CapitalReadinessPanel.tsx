@@ -45,6 +45,7 @@ type ActionEditorState = {
 type Props = {
   profileId?: string | null;
   initialSnapshot?: ApplicationCapitalReadinessSnapshot | null;
+  refreshKey?: number;
   locale?: Locale;
   canReview?: boolean;
   clientSafe?: boolean;
@@ -307,6 +308,7 @@ const PROPERTY_PRIORITY_METRICS = [
 export function CapitalReadinessPanel({
   profileId,
   initialSnapshot,
+  refreshKey = 0,
   locale = "en",
   canReview = false,
   clientSafe = false,
@@ -332,9 +334,11 @@ export function CapitalReadinessPanel({
   const [sourceFiles, setSourceFiles] = useState<BucketReviewFile[]>([]);
   const sourceFocusRef = useRef<HTMLElement | null>(null);
   const activeProfileRef = useRef(profileId);
+  const snapshotRequest = useRef(0);
   const c = COPY[locale];
 
   useEffect(() => {
+    snapshotRequest.current++;
     activeProfileRef.current = profileId;
     setSourcePreview(null);
     setSourceFiles([]);
@@ -367,15 +371,18 @@ export function CapitalReadinessPanel({
 
   const load = useCallback(async () => {
     if (!profileId) return;
+    const request = ++snapshotRequest.current;
     setLoading(true);
     setError(null);
     try {
-      publish(await api<ApplicationCapitalReadinessSnapshot>(`/application-profiles/${profileId}/capital-readiness`));
+      const next = await api<ApplicationCapitalReadinessSnapshot>(`/application-profiles/${profileId}/capital-readiness`);
+      if (request === snapshotRequest.current && activeProfileRef.current === profileId) publish(next);
     } catch (reason) {
+      if (request !== snapshotRequest.current || activeProfileRef.current !== profileId) return;
       if (reason instanceof ApiError && reason.status === 404) publish(null);
       else setError(reason instanceof Error ? reason.message : "Capital Readiness could not be loaded.");
     } finally {
-      setLoading(false);
+      if (request === snapshotRequest.current && activeProfileRef.current === profileId) setLoading(false);
     }
   }, [api, profileId, publish]);
 
@@ -390,13 +397,13 @@ export function CapitalReadinessPanel({
   }, [api, canReview, profileId]);
 
   useEffect(() => {
-    if (initialSnapshot !== undefined) {
+    if (initialSnapshot !== undefined && !refreshKey) {
       publish(initialSnapshot);
       setLoading(false);
       return;
     }
     void load();
-  }, [initialSnapshot, load, publish]);
+  }, [initialSnapshot, load, publish, refreshKey]);
 
   useEffect(() => {
     void loadActions();

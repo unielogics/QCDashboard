@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import type { ApplicationProfile } from "@/lib/applicationProfile";
 import { useProductionCall } from "@/lib/productionTrainingCall";
 import { createOperatorClient, loadPackage, resolvePackage } from "@/production-package/client";
@@ -22,13 +23,14 @@ function statusChip(pkg: ProductionPackage) {
   return <PChip tone={tone}>{pkg.status.replace(/_/g, " ")}</PChip>;
 }
 
-export function ProductionPackageTab({ intakeId, shareOpen, onShareClose, termSheetOpen = false, onTermSheetClose }: {
+export function ProductionPackageTab({ intakeId, shareOpen, onShareClose, termSheetOpen = false, onTermSheetClose, financialPlanDraft }: {
   intakeId: string;
   shareOpen: boolean;
   onShareClose: () => void;
   /** The host asks for the term-sheet drawer (Underwriting tab, page-action menu). */
   termSheetOpen?: boolean;
   onTermSheetClose?: () => void;
+  financialPlanDraft?: FinancialPlanWrite;
 }) {
   const call = useProductionCall();
   const router = useRouter();
@@ -98,7 +100,7 @@ export function ProductionPackageTab({ intakeId, shareOpen, onShareClose, termSh
         </PPanel>
       ) : null}
       {termSheetOpen ? (
-        <TermSheetDrawer
+        <TermSheetDrawer financialPlanDraft={financialPlanDraft}
           open={termSheetOpen}
           onClose={closeTermSheet}
           client={client}

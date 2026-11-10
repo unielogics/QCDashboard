@@ -716,7 +716,7 @@ export function FinancialCockpit(props: Props) {
         ? { months: chosen.series, summary: chosen.summary, label: chosen.label, accountLabel: chosen.label as string | null }
         : { months: cockpit.bank.months, summary: cockpit.bank.summary, label: narrowed ? "Counted accounts" : "All accounts", accountLabel: null as string | null };
   const summary = selection.summary;
-  const metricOptions = { months: selection.months, summary, accountKey: resolvedAccountChoice, label: selection.label, plan: workingPlan?.profileId === props.profileId ? workingPlan.plan : undefined, dirty: workingPlan?.profileId === props.profileId ? workingPlan.dirty : false };
+  const metricOptions = { budgetEvaluation: workingPlan?.profileId === props.profileId ? workingPlan.budgetEvaluation : undefined, budgetPending: workingPlan?.profileId === props.profileId ? workingPlan.budgetPending : false, months: selection.months, summary, accountKey: resolvedAccountChoice, label: selection.label, plan: workingPlan?.profileId === props.profileId ? workingPlan.plan : undefined, dirty: workingPlan?.profileId === props.profileId ? workingPlan.dirty : false };
   const metricCards = metricEntries(cockpit, metricOptions);
   const openMetricReview = (key: FinancialKpiKey) => setMetricReview({ profileId: props.profileId, key, open: true });
   const openMetricDebt = () => { setMetricReview((current) => current ? { ...current, open: false } : null); setMetricDebtOpen(true); };
