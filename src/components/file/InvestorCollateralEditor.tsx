@@ -33,6 +33,7 @@ export function InvestorCollateralEditor({ open, initialEnabled, data, load, sav
   useEffect(() => {
     if (!open) return;
     skipDraftWrite.current = true;
+    draftCache?.setQueryDefaults(collateralDraftKey(data.profile_id), { gcTime: Infinity });
     const kept = draftCache?.getQueryData<CollateralWorkingDraft>(collateralDraftKey(data.profile_id));
     if (kept?.dirty) {
       setBase(kept.base); setEnabled(kept.enabled); setProperties(kept.properties); setRemoved(kept.removed); setAssets(kept.assets); setRemovedAssets(kept.removedAssets);

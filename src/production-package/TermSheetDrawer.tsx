@@ -380,6 +380,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
       if (activeProfile.current !== requestedProfile || loadRequest.current !== request) return;
       setLoadedProfileId(requestedProfile);
       setState(next);
+      queryClient.setQueryDefaults(["production-terms-draft", profileId], { gcTime: Infinity });
       const kept = queryClient.getQueryData<{ form: FormState; baseVersion: number }>(["production-terms-draft", profileId]);
       setForm(kept?.form ?? formFrom(next.current, next.defaults));
       setDraftBaseVersion(kept?.baseVersion ?? next.current?.version ?? 0);
