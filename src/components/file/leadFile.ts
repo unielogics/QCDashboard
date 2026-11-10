@@ -438,10 +438,11 @@ export function numberOrNull(value: string): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
-export type LeadVariant = "dealer" | "real_estate" | "main_street" | "mca_refinance";
+export type LeadVariant = "dealer" | "real_estate" | "main_street" | "mca_funding" | "mca_refinance";
 
 type CreateLeadBase = {
-  variant: LeadVariant;
+  variant: Exclude<LeadVariant, "mca_funding">;
+  client_id?: string;
   full_name: string;
   invitation_channels: Array<"email" | "sms">;
   business_name?: string;

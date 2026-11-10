@@ -59,6 +59,7 @@ export const industryOptions = (language: "en" | "es" = "en") => MAIN_STREET_IND
  */
 export const MAIN_STREET_INTENTS = [
   { slug: "working_capital", label: "Working capital or a business loan" },
+  { slug: "merchant_cash_advance", label: "MCA funding" },
   { slug: "equipment", label: "Financing equipment or a vehicle" },
   { slug: "refinance_debt", label: "Refinancing existing debt or advances" },
   { slug: "merchant_services", label: "Lower card processing rates" },
@@ -71,6 +72,7 @@ export type MainStreetIntent = (typeof MAIN_STREET_INTENTS)[number]["slug"];
 /** Intents that open a lending file. The rest are qualification conversations. */
 export const LENDING_INTENTS: ReadonlySet<string> = new Set([
   "working_capital",
+  "merchant_cash_advance",
   "equipment",
   "refinance_debt",
   "not_sure",
