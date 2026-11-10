@@ -285,6 +285,11 @@ export function BucketFileReviewPanel({
       pdfjs.GlobalWorkerOptions.workerSrc = "/pdfjs/pdf.worker.min.mjs";
       loadingTask = pdfjs.getDocument({
         url: activePreviewUrl,
+        // Draw PDF glyph paths instead of loading embedded fonts through the
+        // browser sanitizer, which rejects some otherwise renderable CFF fonts.
+        // PDF text extraction and citation geometry remain available.
+        disableFontFace: true,
+        useSystemFonts: false,
         // Missing proprietary fonts and malformed optional TrueType hinting
         // instructions are recoverable. Keep actual errors visible without
         // flooding the operator console with font-substitution warnings.

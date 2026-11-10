@@ -9,11 +9,12 @@ export type OperatingUnitCost = {
   cost_basis?: OperatingCostBasis; unit_label?: string; current_units_per_period?: PlanAmount;
   current_unit_cost?: PlanAmount; current_fixed_amount?: PlanAmount;
 };
-export type OperatingActionKind = "price_change" | "product_cost_change" | "revenue_change" | "expense_reduction" | "expense_increase" | "one_time_adjustment" | "processing_cost_change";
+export type OperatingActionKind = "price_change" | "product_cost_change" | "revenue_change" | "expense_reduction" | "expense_increase" | "one_time_adjustment" | "processing_cost_change" | "marketing_investment";
 export type OperatingExpense = OperatingUnitCost & {
   id: string; category?: string; label?: string; payee?: string; current_amount?: PlanAmount;
   cadence?: OperatingCadence; essential?: boolean; source_file_ids?: string[]; bank_vendor_key?: string | null;
   notes?: string; excluded?: boolean; duplicate_of?: string | null;
+  source_group_key?: string; source_candidate_key?: string;
 };
 export type OperatingAction = OperatingUnitCost & {
   id: string; kind?: OperatingActionKind; label?: string; driver_key?: string; expense_row_id?: string | null;
@@ -34,6 +35,7 @@ export type OperatingAction = OperatingUnitCost & {
   proposed_processing_rate_basis?: "all_in" | "processor_markup" | "unknown";
   merchant_source_key?: string | null; merchant_offer_id?: string | null;
   proposed_units_per_period?: PlanAmount; proposed_fixed_amount?: PlanAmount;
+  product_name?: string; revenue_return_multiple?: PlanAmount;
 };
 export type OperatingPlanBody = Record<string, unknown> & {
   schema_version?: string; business_name?: string; period_start?: string; period_end?: string; currency?: string;
@@ -41,6 +43,7 @@ export type OperatingPlanBody = Record<string, unknown> & {
   projection_start?: string | null;
   expenses?: OperatingExpense[]; adjustments?: OperatingAction[];
   released_cash_flow?: { source_fingerprint: string | null; allocations: ReleasedCashFlowAllocation[] };
+  category_confirmations?: Record<string, "confirmed" | "not_applicable" | "needs_help">;
 };
 export type ReleasedCashFlowAllocation = { id: string; label: string; amount_monthly: PlanAmount; expense_row_id?: string | null; notes: string };
 export type ReleasedCashFlowEvaluation = {
@@ -51,11 +54,12 @@ export type ReleasedCashFlowEvaluation = {
   allocations?: ReleasedCashFlowAllocation[];
 };
 export type OperatingPlanSchema = { kind?: string; [key: string]: unknown };
-export type OperatingProjection = { earnings: number | null; first_year_earnings?: number | null; first_year_dscr_current?: number | null; first_year_dscr_with_refinance?: number | null; coverage_basis?: string; noi: number | null; dscr_current: number | null; dscr_with_refinance: number | null; annual_debt_service: number | null; refinance_annual_debt_service: number | null; target_gap_current: number | null; target_gap_refinance: number | null; status?: string };
+export type OperatingProjection = { earnings: number | null; first_year_earnings?: number | null; first_year_noi?: number | null; noi_status?: "awaiting_review" | "no_actions" | "reviewed_illustration" | "unreviewed_illustration" | "unavailable"; first_year_dscr_current?: number | null; first_year_dscr_with_refinance?: number | null; coverage_basis?: string; noi: number | null; dscr_current: number | null; dscr_with_refinance: number | null; annual_debt_service: number | null; refinance_annual_debt_service: number | null; target_gap_current: number | null; target_gap_refinance: number | null; status?: string };
 export type OperatingEvaluation = {
+  expense_groups?: Array<{ key: string; category: string; label: string; baseline_annual_amount: number | null; disclosed_annual_amount: number | null; difference_annual: number | null; status: "no_detail" | "incomplete" | "matches_source" | "differs_from_source" | "source_changed"; notes: string[] }>;
   released_cash_flow?: ReleasedCashFlowEvaluation;
   context_stamp?: string; disclosure: { operating_monthly: number | null; cogs_monthly: number | null; operating_cash_monthly: number | null; non_operating_monthly: number | null; one_time_total: number | null; active_count: number; excluded_count: number; missing_inputs: string[]; complete: boolean };
-  actions: Array<{ id: string; label: string; kind: string; status: string; review_state: string; gross_annual_impact: number | null; implementation_recurring_annual: number | null; implementation_one_time: number | null; net_annual_impact: number | null; first_year_impact: number | null; monthly_impact: number | null; included_in_approved_projection: boolean; issues: string[]; risk_flags: string[]; source_file_ids: string[] }>;
+  actions: Array<{ product_name?: string; calculation?: { product_name?: string; revenue_return_multiple?: number | null; incremental_spend?: number | null; incremental_revenue?: number | null; incremental_contribution?: number | null; formula?: string }; id: string; label: string; kind: string; status: string; review_state: string; gross_annual_impact: number | null; implementation_recurring_annual: number | null; implementation_one_time: number | null; net_annual_impact: number | null; first_year_impact: number | null; monthly_impact: number | null; included_in_approved_projection: boolean; issues: string[]; risk_flags: string[]; source_file_ids: string[] }>;
   totals: Record<"proposed" | "approved", { annual_impact: number | null; monthly_impact: number | null; first_year_impact: number | null; one_time_cost: number | null; complete: boolean; count: number; expected_count?: number; known_annual_subtotal?: number; known_first_year_subtotal?: number }>;
   baseline: { noi_governance?: NoiBaselineGovernance; noi_kind?: string | null; noi_label?: string | null; noi_year?: string | number | null; noi_basis?: string | null; noi_staff_reviewed?: boolean; noi_provisional?: boolean; period: string | null; currency: string | null; basis: string | null; revenue: number | null; earnings: number | null; earnings_kind: string | null; noi: number | null; dscr: number | null; annual_debt_service: number | null; provisional: boolean };
   projection: Record<"proposed" | "approved", OperatingProjection>;
@@ -65,14 +69,14 @@ export type OperatingEvaluation = {
 };
 export const OPERATING_CADENCES: Array<[OperatingCadence, string]> = [["weekly", "Week"], ["biweekly", "Every 2 weeks"], ["semi_monthly", "Twice a month"], ["monthly", "Month"], ["quarterly", "Quarter"], ["annual", "Year"], ["one_time", "One time"]];
 export const OPERATING_CATEGORIES = ["rent", "salaries", "payroll_taxes", "insurance", "utilities", "marketing", "software", "professional_fees", "supplies", "repairs", "transportation", "cogs", "merchant_processing", "loan_payments", "income_taxes", "owner_draws", "transfers", "depreciation_amortization", "other"];
-export const OPERATING_ACTIONS: Array<[OperatingActionKind, string]> = [["price_change", "Customer price change"], ["product_cost_change", "Product cost change"], ["revenue_change", "Revenue / volume change"], ["expense_reduction", "Expense reduction"], ["expense_increase", "Expense increase"], ["processing_cost_change", "Card processing cost change"], ["one_time_adjustment", "One-time adjustment"]];
+export const OPERATING_ACTIONS: Array<[OperatingActionKind, string]> = [["marketing_investment", "Marketing investment / return assumptions"], ["price_change", "Customer price change"], ["product_cost_change", "Product cost change"], ["revenue_change", "Revenue / volume change"], ["expense_reduction", "Expense reduction"], ["expense_increase", "Expense increase"], ["processing_cost_change", "Card processing cost change"], ["one_time_adjustment", "One-time adjustment"]];
 export const operatingLabel = (value: string) => value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 export const operatingNumber = (value: unknown): number | null => {
   if (value == null || String(value).trim() === "") return null;
   const result = Number(String(value).replaceAll(",", "").replaceAll("$", ""));
   return Number.isFinite(result) ? result : null;
 };
-const OPERATING_NUMERIC_FIELDS = new Set(["current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
+const OPERATING_NUMERIC_FIELDS = new Set(["revenue_return_multiple", "current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
 /** Normalize known numeric fields individually. A bad cell must never erase its rows. */
 export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(body: T): T {
   const next = { ...body } as Record<string, unknown>;
@@ -135,7 +139,7 @@ export function operatingExpenseProposal(body: OperatingPlanBody, expenseId: str
 export function linkOperatingActionExpense(body: OperatingPlanBody, actionId: string, expenseId: string | null): OperatingPlanBody {
   const expense = expenseId ? body.expenses?.find((row) => row.id === expenseId && !row.excluded && !row.duplicate_of) : null;
   if (expenseId && !expense) return body;
-  return { ...body, adjustments: body.adjustments?.map((row) => row.id !== actionId ? row : clearOperatingReview({ ...row, expense_row_id: expenseId, ...(expense ? { driver_key: expense.id, source_file_ids: [...new Set([...(expense.source_file_ids ?? []), ...(row.source_file_ids ?? [])])], ...(row.kind === "processing_cost_change" ? { cost_basis: "total" as const } : { cost_basis: expense.cost_basis ?? "total", unit_label: expense.unit_label ?? "", current_amount: expense.cost_basis === "per_unit" ? null : expense.current_amount, ...(expense.cost_basis === "per_unit" ? { proposed_amount: null } : {}), current_units_per_period: expense.current_units_per_period, current_unit_cost: expense.current_unit_cost, current_fixed_amount: expense.current_fixed_amount, cadence: expense.cadence ?? "monthly" }) } : {}) })) };
+  return { ...body, adjustments: body.adjustments?.map((row) => row.id !== actionId ? row : clearOperatingReview({ ...row, expense_row_id: expenseId, ...(expense ? { driver_key: row.kind === "marketing_investment" ? row.driver_key || expense.id : expense.id, source_file_ids: [...new Set([...(expense.source_file_ids ?? []), ...(row.source_file_ids ?? [])])], ...(row.kind === "processing_cost_change" ? { cost_basis: "total" as const } : row.kind === "marketing_investment" ? { cost_basis: "total" as const, current_amount: operatingExpenseAmount(expense), cadence: expense.cadence ?? "monthly" } : { cost_basis: expense.cost_basis ?? "total", unit_label: expense.unit_label ?? "", current_amount: expense.cost_basis === "per_unit" ? null : expense.current_amount, ...(expense.cost_basis === "per_unit" ? { proposed_amount: null } : {}), current_units_per_period: expense.current_units_per_period, current_unit_cost: expense.current_unit_cost, current_fixed_amount: expense.current_fixed_amount, cadence: expense.cadence ?? "monthly" }) } : {}) })) };
 }
 
 /** Every category can propose changes in quantity, rate and fixed cost independently. */
@@ -174,6 +178,7 @@ export function operatingExpenseTotal(rows: OperatingExpense[]) {
 
 /** Display only; authoritative reconciled projections come from the evaluator. */
 export function illustrativeActionImpact(row: OperatingAction): number | null {
+  if (row.kind === "marketing_investment") return null; // The server evaluates marketing assumptions and double-counting guards.
   if (row.excluded || row.duplicate_of || row.status === "rejected") return 0;
   const current = operatingExpenseAmount(row); const proposed = operatingExpenseAmount(row, true);
   const units = operatingNumber(row.units_per_period);

@@ -1,5 +1,6 @@
 import { apiBase } from "@/lib/api";
 import { normalizeOperatingPlanBody, type ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
+import type { OperatingGuidanceReply } from "./operatingGuidance";
 
 export type PublicFinancialVersion = {
   id: string;
@@ -25,6 +26,7 @@ export type PublicFinancialReply = {
   permission?: "edit" | "view";
   completed?: boolean;
   released_cash_flow?: ReleasedCashFlowEvaluation | null;
+  operating_plan?: OperatingGuidanceReply | null;
   completion?: { complete: boolean; active_rows: number; no_debt: boolean; missing_fields: string[]; reason: string; released_cash_flow?: ReleasedCashFlowEvaluation } | null;
 };
 
