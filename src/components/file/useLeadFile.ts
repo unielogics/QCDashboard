@@ -132,8 +132,7 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
     if (!leadId) return;
     const res = await authedFetch(`/admin/ai-underwriter-leads/${leadId}/intelligence.pdf`);
     if (!res.ok) {
-      notify(`PDF export failed: ${res.status} ${res.statusText}`);
-      return;
+      throw new Error(`PDF export failed: ${res.status} ${res.statusText}`);
     }
     downloadBlob(await res.blob(), downloadFilename(res, dealerName(), "intelligence.pdf", "dealer-ai-intelligence.pdf"));
   }
@@ -220,6 +219,7 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
       notify(done);
     } catch (error) {
       notify(error instanceof Error ? error.message : failed);
+      throw error;
     }
   }
 

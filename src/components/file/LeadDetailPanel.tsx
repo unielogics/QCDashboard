@@ -10,6 +10,8 @@ import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { Icon } from "@/components/design-system/Icon";
+import { PreparationProgress } from "@/components/design-system/PreparationProgress";
+import { writePreparationPreview } from "@/lib/preparationPreview";
 import { FileTeamStrip } from "@/components/file/FileTeamStrip";
 import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
@@ -52,7 +54,7 @@ import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
 import { FinancialCockpit } from "@/components/file/cockpit/FinancialCockpit";
-import { FundingPackageWorkspace, type FundingPackageTab } from "./FundingPackageWorkspace";
+import { FundingPackageWorkspace, type FundingPackageTab, type PackagePreparation } from "./FundingPackageWorkspace";
 import type { FinancialCockpit as FinancialCockpitData } from "@/lib/financialCockpit";
 import type { IntakeResponse } from "@/lib/intake";
 import { leadCockpitNonDocumentMissingRows, leadCockpitOutstandingDocuments, preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
@@ -593,7 +595,7 @@ export function LeadDetailPanel({
   onClose: () => void;
   /** Absent when the panel is the page: there is nothing to minimise into. */
   onMinimize?: () => void;
-  onExport: () => void;
+  onExport: () => Promise<void> | void;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
   onGeneratePackage: (options?: PackageGenerationOptions) => Promise<PackageReadinessGeneration>;
@@ -690,6 +692,17 @@ export function LeadDetailPanel({
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<FundingPackageTab>("summary");
   const [packageError, setPackageError] = useState<string | null>(null);
+  const [packagePreparation, setPackagePreparation] = useState<PackagePreparation | null>(null);
+  const [artifactPreparation, setArtifactPreparation] = useState<PackagePreparation | null>(null);
+  const [artifactOperation, setArtifactOperation] = useState<string | null>(null);
+  const packageRequestRef = useRef(0);
+  const artifactRequestRef = useRef(0);
+  useEffect(() => {
+    packageRequestRef.current += 1;
+    artifactRequestRef.current += 1;
+    setPackagePreparation(null); setArtifactPreparation(null); setArtifactOperation(null); setPackageError(null);
+    setZipBusy(false); setBusy("");
+  }, [detail?.intake.id]);
   const headerUploadRef = useRef<HTMLInputElement>(null);
   const initializedLeadIdRef = useRef<string | null>(null);
   const [headerUploading, setHeaderUploading] = useState(false);
@@ -831,30 +844,66 @@ export function LeadDetailPanel({
   const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
 
   async function refreshFullPackage(openPreview = true, options?: PackageGenerationOptions) {
-    const previewWindow = openPreview ? window.open("", "qc-lender-package-preview") : null;
+    const requestId = ++packageRequestRef.current;
+    const previewWindow = openPreview ? window.open("", "_blank") : null;
     if (previewWindow) {
-      previewWindow.opener = null;
-      previewWindow.document.title = "Preparing investor presentation";
-      previewWindow.document.body.innerHTML = "<p style='font:16px system-ui;padding:32px'>Preparing the investor presentation and supporting PDFs…</p>";
+      try {
+        previewWindow.opener = null;
+        writePreparationPreview(previewWindow, { title: "Preparing investor presentation", description: "Building the presentation and supporting PDFs from this file’s current financial figures and evidence." });
+      } catch { /* A blocked or closed preview must not prevent generation. */ }
     }
     setBusy("package-all");
     setPackageError(null);
+    setPackagePreparation({ state: "loading", title: "Preparing investor package", description: "Creating the presentation, executive summary and lender package. The current versions remain available while this runs.", steps: [{ label: "Create and save PDFs", status: "active" }, { label: "Open preview", status: "pending" }] });
     try {
       const generated = await onGeneratePackage(options);
+      if (requestId !== packageRequestRef.current) return;
       setPackageTab("summary");
       const previewUrl = generated.investor_presentation?.preview_url || generated.investor_presentation?.download_url || generated.lender_packet.preview_url || generated.lender_packet.download_url || generated.executive_summary.preview_url || generated.executive_summary.download_url;
-      if (previewWindow && previewUrl) previewWindow.location.replace(previewUrl);
-      else if (previewWindow) previewWindow.close();
+      let previewOpened = false;
+      if (previewWindow && previewUrl) {
+        try {
+          if (!previewWindow.closed) { previewWindow.location.replace(previewUrl); previewOpened = true; }
+        } catch { /* Saved PDFs remain successful even if preview navigation fails. */ }
+      }
+      if (previewWindow && !previewOpened) {
+        try { writePreparationPreview(previewWindow, { state: "complete", title: "Investor package ready", description: "The versioned PDFs have been saved. Return to the file to open the presentation or download the package." }); } catch { /* Best-effort preview only. */ }
+      }
+      setPackagePreparation({ state: "complete", title: "Investor package ready", description: previewOpened ? "The versioned PDFs are saved and the presentation preview has opened." : "The versioned PDFs are saved. Open the presentation or supporting documents below to preview them.", steps: [{ label: "Create and save PDFs", status: "complete" }, ...(openPreview ? [{ label: previewOpened ? "Preview opened" : "Preview available below", status: previewOpened ? "complete" as const : "pending" as const }] : [])] });
       toast.show(generated.superseded_bucket_file_ids.length
         ? "Package refreshed. The previous room PDFs were superseded."
         : "Investor presentation, executive summary and lender package are ready in the room.");
     } catch (reason) {
-      previewWindow?.close();
+      if (requestId !== packageRequestRef.current) return;
       const message = apiErrorMessage(reason, "The investor package could not be generated.");
       setPackageError(message);
+      setPackagePreparation({ state: "error", title: "Package preparation needs attention", description: `${message} Your prior package remains available. Retry generation after correcting the issue.`, steps: [{ label: "Create and save PDFs", status: "pending" }, { label: "Open preview", status: "pending" }] });
+      if (previewWindow) {
+        try { writePreparationPreview(previewWindow, { state: "error", title: "Package preparation needs attention", description: message }); } catch { /* The error remains visible in the file. */ }
+      }
       toast.show(message);
     } finally {
-      setBusy("");
+      if (requestId === packageRequestRef.current) setBusy("");
+    }
+  }
+
+  async function prepareArtifact(key: string, title: string, description: string, done: string, action: () => Promise<void> | void) {
+    const requestId = ++artifactRequestRef.current;
+    setBusy(key);
+    setArtifactOperation(key);
+    setArtifactPreparation({ state: "loading", title, description });
+    try {
+      await action();
+      if (requestId !== artifactRequestRef.current) return;
+      setArtifactPreparation({ state: "complete", title: done, description: key === "export" ? "The prepared PDF was sent to your browser’s downloads." : "The prepared document is available in this file." });
+      toast.show(done);
+    } catch (reason) {
+      if (requestId !== artifactRequestRef.current) return;
+      const message = apiErrorMessage(reason, "The document could not be prepared. Retry the action to try again.");
+      setArtifactPreparation({ state: "error", title: "Document preparation needs attention", description: message });
+      toast.show(message);
+    } finally {
+      if (requestId === artifactRequestRef.current) setBusy("");
     }
   }
 
@@ -1446,14 +1495,22 @@ export function LeadDetailPanel({
 
   async function downloadZip() {
     if (!detail) return;
+    const requestId = ++artifactRequestRef.current;
     setZipBusy(true);
+    setArtifactOperation("zip");
+    setArtifactPreparation({ state: "loading", title: "Preparing package download", description: "Collecting the current documents and building one ZIP archive." });
     try {
       await onDownloadZip();
-      toast.show("Package downloaded");
+      if (requestId !== artifactRequestRef.current) return;
+      setArtifactPreparation({ state: "complete", title: "Package download started", description: "The prepared ZIP archive was sent to your browser’s downloads." });
+      toast.show("Package download started");
     } catch (err) {
-      toast.show(err instanceof Error ? err.message : "Package download failed");
+      if (requestId !== artifactRequestRef.current) return;
+      const message = apiErrorMessage(err, "Package download failed");
+      setArtifactPreparation({ state: "error", title: "Package download needs attention", description: message });
+      toast.show(message);
     } finally {
-      setZipBusy(false);
+      if (requestId === artifactRequestRef.current) setZipBusy(false);
     }
   }
 
@@ -1705,7 +1762,7 @@ export function LeadDetailPanel({
     { id: 4, label: mcaAutoReviewBlocked ? mcaReview?.mode === "manual_review" ? "Manual desk review" : "Confirm MCA details" : "AI review", sub: mcaAutoReviewBlocked ? "Accepted application; automatic underwriting disabled" : "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
   ];
 
-  const renderFundingPackage = (marketplace: ReactNode, cockpit: FinancialCockpitData) => profileId ? <FundingPackageWorkspace key={profileId} profileId={profileId} cockpit={cockpit} activeTab={packageTab} onTab={(tab) => { setPackageTab(tab); if (tab === "marketplace") setCockpitFocus("marketplace"); }} busy={busy !== ""} generated={Boolean(summary && packet)} current={packageInSync} error={packageError} onGenerate={(options) => void refreshFullPackage(true, options)}
+  const renderFundingPackage = (marketplace: ReactNode, cockpit: FinancialCockpitData) => profileId ? <FundingPackageWorkspace key={profileId} profileId={profileId} cockpit={cockpit} activeTab={packageTab} onTab={(tab) => { setPackageTab(tab); if (tab === "marketplace") setCockpitFocus("marketplace"); }} busy={busy !== "" || zipBusy} generating={busy === "package-all"} preparation={packagePreparation} generated={Boolean(summary && packet)} current={packageInSync} error={packageError} onGenerate={(options) => void refreshFullPackage(true, options)}
     packageContent={summary && packet ? <div className="package-readiness-overview">
                     {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild the presentation and supporting PDFs from the current Package Readiness snapshot.</Callout> : null}
                     <div className="package-readiness-status">
@@ -1729,7 +1786,7 @@ export function LeadDetailPanel({
                       <PackageVersionList label="Lender package" artifacts={packetHistory} />
                     </div>
                   </div>}
-    deliveryContent={<div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild the presentation and supporting PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div>}
+    deliveryContent={<div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild the presentation and supporting PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync || busy !== ""}>{zipBusy ? "Building..." : "Download package"}</Btn></Row>{artifactOperation === "zip" && artifactPreparation ? <PreparationProgress {...artifactPreparation} compact /> : null}</div>}
   /> : null;
 
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
@@ -1805,6 +1862,8 @@ export function LeadDetailPanel({
       </div>
 
       {detail ? <CommunicationUnreadBar sms={smsUnread} email={emailUnread} error={communicationUnread.isError} fetching={communicationUnread.isFetching} onOpen={navigateCommunication} onRetry={() => void communicationUnread.refetch()} /> : null}
+      {detail && artifactPreparation && prototypeView !== "financials" ? <PreparationProgress {...artifactPreparation} compact /> : null}
+      {detail && packagePreparation && prototypeView !== "financials" ? <PreparationProgress {...packagePreparation} compact /> : null}
 
       {detail?.application_source ? <div className="intake-source-links" aria-label="Application source">
         <b>{detail.application_source.recorded ? "Application source" : "MCA application page"}</b>
@@ -1813,7 +1872,7 @@ export function LeadDetailPanel({
         {!detail.application_source.recorded ? <span className="sub">The original source was not captured for this older file.</span> : null}
       </div> : null}
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
-      {loading || !detail ? <div className="empty">Loading intake file...</div> : (
+      {loading || !detail ? loading ? <PreparationProgress title="Opening file" description="Loading the application, linked evidence and financial workspace." /> : null : (
         <>
           <div className="intake-tabs" role="tablist" aria-label="File detail">
             {[
@@ -2369,7 +2428,7 @@ export function LeadDetailPanel({
         </IconBtn>
       </div>
       {loading || !detail ? (
-        <div className="panel-b sub">Loading lead detail...</div>
+        loading ? <PreparationProgress title="Opening file" description="Loading the application, linked evidence and financial workspace." /> : null
       ) : (
         <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <div className="row" style={{ flexShrink: 0, padding: "12px 16px 0" }}>
@@ -2490,7 +2549,7 @@ export function LeadDetailPanel({
                   <Btn variant="pri" onClick={onRerun} disabled={rerunning || mcaAutoReviewBlocked}>
                     {mcaAutoReviewBlocked ? "Automatic review disabled" : rerunning ? "Re-running AI review…" : "Re-run AI review on latest uploads"}
                   </Btn>
-                  <Btn onClick={onExport}>Export intelligence PDF</Btn>
+                  <Btn disabled={busy !== "" || zipBusy} onClick={() => void prepareArtifact("export", "Preparing intelligence PDF", "Rendering the file’s intelligence report for download.", "Intelligence PDF download started", onExport)}>Export intelligence PDF</Btn>
                   <Btn onClick={() => setOpenBucketId(detail.intake.bucket_id)}>Open documents</Btn>
                   <Btn onClick={onLinkBucketIntake}>
                     <Icon name="link" size={14} />
@@ -2582,7 +2641,7 @@ export function LeadDetailPanel({
                       A borrower-facing preliminary prequalification — program fit, sizing, and next step. The AI also generates this automatically in chat once baseline documents, the credit pull, and the down payment/prior-ownership/property-type details are all on file.
                     </span>
                     <Row>
-                      <Btn variant="pri" onClick={async () => { setBusy("prequal"); try { await onGeneratePrequalification(); toast.show("Prequalification drafted"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                      <Btn variant="pri" onClick={() => void prepareArtifact("prequal", "Preparing prequalification", "Drafting the preliminary report from the file’s analyzed evidence.", "Prequalification drafted", onGeneratePrequalification)} disabled={busy !== "" || zipBusy}>
                         {busy === "prequal" ? <><Spinner /> Drafting…</> : prequalification ? "Redraft prequalification" : "Draft prequalification"}
                       </Btn>
                       <CellChip tone={prequalification ? "ok" : "mut"}>{prequalification ? "Ready" : "Not started"}</CellChip>
@@ -2606,7 +2665,7 @@ export function LeadDetailPanel({
                     A short credit-officer memo in plain prose — read it here and copy it into notes or a message. It also becomes the opening of the lender packet PDF in step 2.
                   </span>
                   <Row>
-                    <Btn variant="pri" onClick={async () => { setBusy("summary"); try { await onGenerateSummary(); toast.show("Executive summary ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                    <Btn variant="pri" onClick={() => void prepareArtifact("summary", "Preparing executive summary", "Building the credit brief from the file’s analyzed evidence.", "Executive summary ready", onGenerateSummary)} disabled={busy !== "" || zipBusy}>
                       {busy === "summary" ? <><Spinner /> Generating…</> : summary ? "Regenerate summary" : "Generate executive summary"}
                     </Btn>
                     <CellChip tone={summary ? "ok" : "mut"}>{summary ? "Ready" : "Not started"}</CellChip>
@@ -2630,7 +2689,7 @@ export function LeadDetailPanel({
                     The full branded document for a bank underwriter — landscape, white background, month-over-month bank charts (deposits, withdrawals, ending balance), a 2-year tax summary, Excel-style tables, our logo, and a CONFIDENTIAL watermark. Sensitive account and ID numbers are redacted.
                   </span>
                   <Row>
-                    <Btn variant="pri" onClick={async () => { setBusy("packet"); try { await onGeneratePacket(); toast.show("Lender packet ready"); } finally { setBusy(""); } }} disabled={busy !== ""}>
+                    <Btn variant="pri" onClick={() => void prepareArtifact("packet", "Preparing lender package", "Rendering the financial report and supporting schedules.", "Lender packet ready", onGeneratePacket)} disabled={busy !== "" || zipBusy}>
                       {busy === "packet" ? <><Spinner /> Generating…</> : packet ? "Regenerate packet" : "Generate lender packet PDF"}
                     </Btn>
                     <CellChip tone={packet ? "ok" : "mut"}>{packet ? "Ready" : "Not started"}</CellChip>
@@ -2644,7 +2703,7 @@ export function LeadDetailPanel({
               <InfoBlock title="3 · Ship the package">
                 <div className="grid g10">
                   <Row>
-                    <Btn variant="pri" onClick={downloadZip} disabled={zipBusy}>
+                    <Btn variant="pri" onClick={downloadZip} disabled={zipBusy || busy !== ""}>
                       {zipBusy ? <><Spinner /> Building ZIP…</> : "Download full package (.zip)"}
                     </Btn>
                     <Btn onClick={onLinkBucketIntake}>

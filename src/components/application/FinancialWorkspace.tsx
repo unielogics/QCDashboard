@@ -5,6 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
+import { PreparationProgress, type PreparationStep } from "@/components/design-system/PreparationProgress";
 import { useAuthedApi, useDevUser } from "@/hooks/useApi";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { apiBase } from "@/lib/api";
@@ -67,6 +68,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
+  const [publishPhase, setPublishPhase] = useState<"draft" | "pdf" | "refresh" | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [localDirty, setLocalDirty] = useState(false);
   const [error, setError] = useState("");
@@ -200,7 +202,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     if (busy) return;
     setBusy(label); setError("");
     try { await work(); } catch (reason) { setError(message(reason)); if (isFinancialDraftConflict(reason)) setConflict(true); }
-    finally { setBusy(""); }
+    finally { setBusy(""); setPublishPhase(null); }
   };
   const close = () => { void run("close", async () => { await flush(); onClose(); }); };
   const switchForm = (kind: SheetKind, familyId?: string) => { void run("switch", async () => {
@@ -213,8 +215,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     setFileMode("sources"); setSourceFile(""); setSourceUrl(null); setProposal(null); setView("pdf");
   };
   const publish = (submit = false) => { void run(submit ? "file" : "publish", async () => {
+    setPublishPhase("draft");
     await flush(); if (!current.current) return;
     publishKey.current ??= newId();
+    setPublishPhase("pdf");
     const next = await saveFinancialVersion(api, profileId, current.current, `${publishKey.current}:${submit ? "file" : "save"}`, submit);
     pdfRequest.current += 1;
     accept(next); publishKey.current = null;
@@ -226,6 +230,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     setNotice(publication === "saved_pdf" && next.kind === "debt_schedule"
       ? `Version ${saved?.version_number ?? "saved"} PDF saved. ${accepted?.complete === false ? "This debt schedule is still a draft awaiting completion. Complete it and save a version to publish its figures to financials and AI." : "This PDF is not confirmed as the completed schedule used by financials and AI."}`
       : `Version ${saved?.version_number ?? "saved"} saved${publication === "published" && (submit || next.kind === "debt_schedule") ? " and filed on the checklist" : ""}. ${publication === "published" ? "The financial interface and AI now use this version." : "This saved version is available in history; the latest version is shown in the sidebar."}`);
+    setPublishPhase("refresh");
     for (const key of ["financial-workspace-summary", "operating-plan-summary", "debt-schedule-review", "financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
     await onPublished?.();
   }); };
@@ -413,6 +418,23 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     return source?.file_id ? <button type="button" className="fw-field-source" onClick={() => previewSource(source.file_id, source.page, source.content_hash)}><Icon name="file" size={11} />From the file{source.page ? ` · p${source.page}` : ""}</button> : null;
   };
   const previewFiles = snapshot?.evidence.map((file) => loanPreviewReference(file, body, proposal, snapshot.versions)) ?? [];
+  const publicationSteps: PreparationStep[] = [
+    { label: "Save working edits", status: publishPhase === "draft" || !publishPhase ? "active" : "complete" },
+    { label: "Generate PDF and save version", status: publishPhase === "refresh" ? "complete" : publishPhase === "pdf" ? "active" : "pending" },
+    { label: "Refresh financial views", status: publishPhase === "refresh" ? "active" : "pending" },
+  ];
+  const preparation = busy === "publish" || busy === "file"
+    ? { title: publishPhase === "refresh" ? "Version saved · refreshing financial views" : "Preparing the dated PDF version", description: publishPhase === "draft" ? "Saving your latest working edits before generating the PDF." : publishPhase === "refresh" ? "The saved version is ready. Updating the financial workspace and checklist." : "Generating the PDF and saving its immutable version. Please keep this workspace open until it finishes.", steps: publicationSteps }
+    : ({
+      import: { title: "Reading the source document", description: "Preparing proposed fields and source references for your review." },
+      apply: { title: "Applying reviewed fields", description: "Saving the selected answers to the working draft." },
+      upload: { title: "Uploading supporting files", description: "Retaining the originals for linking and source review." },
+      source: { title: "Opening the source document", description: "Preparing the original file for review." },
+      pdf: { title: "Opening the saved PDF", description: "Loading this immutable financial version." },
+      download: { title: "Preparing the PDF download", description: "Loading the saved version for download." },
+      restore: { title: "Restoring the selected version", description: "Preparing its financial values as a new working draft." },
+      "operating-review": { title: "Reviewing the earnings plan", description: "Checking the current costs, proposed adjustments and financial calculations." },
+    } as Record<string, { title: string; description: string; steps?: PreparationStep[] }>)[busy];
 
   const renderFields = () => snapshot ? (<>
     {kind === "pfs" ? <Pfs413Form schema={snapshot.schema as PfsSchema} value={body as PfsBody} onChange={(next) => {
@@ -453,12 +475,13 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
         </aside>
         <main className="fw-main">
           <nav className="fw-tabs" aria-label="Financial workspace views" role="tablist">{VIEWS.filter((tab) => kind !== "debt_schedule" || tab.id !== "form").map((tab) => <button type="button" role="tab" aria-selected={view === tab.id} key={tab.id} disabled={Boolean(busy)} onClick={() => switchView(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}</button>)}</nav>
+          {!loading && preparation ? <div className="fw-alert"><PreparationProgress compact title={preparation.title} description={preparation.description} steps={preparation.steps} /></div> : null}
           {error ? <div className="fw-alert"><Callout tone="bad">{error}{conflict ? <p>Your draft is kept in this window. Reload the server draft to resolve the conflict before saving.</p> : null}<div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("retry", async () => { await flush(); })}>Retry save</Btn>{conflict ? <Btn size="sm" onClick={() => void run("reload", async () => { accept(await readFinancialWorkspace(api, profileId, kind, snapshot?.family_id)); setError(""); })}>Reload server draft</Btn> : null}</div></Callout></div> : null}
           {notice ? <div className="fw-alert"><Callout tone="ok">{notice}</Callout></div> : null}
           {savedReceipt ? <div className="fw-save-receipt"><div><strong>Saved v{savedReceipt.version_number} · {when(savedReceipt.created_at)}</strong><span className="sub">{receiptSummary}</span></div><div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("pdf", async () => { await showPdf(savedReceipt.id); setFileMode("versions"); setView("pdf"); })}>Open saved PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => downloadPdf(savedReceipt.id)}>Download PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyPdfShare(savedReceipt.id)}>Copy PDF share link</Btn></div></div> : null}
           {sharedPdf ? <div className="fw-share-result"><label className="lbl" htmlFor="fw-pdf-share-link">Read-only PDF · v{snapshot?.versions.find((version) => version.id === sharedPdf.version_id)?.version_number ?? "saved"} · expires {when(sharedPdf.expires_at)}</label><input id="fw-pdf-share-link" readOnly value={sharedPdf.url} onFocus={(event) => event.currentTarget.select()} /></div> : null}
           {hasDraft && view !== "history" ? <div className="fw-draft-note"><Icon name="note" size={14} />Draft changes are saved here. Financial summaries and AI update when you save a version, which includes a dated PDF.</div> : null}
-          {loading ? <div className="empty">Opening financial workspace…</div> : !snapshot ? <div className="empty">The financial workspace could not be opened.</div> : <>
+          {loading ? <div className="fw-alert"><PreparationProgress title="Opening financial workspace" description="Loading the working draft, linked files and saved versions." /></div> : !snapshot ? <div className="empty">The financial workspace could not be opened.</div> : <>
             {kind === "debt_schedule" ? <div hidden={view !== "worksheet"}><DebtBatchImport key={`${profileId}:${snapshot.family_id}`} api={api} profileId={profileId} snapshot={{ ...snapshot, body }} disabled={Boolean(busy) && busy !== "debt-batch" || conflict} prepare={async () => { await flush(); if (!current.current) throw new Error("Open the working schedule before reviewing debt files."); return current.current; }} onSnapshot={accept} onBusyChange={(working) => setBusy((value) => working ? "debt-batch" : value === "debt-batch" ? "" : value)} onError={(reason) => { if (isFinancialDraftConflict(reason)) { setConflict(true); setError(message(reason)); } }} /></div> : null}
             {view === "form" ? <div className="fw-form" ref={formRef}>
               <h3>{FINANCIAL_LABELS[kind]}</h3>

@@ -73,7 +73,7 @@ export default function FilePage() {
         canGovern={canGovern}
         canDelete={isDesk}
         onClose={() => router.push(LIST_HREF)}
-        onExport={() => void file.exportPdf()}
+        onExport={file.exportPdf}
         onGenerateSummary={file.generateExecutiveSummary}
         onGeneratePacket={file.generateLenderPacket}
         onGeneratePackage={file.generatePackageReadiness}
