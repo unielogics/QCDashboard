@@ -41,17 +41,53 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
   const [guided, setGuided] = useState(guidedDefault);
   const formElement = useRef<HTMLDivElement>(null);
   const lastSourceDraft = useRef(0);
+  const hasActiveExpenses = value.expenses?.some(row => !row.excluded && !row.duplicate_of) ?? false;
   useEffect(() => {
     if (!sourceDraftRequest || lastSourceDraft.current === sourceDraftRequest) return;
-    lastSourceDraft.current = sourceDraftRequest;
     setTab("expenses"); setSelected(null);
-    const frame = requestAnimationFrame(() => {
-      const target = formElement.current?.querySelector<HTMLElement>(guided ? '[aria-label="Guided operating expenses and earnings plan"] h4' : '[aria-label^="Operating expenses table"]');
-      target?.scrollIntoView({ block: "start", behavior: "smooth" });
-      target?.focus({ preventScroll: true });
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [guided, sourceDraftRequest]);
+    const element = formElement.current;
+    if (!element) return;
+    const mobile = guided && window.matchMedia("(max-width: 650px)").matches;
+    let frame = 0, settleTimer = 0, timeout = 0;
+    let stopped = false;
+    let focused: HTMLElement | null = null;
+    const stop = () => {
+      stopped = true;
+      lastSourceDraft.current = sourceDraftRequest;
+      cancelAnimationFrame(frame); window.clearTimeout(settleTimer); window.clearTimeout(timeout);
+      changes.disconnect(); layout.disconnect();
+      for (const event of ["pointerdown", "wheel", "touchstart", "keydown"]) window.removeEventListener(event, stop, true);
+    };
+    const align = () => {
+      frame = 0;
+      if (stopped) return;
+      // The guide switches steps in its own effect. Wait for the actual cost card,
+      // rather than focusing the old step heading before the fields are mounted.
+      const firstExpense = element.querySelector<HTMLElement>('[aria-label^="Current expense "][aria-label$=" name"]');
+      const target = mobile && hasActiveExpenses ? firstExpense?.closest<HTMLElement>("article") : element.querySelector<HTMLElement>(guided ? '[aria-label="Guided operating expenses and earnings plan"] h4' : '[aria-label^="Operating expenses table"]');
+      if (!target) return;
+      if (focused !== target) {
+        focused = target;
+        target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+        lastSourceDraft.current = sourceDraftRequest;
+        // A financial preview can insert reconciliation above the card. Briefly
+        // keep it aligned, then release scrolling; any user interaction stops it.
+        settleTimer = window.setTimeout(stop, 1500);
+      }
+      target.scrollIntoView({ block: "start", behavior: mobile ? "instant" : "smooth" });
+      if (!mobile) stop();
+    };
+    const schedule = () => { if (!stopped && !frame) frame = requestAnimationFrame(align); };
+    const changes = new MutationObserver(schedule);
+    const layout = new ResizeObserver(schedule);
+    changes.observe(element, { childList: true, subtree: true });
+    layout.observe(element);
+    for (const event of ["pointerdown", "wheel", "touchstart", "keydown"]) window.addEventListener(event, stop, true);
+    timeout = window.setTimeout(stop, 3000);
+    schedule();
+    return stop;
+  }, [guided, hasActiveExpenses, sourceDraftRequest]);
   const expenses = value.expenses ?? []; const actions = value.adjustments ?? [];
   const totals = operatingExpenseTotal(expenses); const currency = value.currency || "USD";
   const activeExpenses = expenses.filter(row => !row.excluded && !row.duplicate_of);

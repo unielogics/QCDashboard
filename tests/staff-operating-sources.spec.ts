@@ -27,7 +27,7 @@ test.beforeAll(async () => {
       build.onResolve({ filter: /^@\/(hooks\/useApi|lib\/consoleAuth)$/ }, args => ({ path: args.path, namespace: "staff-auth" }));
       build.onLoad({ filter: /.*/, namespace: "staff-auth" }, args => ({ loader: "js", resolveDir: root, contents: args.path.endsWith("consoleAuth")
         ? "export const useConsoleAuth=()=>({getToken:async()=> 'synthetic-staff-token',isSignedIn:true});"
-        : `import{ApiError}from'@/lib/api';const api=async(path,options={})=>{const response=await fetch('${ORIGIN}/api/v1'+path,{...options,headers:{'Content-Type':'application/json','Authorization':'Bearer synthetic-staff-token',...options.headers}});const data=await response.json();if(!response.ok)throw new ApiError(response.status,typeof data.detail==='string'?data.detail:'Synthetic API failure',data);return data};export const useAuthedApi=()=>api;export const useDevUser=()=> 'staff-qa';export const useCurrentUser=()=>({data:{id:'synthetic-staff',role:'loan_exec'}});` }));
+        : `import{ApiError}from'@/lib/api';const api=async(path,options={})=>{const response=await fetch('${ORIGIN}/api/v1'+path,{...options,headers:{'Content-Type':'application/json','Authorization':'Bearer synthetic-staff-token',...options.headers}});const data=await response.json();if(!response.ok)throw new ApiError(response.status,typeof data.detail==='string'?data.detail:data.detail?.message||'Synthetic API failure',data);return data};export const useAuthedApi=()=>api;export const useDevUser=()=> 'staff-qa';export const useCurrentUser=()=>({data:{id:'synthetic-staff',role:'loan_exec'}});` }));
     } }],
   });
   [script, css] = await Promise.all([readFile(path.join(directory, "app.js")), readFile(path.join(directory, "app.css"))]);
@@ -68,7 +68,7 @@ async function fixture(page: Page, options: { sourceFailure?: boolean; manualRen
       }
       if (pathname === `${ROOT}/financial-workspace/draft`) {
         const payload = request.postDataJSON(); writes.push({ path: pathname, payload });
-        if (options.draftConflict) return route.fulfill({ status: 409, json: { detail: "Shared draft changed; reload before saving" } });
+        if (options.draftConflict) return route.fulfill({ status: 409, json: { detail: { code: "financial_draft_conflict", message: "Shared draft changed; reload before saving" } } });
         body = payload.body; revision += 1; return route.fulfill({ json: snapshot() });
       }
       if (pathname === `${ROOT}/financial-workspace/versions`) { const payload = request.postDataJSON(); writes.push({ path: pathname, payload }); await publishGate; published = true; revision += 1; return route.fulfill({ json: snapshot() }); }
@@ -118,8 +118,17 @@ test("one selected source drafts its headers and eight costs without adopting ba
   const state = await fixture(page);
   await state.workspace.getByRole("button", { name: "Draft from tax/P&L", exact: true }).click();
   await expect.poll(() => state.body().expenses?.length).toBe(8);
-  await expect(state.workspace.getByRole("heading", { name: "Step 2: Confirm current expenses", exact: true })).toBeInViewport();
+  await info.attach("post-draft-viewport", { body: JSON.stringify(await page.evaluate(() => {
+    const name = document.querySelector<HTMLElement>('[aria-label^="Current expense "][aria-label$=" name"]');
+    const amount = document.querySelector<HTMLElement>('[aria-label="Current cost for Rent and premises"]');
+    const active = document.activeElement as HTMLElement | null;
+    return { width: innerWidth, height: innerHeight, mobileQuery: matchMedia("(max-width:650px)").matches, name: name?.getBoundingClientRect().toJSON(), amount: amount?.getBoundingClientRect().toJSON(), article: name?.closest("article")?.getBoundingClientRect().toJSON(), active: { tag: active?.tagName, label: active?.getAttribute("aria-label"), tabIndex: active?.tabIndex } };
+  })), contentType: "application/json" });
+  await expect(state.workspace.getByRole("heading", { name: "Step 2: Confirm current expenses", exact: true })).toBeVisible();
+  await expect(state.workspace.getByRole("navigation", { name: "Guided operating plan steps" }).getByRole("button", { name: /Confirm current expenses/ })).toHaveAttribute("aria-current", "step");
+  await expect(state.workspace.getByRole("textbox", { name: /^Current expense .* name$/ }).first()).toBeInViewport({ ratio: 1 });
   await expect(state.workspace.getByLabel("Current cost for Rent and premises", { exact: true })).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: info.outputPath("staff-drafted-guided.png"), animations: "disabled" });
   expect(state.body()).toMatchObject({ business_name: "Example Studio", period_start: "2025-01-01", period_end: "2025-12-31", currency: "USD", basis: "cash" });
   expect(state.body().adjustments).toEqual([]);
   expect(state.body().expenses?.reduce((sum, row) => sum + Number(row.current_amount), 0)).toBe(48000);
