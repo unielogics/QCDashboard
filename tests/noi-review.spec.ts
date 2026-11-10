@@ -16,7 +16,7 @@ const PNL_2025 = "81000000-0000-0000-0000-000000000006";
 const TAX_2024 = "81000000-0000-0000-0000-000000000007";
 const TAX_FORECAST = "81000000-0000-0000-0000-000000000008";
 
-async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean; recurringFeeNetRelease?: boolean; noSources?: boolean; readOnly?: boolean; reviewFailure?: boolean; reviewConflict?: boolean; rawPnl?: boolean; staleReview?: boolean; deferredBudgetSave?: boolean; automaticNoi?: number; annualNoiUnknown?: boolean; forecastFirst?: boolean } = {}) {
+async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean; recurringFeeNetRelease?: boolean; noSources?: boolean; readOnly?: boolean; reviewFailure?: boolean; reviewConflict?: boolean; rawPnl?: boolean; staleReview?: boolean; deferredBudgetSave?: boolean; automaticNoi?: number; annualNoiUnknown?: boolean; forecastFirst?: boolean; reviewedOperatingCoverage?: boolean } = {}) {
   const programSaves: Json[] = [], draftSaves: Json[] = [], versionSaves: Json[] = [], principalSaves: Json[] = [], budgetSaves: Json[] = [], unexpectedWrites: string[] = [], errors: string[] = [];
   const noiSaves: Json[] = [];
   let useOfFundsItems = [{ id: "sample-use", category: "working_capital", label: "Inventory and business reserves", amount: 180000 }], useOfFundsRevision = 1;
@@ -25,6 +25,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
   let cockpitReads = 0, noiRevision = options.staleReview ? 1 : 0, sourceStamp = (options.staleReview ? "b" : "a").repeat(64), reviewFailed = false, reviewStale = Boolean(options.staleReview);
   let current: Receipt | null = options.staleReview ? { id: "review-old", revision: 1, at: "2026-11-10T17:00:00Z", mode: "manual", selected_file_id: null, annual_value: 42000, year: 2025, currency: "USD", period_start: null, period_end: null, reason: "Prior working estimate requires a current evidence review.", source_refs: [], source_stamp: "a".repeat(64), actor_name: "Case reviewer", actor_id: "reviewer", source_metric: "noi" } : null;
   const history: Receipt[] = current ? [current] : [];
+  let operatingReviewBlocked = false;
   const noiSources = options.noSources ? [] : [
     { file_id: TAX_2025, file_name: "Sample business tax 2025.pdf", kind: "business_tax_return", year: 2025, currency: "USD", basis: "cash", period_start: options.annualNoiUnknown ? null : "2025-01-01", period_end: options.annualNoiUnknown ? null : "2025-12-31", proposed_annual_value: options.automaticNoi ?? -41000, eligible: true, reason: null, accepted: true, notes: ["Tax-derived operating estimate. Depreciation remains in operating expenses; explicit staff review is required."] },
     { file_id: PNL_2025, file_name: "Sample business P&L 2025.pdf", kind: "profit_and_loss", year: 2025, currency: "USD", basis: "accrual", period_start: "2025-01-01", period_end: "2025-12-31", proposed_annual_value: 58000, eligible: true, reason: null, accepted: true, notes: [] },
@@ -71,6 +72,20 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
   let costBudget: Json = { profile_id: PROFILE, revision: budgetRevision, can_edit: true, funding_mode: "single_investor", costs_confirmed: true, loan_amount_mode: "target_net", base_loan_amount: null, target_net_amount: 180000, investor_funding_amount: null, minimum_investor_contribution: null, currency: "USD", rows: [], note: null };
   const planRecord = () => ({ retire: [], exclude: [], add_backs: [], new_loan_amount: sharedAmount, new_loan_rate_pct: 15, new_loan_term_months: 24, new_loan_structure: "amortizing", new_loan_interest_only: false, new_loan_interest_only_months: 6, new_loan_repayment_config: { amortization_months: 24, balloons: [] }, new_loan_payments_per_year: 12, new_payment_monthly: null, new_payment_source: "manual_terms", terms_ref: null, overrides: null, note: "Preserve the reviewed coverage plan", updated_at: planUpdatedAt });
   const monthlyPayment = (amount: number) => amount * (0.15 / 12) / (1 - Math.pow(1 + 0.15 / 12, -24));
+  const operatingCoverage = () => options.reviewedOperatingCoverage ? {
+    status: operatingReviewBlocked ? "blocked" : "applied", applied: !operatingReviewBlocked,
+    version_number: 2, annual_impact: 24000, first_year_impact: 18000,
+    applied_annual_impact: operatingReviewBlocked ? 0 : 18000, candidate_impacts: { tax_return: operatingReviewBlocked ? 0 : 18000 },
+    baseline_annual: -9000, projected_dscr: operatingReviewBlocked ? null : 9000 / (36000 + monthlyPayment(sharedAmount) * 12),
+    reason: operatingReviewBlocked ? "Review the operating action against the changed NOI authority." : "Reviewed first-year action included after timing; the source baseline stays unchanged.",
+  } : null;
+  const planEvaluation = (amount = sharedAmount) => ({
+    active: true, income_before_annual: -9000, income_after_annual: -9000 + (options.reviewedOperatingCoverage && !operatingReviewBlocked ? 18000 : 0),
+    current_annual_debt_service: 36000, debt_service_after_annual: 36000 + monthlyPayment(amount) * 12,
+    debt_service_after_monthly: 3000 + monthlyPayment(amount), no_debt_left: false,
+    headline_after: (-9000 + (options.reviewedOperatingCoverage && !operatingReviewBlocked ? 18000 : 0)) / (36000 + monthlyPayment(amount) * 12),
+    operating_plan: operatingCoverage(),
+  });
   const pricedBudget = (value = costBudget) => {
     const rows = (value.rows ?? []) as Array<{ id: string; enabled: boolean; payer: string; timing: string; settlement: string; method: string; value: number | null }>;
     const closing = rows.filter(row => row.enabled && row.payer === "borrower" && row.timing === "closing");
@@ -84,10 +99,10 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     const net = Math.round((gross - cost("financed") - cost("withheld")) * 100) / 100;
     return { ...value, calculation: { status: "ready", gross_loan_amount: gross, net_client_cash: net, borrower_cash_after_separate_costs: net - cost("separate"), borrower_withheld_fees: cost("withheld"), investor_funding_amount: gross, minimum_investor_contribution: gross,
       principal_solution: { mode: value.loan_amount_mode, status: "calculated", gross_loan_amount: gross, financed_closing_costs: cost("financed"), withheld_closing_costs: cost("withheld"), requires_apply: gross !== sharedAmount },
-      scheduled_payment: { monthly_equivalent: monthlyPayment(gross) }, rows: rows.map(row => ({ id: row.id, total_amount: rowAmount(row) })), financing_fee_coverage: { with_financing_fees_dscr: -9000 / (36000 + monthlyPayment(gross) * 12) }, issues: [], assumptions: [] },
-      financing_context: { current_loan_amount: sharedAmount, plan_updated_at: planUpdatedAt, terms_ref: null }, financial_plan: { profile_id: PROFILE, record: planRecord() }, financial_plan_evaluation: { active: true, headline_after: -9000 / (36000 + monthlyPayment(gross) * 12) } };
+      scheduled_payment: { monthly_equivalent: monthlyPayment(gross) }, rows: rows.map(row => ({ id: row.id, total_amount: rowAmount(row) })), financing_fee_coverage: { with_financing_fees_dscr: planEvaluation(gross).headline_after }, issues: [], assumptions: [] },
+      financing_context: { current_loan_amount: sharedAmount, plan_updated_at: planUpdatedAt, terms_ref: null }, financial_plan: { profile_id: PROFILE, record: planRecord() }, financial_plan_evaluation: planEvaluation(gross) };
   };
-  let versions: Json[] = [];
+  let versions: Json[] = options.reviewedOperatingCoverage ? [{ id: "operating-version-2", version_number: 2, created_at: "2026-11-10T16:35:00Z", actor_name: "Visual QA", source: "operator", source_file_id: null, pdf_file_id: "saved-operating-pdf", status: "published" }] : [];
   let planBody: PlanBody = { business_name: "Sample Manufacturing LLC", currency: "USD", no_operating_expenses_confirmed: true, expenses: [], adjustments: [],
     released_cash_flow: { source_fingerprint: options.staleAllocation ? "coverage-old" : null, allocations: options.staleAllocation ? [{ id: "old-allocation", label: "Existing payroll reserve", amount_monthly: 1000, notes: "Preserve the working allocation while reviewing the changed coverage plan." }] : [] } };
   const candidates = [
@@ -139,7 +154,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     noi: { ...noiGovernance(), definition: { key: "business_operating_income", label: "Business operating income (NOI)", formula: "revenue - cost of goods sold - operating expenses" }, headline: effectiveNoi(), source_headline: sourceNoi, source_reason: sourceNoi ? null : "No current business P&L operating-income source is available.", candidates: sourceNoi ? [sourceNoi] : [], years: sourceNoi ? [sourceNoi] : [], reason: reviewStale ? "The saved NOI review is stale. Review the latest evidence before relying on it." : effectiveNoi() ? null : "No current business P&L operating-income source is available.", scenario: { ...noiGovernance(), current: effectiveNoi()?.annualized_value ?? null, plan: effectiveNoi()?.annualized_value ?? null, annual_debt_service_current: 36000, annual_debt_service_plan: 36000 + monthlyPayment(sharedAmount) * 12, after_debt_service_current: effectiveNoi()?.annualized_value == null ? null : effectiveNoi()!.annualized_value! - 36000, after_debt_service_plan: effectiveNoi()?.annualized_value == null ? null : effectiveNoi()!.annualized_value! - 36000 - monthlyPayment(sharedAmount) * 12, notes: [], operating_adjustments: [] }, trend: {},
       review: { revision: noiRevision, source_stamp: sourceStamp, mode: current?.mode ?? "automatic", stale: reviewStale, sources: noiSources, current, history } },
     metric_review: { revision: 0, source_stamp: "d".repeat(64), inputs: [], calculations: [], history: [], composition_history: [], corrections: [], stale_corrections: [], exclusions: [] },
-    plan: { record: planRecord(), evaluation: { active: true, debt_service_after_annual: 36000 + monthlyPayment(sharedAmount) * 12, current_annual_debt_service: 36000 }, levers: [], modifications: [], impact: null, schedule_rows: [] },
+    plan: { record: planRecord(), evaluation: planEvaluation(), levers: [], modifications: [], impact: null, schedule_rows: [] },
     proposed_terms: { source: "term_sheet", active_proposal: true, amount: 180000, rate_pct: 15, term_months: 24, payment_monthly: 2000, deal_budget_calculation: { gross_loan_amount: 180000, status: "ready" } },
     operating_plan: { available: versions.length > 0, state: versions.length ? "published" : "not_started", evaluation: evaluation(), package: { missing: release().missing, adjustments: [], risk_flags: [], all_actions_reviewed: true } }, operating_evidence: { files: [], expense_candidates: [], merchant_sources: [], merchant_offers: [], warnings: [] } });
   const verification = { ownership_total: 100, ownership_complete: true, owner_contact_complete: true, owner_count: 1, required_credit_owner_count: 1, completed_credit_owner_count: 1, pending_credit_owner_ids: [], missing_credit_contact_owner_ids: [], bank_linked: false, bank_connection_count: 0, bank_statement_months: 0, credit_returned: true, owner_credit_complete: true, business_banking_complete: false, evidence_complete: false, ready_for_step_2: true, unlocked: false, ownership_blockers: [], credit_blockers: [], banking_blockers: [], blockers: [] };
@@ -195,7 +210,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
       if (options.publishFailure && !publishFailed) { publishFailed = true; status = 503; body = { detail: "Version PDF temporarily unavailable. Your working plan remains saved." }; }
       else { const saved = { id: `version-${versions.length + 1}`, version_number: versions.length + 1, created_at: "2026-11-10T16:35:00Z", actor_name: "Visual QA", source: "operator", source_file_id: null, pdf_file_id: "saved-pdf", status: "published" }; versions = [...versions, saved]; body = workspace(saved); }
     } else if (path.endsWith(`/${PROFILE}/financial-workspace`)) body = workspace();
-    else if (path.endsWith(`/${PROFILE}/operating-plan/summary`)) body = { has_plan: versions.length > 0, state: versions.length ? "published" : "not_started", expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: release().missing.length, version_number: versions.length || null, cost_mix: [], evaluation: evaluation() };
+    else if (path.endsWith(`/${PROFILE}/operating-plan/summary`)) body = { has_plan: versions.length > 0, state: versions.length ? "published" : "not_started", expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: release().missing.length, version_number: versions.at(-1)?.version_number ?? null, cost_mix: [], evaluation: evaluation() };
     else if (path.endsWith(`/${PROFILE}/operating-plan/evidence`)) body = { files: [], expense_candidates: [], merchant_sources: [], merchant_offers: [], warnings: [] };
     else if (path.endsWith(`/${PROFILE}/operating-plan/evaluate`)) body = { evaluation: evaluation((request.postDataJSON() as { body: PlanBody }).body), context_stamp: "context-current", evidence: { files: [], expense_candidates: [], merchant_sources: [], merchant_offers: [], warnings: [] } };
     else if (path.endsWith(`/${PROFILE}/underwriting`)) body = { profile_id: PROFILE, source_kind: "intake", source_id: INTAKE, underwriting_status: "submitted", approved_amount: null, current_dscr: -0.25, target_dscr: 1.25, reviewer_notes: null };
@@ -226,7 +241,11 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     await page.getByRole("tab", { name: "Financials", exact: true }).click();
     await expect(page.getByRole("button", { name: "Open earnings plan", exact: true })).toBeVisible();
   }
-  return { programSaves, draftSaves, versionSaves, principalSaves, budgetSaves, releaseBudgetSave, noiSaves, unexpectedWrites, errors, planBody: () => planBody, cockpitReads: () => cockpitReads,
+  return { programSaves, draftSaves, versionSaves, principalSaves, budgetSaves, releaseBudgetSave, noiSaves, unexpectedWrites, errors,
+    makeNoiReviewStale: () => {
+      current = { id: "review-became-stale", revision: 1, at: "2026-11-10T17:00:00Z", mode: "manual", selected_file_id: null, annual_value: 58000, year: 2025, currency: "USD", period_start: null, period_end: null, reason: "Previous annual review retained for audit only.", source_refs: [], source_stamp: "a".repeat(64), actor_name: "Case reviewer", actor_id: "reviewer", source_metric: "noi" };
+      history.push(current); noiRevision = 1; sourceStamp = "b".repeat(64); reviewStale = true; operatingReviewBlocked = true;
+    }, planBody: () => planBody, cockpitReads: () => cockpitReads,
     publishCriteria: () => { const row = candidates.find(candidate => candidate.program_key === "special_review")!; Object.assign(row, { playbook_id: "special-criteria", playbook_version: 1, recommendation_status: "not_eligible", reasons: ["New published criteria require underwriting review."] }); } };
 }
 
@@ -304,6 +323,46 @@ for (const amount of [-41000, 0, 60000]) test(`automatic annual NOI ${amount} st
   expect(state.noiSaves).toEqual([]);
   expect(state.principalSaves).toEqual([]);
   expect(state.budgetSaves).toEqual([]);
+  expect(state.unexpectedWrites).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
+test("reviewed first-year coverage remains separate from current NOI and stale source authority", async ({ page }, testInfo) => {
+  const state = await fixture(page, { rawPnl: true, reviewedOperatingCoverage: true });
+  await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+  const coverage = page.getByRole("dialog", { name: /^Advanced financial review/ });
+  await coverage.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+  const effect = coverage.getByRole("region", { name: "Earnings plan effect on coverage", exact: true });
+  await expect(effect).toContainText("Reviewed earnings plan included · v2");
+  await expect(effect).toContainText("-0.25x");
+  await expect(effect).toContainText("First-year earnings change applied");
+  await expect(effect).toContainText("$18,000");
+  await expect(effect).toContainText("Full-year run-rate change");
+  await expect(effect).toContainText("$24,000");
+  const monthly = 180000 * (0.15 / 12) / (1 - Math.pow(1 + 0.15 / 12, -24));
+  await expect(effect).toContainText(`${(9000 / (36000 + monthly * 12)).toFixed(2)}x`);
+  const current = coverage.getByRole("region", { name: "Current NOI status", exact: true });
+  await expect(current).toContainText("P&L source supported");
+  await expect(current).toContainText("Current annual NOI: $58,000.00");
+  await expect(current).toContainText("2025-01-01 – 2025-12-31 · USD");
+  await effect.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("combined-noi-operating-coverage.png"), animations: "disabled" });
+  await coverage.getByRole("button", { name: "Close", exact: true }).click();
+  state.makeNoiReviewStale();
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Financials", exact: true }).click();
+  const tile = page.getByRole("button", { name: NOI_TILE, exact: true });
+  await expect(tile).toContainText("Unavailable");
+  await expect(tile).toContainText("NOI needs re-review");
+  await expect(tile).not.toContainText("58,000");
+  await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+  await coverage.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+  await expect(current).toContainText("Current annual NOI: Unknown");
+  await expect(current).toContainText("NOI needs re-review");
+  await expect(effect).toContainText("Earnings plan needs reconciliation");
+  await expect(effect).not.toContainText("First-year earnings change applied");
+  expect(state.noiSaves).toEqual([]);
+  expect(state.principalSaves).toEqual([]);
   expect(state.unexpectedWrites).toEqual([]);
   expect(state.errors).toEqual([]);
 });
