@@ -36,8 +36,8 @@ function Step({ n, title, state, chip, sub, children, step, active }: { n: numbe
   </section>;
 }
 
-export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onResponseRecorded, forecastEarnings, feeInfo, offer, marketplace, publication, loanId, onCreateFundingFile, canUnderwrite }: {
-  profileId: string; terms: TermsOnFile | null; termsLoading: boolean; termsActions?: ReactNode; onEditTerms: () => void;
+export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, programSelection, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onResponseRecorded, forecastEarnings, feeInfo, offer, marketplace, publication, loanId, onCreateFundingFile, canUnderwrite }: {
+  profileId: string; terms: TermsOnFile | null; termsLoading: boolean; termsActions?: ReactNode; programSelection?: ReactNode; onEditTerms: () => void;
   financing?: WorkingFinancing | null; requestedAmount?: number | null; onCoveragePlan?: () => void;
   underwriting: ApplicationUnderwritingState | null; statusLabel: string; draft: UnderwritingDraft;
   onDraftChange: (patch: Partial<UnderwritingDraft>) => void; saving: boolean; error: string | null;
@@ -100,6 +100,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
     {error ? <Callout tone="bad">{error}</Callout> : null}
 
     <Step n={1} step="terms" active={active} title="Client terms" state={states.terms} chip={terms ? `Saved v${terms.version}` : "Not started"} sub="Preview the saved offer, then open the full editor to adjust the loan, collateral and closing costs.">
+      {programSelection}
       <div className="uw-terms-layout">
         <div className="grid g12">
           <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />

@@ -23,6 +23,7 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
   const summary = useQuery({ queryKey: ["operating-plan-summary", profileId], queryFn: () => api<PlanSummary>(`/application-profiles/${encodeURIComponent(profileId)}/operating-plan/summary`), staleTime: 15_000, retry: false });
   const evaluation = summary.data?.evaluation ?? suppliedEvaluation;
   const reviewed = evaluation?.totals.approved;
+  const release = evaluation?.released_cash_flow;
   const ratio = evaluation?.baseline.dscr ?? currentDscr;
   const suggested = evaluation?.recommendation?.recommended ?? (ratio != null ? ratio < 1.1 : evaluation?.baseline.earnings != null ? evaluation.baseline.earnings < 0 : null);
   const mix = (summary.data?.cost_mix ?? []).filter((row) => row.annual_amount != null && row.annual_amount > 0).sort((a, b) => b.annual_amount! - a.annual_amount!).slice(0, 4);
@@ -32,6 +33,10 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: ["operating-plan-summary", profileId] }); await onRefresh(); };
   return <>
     <section className="fc-card fc-wide"><div className="fc-card-h"><div><h4>Operating expenses and earnings plan</h4><div className="sub">Current costs, proposed changes and their effect on earnings and coverage.</div></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{summary.data?.has_plan ? <CellChip tone="mut">{summary.data.state === "published" ? `Published v${summary.data.version_number ?? version ?? "—"}` : "Working draft"}</CellChip> : summary.data ? <CellChip tone="mut">No plan yet</CellChip> : version ? <CellChip tone="mut">v{version}</CellChip> : null}<IconBtn aria-label="Open earnings plan" title="Open earnings plan" onClick={() => setOpen(true)}><Icon name="edit" size={16} /></IconBtn>{canEdit ? <Btn size="sm" onClick={() => setRequest(crypto.randomUUID())}>Request client plan</Btn> : null}</div></div>
+      {release?.required ? <div className={styles.releaseRequirement} role="status">
+        <div><strong>{release.complete ? "Released cash flow allocated" : "Required: allocate released cash flow"}</strong><p>The saved coverage plan releases {operatingMoney(release.amount_monthly, release.currency)} per month. {release.complete ? "The operating plan allocates this recurring amount." : "Review and allocate the full recurring amount in the operating plan."}</p></div>
+        <Btn size="sm" onClick={() => setOpen(true)}>{canEdit ? "Allocate released cash flow" : "View cash flow allocation"}</Btn>
+      </div> : null}
       <div className={styles.summary}>
         <div className={styles.figures}><span>Known operating cash costs<strong>{money(evaluation?.disclosure.operating_cash_monthly)}<small>/ month</small></strong></span><span>Known COGS<strong>{money(evaluation?.disclosure.cogs_monthly)}<small>/ month</small></strong></span><span>Reviewed earnings change<strong>{money(reviewed?.annual_impact)}<small>/ year</small></strong></span></div>
         {mix.length ? <div className={styles.mix} aria-label="Largest disclosed annual costs">{mix.map((row) => <div key={row.category}><span>{operatingLabel(row.category)}{row.missing_count ? " · known" : ""}</span><span className={styles.track}><i style={{ width: `${row.annual_amount! / largest * 100}%` }} /></span><strong>{money(row.annual_amount)}</strong></div>)}</div> : <p className="sub">{summary.isLoading ? "Reading the saved plan…" : summary.error ? "Plan summary could not be refreshed. Open the plan to review its saved rows." : "Add current costs and proposed changes to build the earnings comparison."}</p>}

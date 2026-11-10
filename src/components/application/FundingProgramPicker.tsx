@@ -63,17 +63,22 @@ export function FundingProgramPicker({
   const [filter, setFilter] = useState<ProgramPickerFilter>("all");
   const visible = filterProgramCandidates(candidates, query, filter, selectedKeys);
   const historicalSelections = selections.filter((selection) => !candidates.some((candidate) => candidate.program_key === selection.program_key));
+  const keysChanged = selectedKeys.length !== selections.length || selections.some((selection) => !selectedKeys.includes(selection.program_key));
+  const firstCriteriaAvailable = selections.some((selection) => !selection.playbook_id && selectedKeys.includes(selection.program_key)
+    && candidates.some((candidate) => candidate.program_key === selection.program_key && candidate.playbook_id));
   const toggle = (key: string) => onSelectionChange(selectedKeys.includes(key) ? selectedKeys.filter((item) => item !== key) : [...selectedKeys, key]);
 
   return <Modal open title="Choose funding programs" size="lg" onClose={onClose} closeOnBackdrop={!busy} footer={
     <div className={styles.footer}>
       <span className={styles.footerCount} aria-live="polite">{selectedKeys.length} selected{changed ? " · Unsaved changes" : ""}</span>
       <Btn onClick={onClose} disabled={busy}>Cancel</Btn>
-      <Btn variant="pri" disabled={busy || !changed || (requiresOverride && reason.trim().length < 8)} onClick={onApply}>{busy ? "Applying…" : selectionMode === "manual" ? "Apply selection" : "Apply manual selection"}</Btn>
+      <Btn variant="pri" disabled={busy || !changed} onClick={onApply}>{busy ? "Applying…" : firstCriteriaAvailable && !keysChanged ? "Apply criteria" : selectionMode === "manual" ? "Apply selection" : "Apply manual selection"}</Btn>
     </div>
   }>
     <div className={styles.layout}>
-      <p className={styles.hint}>Choose programs for this file. Applying your selection updates its evidence requirements{selectionMode === "manual" ? "" : " and switches this file to manual selection: the AI will not change its programs until you return it to AI selection"}. AI fit is advisory; selecting a program outside its criteria requires a review reason.</p>
+      <p className={styles.hint}>Choose programs for this file. Applying your selection updates its evidence requirements{selectionMode === "manual" ? "" : " and switches this file to manual selection: the AI will not change its programs until you return it to AI selection"}. AI fit is advisory. Selecting a program does not approve the file or clear its conditions.</p>
+      {requiresOverride ? <Callout tone="warn">Your selection includes a program outside the AI fit or with information still needed. You can select it; its criteria and review warnings remain in effect.</Callout> : null}
+      {firstCriteriaAvailable ? <Callout tone="acc">First published criteria are now available for a selected program. Apply your selection to use them. Programs with a pinned criteria version keep that version.</Callout> : null}
       {error ? <Callout tone="warn">{error}</Callout> : null}
       <div className={styles.toolbar}>
         <Field label="Find a program"><Input autoFocus aria-label="Find a program" type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search programs or fit reasons" /></Field>
@@ -85,17 +90,17 @@ export function FundingProgramPicker({
         <p className={styles.hint}>Previously selected programs outside the current list remain selected unless you remove them.</p>
         {historicalSelections.map((selection) => <label key={selection.program_key} className={cx(styles.choice, styles.candidate)}>
           <input type="checkbox" checked={selectedKeys.includes(selection.program_key)} disabled={busy} onChange={() => toggle(selection.program_key)} />
-          <span className={styles.candidateCopy}><strong>{selection.program_name}</strong><small>Previously selected · criteria v{selection.playbook_version}</small></span>
+          <span className={styles.candidateCopy}><strong>{selection.program_name}</strong><small>Previously selected · {selection.playbook_version ? `criteria v${selection.playbook_version}` : "criteria unavailable"}</small></span>
         </label>)}
       </div> : null}
       <p className={styles.hint} role="status">{visible.length} of {candidates.length} programs shown</p>
       <div className={styles.results}>
         {visible.map((candidate) => <div key={candidate.program_key} className={cx(styles.candidate, selectedKeys.includes(candidate.program_key) && styles.selected)}>
           <label className={styles.choice}>
-            <input type="checkbox" checked={selectedKeys.includes(candidate.program_key)} disabled={busy || (!candidate.playbook_id && !selectedKeys.includes(candidate.program_key))} onChange={() => toggle(candidate.program_key)} />
+            <input type="checkbox" checked={selectedKeys.includes(candidate.program_key)} disabled={busy} onChange={() => toggle(candidate.program_key)} />
             <span className={styles.candidateCopy}>
               <span className={styles.candidateTitle}><strong>{candidate.program_name}</strong><CellChip tone={candidateTone(candidate)}>{candidateLabel(candidate)}</CellChip></span>
-              <small>{candidate.playbook_version ? `Criteria v${candidate.playbook_version}${candidate.recommendation_status === "recommended" ? ` · ${Math.round(candidate.fit_score)}% fit` : ""}` : "Publish criteria in Funding programs settings before selecting this program."}</small>
+              <small>{candidate.playbook_version ? `Criteria v${candidate.playbook_version}${candidate.recommendation_status === "recommended" ? ` · ${Math.round(candidate.fit_score)}% fit` : ""}` : "Published criteria unavailable · criteria review remains required."}</small>
               {candidate.reasons[0] ? <small>{candidate.reasons[0]}</small> : null}
               {candidate.preference_reasons?.length ? <small>QC preference: {candidate.preference_reasons.join(" · ")} — recommendation only, not approval.</small> : null}
             </span>
@@ -105,7 +110,7 @@ export function FundingProgramPicker({
         </div>)}
         {!visible.length ? <p className="empty">No programs match these filters. Try another search or choose All programs.</p> : null}
       </div>
-      {requiresOverride ? <Field label="Required review reason"><Textarea aria-label="Required review reason" rows={2} value={reason} disabled={busy} onChange={(event) => onReasonChange(event.target.value)} placeholder="Explain why the reviewed facts support the selected program (at least 8 characters)" /></Field> : null}
+      <Field label="Review note (optional)"><Textarea aria-label="Review note (optional)" rows={2} value={reason} disabled={busy} onChange={(event) => onReasonChange(event.target.value)} placeholder="Add context for the program selection" /></Field>
     </div>
   </Modal>;
 }

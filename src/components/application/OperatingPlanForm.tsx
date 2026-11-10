@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react";
 import { clearOperatingReview, illustrativeActionImpact, linkOperatingActionExpense, normalizeOperatingPlanBody, OPERATING_ACTIONS, OPERATING_CADENCES, OPERATING_CATEGORIES, operatingExpenseAmount, operatingExpenseProposal, operatingExpenseTotal, operatingLabel, operatingMoney, operatingNumber, proposeExpense, proposeExpenseUnits, type OperatingAction, type OperatingCadence, type OperatingCostBasis, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
 import styles from "./OperatingPlanForm.module.css";
+import { ReleasedCashFlowAllocation } from "./ReleasedCashFlowAllocation";
+import type { ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
 
 export type OperatingSource = { file_id: string; file_name: string };
 type Tab = "expenses" | "actions" | "impact";
@@ -16,10 +18,11 @@ function WrappedCell({ label, value, disabled, placeholder, onChange }: { label:
 }
 
 /** Staff and clients edit the same versioned body; approvals belong to staff review. */
-export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference }: {
+export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, releasedCashFlow, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference }: {
   value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void; disabled?: boolean;
   sources?: OperatingSource[]; onPreviewSource?: (id: string) => void;
   evaluation?: OperatingEvaluation | null; evaluating?: boolean; reviewControls?: ReactNode; staff?: boolean;
+  releasedCashFlow?: ReleasedCashFlowEvaluation | null;
   processingReferences?: { sources: Array<{ key: string; label: string }>; offers: Array<{ id: string; label: string }> };
   onProcessingReference?: (row: OperatingAction, sourceKey: string, offerId: string) => void;
 }) {
@@ -76,6 +79,7 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
     {(row.source_file_ids ?? []).map((id) => <button key={id} type="button" className={styles.link} onClick={() => onPreviewSource?.(id)} disabled={!onPreviewSource}>{sources.find((file) => file.file_id === id)?.file_name ?? "Linked supporting file"}</button>)}
   </div>;
   return <div className={styles.plan}>
+    <ReleasedCashFlowAllocation value={value} onChange={onChange} source={evaluation?.released_cash_flow ?? releasedCashFlow} disabled={disabled} evaluating={evaluating} />
     <div className={styles.identity}>
       <label>Business<input value={value.business_name ?? ""} disabled={disabled} onChange={(event) => change({ business_name: event.target.value })} /></label>
       <label>Period start<input type="date" value={value.period_start ?? ""} disabled={disabled} onChange={(event) => change({ period_start: event.target.value })} /></label>

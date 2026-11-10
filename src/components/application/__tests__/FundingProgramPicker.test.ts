@@ -43,22 +43,23 @@ describe("funding program selection", () => {
     expect(filterProgramCandidates(programs, "", "selected", ["equipment"]).map((item) => item.program_key)).toEqual(["equipment"]);
   });
 
-  it("shows criteria and every fit reason, with unavailable programs disabled", () => {
+  it("keeps unavailable criteria visible and selectable without inventing approval", () => {
     const html = renderToStaticMarkup(createElement(FundingProgramPicker, {
       ...props, candidates: [candidate(), candidate({ program_key: "unpublished", program_name: "Unpublished program", playbook_id: null, playbook_version: null, eligible: false, recommendation_status: "criteria_unavailable" })],
     }));
     expect(html).toContain('role="dialog"');
     expect(html).toContain("Choose funding programs");
     expect(html).toContain("Business age verified");
-    expect(html).toContain("Publish criteria in Funding programs settings");
-    expect(html).toMatch(/type="checkbox" disabled=""/);
+    expect(html).toContain("Published criteria unavailable");
+    expect(html).not.toMatch(/type="checkbox" disabled=""/);
   });
 
-  it("prevents applying an override without a reviewed reason", () => {
+  it("allows poor AI fit with an empty or short optional review note", () => {
     const html = renderToStaticMarkup(createElement(FundingProgramPicker, { ...props, requiresOverride: true }));
-    expect(html).toContain("Required review reason");
-    expect(html).toMatch(/<button[^>]+disabled=""[^>]*>Apply (?:manual )?selection<\/button>/);
-    const valid = renderToStaticMarkup(createElement(FundingProgramPicker, { ...props, requiresOverride: true, reason: "Reviewed exception with supporting evidence" }));
+    expect(html).toContain("Review note (optional)");
+    expect(html).toContain("its criteria and review warnings remain in effect");
+    expect(html).not.toMatch(/<button[^>]+disabled=""[^>]*>Apply (?:manual )?selection<\/button>/);
+    const valid = renderToStaticMarkup(createElement(FundingProgramPicker, { ...props, requiresOverride: true, reason: "OK" }));
     expect(valid).not.toMatch(/<button[^>]+disabled=""[^>]*>Apply (?:manual )?selection<\/button>/);
   });
 
@@ -70,4 +71,12 @@ describe("funding program selection", () => {
     expect(html).toContain("Previously selected · criteria v2");
     expect(html).toContain('type="checkbox" checked=""');
   });
+});
+
+it("offers an explicit first-criteria action without changing program keys", () => {
+  const html = renderToStaticMarkup(createElement(FundingProgramPicker, {
+    ...props, selectionMode: "manual", selections: [{ id: "unbound", program_key: "dealer_capital", program_name: "Dealer Working Capital", playbook_id: null, playbook_version: null, source: "operator", fit_score: null, fit_confidence: null, fit_reasons: [], selected_at: "2026-11-10T00:00:00Z", needs_scope_review: true }],
+  }));
+  expect(html).toContain("Apply criteria");
+  expect(html).toContain("Programs with a pinned criteria version keep that version");
 });

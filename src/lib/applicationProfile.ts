@@ -156,8 +156,8 @@ export type ApplicationProgramSelection = {
   id: string;
   program_key: string;
   program_name: string;
-  playbook_id: string;
-  playbook_version: number;
+  playbook_id: string | null;
+  playbook_version: number | null;
   source: "ai_auto" | "operator";
   fit_score: number | null;
   fit_confidence: number | null;
