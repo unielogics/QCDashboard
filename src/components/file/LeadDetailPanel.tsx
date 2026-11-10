@@ -21,6 +21,7 @@ import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
+import { marketplacePublicationLabel, type MarketplacePublicationState } from "@/lib/marketplacePublication";
 import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary, useIntakeCommunicationUnread } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
@@ -717,6 +718,7 @@ export function LeadDetailPanel({
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
   const [workingFinancing, setWorkingFinancing] = useState<WorkingFinancing | null>(null);
+  const [marketplacePublication, setMarketplacePublication] = useState<MarketplacePublicationState | null>(null);
   const [financingTermsRequest, setFinancingTermsRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const [financingCoverageRequest, setFinancingCoverageRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const currentFinancing = workingFinancing?.profileId === profileId ? workingFinancing : null;
@@ -944,6 +946,8 @@ export function LeadDetailPanel({
       kind: "application_term_sheet", id: t.term_sheet_id, version: t.version, status: t.status, label: `Client terms v${t.version}${t.loan_type_label ? ` · ${t.loan_type_label}` : ""}`,
       amount: t.amount, ratePct: t.apr_pct, termMonths: t.term_months, structureLabel: t.calculation?.structure_label ?? null, interestOnlyMonths: t.interest_only_months ?? 0,
       paymentMonthly: t.calculation?.periodic_payment != null && t.repayment_frequency === "monthly" ? t.calculation.periodic_payment : null,
+      paymentAmount: t.calculation?.periodic_payment ?? null,
+      paymentLabel: t.repayment_frequency === "custom" ? `Payment · ${t.custom_repayment_label || "custom cadence"}` : `Payment · ${t.repayment_frequency}`,
       coverageAfter: t.calculation?.dscr_after ?? null, recordedAt: t.updated_at ?? null, sentToClient: t.status === "issued",
     };
   }, [isDealerFile, termSheet, clientTermsOnFile]);
@@ -2027,11 +2031,12 @@ export function LeadDetailPanel({
                 <div className="grid g12">
                 <Panel
                   title="Underwriting"
-                  sub="Structure the shared loan, review collateral, send the offer and record the client’s acceptance."
+                  sub="One workspace for client terms, marketplace publication, client response and closing."
                   actions={<Row>{underwriting?.loan_id ? <Link href={`/loans/${underwriting.loan_id}`} className="btn">Open funding file</Link> : <Btn onClick={() => changeUnderwritingStatus("in_underwriting")} disabled={underwritingSaving}>Create funding file</Btn>}</Row>}
                 >
                   {underwritingLoading || !underwriting?.profile_id ? <div className="empty">Loading underwriting…</div> : (
                     <UnderwritingFlow
+                      key={underwriting.profile_id}
                       profileId={underwriting.profile_id}
                       terms={termsOnFile}
                       termsLoading={!isDealerFile && clientTermsQuery.isLoading}
@@ -2050,6 +2055,14 @@ export function LeadDetailPanel({
                         />
                       ) : null}
                       onEditTerms={requestSharedTerms}
+                      publication={marketplacePublication?.profileId === underwriting.profile_id ? {
+                        published: marketplacePublication.isPublished,
+                        label: marketplacePublication.loading ? "Reading publication…" : marketplacePublication.error ? "Publication status unavailable" : marketplacePublicationLabel(marketplacePublication.status),
+                      } : undefined}
+                      marketplace={<div className="grid g12">
+                        <MarketplacePublishStrip profileId={underwriting.profile_id} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onPublicationState={setMarketplacePublication} onStartListing={() => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }} />
+                        <Row><Btn onClick={() => { setPrototypeView("financials"); setPackageTab("summary"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}><Icon name="file" size={14} />{packageInSync ? "Review investor package" : "Prepare investor package"}</Btn></Row>
+                      </div>}
                       underwriting={underwriting}
                       statusLabel={underwritingStatusLabel(underwriting?.underwriting_status ?? underwritingDraft.underwriting_status)}
                       draft={underwritingDraft}

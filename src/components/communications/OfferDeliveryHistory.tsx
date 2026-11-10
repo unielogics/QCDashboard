@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
@@ -8,30 +8,8 @@ import { useAuthedApi } from "@/hooks/useApi";
 import { apiBase } from "@/lib/api";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { useActiveProfile } from "@/store/role";
-
-type DeliveryItem = {
-  id: string;
-  kind: "merchant_offer" | "production_term_sheet" | "application_term_sheet" | "evidence_file";
-  label: string;
-  title: string;
-  file_name: string;
-  content_type: string;
-  status: string;
-  decision_status: string;
-  expires_at?: string | null;
-  responded_at?: string | null;
-  responded_name?: string | null;
-};
-
-type Delivery = {
-  id: string;
-  subject: string;
-  status: string;
-  sent_at?: string | null;
-  expires_at?: string | null;
-  recipient_emails: string[];
-  items: DeliveryItem[];
-};
+import { useQueryClient } from "@tanstack/react-query";
+import type { OfferDelivery as Delivery, OfferDeliveryItem as DeliveryItem } from "@/lib/offerDeliveryState";
 
 type ManualTarget = { delivery: Delivery; item: DeliveryItem };
 
@@ -64,8 +42,12 @@ function statusTone(value: string): "ok" | "bad" | "warn" | "mut" {
   return "mut";
 }
 
-export function OfferDeliveryHistory({ profileId, refreshKey = "" }: { profileId: string; refreshKey?: string }) {
+export function OfferDeliveryHistory({ profileId, refreshKey = "", expanded = false, responseActions = false, canRecordResponse = true, onRead, onResponseRecorded }: {
+  profileId: string; refreshKey?: string; expanded?: boolean; responseActions?: boolean; canRecordResponse?: boolean;
+  onRead?: (deliveries: Delivery[]) => void; onResponseRecorded?: () => Promise<unknown> | void;
+}) {
   const api = useAuthedApi();
+  const queryClient = useQueryClient();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = visualQaUser(useActiveProfile().email);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
@@ -86,25 +68,32 @@ export function OfferDeliveryHistory({ profileId, refreshKey = "" }: { profileId
   const [providerMessageId, setProviderMessageId] = useState("");
   const [providerAcceptedAt, setProviderAcceptedAt] = useState(() => localDateTimeValue());
   const [reconciliationAttestation, setReconciliationAttestation] = useState("");
+  const onReadRef = useRef(onRead);
+  onReadRef.current = onRead;
+  const requestSequence = useRef(0);
 
   const load = useCallback(async () => {
+    const sequence = ++requestSequence.current;
     setLoading(true);
     setError("");
     try {
       const result = await api<{ deliveries: Delivery[] }>(`/application-profiles/${profileId}/offer-deliveries`, { cache: "no-store" });
+      if (sequence !== requestSequence.current) return;
       setDeliveries(result.deliveries ?? []);
+      onReadRef.current?.(result.deliveries ?? []);
     } catch (reason_) {
+      if (sequence !== requestSequence.current) return;
       setError(reason_ instanceof Error ? reason_.message : "Offer delivery history could not be loaded.");
     } finally {
-      setLoading(false);
+      if (sequence === requestSequence.current) setLoading(false);
     }
   }, [api, profileId]);
 
-  useEffect(() => { void load(); }, [load, refreshKey]);
+  useEffect(() => { const sequence = requestSequence; setDeliveries([]); setManual(null); void load(); return () => { sequence.current++; }; }, [load, refreshKey]);
 
-  function openManual(delivery: Delivery, item: DeliveryItem) {
+  function openManual(delivery: Delivery, item: DeliveryItem, initialResponse: "accepted" | "declined" = "accepted") {
     setManual({ delivery, item });
-    setResponse("accepted");
+    setResponse(initialResponse);
     setChannel("email");
     setResponderName("");
     setReceivedAt(localDateTimeValue());
@@ -141,7 +130,7 @@ export function OfferDeliveryHistory({ profileId, refreshKey = "" }: { profileId
   }
 
   async function recordManualResponse() {
-    if (!manual || !responderName.trim() || !receivedAt || !attested) return;
+    if (!canRecordResponse || !manual || responderName.trim().length < 2 || !receivedAt || !attested) return;
     setBusy(`manual:${manual.item.id}`);
     setError("");
     try {
@@ -158,6 +147,8 @@ export function OfferDeliveryHistory({ profileId, refreshKey = "" }: { profileId
       });
       setManual(null);
       await load();
+      await Promise.allSettled(["application-underwriting", "closing-stipulations", "application-profile", "application-client-terms"].map(key => queryClient.invalidateQueries({ queryKey: [key, profileId] })));
+      try { await onResponseRecorded?.(); } catch { setError("The response was recorded. Refresh the file to update its summary."); }
     } catch (reason_) {
       setError(reason_ instanceof Error ? reason_.message : "The client response could not be recorded.");
     } finally {
@@ -215,7 +206,7 @@ export function OfferDeliveryHistory({ profileId, refreshKey = "" }: { profileId
   }
 
   return <>
-    <details className="offer-delivery-history">
+    <details className="offer-delivery-history" open={expanded || undefined}>
       <summary><span><Icon name="audit" size={14} /><b>Client offer delivery history</b><small>{loading ? "Loading…" : `${deliveries.length} package${deliveries.length === 1 ? "" : "s"}`}</small></span><Icon name="chevD" size={14} /></summary>
       <div className="offer-delivery-history-body">
         {error ? <Callout tone="bad"><span role="alert">{error}</span></Callout> : null}
@@ -224,21 +215,27 @@ export function OfferDeliveryHistory({ profileId, refreshKey = "" }: { profileId
           <header><div><b>{delivery.subject}</b><small>{delivery.sent_at ? `Sent ${when(delivery.sent_at)} to ${delivery.recipient_emails.join(", ")}` : "Not published to the client"}</small></div><CellChip tone={statusTone(delivery.status)}>{delivery.status.replace(/_/g, " ")}</CellChip>{delivery.status === "sending" ? <IconBtn onClick={() => void openReconciliation(delivery)} disabled={busy !== ""} aria-label="Resolve uncertain provider handoff" title="Verify delivery with Gmail or SES"><Icon name="audit" size={14} /></IconBtn> : null}</header>
           <div>{delivery.items.map((item) => {
             const decision = item.decision_status || item.status;
-            const canRecord = item.kind !== "evidence_file" && ["pending", "expired"].includes(decision) && !["sending", "failed"].includes(delivery.status);
-            return <div key={item.id} className="offer-delivery-history-item"><span className="offer-delivery-document-icon"><Icon name={item.kind === "merchant_offer" ? "dollar" : "file"} size={15} /></span><span><b>{item.label}</b><small>{item.file_name}{item.expires_at ? ` · deadline ${when(item.expires_at)}` : ""}{item.responded_at ? ` · ${when(item.responded_at)} by ${item.responded_name || "client"}` : ""}</small></span><CellChip tone={statusTone(decision)}>{decision.replace(/_/g, " ")}</CellChip><IconBtn onClick={() => void download(delivery, item)} disabled={busy !== ""} aria-label={`Download sent copy of ${item.label}`} title="Download exact sent copy"><Icon name="download" size={14} /></IconBtn>{canRecord ? <IconBtn onClick={() => openManual(delivery, item)} disabled={busy !== ""} aria-label={`Record client response for ${item.label}`} title="Record email or phone response"><Icon name="pencil" size={14} /></IconBtn> : null}</div>;
+            const canRecord = canRecordResponse && item.kind !== "evidence_file" && ["pending", "expired"].includes(decision) && !["sending", "failed"].includes(delivery.status);
+            return <div key={item.id} className="offer-delivery-history-item">
+              <span className="offer-delivery-document-icon"><Icon name={item.kind === "merchant_offer" ? "dollar" : "file"} size={15} /></span>
+              <span><b>{item.label}</b><small>{item.file_name}{item.expires_at ? ` · deadline ${when(item.expires_at)}` : ""}{item.responded_at ? ` · ${when(item.responded_at)} by ${item.responded_name || "client"}` : ""}</small></span>
+              <CellChip tone={statusTone(decision)}>{decision.replace(/_/g, " ")}</CellChip>
+              <IconBtn onClick={() => void download(delivery, item)} disabled={busy !== ""} aria-label={`Download sent copy of ${item.label}`} title="Download exact sent copy"><Icon name="download" size={14} /></IconBtn>
+              {canRecord && responseActions ? <div className="uw-response-actions"><Btn size="sm" disabled={busy !== ""} aria-label={`Record acceptance for ${item.label}`} onClick={() => openManual(delivery, item, "accepted")}>Record acceptance</Btn><Btn size="sm" disabled={busy !== ""} aria-label={`Record decline for ${item.label}`} onClick={() => openManual(delivery, item, "declined")}>Record decline</Btn></div> : canRecord ? <IconBtn onClick={() => openManual(delivery, item)} disabled={busy !== ""} aria-label={`Record client response for ${item.label}`} title="Record email or phone response"><Icon name="pencil" size={14} /></IconBtn> : null}
+            </div>;
           })}</div>
         </article>)}
       </div>
     </details>
 
-    <Drawer open={Boolean(manual)} onClose={() => { if (!busy.startsWith("manual:")) setManual(null); }} closeOnBackdrop={!busy.startsWith("manual:")} width="md" title="Record client response" sub={manual ? `${manual.item.label} · exact sent version` : undefined} footer={<><Btn onClick={() => setManual(null)} disabled={busy.startsWith("manual:")}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={() => void recordManualResponse()} disabled={busy.startsWith("manual:") || !responderName.trim() || !receivedAt || !attested}>{busy.startsWith("manual:") ? "Recording…" : "Record response"}</Btn></>}>
+    <Drawer open={Boolean(manual)} onClose={() => { if (!busy.startsWith("manual:")) setManual(null); }} closeOnBackdrop={!busy.startsWith("manual:")} width="md" title="Record client response" sub={manual ? `${manual.item.label} · exact sent version` : undefined} footer={<><Btn onClick={() => setManual(null)} disabled={busy.startsWith("manual:")}>Cancel</Btn><span className="sp" /><Btn variant="pri" onClick={() => void recordManualResponse()} disabled={!canRecordResponse || busy.startsWith("manual:") || responderName.trim().length < 2 || !receivedAt || !attested}>{busy.startsWith("manual:") ? "Recording…" : "Record response"}</Btn></>}>
       {manual ? <div className="grid g12">
         {manual.item.decision_status === "expired" ? <Callout tone="warn">Only record this after expiry when the client&apos;s actual email or phone response was received before {when(manual.item.expires_at)}.</Callout> : null}
         {error ? <Callout tone="bad"><span role="alert">{error}</span></Callout> : null}
-        <div className="fldgrid two"><Field label="Response"><Select value={response} onChange={(event) => setResponse(event.target.value as "accepted" | "declined")}><option value="accepted">Accepted</option><option value="declined">Declined</option></Select></Field><Field label="Channel"><Select value={channel} onChange={(event) => setChannel(event.target.value as "email" | "phone")}><option value="email">Email</option><option value="phone">Phone</option></Select></Field></div>
-        <Field label="Responder"><Input value={responderName} onChange={(event) => setResponderName(event.target.value)} placeholder="Client's full name" /></Field>
-        <Field label="Received at" hint="Use the time the client actually responded, not the time you entered it."><Input type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} /></Field>
-        {response === "declined" ? <Field label="Reason (optional)"><Textarea rows={3} value={reason} onChange={(event) => setReason(event.target.value)} /></Field> : null}
+        <div className="fldgrid two"><Field label="Response"><Select aria-label="Response" value={response} onChange={(event) => setResponse(event.target.value as "accepted" | "declined")}><option value="accepted">Accepted</option><option value="declined">Declined</option></Select></Field><Field label="Channel"><Select aria-label="Channel" value={channel} onChange={(event) => setChannel(event.target.value as "email" | "phone")}><option value="email">Email</option><option value="phone">Phone</option></Select></Field></div>
+        <Field label="Responder"><Input aria-label="Responder" value={responderName} onChange={(event) => setResponderName(event.target.value)} placeholder="Client's full name" /></Field>
+        <Field label="Received at" hint="Use the time the client actually responded, not the time you entered it."><Input aria-label="Received at" type="datetime-local" value={receivedAt} onChange={(event) => setReceivedAt(event.target.value)} /></Field>
+        {response === "declined" ? <Field label="Reason (optional)"><Textarea aria-label="Reason (optional)" rows={3} value={reason} onChange={(event) => setReason(event.target.value)} /></Field> : null}
         <label className="offer-delivery-attestation"><input type="checkbox" checked={attested} onChange={(event) => setAttested(event.target.checked)} /><span>I attest that this accurately records the named client&apos;s response and the time it was received.</span></label>
       </div> : null}
     </Drawer>

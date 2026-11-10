@@ -56,7 +56,7 @@ export type Draft = {
 };
 
 export type ClientTermsWorkingDraft = { profileId: string; draft: Draft; baseVersion: number; savedFingerprint: string; sourceFingerprint: string; editedInEditor: boolean };
-export type ClientTermsView = "terms" | "schedule";
+export type ClientTermsView = "terms" | "collateral" | "budget" | "schedule";
 const cloneDraft = (draft: Draft): Draft => ({ ...draft, repayment_config: copyRepaymentConfig(draft.repayment_config) });
 export function draftWithScenarioLoan(draft: Draft, loan?: SyncedLoan | null, context?: LoanRefinanceContext | null): Draft {
   const fields = loan ? clientDraftLoanFields(loan) : null;
@@ -307,11 +307,14 @@ export function ApplicationClientTermsPanel({
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [downloading, setDownloading] = useState(false);
+  const [collateralPending, setCollateralPending] = useState(false);
+  const [budgetPending, setBudgetPending] = useState(false);
+  const supportingPending = collateralPending || budgetPending;
   const [localView, setLocalView] = useState<ClientTermsView>("terms");
   const view = activeView ?? localView;
   const viewId = useId();
   const workspaceRef = useRef<HTMLElement | null>(null);
-  const viewScroll = useRef<Record<ClientTermsView, number>>({ terms: 0, schedule: 0 });
+  const viewScroll = useRef<Record<ClientTermsView, number>>({ terms: 0, collateral: 0, budget: 0, schedule: 0 });
   const changeView = (next: ClientTermsView) => {
     const scrollHost = workspaceRef.current?.closest(".drawer-b");
     if (scrollHost) viewScroll.current[view] = scrollHost.scrollTop;
@@ -429,7 +432,7 @@ export function ApplicationClientTermsPanel({
     },
   });
 
-  useEffect(() => { onPending?.(save.isPending || downloading); }, [save.isPending, downloading, onPending]);
+  useEffect(() => { onPending?.(save.isPending || downloading || supportingPending); }, [save.isPending, downloading, supportingPending, onPending]);
   useEffect(() => () => onPending?.(false), [onPending]);
 
   async function downloadPdf() {
@@ -546,24 +549,27 @@ export function ApplicationClientTermsPanel({
           disabled={!offerSelection}
           onClick={() => onSelectedChange(!selected)}
         ><span aria-hidden="true">{selected ? <Icon name="check" size={13} /> : null}</span><span>Financing terms</span></button> : null}
-        <Btn onClick={downloadPdf} disabled={!terms.version || dirty || sourceConflict || save.isPending || downloading || (!canEdit && terms.status !== "issued")}>{downloading ? "Building PDF..." : terms.status === "issued" ? "Download issued PDF" : "Issue & download"}</Btn>
+        <Btn onClick={downloadPdf} disabled={!terms.version || dirty || sourceConflict || save.isPending || supportingPending || downloading || (!canEdit && terms.status !== "issued")}>{downloading ? "Building PDF..." : terms.status === "issued" ? "Download issued PDF" : "Issue & download"}</Btn>
         <IconBtn className="pri" onClick={() => { setError(""); onSelectedChange?.(true); onCompose?.(); }} aria-label="Compose client email with financing terms" title="Add to client offer email" disabled={!offerSelection || terms.direct_client_contact_suppressed}><Icon name="mail" size={15} /></IconBtn>
       </div>
     </header>
     <nav className={scheduleStyles.tabs} role="tablist" aria-label="Loan terms and amortization views" onKeyDown={(event) => {
       if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
       event.preventDefault();
-      const next: ClientTermsView = event.key === "Home" ? "terms" : event.key === "End" ? "schedule" : view === "terms" ? "schedule" : "terms";
+      const views: ClientTermsView[] = ["terms", "collateral", "budget", "schedule"];
+      const next = event.key === "Home" ? views[0] : event.key === "End" ? views[views.length - 1] : views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length];
       changeView(next); document.getElementById(`${viewId}-${next}-tab`)?.focus();
     }}>
       <button type="button" id={`${viewId}-terms-tab`} role="tab" aria-selected={view === "terms"} aria-controls={`${viewId}-terms-panel`} tabIndex={view === "terms" ? 0 : -1} onClick={() => changeView("terms")}>Loan terms</button>
+      <button type="button" id={`${viewId}-collateral-tab`} role="tab" aria-selected={view === "collateral"} aria-controls={`${viewId}-collateral-panel`} tabIndex={view === "collateral" ? 0 : -1} onClick={() => changeView("collateral")}>Collateral</button>
+      <button type="button" id={`${viewId}-budget-tab`} role="tab" aria-selected={view === "budget"} aria-controls={`${viewId}-budget-panel`} tabIndex={view === "budget" ? 0 : -1} onClick={() => changeView("budget")}>Investment &amp; closing costs</button>
       <button type="button" id={`${viewId}-schedule-tab`} role="tab" aria-selected={view === "schedule"} aria-controls={`${viewId}-schedule-panel`} tabIndex={view === "schedule" ? 0 : -1} onClick={() => changeView("schedule")}>Amortization &amp; risk</button>
     </nav>
+    {error ? <Callout tone="bad">{error}</Callout> : null}
+    {notice ? <Callout tone="ok">{notice}</Callout> : null}
     <div className={scheduleStyles.tabBody} id={`${viewId}-terms-panel`} role="tabpanel" aria-labelledby={`${viewId}-terms-tab`} hidden={view !== "terms"}>
     {terms.direct_client_contact_suppressed ? <Callout tone="warn">Direct client contact is suppressed on this referral-managed file. Download the PDF and route it through the referring professional.</Callout> : null}
     {!terms.loan_type_options.length ? <Callout tone="bad">No active loan type is scoped to this file. Publish or scope a funding program before creating client terms.</Callout> : null}
-    {error ? <Callout tone="bad">{error}</Callout> : null}
-    {notice ? <Callout tone="ok">{notice}</Callout> : null}
     {collateralChanged ? <Callout tone="warn">The file’s collateral differs from saved terms v{terms.version}. Review the current properties and assets below. Save a new terms version to include the current collateral in its PDF.</Callout> : null}
     {budgetChanged ? <Callout tone="warn">The financing budget differs from saved terms v{terms.version}. Review the current funding and cost rows, then save a new version to include them in its PDF.</Callout> : null}
     {collateral.isError ? <Callout tone="bad">Collateral could not be loaded. Reload the current collateral before saving terms.</Callout> : null}
@@ -597,8 +603,7 @@ export function ApplicationClientTermsPanel({
             {draft.debt_service_treatment === "refinance" ? <Field label="Annual debt service remaining after payoff"><Input aria-label="Annual debt service remaining after payoff" inputMode="decimal" value={draft.retained_annual_debt_service} onChange={(event) => patch("retained_annual_debt_service", event.target.value)} placeholder="0 for a full payoff" /></Field> : null}
           </div>
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={draft.repayment_config} onChange={(config) => patch("repayment_config", config)} amount={finite(draft.amount)} ratePct={finite(draft.apr_pct)} termMonths={finite(draft.term_months)} structure={draft.loan_structure || defaultStructure(finite(draft.term_months))} interestOnlyMonths={finite(draft.interest_only_months)} periodsPerYear={draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) ?? 0 : PERIODS[draft.repayment_frequency]} />
-          <FileCollateralSection profileId={profileId} disabled={!canEdit || save.isPending} compact title="Collateral included when saving these terms" />
-          <DealBudgetSection profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
+
         </section>
         <section className="terms-form-section">
           <div className="terms-section-title"><span>3</span><div><b>Timing and presentation</b><small>Set validity, closing expectation, and co-branding.</small></div></div>
@@ -611,7 +616,7 @@ export function ApplicationClientTermsPanel({
           <Field label="Client note (optional)"><Textarea aria-label="Client note" rows={3} value={draft.client_note} onChange={(event) => patch("client_note", event.target.value)} placeholder="A short, client-facing explanation of this structure." /></Field>
           <Field label="Conditions (one per line)"><Textarea aria-label="Conditions" rows={4} value={draft.conditions} onChange={(event) => patch("conditions", event.target.value)} placeholder={"Final verification of financial information\nSatisfactory closing documentation"} /></Field>
         </section>
-        <Row>{onApplyLoan ? <Btn onClick={() => onApplyLoan(loanFromClientDraft(draftRef.current))} disabled={save.isPending || sourceConflict || !loanCanApply}>Apply loan to scenario</Btn> : null}<Btn variant="pri" onClick={() => { setError(""); save.mutate({ draft: cloneDraft(draftRef.current), version: draftVersionRef.current, plan: financialPlanDraft }); }} disabled={save.isPending || collateral.isPending || collateral.isError || !dirty || sourceConflict || versionConflict || !!repaymentIssue}>{save.isPending ? "Recalculating..." : terms.version ? "Save new version" : "Save client terms"}</Btn>{dirty ? <span className="terms-unsaved">Unsaved changes</span> : <span className="sub">Everything shown in the PDF matches version {terms.version || "—"}.</span>}</Row>
+
       </div>
       <aside className="terms-live-preview" aria-label="Live client terms preview">
         <div className="terms-preview-brand"><div className="qc-mini">QC</div><div><b>Qualified Commercial</b><span>Financing terms</span></div>{draft.co_brand_enabled ? <div className="terms-preview-sponsor"><small>with</small><b>{draft.sponsor_name || "UrChoice"}</b></div> : null}</div>
@@ -645,8 +650,15 @@ export function ApplicationClientTermsPanel({
     </div>
     </fieldset>
     </div>
+    <div className={scheduleStyles.tabBody} id={`${viewId}-collateral-panel`} role="tabpanel" aria-labelledby={`${viewId}-collateral-tab`} hidden={view !== "collateral"}>
+          <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || save.isPending} compact title="Collateral included when saving these terms" />
+    </div>
+    <div className={scheduleStyles.tabBody} id={`${viewId}-budget-panel`} role="tabpanel" aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
+          <DealBudgetSection inline onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || save.isPending} loan={{ amount: finite(draft.amount), rate_pct: finite(draft.apr_pct), term_months: finite(draft.term_months), structure: draft.loan_structure || defaultStructure(finite(draft.term_months)), interest_only_months: finite(draft.interest_only_months), repayment_config: draft.repayment_config, payments_per_year: draft.repayment_frequency === "custom" ? finite(draft.custom_payments_per_year) : PERIODS[draft.repayment_frequency] }} />
+    </div>
     <div className={scheduleStyles.tabBody} id={`${viewId}-schedule-panel`} role="tabpanel" aria-labelledby={`${viewId}-schedule-tab`} hidden={view !== "schedule"}>
       {preview && !repaymentIssue ? <><CoverageFundingGap value={scenarioCoverage?.coverageReview} basis={scenarioCoverage?.basis ?? "Selected earnings"} /><LoanScheduleReview schedule={preview.schedule} incomeMonthly={riskIncomeAnnual == null ? null : riskIncomeAnnual / 12} existingServiceMonthly={riskExistingAnnual == null ? null : riskExistingAnnual / 12} incomeCurrencyComparable={scenarioCoverage?.incomeCurrencyComparable === true} earningsBasis={scenarioCoverage?.basis ?? terms.calculation.source} /></> : <Callout tone="warn">{repaymentIssue ?? "Enter the principal, APR, maturity and repayment details in Loan terms to calculate the amortization schedule."}</Callout>}
     </div>
+        <Row>{onApplyLoan ? <Btn onClick={() => onApplyLoan(loanFromClientDraft(draftRef.current))} disabled={!canEdit || save.isPending || supportingPending || sourceConflict || !loanCanApply}>Apply loan to scenario</Btn> : null}<Btn variant="pri" onClick={() => { setError(""); save.mutate({ draft: cloneDraft(draftRef.current), version: draftVersionRef.current, plan: financialPlanDraft }); }} disabled={!canEdit || supportingPending || save.isPending || collateral.isPending || collateral.isError || !dirty || sourceConflict || versionConflict || !!repaymentIssue}>{save.isPending ? "Recalculating..." : terms.version ? "Save new version" : "Save client terms"}</Btn>{dirty ? <span className="terms-unsaved">Unsaved changes</span> : <span className="sub">Everything shown in the PDF matches version {terms.version || "—"}.</span>}</Row>
   </section>;
 }

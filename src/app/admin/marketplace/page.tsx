@@ -13,6 +13,7 @@ import Link from "next/link";
 import { BtnLink, Card, CellChip, Empty, Loading, PageHeader, Panel, Seg, Table, Td, Tr } from "@/components/ds";
 import { useCpListings, type CpListingStatus } from "@/hooks/useCapitalPartners";
 import { LISTING_TONE, SuperAdminOnly, VERTICAL_LABEL, day, money, pct } from "@/components/marketplace/shared";
+import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 
 type FilterId = CpListingStatus | "all" | "live";
 const FILTERS: { id: FilterId; label: string }[] = [
@@ -80,6 +81,7 @@ function Listings() {
                   <div className="grid g4">
                     <Link href={`/admin/marketplace/${r.id}`} className="linky">{r.name}</Link>
                     <span className="sub">{VERTICAL_LABEL[r.vertical] ?? r.vertical}{r.place ? ` · ${r.place}` : ""}{r.collateral_type ? ` · ${r.collateral_type}` : ""}</span>
+                    <MarketplaceOfferLink listing={r} compact showStatus={false} />
                   </div>
                 </Td>
                 <Td>{r.program_label}</Td>

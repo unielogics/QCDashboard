@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, Input, Select, Textarea } from "@/components/ds";
-import { Drawer } from "@/components/ds/Drawer";
+import { FinancialEditorSurface } from "./FinancialEditorSurface";
 import { Icon } from "@/components/design-system/Icon";
 import { PreparationProgress } from "@/components/design-system/PreparationProgress";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -18,19 +18,23 @@ function messages(calc: DealBudgetCalculation | undefined, key: string): string[
 function Metric({ label, value, percent = false }: { label: string; value: number | null; percent?: boolean }) { return <div><small>{label}</small><strong>{value == null ? "Not established" : percent ? `${value.toFixed(2)}%` : money(value, 2)}</strong></div>; }
 
 /** One cost and capital record, with one retained staff draft across financing tabs. */
-export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs" }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string }) {
+export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void }) {
   const api = useAuthedApi(), queryClient = useQueryClient(), query = useDealBudget(profileId);
-  const [open, setOpen] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
+  const [open, setOpen] = useState(inline), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [refreshWarning, setRefreshWarning] = useState("");
   const [preview, setPreview] = useState<DealBudgetCalculation | null>(null), [previewing, setPreviewing] = useState(false), [previewError, setPreviewError] = useState(""), [previewRetry, setPreviewRetry] = useState(0);
-  const cached = useQuery<DealBudgetDraft | null>({ queryKey: dealBudgetDraftKey(profileId), queryFn: async () => null, enabled: false, initialData: null, gcTime: Infinity });
-  const saved = query.data, draft = cached.data?.profileId === profileId ? cached.data : null;
+  useQuery<DealBudgetDraft | null>({ queryKey: dealBudgetDraftKey(profileId), queryFn: async () => null, enabled: false, initialData: null, gcTime: Infinity });
+  const [, renderDraft] = useState(0);
+  const kept = queryClient.getQueryData<DealBudgetDraft | null>(dealBudgetDraftKey(profileId));
+  const saved = query.data, draft = kept?.profileId === profileId ? kept : null;
   const value = draft?.value ?? (saved ? dealBudgetWrite(saved) : null);
   const dirty = Boolean(saved && value && dealBudgetChanged(value, saved));
   const conflict = Boolean(saved && value && value.expected_revision !== saved.revision && dirty);
   const canEdit = Boolean(saved?.can_edit && !disabled && !busy);
   const fingerprint = JSON.stringify({ value, loan: loan ?? null });
-  useEffect(() => { setOpen(false); setError(""); setNotice(""); setRefreshWarning(""); setPreview(null); }, [profileId]);
+  useEffect(() => { setOpen(inline); setError(""); setNotice(""); setRefreshWarning(""); setPreview(null); }, [profileId, inline]);
+  useEffect(() => { onPending?.(busy); }, [busy, onPending]);
+  useEffect(() => () => onPending?.(false), [onPending]);
   useEffect(() => {
     setPreview(null); setPreviewError("");
     if (!open || !value || !dirty && !loan) { setPreviewing(false); return; }
@@ -43,7 +47,12 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
     // Serialized inputs keep the server preview stable across parent renders.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, profileId, open, dirty, fingerprint, previewRetry]);
-  const remember = (next: DealBudgetWrite, removed = draft?.removed ?? []) => { queryClient.setQueryData(dealBudgetDraftKey(profileId), { profileId, value: next, removed }); setError(""); setNotice(""); };
+  const remember = (next: DealBudgetWrite, removed = draft?.removed ?? []) => {
+    queryClient.setQueryData(dealBudgetDraftKey(profileId), { profileId, value: next, removed });
+    // Controlled cells must read this event immediately; query observers notify
+    // the other financing surfaces on their normal schedule.
+    renderDraft(value => value + 1); setError(""); setNotice("");
+  };
   const update = (patch: Partial<DealBudgetWrite>) => { if (value && canEdit) remember({ ...value, ...patch }); };
   const rowChange = (id: string, patch: Partial<DealCostRow>) => { if (value) update({ rows: value.rows.map(row => row.id === id ? { ...row, ...patch } : row) }); };
   const reload = async () => {
@@ -73,11 +82,11 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const warnings = messages(calc, "issues");
   const feeCoverage = calc?.financing_fee_coverage && typeof calc.financing_fee_coverage === "object" ? calc.financing_fee_coverage as Record<string, unknown> : null;
   return <>
-    <section className={styles.summary} aria-label={title}>
+    {!inline ? <section className={styles.summary} aria-label={title}>
       <div className={styles.head}><div><strong>{title}</strong><p>{dirty ? "Working cost changes are retained · awaiting Save budget" : "One shared budget for the loan, investor capital and financing costs"}</p></div><Btn size="sm" onClick={() => setOpen(true)} disabled={query.isPending || disabled}><Icon name="calc" size={14} />{saved?.can_edit ? "Edit deal budget" : "View deal budget"}</Btn></div>
       {query.isPending ? <span className={styles.note}>Loading the saved financing budget…</span> : query.isError ? <Callout tone="warn">Budget unavailable. <Btn size="sm" onClick={() => void query.refetch()}>Retry budget</Btn></Callout> : <div className={styles.stats}><Metric label="Gross loan" value={amount(summaryCalc, "gross_loan_amount")} /><Metric label="Capital to raise" value={amount(summaryCalc, "investor_funding_amount")} /><Metric label="Client net proceeds" value={amount(summaryCalc, "net_client_cash")} /><Metric label="Projected investor net profit" value={amount(summaryCalc, "investor_net_income")} />{!compact ? <Metric label="Investor net ROI · full term" value={amount(summaryCalc, "investor_net_roi_pct")} percent /> : null}</div>}
-    </section>
-    <Drawer open={open} onClose={() => { if (!busy) setOpen(false); }} title="Investment and closing costs" sub="Separate gross loan principal, investor funding, client proceeds and the costs each party pays." width="xl" closeOnBackdrop={false} ariaLabel="Deal budget editor" footer={<div className={styles.footer}><Btn onClick={() => setOpen(false)} disabled={busy}>Close</Btn>{dirty ? <Btn onClick={() => { queryClient.setQueryData(dealBudgetDraftKey(profileId), null); setError(""); }} disabled={busy}>Discard changes</Btn> : null}<span className={styles.note}>{dirty ? "Draft kept when closed. Save budget records costs; save loan terms separately." : saved ? `Saved budget · revision ${saved.revision}` : "Loading budget…"}</span>{saved?.can_edit ? <Btn variant="pri" onClick={() => void save()} disabled={!canEdit || !dirty || conflict}>{busy ? "Saving budget…" : "Save budget"}</Btn> : null}</div>}>
+    </section> : null}
+    <FinancialEditorSurface inline={inline} open={open} onClose={() => { if (!busy) setOpen(false); }} title="Investment and closing costs" sub="Separate gross loan principal, investor funding, client proceeds and the costs each party pays." width="xl" closeOnBackdrop={false} ariaLabel="Deal budget editor" footer={<div className={styles.footer}>{!inline ? <Btn onClick={() => setOpen(false)} disabled={busy}>Close</Btn> : null}{dirty ? <Btn onClick={() => { queryClient.setQueryData(dealBudgetDraftKey(profileId), null); setError(""); }} disabled={busy}>Discard changes</Btn> : null}<span className={styles.note}>{dirty ? "Draft kept when closed. Save budget records costs; save loan terms separately." : saved ? `Saved budget · revision ${saved.revision}` : "Loading budget…"}</span>{saved?.can_edit ? <Btn variant="pri" onClick={() => void save()} disabled={!canEdit || !dirty || conflict}>{busy ? "Saving budget…" : "Save budget"}</Btn> : null}</div>}>
       {!saved || !value ? query.isError ? <Callout tone="warn">The saved budget could not be loaded.<Btn onClick={() => void query.refetch()}>Retry budget load</Btn></Callout> : <PreparationProgress compact title="Loading deal budget" description="Reading the current loan and recorded costs." /> : <div className={styles.grid}>
         {error ? <Callout tone="bad"><span role="alert">{error}</span><Btn size="sm" onClick={() => void query.refetch()}>Check latest saved budget</Btn></Callout> : null}
         {notice ? <Callout tone="ok"><span role="status">{notice}</span></Callout> : null}
@@ -116,6 +125,6 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
         <label className={styles.cell}>Budget explanation<Textarea aria-label="Budget explanation" value={value.note ?? ""} rows={2} disabled={!canEdit} onChange={event => update({ note: event.target.value })} /></label>
         <p className={styles.note}>{loan ? "The illustration uses the loan currently in this editor. Save budget records the costs; Save plan or Save new terms version records the loan. " : ""}Returns are schedule-based illustrations before defaults, delays and unrecorded costs. Gross interest, returned principal, net profit and fee revenue are different amounts. Unknown fees or reserve release prevent a complete net return.</p>
       </div>}
-    </Drawer>
+    </FinancialEditorSurface>
   </>;
 }

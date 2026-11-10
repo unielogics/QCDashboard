@@ -14,6 +14,7 @@ import { Btn, CellChip, Input, Lbl, Select, StatusLine, Textarea, cx, type ChipT
 import { Icon } from "@/components/design-system/Icon";
 import { LISTING_TONE, errorMessage } from "@/components/marketplace/shared";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
+import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 import { useAuthedApi } from "@/hooks/useApi";
 import {
   useCpCreateListing,
@@ -378,11 +379,12 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
             The primary offer uses the loan in the coverage plan. Choose its product here; program qualification stays with the file’s evidence and criteria.
           </div>
         </div>
-        <div className="row" style={{ gap: 8, alignItems: "center" }}>
+        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
           {props.onStructureLoan ? <Btn size="sm" variant="pri" onClick={props.onStructureLoan}><Icon name="pencil" size={13} />Structure loan / Coverage plan</Btn> : null}
           {lookup.data?.listing ? (
             <>
               <CellChip tone={LISTING_TONE[lookup.data.listing.status] ?? "mut"}>{lookup.data.listing.ref} · {lookup.data.listing.status.replace(/_/g, " ")}</CellChip>
+              <MarketplaceOfferLink listing={lookup.data.listing} compact showStatus={false} />
               <Btn size="sm" onClick={() => window.location.assign(`/admin/marketplace/${lookup.data?.listing?.id}`)}>
                 Documents and publish <Icon name="arrowR" size={13} />
               </Btn>
