@@ -9,12 +9,32 @@ type Json = Record<string, unknown>;
 type Allocation = { id: string; label: string; amount_monthly: string | number | null; notes: string; expense_row_id?: string | null };
 type PlanBody = { business_name: string; currency: string; no_operating_expenses_confirmed: boolean; expenses: unknown[]; adjustments: unknown[]; released_cash_flow: { source_fingerprint: string | null; allocations: Allocation[] } };
 
-async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean } = {}) {
-  const programSaves: Json[] = [], draftSaves: Json[] = [], versionSaves: Json[] = [], unexpectedWrites: string[] = [], errors: string[] = [];
+async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean; recurringFeeNetRelease?: boolean } = {}) {
+  const programSaves: Json[] = [], draftSaves: Json[] = [], versionSaves: Json[] = [], principalSaves: Json[] = [], unexpectedWrites: string[] = [], errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error" && /maximum update depth|too many re-renders/i.test(message.text())) errors.push(message.text()); });
   let selected: string[] = options.unavailableCriteriaId ? ["special_review"] : [], manual = Boolean(options.unavailableCriteriaId), programFailed = false, publishFailed = false, revision = 1;
   const pinnedCriteria: Record<string, { id: string | null; version: number | null }> = {};
+  let sharedAmount = 172488, budgetRevision = 1, planUpdatedAt = "2026-11-10T16:30:00Z";
+  let costBudget: Json = { profile_id: PROFILE, revision: budgetRevision, can_edit: true, funding_mode: "single_investor", costs_confirmed: true, loan_amount_mode: "target_net", base_loan_amount: null, target_net_amount: 172488, investor_funding_amount: null, minimum_investor_contribution: null, currency: "USD", rows: [], note: null };
+  const planRecord = () => ({ retire: [], exclude: [], add_backs: [], new_loan_amount: sharedAmount, new_loan_rate_pct: 15, new_loan_term_months: 24, new_loan_structure: "amortizing", new_loan_interest_only: false, new_loan_interest_only_months: 6, new_loan_repayment_config: { amortization_months: 24, balloons: [] }, new_loan_payments_per_year: 12, new_payment_monthly: null, new_payment_source: "manual_terms", terms_ref: null, overrides: null, note: "Preserve the reviewed coverage plan", updated_at: planUpdatedAt });
+  const monthlyPayment = (amount: number) => amount * (0.15 / 12) / (1 - Math.pow(1 + 0.15 / 12, -24));
+  const pricedBudget = (value = costBudget) => {
+    const rows = (value.rows ?? []) as Array<{ id: string; enabled: boolean; payer: string; timing: string; settlement: string; method: string; value: number | null }>;
+    const closing = rows.filter(row => row.enabled && row.payer === "borrower" && row.timing === "closing");
+    const included = closing.filter(row => value.loan_amount_mode === "target_net" ? ["financed", "withheld"].includes(row.settlement) : value.loan_amount_mode === "base_loan" && row.settlement === "financed");
+    const percent = included.filter(row => row.method === "percent").reduce((sum, row) => sum + Number(row.value ?? 0) / 100, 0);
+    const fixed = included.filter(row => row.method === "fixed").reduce((sum, row) => sum + Number(row.value ?? 0), 0);
+    const input = Number(value.loan_amount_mode === "target_net" ? value.target_net_amount : value.loan_amount_mode === "base_loan" ? value.base_loan_amount : sharedAmount);
+    const gross = Math.round((input + fixed) / (1 - percent) * 100) / 100;
+    const rowAmount = (row: typeof rows[number]) => Math.round((row.method === "percent" ? gross * Number(row.value ?? 0) / 100 : Number(row.value ?? 0)) * 100) / 100;
+    const cost = (settlement: string) => closing.filter(row => row.settlement === settlement).reduce((sum, row) => sum + rowAmount(row), 0);
+    const net = Math.round((gross - cost("financed") - cost("withheld")) * 100) / 100;
+    return { ...value, calculation: { status: "ready", gross_loan_amount: gross, net_client_cash: net, borrower_cash_after_separate_costs: net - cost("separate"), borrower_withheld_fees: cost("withheld"), investor_funding_amount: gross, minimum_investor_contribution: gross,
+      principal_solution: { mode: value.loan_amount_mode, status: "calculated", gross_loan_amount: gross, financed_closing_costs: cost("financed"), withheld_closing_costs: cost("withheld"), requires_apply: gross !== sharedAmount },
+      scheduled_payment: { monthly_equivalent: monthlyPayment(gross) }, rows: rows.map(row => ({ id: row.id, total_amount: rowAmount(row) })), financing_fee_coverage: { with_financing_fees_dscr: -9000 / (36000 + monthlyPayment(gross) * 12) }, issues: [], assumptions: [] },
+      financing_context: { current_loan_amount: sharedAmount, plan_updated_at: planUpdatedAt, terms_ref: null }, financial_plan: { profile_id: PROFILE, record: planRecord() }, financial_plan_evaluation: { active: true, headline_after: -9000 / (36000 + monthlyPayment(gross) * 12) } };
+  };
   let versions: Json[] = [];
   let planBody: PlanBody = { business_name: "Example Therapy Services Inc", currency: "USD", no_operating_expenses_confirmed: true, expenses: [], adjustments: [],
     released_cash_flow: { source_fingerprint: options.staleAllocation ? "coverage-old" : null, allocations: options.staleAllocation ? [{ id: "old-allocation", label: "Existing payroll reserve", amount_monthly: 1000, notes: "Preserve the working allocation while reviewing the changed coverage plan." }] : [] } };
@@ -30,7 +50,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
   evidence_summary: { bank_statement_months: [], bank_statement_required_months: 6, bank_statement_file_count: 0, bank_statement_accepted_count: 0, bank_statement_processing_count: 0, bank_statement_needs_more_count: 0, bank_statement_rejected_count: 0, bank_statement_failed_count: 0, bank_statement_coverage_complete: false },
   automation: { enabled: false, eligible: false, attempts: 0, max_attempts: 3, stop_reason: "disabled" } });
   const release = (body = planBody) => {
-    const amount = options.noRelease ? 0 : options.releaseUnavailable ? null : 1000;
+    const amount = options.noRelease ? 0 : options.releaseUnavailable ? null : options.recurringFeeNetRelease ? 700 : 1000;
     const allocations = body.released_cash_flow?.allocations ?? [];
     const total = allocations.reduce((sum, row) => sum + Number(row.amount_monthly ?? 0), 0);
     const current = body.released_cash_flow?.source_fingerprint === "coverage-current";
@@ -41,7 +61,8 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     return { required, available: !options.releaseUnavailable, status: complete ? "complete" : amount == null ? "unavailable" : !current && body.released_cash_flow?.source_fingerprint ? "stale" : "incomplete",
       source_fingerprint: amount == null ? null : "coverage-current", currency: "USD", amount_monthly: amount, allocated_monthly: total,
       unallocated_monthly: amount == null ? null : amount - total, complete, missing,
-      source: amount == null ? null : { updated_at: "2026-11-10T16:30:00Z", before_monthly: 3000, after_monthly: options.noRelease ? 3000 : 2000 }, allocations };
+      source: amount == null ? null : { updated_at: "2026-11-10T16:30:00Z", before_monthly: 3000, after_monthly: options.noRelease ? 3000 : options.recurringFeeNetRelease ? 2100 : 2000,
+        ...(options.recurringFeeNetRelease ? { new_operating_expenses_monthly: 200, new_financing_fees_monthly: 100 } : {}) }, allocations };
   };
   const evaluation = (body = planBody) => ({ context_stamp: "context-current", released_cash_flow: release(body),
     baseline: { period: "2025", currency: "USD", basis: "cash", revenue: null, earnings: null, earnings_kind: null, noi: null, dscr: -0.26, annual_debt_service: 36000, provisional: true },
@@ -65,7 +86,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     ebitda: { headline: { ...basis, kind: "tax_estimate", value: -9000, annualized_value: -9000 }, candidates: [], reason: "A validated current business P&L is needed for EBITDA.", source_selection: { selected_file_id: "tax-2025", latest_file_id: "tax-2025", mode: "automatic", stale: false, sources: [{ file_id: "tax-2025", file_name: "2025 business taxes.pdf", period: "2025", kind: "tax_return", eligible: true, included: true, selected: true }] }, potential: null, revenue_trend: { periods: [], notes: [], forecast: null } },
     noi: { definition: { key: "business_operating_income", label: "Business operating income (NOI)", formula: "revenue - cost of goods sold - operating expenses" }, headline: null, candidates: [], years: [], reason: "A P&L for the latest business reporting period with operating income or complete revenue, COGS and operating expenses is needed. Tax net income and bank cash retained cannot establish NOI.", scenario: { notes: [], operating_adjustments: [] }, trend: {} },
     metric_review: { inputs: [], calculations: [], corrections: [], stale_corrections: [], exclusions: [] },
-    plan: { record: { retire: [], exclude: [], add_backs: [], new_loan_amount: 172488, new_loan_rate_pct: 15, new_loan_term_months: 24, updated_at: "2026-11-10T16:30:00Z" }, evaluation: { active: true, debt_service_after_annual: 24000, current_annual_debt_service: 36000 }, levers: [], modifications: [], impact: null, schedule_rows: [] },
+    plan: { record: planRecord(), evaluation: { active: true, debt_service_after_annual: 36000 + monthlyPayment(sharedAmount) * 12, current_annual_debt_service: 36000 }, levers: [], modifications: [], impact: null, schedule_rows: [] },
     proposed_terms: { source: "term_sheet", active_proposal: true, amount: 172488, rate_pct: 15, term_months: 24, payment_monthly: 2000, deal_budget_calculation: { gross_loan_amount: 172488, status: "ready" } },
     operating_plan: { available: versions.length > 0, state: versions.length ? "published" : "not_started", evaluation: evaluation(), package: { missing: release().missing, adjustments: [], risk_flags: [], all_actions_reviewed: true } }, operating_evidence: { files: [], expense_candidates: [], merchant_sources: [], merchant_offers: [], warnings: [] } });
   const verification = { ownership_total: 100, ownership_complete: true, owner_contact_complete: true, owner_count: 1, required_credit_owner_count: 1, completed_credit_owner_count: 1, pending_credit_owner_ids: [], missing_credit_contact_owner_ids: [], bank_linked: false, bank_connection_count: 0, bank_statement_months: 0, credit_returned: true, owner_credit_complete: true, business_banking_complete: false, evidence_complete: false, ready_for_step_2: true, unlocked: false, ownership_blockers: [], credit_blockers: [], banking_blockers: [], blockers: [] };
@@ -77,6 +98,17 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     else if (path.endsWith(`/admin/ai-underwriter-leads/${INTAKE}`)) body = { intake: { id: INTAKE, variant: "business_underwriting_v1", bucket_id: BUCKET, bucket_name: "Example secure room", full_name: "Example Client", business_name: "Example Therapy Services Inc", email: "client@example.test", phone: "9735550148", status: "collecting", outcome_status: "pending", requested_loan_amount: null, file_count: 0, missing_required_count: 0, created_at: "2026-11-10T16:00:00Z", updated_at: "2026-11-10T16:30:00Z" }, requested_documents: [], files: [], latest_review: null, messages: [], artifacts: [], notes: [], email_sends: [] };
     else if (path.endsWith("/application-profiles/resolve")) body = { id: PROFILE, intake_id: INTAKE, primary_bucket_id: BUCKET, vertical: "main_street", owner_storage: "application", is_draft: false };
     else if (path.endsWith(`/${PROFILE}/financial-cockpit`)) body = cockpit();
+    else if (path.endsWith(`/${PROFILE}/deal-budget/preview`)) body = pricedBudget({ ...costBudget, ...request.postDataJSON() as Json });
+    else if (path.endsWith(`/${PROFILE}/deal-budget/apply-principal`)) {
+      const payload = request.postDataJSON() as Json; principalSaves.push(payload);
+      expect(payload.expected_revision).toBe(budgetRevision);
+      expect(payload.expected_plan_updated_at).toBe(planUpdatedAt);
+      const calculated = pricedBudget(payload);
+      sharedAmount = calculated.calculation.gross_loan_amount;
+      planUpdatedAt = "2026-11-10T16:40:00Z"; budgetRevision += 1;
+      costBudget = { ...costBudget, ...payload, revision: budgetRevision };
+      body = pricedBudget();
+    } else if (path.endsWith(`/${PROFILE}/deal-budget`)) body = pricedBudget();
     else if (path.endsWith(`/${PROFILE}/programs`) && request.method() === "PATCH") {
       const payload = request.postDataJSON() as Json; programSaves.push(payload);
       if (options.programFailure && !programFailed) { programFailed = true; status = 503; body = { detail: "Program selection temporarily unavailable. Retry your saved choices." }; }
@@ -106,7 +138,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
   await page.goto(`/files/${INTAKE}?section=financials`, { waitUntil: "domcontentloaded" });
   await page.getByRole("tab", { name: "Financials", exact: true }).click();
   await expect(page.getByRole("button", { name: "Open earnings plan", exact: true })).toBeVisible();
-  return { programSaves, draftSaves, versionSaves, unexpectedWrites, errors, planBody: () => planBody,
+  return { programSaves, draftSaves, versionSaves, principalSaves, unexpectedWrites, errors, planBody: () => planBody,
     publishCriteria: () => { const row = candidates.find(candidate => candidate.program_key === "special_review")!; Object.assign(row, { playbook_id: "special-criteria", playbook_version: 1, recommendation_status: "not_eligible", reasons: ["New published criteria require underwriting review."] }); } };
 }
 
@@ -198,6 +230,55 @@ test("an unavailable criteria ID never offers adoption but the program remains s
   expect(state.errors).toEqual([]);
 });
 
+test("target net financing preserves its purpose and manual programs while fees update the shared loan and coverage", async ({ page }, testInfo) => {
+  const state = await fixture(page);
+  await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+  const plan = page.getByRole("dialog", { name: /^Advanced financial review/ });
+  await plan.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+  await plan.getByRole("button", { name: "Choose programs", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Choose funding programs", exact: true });
+  await picker.getByRole("checkbox", { name: /Special review program/ }).check();
+  await picker.getByRole("button", { name: "Apply manual selection", exact: true }).click();
+  await expect(picker).toHaveCount(0);
+  await expect(plan.getByLabel("New loan amount", { exact: true })).toHaveValue("172488");
+  await plan.getByRole("button", { name: "Edit deal budget", exact: true }).click();
+  const costs = page.getByRole("dialog", { name: "Deal budget editor", exact: true });
+  await expect(costs.getByLabel("Loan amount basis", { exact: true })).toHaveValue("target_net");
+  await expect(costs.getByLabel("Target client net at funding", { exact: true })).toHaveValue("172488");
+  await costs.getByRole("button", { name: "Add cost", exact: true }).click();
+  await costs.getByLabel("Cost 1 label", { exact: true }).fill("Closing fee");
+  await costs.getByLabel("Cost 1 method", { exact: true }).selectOption("percent");
+  await costs.getByLabel("Cost 1 value", { exact: true }).fill("4");
+  await costs.getByLabel("Cost 1 collection", { exact: true }).selectOption("financed");
+  await costs.getByRole("button", { name: "Add cost", exact: true }).click();
+  await costs.getByLabel("Cost 2 label", { exact: true }).fill("Escrow reserve");
+  await costs.getByLabel("Cost 2 type", { exact: true }).selectOption("escrow_reserve");
+  await costs.getByLabel("Cost 2 method", { exact: true }).selectOption("percent");
+  await costs.getByLabel("Cost 2 value", { exact: true }).fill("10");
+  await costs.getByLabel("Cost 2 collection", { exact: true }).selectOption("withheld");
+  const waterfall = costs.getByRole("region", { name: "Live financing waterfall", exact: true });
+  await expect(waterfall).toContainText("$200,567.44");
+  await expect(waterfall).toContainText("$172,488.00");
+  await expect(waterfall).toContainText("$9,724.84");
+  await expect(waterfall).toContainText("-0.06x");
+  await costs.getByRole("button", { name: "Save budget & loan", exact: true }).click();
+  await expect(costs).toContainText("revision 2 and the shared loan were saved");
+  expect(state.principalSaves).toHaveLength(1);
+  expect(state.principalSaves[0]).toMatchObject({ loan_amount_mode: "target_net", target_net_amount: 172488, expected_plan_updated_at: "2026-11-10T16:30:00Z", rows: [{ value: 4, method: "percent", settlement: "financed" }, { value: 10, method: "percent", settlement: "withheld", category: "escrow_reserve" }], financial_plan: { new_loan_amount: 172488, new_loan_rate_pct: 15, new_loan_term_months: 24 } });
+  await expect(costs.getByLabel("Target client net at funding", { exact: true })).toHaveValue("172488");
+  await expect(costs.getByRole("button", { name: "Close", exact: true }).last()).toBeEnabled();
+  await expect(waterfall).toContainText("$200,567.44");
+  await expect(waterfall).toContainText("$172,488.00");
+  await page.screenshot({ path: testInfo.outputPath("target-net-programs-coverage.png"), animations: "disabled" });
+  await costs.getByRole("button", { name: "Close", exact: true }).last().click();
+  await expect(plan.getByLabel("New loan amount", { exact: true })).toHaveValue("200567.44");
+  await expect(plan).toContainText("Special review program");
+  await plan.getByRole("button", { name: "Manage programs", exact: true }).click();
+  await expect(picker.getByRole("checkbox", { name: /Special review program/ })).toBeChecked();
+  expect(state.programSaves).toHaveLength(1);
+  expect(state.errors).toEqual([]);
+});
+
 async function openAllocation(page: Page) {
   await page.getByRole("button", { name: "Allocate released cash flow", exact: true }).click();
   const workspace = page.getByRole("dialog", { name: "Financial workspace", exact: true });
@@ -228,6 +309,29 @@ test("a positive saved-plan release is required before a plan exists and a balan
   await workspace.getByRole("button", { name: "Close", exact: true }).click();
   await expect(page.getByText("Released cash flow allocated", { exact: true })).toBeVisible();
   expect(state.unexpectedWrites.filter(write => /funding-request|use-of-funds|client-terms/.test(write))).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
+test("recurring fees are explained once while allocation uses the authoritative net release", async ({ page }, testInfo) => {
+  const state = await fixture(page, { recurringFeeNetRelease: true });
+  const workspace = await openAllocation(page), allocation = workspace.getByRole("region", { name: "Released cash flow allocation", exact: true });
+  await expect(allocation).toContainText("Saved debt service: $3,000.00 before → $2,100.00 with the plan, per month.");
+  await expect(allocation.getByText("New recurring operating costs of $200.00 / month are deducted before allocation.", { exact: true })).toHaveCount(1);
+  await expect(allocation.getByText("New financing charges of $100.00 / month are included in the plan payments above.", { exact: true })).toHaveCount(1);
+  await expect(allocation).toContainText("$700.00 / month");
+  await allocation.getByRole("button", { name: "Use saved coverage plan", exact: true }).click();
+  await allocation.getByRole("button", { name: "Add cash flow allocation", exact: true }).click();
+  await allocation.getByLabel("Allocation purpose 1", { exact: true }).fill("Operating cash reserve");
+  await allocation.getByLabel("Allocation monthly amount 1", { exact: true }).fill("700");
+  await expect(allocation).toContainText("Still to allocate $0.00 / month");
+  await expect(allocation).toContainText("The saved-plan release is fully allocated.");
+  await expect(allocation).not.toContainText("$600.00 / month");
+  await expect(allocation).not.toContainText("$500.00 / month");
+  await allocation.screenshot({ path: testInfo.outputPath("net-release-recurring-fees.png"), animations: "disabled" });
+  await workspace.getByRole("button", { name: "Save version", exact: true }).click();
+  await expect(workspace).toContainText("Version 1 saved");
+  expect(state.planBody().released_cash_flow.allocations).toMatchObject([{ label: "Operating cash reserve", amount_monthly: 700 }]);
+  expect(state.versionSaves).toHaveLength(1);
   expect(state.errors).toEqual([]);
 });
 

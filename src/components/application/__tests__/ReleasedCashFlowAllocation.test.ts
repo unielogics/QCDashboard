@@ -36,6 +36,16 @@ describe("released monthly cash flow allocation", () => {
     expect(value).toEqual(before);
   });
 
+  it("explains fee treatment without subtracting the server's already net release a second time", () => {
+    const html = render(body(), { source: { ...source, amount_monthly: 900, source: { ...source.source, new_operating_expenses_monthly: 300, new_financing_fees_monthly: 150 } } });
+    expect(html).toContain("$900.00 / month");
+    expect(html).toContain("$400.00 / month");
+    expect(html).toContain("New recurring operating costs of $300.00 / month are deducted before allocation.");
+    expect(html).toContain("New financing charges of $150.00 / month are included in the plan payments above.");
+    expect(render(body())).not.toContain("New recurring operating costs");
+    expect(render(body())).not.toContain("New financing charges");
+  });
+
   it("does not call an invalid or overallocated draft complete even with an older complete evaluation", () => {
     const html = render(body(source.source_fingerprint, 1300), { source: { ...source, complete: true } });
     expect(html).toContain("Over allocated");

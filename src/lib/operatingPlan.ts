@@ -46,7 +46,7 @@ export type ReleasedCashFlowEvaluation = {
   required: boolean; available: boolean; status: string; source_fingerprint: string | null;
   currency: string; amount_monthly: number | null; allocated_monthly: number; unallocated_monthly: number | null;
   complete: boolean; missing: string[];
-  source: { updated_at: string | null; before_monthly: number | null; after_monthly: number | null } | null;
+  source: { updated_at: string | null; before_monthly: number | null; after_monthly: number | null; new_operating_expenses_monthly?: number | null; new_financing_fees_monthly?: number | null } | null;
   allocations?: ReleasedCashFlowAllocation[];
 };
 export type OperatingPlanSchema = { kind?: string; [key: string]: unknown };
