@@ -17,7 +17,7 @@ import { DebtScheduleForm, type DebtRow } from "./DebtScheduleForm";
 import { BusinessStatementForm, type StatementBody, type StatementSchema } from "./BusinessStatementForm";
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
 import { OperatingPlanEditor } from "./OperatingPlanEditor";
-import { operatingPlanRequest, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { normalizeOperatingPlanBody, operatingPlanRequest, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { RealEstateMortgageEvidence } from "./RealEstateMortgageEvidence";
 import { readRealEstateEvidence, realEstateImportFieldLabel, realEstateImportFieldValue, type RealEstateEvidenceLink } from "@/lib/realEstateEvidence";
 import workspaceStyles from "./FinancialWorkspaceExtras.module.css";
@@ -131,6 +131,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   }, []);
   const changeBody = useCallback((next: FinancialBody) => {
     if (current.current?.kind === "debt_schedule") next = clearEditedDebtSources(draftBody.current, next);
+    if (current.current?.kind === "operating_plan") next = normalizeOperatingPlanBody(next);
     draftBody.current = next; changed.current += 1; publishKey.current = null;
     setBody(next); setLocalDirty(true); setNotice("");
   }, []);

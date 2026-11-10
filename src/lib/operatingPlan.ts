@@ -54,6 +54,37 @@ export const operatingNumber = (value: unknown): number | null => {
   const result = Number(String(value).replaceAll(",", "").replaceAll("$", ""));
   return Number.isFinite(result) ? result : null;
 };
+const OPERATING_NUMERIC_FIELDS = new Set(["current_amount", "proposed_amount", "units_per_period", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
+/** Normalize known numeric fields individually. A bad cell must never erase its rows. */
+export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(body: T): T {
+  const next = { ...body } as Record<string, unknown>;
+  for (const key of ["no_operating_expenses_confirmed", "client_attestation"]) {
+    if (next[key] === "true" || next[key] === "false") next[key] = next[key] === "true";
+  }
+  for (const collection of ["expenses", "adjustments"]) {
+    if (!Array.isArray(next[collection])) continue;
+    next[collection] = (next[collection] as unknown[]).map((value) => {
+      if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+      const row = { ...value } as Record<string, unknown>;
+      for (const key of ["essential", "excluded"]) {
+        if (row[key] === "true" || row[key] === "false") row[key] = row[key] === "true";
+      }
+      for (const key of OPERATING_NUMERIC_FIELDS) {
+        if (!(key in row)) continue;
+        const input = row[key];
+        if (input == null || typeof input === "string" && !input.trim()) row[key] = null;
+        else if (typeof input === "number") row[key] = Number.isFinite(input) ? input : null;
+        else if (typeof input === "string") {
+          const parsed = operatingNumber(input);
+          // Keep invalid text visible for correction instead of discarding the draft.
+          if (parsed != null) row[key] = parsed;
+        }
+      }
+      return row;
+    });
+  }
+  return next as T;
+}
 export const cadenceFactor = (cadence?: OperatingCadence) => ({ weekly: 52, biweekly: 26, semi_monthly: 24, monthly: 12, quarterly: 4, annual: 1, one_time: 0 }[cadence ?? "monthly"]);
 export const operatingMoney = (value: number | null | undefined, currency = "USD") => value == null ? "—" : new Intl.NumberFormat(undefined, { style: "currency", currency: /^[A-Z]{3}$/.test(currency) ? currency : "USD", maximumFractionDigits: 2 }).format(value);
 

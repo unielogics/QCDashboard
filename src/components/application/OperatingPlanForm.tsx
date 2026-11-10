@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type KeyboardEvent, type ReactNode } from "react";
-import { clearOperatingReview, illustrativeActionImpact, OPERATING_ACTIONS, OPERATING_CADENCES, OPERATING_CATEGORIES, operatingExpenseTotal, operatingLabel, operatingMoney, operatingNumber, proposeExpense, type OperatingAction, type OperatingCadence, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { clearOperatingReview, illustrativeActionImpact, normalizeOperatingPlanBody, OPERATING_ACTIONS, OPERATING_CADENCES, OPERATING_CATEGORIES, operatingExpenseTotal, operatingLabel, operatingMoney, operatingNumber, proposeExpense, type OperatingAction, type OperatingCadence, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
 import styles from "./OperatingPlanForm.module.css";
 
 export type OperatingSource = { file_id: string; file_name: string };
@@ -10,13 +10,14 @@ const display = (value: unknown) => value == null ? "" : String(value);
 const uid = () => crypto.randomUUID();
 
 /** Staff and clients edit the same versioned body; approvals belong to staff review. */
-export function OperatingPlanForm({ value, onChange, disabled = false, sources = [], onPreviewSource, evaluation, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference }: {
+export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference }: {
   value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void; disabled?: boolean;
   sources?: OperatingSource[]; onPreviewSource?: (id: string) => void;
   evaluation?: OperatingEvaluation | null; evaluating?: boolean; reviewControls?: ReactNode; staff?: boolean;
   processingReferences?: { sources: Array<{ key: string; label: string }>; offers: Array<{ id: string; label: string }> };
   onProcessingReference?: (row: OperatingAction, sourceKey: string, offerId: string) => void;
 }) {
+  const value = normalizeOperatingPlanBody(rawValue);
   const [tab, setTab] = useState<Tab>("expenses");
   const [selected, setSelected] = useState<{ collection: "expenses" | "adjustments"; id: string } | null>(null);
   const [showExcluded, setShowExcluded] = useState(false);

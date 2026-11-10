@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
-import { clearOperatingReview, operatingMoney, operatingLabel, operatingNumber, operatingReviewedWorkspace, type OperatingAction, type OperatingEvaluation, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { clearOperatingReview, normalizeOperatingPlanBody, operatingMoney, operatingLabel, operatingNumber, operatingReviewedWorkspace, type OperatingAction, type OperatingEvaluation, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { OperatingPlanForm } from "./OperatingPlanForm";
 import styles from "./OperatingPlanForm.module.css";
 
@@ -42,7 +42,7 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   useEffect(() => {
     const sequence = ++request.current; setEvaluation(null); setEvaluating(true);
     const timer = setTimeout(() => {
-      void api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: value, family_id: snapshot.family_id }) }).then((reply) => { if (live.current && sequence === request.current) { setEvaluation(reply.evaluation); if (reply.evidence) setEvidence(reply.evidence); setError(""); } }).catch((failure) => { if (live.current && sequence === request.current) setError(failure instanceof Error ? failure.message : "The working plan could not be evaluated."); }).finally(() => { if (live.current && sequence === request.current) setEvaluating(false); });
+      void api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(value), family_id: snapshot.family_id }) }).then((reply) => { if (live.current && sequence === request.current) { setEvaluation(reply.evaluation); if (reply.evidence) setEvidence(reply.evidence); setError(""); } }).catch((failure) => { if (live.current && sequence === request.current) setError(failure instanceof Error ? failure.message : "The working plan could not be evaluated."); }).finally(() => { if (live.current && sequence === request.current) setEvaluating(false); });
     }, 500);
     return () => clearTimeout(timer);
   }, [api, root, snapshot.family_id, value]);
@@ -51,7 +51,7 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
     setReviewing(true); onBusyChange(true); setError("");
     try {
       const saved = await prepare(); if (!saved) throw new Error("The working plan is not available.");
-      const context = await api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: saved.body, family_id: saved.family_id }) });
+      const context = await api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(saved.body), family_id: saved.family_id }) });
       const reply = await api<Partial<FinancialWorkspaceSnapshot> & { workspace?: FinancialWorkspaceSnapshot; evaluation: OperatingEvaluation }>(`${root}/review`, { method: "POST", body: JSON.stringify({ family_id: saved.family_id, expected_revision: saved.draft.revision, action_ids: selected, decision, reason: reason.trim(), context_stamp: context.context_stamp, baseline_treatment: treatment, baseline_reconciliation_note: reconciliation.trim(), idempotency_key: crypto.randomUUID() }) });
       const next = operatingReviewedWorkspace(reply, saved.family_id);
       if (live.current) { onReviewed(next); setEvaluation(reply.evaluation); setSelected([]); setReason(""); }
