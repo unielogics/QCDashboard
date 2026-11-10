@@ -7092,7 +7092,8 @@ select.vm-in {
 .uw-step-title { flex: 1; min-width: 0; }
 .uw-step-title h3 { margin: 0; font-size: 15px; }
 .uw-step-title .sub { margin: 2px 0 0; }
-.uw-step-body { padding: 16px; display: grid; gap: 14px; max-height: min(76vh, 900px); overflow: auto; overscroll-behavior: contain; }
+/* Keep underwriting steps in the page's scroll flow for wheel and touch input. */
+.uw-step-body { padding: 16px; display: grid; gap: 14px; min-width: 0; }
 .uw-terms-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, .72fr); gap: 22px; align-items: start; }
 .uw-terms-layout > * { min-width: 0; }
 .uw-terms-preview { padding: 0; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: var(--card, #fff); color: var(--text); text-align: left; font: inherit; cursor: pointer; width: 100%; }
