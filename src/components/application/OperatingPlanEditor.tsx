@@ -1,14 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
 import { clearOperatingReview, normalizeOperatingPlanBody, operatingMoney, operatingLabel, operatingNumber, operatingReviewedWorkspace, type OperatingAction, type OperatingEvaluation, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { OperatingPlanForm } from "./OperatingPlanForm";
 import styles from "./OperatingPlanForm.module.css";
-import type { ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
-import { addOperatingCandidate, type OperatingGuidance, type OperatingExpenseCandidate } from "@/lib/operatingGuidance";
+import { addOperatingCandidate, draftOperatingSourceCosts, type OperatingGuidance, type OperatingExpenseCandidate } from "@/lib/operatingGuidance";
+import { StaffOperatingSources, type StaffSourceDraftResult } from "./StaffOperatingSources";
 
 export type OperatingEvidenceCandidate = OperatingExpenseCandidate;
 type MerchantSource = { source_key: string; file_id: string; file_name: string; processor: string | null; account_last4: string | null; period_start: string | null; period_end: string | null; currency: string | null; volume: number | null; total_fees: number | null; transactions: number | null; effective_rate_pct: number | null; rate_basis: string; eligible_for_review: boolean; warnings?: string[] };
@@ -25,30 +25,76 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   const api = useAuthedApi();
   const role = useCurrentUser().data?.role;
   const canReview = role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC;
-  const [evaluation, setEvaluation] = useState<OperatingEvaluation | null>(null);
-  const [releasedCashFlow, setReleasedCashFlow] = useState<ReleasedCashFlowEvaluation | null>(null);
-  const [evidence, setEvidence] = useState<OperatingEvidence | null>(null);
-  const [evaluating, setEvaluating] = useState(false);
+  const root = `/application-profiles/${encodeURIComponent(profileId)}/operating-plan`;
+  const scope = `${root}:${snapshot.family_id}`;
+  const [source, setSource] = useState<{ scope: string; data: OperatingEvidence | null; loading: boolean; error: string }>({ scope, data: null, loading: true, error: "" });
+  const [preview, setPreview] = useState<{ scope: string; value: OperatingEvaluation | null; loading: boolean; error: string }>({ scope, value: null, loading: false, error: "" });
+  const [evaluationRetry, setEvaluationRetry] = useState(0);
   const [error, setError] = useState(""); const [reviewing, setReviewing] = useState(false);
   const [selected, setSelected] = useState<string[]>([]); const [reason, setReason] = useState("");
   const [treatment, setTreatment] = useState("unreconciled"); const [reconciliation, setReconciliation] = useState("");
-  const [showCandidates, setShowCandidates] = useState(false);
   const [merchantQuote, setMerchantQuote] = useState("");
-  const request = useRef(0); const live = useRef(true); const valueRef = useRef(value); valueRef.current = value;
-  const root = `/application-profiles/${encodeURIComponent(profileId)}/operating-plan`;
-  useEffect(() => { live.current = true; return () => { live.current = false; request.current += 1; }; }, []);
+  const [guided, setGuided] = useState(true);
+  const [sourceDraftRequest, setSourceDraftRequest] = useState(0);
+  const [guidedStepRequest, setGuidedStepRequest] = useState<{ index: number; key: number } | null>(null);
+  const [draftResult, setDraftResult] = useState<{ scope: string; value: StaffSourceDraftResult } | null>(null);
+  const request = useRef(0); const sourceRequest = useRef(0); const sourceVersion = useRef(0);
+  const live = useRef(true); const activeScope = useRef(scope); activeScope.current = scope;
+  const valueRef = useRef(value); valueRef.current = value;
+  const sourcePanelElement = useRef<HTMLDivElement>(null);
+  const evidence = source.scope === scope ? source.data : null;
+  const sourceLoading = source.scope !== scope || source.loading;
+  const sourceError = source.scope === scope ? source.error : "";
+  const evaluation = preview.scope === scope ? preview.value : null;
+  const evaluating = preview.scope === scope && preview.loading;
+  const evaluationError = preview.scope === scope ? preview.error : "";
+  const releasedCashFlow = evaluation?.released_cash_flow ?? snapshot.completion?.released_cash_flow;
+  useEffect(() => { live.current = true; return () => { live.current = false; request.current += 1; sourceRequest.current += 1; }; }, []);
+  const loadEvidence = useCallback(async () => {
+    const sequence = ++sourceRequest.current;
+    const version = sourceVersion.current;
+    setSource(current => ({ scope, data: current.scope === scope ? current.data : null, loading: true, error: "" }));
+    try {
+      const reply = await api<OperatingEvidence>(`${root}/evidence`);
+      if (!live.current || activeScope.current !== scope || sequence !== sourceRequest.current || version !== sourceVersion.current) return;
+      sourceVersion.current++;
+      setSource({ scope, data: reply, loading: false, error: "" });
+    } catch (failure) {
+      if (live.current && activeScope.current === scope && sequence === sourceRequest.current && version === sourceVersion.current)
+        setSource(current => ({ scope, data: current.scope === scope ? current.data : null, loading: false, error: failure instanceof Error ? failure.message : "Evidence suggestions could not be loaded." }));
+    }
+  }, [api, root, scope]);
   useEffect(() => {
-    let cancelled = false;
-    void api<OperatingEvidence>(`${root}/evidence`).then((reply) => { if (!cancelled) setEvidence(reply); }).catch((failure) => { if (!cancelled) setError(failure instanceof Error ? failure.message : "Evidence suggestions could not be loaded."); });
-    return () => { cancelled = true; };
-  }, [api, root]);
+    sourceVersion.current = 0;
+    setDraftResult(null); setGuided(true); setGuidedStepRequest(null); setSourceDraftRequest(0); setMerchantQuote(""); setError("");
+    setSelected([]); setReason(""); setReconciliation(""); setTreatment("unreconciled");
+    void loadEvidence();
+    return () => { sourceRequest.current++; };
+  }, [loadEvidence]);
   useEffect(() => {
-    const sequence = ++request.current; setEvaluation(null); setEvaluating(true);
+    const sequence = ++request.current;
+    setPreview({ scope, value: null, loading: true, error: "" });
     const timer = setTimeout(() => {
-      void api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(value), family_id: snapshot.family_id }) }).then((reply) => { if (live.current && sequence === request.current) { setEvaluation(reply.evaluation); setReleasedCashFlow(reply.evaluation.released_cash_flow ?? null); if (reply.evidence || reply.guidance) setEvidence(current => ({ ...(reply.evidence ?? current), ...(reply.guidance ? { guidance: reply.guidance } : {}) })); setError(""); } }).catch((failure) => { if (live.current && sequence === request.current) setError(failure instanceof Error ? failure.message : "The working plan could not be evaluated."); }).finally(() => { if (live.current && sequence === request.current) setEvaluating(false); });
+      void api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(value), family_id: snapshot.family_id }) }).then((reply) => {
+        if (!live.current || activeScope.current !== scope || sequence !== request.current) return;
+        setPreview({ scope, value: reply.evaluation, loading: false, error: "" });
+        const guidance = reply.guidance ?? reply.evidence?.guidance;
+        const fullSources = guidance && typeof guidance.policy_version === "string" && guidance.policy_version.trim() && guidance.reporting && Array.isArray(guidance.expense_groups) && Array.isArray(reply.evidence?.files) && Array.isArray(reply.evidence?.expense_candidates)
+          && (guidance.reporting.source_file_id || guidance.expense_groups.length || reply.evidence.files.length || reply.evidence.expense_candidates.length || reply.evidence.merchant_sources?.length);
+        if (fullSources) {
+          sourceVersion.current++;
+          setSource({ scope, data: { ...reply.evidence, guidance }, loading: false, error: "" });
+        } else if (guidance) {
+          // A partial preview must not erase an evidence failure or pretend the hint list loaded.
+          setSource(current => ({ ...current, scope, data: { ...(current.scope === scope ? current.data : null), guidance } }));
+        }
+      }).catch((failure) => {
+        if (live.current && activeScope.current === scope && sequence === request.current)
+          setPreview({ scope, value: null, loading: false, error: failure instanceof Error ? failure.message : "The working plan could not be evaluated." });
+      });
     }, 500);
     return () => clearTimeout(timer);
-  }, [api, root, snapshot.family_id, value]);
+  }, [api, root, scope, snapshot.family_id, value, evaluationRetry]);
   const review = async (decision: "approved" | "rejected") => {
     if (!canReview || reviewing || !selected.length || !reason.trim()) return;
     setReviewing(true); onBusyChange(true); setError("");
@@ -57,15 +103,29 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
       const context = await api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(saved.body), family_id: saved.family_id }) });
       const reply = await api<Partial<FinancialWorkspaceSnapshot> & { workspace?: FinancialWorkspaceSnapshot; evaluation: OperatingEvaluation }>(`${root}/review`, { method: "POST", body: JSON.stringify({ family_id: saved.family_id, expected_revision: saved.draft.revision, action_ids: selected, decision, reason: reason.trim(), context_stamp: context.context_stamp, baseline_treatment: treatment, baseline_reconciliation_note: reconciliation.trim(), idempotency_key: crypto.randomUUID() }) });
       const next = operatingReviewedWorkspace(reply, saved.family_id);
-      if (live.current) { onReviewed(next); setEvaluation(reply.evaluation); setReleasedCashFlow(reply.evaluation.released_cash_flow ?? null); setSelected([]); setReason(""); }
-    } catch (failure) { if (live.current) setError(failure instanceof Error ? failure.message : "Review could not be saved. Your draft is preserved."); }
-    finally { if (live.current) { setReviewing(false); onBusyChange(false); } }
+      if (live.current && activeScope.current === scope) { onReviewed(next); setPreview({ scope, value: reply.evaluation, loading: false, error: "" }); setSelected([]); setReason(""); }
+    } catch (failure) { if (live.current && activeScope.current === scope) setError(failure instanceof Error ? failure.message : "Review could not be saved. Your draft is preserved."); }
+    finally { if (live.current && activeScope.current === scope) { setReviewing(false); onBusyChange(false); } }
   };
-  const candidates = evidence?.expense_candidates ?? [];
   const addCandidate = (candidate: OperatingEvidenceCandidate) => {
-    onChange(addOperatingCandidate(valueRef.current, candidate, crypto.randomUUID()));
+    if (disabled || reviewing || sourceLoading || sourceError) return;
+    const next = addOperatingCandidate(valueRef.current, candidate, crypto.randomUUID());
+    if (next !== valueRef.current) { valueRef.current = next; onChange(next); }
   };
+  const draftSourceCosts = () => {
+    if (disabled || reviewing || sourceLoading || sourceError || !evidence?.guidance) return;
+    const current = valueRef.current;
+    const { body: next, ...result } = draftOperatingSourceCosts(current, evidence.guidance, () => crypto.randomUUID());
+    setDraftResult({ scope, value: result });
+    if (result.blocked_reason || next === current) return;
+    valueRef.current = next;
+    onChange(next);
+    setSourceDraftRequest(count => count + 1);
+    if (guided) setGuidedStepRequest(previous => ({ index: 1, key: (previous?.key ?? 0) + 1 }));
+  };
+  const sourceDisabled = disabled || reviewing || sourceLoading || Boolean(sourceError);
   const addProcessing = (source: MerchantSource) => {
+    if (sourceDisabled) return;
     const body = valueRef.current; const quote = evidence?.merchant_offers?.find((offer) => offer.id === merchantQuote);
     if (body.adjustments?.some((row) => row.merchant_source_key === source.source_key && !row.excluded)) return;
     const quoteMarkup = quote?.proposed_pricing_model === "processor_markup" || quote?.proposed_pricing_model === "interchange_plus";
@@ -82,20 +142,14 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
     onChange({ ...body, adjustments: (body.adjustments ?? []).map((item) => item.id === row.id ? clearOperatingReview({ ...item, ...patch }) : item) });
   };
   return <div className={styles.plan}>
-    {error ? <div role="alert">{error}</div> : null}
-    <div className={styles.toolbar}><span className={styles.muted}>Working plan · Save version creates its dated PDF and package record.</span><button type="button" aria-expanded={showCandidates} onClick={() => setShowCandidates((open) => !open)}>Statement suggestions ({candidates.length + (evidence?.merchant_sources?.length ?? 0)})</button></div>
-    {showCandidates ? <section className={styles.details}>
-      <h4>Statement evidence · review before adding</h4><p className={styles.muted}>Recurring payments may be transfers, financing or operating costs. Select the right category and verify the current amount before using a proposal.</p>
-      <div className={styles.scroll}><table><thead><tr><th>Observed item</th><th>Current reference</th><th>Evidence</th><th>Add to disclosure</th></tr></thead><tbody>{candidates.map((candidate, index) => {
-        const key = candidate.bank_vendor_key ?? candidate.key ?? candidate.id; const exists = key && value.expenses?.some((row) => row.bank_vendor_key === key);
-        return <tr key={key ?? index}><th>{candidate.label ?? candidate.payee ?? "Statement expense"}</th><td>{operatingMoney(operatingNumber(candidate.current_amount), value.currency)} · {candidate.cadence ?? "monthly"}{candidate.warning ? <small>{candidate.warning}</small> : null}</td><td>{candidate.source_file_ids?.map((id) => <button key={id} type="button" className={styles.link} onClick={() => onPreviewSource(id)}>{snapshot.evidence.find((file) => file.file_id === id)?.file_name ?? "View statement"}</button>)}</td><td><button type="button" disabled={disabled || Boolean(exists)} onClick={() => addCandidate(candidate)}>{exists ? "Already disclosed" : "Add for review"}</button></td></tr>;
-      })}{!candidates.length ? <tr><td colSpan={4}>No detailed candidates available. Enter disclosed costs or link supporting statements.</td></tr> : null}</tbody></table></div>
-      {evidence?.merchant_sources?.length ? <><div className={styles.toolbar} style={{ marginTop: 14 }}><h4>Card processing · current statements and proposed quotes</h4><label>Optional proposed quote <select value={merchantQuote} onChange={(event) => setMerchantQuote(event.target.value)}><option value="">Choose later in the action</option>{evidence.merchant_offers?.map((offer) => <option key={offer.id} value={offer.id}>{offer.provider_name || "Processing quote"}</option>)}</select></label></div><div className={styles.scroll}><table><thead><tr><th>Processor / statement</th><th>Card volume</th><th>Current fees</th><th>Effective rate</th><th>Compare</th></tr></thead><tbody>{evidence.merchant_sources.map((source) => {
+    <div ref={sourcePanelElement}><StaffOperatingSources key={scope} evidence={evidence} files={snapshot.evidence} value={value} loading={sourceLoading} error={sourceError} disabled={disabled || reviewing} onRetry={() => void loadEvidence()} onDraft={draftSourceCosts} onAddCandidate={addCandidate} onPreviewSource={onPreviewSource} result={draftResult?.scope === scope ? draftResult.value : null}>
+      {evidence?.merchant_sources?.length ? <><div className={styles.toolbar} style={{ marginTop: 14 }}><h4>Card processing · current statements and proposed quotes</h4><label>Optional proposed quote <select disabled={sourceDisabled} value={merchantQuote} onChange={(event) => setMerchantQuote(event.target.value)}><option value="">Choose later in the action</option>{evidence.merchant_offers?.map((offer) => <option key={offer.id} value={offer.id}>{offer.provider_name || "Processing quote"}</option>)}</select></label></div><div className={styles.scroll}><table><thead><tr><th>Processor / statement</th><th>Card volume</th><th>Current fees</th><th>Effective rate</th><th>Compare</th></tr></thead><tbody>{evidence.merchant_sources.map((source) => {
         const exists = value.adjustments?.some((row) => row.merchant_source_key === source.source_key && !row.excluded);
-        return <tr key={source.source_key}><th><button type="button" className={styles.link} onClick={() => onPreviewSource(source.file_id)}>{source.file_name}</button><small>{source.period_start} – {source.period_end}</small></th><td>{operatingMoney(source.volume, source.currency ?? value.currency)}</td><td>{operatingMoney(source.total_fees, source.currency ?? value.currency)}</td><td>{source.effective_rate_pct == null ? "—" : `${source.effective_rate_pct}%`} · {operatingLabel(source.rate_basis || "unknown")}</td><td><button type="button" disabled={disabled || Boolean(exists)} onClick={() => addProcessing(source)}>{exists ? "Already proposed" : "Draft cost comparison"}</button>{!source.eligible_for_review ? <small>Source needs review</small> : null}</td></tr>;
+        return <tr key={source.source_key}><th><button type="button" className={styles.link} disabled={sourceDisabled} onClick={() => onPreviewSource(source.file_id)}>{source.file_name}</button><small>{source.period_start} – {source.period_end}</small></th><td>{operatingMoney(source.volume, source.currency ?? value.currency)}</td><td>{operatingMoney(source.total_fees, source.currency ?? value.currency)}</td><td>{source.effective_rate_pct == null ? "—" : `${source.effective_rate_pct}%`} · {operatingLabel(source.rate_basis || "unknown")}</td><td><button type="button" disabled={sourceDisabled || Boolean(exists)} onClick={() => addProcessing(source)}>{exists ? "Already proposed" : "Draft cost comparison"}</button>{!source.eligible_for_review ? <small>Source needs review</small> : null}</td></tr>;
       })}</tbody></table></div><p className={styles.muted}>A quote is a proposal. All-in rates and processor markup cannot be compared directly. Verify period, volume, pass-through charges and transition costs in action details.</p></> : null}
-      {evidence?.warnings?.map((note) => <p key={note} className={styles.muted}>{note}</p>)}
-    </section> : null}
-    <OperatingPlanForm guidance={evidence?.guidance} evidence={evidence} value={value} onChange={onChange} disabled={disabled || reviewing} staff sources={snapshot.evidence} onPreviewSource={onPreviewSource} evaluation={evaluation} releasedCashFlow={releasedCashFlow ?? snapshot.completion?.released_cash_flow} evaluating={evaluating} processingReferences={{ sources: (evidence?.merchant_sources ?? []).map((source) => ({ key: source.source_key, label: source.file_name })), offers: (evidence?.merchant_offers ?? []).map((offer) => ({ id: offer.id, label: offer.provider_name || "Processing quote" })) }} onProcessingReference={processingReference} reviewControls={canReview ? <section className={styles.details}><h4>Staff review</h4><div className={styles.fields}><label>Actions to review<select multiple aria-label="Actions to review" value={selected} disabled={disabled || reviewing} onChange={(event) => setSelected([...event.target.selectedOptions].map((option) => option.value))}>{actions.map((row) => <option key={row.id} value={row.id}>{row.label || "Unnamed action"} · {operatingLabel(row.status ?? "proposed")}</option>)}</select></label><label>Relation to earnings baseline<select value={treatment} disabled={disabled || reviewing} onChange={(event) => setTreatment(event.target.value)}><option value="unreconciled">Not yet reconciled</option><option value="included_in_baseline">Current cost / revenue included in baseline</option><option value="incremental_to_baseline">Incremental to baseline</option><option value="outside_operating_earnings">Outside operating earnings</option></select></label><label>Reconciliation to source / period<textarea value={reconciliation} disabled={disabled || reviewing} onChange={(event) => setReconciliation(event.target.value)} placeholder="Identify the current source and period; explain differences from the baseline" /></label><label className={styles.wide}>Review reason<textarea value={reason} disabled={disabled || reviewing} onChange={(event) => setReason(event.target.value)} placeholder="Document evidence, feasibility and any conditions" /></label></div><div className={styles.toolbar}><span className={styles.muted}>Reviewed proposals remain projections. Save version publishes the reviewed plan.</span><div className={styles.tools}><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim()} onClick={() => void review("rejected")}>Reject selected</button><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim() || treatment === "unreconciled" || !reconciliation.trim()} onClick={() => void review("approved")}>{reviewing ? "Saving review…" : "Approve selected"}</button></div></div></section> : <p className={styles.muted}>Underwriting reviews proposed adjustments before they can enter a reviewed projection.</p>} />
+    </StaffOperatingSources></div>
+    {error ? <div role="alert">Staff review could not be saved: {error}</div> : null}
+    {evaluationError ? <div role="alert"><p>The financial preview could not be updated: {evaluationError}</p><button type="button" disabled={disabled || reviewing || evaluating} onClick={() => setEvaluationRetry(count => count + 1)}>Retry financial preview</button></div> : null}
+    <OperatingPlanForm key={scope} guidedDefault onGuidedModeChange={setGuided} guidedStepRequest={draftResult?.scope === scope ? guidedStepRequest : null} sourceDraftRequest={draftResult?.scope === scope ? sourceDraftRequest : 0} onOpenSources={() => sourcePanelElement.current?.scrollIntoView({ block: "start", behavior: "smooth" })} guidance={evidence?.guidance} evidence={evidence} value={value} onChange={onChange} disabled={disabled || reviewing} staff sources={snapshot.evidence} onPreviewSource={onPreviewSource} evaluation={evaluation} releasedCashFlow={releasedCashFlow ?? snapshot.completion?.released_cash_flow} evaluating={evaluating} processingReferences={{ sources: (evidence?.merchant_sources ?? []).map((source) => ({ key: source.source_key, label: source.file_name })), offers: (evidence?.merchant_offers ?? []).map((offer) => ({ id: offer.id, label: offer.provider_name || "Processing quote" })) }} onProcessingReference={processingReference} reviewControls={canReview ? <section className={styles.details}><h4>Staff review</h4><div className={styles.fields}><label>Actions to review<select multiple aria-label="Actions to review" value={selected} disabled={disabled || reviewing} onChange={(event) => setSelected([...event.target.selectedOptions].map((option) => option.value))}>{actions.map((row) => <option key={row.id} value={row.id}>{row.label || "Unnamed action"} · {operatingLabel(row.status ?? "proposed")}</option>)}</select></label><label>Relation to earnings baseline<select value={treatment} disabled={disabled || reviewing} onChange={(event) => setTreatment(event.target.value)}><option value="unreconciled">Not yet reconciled</option><option value="included_in_baseline">Current cost / revenue included in baseline</option><option value="incremental_to_baseline">Incremental to baseline</option><option value="outside_operating_earnings">Outside operating earnings</option></select></label><label>Reconciliation to source / period<textarea value={reconciliation} disabled={disabled || reviewing} onChange={(event) => setReconciliation(event.target.value)} placeholder="Identify the current source and period; explain differences from the baseline" /></label><label className={styles.wide}>Review reason<textarea value={reason} disabled={disabled || reviewing} onChange={(event) => setReason(event.target.value)} placeholder="Document evidence, feasibility and any conditions" /></label></div><div className={styles.toolbar}><span className={styles.muted}>Reviewed proposals remain projections. Save version publishes the reviewed plan.</span><div className={styles.tools}><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim()} onClick={() => void review("rejected")}>Reject selected</button><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim() || treatment === "unreconciled" || !reconciliation.trim()} onClick={() => void review("approved")}>{reviewing ? "Saving review…" : "Approve selected"}</button></div></div></section> : <p className={styles.muted}>Underwriting reviews proposed adjustments before they can enter a reviewed projection.</p>} />
   </div>;
 }
