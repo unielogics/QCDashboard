@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { OperatingPlanForm } from "../OperatingPlanForm";
 import { applyFinancialCells, financialLayout, financialValues, saveFinancialDraft, type FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
 import { normalizeOperatingPlanBody, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { clearOperatingReview } from "@/lib/operatingPlan";
 import type { Edit, SheetLayout } from "@/components/sheet/types";
 
 const fields = ["label", "current_amount", "cadence", "essential", "excluded"];
@@ -14,6 +15,14 @@ const sheet: SheetLayout = {
 const pasted: Edit[] = sheet.rows.flatMap((row, index) => fields.map((field) => ({ sheet: "operating_plan", key: `expenses.expense-${index}.${field}`, value: field === "label" ? `Cost ${index + 1}` : field === "current_amount" ? index < 17 ? String(index * 100) : "" : field === "cadence" ? "monthly" : field === "essential" ? "true" : "false" })));
 
 describe("operating plan worksheet and form recovery", () => {
+  it("uses schema-compatible empty review strings in edited and recovered action draft payloads", async () => {
+    const action = clearOperatingReview({ id: "action", label: "Review expense", current_amount: "100", proposed_amount: "80", review_reason: "Previously reviewed", baseline_reconciliation_note: "Prior source" });
+    const api = vi.fn().mockResolvedValue({ body: {} });
+    await saveFinancialDraft(api, "profile", { kind: "operating_plan", family_id: "family", draft: { revision: 1 } } as FinancialWorkspaceSnapshot, { expenses: [], adjustments: [action, { id: "old", review_reason: null, baseline_reconciliation_note: null, current_amount: "", proposed_amount: "0" }] });
+    const payload = JSON.parse(api.mock.calls[0][1].body);
+    expect(payload.body.adjustments[0]).toMatchObject({ review_reason: "", baseline_reconciliation_note: "", current_amount: 100, proposed_amount: 80, reviewed_by_user_id: null, reviewed_at: null, review_source_stamp: null });
+    expect(payload.body.adjustments[1]).toMatchObject({ review_reason: "", baseline_reconciliation_note: "", current_amount: null, proposed_amount: 0 });
+  });
   it("keeps all 19 pasted rows, two unknown amounts and real booleans through form switching and draft save", async () => {
     const body = applyFinancialCells({ schema_version: "operating-plan-v1", adjustments: [] }, sheet, pasted) as OperatingPlanBody;
     expect(body.expenses).toHaveLength(19);

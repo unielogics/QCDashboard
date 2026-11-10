@@ -66,6 +66,9 @@ export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(bo
     next[collection] = (next[collection] as unknown[]).map((value) => {
       if (!value || typeof value !== "object" || Array.isArray(value)) return value;
       const row = { ...value } as Record<string, unknown>;
+      for (const key of ["review_reason", "baseline_reconciliation_note"]) {
+        if (key in row && row[key] == null) row[key] = "";
+      }
       for (const key of ["essential", "excluded"]) {
         if (row[key] === "true" || row[key] === "false") row[key] = row[key] === "true";
       }
@@ -99,7 +102,7 @@ export function proposeExpense(body: OperatingPlanBody, expenseId: string, propo
 }
 /** Edits invalidate the local approval display; the server validates its evidence stamp too. */
 export function clearOperatingReview(row: OperatingAction): OperatingAction {
-  return { ...row, status: "proposed", reviewed_by_user_id: null, reviewed_at: null, review_reason: null, review_source_stamp: null, baseline_treatment: "unreconciled", baseline_reconciliation_note: null };
+  return { ...row, status: "proposed", reviewed_by_user_id: null, reviewed_at: null, review_reason: "", review_source_stamp: null, baseline_treatment: "unreconciled", baseline_reconciliation_note: "" };
 }
 export function operatingExpenseTotal(rows: OperatingExpense[]) {
   return rows.filter((row) => !row.excluded && !row.duplicate_of).reduce((result, row) => {

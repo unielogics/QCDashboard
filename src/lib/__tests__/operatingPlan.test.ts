@@ -13,7 +13,7 @@ describe("operating plan draft", () => {
   });
   it("removes protected review stamps when a client or staff member changes a proposal", () => {
     const changed = clearOperatingReview({ id: "one", status: "approved", reviewed_by_user_id: "staff", reviewed_at: "2026-01-01", review_source_stamp: "old", baseline_treatment: "included_in_baseline" });
-    expect(changed).toMatchObject({ status: "proposed", reviewed_at: null, reviewed_by_user_id: null, review_source_stamp: null, baseline_treatment: "unreconciled" });
+    expect(changed).toMatchObject({ status: "proposed", reviewed_at: null, reviewed_by_user_id: null, review_source_stamp: null, baseline_treatment: "unreconciled", review_reason: "", baseline_reconciliation_note: "" });
   });
   it("keeps unknown costs distinct from zero and excludes removed costs from totals", () => {
     expect(operatingNumber(0)).toBe(0); expect(operatingNumber(" ")).toBeNull();
