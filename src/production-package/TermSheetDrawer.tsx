@@ -27,6 +27,9 @@ import { dealBudgetPlan } from "@/lib/dealBudgetPlan";
 import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
 import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
+import { PrincipalBudgetNotice } from "@/components/file/PrincipalBudgetNotice";
+import { hasPrincipalBudgetMismatch, isPrincipalBudgetError } from "@/lib/principalBudget";
+import { dealBudgetChanged } from "@/lib/dealBudget";
 import { Drawer } from "@/components/ds/Drawer";
 import workspaceStyles from "@/components/application/LoanScheduleReview.module.css";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
@@ -446,6 +449,24 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const editorLoan = loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null;
   const editorPlan = dealBudgetPlan(financialPlanDraft ?? dealBudget.data?.financial_plan, editorLoan);
   const costPreview = useDealBudgetPreview(profileId, { enabled: open && loadedProfileId === profileId, loan: editorLoan, financialPlan: editorPlan });
+  const principalCalculation = costPreview.isError ? undefined : costPreview.data?.calculation;
+  const budgetDirty = Boolean(dealBudget.data && costPreview.value && dealBudgetChanged(costPreview.value, dealBudget.data));
+  const principalPending = costPreview.pending || costPreview.isFetching || dealBudget.isPending;
+  const principalMismatch = hasPrincipalBudgetMismatch(principalCalculation, form ? maybeNumber(form.approved_amount) : null);
+  const principalSolution = principalCalculation?.principal_solution as { status?: string } | undefined;
+  const principalUnresolved = costPreview.isError || Boolean(principalSolution && principalSolution.status !== "calculated");
+  const principalBlocked = principalPending || principalMismatch || principalUnresolved || budgetDirty;
+  const principalError = errors.some(isPrincipalBudgetError);
+  const visibleErrors = errors.filter(error => !isPrincipalBudgetError(error));
+  const applyCalculatedPrincipal = (amount: number) => {
+    upd({ approved_amount: String(amount) });
+    setErrors(previous => previous.filter(error => !isPrincipalBudgetError(error)));
+    setDone(null);
+  };
+  const reviewPrincipalBudget = () => {
+    changeView("budget");
+    requestAnimationFrame(() => document.getElementById(`${viewId}-budget-panel`)?.querySelector<HTMLElement>('[aria-label="Loan amount basis"]')?.focus());
+  };
   const summary = useMemo(() => form ? computePaymentSummary({
     amount: approved,
     termMonths: toNumber(form.term_months),
@@ -551,7 +572,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   }, [annualRate, approved, form, isRevolving, paymentBasis, programCoverage, summary]);
 
   const save = async () => {
-    if (loadedProfileId !== profileId || !form || !summary || !client.saveTermSheet || validationErrors.length || supportingPending || versionConflict) return;
+    if (loadedProfileId !== profileId || !form || !summary || !client.saveTermSheet || validationErrors.length || supportingPending || versionConflict || principalBlocked) return;
     setBusy("save"); setErrors([]); setDone(null);
     try {
       const expectedCollateralRevision = await collateral.verifyRevision();
@@ -566,6 +587,10 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
       onSaved?.(result);
     } catch (err) {
       fail(err, "The term sheet could not be recorded.");
+      if (isPrincipalBudgetError(errorMessage(err, ""))) {
+        void dealBudget.refetch();
+        void costPreview.refetch();
+      }
       if (errorStatus(err) === 409) void load();
     } finally { setBusy(null); }
   };
@@ -695,6 +720,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
       }}>
         {([['terms','Loan terms'],['collateral','Collateral'],['budget','Investment & closing costs']] as const).map(([key,label]) => <button type="button" key={key} role="tab" id={`${viewId}-${key}-tab`} aria-selected={view === key} aria-controls={`${viewId}-${key}-panel`} tabIndex={view === key ? 0 : -1} onClick={() => changeView(key)}>{label}</button>)}
       </nav>
+      <PrincipalBudgetNotice calculation={principalCalculation} currentAmount={form ? maybeNumber(form.approved_amount) : null} pending={principalPending} budgetDirty={budgetDirty} canApply={canEdit && !busy && !supportingPending && !principalUnresolved} onApply={applyCalculatedPrincipal} onReview={reviewPrincipalBudget} fallback={principalError || principalUnresolved} />
       {versionConflict ? <Callout tone="warn">A newer terms version is available. Your working loan was preserved.<PBtn onClick={() => { queryClient.removeQueries({ queryKey: draftKey }); void load(); }}>Discard draft and load current terms</PBtn></Callout> : null}
       <div role="tabpanel" id={`${viewId}-terms-panel`} aria-labelledby={`${viewId}-terms-tab`} hidden={view !== "terms"}>
       {loadError ? <div className="pp-notice t-warn"><span>{loadError}</span><PBtn size="sm" onClick={() => load()}>Try again</PBtn></div> : null}
@@ -894,10 +920,10 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
               </section>
 
               {validationErrors.length ? <div className="pp-ts-validation"><b>Complete these terms before recording</b><ul>{validationErrors.map((error) => <li key={error}>{error}</li>)}</ul></div> : null}
-              {errors.length ? <ul className="pp-errors">{errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
+              {visibleErrors.length ? <ul className="pp-errors">{visibleErrors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
               {done ? <Callout tone="ok">{done}</Callout> : null}
               <div className="pp-row">
-                <PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict} title={validationErrors[0]}>Record term sheet v{nextVersion}</PBtn>
+                <PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked} title={validationErrors[0]}>Record term sheet v{nextVersion}</PBtn>
                 {current && !withdrawAsk ? <PBtn variant="danger" size="sm" onClick={() => setWithdrawAsk(true)} disabled={Boolean(current.consumed_by_package_id)} title={current.consumed_by_package_id ? "Void the final that uses this term sheet first" : undefined}>Withdraw v{current.version}</PBtn> : null}
               </div>
               {withdrawAsk ? (
@@ -932,10 +958,10 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
         <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} title="Collateral for these terms" />
       </div>
       <div role="tabpanel" id={`${viewId}-budget-panel`} aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
-        <DealBudgetSection inline financialPlan={editorPlan} onGrossAmountChange={amount => upd({ approved_amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={amount => upd({ approved_amount: String(amount) })} onFinancingSaved={result => { if (result.record.new_loan_amount != null) upd({ approved_amount: String(result.record.new_loan_amount) }); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
+        <DealBudgetSection inline financialPlan={editorPlan} onGrossAmountChange={amount => upd({ approved_amount: amount == null ? "" : String(amount) })} onApplySolvedPrincipal={applyCalculatedPrincipal} onFinancingSaved={result => { if (result.record.new_loan_amount != null) applyCalculatedPrincipal(result.record.new_loan_amount); }} onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
       </div>
-      {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">Save collateral and budget edits first, then record a terms version with both snapshots.</span></div> : null}
-      {view !== "terms" && errors.length ? <ul className="pp-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
+      {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">Save collateral and budget edits first, then record a terms version with both snapshots.</span></div> : null}
+      {view !== "terms" && visibleErrors.length ? <ul className="pp-errors" role="alert">{visibleErrors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
     </Drawer>
   );
 }
