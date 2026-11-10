@@ -30,10 +30,12 @@ import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/
 import { FormReview } from "@/components/application/FormReview";
 import { RealEstateScheduleForm } from "@/components/application/RealEstateScheduleForm";
 import { PublicFormVersionNotice } from "@/components/application/PublicFormVersionNotice";
-import { PublicFinancialFormWriter, publicFinancialBody, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
+import { PublicFinancialFormWriter, publicFinancialBody, publicFinancialResponse, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
 import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
 import type { OperatingPlanBody, OperatingPlanSchema } from "@/lib/operatingPlan";
+import { unansweredOperatingCategories, type OperatingGuidanceReply } from "@/lib/operatingGuidance";
+import { BucketFileReviewPanel, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -112,6 +114,15 @@ export default function FinancialFormPage() {
   // still missing. Off while drafting: a half-typed row is not shouted at.
   const [showProblems, setShowProblems] = useState(false);
   const [savedVersion, setSavedVersion] = useState<PublicFinancialVersion | null>(null);
+  const [operatingPreview, setOperatingPreview] = useState<OperatingGuidanceReply | null>(null);
+  const [operatingEvaluating, setOperatingEvaluating] = useState(false);
+  const [operatingPreviewError, setOperatingPreviewError] = useState("");
+  const [operatingPreviewRetry, setOperatingPreviewRetry] = useState(0);
+  const [sourcePreviewId, setSourcePreviewId] = useState<string | null>(null);
+  const [operatingGuided, setOperatingGuided] = useState(true);
+  const [guidedStepRequest, setGuidedStepRequest] = useState<{ index: number; key: number } | null>(null);
+  const previewRequest = useRef(0);
+  const previewBody = useRef("");
   const writer = useRef<PublicFinancialFormWriter | null>(null);
   const bodyRef = useRef(body);
   const loadedBody = useRef("");
@@ -132,6 +143,8 @@ export default function FinancialFormPage() {
 
   useEffect(() => {
     if (!token) return;
+    setSourcePreviewId(null);
+    setOperatingGuided(true); setGuidedStepRequest(null);
     let cancelled = false;
     (async () => {
       try {
@@ -143,10 +156,12 @@ export default function FinancialFormPage() {
         const data = (await response.json()) as FormState;
         if (cancelled) return;
         setState(data);
+        setOperatingPreview(data.operating_plan ?? null);
         const next = publicFinancialBody(data.body ?? {});
         bodyRef.current = next;
         setBody(next);
         loadedBody.current = JSON.stringify(next);
+        previewBody.current = data.operating_plan ? JSON.stringify(next) : "";
         writer.current = new PublicFinancialFormWriter(base, data.workspace);
         setStatus(data.completed && !data.workspace?.dirty && data.can_edit !== false && data.permission !== "view" ? "done" : "ready");
       } catch {
@@ -158,8 +173,38 @@ export default function FinancialFormPage() {
     };
   }, [base, token]);
 
+  useEffect(() => {
+    const sequence = ++previewRequest.current;
+    if (state?.kind !== "operating_plan" || status !== "ready" || !canEdit) { setOperatingEvaluating(false); return; }
+    const sent = publicFinancialBody(body);
+    const fingerprint = JSON.stringify(sent);
+    if (!operatingPreviewRetry && fingerprint === previewBody.current) return;
+    const controller = new AbortController();
+    setOperatingEvaluating(true); setOperatingPreviewError("");
+    setOperatingPreview(current => current ? { ...current, evaluation: null } : current);
+    const timer = window.setTimeout(() => {
+      void fetch(`${base}/evaluate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: sent }), signal: controller.signal })
+        .then(response => publicFinancialResponse<OperatingGuidanceReply>(response))
+        .then(reply => { if (!controller.signal.aborted && sequence === previewRequest.current) { previewBody.current = fingerprint; setOperatingPreview(reply); } })
+        .catch(reason => { if (!controller.signal.aborted && sequence === previewRequest.current) setOperatingPreviewError(reason instanceof Error ? reason.message : "The preview could not be refreshed. Your entries are retained."); })
+        .finally(() => { if (!controller.signal.aborted && sequence === previewRequest.current) setOperatingEvaluating(false); });
+    }, 500);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [base, body, canEdit, operatingPreviewRetry, state?.kind, status]);
+
+  const loadOperatingSource = useCallback(async (): Promise<BucketFileReview> => {
+    if (!sourcePreviewId) throw new Error("Choose a source document.");
+    const reply = await publicFinancialResponse<Omit<BucketFileReview, "annotations">>(await fetch(`${base}/evidence/${encodeURIComponent(sourcePreviewId)}`));
+    if (reply.file.id !== sourcePreviewId) throw new Error("This source does not match the requested document.");
+    return { ...reply, annotations: [] };
+  }, [base, sourcePreviewId]);
+
   const acceptReply = useCallback((reply: PublicFinancialReply, sent: FormBody) => {
     setState((current) => current ? { ...current, ...reply } as FormState : current);
+    if (reply.operating_plan && bodyRef.current === sent) {
+      setOperatingPreview(reply.operating_plan);
+      previewBody.current = JSON.stringify(reply.body ?? sent);
+    }
     loadedBody.current = JSON.stringify(sent);
     // A canonical response must not erase typing that happened while it saved.
     if (reply.body && bodyRef.current === sent) {
@@ -196,6 +241,15 @@ export default function FinancialFormPage() {
   const review = async () => {
     if (!canEdit || !writer.current) return;
     setError(null);
+    if (state?.kind === "operating_plan" && operatingGuided) {
+      const unanswered = unansweredOperatingCategories(bodyRef.current, operatingPreview?.guidance);
+      if (unanswered.length) {
+        setError(`Confirm the current expense categories before reviewing: ${unanswered.map(question => question.label).join(", ")}. Choose current costs, not applicable, or I need help for each category.`);
+        setGuidedStepRequest(current => ({ index: 1, key: (current?.key ?? 0) + 1 }));
+        requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-label="Guided operating expenses and earnings plan"] h4')?.scrollIntoView({ block: "start", behavior: "smooth" }));
+        return;
+      }
+    }
     if (state?.kind === "debt_schedule") {
       const problems = debtRowProblems(bodyRef.current.debts ?? [], !!state.workspace);
       if (problems.length) {
@@ -452,7 +506,7 @@ export default function FinancialFormPage() {
           ) : state?.kind === "real_estate_schedule" ? (
             <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "operating_plan" ? (
-            <OperatingPlanForm value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} />
+            <><OperatingPlanForm key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={operatingPreview?.evaluation} evaluating={operatingEvaluating} onPreviewSource={setSourcePreviewId} />{operatingPreviewError ? <div role="alert"><p>{operatingPreviewError} Your entries are retained.</p><button type="button" onClick={() => setOperatingPreviewRetry(value => value + 1)}>Retry financial preview</button></div> : null}</>
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}
@@ -470,6 +524,7 @@ export default function FinancialFormPage() {
         ) : null}
       </main>
 
+      {sourcePreviewId && state?.kind === "operating_plan" ? <BucketFileReviewPanel title="Operating plan source document" reviewKey={`operating-source:${token}:${sourcePreviewId}`} loadReview={loadOperatingSource} activeFileId={sourcePreviewId} annotationsEnabled={false} onClose={() => setSourcePreviewId(null)} /> : null}
       <div className="fp-actions">
         <div className="fp-actions-inner">
           {canEdit ? <button type="button" className="fp-submit" disabled={status === "preparing"} onClick={() => void review()}>
