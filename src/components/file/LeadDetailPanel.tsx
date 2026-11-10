@@ -1099,7 +1099,7 @@ export function LeadDetailPanel({
     }
   }, [canUnderwrite, getToken, loadUnderwritingState, profileId]);
 
-  const refreshUnderwritingFromTerms = useCallback(async () => {
+  const refreshUnderwritingFromResponse = useCallback(async () => {
     const activeProfileId = underwriting?.profile_id ?? profileId;
     if (!activeProfileId || !canUnderwrite) return;
     try {
@@ -1108,11 +1108,12 @@ export function LeadDetailPanel({
         authToken: authToken ?? undefined,
       });
       setUnderwriting(state);
-      // Terms may advance the lifecycle, but must never erase target DSCR or
-      // reviewer notes that are still being drafted in the parent panel.
+      // Refresh the accepted amount without resolving/unmounting this file.
+      // Keep reviewer notes, target DSCR and other pending desk edits intact.
       setUnderwritingDraft((current) => ({
         ...current,
         underwriting_status: state.underwriting_status,
+        accepted_amount: state.accepted_amount == null ? "" : String(state.accepted_amount),
       }));
     } catch (reason) {
       setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be refreshed."));
@@ -2071,7 +2072,7 @@ export function LeadDetailPanel({
                       error={underwritingError}
                       onRecordAcceptance={(patch) => { void saveUnderwritingPatch(patch); }}
                       onStatusChange={changeUnderwritingStatus}
-                      onBudgetSaved={loadUnderwritingState}
+                      onResponseRecorded={refreshUnderwritingFromResponse}
                       onEditFees={() => setPrototypeView("financials")}
                       forecastEarnings={forecastEarnings}
                       feeInfo={{ vertical: dealEconomicsVertical, capPercent: underwriting?.qc_fee_cap_percent, reviewRequired: underwriting?.qc_fee_review_required, reviewReason: underwriting?.qc_fee_review_reason, label: underwriting?.fee_label }}

@@ -36,13 +36,13 @@ function Step({ n, title, state, chip, sub, children, step, active }: { n: numbe
   </section>;
 }
 
-export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onBudgetSaved, forecastEarnings, feeInfo, offer, marketplace, publication, loanId, onCreateFundingFile, canUnderwrite }: {
+export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onResponseRecorded, forecastEarnings, feeInfo, offer, marketplace, publication, loanId, onCreateFundingFile, canUnderwrite }: {
   profileId: string; terms: TermsOnFile | null; termsLoading: boolean; termsActions?: ReactNode; onEditTerms: () => void;
   financing?: WorkingFinancing | null; requestedAmount?: number | null; onCoveragePlan?: () => void;
   underwriting: ApplicationUnderwritingState | null; statusLabel: string; draft: UnderwritingDraft;
   onDraftChange: (patch: Partial<UnderwritingDraft>) => void; saving: boolean; error: string | null;
   onRecordAcceptance: (patch: ApplicationUnderwritingPatch) => void; onStatusChange: (status: UnderwritingLifecycleStatus) => void;
-  onEditFees: () => void; onBudgetSaved?: () => Promise<unknown> | void; forecastEarnings: number | null;
+  onEditFees: () => void; onResponseRecorded?: () => Promise<unknown> | void; forecastEarnings: number | null;
   feeInfo: { vertical?: "real_estate" | "main_street" | "dealer" | "mca"; capPercent?: number | null; reviewRequired?: boolean; reviewReason?: string | null; label?: string | null };
   marketplace?: ReactNode; publication?: { published: boolean; label?: string };
   offer: { termsSelection: OfferSelection | null; merchantSelection: OfferSelection | null; merchantStatus: string | null; merchantStrip: ReactNode; selectedKeys: string[]; onSelectedKeys: (keys: string[]) => void; onCompose: () => void; receipt: OfferDeliveryReceipt | null; contactSuppressed: boolean };
@@ -128,7 +128,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
         <div className="uw-actions"><Btn variant="pri" disabled={!canUnderwrite || !offer.selectedKeys.length || offer.contactSuppressed || saving} onClick={offer.onCompose} title={offer.contactSuppressed ? "Direct client contact is suppressed on this file" : undefined}><Icon name="send" size={14} />{offerSent ? "Review client delivery" : "Prepare client delivery"}</Btn><button type="button" className="linklike" onClick={() => setMerchantOpen(value => !value)}>{merchantOpen ? "Hide processing offer" : "Processing offer (optional)"}</button></div>
         {merchantOpen ? <div className="uw-sub">{offer.merchantStrip}</div> : null}
       </section>
-      <OfferDeliveryHistory key={profileId} profileId={profileId} refreshKey={offer.receipt?.id} expanded responseActions canRecordResponse={canUnderwrite && !saving} onRead={setDeliveries} onResponseRecorded={onBudgetSaved} />
+      <OfferDeliveryHistory key={profileId} profileId={profileId} refreshKey={offer.receipt?.id} expanded responseActions canRecordResponse={canUnderwrite && !saving} onRead={setDeliveries} onResponseRecorded={onResponseRecorded} />
       <p className="sub">Acceptance and decline apply to the version shown in the delivery history. Record a response only after the client has communicated it.</p>
       <details className="uw-sub"><summary>Offline acceptance and closing date</summary><div className="grid g10">
         <p className="sub">Use this for a client acceptance received outside the delivery workflow. Record sent-offer responses above when available.</p>
