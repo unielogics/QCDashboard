@@ -136,10 +136,10 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, reviewRequest = 0, termsRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; reviewRequest?: number; termsRequest?: number; onReviewClose?: () => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; onReviewClose?: () => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
-  const canEdit = requestedCanEdit && !termsPending && !save.isPending;
+  const canEdit = requestedCanEdit && !termsPending && !save.isPending && !setupBudgetSaving;
   const queryClient = useQueryClient();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
@@ -159,14 +159,14 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const legacySelectionKey = JSON.stringify(cockpit.plan.unresolved_previous_selections ?? []);
   useEffect(() => { setLegacySelectionsReviewed(false); }, [legacySelectionKey]);
   const returnToReview = useRef(false);
-  const openClientTerms = (view: ClientTermsView) => { returnToReview.current = reviewOpen; setClientTermsView(view); setReviewOpen(false); setClientTermsOpen(true); };
+  const openClientTerms = (view: ClientTermsView) => { if (setupBudgetSaving) return; returnToReview.current = reviewOpen; setClientTermsView(view); setReviewOpen(false); setClientTermsOpen(true); };
   const lastTermsRequest = useRef(0);
   useEffect(() => {
-    if (lastTermsRequest.current === termsRequest) return;
+    if (setupBudgetSaving || lastTermsRequest.current === termsRequest) return;
     lastTermsRequest.current = termsRequest;
     if (termsRequest > 0) { returnToReview.current = false; setClientTermsView("terms"); setReviewOpen(false); setClientTermsOpen(true); }
-  }, [termsRequest]);
-  const openDebt = (target: DebtScheduleEditorTarget) => { returnToReview.current = reviewOpen; setReviewOpen(false); setDebtEditor(target); };
+  }, [setupBudgetSaving, termsRequest]);
+  const openDebt = (target: DebtScheduleEditorTarget) => { if (setupBudgetSaving) return; returnToReview.current = reviewOpen; setReviewOpen(false); setDebtEditor(target); };
   const refresh = () => onRefresh?.();
   const closeDebt = () => {
     setDebtEditor(null);
@@ -176,7 +176,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     if (returnToReview.current) setReviewOpen(true);
     returnToReview.current = false;
   };
-  const previewSource = (fileId: string, page?: number) => { setReviewOpen(false); onPreviewSource?.(fileId, page); };
+  const previewSource = (fileId: string, page?: number) => { if (setupBudgetSaving) return; setReviewOpen(false); onPreviewSource?.(fileId, page); };
   const [plan, setPlan] = useState<FinancialPlanWrite>(() => fromRecord(cockpit));
   const [paymentText, setPaymentText] = useState<string>(() => (cockpit.plan.record.new_payment_monthly == null ? "" : String(cockpit.plan.record.new_payment_monthly)));
   const [error, setError] = useState<string | null>(null);
@@ -478,7 +478,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       {saved && !dirty ? <StatusLine tone="ok">{saved}</StatusLine> : null}
       {dirty ? <StatusLine tone="acc">Unsaved plan: the figures below already reflect it; save to make the debt service, the offer and the advances follow.</StatusLine> : null}
-      {onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
+      {onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
 
       <CoverageFundingGap value={fundingReview} basis={`${coverageBasis?.label ?? "Selected earnings"}${coverageBasis?.period ? ` · ${coverageBasis.period}` : ""}`} />
       <div className="fc-grid">
@@ -518,7 +518,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           {local.incomeAfter == null || local.incomeAfter > 0 ? <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" /> : null}
           {local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the regular payment equivalent after interest-only, without matching commencement dates to historical statement months. DSCR separately retains the underwriting stress basis, including principal due.</p> : null}
           <div className="fc-stat-list">
-            <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { setReviewOpen(false); onOpenEvidence(); } : undefined} />
+            <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} />
             <Stat label="Loan the plan needs">{local.loanAmountNeeded ? `${money(local.loanAmountNeeded)}${local.payoffTotal ? ` (payoffs ${money(local.payoffTotal)}${local.payoffUnknown ? `, ${local.payoffUnknown} unknown` : ""})` : ""}` : "—"}</Stat>
             <Stat label="Net cash flow per month, today → plan">{money(summary.avg_net)} → {money(local.netAfterAverage)}</Stat>
             <Stat label="Ending balance, last month, today → plan">{money(summary.ending_balance)} → {money(local.endingAfterLast)}</Stat>
@@ -529,7 +529,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
 
       <details className={styles.ebitdaDetails}>
         <summary>EBITDA sources and plan adjustments</summary>
-        <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
+        <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
         <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} potential={cockpit.ebitda?.potential} planIsCurrent={!dirty} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
       </details>
 
@@ -554,7 +554,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                 </thead>
                 <tbody>
                   {obligations.map((o) => (
-                    <ObligationPlanRow key={o.id} o={o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} onReviewEvidence={onOpenEvidence ? () => { setReviewOpen(false); onOpenEvidence(); } : undefined} />
+                    <ObligationPlanRow key={o.id} o={o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} />
                   ))}
                 </tbody>
               </table>
@@ -601,19 +601,19 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
             {local.schedule ? "Scheduled installments, maturity principal and the underwriting stress basis are shown separately above." : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month for coverage.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month for coverage${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
-            {canRecordTerms ? <> <button type="button" className="linky" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record loan terms</button></> : null}
+            {canRecordTerms ? <> <button type="button" className="linky" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record loan terms</button></> : null}
           </span>
           {recorded ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               {mirrorNow === "mirrored" ? <CellChip tone="ok">Mirrors {recorded.label}</CellChip> : mirrorNow === "recorded_not_in_plan" ? <CellChip tone="mut">{recorded.label} is recorded, not in the plan</CellChip> : mirrorNow ? <CellChip tone="warn">Differs from {recorded.label}: {mirrorNow.slice("differs:".length)}</CellChip> : null}
               {canEdit && mirrorNow !== "mirrored" ? <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Use the recorded terms ({money(recorded.payment_monthly)} / mo)</Btn> : null}
               {canEdit && termsAdopted ? <Btn size="sm" onClick={() => adoptTerms(false)}>Take them out of the plan</Btn> : null}
-              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record the term sheet from this loan</Btn> : null}
+              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record the term sheet from this loan</Btn> : null}
             </div>
           ) : local.newPayment && canRecordTerms ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               <CellChip tone="mut">Not recorded on the Underwriting tab yet</CellChip>
-              <Btn size="sm" onClick={() => { setReviewOpen(false); onRecordTerms(); }}>Record these terms</Btn>
+              <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record these terms</Btn>
             </div>
           ) : null}
           {termsKind === "client" ? (
@@ -815,7 +815,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         </div>
       ) : null}
 
-      {months.length ? <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { setReviewOpen(false); onOpenEvidence(); } : undefined} /> : null}
+      {months.length ? <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} /> : null}
       {months.length ? (
         <ChartCard
           plain
@@ -872,7 +872,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       {repaymentIssue ? <StatusLine tone="bad">Repayment preview is invalid: {repaymentIssue} Resolve it before saving or using these projections.</StatusLine> : null}
       {dirty || legacySelectionsReviewed ? <StatusLine tone="acc">Your scenario changes are kept while reviewing. Save plan applies scenario changes; Save version publishes the debt schedule.</StatusLine> : null}
     </section>
-    <FinancialReviewDrawer open={reviewOpen} onClose={() => { setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} businessName={businessName} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
+    <FinancialReviewDrawer setupBudgetSaving={setupBudgetSaving} open={reviewOpen} onClose={() => { if (setupBudgetSaving) return; setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} businessName={businessName} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
     <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
   </>;

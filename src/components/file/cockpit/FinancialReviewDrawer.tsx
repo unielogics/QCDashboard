@@ -21,25 +21,27 @@ const TABS: Array<{ value: FinancialReviewTab; label: string }> = [
   { value: "plan", label: "Coverage plan" }, { value: "risk", label: "Balance risk" }, { value: "movements", label: "Account movement" },
   { value: "agreements", label: "Agreements / advances" },
 ];
-export function FinancialReviewDrawer({ open, onClose, tab, onTab, cockpit, profileId, businessName, months, summary, accountLabel, accountKey, canEdit, canCorrectMetrics = false, onRefresh, onOpenDebt, onPreviewSource, onOpenEvidence, planContent, spendContent, planActions }: {
+export function FinancialReviewDrawer({ open, onClose, tab, onTab, cockpit, profileId, businessName, months, summary, accountLabel, accountKey, canEdit, canCorrectMetrics = false, onRefresh, onOpenDebt, onPreviewSource, onOpenEvidence, planContent, spendContent, planActions, setupBudgetSaving = false }: {
   open: boolean; onClose: () => void; tab: FinancialReviewTab; onTab: (tab: FinancialReviewTab) => void;
   cockpit: FinancialCockpit; profileId: string; businessName?: string | null; months: CockpitMonth[]; summary: CockpitBankSummary;
   accountLabel: string; accountKey?: string; canEdit: boolean; canCorrectMetrics?: boolean; onRefresh: () => Promise<unknown> | void;
   onOpenDebt: (target: DebtScheduleEditorTarget) => void;
   onPreviewSource?: (fileId: string, page?: number) => void; onOpenEvidence?: () => void;
   planContent: ReactNode; spendContent?: ReactNode; planActions?: ReactNode;
+  setupBudgetSaving?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [statementView, setStatementView] = useState<RecurringReviewView | undefined>();
   const [metricDraft, setMetricDraft] = useState<MetricCorrectionDraft | null>(null);
   const [metricPending, setMetricPending] = useState(false);
+  const pending = metricPending || setupBudgetSaving;
   const activeProfile = useRef(profileId);
   activeProfile.current = profileId;
   useEffect(() => { setMetricDraft(null); setMetricPending(false); }, [profileId]);
-  return <Drawer open={open} onClose={() => { if (!metricPending) onClose(); }} title={<FinancialReviewHeading businessName={businessName} />} sub="One working schedule, statement evidence, and the published coverage basis." ariaLabel={`Advanced financial review — ${financialReviewCompanyName(businessName)}`} width="xl" fullscreen={expanded} bodyClass={styles.drawerBody} headerClass={styles.reviewHeader} headerActions={<>
-    <Btn size="sm" disabled={metricPending} aria-label={expanded ? "Restore financial review size" : "Expand financial review"} onClick={() => setExpanded((value) => !value)}>{expanded ? "Restore" : "Expand"}</Btn>{tab === "plan" ? planActions : null}
+  return <Drawer open={open} onClose={() => { if (!pending) onClose(); }} title={<FinancialReviewHeading businessName={businessName} />} sub="One working schedule, statement evidence, and the published coverage basis." ariaLabel={`Advanced financial review — ${financialReviewCompanyName(businessName)}`} width="xl" fullscreen={expanded} bodyClass={styles.drawerBody} headerClass={styles.reviewHeader} headerActions={<>
+    <Btn size="sm" disabled={pending} aria-label={expanded ? "Restore financial review size" : "Expand financial review"} onClick={() => setExpanded((value) => !value)}>{expanded ? "Restore" : "Expand"}</Btn>{tab === "plan" ? planActions : null}
   </>}>
-    <nav className={styles.tabs} aria-label="Advanced financial review sections" role="tablist">{TABS.map((item) => <button type="button" key={item.value} role="tab" disabled={metricPending} aria-selected={tab === item.value} className={tab === item.value ? styles.selectedTab : undefined} onClick={() => onTab(item.value)}>{item.label}</button>)}</nav>
+    <nav className={styles.tabs} aria-label="Advanced financial review sections" role="tablist">{TABS.map((item) => <button type="button" key={item.value} role="tab" disabled={pending} aria-selected={tab === item.value} className={tab === item.value ? styles.selectedTab : undefined} onClick={() => onTab(item.value)}>{item.label}</button>)}</nav>
     <div className={styles.reviewBody}>
       {tab === "schedule" ? <section className={styles.section}><h3>Working debt schedule</h3><p className={styles.note}>This is the same working schedule shown in Evidence &amp; banking. Statement candidates are separate until you add them; only Save version publishes a completed schedule.</p><DebtScheduleReviewPanel profileId={profileId} compact onSaved={() => void onRefresh()} onOpenEditor={onOpenDebt} /></section> : null}
       {tab === "statements" ? <><RecurringCard profileId={profileId} cockpit={cockpit} canEdit={canEdit} onRefresh={onRefresh} accountLabel={accountKey && !["all", "counted"].includes(accountKey) ? accountLabel : null} accountScope={accountKey} onOpenDebt={(rowId) => onOpenDebt({ view: "form", rowId })} onPreviewSource={onPreviewSource} initialReviewView={statementView} onReviewView={setStatementView} compact />{spendContent}</> : null}

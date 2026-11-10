@@ -15,9 +15,12 @@ const TAX_2025 = "81000000-0000-0000-0000-000000000005";
 const PNL_2025 = "81000000-0000-0000-0000-000000000006";
 const TAX_2024 = "81000000-0000-0000-0000-000000000007";
 
-async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean; recurringFeeNetRelease?: boolean; noSources?: boolean; readOnly?: boolean; reviewFailure?: boolean; reviewConflict?: boolean; rawPnl?: boolean; staleReview?: boolean } = {}) {
-  const programSaves: Json[] = [], draftSaves: Json[] = [], versionSaves: Json[] = [], principalSaves: Json[] = [], unexpectedWrites: string[] = [], errors: string[] = [];
+async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean; recurringFeeNetRelease?: boolean; noSources?: boolean; readOnly?: boolean; reviewFailure?: boolean; reviewConflict?: boolean; rawPnl?: boolean; staleReview?: boolean; deferredBudgetSave?: boolean } = {}) {
+  const programSaves: Json[] = [], draftSaves: Json[] = [], versionSaves: Json[] = [], principalSaves: Json[] = [], budgetSaves: Json[] = [], unexpectedWrites: string[] = [], errors: string[] = [];
   const noiSaves: Json[] = [];
+  let useOfFundsItems = [{ id: "sample-use", category: "working_capital", label: "Inventory and business reserves", amount: 180000 }], useOfFundsRevision = 1;
+  let releaseBudgetSave = () => {};
+  const budgetSaveGate = options.deferredBudgetSave ? new Promise<void>(resolve => { releaseBudgetSave = resolve; }) : Promise.resolve();
   let cockpitReads = 0, noiRevision = options.staleReview ? 1 : 0, sourceStamp = (options.staleReview ? "b" : "a").repeat(64), reviewFailed = false, reviewStale = Boolean(options.staleReview);
   let current: Receipt | null = options.staleReview ? { id: "review-old", revision: 1, at: "2026-11-10T17:00:00Z", mode: "manual", selected_file_id: null, annual_value: 42000, year: 2025, currency: "USD", period_start: null, period_end: null, reason: "Prior working estimate requires a current evidence review.", source_refs: [], source_stamp: "a".repeat(64), actor_name: "Case reviewer", actor_id: "reviewer", source_metric: "noi" } : null;
   const history: Receipt[] = current ? [current] : [];
@@ -167,7 +170,16 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     else if (path.endsWith(`/${PROFILE}/underwriting`)) body = { profile_id: PROFILE, source_kind: "intake", source_id: INTAKE, underwriting_status: "submitted", approved_amount: null, current_dscr: -0.25, target_dscr: 1.25, reviewer_notes: null };
     else if (path.endsWith(`/${PROFILE}/client-terms`)) body = { profile_id: PROFILE, version: 1, status: "draft", amount: 180000, apr_pct: 15, term_months: 24, loan_type: "private_loan_bridge", loan_type_label: "Private Loan / Bridge", loan_type_options: [], repayment_frequency: "monthly", conditions: [], financial_plan: { record: cockpit().plan.record }, can_edit: true };
     else if (path.endsWith(`/${PROFILE}/verification`)) body = verification;
-    else if (path.endsWith(`/${PROFILE}/use-of-funds`)) body = { profile_id: PROFILE, items: [{ id: "sample-use", category: "working_capital", label: "Inventory and business reserves", amount: 180000 }], requested_amount: 180000, requested_amount_source: "intake.requested_loan_amount", total: 180000, category_totals: { working_capital: 180000 }, unallocated_amount: 0, complete: true, real_estate_equipment_amount: 0, real_estate_equipment_pct: 0, revision: 1, can_edit: !options.readOnly, source: "profile", warnings: [], requires_exact_allocation: false, funding_request_revision: 0, payoff_only_alternative: false };
+    else if (path.endsWith(`/${PROFILE}/use-of-funds`)) {
+      if (request.method() !== "GET") {
+        const payload = request.postDataJSON() as Json; budgetSaves.push(payload);
+        expect(payload.expected_revision).toBe(useOfFundsRevision);
+        await budgetSaveGate;
+        useOfFundsItems = (payload.items as typeof useOfFundsItems).map(row => ({ ...row, amount: Number(row.amount) }));
+        useOfFundsRevision += 1;
+      }
+      body = { profile_id: PROFILE, items: useOfFundsItems, requested_amount: 180000, requested_amount_source: "intake.requested_loan_amount", total: 180000, category_totals: { working_capital: 180000 }, unallocated_amount: 0, complete: true, real_estate_equipment_amount: 0, real_estate_equipment_pct: 0, revision: useOfFundsRevision, can_edit: !options.readOnly, source: "profile", warnings: [], requires_exact_allocation: false, funding_request_revision: 0, payoff_only_alternative: false };
+    }
     else if (path.endsWith(`/${PROFILE}/collateral`)) body = { profile_id: PROFILE, enabled: false, properties: [], assets: [], revision: 1, can_edit: !options.readOnly, property_options: [], source_file_options: [] };
     else if (path.endsWith(`/${PROFILE}/evidence-workspace`)) body = { profile_id: PROFILE, primary_bucket_id: BUCKET, primary_bucket_name: "Example secure room", program_readiness: readiness(), verification, forms: { forms: [], packets: [] }, evidence: { profile_id: PROFILE, sources: [], files: [], total_files: 0, review_file_count: 0, blockers: [] }, supporting_group: null, processing: { total_files: 0, analyzing_files: 0, accepted_files: 0, needs_attention_files: 0, failed_files: 0, has_processing: false }, can_manage_evidence: true, can_upload: true };
     else if (path.endsWith(`/${PROFILE}/collection-tasks`)) body = { tasks: [] };
@@ -183,7 +195,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     await page.getByRole("tab", { name: "Financials", exact: true }).click();
     await expect(page.getByRole("button", { name: "Open earnings plan", exact: true })).toBeVisible();
   }
-  return { programSaves, draftSaves, versionSaves, principalSaves, noiSaves, unexpectedWrites, errors, planBody: () => planBody, cockpitReads: () => cockpitReads,
+  return { programSaves, draftSaves, versionSaves, principalSaves, budgetSaves, releaseBudgetSave, noiSaves, unexpectedWrites, errors, planBody: () => planBody, cockpitReads: () => cockpitReads,
     publishCriteria: () => { const row = candidates.find(candidate => candidate.program_key === "special_review")!; Object.assign(row, { playbook_id: "special-criteria", playbook_version: 1, recommendation_status: "not_eligible", reasons: ["New published criteria require underwriting review."] }); } };
 }
 
@@ -272,6 +284,83 @@ test("the complete programs and use-of-funds panel lives in Coverage plan while 
   expect(state.errors).toEqual([]);
 });
 
+test("unsaved use-of-funds entries survive Coverage tab changes and drawer reopening", async ({ page }, testInfo) => {
+  const state = await fixture(page);
+  await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+  const review = page.getByRole("dialog", { name: /^Advanced financial review/ });
+  const observed: Array<{ navigation: string; expected: string; actual: string }> = [];
+  for (const navigation of ["tab", "close"] as const) {
+    await review.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+    const description = review.getByRole("textbox", { name: "Description for use 1", exact: true });
+    if (!await description.isVisible()) await review.getByRole("button", { name: "Review budget", exact: true }).click();
+    const expected = `Unsaved budget retained after ${navigation}`;
+    await description.fill(expected);
+    if (navigation === "tab") {
+      await review.getByRole("tab", { name: "Working debt schedule", exact: true }).click();
+      await review.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+    } else {
+      await review.getByRole("button", { name: "Close", exact: true }).click();
+      await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+      await review.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+    }
+    if (!await description.isVisible()) await review.getByRole("button", { name: "Review budget", exact: true }).click();
+    await expect(description).toBeVisible();
+    const actual = await description.inputValue();
+    observed.push({ navigation, expected, actual });
+    expect.soft(actual, `Unsaved budget after ${navigation}`).toBe(expected);
+  }
+  await writeFile(testInfo.outputPath("use-of-funds-draft-lifecycle.json"), JSON.stringify(observed, null, 2));
+  await review.getByRole("textbox", { name: "Description for use 1", exact: true }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("use-of-funds-retained-draft.png"), animations: "disabled" });
+  expect(state.budgetSaves).toEqual([]);
+  expect(state.unexpectedWrites).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
+test("Coverage budget discard restores saved entries and a pending save blocks close and duplicate writes", async ({ page }) => {
+  const state = await fixture(page, { deferredBudgetSave: true });
+  await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+  const review = page.getByRole("dialog", { name: /^Advanced financial review/ });
+  await review.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+  await review.getByRole("button", { name: "Review budget", exact: true }).click();
+  const description = review.getByRole("textbox", { name: "Description for use 1", exact: true });
+  await description.fill("Discard this unsaved entry");
+  await review.getByRole("button", { name: "Discard edits", exact: true }).click();
+  await expect(description).toHaveValue("Inventory and business reserves");
+  expect(state.budgetSaves).toEqual([]);
+  await description.fill("Reviewed saved allocation");
+  await review.getByRole("button", { name: "Save budget", exact: true }).click();
+  await expect.poll(() => state.budgetSaves.length).toBe(1);
+  const saving = review.getByRole("button", { name: "Saving…", exact: true });
+  await expect(saving).toBeDisabled();
+  await expect(review.getByRole("tab", { name: "Working debt schedule", exact: true })).toBeDisabled();
+  await review.getByRole("button", { name: "Close", exact: true }).click();
+  await page.keyboard.press("Escape");
+  await expect(review).toBeVisible();
+  await saving.scrollIntoViewIfNeeded();
+  const saveBox = await saving.boundingBox();
+  if (!saveBox) throw Error("Pending budget save control missing");
+  expect(saveBox.y).toBeGreaterThanOrEqual(0);
+  expect(saveBox.y + saveBox.height).toBeLessThanOrEqual(page.viewportSize()!.height);
+  await page.mouse.click(saveBox.x + saveBox.width / 2, saveBox.y + saveBox.height / 2, { clickCount: 2 });
+  expect(state.budgetSaves).toHaveLength(1);
+  state.releaseBudgetSave();
+  await expect(review.getByRole("status")).toContainText("Budget saved.");
+  await expect(review.getByRole("button", { name: "Save budget", exact: true })).toBeDisabled();
+  await review.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByRole("button", { name: "Advanced review", exact: true }).click();
+  await review.getByRole("tab", { name: "Coverage plan", exact: true }).click();
+  await review.getByRole("button", { name: "Review budget", exact: true }).click();
+  await expect(description).toHaveValue("Reviewed saved allocation");
+  await description.fill("A later unsaved draft");
+  await review.getByRole("button", { name: "Discard edits", exact: true }).click();
+  await expect(description).toHaveValue("Reviewed saved allocation");
+  expect(state.budgetSaves).toHaveLength(1);
+  expect(state.principalSaves).toEqual([]);
+  expect(state.unexpectedWrites).toEqual([]);
+  expect(state.errors).toEqual([]);
+});
+
 test("source review prefills the selected document year and updates current NOI, history, tile and report context", async ({ page }, testInfo) => {
   const state = await fixture(page);
   const { dialog, editor } = await openNoi(page);
@@ -302,6 +391,7 @@ test("source review prefills the selected document year and updates current NOI,
   await expect(page.getByRole("button", { name: NOI_TILE, exact: true })).toContainText("2024");
   await expect(page.locator("#package-readiness")).not.toContainText("Annual NOI needs a P&L");
   expect(state.cockpitReads()).toBeGreaterThan(1);
+  expect(state.principalSaves).toHaveLength(0);
   expect(state.errors).toEqual([]);
 });
 
@@ -317,6 +407,7 @@ for (const amount of [0, -25000]) test(`manual annual NOI ${amount} can be saved
   await editor.getByRole("button", { name: "Save current NOI", exact: true }).click();
   await expect(editor).toContainText("Current NOI saved.");
   expect(state.noiSaves[0]).toMatchObject({ mode: "manual", selected_file_id: null, annual_value: amount, year: 2025, currency: "USD", period_start: null, period_end: null });
+  expect(state.principalSaves).toHaveLength(0);
   await expect(dialog.getByText("Current financial figure", { exact: true }).locator("..")).toContainText(amount === 0 ? "$0" : "$25,000");
   await page.screenshot({ path: testInfo.outputPath(`noi-manual-${amount === 0 ? "zero" : "negative"}.png`), animations: "disabled" });
   expect(state.errors).toEqual([]);

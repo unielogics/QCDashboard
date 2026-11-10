@@ -5,6 +5,7 @@ import { Btn, Callout, CellChip, Field, Input, Select } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { ApiError } from "@/lib/api";
 import { budgetPreview, budgetRows, budgetShareLabel, USE_OF_FUNDS_CATEGORIES, type UseOfFundsBudget, type UseOfFundsCategory, type UseOfFundsRow } from "@/lib/useOfFunds";
+import { budgetDraftMatchesCurrent, type UseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
 import styles from "./UseOfFundsEditor.module.css";
 
 const dollars = (cents: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 }).format(cents / 100);
@@ -14,7 +15,7 @@ export type BudgetEditorControls = {
   dirty: boolean; busy: boolean; saving: boolean; canSave: boolean; canEdit: boolean;
   save: () => Promise<void>; discard: () => void;
 };
-export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audience = "staff", initiallyOpen = false, showActions = true, onControlsChange }: {
+export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audience = "staff", initiallyOpen = false, showActions = true, onControlsChange, draftStore }: {
   loadBudget: () => Promise<UseOfFundsBudget>;
   saveBudget: (input: BudgetSaveInput) => Promise<UseOfFundsBudget>;
   onSaved?: () => Promise<unknown> | void;
@@ -22,27 +23,52 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
   initiallyOpen?: boolean;
   showActions?: boolean;
   onControlsChange?: (controls: BudgetEditorControls | null) => void;
+  draftStore?: UseOfFundsDraftStore;
 }) {
   const heading = useId();
-  const [budget, setBudget] = useState<UseOfFundsBudget | null>(null);
-  const [rows, setRows] = useState<UseOfFundsRow[]>([]);
-  const [busy, setBusy] = useState(false);
+  const [restored] = useState(() => draftStore?.read() ?? null);
+  const draft = useRef(restored);
+  const latestBudget = useRef<UseOfFundsBudget | null>(null);
+  const mounted = useRef(true);
+  const loadGeneration = useRef(0);
+  const [verified, setVerified] = useState(!draftStore);
+  const [budget, setBudget] = useState<UseOfFundsBudget | null>(restored?.budget ?? null);
+  const [rows, setRows] = useState<UseOfFundsRow[]>(restored?.rows ?? []);
+  const [busy, setBusy] = useState(Boolean(restored));
   const [saving, setSaving] = useState(false);
-  const [dirty, setDirty] = useState(false);
+  const [dirty, setDirty] = useState(Boolean(restored));
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [conflict, setConflict] = useState(false);
-  const [open, setOpen] = useState(initiallyOpen || audience === "client");
+  const [open, setOpen] = useState(Boolean(restored) || initiallyOpen || audience === "client");
   const editState = useRef({ dirty, busy });
   const savePending = useRef(false);
   editState.current = { dirty, busy };
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const apply = useCallback((next: UseOfFundsBudget) => { setBudget(next); setRows(budgetRows(next.items)); setDirty(false); setConflict(false); }, []);
-  const load = useCallback(async () => {
+  const load = useCallback(async (discard = false) => {
+    const generation = ++loadGeneration.current;
     setBusy(true); setError("");
-    try { apply(await loadBudget()); }
-    catch (reason) { setError(reason instanceof Error ? reason.message : "Use of funds could not be loaded."); }
-    finally { setBusy(false); }
-  }, [apply, loadBudget]);
+    try {
+      const next = await loadBudget();
+      if (!mounted.current || generation !== loadGeneration.current) return;
+      latestBudget.current = next;
+      setVerified(true);
+      if (discard) { draftStore?.clear(draft.current?.generation); draft.current = null; }
+      if (draft.current) {
+        const current = budgetDraftMatchesCurrent(draft.current.budget, next);
+        // Keep the original financial basis and raw entries, but never cached permissions.
+        setBudget({ ...draft.current.budget, can_edit: next.can_edit, warnings: next.warnings });
+        setConflict(!current);
+        if (!current) setError("The saved budget or requested amount changed. Your unsaved entries are preserved. Discard edits and reload the saved budget before saving.");
+      } else apply(next);
+    }
+    catch (reason) { if (mounted.current && generation === loadGeneration.current) setError(reason instanceof Error ? reason.message : "Use of funds could not be loaded."); }
+    finally { if (mounted.current && generation === loadGeneration.current) setBusy(false); }
+  }, [apply, draftStore, loadBudget]);
   useEffect(() => { void load(); }, [load]);
   useEffect(() => {
     let mounted = true;
@@ -50,7 +76,7 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
       if (document.visibilityState === "hidden" || editState.current.dirty || editState.current.busy) return;
       try {
         const next = await loadBudget();
-        if (mounted && !editState.current.dirty && !editState.current.busy) apply(next);
+        if (mounted && !editState.current.dirty && !editState.current.busy) { latestBudget.current = next; apply(next); }
       } catch { /* Keep the last saved budget; explicit reload provides retry. */ }
     };
     window.addEventListener("focus", refresh);
@@ -60,28 +86,53 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
   const preview = budgetPreview(rows, budget?.requested_amount ?? null);
   const exactAllocationMissing = Boolean(budget?.requires_exact_allocation && !preview.complete);
   const readOnly = budget?.can_edit === false;
-  const canSave = Boolean(budget && dirty && !busy && !conflict && !readOnly && !exactAllocationMissing && !Object.keys(preview.errors).length);
-  const change = (next: UseOfFundsRow[]) => { setRows(next); setDirty(true); setSaved(""); };
+  const canSave = Boolean(budget && verified && dirty && !busy && !conflict && !readOnly && !exactAllocationMissing && !Object.keys(preview.errors).length);
+  const change = (next: UseOfFundsRow[]) => {
+    if (budget && draftStore) draft.current = draftStore.write(draft.current?.budget ?? budget, next);
+    editState.current.dirty = true;
+    setRows(next); setDirty(true); setSaved("");
+  };
   const update = (id: string, patch: Partial<UseOfFundsRow>) => change(rows.map((row) => row.id === id ? { ...row, ...patch } : row));
   async function save() {
     if (!budget || !canSave || savePending.current) return;
     savePending.current = true;
+    const savedGeneration = draft.current?.generation;
     setBusy(true); setSaving(true); setError(""); setSaved("");
     try {
+      if (draftStore) {
+        const current = await loadBudget();
+        if (!mounted.current) return;
+        latestBudget.current = current;
+        setBudget((base) => base ? { ...base, can_edit: current.can_edit, warnings: current.warnings } : base);
+        if (!budgetDraftMatchesCurrent(budget, current)) throw new ApiError(409, "The budget or requested amount changed.");
+        if (current.can_edit === false) throw new Error("You can review this budget. An authorized file team member can edit it.");
+      }
       const next = await saveBudget({
         expected_revision: budget.revision,
         items: rows.map((row) => ({ ...row, label: row.label.trim() || USE_OF_FUNDS_CATEGORIES.find(([key]) => key === row.category)![1] })),
       });
+      draftStore?.clear(savedGeneration);
+      if (!mounted.current) return;
+      draft.current = null;
+      latestBudget.current = next;
       apply(next);
       setSaved(next.complete ? audience === "client" ? "Budget saved and shared with your file team. This is not a financing approval." : "Budget saved. Program recommendations can now use this allocation; existing program selections and approval status are unchanged." : "Partial budget saved. Allocate the full requested amount to complete your budget.");
       try { await onSaved?.(); } catch { setSaved("Budget saved. Refresh the file to see the latest results."); }
     } catch (reason) {
+      if (!mounted.current) return;
       setConflict(reason instanceof ApiError && reason.status === 409);
       setError(reason instanceof ApiError && reason.status === 409 ? "This budget changed while you were editing. Your entries remain here. Reload the saved budget before making another change." : reason instanceof Error ? reason.message : "Budget could not be saved.");
-    } finally { savePending.current = false; setBusy(false); setSaving(false); }
+    } finally { savePending.current = false; if (mounted.current) { setBusy(false); setSaving(false); } }
   }
-  const actionRef = useRef({ save, discard: () => { if (budget) apply(budget); setError(""); setSaved(""); } });
-  actionRef.current = { save, discard: () => { if (budget) apply(budget); setError(""); setSaved(""); } };
+  const discard = () => {
+    if (savePending.current) return;
+    draftStore?.clear(draft.current?.generation);
+    draft.current = null;
+    if (latestBudget.current ?? budget) apply((latestBudget.current ?? budget)!);
+    setError(""); setSaved("");
+  };
+  const actionRef = useRef({ save, discard });
+  actionRef.current = { save, discard };
   const saveControl = useCallback(() => actionRef.current.save(), []);
   const discardControl = useCallback(() => actionRef.current.discard(), []);
   useEffect(() => {
@@ -94,7 +145,7 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
         <CellChip tone={!dirty && budget?.complete ? "ok" : "warn"}>{dirty ? preview.complete ? "Ready to save" : "Unsaved budget" : budget?.complete ? "Budget complete" : "Budget needed"}</CellChip>
         <Btn disabled={busy} aria-expanded={open} onClick={() => { if (!open && !dirty) void load(); setOpen(!open); }}>{open ? "Hide budget" : budget?.items.length || readOnly ? "Review budget" : "Add use of funds"}</Btn>
       </div>
-      {error ? <Callout tone="warn"><span role="alert">{error}</span><Btn disabled={busy} onClick={() => void load()}>{budget ? "Discard edits and reload saved budget" : "Retry"}</Btn></Callout> : null}
+      {error ? <Callout tone="warn"><span role="alert">{error}</span><Btn disabled={busy} onClick={() => void load(true)}>{budget ? "Discard edits and reload saved budget" : "Retry"}</Btn></Callout> : null}
       {saved ? <Callout tone="ok"><span role="status">{saved}</span></Callout> : null}
       {open && budget ? <>
         {readOnly ? <p className={styles.hint}>You can review this budget. An authorized file team member can edit it.</p> : null}
