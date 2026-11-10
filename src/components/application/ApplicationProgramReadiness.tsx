@@ -7,6 +7,7 @@ import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } f
 import { Drawer } from "@/components/ds/Drawer";
 import { FundingProgramPicker } from "./FundingProgramPicker";
 import { UseOfFundsEditor } from "./UseOfFundsEditor";
+import { UseOfFundsDrawer } from "./UseOfFundsDrawer";
 import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import { ApplicationCollectionTasks, RequirementRequest, useCollectionTasks } from "./ApplicationCollectionTasks";
 import { AddRequirementDrawer } from "@/components/application/AddRequirementDrawer";
@@ -45,6 +46,8 @@ import { RequirementOverrideEditor } from "./RequirementOverrideEditor";
 import { requirementAllowsClientRequest, requirementCreditCollection } from "@/lib/requirementCredit";
 import { RequirementCreditEvidence } from "./RequirementCreditEvidence";
 import { RequirementCollectionActions } from "./RequirementCollectionActions";
+import { RequirementUseOfFundsActions } from "./RequirementUseOfFundsActions";
+import { isUseOfProceedsRequirement, readUseOfFundsCollectionSummary, supportingUseOfFundsReviewIds } from "@/lib/requirementUseOfFunds";
 import { requirementQualification } from "@/lib/requirementCollectionCompletion";
 
 type EvidenceFile = {
@@ -188,9 +191,10 @@ export function ApplicationProgramReadiness({
   const [dragTarget, setDragTarget] = useState<string | null>(null);
   const [uploadDragging, setUploadDragging] = useState(false);
   const [busy, setBusy] = useState("");
+  const [proceedsEditorProfile, setProceedsEditorProfile] = useState<string | null>(null);
   const [identityPending, setIdentityPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => { setOverrideDraft(null); setBusy(""); setError(null); }, [profileId]);
+  useEffect(() => { setOverrideDraft(null); setBusy(""); setError(null); setProceedsEditorProfile(null); }, [profileId]);
   const [customProgramOpen, setCustomProgramOpen] = useState(false);
   const [customProgram, setCustomProgram] = useState<CustomProgramDraft>({ name: "", programKey: "", description: "", vertical: programVertical, requirements: "", reason: "" });
 
@@ -220,6 +224,15 @@ export function ApplicationProgramReadiness({
       setBusy("");
     }
   }, [authenticated, controlled, onRefresh, profileId, storeReadiness]);
+
+  const reloadAfterUseOfFunds = useCallback(async () => {
+    if (activeProfile.current !== profileId) return;
+    await load();
+    if (activeProfile.current !== profileId) return;
+    for (const key of ["application-evidence-workspace", "application-profile-verification", "application-profile-audit", "application-intelligence", "financial-cockpit", "application-collection-tasks"]) {
+      void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+    }
+  }, [load, profileId, queryClient]);
 
   useEffect(() => { if (!controlled) void load(); }, [controlled, load]);
   useEffect(() => {
@@ -858,6 +871,8 @@ export function ApplicationProgramReadiness({
     const linkedEvidence = requirement.evidence_files ?? [];
     const creditCollection = requirementCreditCollection(requirement);
     const collection = requirement.collection_completion;
+    const isUseOfProceeds = isUseOfProceedsRequirement(requirement);
+    const allocation = readUseOfFundsCollectionSummary(requirement);
     const qualification = requirementQualification(requirement);
     const currentEvidence = collection?.source === "files" ? linkedEvidence.filter((file) => collection.eligible_file_ids.includes(file.file_id)) : linkedEvidence;
     const otherEvidence = collection?.source === "files" ? linkedEvidence.filter((file) => !collection.eligible_file_ids.includes(file.file_id)) : [];
@@ -871,6 +886,7 @@ export function ApplicationProgramReadiness({
     const task = tasksByRequirement.get(requirement.requirement_key) ?? null;
     const formKinds = formKindsOf(requirement);
     const unsignedFileIds = linkedEvidence.filter((file) => file.ai_decision === "accepted" && !file.verified).map((file) => file.file_id);
+    const supportingReviewFileIds = allocation ? supportingUseOfFundsReviewIds(requirement) : [];
     const askClient = triage.group === "client" && requirementAllowsClientRequest(requirement);
     const staffAdded = requirement.source_policy_keys.includes("staff_added");
     const isDebt = formKinds.includes("debt_schedule");
@@ -881,15 +897,17 @@ export function ApplicationProgramReadiness({
       <button id={`requirement-${requirement.requirement_key}`} type="button" className="requirement-summary-toggle" disabled={identityPending || isBusy} aria-expanded={expanded} onClick={() => setExpandedRequirements((current) => current.includes(requirement.requirement_key) ? current.filter((key) => key !== requirement.requirement_key) : [...current, requirement.requirement_key])}>
         <span className="requirement-state-stack">{requestable ? <input type="checkbox" aria-label={`Include ${requirement.label} in combined email`} checked={selectedRequestSet.has(requirement.requirement_key)} onClick={(event) => event.stopPropagation()} onChange={(event) => setSelectedRequestKeys((current) => event.target.checked ? [...new Set([...current, requirement.requirement_key])] : current.filter((key) => key !== requirement.requirement_key))} /> : null}<CellChip tone={triage.tone} title={triage.next}>{triage.label}</CellChip></span>
         <span className="requirement-title"><strong>{requirement.label}{requirement.required_level !== "required" ? <em className="ev-optional">{requirement.required_level === "optional" ? "Optional" : "Recommended"}</em> : null}{staffAdded ? <em className="ev-optional">Added by your team</em> : null}</strong><small>{triage.short}</small></span>
-        <span className="requirement-coverage"><strong>{triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{creditCollection ? "Linked owner reports · any single bureau" : collection ? collection.complete ? "Document collection complete" : collection.eligible_file_ids.length ? "Evidence on file · ready for collection review" : "Link an eligible current document" : linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
+        <span className="requirement-coverage"><strong>{allocation ? allocation.allocation : triage.progress ? triage.progress.text : linkedEvidence.length ? `${linkedEvidence.length} ${linkedEvidence.length === 1 ? "file" : "files"}` : "Nothing yet"}</strong><small>{allocation ? collection?.complete ? "Use of proceeds collection complete" : allocation.detail : creditCollection ? "Linked owner reports · any single bureau" : collection ? collection.complete ? "Document collection complete" : collection.eligible_file_ids.length ? "Evidence on file · ready for collection review" : "Link an eligible current document" : linkedEvidence.length ? `${acceptedCount} of ${linkedEvidence.length} accepted by the AI` : "No file attached"}</small></span><Icon name={expanded ? "chevU" : "chevD"} size={15} />
       </button>
       {expanded ? <div className="requirement-expanded-body ev-row-body">
         {creditCollection || (triage.kind === "fill" && debtHasWork) ? null : <p className="ev-next">{triage.next}</p>}
         <div className="ev-actions" role="group" aria-label={`Next steps for ${requirement.label}`}>
+          {isUseOfProceeds ? <RequirementUseOfFundsActions key={`proceeds:${profileId}:${requirement.requirement_key}`} profileId={profileId} canEdit={canAddRequirements} disabled={Boolean(busy) || identityPending} onFill={() => setProceedsEditorProfile(profileId)} /> : null}
           {collection ? <RequirementCollectionActions key={`${profileId}:${requirement.requirement_key}`} profileId={profileId} requirement={requirement} canEdit={canAddRequirements} externallyBusy={Boolean(busy) || identityPending} onPending={(pending) => { if (activeProfile.current === profileId) setBusy(pending ? `collection:${requirement.requirement_key}` : ""); }} onSaved={(next) => { if (activeProfile.current !== profileId) return; storeReadiness(next); for (const key of ["application-evidence-workspace", "application-profile-verification", "application-profile-audit", "application-intelligence", "financial-cockpit"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] }); onNotice?.(`${requirement.label}: document collection complete. Program conditions remain separate.`); }} onReload={load} onPreview={onPreviewEvidence ? (fileId) => onPreviewEvidence(fileId, requirement.requirement_key) : undefined} /> : null}
           {canAddRequirements && !creditCollection ? <Btn size="sm" disabled={Boolean(busy) || identityPending} onClick={() => setLinkingRequirementKey((current) => current === requirement.requirement_key ? null : requirement.requirement_key)}><Icon name="link" size={14} />Link existing file</Btn> : null}
           {canAddRequirements ? requirementCanBeRemoved(requirement) ? <Btn size="sm" disabled={Boolean(busy)} onClick={() => setRemovalDraft({ requirementKey: requirement.requirement_key, reason: "" })}><Icon name="trash" size={14} />Remove requirement</Btn> : <Btn size="sm" disabled={Boolean(busy)} title="Record why this requirement should be set aside for this file." onClick={() => setOverrideDraft({ requirementKey: requirement.requirement_key, action: requirement.can_waive ? "waive" : "not_applicable", reason: "", allPrograms: true, programKeys: [] })}>Set requirement aside</Btn> : null}
           {!collection && !creditCollection && triage.kind === "signoff" && unsignedFileIds.length ? <span title="Confirm the AI's acceptance so this item counts toward readiness"><Btn variant="pri" size="sm" disabled={isBusy} onClick={() => void reviewRequirementAction(requirement, "verify", unsignedFileIds)}><Icon name="shieldChk" size={14} />Sign off</Btn></span> : null}
+          {allocation && canAddRequirements && supportingReviewFileIds.length ? <span title="Review the supporting files against the program conditions; this does not complete budget collection"><Btn size="sm" disabled={Boolean(busy) || identityPending} onClick={() => void reviewRequirementAction(requirement, "verify", supportingReviewFileIds)}><Icon name="shieldChk" size={14} />Sign off supporting evidence</Btn></span> : null}
           {askClient && !isDebt ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
           {askClient && !isDebt ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
           {askClient && !formKinds.length && requestable ? <span title="Emails the client the secure-room link for this item"><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailReminder(requirement)}><Icon name="mail" size={14} />Email the client</Btn></span> : null}
@@ -900,10 +918,10 @@ export function ApplicationProgramReadiness({
         {removalDraft?.requirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><strong>Remove {requirement.label} from this checklist?</strong><p className="sub">Client to-dos and reminders for this item stop. Uploaded files and financial rows stay available. Restore it below when needed.</p><Field label="Removal reason"><Textarea aria-label="Removal reason" autoFocus rows={2} value={removalDraft.reason} onChange={(event) => setRemovalDraft({ ...removalDraft, reason: event.target.value })} placeholder="Explain why this item is no longer needed" /></Field><div className="program-readiness-actions"><Btn disabled={Boolean(busy)} onClick={() => setRemovalDraft(null)}>Cancel removal</Btn><Btn disabled={Boolean(busy) || removalDraft.reason.trim().length < 8} onClick={() => void changeRequirementLifecycle(requirement, "remove")}>Confirm removal</Btn></div></div> : null}
         {isDebt ? <DebtScheduleReviewPanel profileId={profileId} compact onSaved={() => void load()} /> : null}
         {creditCollection ? <RequirementCreditEvidence key={`${profileId}:${requirement.requirement_key}`} profileId={profileId} credit={creditCollection} requirementKey={requirement.requirement_key} programNames={requirement.source_program_keys.map((key) => readiness.selections.find((item) => item.program_key === key)?.program_name || key)} onRefresh={load} onOpenPrograms={onOpenFinancials} /> : <DocumentReviewChecks checks={qualification?.checks ?? requirement.review_checks} verified={requirement.provenance?.review_checks_status === "verified"} staffRequired={requirement.verification_required} assessment={requirement.provenance?.ai_document_review} qualification={qualification} collectionComplete={collection?.complete} onPreview={onPreviewEvidence ? (fileId, page, expectedContentHash) => onPreviewEvidence(fileId, requirement.requirement_key, page, expectedContentHash) : undefined} />}
-        {currentEvidence.length ? <div className="requirement-evidence-files" aria-label={`Current evidence for ${requirement.label}`}>{currentEvidence.map((file) => {
+        {currentEvidence.length ? <div className="requirement-evidence-files" aria-label={allocation ? "Supporting evidence for program review" : `Current evidence for ${requirement.label}`}>{allocation ? <p className="ev-block-title">Supporting evidence for program review</p> : null}{currentEvidence.map((file) => {
                   const fileBusy = busy === `evidence:${file.file_id}`;
                   const coverageContribution = evidenceCoverageLabel(file.coverage_contribution);
-                  const review = collection?.complete && file.ai_decision === "accepted" ? { headline: "Document collection accepted", explanation: "This file completes collection. Review the separate program conditions above." } : evidenceReviewPresentation(file, requirement.label, isDebt);
+                  const review = !allocation && collection?.complete && file.ai_decision === "accepted" ? { headline: "Document collection accepted", explanation: "This file completes collection. Review the separate program conditions above." } : evidenceReviewPresentation(file, requirement.label, isDebt);
                   const reason = review.headline;
                   const sourceFile = files.find((item) => item.id === file.file_id);
                   const locked = lockedEvidencePresentation({
@@ -930,7 +948,7 @@ export function ApplicationProgramReadiness({
                     {!locked ? <EvidenceReviewDetails file={file} requirementLabel={requirement.label} isDebtSchedule={isDebt} onPreview={onPreviewEvidence ? () => onPreviewEvidence(file.file_id, requirement.requirement_key) : undefined} /> : null}
                     {editingThisFile ? <div className="requirement-override-editor requirement-evidence-action-editor"><div className="fldgrid two"><Field label="Decision"><Select value={evidenceOverride.decision} onChange={(event) => { const decision = event.target.value as EvidenceOverrideDraft["decision"]; setEvidenceOverride({ ...evidenceOverride, decision, reasonCode: decision === "accepted" ? "ai_override" : evidenceOverride.reasonCode === "ai_override" ? decision === "needs_more" ? "incomplete" : "wrong_document" : evidenceOverride.reasonCode }); }}><option value="rejected">Reject evidence</option><option value="needs_more">Needs more</option><option value="accepted">Override AI and accept</option></Select></Field><Field label="Reason code"><Select value={evidenceOverride.reasonCode} disabled={evidenceOverride.decision === "accepted"} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reasonCode: event.target.value as EvidenceOverrideDraft["reasonCode"] })}>{evidenceOverride.decision === "accepted" ? <option value="ai_override">AI override</option> : <><option value="wrong_document">Wrong document</option><option value="wrong_entity">Wrong entity</option><option value="wrong_period">Wrong period</option><option value="incomplete">Incomplete</option><option value="unreadable">Unreadable</option><option value="duplicate">Duplicate</option><option value="other">Other</option></>}</Select></Field></div><Field label="Reviewed reason"><Textarea autoFocus rows={2} value={evidenceOverride.reason} onChange={(event) => setEvidenceOverride({ ...evidenceOverride, reason: event.target.value })} placeholder={evidenceOverride.decision === "accepted" ? "Explain why this file should be accepted" : evidenceOverride.decision === "needs_more" ? "Explain what additional evidence is needed" : "Explain why this file should be rejected"} /></Field><div className="program-readiness-actions"><Btn onClick={() => setEvidenceOverride(null)}>Cancel</Btn><Btn variant="pri" onClick={() => void applyEvidenceOverride()} disabled={fileBusy || evidenceOverride.reason.trim().length < 8}>{fileBusy ? "Saving..." : "Review decision"}</Btn></div></div> : null}
                   </Fragment>;
-                })}</div> : creditCollection ? null : <div className="requirement-evidence-empty">No eligible current evidence is assigned. Link an existing document or upload the required file.</div>}
+                })}</div> : creditCollection ? null : <div className="requirement-evidence-empty">{allocation ? allocation.item_count ? "The saved allocation is the collection source. Review any supporting documents separately for program conditions." : "Fill in the planned uses and amounts, or share the client link above." : "No eligible current evidence is assigned. Link an existing document or upload the required file."}</div>}
         {otherEvidence.length ? <details className="ev-more"><summary>Other linked files ({otherEvidence.length}) · not used for this collection item</summary><div className="ev-more-body">{otherEvidence.map((file) => <div key={file.file_id} className="requirement-evidence-file"><span className="grow evidence-file-copy"><strong>{file.file_name}</strong><small>Retained on file. A personal, prior-period or otherwise ineligible source does not complete this current business requirement.</small></span>{onPreviewEvidence ? <Btn size="sm" onClick={() => onPreviewEvidence(file.file_id, requirement.requirement_key)}>View file</Btn> : null}{canAddRequirements ? <Btn size="sm" disabled={Boolean(busy)} onClick={() => void reviewRequirementAction(requirement, "unlink_evidence", [file.file_id])}>Unlink</Btn> : null}</div>)}</div></details> : null}
         <details className="ev-more">
           <summary>More options</summary>
@@ -1035,5 +1053,6 @@ export function ApplicationProgramReadiness({
         }}
       /> : null}
     </> : <div className="empty">This enquiry is not a lending request, so it has no evidence checklist.</div>) : null}
+    {proceedsEditorProfile === profileId && canAddRequirements ? <UseOfFundsDrawer key={profileId} profileId={profileId} onClose={() => setProceedsEditorProfile(null)} onSaved={reloadAfterUseOfFunds} /> : null}
   </div>;
 }

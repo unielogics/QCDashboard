@@ -312,7 +312,15 @@ export type ApplicationRequirement = {
     reason: string | null;
     eligible_file_ids: string[];
     suggested_file_ids: string[];
-    source: "files" | "linked_owner_credit";
+    source: "files" | "linked_owner_credit" | "use_of_funds";
+    summary?: {
+      allocated_amount: number;
+      requested_amount: number | null;
+      item_count: number;
+      complete: boolean;
+      revision: number;
+      funding_request_revision: number;
+    };
     completed_at?: string | null;
     completed_by?: string | null;
   };
