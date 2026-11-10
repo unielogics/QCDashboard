@@ -107,9 +107,9 @@ export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLo
   const [cached, setCached] = useState<ClientTermsWorkingDraft | null>(null);
   const [pending, setPending] = useState(false);
   const [view, setView] = useState<ClientTermsView>(initialView);
-  const [expanded, setExpanded] = useState(initialView === "schedule");
+  const [expanded, setExpanded] = useState(true);
   useEffect(() => { setCached(null); setPending(false); }, [profileId]);
-  useEffect(() => { if (open) { setView(initialView); setExpanded(initialView === "schedule"); } }, [open, initialView, profileId]);
+  useEffect(() => { if (open) { setView(initialView); setExpanded(true); } }, [open, initialView, profileId]);
   const remember = useCallback((next: ClientTermsWorkingDraft) => { setCached(next); onWorkingDraftChange?.(next); }, [onWorkingDraftChange]);
   const pendingChanged = useCallback((value: boolean) => { setPending(value); onPending?.(value); }, [onPending]);
   return <Drawer open={open} onClose={() => { if (!pending) onClose(); }} title={view === "schedule" ? "Loan amortization and risk" : "Client terms"} sub="One working loan: terms, principal and interest, payoff progress and repayment risk." headerActions={<IconBtn aria-label={expanded ? "Restore loan workspace size" : "Expand loan workspace"} title={expanded ? "Restore loan workspace size" : "Expand loan workspace"} aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}><Icon name={expanded ? "minimize" : "maximize"} size={16} /></IconBtn>} fullscreen={expanded} width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">

@@ -109,9 +109,10 @@ test("dealer terms and their collateral portal out of a hidden production tab an
   const dialog = page.getByRole("dialog", { name: "Production loan terms", exact: true });
   await expect(page.getByTestId("dealer-production-host")).toBeHidden();
   await expect(dialog).toBeVisible();
-  const collateral = dialog.getByRole("region", { name: "Collateral for these terms", exact: true });
+  await dialog.getByRole("tab", { name: "Collateral", exact: true }).click();
+  const collateral = dialog.getByRole("region", { name: "Loan collateral editor", exact: true });
   await expect(collateral).toBeVisible();
-  await expect(collateral.getByRole("button", { name: "Manage collateral", exact: true })).toBeVisible();
+  await expect(collateral.getByRole("button", { name: "Add property", exact: true })).toBeVisible();
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();

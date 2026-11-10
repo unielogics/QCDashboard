@@ -89,6 +89,8 @@ export interface CpSyncState {
 }
 /** What the file page asks before offering "Publish to marketplace". */
 export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean; sync?: CpSyncState | null }
+/** Scoped underwriting read model; no marketplace administration capability. */
+export interface CpProfilePublication { profile_id: string; listing: (CpListingRef & { published_at: string | null }) | null; can_manage: boolean }
 export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string }
 export interface CpListingCard {
   id: string; ref: string; name: string; vertical: CpVertical; vertical_label: string; program_label: string; city: string | null; state: string | null;
@@ -252,6 +254,16 @@ export function useCpSourceLookup(params: { profile_id?: string | null; loan_id?
     staleTime: 15_000,
   });
 }
+export function useCpProfilePublication(profileId: string | null | undefined, enabled = true) {
+  const api = useAuthedApi();
+  return useQuery({
+    enabled: enabled && !!profileId,
+    queryKey: [...KEYS.sources, "publication", profileId ?? ""],
+    queryFn: () => api<CpProfilePublication>(`/application-profiles/${encodeURIComponent(profileId!)}/marketplace-publication`),
+    staleTime: 15_000,
+    refetchInterval: 30_000,
+  });
+}
 export function useCpListings(status?: string) {
   const api = useAuthedApi();
   return useQuery({ queryKey: [...KEYS.listings, status ?? "all"], queryFn: () => api<CpListingCard[]>(`/capital/admin/listings${qs({ status_filter: status })}`), staleTime: 15_000 });
@@ -276,7 +288,7 @@ export function useCpListingAction() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: ({ listingId, path, body }: { listingId: string; path: string; body?: unknown }) => api<CpListing>(path, { method: "POST", body: JSON.stringify(body ?? {}) }),
-    onSuccess: (_d, v) => invalidate(KEYS.listings, KEYS.listing(v.listingId), KEYS.subscriptions, KEYS.filings, KEYS.filingsSummary, KEYS.transfers),
+    onSuccess: (_d, v) => invalidate(KEYS.listings, KEYS.listing(v.listingId), KEYS.sources, KEYS.subscriptions, KEYS.filings, KEYS.filingsSummary, KEYS.transfers),
   });
 }
 export function useCpPatchParticipation() {

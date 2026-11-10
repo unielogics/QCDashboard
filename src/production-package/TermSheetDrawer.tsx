@@ -1,7 +1,8 @@
 // The term sheet: loan terms a super admin or underwriter records on the file
 // before the final can be drafted. Versioned; the current row is what "Draft
 // final package" consumes. Lives on the profile, not the package.
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import type { PackageClient } from "./client";
 import { dateLabel, errorDetail, errorMessage, errorStatus, money, pct, toNumber, whenLabel } from "./format";
 import {
@@ -24,6 +25,7 @@ import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { Drawer } from "@/components/ds/Drawer";
+import workspaceStyles from "@/components/application/LoanScheduleReview.module.css";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import { Callout, KV, MoneySplit, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
@@ -349,6 +351,17 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
 }) {
   const collateral = useTermsCollateral(profileId);
   const dealBudget = useDealBudget(profileId);
+  const queryClient = useQueryClient();
+  const [view, setView] = useState<"terms" | "collateral" | "budget">("terms");
+  const [expanded, setExpanded] = useState(true);
+  const [collateralPending, setCollateralPending] = useState(false), [budgetPending, setBudgetPending] = useState(false);
+  const supportingPending = collateralPending || budgetPending;
+  const viewId = useId();
+  const [draftBaseVersion, setDraftBaseVersion] = useState(0);
+  const draftKey = ["production-terms-draft", profileId] as const;
+  const activeProfile = useRef(profileId); activeProfile.current = profileId;
+  const loadRequest = useRef(0);
+  const [loadedProfileId, setLoadedProfileId] = useState<string | null>(null);
   const [state, setState] = useState<TermSheetState | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [form, setForm] = useState<FormState | null>(null);
@@ -359,18 +372,33 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const [withdrawReason, setWithdrawReason] = useState("");
 
   const load = useCallback(async () => {
+    const requestedProfile = profileId, request = ++loadRequest.current;
     if (!client.termSheet) { setLoadError("The term sheet is recorded from the desk."); return; }
     setLoadError(null);
     try {
       const next = await client.termSheet(profileId);
+      if (activeProfile.current !== requestedProfile || loadRequest.current !== request) return;
+      setLoadedProfileId(requestedProfile);
       setState(next);
-      setForm(formFrom(next.current, next.defaults));
+      queryClient.setQueryDefaults(["production-terms-draft", profileId], { gcTime: Infinity });
+      const kept = queryClient.getQueryData<{ form: FormState; baseVersion: number }>(["production-terms-draft", profileId]);
+      setForm(kept?.form ?? formFrom(next.current, next.defaults));
+      setDraftBaseVersion(kept?.baseVersion ?? next.current?.version ?? 0);
     } catch (err) {
-      setLoadError(errorMessage(err, "The term sheet could not be loaded."));
+      if (activeProfile.current === requestedProfile && loadRequest.current === request) setLoadError(errorMessage(err, "The term sheet could not be loaded."));
     }
-  }, [client, profileId]);
+  }, [client, profileId, queryClient]);
 
-  useEffect(() => { if (open) { setDone(null); setErrors([]); load().catch(() => undefined); } }, [open, load]);
+  useEffect(() => { if (open) { setDone(null); setErrors([]); setView("terms"); setExpanded(true); load().catch(() => undefined); } }, [open, load]);
+  useEffect(() => {
+    if (loadedProfileId !== profileId || !state || !form || JSON.stringify(form) === JSON.stringify(formFrom(state.current, state.defaults))) return;
+    queryClient.setQueryData(["production-terms-draft", profileId], { form, baseVersion: draftBaseVersion });
+  }, [state, form, profileId, loadedProfileId, draftBaseVersion, queryClient]);
+  const viewScroll = useRef<Record<"terms" | "collateral" | "budget", number>>({ terms: 0, collateral: 0, budget: 0 });
+  const viewAnchor = useRef<HTMLDivElement>(null);
+  useEffect(() => { viewScroll.current = { terms: 0, collateral: 0, budget: 0 }; }, [profileId]);
+  const changeView = (next: typeof view) => { const host = viewAnchor.current?.closest(".drawer-b"); if (host) viewScroll.current[view] = host.scrollTop; setView(next); };
+  useEffect(() => { const host = viewAnchor.current?.closest(".drawer-b"); if (host) host.scrollTop = viewScroll.current[view]; }, [view]);
 
   const fail = (err: unknown, fallback: string) => {
     const detail = errorDetail(err);
@@ -381,12 +409,13 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     }
   };
 
-  const current = state?.current ?? null;
+  const current = loadedProfileId === profileId ? state?.current ?? null : null;
+  const versionConflict = Boolean(loadedProfileId === profileId && state && draftBaseVersion !== (current?.version ?? 0));
   const dscrBefore = storedNumber(current?.dscr_before ?? current?.extra?.dscr_before);
   const dscrAfter = storedNumber(current?.dscr_after ?? current?.extra?.dscr_after);
   const dscrStatus = current?.dscr_status ?? current?.extra?.dscr_status;
   const dscrExplanation = current?.dscr_explanation ?? current?.extra?.dscr_explanation;
-  const canEdit = Boolean(state?.can_edit);
+  const canEdit = Boolean(loadedProfileId === profileId && state?.can_edit);
   const nextVersion = (current?.version ?? Math.max(0, ...(state?.history ?? []).map((history) => history.version))) + 1;
   const src = (key: string) => (current ? null : state?.defaults_source[key] ?? null);
   const SrcChip = ({ k }: { k: string }) => {
@@ -515,19 +544,22 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   }, [annualRate, approved, form, isRevolving, paymentBasis, programCoverage, summary]);
 
   const save = async () => {
-    if (!form || !summary || !client.saveTermSheet || validationErrors.length) return;
+    if (loadedProfileId !== profileId || !form || !summary || !client.saveTermSheet || validationErrors.length || supportingPending || versionConflict) return;
     setBusy("save"); setErrors([]); setDone(null);
     try {
       const expectedCollateralRevision = await collateral.verifyRevision();
       const expectedBudgetRevision = await dealBudget.verifyRevision();
-      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: current?.version ?? 0, expected_collateral_revision: expectedCollateralRevision, expected_deal_budget_revision: expectedBudgetRevision });
+      const result = await client.saveTermSheet(profileId, { ...toBody(form, summary, annualRate, programCoverage), expected_version: draftBaseVersion, expected_collateral_revision: expectedCollateralRevision, expected_deal_budget_revision: expectedBudgetRevision });
+      if (activeProfile.current !== profileId) { queryClient.removeQueries({ queryKey: draftKey }); return; }
       setState(result.state);
       setForm(formFrom(result.state.current, result.state.defaults));
+      setDraftBaseVersion(result.state.current?.version ?? 0); queryClient.removeQueries({ queryKey: draftKey });
       const version = result.state.current?.version;
       setDone(`Term sheet v${version ?? ""} recorded.${result.final ? " The draft final was re-applied with these terms." : ""}`);
       onSaved?.(result);
     } catch (err) {
       fail(err, "The term sheet could not be recorded.");
+      if (errorStatus(err) === 409) void load();
     } finally { setBusy(null); }
   };
 
@@ -536,8 +568,10 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     setBusy("withdraw"); setErrors([]); setDone(null);
     try {
       const next = await client.withdrawTermSheet(profileId, withdrawReason.trim());
+      if (activeProfile.current !== profileId) { queryClient.removeQueries({ queryKey: draftKey }); return; }
       setState(next);
       setForm(formFrom(next.current, next.defaults));
+      setDraftBaseVersion(next.current?.version ?? 0); queryClient.removeQueries({ queryKey: draftKey });
       setWithdrawAsk(false); setWithdrawReason("");
       setDone("Term sheet withdrawn.");
     } catch (err) {
@@ -644,16 +678,26 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const showPaymentBasis = Boolean(form && (["interest_only", "interest_only_then_amortizing", "balloon", "revolving_interest_only"].includes(form.repayment_structure) || isRevolving));
 
   return (
-    <Drawer open={open} onClose={() => { if (!busy) onClose(); }} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} width="xl" bodyClass="pp-root" closeOnBackdrop={false} ariaLabel="Production loan terms">
+    <Drawer open={open} fullscreen={expanded} headerActions={<PBtn size="sm" onClick={() => setExpanded(value => !value)}>{expanded ? "Restore" : "Expand"}</PBtn>} onClose={() => { if (!busy && !supportingPending) onClose(); }} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} width="xl" bodyClass="pp-root" closeOnBackdrop={false} ariaLabel="Production loan terms">
+      <div ref={viewAnchor} />
+      <nav className={workspaceStyles.tabs} role="tablist" aria-label="Production financing workspace sections" onKeyDown={event => {
+        if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+        event.preventDefault(); const views = ["terms", "collateral", "budget"] as const;
+        const next = event.key === "Home" ? views[0] : event.key === "End" ? views[2] : views[(views.indexOf(view) + (event.key === "ArrowRight" ? 1 : -1) + views.length) % views.length];
+        changeView(next); document.getElementById(`${viewId}-${next}-tab`)?.focus();
+      }}>
+        {([['terms','Loan terms'],['collateral','Collateral'],['budget','Investment & closing costs']] as const).map(([key,label]) => <button type="button" key={key} role="tab" id={`${viewId}-${key}-tab`} aria-selected={view === key} aria-controls={`${viewId}-${key}-panel`} tabIndex={view === key ? 0 : -1} onClick={() => changeView(key)}>{label}</button>)}
+      </nav>
+      {versionConflict ? <Callout tone="warn">A newer terms version is available. Your working loan was preserved.<PBtn onClick={() => { queryClient.removeQueries({ queryKey: draftKey }); void load(); }}>Discard draft and load current terms</PBtn></Callout> : null}
+      <div role="tabpanel" id={`${viewId}-terms-panel`} aria-labelledby={`${viewId}-terms-tab`} hidden={view !== "terms"}>
       {loadError ? <div className="pp-notice t-warn"><span>{loadError}</span><PBtn size="sm" onClick={() => load()}>Try again</PBtn></div> : null}
-      {!state || !form || !summary ? (!loadError ? <p className="pp-sub">Loading…</p> : null) : (
+      {loadedProfileId !== profileId || !state || !form || !summary ? (!loadError ? <p className="pp-sub">Loading…</p> : null) : (
         <div className="pp-ts-form">
           <p className="pp-sub">
             Choose the approved product, rate and repayment schedule. We calculate the lender payment and its monthly equivalent; if the dealer program uses a different monthly coverage amount, record it separately below.
           </p>
           {current && collateral.data?.revision != null && storedNumber(current.extra?.collateral_revision) !== collateral.data.revision ? <Callout tone="warn">The current collateral differs from this saved term sheet. Review its properties and assets, then record a new version to include them in the terms PDF.</Callout> : null}
-          <FileCollateralSection profileId={profileId} disabled={!canEdit || Boolean(busy)} compact title="Collateral for these terms" />
-          <DealBudgetSection profileId={profileId} disabled={!canEdit || Boolean(busy)} />
+
           {current && dealBudget.data?.revision != null && storedNumber(current.extra?.deal_budget_revision) !== dealBudget.data.revision ? <Callout tone="warn">The funding or cost budget has changed. The existing terms PDF retains its recorded budget; record a new terms version after reviewing the current costs.</Callout> : null}
           {current ? (
             <div className="pp-row">
@@ -846,7 +890,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
               {errors.length ? <ul className="pp-errors">{errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
               {done ? <Callout tone="ok">{done}</Callout> : null}
               <div className="pp-row">
-                <PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length)} title={validationErrors[0]}>Record term sheet v{nextVersion}</PBtn>
+                <PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict} title={validationErrors[0]}>Record term sheet v{nextVersion}</PBtn>
                 {current && !withdrawAsk ? <PBtn variant="danger" size="sm" onClick={() => setWithdrawAsk(true)} disabled={Boolean(current.consumed_by_package_id)} title={current.consumed_by_package_id ? "Void the final that uses this term sheet first" : undefined}>Withdraw v{current.version}</PBtn> : null}
               </div>
               {withdrawAsk ? (
@@ -876,6 +920,15 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
           ) : <p className="pp-sub">No versions yet.</p>}
         </div>
       )}
+      </div>
+      <div role="tabpanel" id={`${viewId}-collateral-panel`} aria-labelledby={`${viewId}-collateral-tab`} hidden={view !== "collateral"}>
+        <FileCollateralSection inline onPending={setCollateralPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} title="Collateral for these terms" />
+      </div>
+      <div role="tabpanel" id={`${viewId}-budget-panel`} aria-labelledby={`${viewId}-budget-tab`} hidden={view !== "budget"}>
+        <DealBudgetSection inline onPending={setBudgetPending} profileId={profileId} disabled={!canEdit || Boolean(busy)} loan={loadedProfileId === profileId && form ? { amount: approved, rate_pct: annualRate, term_months: toNumber(form.term_months), structure: ["interest_only", "revolving_interest_only"].includes(form.repayment_structure) ? "interest_only" : form.repayment_structure === "simple_interest" ? "simple_interest" : "amortizing", interest_only_months: usesInitialIo(form.repayment_structure, form.repayment_config) ? maybeNumber(form.interest_only_months) : 0, repayment_config: form.repayment_config ?? (maybeNumber(form.amortization_months) != null ? { amortization_months: maybeNumber(form.amortization_months)! } : null), payments_per_year: periodsPerYear(form.payment_frequency, maybeNumber(form.payments_per_year)) } : null} />
+      </div>
+      {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={save} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">Save collateral and budget edits first, then record a terms version with both snapshots.</span></div> : null}
+      {view !== "terms" && errors.length ? <ul className="pp-errors" role="alert">{errors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
     </Drawer>
   );
 }

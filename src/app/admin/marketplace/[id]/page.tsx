@@ -26,6 +26,7 @@ import {
 import { DOC_KINDS, FREQ_LABEL, LIEN_LABEL, LISTING_TONE, SERVICER_TONE, SUB_TONE, Status, SuperAdminOnly, VERTICAL_LABEL, day, errorMessage, label, money, pct, when } from "@/components/marketplace/shared";
 import { SourceSnapshotCard } from "@/components/marketplace/SourceSnapshotCard";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
+import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { useDealBudget } from "@/hooks/useDealBudget";
 
@@ -114,7 +115,7 @@ function Editor() {
         actions={
           <div className="row">
             <Status value={listing.status} tones={LISTING_TONE} />
-            {listing.status === "draft" ? <Btn variant="pri" onClick={() => void publish()} disabled={act.isPending}>Publish</Btn> : null}
+            {listing.status === "draft" ? <Btn variant="pri" onClick={() => void publish()} disabled={act.isPending}>Publish offer</Btn> : null}
             {(next[listing.status] ?? []).map((s) => (
               <Btn key={s} size="sm" onClick={() => void setStatus(s)} disabled={act.isPending}>{label(s)}</Btn>
             ))}
@@ -123,6 +124,7 @@ function Editor() {
           </div>
         }
       />
+      <MarketplaceOfferLink listing={listing} />
       {msg ? <StatusLine tone={msg.tone}>{msg.text}</StatusLine> : null}
       {listing.status === "draft" && listing.publish_blockers.length ? <StatusLine tone="warn">Before publishing: {listing.publish_blockers.join("; ")}.</StatusLine> : null}
       <Seg as="tabs" ariaLabel="Listing sections" value={tab} onChange={setTab} options={[
