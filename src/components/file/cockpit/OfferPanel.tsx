@@ -108,7 +108,7 @@ function toProduct(draft: ProductDraft, payment: number | null, dscr: number | n
 
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
-export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement> }) {
+export function OfferPanel({ cockpit, props, innerRef, embedded = false }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement>; embedded?: boolean }) {
   const { profileId, programReadiness, termSheet, packageState, canPublish, canRecordTerms, onRecordTerms, onOpenEvidence, onOpenPackage } = props;
   const api = useAuthedApi();
   const lookup = useCpSourceLookup({ profile_id: profileId }, canPublish);
@@ -274,6 +274,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
     setNotice(null);
     setBusy(true);
     try {
+      if (!listingId && (!packageState.generated || !packageState.inSync)) throw new Error("Generate a current investor package before creating its marketplace listing.");
       if (listingId) {
         await patch.mutateAsync({ id: listingId, ...headlinePatch() });
         setDirty(false);
@@ -312,10 +313,10 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
   const editable = canPublish && (!status || status === "draft" || status === "open");
 
   return (
-    <section className="fc-card fc-wide" id="fc-marketplace" ref={innerRef}>
+    <section className={embedded ? "grid g12" : "fc-card fc-wide"} id="fc-marketplace" ref={innerRef}>
       <div className="fc-card-h">
         <div>
-          <h4>Send the file to capital partners</h4>
+          <h4>{embedded ? "Offering terms & marketplace listing" : "Investor package & capital partners"}</h4>
           <div className="sub">
             Pick the products to offer and the terms to publish. For a file that is not funded yet these are suggested terms: the system proposes the amount the income covers at {suggestions.data?.target_dscr?.toFixed(2) ?? "1.25"}x on each program's longest published term, and the desk changes anything before publishing.
           </div>
@@ -359,7 +360,7 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
         <div className="fc-listing-item">
           <Lbl>Package</Lbl>
           <strong>{packageState.generated ? `Summary v${packageState.summaryVersion ?? "?"} · packet v${packageState.packetVersion ?? "?"}` : "Not generated"}</strong>
-          <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Optional for a listing" : packageState.inSync ? "Current" : "Needs a refresh"}</CellChip></div>
+          <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Generate before creating a listing" : packageState.inSync ? "Current" : "Needs a refresh"}</CellChip></div>
           <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>
         </div>
         {cockpit.plan?.evaluation?.active ? (
@@ -478,10 +479,10 @@ export function OfferPanel({ cockpit, props, innerRef }: { cockpit: Cockpit; pro
             <Textarea rows={2} aria-label="Listing summary" value={head.summary} disabled={!editable} placeholder="Operating business and what the statements show; the prefill writes a first line." onChange={(e) => { setDirty(true); setHead({ ...head, summary: e.target.value }); }} />
           </div>
           {repaymentError ? <StatusLine tone="bad">{repaymentError} Resolve the repayment schedule before saving.</StatusLine> : null}
-          {listingId ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
+          {listingId && !embedded ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || !!repaymentError || (!!listingId && !dirty)}>
-              {busy ? "Saving…" : listingId ? "Save terms to the listing" : "Start the listing draft with these terms"}
+            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || !!repaymentError || (!!listingId && !dirty) || (!listingId && (!packageState.generated || !packageState.inSync))}>
+              {busy ? "Saving…" : listingId ? "Save terms to the listing" : "Create marketplace listing draft"}
             </Btn>
             {dirty ? <span className="sub">Unsaved changes.</span> : null}
             {status && status !== "draft" ? <span className="sub">The listing is {status.replace(/_/g, " ")}; saved terms go live for members immediately.</span> : null}

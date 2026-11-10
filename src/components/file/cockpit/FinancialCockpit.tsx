@@ -93,6 +93,7 @@ type Props = {
   onRecordTerms: () => void;
   onOpenEvidence: () => void;
   onOpenPackage: () => void;
+  renderFundingPackage?: (marketplace: ReactNode, cockpit: Cockpit) => ReactNode;
   /** The fees were saved on the coverage card; the file page re-reads the underwriting state. */
   onEconomicsSaved?: () => void;
   /** Which record the loan in the plan becomes. */
@@ -782,7 +783,7 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         <CoverageCard businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
-        <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
+        <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       </div>
 
       <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
@@ -833,7 +834,7 @@ export function FinancialCockpit(props: Props) {
       </div>
 
       <div className="fc-grid">
-        <OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} />
+        {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={props} innerRef={marketplaceRef} />}
       </div>
       {metricReview?.profileId === props.profileId ? <FinancialMetricReviewWorkspace key={props.profileId} open={metricReview.open} metricKey={metricReview.key} cockpit={cockpit} options={metricOptions} profileId={props.profileId} canEdit={props.canUnderwrite} onClose={() => setMetricReview((current) => current ? { ...current, open: false } : null)} onRefresh={refreshFinancialFacts} onOpenDebt={openMetricDebt} onOpenPlan={openMetricPlan} /> : null}
       {metricDebtOpen ? <FinancialWorkspace open profileId={props.profileId} initialKind="debt_schedule" initialView="worksheet" onClose={() => { setMetricDebtOpen(false); setMetricReview((current) => current ? { ...current, open: true } : null); void refreshFinancialFacts(); }} onPublished={async () => { await refreshFinancialFacts(); }} /> : null}

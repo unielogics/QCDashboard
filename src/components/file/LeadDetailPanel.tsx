@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FileSection, useSectionState } from "./FileSection";
 import Link from "next/link";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
@@ -52,6 +52,8 @@ import { DealEconomicsFields } from "@/components/operator/DealEconomicsFields";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
 import { FinancialCockpit } from "@/components/file/cockpit/FinancialCockpit";
+import { FundingPackageWorkspace, type FundingPackageTab } from "./FundingPackageWorkspace";
+import type { FinancialCockpit as FinancialCockpitData } from "@/lib/financialCockpit";
 import type { IntakeResponse } from "@/lib/intake";
 import { leadCockpitNonDocumentMissingRows, leadCockpitOutstandingDocuments, preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
 import { mcaRefinanceReviewState } from "@/lib/mcaRefinanceReview";
@@ -62,7 +64,7 @@ import { compactMissingItems, intelligenceActionDestination, reviewDestination, 
 import { creditStepProgress } from "@/lib/creditStepSync";
 import { calculateDealEarnings, parseDealEconomicsDraft } from "@/lib/dealEconomics";
 import { useConsoleAuth } from "@/lib/consoleAuth";
-import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
+import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, PackageGenerationOptions, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
 
 export function Stat({
   title,
@@ -594,7 +596,7 @@ export function LeadDetailPanel({
   onExport: () => void;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
-  onGeneratePackage: () => Promise<PackageReadinessGeneration>;
+  onGeneratePackage: (options?: PackageGenerationOptions) => Promise<PackageReadinessGeneration>;
   onGeneratePrequalification: () => Promise<void> | void;
   onPreviewEmail: (payload: { to_emails: string[]; cc_emails: string[]; subject?: string; body?: string; include_lender_packet?: boolean }) => Promise<VendorEmailPreview>;
   onSendEmail: (payload: VendorEmailSendPayload) => Promise<VendorEmailSendResult>;
@@ -686,7 +688,8 @@ export function LeadDetailPanel({
   // capital-partners panel, which reads readiness before cutting a listing.
   const [cockpitFocus, setCockpitFocus] = useState<"marketplace" | null>(null);
   const [contextRailOpen, setContextRailOpen] = useState(false);
-  const [packageTab, setPackageTab] = useState<"summary" | "package" | "delivery">("summary");
+  const [packageTab, setPackageTab] = useState<FundingPackageTab>("summary");
+  const [packageError, setPackageError] = useState<string | null>(null);
   const headerUploadRef = useRef<HTMLInputElement>(null);
   const initializedLeadIdRef = useRef<string | null>(null);
   const [headerUploading, setHeaderUploading] = useState(false);
@@ -803,6 +806,8 @@ export function LeadDetailPanel({
   const summaryHistory = artifacts.filter((artifact) => artifact.artifact_type === "executive_summary");
   const packetHistory = artifacts.filter((artifact) => artifact.artifact_type === "lender_packet");
   const summary = summaryHistory[0];
+  const presentationHistory = artifacts.filter((artifact) => artifact.artifact_type === "investor_presentation");
+  const presentation = presentationHistory[0];
   const packet = packetHistory[0];
   const packageInSync = Boolean(
     summary?.generation_id
@@ -811,6 +816,9 @@ export function LeadDetailPanel({
     && packet?.status === "current"
     && summary.is_fresh === true
     && packet.is_fresh === true
+    && presentation?.generation_id === packet.generation_id
+    && presentation.status === "current"
+    && presentation.is_fresh === true
   );
   const packageNeedsRefresh = Boolean(summary && packet && !packageInSync);
   const evidenceFiles = detail?.files.filter(isSourceEvidenceFile) ?? [];
@@ -822,26 +830,29 @@ export function LeadDetailPanel({
   // client the signing gate then refused to show, so there is exactly one.
   const isDealerFile = detail?.intake.variant === "dealer_gatekeeper_v1";
 
-  async function refreshFullPackage(openPreview = true) {
+  async function refreshFullPackage(openPreview = true, options?: PackageGenerationOptions) {
     const previewWindow = openPreview ? window.open("", "qc-lender-package-preview") : null;
     if (previewWindow) {
       previewWindow.opener = null;
-      previewWindow.document.title = "Preparing lender package";
-      previewWindow.document.body.innerHTML = "<p style='font:16px system-ui;padding:32px'>Preparing the branded lender package preview…</p>";
+      previewWindow.document.title = "Preparing investor presentation";
+      previewWindow.document.body.innerHTML = "<p style='font:16px system-ui;padding:32px'>Preparing the investor presentation and supporting PDFs…</p>";
     }
     setBusy("package-all");
+    setPackageError(null);
     try {
-      const generated = await onGeneratePackage();
+      const generated = await onGeneratePackage(options);
       setPackageTab("summary");
-      const previewUrl = generated.lender_packet.preview_url || generated.lender_packet.download_url || generated.executive_summary.preview_url || generated.executive_summary.download_url;
+      const previewUrl = generated.investor_presentation?.preview_url || generated.investor_presentation?.download_url || generated.lender_packet.preview_url || generated.lender_packet.download_url || generated.executive_summary.preview_url || generated.executive_summary.download_url;
       if (previewWindow && previewUrl) previewWindow.location.replace(previewUrl);
       else if (previewWindow) previewWindow.close();
       toast.show(generated.superseded_bucket_file_ids.length
         ? "Package refreshed. The previous room PDFs were superseded."
-        : "Executive summary and lender package are ready in the room.");
+        : "Investor presentation, executive summary and lender package are ready in the room.");
     } catch (reason) {
       previewWindow?.close();
-      toast.show(apiErrorMessage(reason, "The lender package could not be refreshed."));
+      const message = apiErrorMessage(reason, "The investor package could not be generated.");
+      setPackageError(message);
+      toast.show(message);
     } finally {
       setBusy("");
     }
@@ -1694,6 +1705,33 @@ export function LeadDetailPanel({
     { id: 4, label: mcaAutoReviewBlocked ? mcaReview?.mode === "manual_review" ? "Manual desk review" : "Confirm MCA details" : "AI review", sub: mcaAutoReviewBlocked ? "Accepted application; automatic underwriting disabled" : "Extracted facts, probability and DSCR", status: reviewComplete ? "complete" : reviewActive || hasEvidence ? "partial" : "not-started" },
   ];
 
+  const renderFundingPackage = (marketplace: ReactNode, cockpit: FinancialCockpitData) => profileId ? <FundingPackageWorkspace key={profileId} profileId={profileId} cockpit={cockpit} activeTab={packageTab} onTab={(tab) => { setPackageTab(tab); if (tab === "marketplace") setCockpitFocus("marketplace"); }} busy={busy !== ""} generated={Boolean(summary && packet)} current={packageInSync} error={packageError} onGenerate={(options) => void refreshFullPackage(true, options)}
+    packageContent={summary && packet ? <div className="package-readiness-overview">
+                    {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild the presentation and supporting PDFs from the current Package Readiness snapshot.</Callout> : null}
+                    <div className="package-readiness-status">
+                      <div><span className="lbl">Current package</span><strong>Version {Math.max(artifactVersion(summary, summaryHistory.length), artifactVersion(packet, packetHistory.length))}</strong><small>Generated {formatDateTime(packet.created_at)}</small></div>
+                      <div><span className="lbl">Programs in scope</span><strong>{programReadiness?.selections.length || 0}</strong><small>{programReadiness?.selections.map((item) => item.program_name).join(" · ") || "Select a program before delivery"}</small></div>
+                      <div><span className="lbl">Evidence</span><strong>{evidenceFileCount} files</strong><small>{programReadiness?.can_advance ? "Program requirements complete" : `${canonicalMissingDocuments.length} open requirement${canonicalMissingDocuments.length === 1 ? "" : "s"}`}</small></div>
+                    </div>
+                    <div className="package-document-grid">
+                      <PackageArtifactCard artifact={summary} label="Executive summary" description="Concise credit brief with decision metrics, strengths, risks, and next action." version={artifactVersion(summary, summaryHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(summary))} />
+                      {presentation ? <PackageArtifactCard artifact={presentation} label="Investor presentation" description="Visual financing story: investment amount, contractual return, repayment risks, client impact and earnings actions." version={artifactVersion(presentation, presentationHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(presentation))} /> : null}
+                      <PackageArtifactCard artifact={packet} label="Lender package" description="Branded underwriting packet with month-by-month cash-flow charts and supporting schedules." version={artifactVersion(packet, packetHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(packet))} />
+                    </div>
+                    <UnderwriterDigest artifact={summary} />
+                  </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate the investor presentation, executive summary and lender package from one evidence snapshot. Each PDF is versioned and saved in this file&apos;s room.</p></div>}
+    marketplaceContent={<><MarketplacePublishStrip profileId={profileId} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onStartListing={() => { setPackageTab("marketplace"); setCockpitFocus("marketplace"); }} />{marketplace}</>}
+    historyContent={<div className="package-version-workspace">
+                    <Callout tone="acc">The current generation is the active package in the room. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
+                    <div className="package-version-columns">
+                      <PackageVersionList label="Investor presentation" artifacts={presentationHistory} />
+                      <PackageVersionList label="Executive summary" artifacts={summaryHistory} />
+                      <PackageVersionList label="Lender package" artifacts={packetHistory} />
+                    </div>
+                  </div>}
+    deliveryContent={<div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild the presentation and supporting PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div>}
+  /> : null;
+
   const prototypeDetailEnabled = Boolean(workflowSteps.length);
   const headerStatus = detail
     ? intakeStatusPresentation(detail.intake.status, underwriting?.underwriting_status)
@@ -1755,7 +1793,7 @@ export function LeadDetailPanel({
           { label: "Dealer partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
-          { label: "Publish to marketplace", onSelect: () => { setPrototypeView("financials"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
+          { label: "Prepare marketplace listing", onSelect: () => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
           { label: "Archive lead", onSelect: () => setConfirmDeleteOpen(true), hidden: !detail || !canGovern },
         ]} />
         {onMinimize ? <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>
@@ -1901,6 +1939,7 @@ export function LeadDetailPanel({
                     programVertical={programVerticalForVariant(detail.intake.variant)}
                     intakeVariant={detail.intake.variant}
                     termSheet={termSheet}
+                    renderFundingPackage={renderFundingPackage}
                     packageState={{
                       generated: Boolean(summary && packet),
                       inSync: packageInSync,
@@ -1913,41 +1952,9 @@ export function LeadDetailPanel({
                     onEconomicsSaved={() => { void loadUnderwritingState(); }}
                     termsKind={isDealerFile ? "production" : "client"}
                     onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
-                    onOpenPackage={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
+                    onOpenPackage={() => { setPackageTab("summary"); setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
                   />
                 ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>
-              ) : null}
-              {prototypeView === "financials" && canUnderwrite && profileId ? (
-                <Panel
-                  id="package-readiness"
-                  title="Build the package"
-                  sub="Every client: one refresh creates the executive credit brief and the lender package from the file (figures, program readiness, proposed terms and the desk's plan), saves them to the room, and supersedes the prior pair. Download them for your investors; push them to the marketplace from here."
-                  actions={<Btn variant="pri" disabled={busy !== ""} onClick={() => void refreshFullPackage(true)}><Icon name="refresh" size={14} />{busy === "package-all" ? "Building both PDFs..." : summary && packet ? "Refresh package + preview" : "Generate package + preview"}</Btn>}
-                >
-                  <div className="package-readiness-tabs" role="tablist" aria-label="Package readiness sections">{([['summary', 'Overview'], ['package', 'PDF versions'], ['delivery', 'Delivery']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={packageTab === id} className={packageTab === id ? "on" : undefined} onClick={() => setPackageTab(id)}><span>{id === "summary" ? summary && packet ? <Icon name="check" size={12} /> : "1" : id === "package" ? packet ? <Icon name="docCheck" size={12} /> : "2" : sentCount ? <Icon name="check" size={12} /> : "3"}</span>{label}</button>)}</div>
-                  <MarketplacePublishStrip profileId={profileId} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onStartListing={() => { setCockpitFocus("marketplace"); }} />
-                  {packageTab === "summary" ? summary && packet ? <div className="package-readiness-overview">
-                    {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild both PDFs from the current Package Readiness snapshot.</Callout> : null}
-                    <div className="package-readiness-status">
-                      <div><span className="lbl">Current package</span><strong>Version {Math.max(artifactVersion(summary, summaryHistory.length), artifactVersion(packet, packetHistory.length))}</strong><small>Generated {formatDateTime(packet.created_at)}</small></div>
-                      <div><span className="lbl">Programs in scope</span><strong>{programReadiness?.selections.length || 0}</strong><small>{programReadiness?.selections.map((item) => item.program_name).join(" · ") || "Select a program before delivery"}</small></div>
-                      <div><span className="lbl">Evidence</span><strong>{evidenceFileCount} files</strong><small>{programReadiness?.can_advance ? "Program requirements complete" : `${canonicalMissingDocuments.length} open requirement${canonicalMissingDocuments.length === 1 ? "" : "s"}`}</small></div>
-                    </div>
-                    <div className="package-document-grid">
-                      <PackageArtifactCard artifact={summary} label="Executive summary" description="Concise credit brief with decision metrics, strengths, risks, and next action." version={artifactVersion(summary, summaryHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(summary))} />
-                      <PackageArtifactCard artifact={packet} label="Lender package" description="Branded underwriting packet with month-by-month cash-flow charts and supporting schedules." version={artifactVersion(packet, packetHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(packet))} />
-                    </div>
-                    <UnderwriterDigest artifact={summary} />
-                  </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate once to create the executive-summary PDF and lender-package PDF from the same evidence snapshot. Both will be saved in this file&apos;s bucket.</p></div> : null}
-                  {packageTab === "package" ? <div className="package-version-workspace">
-                    <Callout tone="acc">The current pair is the only active package in the room. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
-                    <div className="package-version-columns">
-                      <PackageVersionList label="Executive summary" artifacts={summaryHistory} />
-                      <PackageVersionList label="Lender package" artifacts={packetHistory} />
-                    </div>
-                  </div> : null}
-                  {packageTab === "delivery" ? <div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild both PDFs from the latest evidence and program conditions before delivery."}</Callout><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync}>{zipBusy ? "Building..." : "Download package"}</Btn></Row></div> : null}
-                </Panel>
               ) : null}
               {prototypeView === "financials" && canUnderwrite && profileId ? (
                 <div className="grid g12">

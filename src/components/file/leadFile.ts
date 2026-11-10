@@ -217,11 +217,14 @@ export type PackageReadinessBucketFile = {
   created_at: string;
 };
 
+export type PackageGenerationOptions = { include_operating_plan?: boolean; include_working_operating_plan?: boolean };
+
 export type PackageReadinessGeneration = {
   generation_id: string;
   generated_at: string;
   executive_summary: Artifact;
   lender_packet: Artifact;
+  investor_presentation?: Artifact | null;
   bucket_files: PackageReadinessBucketFile[];
   superseded_bucket_file_ids: string[];
   artifact_history: Artifact[];
