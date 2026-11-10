@@ -1911,7 +1911,7 @@ export function LeadDetailPanel({
             ) : null}
 
             <main className="grid intake-file-primary">
-              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} programReadiness={programReadiness} programReadinessLoading={underwritingLoading} onProgramReadinessChange={setProgramReadiness} onRefreshProgramReadiness={refreshProgramReadiness} onOpenPrograms={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }} /> : null}
+              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} programReadiness={programReadiness} programReadinessLoading={underwritingLoading} onProgramReadinessChange={setProgramReadiness} onRefreshProgramReadiness={refreshProgramReadiness} onOpenPrograms={requestSharedCoverage} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 profileId ? <ApplicationEvidenceWorkspace
                   profileId={profileId}
@@ -1929,7 +1929,7 @@ export function LeadDetailPanel({
                   onVerificationChange={setProfileVerification}
                   onProgramReadinessChange={setProgramReadiness}
                   canAddRequirements={canUnderwrite}
-                  onOpenFinancials={() => { setPrototypeView("financials"); window.setTimeout(() => document.getElementById("fc-programs")?.scrollIntoView({ behavior: "smooth", block: "start" }), 400); }}
+                  onOpenFinancials={requestSharedCoverage}
                   focusRequirement={evidenceFocus}
                   canCreatePrograms={currentUser?.role === Role.SUPER_ADMIN}
                   programVertical={programVerticalForVariant(detail.intake.variant)}

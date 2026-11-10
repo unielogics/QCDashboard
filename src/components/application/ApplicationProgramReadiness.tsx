@@ -7,6 +7,8 @@ import { Btn, Callout, CellChip, Field, IconBtn, Input, Select, Textarea, cx } f
 import { Drawer } from "@/components/ds/Drawer";
 import { FundingProgramPicker } from "./FundingProgramPicker";
 import { UseOfFundsEditor } from "./UseOfFundsEditor";
+import type { BudgetEditorControls } from "./UseOfFundsBudgetEditor";
+import type { UseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
 import { UseOfFundsDrawer } from "./UseOfFundsDrawer";
 import { DocumentReviewChecks } from "./DocumentReviewChecks";
 import { ApplicationCollectionTasks, RequirementRequest, useCollectionTasks } from "./ApplicationCollectionTasks";
@@ -133,6 +135,8 @@ export function ApplicationProgramReadiness({
   onOpenForms,
   onPreviewFinancialEvidence,
   onRequestFinancialEvidence,
+  useOfFundsDraftStore,
+  onUseOfFundsControlsChange,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -152,6 +156,8 @@ export function ApplicationProgramReadiness({
   focusRequestId?: number;
   canCreatePrograms?: boolean;
   canEditPrograms?: boolean;
+  useOfFundsDraftStore?: UseOfFundsDraftStore;
+  onUseOfFundsControlsChange?: (controls: BudgetEditorControls | null) => void;
   programVertical?: FundingProgramVertical;
   intakeVariant?: string | null;
   /** Which half to show: the documents the file needs, or the programs and use of funds that decide them. */
@@ -967,7 +973,7 @@ export function ApplicationProgramReadiness({
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
     {section === "setup" || section === "programs" ? <>
-    {section === "setup" && readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} /> : null}
+    {section === "setup" && readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} draftStore={useOfFundsDraftStore} onControlsChange={onUseOfFundsControlsChange} /> : null}
     <details className="program-readiness-programs" open>
       <summary>
         <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "Choose a catalog program or add one manually"}</small></span>
@@ -1003,7 +1009,7 @@ export function ApplicationProgramReadiness({
 
     {section === "documents" ? (readiness.lending_applicable ? <>
       <header className="ev-doc-head">
-        <div><h3 id="shared-evidence-heading" tabIndex={-1}>Documents this file needs</h3><p>{checklistCaption}{onOpenFinancials ? <> <button type="button" className="linky" onClick={onOpenFinancials}>Choose programs in Financials</button></> : null}</p></div>
+        <div><h3 id="shared-evidence-heading" tabIndex={-1}>Documents this file needs</h3><p>{checklistCaption}{onOpenFinancials ? <> <button type="button" className="linky" onClick={onOpenFinancials}>Open program setup in Coverage plan</button></> : null}</p></div>
         <div className="program-readiness-actions requirement-bulk-actions">
           {onRunAiReview ? <ActionIcon icon="refresh" label="Re-read the intake with the AI" disabled={Boolean(busy) || aiReviewRunning} busy={aiReviewRunning} onClick={onRunAiReview} /> : null}
           {canAddRequirements ? <span title="Add a document or a form from the library to this file's checklist"><Btn onClick={() => setAddOpen(true)}><Icon name="plus" size={14} />Add a requirement</Btn></span> : null}

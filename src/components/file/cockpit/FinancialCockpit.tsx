@@ -13,7 +13,7 @@
 // Everything numeric comes from GET /application-profiles/{id}/financial-cockpit
 // (app/services/financial_cockpit.py); this component only arranges it.
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, CellChip, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -31,6 +31,8 @@ import { ebitdaIsStaffCorrected, ebitdaKpi, metricAmountLabel, metricCurrency } 
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
+import type { BudgetEditorControls } from "@/components/application/UseOfFundsBudgetEditor";
+import { createUseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
@@ -621,6 +623,13 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 
 export function FinancialCockpit(props: Props) {
   const { profileId, onRefreshProgramReadiness, onWorkingFinancingChange } = props;
+  const budgetDraftStore = useMemo(() => createUseOfFundsDraftStore(profileId), [profileId]);
+  const activeBudgetStore = useRef(budgetDraftStore);
+  activeBudgetStore.current = budgetDraftStore;
+  const [budgetSaving, setBudgetSaving] = useState(false);
+  const budgetControlsChanged = useCallback((controls: BudgetEditorControls | null) => {
+    if (activeBudgetStore.current === budgetDraftStore) setBudgetSaving(controls?.saving ?? false);
+  }, [budgetDraftStore]);
   const query = useFinancialCockpit(props.profileId);
   const api = useAuthedApi();
   const queryClient = useQueryClient();
@@ -661,6 +670,7 @@ export function FinancialCockpit(props: Props) {
   const sourceFocusRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
     activeProfileRef.current = props.profileId;
+    setBudgetSaving(false);
     setSourcePreview(null);
     setSourceFiles([]);
     setAccountChoice("counted");
@@ -792,19 +802,8 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         <CoverageCard key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest}
-          programSelection={props.programReadiness ? <ApplicationProgramReadiness
-            section="programs" profileId={props.profileId} files={[]}
-            value={props.programReadiness} onValueChange={props.onProgramReadinessChange}
-            onRefresh={props.onRefreshProgramReadiness} showUploader={false}
-            canEditPrograms={props.canUnderwrite} canCreatePrograms={props.canCreatePrograms}
-            programVertical={props.programVertical} intakeVariant={props.intakeVariant}
-            onPreviewFinancialEvidence={openSourcePreview}
-            onRequestFinancialEvidence={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined}
-          /> : null}
-          onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
-      {props.programReadiness ? (
-        <>
-          <details className="fc-card fc-wide" id="fc-programs">
+          setupBudgetSaving={budgetSaving}
+          programSelection={props.programReadiness ? <details className="fc-card fc-wide" id="fc-programs" open>
             <summary><strong>Program criteria and use of funds</strong><span className="sub"> · {props.programReadiness.selections?.map((row) => row.program_name).join(", ") || "Choose programs"}</span></summary>
             <div className="fc-card-h">
               <div>
@@ -815,6 +814,8 @@ export function FinancialCockpit(props: Props) {
             <ApplicationProgramReadiness
               section="setup"
               canEditPrograms={props.canUnderwrite}
+              useOfFundsDraftStore={budgetDraftStore}
+              onUseOfFundsControlsChange={budgetControlsChanged}
               onPreviewFinancialEvidence={openSourcePreview}
               onRequestFinancialEvidence={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined}
               profileId={props.profileId}
@@ -827,9 +828,8 @@ export function FinancialCockpit(props: Props) {
               programVertical={props.programVertical}
               intakeVariant={props.intakeVariant}
             />
-          </details>
-        </>
-      ) : null}
+          </details> : null}
+          onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
         <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       </div>
 
