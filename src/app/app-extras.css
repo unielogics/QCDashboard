@@ -7358,3 +7358,7 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .message-image-draft > button:disabled { opacity: .5; cursor: default; }
 .message-image-draft small { font-size: 10px; color: var(--muted); }
 .message-image-draft small[role="alert"] { color: var(--danger); }
+/* Operating disclosure rows grow with their text inside the existing bounded scroller. */
+.sg-operating-plan .sg-row[data-block] .sg-cell { white-space: normal; align-items: flex-start; }
+.sg-operating-plan .sg-row[data-block] .sg-text { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
+.sg-operating-plan .sg-editor-wrap { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; resize: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }

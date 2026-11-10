@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clearOperatingReview, illustrativeActionImpact, operatingExpenseTotal, operatingNumber, operatingPlanRequest, operatingReviewedWorkspace, proposeExpense, type OperatingPlanBody } from "../operatingPlan";
+import { clearOperatingReview, illustrativeActionImpact, linkOperatingActionExpense, normalizeOperatingPlanBody, operatingExpenseAmount, operatingExpenseTotal, operatingNumber, operatingPlanRequest, operatingReviewedWorkspace, proposeExpense, proposeExpenseUnits, type OperatingPlanBody } from "../operatingPlan";
 
 describe("operating plan draft", () => {
   it("preserves disclosed expenses and edits one linked proposal without duplicating it", () => {
@@ -44,5 +44,38 @@ describe("operating plan draft", () => {
     expect(operatingReviewedWorkspace({ workspace, evaluation: {} }, "plan")).toEqual(workspace);
     expect(() => operatingReviewedWorkspace(workspace, "other-plan")).toThrow("draft could not be refreshed");
     expect(() => operatingReviewedWorkspace({ evaluation: {} }, "plan")).toThrow("draft could not be refreshed");
+  });
+  it.each(["cogs", "marketing", "software", "merchant_processing"])("models quantity, unit rate and fixed fees for %s without adding the source total", (category) => {
+    const baseline: OperatingPlanBody = { expenses: [{ id: "cost", category, label: "Current cost", cost_basis: "per_unit", unit_label: "seat", current_units_per_period: 10, current_unit_cost: 20, current_fixed_amount: 50, current_amount: 250, cadence: "monthly", source_file_ids: ["source"] }] };
+    const first = proposeExpenseUnits(baseline, "cost", { proposed_units_per_period: 8, proposed_unit_cost: 15, proposed_fixed_amount: 30 }, () => "one-action");
+    const second = proposeExpenseUnits(first, "cost", { proposed_fixed_amount: 20 }, () => "unused");
+    expect(second.expenses).toEqual(baseline.expenses);
+    expect(second.adjustments).toHaveLength(1);
+    const action = second.adjustments![0];
+    expect(action).toMatchObject({ id: "one-action", expense_row_id: "cost", cost_basis: "per_unit", current_amount: null, proposed_amount: null, source_file_ids: ["source"], status: "proposed" });
+    expect(operatingExpenseAmount(baseline.expenses![0])).toBe(250);
+    expect(operatingExpenseTotal(baseline.expenses!)).toEqual({ annual: 3000, oneTime: 0, missing: 0 });
+    expect(operatingExpenseAmount(action, true)).toBe(140);
+    expect(illustrativeActionImpact({ ...action, implementation_cost: 0 })).toBe(1320);
+  });
+  it("keeps missing granular costs unknown and supports explicit zero quantity or fixed fees", () => {
+    const row = { id: "cost", cost_basis: "per_unit" as const, current_units_per_period: 0, current_unit_cost: 20, current_fixed_amount: null, current_amount: 999 };
+    expect(operatingExpenseAmount(row)).toBeNull();
+    expect(operatingExpenseAmount({ ...row, current_fixed_amount: 0 })).toBe(0);
+    const normalized = normalizeOperatingPlanBody({ adjustments: [{ id: "one", current_units_per_period: "12", proposed_units_per_period: "", current_fixed_amount: "0", proposed_fixed_amount: " " }] });
+    expect(normalized.adjustments[0]).toMatchObject({ current_units_per_period: 12, proposed_units_per_period: null, current_fixed_amount: 0, proposed_fixed_amount: null });
+  });
+  it("links an existing manual proposal to the disclosed expense while retaining its quote and proposed drivers", () => {
+    const body: OperatingPlanBody = { expenses: [{ id: "software", current_amount: 250, cost_basis: "per_unit", unit_label: "seat", current_units_per_period: 10, current_unit_cost: 20, current_fixed_amount: 50, cadence: "monthly", source_file_ids: ["current"] }], adjustments: [{ id: "existing", kind: "expense_reduction", label: "Negotiate software", current_amount: 999, proposed_amount: 800, proposed_units_per_period: 8, proposed_unit_cost: 15, proposed_fixed_amount: 0, source_file_ids: ["quote"], status: "approved", review_source_stamp: "old" }] };
+    const linked = linkOperatingActionExpense(body, "existing", "software");
+    expect(linked.adjustments).toHaveLength(1);
+    expect(linked.adjustments![0]).toMatchObject({ id: "existing", label: "Negotiate software", expense_row_id: "software", driver_key: "software", current_amount: null, proposed_amount: null, current_units_per_period: 10, current_unit_cost: 20, current_fixed_amount: 50, proposed_units_per_period: 8, proposed_unit_cost: 15, proposed_fixed_amount: 0, source_file_ids: ["current", "quote"], status: "proposed", review_source_stamp: null });
+    expect(body.adjustments![0].current_amount).toBe(999);
+    expect(linkOperatingActionExpense(body, "existing", "missing")).toBe(body);
+  });
+  it("links processing review without replacing the merchant statement's cadence, volume or rates", () => {
+    const body: OperatingPlanBody = { expenses: [{ id: "fees", cost_basis: "per_unit", current_units_per_period: 10, current_unit_cost: 50, current_fixed_amount: 0, cadence: "annual", source_file_ids: ["tax"] }], adjustments: [{ id: "processor", kind: "processing_cost_change", cadence: "monthly", processing_volume: 10000, current_processing_rate_pct: 3, proposed_processing_rate_pct: 2, source_file_ids: ["statement", "quote"] }] };
+    expect(linkOperatingActionExpense(body, "processor", "fees").adjustments![0]).toMatchObject({ expense_row_id: "fees", driver_key: "fees", cadence: "monthly", processing_volume: 10000, current_processing_rate_pct: 3, proposed_processing_rate_pct: 2, source_file_ids: ["tax", "statement", "quote"] });
+    expect(linkOperatingActionExpense(body, "processor", "fees").adjustments![0].cost_basis).toBe("total");
   });
 });

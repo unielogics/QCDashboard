@@ -109,6 +109,7 @@ export type SheetCellViewProps = {
   tabbable: boolean;
   editing: Editing | null;
   notePreview?: boolean;
+  wrapText?: boolean;
   describedBy?: string;
   /** A remote edit that was discarded because this cell was being typed into. */
   mark?: CellMark | null;
@@ -132,6 +133,7 @@ function SheetCellViewInner({
   tabbable,
   editing,
   notePreview,
+  wrapText,
   describedBy,
   mark,
   onCommit,
@@ -178,7 +180,7 @@ function SheetCellViewInner({
       style={span > 1 ? { gridColumn: `span ${span}` } : undefined}
     >
       {editing ? (
-        <CellEditor cell={cell} value={value} seed={editing.seed} onCommit={onCommit} onCancel={onCancel} />
+        <CellEditor cell={cell} value={value} seed={editing.seed} onCommit={onCommit} onCancel={onCancel} wrapText={wrapText} />
       ) : (
         <>
           <span className="sg-text">{shown.text}</span>
@@ -256,18 +258,21 @@ function CellEditor({
   seed,
   onCommit,
   onCancel,
+  wrapText,
 }: {
   cell: SheetCell | null;
   value: string;
   seed: string | null;
   onCommit: (next: string, how: CommitHow) => void;
   onCancel: () => void;
+  wrapText?: boolean;
 }) {
   const [draft, setDraft] = useState(seed === null ? String(value ?? "") : seed);
   const [invalidDate, setInvalidDate] = useState(false);
   const cancelled = useRef(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const selectRef = useRef<HTMLSelectElement | null>(null);
+  const textRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     const input = inputRef.current;
@@ -275,8 +280,10 @@ function CellEditor({
       focusSheetInput(input, seed);
       return;
     }
+    if (textRef.current) { textRef.current.focus(); if (seed === null) textRef.current.select(); else textRef.current.setSelectionRange(textRef.current.value.length, textRef.current.value.length); return; }
     selectRef.current?.focus();
   }, [seed]);
+  useEffect(() => { const input = textRef.current; if (input) { input.style.height = "auto"; input.style.height = `${input.scrollHeight}px`; } }, [draft]);
 
   const finish = (next: string, how: CommitHow) => {
     if (cell?.type === "date" && !isValidSheetDate(next, inputRef.current?.validity.badInput)) {
@@ -336,6 +343,8 @@ function CellEditor({
       </select>
     );
   }
+
+  if (wrapText && cell?.type === "text") return <textarea ref={textRef} className="field sg-editor sg-editor-wrap" rows={2} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={onKeyDown} onBlur={() => { if (!cancelled.current) finish(draft, "blur"); }} aria-label={cell.label ?? cell.key ?? undefined} />;
 
   return (
     <input

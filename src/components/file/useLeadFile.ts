@@ -17,6 +17,7 @@ import {
   type LeadDetail,
   type LeadRow,
   type PackageReadinessGeneration,
+  type PackageGenerationOptions,
   type VendorEmailPreview,
   type VendorEmailSendPayload,
   type VendorEmailSendResult,
@@ -226,18 +227,18 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
   const generateLenderPacket = () => generate("/lender-packet", "Lender packet generated.", "Lender packet failed.");
   const generatePrequalification = () => generate("/prequalification", "Prequalification drafted.", "Prequalification failed.");
 
-  async function generatePackageReadiness(): Promise<PackageReadinessGeneration> {
+  async function generatePackageReadiness(options?: PackageGenerationOptions): Promise<PackageReadinessGeneration> {
     if (!leadId) throw new Error("No file is open.");
     notify("");
     try {
-      const generated = await call<PackageReadinessGeneration>(`/admin/ai-underwriter-leads/${leadId}/package-readiness/generate`, { method: "POST" });
+      const generated = await call<PackageReadinessGeneration>(`/admin/ai-underwriter-leads/${leadId}/package-readiness/generate`, { method: "POST", body: JSON.stringify(options ?? {}) });
       try {
         await reload();
-        notify("Executive summary and lender package refreshed together and saved to the room.");
+        notify("Investor presentation and supporting PDFs refreshed together and saved to the room.");
       } catch {
         // The generation POST already committed immutable package versions. A
         // failed follow-up reload must not read as a failed generation.
-        notify("Both PDFs were generated and saved. Reload the file to refresh the surrounding workspace.");
+        notify("The package PDFs were generated and saved. Reload the file to refresh the surrounding workspace.");
       }
       return generated;
     } catch (error) {

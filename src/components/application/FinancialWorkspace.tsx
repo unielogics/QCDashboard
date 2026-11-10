@@ -226,7 +226,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     setNotice(publication === "saved_pdf" && next.kind === "debt_schedule"
       ? `Version ${saved?.version_number ?? "saved"} PDF saved. ${accepted?.complete === false ? "This debt schedule is still a draft awaiting completion. Complete it and save a version to publish its figures to financials and AI." : "This PDF is not confirmed as the completed schedule used by financials and AI."}`
       : `Version ${saved?.version_number ?? "saved"} saved${publication === "published" && (submit || next.kind === "debt_schedule") ? " and filed on the checklist" : ""}. ${publication === "published" ? "The financial interface and AI now use this version." : "This saved version is available in history; the latest version is shown in the sidebar."}`);
-    for (const key of ["financial-workspace-summary", "debt-schedule-review", "financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
+    for (const key of ["financial-workspace-summary", "operating-plan-summary", "debt-schedule-review", "financial-cockpit", "advances", "application-evidence-workspace", "application-collection-tasks", "form-answers"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
     await onPublished?.();
   }); };
   const debtAction = (action: DebtAction) => { void run("row", async () => {
@@ -433,7 +433,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   return <>
     <Drawer open={open} onClose={close} fullscreen={expanded} width="xl" closeOnBackdrop={false} title="Financial workspace" sub={snapshot?.label ?? FINANCIAL_LABELS[kind]} ariaLabel="Financial workspace" bodyClass="financial-workspace-body" headerActions={<>
       <span className="sub" aria-live="polite">{savingDraft ? "Saving draft…" : localDirty ? "Unsaved draft changes" : hasDraft ? "Draft saved" : currentVersion ? `Current v${currentVersion.version_number}` : "No saved version"}</span>
-      <Btn size="sm" disabled={Boolean(busy)} onClick={() => setRequestOpen(true)}><Icon name="mail" size={14} />Request files</Btn>
+      <Btn size="sm" disabled={Boolean(busy)} onClick={() => { void run("request", async () => { await flush(); setRequestOpen(true); }); }}><Icon name="mail" size={14} />{kind === "operating_plan" ? "Request client plan" : "Request files"}</Btn>
       <Btn size="sm" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace size" : "Expand workspace"}><Icon name={expanded ? "layers" : "external"} size={14} />{expanded ? "Restore" : "Expand"}</Btn>
       {kind !== "debt_schedule" ? <Btn size="sm" disabled={!snapshot || Boolean(busy) || conflict} onClick={() => publish(true)}>{busy === "file" ? "Filing…" : "File on checklist"}</Btn> : null}
       <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsCompletedDebtVersion} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn>

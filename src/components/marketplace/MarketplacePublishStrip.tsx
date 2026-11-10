@@ -74,14 +74,14 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
             <Link className="btn btn-sm" href={`/admin/marketplace/${listingId}`}>Open the listing{listingRef && listing ? ` ${listingRef}` : ""}</Link>
           </>
         ) : onStartListing ? (
-          <Btn size="sm" onClick={onStartListing}>Start the listing draft</Btn>
+          <Btn size="sm" onClick={onStartListing} disabled={!packageInSync}>Prepare marketplace listing</Btn>
         ) : null}
       </div>
       {!compact && listingId && sync && !sync.up_to_date && sync.published ? (
         <span className="sub">Changed on the file since the last push: {sync.changed.map((c) => c.label.toLowerCase()).join(", ")}. Push the package to carry them over{packageInSync ? "" : " once the package is refreshed"}.</span>
       ) : null}
       {!compact && listingId && sync && !sync.published ? <span className="sub">The listing has never received the package. Push it so members get the executive brief and the lender packet with the figures and the plan.</span> : null}
-      {!compact && !listingId ? <span className="sub">Start a listing draft from the offer panel below; the package is pushed onto it.</span> : null}
+      {!compact && !listingId ? <span className="sub">{packageInSync ? "Review offering terms below, then create a listing draft from this package." : "Generate a current investor package before creating its marketplace listing."}</span> : null}
       {note ? <StatusLine tone={note.tone}>{note.text}</StatusLine> : null}
     </div>
   );

@@ -647,7 +647,7 @@ export function SheetGrid({
 
   return (
     <div
-      className="sg-wrap"
+      className={cx("sg-wrap", layout.kind === "operating_plan" && "sg-operating-plan")}
       style={wrapStyle}
       ref={wrapRef}
       onPointerOver={notes.onPointerOver}
@@ -672,7 +672,7 @@ export function SheetGrid({
         onDoubleClick={onDoubleClick}
       >
         {layout.rows.map((row, rowIndex) => (
-          <div key={row.r} role="row" data-row-key={row.row_key ?? undefined} aria-rowindex={rowIndex + 1} className={cx("sg-row", `sg-r-${row.kind}`)}>
+          <div key={row.r} role="row" data-row-key={row.row_key ?? undefined} data-block={row.block ?? undefined} aria-rowindex={rowIndex + 1} className={cx("sg-row", `sg-r-${row.kind}`)}>
             {renderRow(row, rowIndex)}
           </div>
         ))}
@@ -737,6 +737,7 @@ export function SheetGrid({
           tabbable={active}
           editing={state.editing && active ? state.editing : null}
           notePreview={layout.kind === "debt_schedule" && cell?.type === "text" && Boolean(key?.endsWith(".notes"))}
+          wrapText={layout.kind === "operating_plan" && Boolean(row.block) && cell?.type === "text"}
           describedBy={notes.describedCell === `${addr.r}:${addr.c}` ? notes.id : undefined}
           mark={key ? marks?.[`${layout.kind}:${key}`] ?? null : null}
           onCommit={onCommit}
