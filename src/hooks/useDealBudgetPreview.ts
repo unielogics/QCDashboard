@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi } from "@/hooks/useApi";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { dealBudgetDraftKey, dealBudgetWrite, type DealBudget, type DealBudgetDraft, type DealBudgetLoan, type DealBudgetWrite } from "@/lib/dealBudget";
@@ -11,7 +11,7 @@ export type DealBudgetPreviewRead = DealBudget & { financial_plan_evaluation?: P
 
 /** Exact-input server previews are shared by the editor and the financial cockpit. */
 export function useDealBudgetPreview(profileId: string, options: { enabled?: boolean; value?: DealBudgetWrite | null; loan?: DealBudgetLoan | null; financialPlan?: FinancialPlanWrite | null } = {}) {
-  const api = useAuthedApi(), budget = useDealBudget(profileId, options.enabled !== false);
+  const api = useAuthedApi(), queryClient = useQueryClient(), budget = useDealBudget(profileId, options.enabled !== false);
   const draft = useQuery<DealBudgetDraft | null>({ queryKey: dealBudgetDraftKey(profileId), queryFn: async () => null, enabled: false, initialData: null, gcTime: Infinity });
   const value = options.value ?? (draft.data?.profileId === profileId ? draft.data.value : budget.data ? dealBudgetWrite(budget.data) : null);
   const fingerprint = JSON.stringify({ profileId, value, loan: options.loan ?? null, financialPlan: options.financialPlan ?? null });
@@ -24,5 +24,9 @@ export function useDealBudgetPreview(profileId: string, options: { enabled?: boo
   });
   const matches = enabled && settled === fingerprint;
   const data = matches ? query.data : undefined;
-  return { ...query, data, budget, value, fingerprint, pending: enabled && (!matches || query.isPending), error: matches ? query.error : null };
+  const updateBudget = (patch: Partial<DealBudgetWrite>) => {
+    if (!value) return;
+    queryClient.setQueryData(dealBudgetDraftKey(profileId), { ...draft.data, profileId, value: { ...value, ...patch }, removed: draft.data?.removed ?? [] });
+  };
+  return { ...query, data, budget, value, updateBudget, fingerprint, pending: enabled && (!matches || query.isPending), error: matches ? query.error : null };
 }

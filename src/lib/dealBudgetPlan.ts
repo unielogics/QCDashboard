@@ -5,7 +5,7 @@ import type { DealBudgetLoan } from "./dealBudget";
 /** Preserve payoff selections and earnings review while pricing the edited loan. */
 export function dealBudgetPlan(base: FinancialPlanWrite | FinancialPlanRead | null | undefined, loan?: DealBudgetLoan | null): FinancialPlanWrite | null {
   const record = base && "record" in base ? base.record : base;
-  if (!record) return null;
+  if (!record) return loan ? dealBudgetPlan({ expected_updated_at: null, retire: [], exclude: [], new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, new_loan_structure: null, new_loan_interest_only_months: null, add_backs: [], overrides: null, note: null }, loan) : null;
   const plan: FinancialPlanWrite = { ...record, expected_updated_at: "updated_at" in record ? record.updated_at ?? null : (record as FinancialPlanWrite).expected_updated_at ?? null,
     retire: record.retire ?? [], exclude: record.exclude ?? [], new_payment_source: record.new_payment_source as FinancialPlanWrite["new_payment_source"], new_loan_interest_only: record.new_loan_interest_only ?? false,
     new_loan_structure: record.new_loan_structure ?? null, new_loan_interest_only_months: record.new_loan_interest_only_months ?? null,
