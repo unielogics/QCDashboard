@@ -49,6 +49,7 @@ export interface CpSourceRow {
 export interface CpListingRef { id: string; ref: string; status: CpListingStatus; name: string }
 /** One product offered on a listing: a program with suggested amount, rate and term; the primary one supplies the headline terms. */
 export interface CpListingProduct {
+  financing_source?: "canonical_financing" | null;
   coverage_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; repayment_payment_monthly?: number | null; maturity_balance?: number | null;
   program_key: string | null; label: string; amount: number | string | null; rate_pct: number | string | null; factor_rate?: number | string | null;
   term_months: number | null; interest_only?: boolean; structure?: "amortizing" | "simple_interest" | "interest_only" | null; interest_only_months?: number | null; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_frequency: "monthly" | "weekly" | "biweekly" | "daily" | "custom" | null; monthly_payment: number | string | null; dscr: number | string | null;

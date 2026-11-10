@@ -348,6 +348,7 @@ export type TermSheetExtra = TermSheetStructuredFields & {
 export type TermSheetUseOfFunds = Partial<Record<UseOfFundsKey, number | null>> & { other_label?: string | null };
 
 export type TermSheetBody = {
+  expected_collateral_revision?: number;
   expected_version?: number | null;
   funding_party_kind: FundingPartyKind;
   lender_id: string | null;

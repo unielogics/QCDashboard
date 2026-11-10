@@ -51,6 +51,7 @@ export const LENDER_PRODUCT_GROUPS: ReadonlyArray<{
       { value: "reinsurance_backed", label: "Reinsurance-backed" },
       { value: "merchant_cash_advance", label: "Merchant Cash Advance" },
       { value: "mca_refinance", label: "MCA Refinance" },
+      { value: "private_loan_bridge", label: "Private Loan / Bridge" },
       { value: "arf_bankroll", label: "ARF Bankroll" },
       { value: "arf_io_bankroll", label: "ARF IO-Bankroll" },
       { value: "arf_elevate_bankroll", label: "ARF Elevate Bankroll" },

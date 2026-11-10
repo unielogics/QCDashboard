@@ -470,9 +470,12 @@ export type PlanEconomics = {
   client_total_cost: number | null; stated_rate_pct: number | null; structure_rate_pct: number | null; effective_rate_pct: number | null; words: string;
 };
 export type ProposedTerms = {
+  active_proposal?: boolean;
+  program_key?: string | null;
+  program_name?: string | null;
   coverage_payment_monthly?: number | null; regular_payment_monthly?: number | null;
   repayment_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; payment_phases?: LoanPaymentPhase[];
-  source: "term_sheet" | "plan"; label: string | null; amount: number | null; rate_pct: number | null; term_months: number | null; monthly_payment: number | null; structure?: string | null; structure_label?: string | null;
+  source: "term_sheet" | "plan" | "recorded_reference"; label: string | null; amount: number | null; rate_pct: number | null; term_months: number | null; monthly_payment: number | null; structure?: string | null; structure_label?: string | null;
   interest_only: boolean; interest_only_months: number; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_io_monthly?: number | null; payment_after_monthly?: number | null; describe?: string; payment_note?: string | null;
   schedule?: Record<string, unknown> | null; schedule_rows?: Array<{ period: number; month: number; phase: string; payment: number; interest: number; principal: number; balance: number; balloon?: number; exposure_pct: number; recovered_pct: number }>; risk?: PlanRisk | null;
 };

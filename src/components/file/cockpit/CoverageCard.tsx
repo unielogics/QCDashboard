@@ -11,6 +11,8 @@ import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import { coverageCurrencyComparable, coverageReview } from "@/lib/coverageReview";
 import { loanScheduleRows } from "@/lib/loanScheduleView";
 import { parseIncomeOverride } from "@/lib/incomeOverrideInput";
+import type { WorkingFinancing } from "@/lib/workingFinancing";
+import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
 // the plan on the right, and the plan itself in between: the obligations
@@ -130,14 +132,14 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, reviewRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: { profileId: string; plan: FinancialPlanWrite; dirty: boolean }) => void; reviewRequest?: number; onReviewClose?: () => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, reviewRequest = 0, termsRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; reviewRequest?: number; termsRequest?: number; onReviewClose?: () => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
   const canEdit = requestedCanEdit && !termsPending && !save.isPending;
   const queryClient = useQueryClient();
   const [reviewOpen, setReviewOpen] = useState(false);
   const [reviewTab, setReviewTab] = useState<FinancialReviewTab>("schedule");
-  const lastReviewRequest = useRef(reviewRequest);
+  const lastReviewRequest = useRef(0);
   useEffect(() => {
     if (lastReviewRequest.current === reviewRequest) return;
     lastReviewRequest.current = reviewRequest;
@@ -154,6 +156,12 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   useEffect(() => { setLegacySelectionsReviewed(false); }, [legacySelectionKey]);
   const returnToReview = useRef(false);
   const openClientTerms = (view: ClientTermsView) => { returnToReview.current = reviewOpen; setClientTermsView(view); setReviewOpen(false); setClientTermsOpen(true); };
+  const lastTermsRequest = useRef(0);
+  useEffect(() => {
+    if (lastTermsRequest.current === termsRequest) return;
+    lastTermsRequest.current = termsRequest;
+    if (termsRequest > 0) { returnToReview.current = false; setClientTermsView("terms"); setReviewOpen(false); setClientTermsOpen(true); }
+  }, [termsRequest]);
   const openDebt = (target: DebtScheduleEditorTarget) => { returnToReview.current = reviewOpen; setReviewOpen(false); setDebtEditor(target); };
   const refresh = () => onRefresh?.();
   const closeDebt = () => {
@@ -182,11 +190,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const dirty = !same(plan, savedRecord);
   const workingPlanListener = useRef(onWorkingPlanChange);
   workingPlanListener.current = onWorkingPlanChange;
-  const lastBroadcastProfile = useRef(profileId);
-  useEffect(() => {
-    if (lastBroadcastProfile.current !== profileId) { lastBroadcastProfile.current = profileId; return; }
-    workingPlanListener.current?.({ profileId, plan, dirty });
-  }, [profileId, plan, dirty]);
   useEffect(() => {
     // A fresh read of the file (another tab saved, a re-read landed) replaces an untouched draft.
     if (same(plan, previousSavedRecord.current)) {
@@ -208,6 +211,10 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const pendingRetires = plan.retire.filter((id) => !obligations.some((obligation) => obligation.id === id));
   const unresolvedPayoffs = pendingRetires.length > 0 || !legacySelectionsReviewed && Boolean(cockpit.plan.unresolved_previous_selections?.length);
   const fundingReview = coverageReview({ incomeAnnual: local.incomeBefore, debtServiceAnnual: currentAnnualService }, { incomeAnnual: local.incomeAfter, debtServiceAnnual: unresolvedPayoffs ? null : local.serviceAfterAnnual }, { before: coverageCurrencyComparable(cockpit), after: incomeCurrencyComparable });
+  const sourceDescription = coverageBasis ? `${coverageBasis.label}${coverageBasis.period ? ` · ${coverageBasis.period}` : ""}` : "Financial evidence needs review";
+  useEffect(() => {
+    workingPlanListener.current?.({ profileId, plan, dirty, currentDscr: fundingReview.before.dscr, projectedDscr: fundingReview.after.dscr, projectedDebtServiceAnnual: fundingReview.after.debtServiceAnnual, source: sourceDescription });
+  }, [profileId, plan, dirty, fundingReview.before.dscr, fundingReview.after.dscr, fundingReview.after.debtServiceAnnual, sourceDescription]);
   const noDebtServiceAfter = !unresolvedPayoffs && local.serviceAfterAnnual === 0;
   const selectionTotals = refinanceSelectionTotals(obligations, plan.retire, local, {
     unresolvedSelections: unresolvedPayoffs,
@@ -584,6 +591,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             <div className="grid g2"><span className="sub">Residual balloon at maturity</span><strong className="num">{local.schedule ? money(local.schedule.balloon, 2) : "Enter loan details to calculate"}</strong><small className="sub">Unpaid principal is due at maturity{plan.new_loan_term_months != null ? ` in month ${plan.new_loan_term_months}` : ""}; additional principal payments are set below.</small></div>
           </div>
           {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
+          <FileCollateralSection profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">

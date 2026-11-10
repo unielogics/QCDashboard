@@ -11,6 +11,9 @@ import type { OfferDeliveryReceipt, OfferSelection } from "@/components/communic
 import type { AcceptedTermsRef, ApplicationUnderwritingPatch, ApplicationUnderwritingState } from "@/lib/applicationProfile";
 import type { UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
 import type { UnderwritingDraft } from "./leadFile";
+import type { WorkingFinancing } from "@/lib/workingFinancing";
+import { FinancingProposalSummary } from "./FinancingProposalSummary";
+import { FileCollateralSection } from "./FileCollateralSection";
 
 /** The loan terms saved on the Financials tab, as the Underwriting flow reads them. */
 export type TermsOnFile = {
@@ -52,13 +55,16 @@ function Step({ n, title, state, chip, sub, children, id }: { n: number; title: 
 
 /** Terms on file → offer sent → accepted → close: one flow, in the order the deal moves, every step reading
  *  the terms the Financials tab saved. The desk acts once per step; everything else is a reflection. */
-export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onEditFees, forecastEarnings, feeInfo, offer, loanId, onCreateFundingFile, canUnderwrite }: {
+export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onEditFees, forecastEarnings, feeInfo, offer, loanId, onCreateFundingFile, canUnderwrite }: {
   profileId: string;
   terms: TermsOnFile | null;
   termsLoading: boolean;
   /** PDF, preview and email actions for the terms on file (the dealer sheet). */
   termsActions?: ReactNode;
   onEditTerms: () => void;
+  financing?: WorkingFinancing | null;
+  requestedAmount?: number | null;
+  onCoveragePlan?: () => void;
   underwriting: ApplicationUnderwritingState | null;
   statusLabel: string;
   draft: UnderwritingDraft;
@@ -124,7 +130,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
   }, [draft.accepted_amount, draft.estimated_close_date, underwriting?.accepted_amount, underwriting?.estimated_close_date]);
 
   const rail = [
-    { key: "terms", title: "Terms on file", summary: terms ? `${money(terms.amount)}${terms.ratePct != null ? ` at ${terms.ratePct}%` : ""}${terms.termMonths ? ` · ${terms.termMonths} mo` : ""}` : "Structure in Financials" },
+    { key: "terms", title: "Terms on file", summary: terms ? `${money(terms.amount)}${terms.ratePct != null ? ` at ${terms.ratePct}%` : ""}${terms.termMonths ? ` · ${terms.termMonths} mo` : ""}` : "Structure the loan" },
     { key: "offer", title: "Offer sent", summary: offer.receipt ? `Sent ${when(offer.receipt.sent_at)}` : terms?.sentToClient ? "With the client" : terms ? "Draft the client email" : "After the terms" },
     { key: "accepted", title: "Accepted", summary: accepted ? `${money(underwriting?.accepted_amount)}${underwriting?.accepted_at ? ` · ${when(underwriting.accepted_at)}` : ""}` : "Record what the client accepted" },
     { key: "close", title: "Close", summary: closed ? "Closed / funded" : accepted ? (openStips == null ? "Stipulations" : openStips === 0 && readyToClose ? "Ready to close" : `${openStips} stipulation${openStips === 1 ? "" : "s"} open`) : "After acceptance" },
@@ -145,7 +151,9 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
       </ol>
       {error ? <Callout tone="bad">{error}</Callout> : null}
 
-      <Step n={1} id="uw-terms" title="Terms on file" state={states.terms} chip={terms ? (terms.status === "draft" ? `Draft v${terms.version}` : `v${terms.version} on file`) : "None yet"} sub="The loan terms are structured on the Financials tab, with the schedule and the risk beside them; this is the same record.">
+      <Step n={1} id="uw-terms" title="Terms on file" state={states.terms} chip={terms ? (terms.status === "draft" ? `Draft v${terms.version}` : `v${terms.version} on file`) : "None yet"} sub="One loan shared with the coverage plan, including its repayment schedule and collateral.">
+        <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
+        <FileCollateralSection profileId={profileId} disabled={!canUnderwrite || saving} compact title="Collateral for this loan" />
         {termsLoading ? <div className="empty">Reading the terms…</div> : terms ? (
           <div className="uw-terms">
             <div className="uw-terms-figures">
@@ -159,13 +167,12 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
             <div className="uw-terms-actions">
               <span className="sub">{terms.label}{terms.recordedAt ? ` · ${when(terms.recordedAt)}` : ""}</span>
               {termsActions}
-              <Btn size="sm" onClick={onEditTerms}><Icon name="pencil" size={14} />Edit in Financials</Btn>
+              <Btn size="sm" onClick={onEditTerms}><Icon name="pencil" size={14} />Edit saved terms</Btn>
             </div>
           </div>
         ) : (
           <div className="uw-empty">
-            <p>No loan terms on this file yet. Structure them on the Financials tab; the PDF report, the offer, the acceptance and the stipulations all follow from that one record.</p>
-            <Btn variant="pri" size="sm" onClick={onEditTerms}><Icon name="pencil" size={14} />Structure the terms in Financials</Btn>
+            <p>No terms version has been saved yet. Structure the loan above; its PDF, offer and acceptance follow from the shared record.</p>
           </div>
         )}
       </Step>
