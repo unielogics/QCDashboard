@@ -40,6 +40,7 @@ describe("programSelectionChanged", () => {
   it("allows explicitly applying first criteria to an unchanged unbound choice", () => {
     expect(programSelectionChanged(["program"], [{ program_key: "program", playbook_id: null }], [{ program_key: "program", playbook_id: "first-published" }])).toBe(true);
     expect(programSelectionChanged(["program"], [{ program_key: "program", playbook_id: null }], [{ program_key: "program", playbook_id: null }])).toBe(false);
+    expect(programSelectionChanged(["program"], [{ program_key: "program", playbook_id: null }], [{ program_key: "program", playbook_id: "invalid-published", recommendation_status: "criteria_unavailable" }])).toBe(false);
   });
   it("never upgrades an already pinned version merely because a newer candidate exists", () => {
     expect(programSelectionChanged(["program"], [{ program_key: "program", playbook_id: "old-pinned" }], [{ program_key: "program", playbook_id: "new-published" }])).toBe(false);

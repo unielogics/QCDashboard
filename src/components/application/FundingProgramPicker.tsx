@@ -65,7 +65,8 @@ export function FundingProgramPicker({
   const historicalSelections = selections.filter((selection) => !candidates.some((candidate) => candidate.program_key === selection.program_key));
   const keysChanged = selectedKeys.length !== selections.length || selections.some((selection) => !selectedKeys.includes(selection.program_key));
   const firstCriteriaAvailable = selections.some((selection) => !selection.playbook_id && selectedKeys.includes(selection.program_key)
-    && candidates.some((candidate) => candidate.program_key === selection.program_key && candidate.playbook_id));
+    && candidates.some((candidate) => candidate.program_key === selection.program_key && candidate.playbook_id
+      && candidate.recommendation_status !== "criteria_unavailable"));
   const toggle = (key: string) => onSelectionChange(selectedKeys.includes(key) ? selectedKeys.filter((item) => item !== key) : [...selectedKeys, key]);
 
   return <Modal open title="Choose funding programs" size="lg" onClose={onClose} closeOnBackdrop={!busy} footer={

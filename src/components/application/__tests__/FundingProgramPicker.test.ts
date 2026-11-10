@@ -79,4 +79,12 @@ it("offers an explicit first-criteria action without changing program keys", () 
   }));
   expect(html).toContain("Apply criteria");
   expect(html).toContain("Programs with a pinned criteria version keep that version");
+  const unavailable = renderToStaticMarkup(createElement(FundingProgramPicker, {
+    ...props, changed: false, selectionMode: "manual", candidates: [candidate({ recommendation_status: "criteria_unavailable", eligible: false })],
+    selections: [{ id: "unbound", program_key: "dealer_capital", program_name: "Dealer Working Capital", playbook_id: null, playbook_version: null, source: "operator", fit_score: null, fit_confidence: null, fit_reasons: [], selected_at: "2026-11-10T00:00:00Z", needs_scope_review: true }],
+  }));
+  expect(unavailable).not.toContain("Apply criteria");
+  expect(unavailable).not.toContain("First published criteria are now available");
+  expect(unavailable).toMatch(/<button[^>]+disabled=""[^>]*>Apply selection<\/button>/);
+  expect(unavailable).not.toMatch(/type="checkbox"[^>]*disabled=""/);
 });

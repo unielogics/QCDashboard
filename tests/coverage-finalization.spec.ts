@@ -9,18 +9,18 @@ type Json = Record<string, unknown>;
 type Allocation = { id: string; label: string; amount_monthly: string | number | null; notes: string; expense_row_id?: string | null };
 type PlanBody = { business_name: string; currency: string; no_operating_expenses_confirmed: boolean; expenses: unknown[]; adjustments: unknown[]; released_cash_flow: { source_fingerprint: string | null; allocations: Allocation[] } };
 
-async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean } = {}) {
+async function fixture(page: Page, options: { programFailure?: boolean; releaseUnavailable?: boolean; noRelease?: boolean; staleAllocation?: boolean; publishFailure?: boolean; unavailableCriteriaId?: boolean } = {}) {
   const programSaves: Json[] = [], draftSaves: Json[] = [], versionSaves: Json[] = [], unexpectedWrites: string[] = [], errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error" && /maximum update depth|too many re-renders/i.test(message.text())) errors.push(message.text()); });
-  let selected: string[] = [], manual = false, programFailed = false, publishFailed = false, revision = 1;
+  let selected: string[] = options.unavailableCriteriaId ? ["special_review"] : [], manual = Boolean(options.unavailableCriteriaId), programFailed = false, publishFailed = false, revision = 1;
   const pinnedCriteria: Record<string, { id: string | null; version: number | null }> = {};
   let versions: Json[] = [];
   let planBody: PlanBody = { business_name: "Example Therapy Services Inc", currency: "USD", no_operating_expenses_confirmed: true, expenses: [], adjustments: [],
     released_cash_flow: { source_fingerprint: options.staleAllocation ? "coverage-old" : null, allocations: options.staleAllocation ? [{ id: "old-allocation", label: "Existing payroll reserve", amount_monthly: 1000, notes: "Preserve the working allocation while reviewing the changed coverage plan." }] : [] } };
   const candidates = [
     { program_key: "private_bridge", program_name: "Private bridge review", eligible: false, recommendation_status: "not_eligible", playbook_id: "private-criteria", playbook_version: 3, reasons: ["Current coverage is below the published program minimum."], rule_state: "fail" },
-    { program_key: "special_review", program_name: "Special review program", eligible: false, recommendation_status: "criteria_unavailable", playbook_id: null, playbook_version: null, reasons: ["Published criteria unavailable. Underwriting review is required."], rule_state: "unavailable" },
+    { program_key: "special_review", program_name: "Special review program", eligible: false, recommendation_status: "criteria_unavailable", playbook_id: options.unavailableCriteriaId ? "unavailable-criteria" : null, playbook_version: options.unavailableCriteriaId ? 1 : null, reasons: ["Published criteria unavailable. Underwriting review is required."], rule_state: "unavailable" },
   ].map((row, index) => ({ ...row, catalog_id: `catalog-${index}`, public_slug: row.program_key, fit_score: 0, confidence: 0, priority: index, requires_review: true, evidence_gaps: [] }));
   const readiness = () => ({ profile_id: PROFILE, lending_applicable: true, selection_mode: manual ? "manual" : "auto", selections: selected.map(key => {
     const row = candidates.find(candidate => candidate.program_key === key)!;
@@ -80,7 +80,7 @@ async function fixture(page: Page, options: { programFailure?: boolean; releaseU
     else if (path.endsWith(`/${PROFILE}/programs`) && request.method() === "PATCH") {
       const payload = request.postDataJSON() as Json; programSaves.push(payload);
       if (options.programFailure && !programFailed) { programFailed = true; status = 503; body = { detail: "Program selection temporarily unavailable. Retry your saved choices." }; }
-      else { selected = payload.program_keys as string[]; for (const key of selected) { const row = candidates.find(candidate => candidate.program_key === key)!; if (!pinnedCriteria[key]?.id) pinnedCriteria[key] = { id: row.playbook_id, version: row.playbook_version }; } manual = true; body = readiness(); }
+      else { selected = payload.program_keys as string[]; for (const key of selected) { const row = candidates.find(candidate => candidate.program_key === key)!; if (!pinnedCriteria[key]?.id && row.recommendation_status !== "criteria_unavailable") pinnedCriteria[key] = { id: row.playbook_id, version: row.playbook_version }; } manual = true; body = readiness(); }
     } else if (path.endsWith(`/${PROFILE}/program-readiness`)) body = readiness();
     else if (path.endsWith(`/${PROFILE}/financial-workspace/draft`)) {
       const payload = request.postDataJSON() as Json; draftSaves.push(payload); expect(payload.expected_revision).toBe(revision); planBody = payload.body as PlanBody; revision += 1; body = workspace();
@@ -173,6 +173,29 @@ test("a retained program can explicitly adopt its first published criteria witho
   await expect(picker).toHaveCount(0);
   expect(state.programSaves).toHaveLength(2);
   expect(state.programSaves.map(save => save.program_keys)).toEqual([["special_review"], ["special_review"]]);
+});
+
+test("an unavailable criteria ID never offers adoption but the program remains selectable", async ({ page }) => {
+  const state = await fixture(page, { unavailableCriteriaId: true });
+  await page.getByRole("tab", { name: "Underwriting", exact: true }).click();
+  await page.getByRole("button", { name: "Manage programs", exact: true }).click();
+  const picker = page.getByRole("dialog", { name: "Choose funding programs", exact: true });
+  const selected = picker.getByRole("checkbox", { name: /Special review program/ });
+  await expect(selected).toBeChecked();
+  await expect(selected).toBeEnabled();
+  await expect(picker.getByRole("button", { name: "Apply criteria", exact: true })).toHaveCount(0);
+  await expect(picker).not.toContainText("First published criteria are now available");
+  await expect(picker.getByRole("button", { name: "Apply selection", exact: true })).toBeDisabled();
+  expect(state.programSaves).toHaveLength(0);
+  await picker.getByRole("checkbox", { name: /Private bridge review/ }).check();
+  await expect(selected).toBeChecked();
+  await expect(picker.getByRole("button", { name: "Apply selection", exact: true })).toBeEnabled();
+  await expect(picker.getByRole("button", { name: "Apply criteria", exact: true })).toHaveCount(0);
+  await picker.getByRole("button", { name: "Apply selection", exact: true }).click();
+  await expect(picker).toHaveCount(0);
+  expect(state.programSaves).toHaveLength(1);
+  expect(state.programSaves[0].program_keys).toEqual(["special_review", "private_bridge"]);
+  expect(state.errors).toEqual([]);
 });
 
 async function openAllocation(page: Page) {

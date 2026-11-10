@@ -4,12 +4,13 @@ export type FundingProgramVertical = "real_estate" | "dealer" | "main_street" | 
 export function programSelectionChanged(
   keys: string[],
   selections: Array<{ program_key: string; playbook_id: string | null }>,
-  candidates: Array<{ program_key: string; playbook_id: string | null }>,
+  candidates: Array<{ program_key: string; playbook_id: string | null; recommendation_status?: string }>,
 ): boolean {
   return keys.length !== selections.length
     || selections.some((selection) => !keys.includes(selection.program_key))
     || selections.some((selection) => !selection.playbook_id && keys.includes(selection.program_key)
-      && candidates.some((candidate) => candidate.program_key === selection.program_key && candidate.playbook_id));
+      && candidates.some((candidate) => candidate.program_key === selection.program_key && candidate.playbook_id
+        && candidate.recommendation_status !== "criteria_unavailable"));
 }
 
 export type FundingProgramScope = {
