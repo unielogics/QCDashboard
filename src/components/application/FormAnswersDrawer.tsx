@@ -26,6 +26,7 @@ const TITLES: Record<FormKind, string> = {
   p_and_l: "Profit and loss statement",
   balance_sheet: "Balance sheet",
   real_estate_schedule: "Real estate schedule",
+  operating_plan: "Operating expenses and earnings plan",
 };
 
 function Rows({ rows, total }: { rows: FormAnswerLine[]; total?: FormAnswerLine | null }) {

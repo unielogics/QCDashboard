@@ -57,7 +57,7 @@ export function publicFinancialBody<T extends Record<string, unknown>>(body: T):
   const rows = (value: unknown) => Array.isArray(value) ? value.map((row) => row && typeof row === "object" && !Array.isArray(row)
     ? { ...row, id: typeof row.id === "string" && row.id ? row.id : newId() } : row) : value;
   const next = { ...body } as Record<string, unknown>;
-  for (const key of ["debts", "properties", "mortgages"]) if (Array.isArray(next[key])) next[key] = rows(next[key]);
+  for (const key of ["debts", "properties", "mortgages", "expenses", "adjustments"]) if (Array.isArray(next[key])) next[key] = rows(next[key]);
   if (next.schedules && typeof next.schedules === "object" && !Array.isArray(next.schedules)) {
     next.schedules = Object.fromEntries(Object.entries(next.schedules).map(([key, value]) => [key, rows(value)]));
   }

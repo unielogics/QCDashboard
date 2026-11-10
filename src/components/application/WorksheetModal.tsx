@@ -64,6 +64,7 @@ export const SHEET_LABELS: Record<SheetKind, string> = {
   debt_schedule: "Debt schedule",
   pfs: "Personal financial statement",
   real_estate_schedule: "Real estate schedule",
+  operating_plan: "Operating expenses and earnings plan",
 };
 
 const DEFAULT_TTL_DAYS = 30;
@@ -258,6 +259,7 @@ export function ShareWorksheetDialog({
     debt_schedule: true,
     pfs: false,
     real_estate_schedule: false,
+    operating_plan: false,
   });
   const [permission, setPermission] = useState<"edit" | "view">("view");
   const [label, setLabel] = useState("");

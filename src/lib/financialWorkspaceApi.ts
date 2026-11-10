@@ -5,6 +5,7 @@ import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
 import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
 import { loanPaidDownPct } from "@/lib/loanProgress";
 import { orderDebtScheduleColumns } from "@/lib/debtWorksheetLayout";
+import { clearOperatingReview, type OperatingAction, type OperatingExpense } from "@/lib/operatingPlan";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
@@ -42,8 +43,8 @@ export type DebtAction = {
 };
 
 const root = (profileId: string) => `/application-profiles/${encodeURIComponent(profileId)}/financial-workspace`;
-export const FINANCIAL_LABELS: Record<SheetKind, string> = { debt_schedule: "Business debt schedule", pfs: "Personal financial statement", p_and_l: "Profit and loss", balance_sheet: "Balance sheet", real_estate_schedule: "Real estate schedule" };
-export const FINANCIAL_ORDER: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule", "p_and_l", "balance_sheet"];
+export const FINANCIAL_LABELS: Record<SheetKind, string> = { debt_schedule: "Business debt schedule", pfs: "Personal financial statement", p_and_l: "Profit and loss", balance_sheet: "Balance sheet", real_estate_schedule: "Real estate schedule", operating_plan: "Operating expenses and earnings plan" };
+export const FINANCIAL_ORDER: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule", "p_and_l", "balance_sheet", "operating_plan"];
 export function readFinancialWorkspace(api: AuthedApi, profileId: string, kind: SheetKind, familyId?: string) {
   const query = new URLSearchParams({ kind });
   if (familyId) query.set("family_id", familyId);
@@ -113,7 +114,7 @@ export function financialValues(body: FinancialBody, layout: SheetLayout): Sheet
 }
 /** Reconcile list identities immediately, including excluded debts omitted by the published layout. */
 export function financialLayout(body: FinancialBody, source: SheetLayout): SheetLayout {
-  if (source.kind !== "debt_schedule" && source.kind !== "pfs" && source.kind !== "real_estate_schedule") return source;
+  if (source.kind !== "debt_schedule" && source.kind !== "pfs" && source.kind !== "real_estate_schedule" && source.kind !== "operating_plan") return source;
   if (source.kind === "debt_schedule") {
     const fields = ["lender", "debt_type", "original_amount", "balance", "rate", "monthly_payment", "originated_on", "maturity_on", "secured", "payment_status", "collateral", "mca_modified", "mca_modification_note", "notes", "factor_rate", "payment_amount", "payment_frequency"];
     const old = source.rows.filter((row) => row.kind === "data" && row.block === "debts");
@@ -145,7 +146,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
     const after = source.rows.filter((row) => row.r >= first && row.kind !== "data").map((row, index) => ({ ...row, r: first + data.length + index }));
     return orderDebtScheduleColumns({ ...source, rows: [...before, ...data, ...after] });
   }
-  const schedules = (source.kind === "real_estate_schedule" ? body : body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
+  const schedules = (source.kind === "real_estate_schedule" || source.kind === "operating_plan" ? body : body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
   const next: SheetRow[] = [];
   const handled = new Set<string>();
   let offset = 0;
@@ -160,7 +161,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
       const id = String(entries[index]?.id ?? entries[index]?.row_id ?? `r${index + 1}`);
       next.push({ ...row, r: row.r + offset + index, row_key: id, ordinal: index + 1, cells: row.cells?.map((cell) => {
         if (!cell.path || !cell.key) return cell;
-        const path = [...cell.path]; path[source.kind === "real_estate_schedule" ? 1 : 2] = id;
+        const path = [...cell.path]; path[source.kind === "real_estate_schedule" || source.kind === "operating_plan" ? 1 : 2] = id;
         return { ...cell, key: `${row.block}.${id}.${path.at(-1)}`, path };
       }) });
     }
@@ -184,7 +185,7 @@ export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, ed
         node = node[index];
       } else if (node && typeof node === "object") {
         const object = node as Record<string, unknown>;
-        if (!object[key]) object[key] = ["debts", "properties", "mortgages"].includes(key) || path[0] === "schedules" && at === 1 ? [] : {};
+        if (!object[key]) object[key] = ["debts", "properties", "mortgages", "expenses", "adjustments"].includes(key) || path[0] === "schedules" && at === 1 ? [] : {};
         node = object[key];
       }
     }
@@ -198,6 +199,19 @@ export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, ed
       const changes = Object.fromEntries(edits.flatMap((edit) => { const path = paths.get(edit.key); return edit.sheet === layout.kind && path?.[0] === "debts" && path[1] === row.id ? [[path[2], edit.value]] : []; }));
       if ("debt_type" in changes && !isAdvanceType(changes.debt_type)) { changes.mca_modified = ""; changes.mca_modification_note = ""; }
       return Object.keys(changes).length ? updateDebtPaymentTerms(before, changes) : row;
+    });
+  }
+  if (layout.kind === "operating_plan") {
+    const previousExpenses = (body.expenses ?? []) as OperatingExpense[];
+    const previousActions = (body.adjustments ?? []) as OperatingAction[];
+    const currentExpenses = (next.expenses ?? []) as OperatingExpense[];
+    next.adjustments = ((next.adjustments ?? []) as OperatingAction[]).map((row) => {
+      const before = previousActions.find((item) => item.id === row.id);
+      const expense = currentExpenses.find((item) => item.id === row.expense_row_id);
+      const priorExpense = previousExpenses.find((item) => item.id === row.expense_row_id);
+      const expenseChanged = expense && JSON.stringify(expense) !== JSON.stringify(priorExpense);
+      const updated = expenseChanged ? { ...row, current_amount: expense.current_amount, cadence: expense.cadence } : row;
+      return expenseChanged || JSON.stringify(before) !== JSON.stringify(row) ? clearOperatingReview(updated) : updated;
     });
   }
   return next;

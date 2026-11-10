@@ -32,6 +32,8 @@ import { RealEstateScheduleForm } from "@/components/application/RealEstateSched
 import { PublicFormVersionNotice } from "@/components/application/PublicFormVersionNotice";
 import { PublicFinancialFormWriter, publicFinancialBody, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
+import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
+import type { OperatingPlanBody, OperatingPlanSchema } from "@/lib/operatingPlan";
 import {
   BusinessStatementForm,
   type StatementBody,
@@ -46,7 +48,7 @@ type Prefill = {
   owner_count: number;
 };
 
-type FormBody = PfsBody & DebtBody & StatementBody & RealEstateBody;
+type FormBody = PfsBody & DebtBody & StatementBody & RealEstateBody & OperatingPlanBody;
 
 // The schema is whichever the kind calls for; the two business statements
 // share one shape and one component, the way the 413 has its own.
@@ -59,6 +61,7 @@ type FormState = PublicFinancialReply & {
   | { kind: "pfs" | "debt_schedule"; schema: PfsSchema }
   | { kind: "p_and_l" | "balance_sheet"; schema: StatementSchema }
   | { kind: "real_estate_schedule"; schema: RealEstateSchema }
+  | { kind: "operating_plan"; schema: OperatingPlanSchema }
 );
 
 const TITLES = {
@@ -67,6 +70,7 @@ const TITLES = {
   p_and_l: "Profit and Loss Statement",
   balance_sheet: "Balance Sheet",
   real_estate_schedule: "Real Estate Schedule",
+  operating_plan: "Operating Expenses and Earnings Plan",
 } as const;
 
 const INTROS = {
@@ -78,6 +82,7 @@ const INTROS = {
   balance_sheet:
     "Enter what the business owns and owes as of one date. If you do not have equity broken out, leave that section blank and it is taken as assets less liabilities.",
   real_estate_schedule: "List your real estate, current estimated values, rental income, expenses, and mortgages. Active mortgages create a request for their latest statement after you send this schedule.",
+  operating_plan: "Disclose the costs of running your business, then propose changes to prices, product costs or expenses. Include amounts, timing and supporting evidence. Your team will review the proposal before using it in a financial projection.",
 } as const;
 
 const RECEIVED = {
@@ -86,6 +91,7 @@ const RECEIVED = {
   p_and_l: "Your profit and loss statement has been received and added to your file.",
   balance_sheet: "Your balance sheet has been received and added to your file.",
   real_estate_schedule: "Your real estate schedule has been received. Check your account to-dos for any requested mortgage statements.",
+  operating_plan: "Your operating expenses and earnings plan has been saved as a dated version for your team's review.",
 } as const;
 
 export default function FinancialFormPage() {
@@ -445,6 +451,8 @@ export default function FinancialFormPage() {
             />
           ) : state?.kind === "real_estate_schedule" ? (
             <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
+          ) : state?.kind === "operating_plan" ? (
+            <OperatingPlanForm value={body} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}
