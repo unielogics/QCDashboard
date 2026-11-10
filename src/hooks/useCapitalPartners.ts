@@ -17,7 +17,7 @@ export type CpServicerStatus = "current" | "late" | "paid_in_full" | "in_workout
 export type CpTransferStatus = "listed" | "requested" | "pending_consent" | "approved" | "completed" | "withdrawn" | "declined";
 export type CpFilingKind = "form_d" | "form_d_amendment" | "state_notice" | "bad_actor_check";
 export type CpFilingStatus = "due" | "filed" | "not_required" | "cleared" | "pending";
-export type CpDocumentKind = "ppm" | "subscription_agreement" | "note" | "valuation" | "title" | "servicing_summary" | "other";
+export type CpDocumentKind = "ppm" | "subscription_agreement" | "note" | "valuation" | "title" | "servicing_summary" | "executive_summary" | "underwriting_package" | "investor_presentation" | "other";
 
 export interface CpAccessRequest {
   id: string; investing_as: string; entity_name: string | null; capital_band: string; source: string; full_name: string; email: string;
