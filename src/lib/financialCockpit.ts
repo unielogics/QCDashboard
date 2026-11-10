@@ -572,6 +572,14 @@ export type PlanReplayRow = {
 export type PlanCandidate = { key: string; label: string; numerator_before: number | null; numerator_after: number; value_before: number | null; value_after: number | null; status_after: DscrStatus; no_debt_left: boolean; overridden?: boolean };
 
 export type PlanEvaluation = {
+  financing_budget_calculation?: import("./dealBudget").DealBudgetCalculation;
+  principal_solution?: Record<string, unknown> | null;
+  financing_fee_coverage?: Record<string, unknown> | null;
+  annual_new_operating_expenses?: number | null;
+  annual_new_financing_fees?: number | null;
+  noi_scenario?: import("./financialMetrics").FinancialNoi["scenario"];
+  headline_after_before_financing_fees?: number | null;
+  debt_service_after_annual_before_financing_fees?: number | null;
   retirement_replay_unknown?: boolean;
   replay_review_required_ids?: string[];
   replay_unavailable_reason?: string | null;
@@ -629,6 +637,7 @@ export type PlanLever = { key: string; label: string; detail: string; dscr_after
   income_after_annual?: number | null; debt_service_after_monthly?: number | null; cash_surplus_monthly?: number | null; cash_surplus_change_monthly?: number | null };
 
 export type FinancialPlanWrite = {
+  expected_deal_budget_revision?: number;
   expected_updated_at?: string | null;
   retire: string[];
   exclude: string[];

@@ -4,9 +4,9 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi } from "@/hooks/useApi";
 import { dealBudgetChanged, dealBudgetDraftKey, dealBudgetKey, type DealBudget, type DealBudgetDraft } from "@/lib/dealBudget";
 
-export function useDealBudget(profileId: string) {
+export function useDealBudget(profileId: string, enabled = true) {
   const api = useAuthedApi(), queryClient = useQueryClient();
-  const query = useQuery({ queryKey: dealBudgetKey(profileId), queryFn: () => api<DealBudget>(`/application-profiles/${profileId}/deal-budget`), enabled: !!profileId, staleTime: 15_000 });
+  const query = useQuery({ queryKey: dealBudgetKey(profileId), queryFn: () => api<DealBudget>(`/application-profiles/${profileId}/deal-budget`), enabled: !!profileId && enabled, staleTime: 15_000 });
   const verifyRevision = async () => {
     const shown = query.data;
     if (!shown) throw new Error("Load and review the deal budget before saving loan terms.");

@@ -719,6 +719,7 @@ export function LeadDetailPanel({
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
   const [workingFinancing, setWorkingFinancing] = useState<WorkingFinancing | null>(null);
+  const [financingRefreshRevision, setFinancingRefreshRevision] = useState(0);
   const [marketplacePublication, setMarketplacePublication] = useState<MarketplacePublicationState | null>(null);
   const [financingTermsRequest, setFinancingTermsRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const [financingCoverageRequest, setFinancingCoverageRequest] = useState<{ profileId: string; sequence: number } | null>(null);
@@ -1100,7 +1101,7 @@ export function LeadDetailPanel({
     }
   }, [canUnderwrite, getToken, loadUnderwritingState, profileId]);
 
-  const refreshUnderwritingFromResponse = useCallback(async () => {
+  const refreshUnderwritingInPlace = useCallback(async (syncClientResponse = false) => {
     const activeProfileId = underwriting?.profile_id ?? profileId;
     if (!activeProfileId || !canUnderwrite) return;
     try {
@@ -1109,12 +1110,13 @@ export function LeadDetailPanel({
         authToken: authToken ?? undefined,
       });
       setUnderwriting(state);
-      // Refresh the accepted amount without resolving/unmounting this file.
-      // Keep reviewer notes, target DSCR and other pending desk edits intact.
+      // Financing changes refresh figures without unmounting open editors or
+      // overwriting pending reviewer fields. Only an actual client response
+      // replaces the accepted-amount draft.
       setUnderwritingDraft((current) => ({
         ...current,
         underwriting_status: state.underwriting_status,
-        accepted_amount: state.accepted_amount == null ? "" : String(state.accepted_amount),
+        ...(syncClientResponse ? { accepted_amount: state.accepted_amount == null ? "" : String(state.accepted_amount) } : {}),
       }));
     } catch (reason) {
       setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be refreshed."));
@@ -1970,7 +1972,7 @@ export function LeadDetailPanel({
                     <div className="ai-review-overrides"><span className="lbl">Overrides</span><p>The AI accepts what it validated. A person corrects or overrides any decision from the requirements list.</p><Btn onClick={() => setSubmissionStep(2)}>Review requirements and override</Btn></div>
                     <details className="ai-review-breakdown">
                       <summary>Full breakdown: capital readiness, intelligence and extracted facts</summary>
-                      {profileId ? <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
+                      {profileId ? <CapitalReadinessPanel profileId={profileId} refreshKey={financingRefreshRevision} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
                       <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
                       <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
                     </details>
@@ -2007,7 +2009,7 @@ export function LeadDetailPanel({
                     focus={cockpitFocus}
                     onFocusHandled={() => setCockpitFocus(null)}
                     onRecordTerms={openTermSheet}
-                    onEconomicsSaved={() => { void loadUnderwritingState(); }}
+                    onEconomicsSaved={() => { void refreshUnderwritingInPlace(); void refreshProgramReadiness(); setFinancingRefreshRevision(value => value + 1); }}
                     termsKind={isDealerFile ? "production" : "client"}
                     onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
                     onOpenPackage={() => { setPackageTab("summary"); setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
@@ -2025,7 +2027,7 @@ export function LeadDetailPanel({
                     open={uwSections.isOpen("readiness", false)}
                     onToggle={() => uwSections.toggle("readiness", false)}
                   >
-                    <CapitalReadinessPanel profileId={profileId} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} />
+                    <CapitalReadinessPanel profileId={profileId} refreshKey={financingRefreshRevision} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} />
                   </FileSection>
                 </div>
               ) : null}
@@ -2080,7 +2082,7 @@ export function LeadDetailPanel({
                       error={underwritingError}
                       onRecordAcceptance={(patch) => { void saveUnderwritingPatch(patch); }}
                       onStatusChange={changeUnderwritingStatus}
-                      onResponseRecorded={refreshUnderwritingFromResponse}
+                      onResponseRecorded={() => refreshUnderwritingInPlace(true)}
                       onEditFees={() => setPrototypeView("financials")}
                       forecastEarnings={forecastEarnings}
                       feeInfo={{ vertical: dealEconomicsVertical, capPercent: underwriting?.qc_fee_cap_percent, reviewRequired: underwriting?.qc_fee_review_required, reviewReason: underwriting?.qc_fee_review_reason, label: underwriting?.fee_label }}
@@ -2182,7 +2184,7 @@ export function LeadDetailPanel({
 
               {isDealerFile ? (
                 <div hidden={prototypeView !== "production"}>
-                <ProductionPackageTab intakeId={detail.intake.id} shareOpen={productionShareOpen} onShareClose={() => setProductionShareOpen(false)} termSheetOpen={productionTermSheetOpen} onTermSheetClose={closeTermSheet} />
+                <ProductionPackageTab intakeId={detail.intake.id} financialPlanDraft={currentFinancing?.plan} shareOpen={productionShareOpen} onShareClose={() => setProductionShareOpen(false)} termSheetOpen={productionTermSheetOpen} onTermSheetClose={closeTermSheet} />
                 </div>
               ) : null}
 

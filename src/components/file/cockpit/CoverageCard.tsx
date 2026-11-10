@@ -13,6 +13,8 @@ import { loanScheduleRows } from "@/lib/loanScheduleView";
 import { parseIncomeOverride } from "@/lib/incomeOverrideInput";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
+import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
+import { withBudgetEvaluation } from "@/lib/budgetPlanEvaluation";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 
 // Coverage and the plan, one card. Today's DSCR on the left, the DSCR with
@@ -25,7 +27,7 @@ import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 // and one click to apply.
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
 import type { DebtScheduleEditorTarget } from "@/components/application/DebtScheduleReviewPanel";
 import { Btn, CellChip, IconBtn, Input, Lbl, Select, StatusLine, cx } from "@/components/ds";
@@ -116,7 +118,7 @@ const describeOf = (s: { structure: string; term_months: number | null; interest
 const change = (before: number | null | undefined, after: number | null | undefined): number | null => (before == null || after == null ? null : Math.round((after - before) * 100) / 100);
 const signedMoney = (value: number | null): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${money(Math.abs(value))}`);
 const signedMultiple = (value: number | null): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}x`);
-const same = (a: FinancialPlanWrite, b: FinancialPlanWrite) => JSON.stringify({ ...a, expected_updated_at: undefined }) === JSON.stringify({ ...b, expected_updated_at: undefined });
+const same = (a: FinancialPlanWrite, b: FinancialPlanWrite) => JSON.stringify({ ...a, expected_updated_at: undefined, expected_deal_budget_revision: undefined }) === JSON.stringify({ ...b, expected_updated_at: undefined, expected_deal_budget_revision: undefined });
 const num = (value: string): number | null => {
   const cleaned = value.replace(/[^0-9.]/g, "");
   if (!cleaned) return null;
@@ -188,6 +190,16 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   }, [profileId, cockpit]);
   const savedRecord = useMemo(() => fromRecord(cockpit), [cockpit]);
   const previousSavedRecord = useRef(savedRecord);
+  const appliedBudgetPlan = useQuery<FinancialPlanRead | null>({ queryKey: ["financial-plan-applied", profileId], queryFn: async () => null, enabled: false });
+  const acknowledgedBudgetPlan = useRef<string | null>(null);
+  useEffect(() => {
+    const result = appliedBudgetPlan.data, stamp = result?.record.updated_at;
+    if (!result || result.profile_id !== profileId || !stamp || acknowledgedBudgetPlan.current === stamp || (savedRecord.expected_updated_at && Date.parse(stamp) < Date.parse(savedRecord.expected_updated_at))) return;
+    acknowledgedBudgetPlan.current = stamp;
+    const next = fromRecord({ ...cockpit, plan: { ...cockpit.plan, record: result.record } });
+    previousSavedRecord.current = next; setPlan(next); setPaymentText(numberValue(next.new_payment_monthly)); setLoanDraftTouched(true);
+  }, [appliedBudgetPlan.data, profileId, savedRecord.expected_updated_at, cockpit]);
+
   const dirty = !same(plan, savedRecord);
   const workingPlanListener = useRef(onWorkingPlanChange);
   workingPlanListener.current = onWorkingPlanChange;
@@ -201,7 +213,11 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [savedRecord]);
 
-  const local = useMemo(() => evaluatePlanLocally(cockpit, plan, months), [cockpit, plan, months]);
+  const workingLoan = workingLoanFromPlan(plan, loanDraftTouched || plan.new_payment_source === "manual");
+  const budgetLoan = workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null;
+  const budgetPreview = useDealBudgetPreview(profileId, { enabled: requestedCanEdit || canRecordTerms, loan: budgetLoan, financialPlan: plan });
+  const budgetPending = (requestedCanEdit || canRecordTerms) && (budgetPreview.pending || budgetPreview.budget.isPending || budgetPreview.isError || budgetPreview.budget.isError);
+  const local = useMemo(() => withBudgetEvaluation(evaluatePlanLocally(cockpit, plan, months), budgetPreview.data?.financial_plan_evaluation, budgetPending), [cockpit, plan, months, budgetPreview.data, budgetPending]);
   const { headline, thresholds, candidates, reason, debt_service_source } = cockpit.dscr;
   const incomeCurrencyComparable = coverageCurrencyComparable(cockpit, plan.overrides?.income_annual != null);
   const currentAnnualService = headline?.annual_debt_service ?? cockpit.dscr.annual_debt_service ?? (cockpit.debt.service.monthly == null ? null : cockpit.debt.service.monthly * 12);
@@ -214,14 +230,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const fundingReview = coverageReview({ incomeAnnual: local.incomeBefore, debtServiceAnnual: currentAnnualService }, { incomeAnnual: local.incomeAfter, debtServiceAnnual: unresolvedPayoffs ? null : local.serviceAfterAnnual }, { before: coverageCurrencyComparable(cockpit), after: incomeCurrencyComparable });
   const sourceDescription = coverageBasis ? `${coverageBasis.label}${coverageBasis.period ? ` · ${coverageBasis.period}` : ""}` : "Financial evidence needs review";
   useEffect(() => {
-    workingPlanListener.current?.({ profileId, plan, dirty, currentDscr: fundingReview.before.dscr, projectedDscr: fundingReview.after.dscr, projectedDebtServiceAnnual: fundingReview.after.debtServiceAnnual, source: sourceDescription });
-  }, [profileId, plan, dirty, fundingReview.before.dscr, fundingReview.after.dscr, fundingReview.after.debtServiceAnnual, sourceDescription]);
+    workingPlanListener.current?.({ profileId, plan, dirty, currentDscr: fundingReview.before.dscr, projectedDscr: fundingReview.after.dscr, projectedDebtServiceAnnual: fundingReview.after.debtServiceAnnual, source: sourceDescription, budgetPending, budgetEvaluation: budgetPreview.data?.financial_plan_evaluation });
+  }, [profileId, plan, dirty, fundingReview.before.dscr, fundingReview.after.dscr, fundingReview.after.debtServiceAnnual, sourceDescription, budgetPending, budgetPreview.data]);
   const noDebtServiceAfter = !unresolvedPayoffs && local.serviceAfterAnnual === 0;
   const selectionTotals = refinanceSelectionTotals(obligations, plan.retire, local, {
     unresolvedSelections: unresolvedPayoffs,
     debtServiceKnown: plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null,
   });
-  const workingLoan = workingLoanFromPlan(plan, loanDraftTouched || plan.new_payment_source === "manual");
   const serviceKnown = plan.overrides?.debt_service_monthly != null || cockpit.debt.service.monthly != null;
   const refinanceContext: LoanRefinanceContext | null = plan.retire.length || plan.terms_ref?.treatment === "refinance"
     ? { treatment: "refinance", retainedAnnualService: serviceKnown && local.serviceBeforeNewPayment != null && !unresolvedPayoffs ? recordedRetainedAnnual(plan) ?? Math.round(local.serviceBeforeNewPayment * 1200) / 100 : null } : null;
@@ -259,6 +274,15 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     setPlan((current) => applyWorkingLoan(current, loan)); setPaymentText(""); setSaved(null); setLoanDraftTouched(true);
     setClientTermsDraft((current) => current ? { ...current, editedInEditor: false } : null);
     setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false;
+  }
+  function updateTermsLoan(loan: SyncedLoan) {
+    setPlan(current => applyWorkingLoan(current, loan)); setPaymentText(""); setSaved(null); setLoanDraftTouched(true);
+  }
+  function financingSaved(result: FinancialPlanRead) {
+    const acknowledged = fromRecord({ ...cockpit, plan: { ...cockpit.plan, record: result.record } });
+    previousSavedRecord.current = acknowledged;
+    setPlan(acknowledged); setPaymentText(numberValue(acknowledged.new_payment_monthly)); setLoanDraftTouched(true);
+    setSaved("Budget and shared loan saved. Existing issued terms remain versioned separately.");
   }
   const excludable = cockpit.bank.recurring.payees.filter((p) => EXCLUDABLE.includes(p.kind) && (p.monthly_average ?? 0) >= 500);
   const levers = cockpit.plan?.levers ?? [];
@@ -411,7 +435,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     setError(null);
     try {
       if (repaymentIssue) throw new Error(repaymentIssue);
-      const submitted = plan;
+      const submitted = { ...plan, expected_deal_budget_revision: await budgetPreview.budget.verifyRevision() };
       const result = await save.mutateAsync(submitted);
       if (activeProfile.current !== profileId) return;
       const acknowledged = fromRecord({ ...cockpit, plan: { ...cockpit.plan, record: result.record } });
@@ -569,7 +593,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           </div>
           {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
           <FileCollateralSection profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
-          <DealBudgetSection profileId={profileId} disabled={!canEdit} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
+          <DealBudgetSection profileId={profileId} disabled={!canEdit} financialPlan={plan} onPending={setTermsPending} onGrossAmountChange={amount => setLoan("amount", amount == null ? "" : String(amount))} onApplySolvedPrincipal={amount => setLoan("amount", String(amount))} onFinancingSaved={financingSaved} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
@@ -847,6 +871,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     </section>
     <FinancialReviewDrawer open={reviewOpen} onClose={() => { setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} businessName={businessName} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
-    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
+    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
   </>;
 }

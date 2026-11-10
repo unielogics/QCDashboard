@@ -2,6 +2,8 @@ import type { FinancialPlanWrite } from "./financialCockpit";
 
 /** Read-only projection of the one loan being structured. It is never an approval. */
 export type WorkingFinancing = {
+  budgetPending?: boolean;
+  budgetEvaluation?: import("./financialCockpit").PlanEvaluation | null;
   profileId: string;
   plan: FinancialPlanWrite;
   dirty: boolean;
