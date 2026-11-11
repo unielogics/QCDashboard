@@ -17,6 +17,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { Btn, Card, CellChip, Field, Input, Loading, PageHeader, Panel, Seg, Select, StatusLine, Table, Td, Textarea, Tr } from "@/components/ds";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
@@ -39,6 +40,7 @@ import { LOAN_DATE_NOTE, resolveLoanDates } from "@/lib/loanDates";
 import { MarketplaceFileInventory } from "@/components/marketplace/MarketplaceFileInventory";
 import { useMarketplaceDocumentLink } from "@/hooks/useMarketplaceDocumentLink";
 import editorStyles from "@/components/marketplace/MarketplaceEditor.module.css";
+const MarketplacePpmWorkspace = dynamic(() => import("@/components/marketplace/MarketplacePpmWorkspace").then(module => module.MarketplacePpmWorkspace), { ssr: false, loading: () => <p className="sub" role="status">Loading PPM workspace…</p> });
 
 export default function ListingEditorPage() {
   const params = useParams<{ id: string }>();
@@ -57,6 +59,7 @@ function Editor() {
   const router = useRouter();
   const { data: listing, isLoading } = useCpListing(id || null);
   const [tab, setTab] = useState<Tab>("terms");
+  const [documentsVisited, setDocumentsVisited] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const confirm = useConfirmAction();
   const act = useCpListingAction();
@@ -70,7 +73,7 @@ function Editor() {
   const context = { linked: Boolean(listing?.profile_id) };
   const issues = dedupeMarketplaceIssues([...actionIssues, ...(listing?.status === "draft" ? marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, context) : [])]);
   const requestNavigation = (issue: MarketplaceIssue) => {
-    if (["upload", "document-type"].includes(issue.target?.kind ?? "")) setTab("documents");
+    if (["ppm", "upload", "document-type"].includes(issue.target?.kind ?? "")) setTab("documents");
     else if (["field", "budget"].includes(issue.target?.kind ?? "")) setTab("terms");
     setNavigation(current => ({ issue, sequence: (current?.sequence ?? 0) + 1 }));
   };
@@ -78,19 +81,21 @@ function Editor() {
     const next = marketplaceApiIssues(error, { ...context, action });
     issueOrigin.current = action;
     setMsg(null); setActionIssues(next);
-    requestNavigation(next.find(issue => ["field", "upload", "document-type", "budget"].includes(issue.target?.kind ?? "")) ?? { ...next[0], target: undefined });
+    requestNavigation(next.find(issue => ["ppm", "field", "upload", "document-type", "budget"].includes(issue.target?.kind ?? "")) ?? { ...next[0], target: undefined });
   };
   const clearResolvedIssues = (action: "publish" | "terms" | "documents" | "snapshot") => setActionIssues(current => {
     if (issueOrigin.current === action) return [];
     return current.filter(issue => action === "documents" ? !["upload", "document-type"].includes(issue.target?.kind ?? "") : action === "snapshot" ? issue.target?.kind !== "snapshot" : true);
   });
   useEffect(() => () => { ownerRequest.current?.controller.abort(); ownerRequest.current?.popup.close(); ownerRequest.current = null; }, []);
+  useEffect(() => { if (tab === "documents") setDocumentsVisited(true); }, [tab]);
   useEffect(() => {
     if (!navigation) return;
     const target = navigation.issue.target;
     let budgetOpened = false;
     return focusMarketplaceControl(() => {
       if (target?.kind === "field") return document.getElementById(marketplaceFieldId(target.field));
+      if (target?.kind === "ppm") return document.getElementById("marketplace-ppm-heading");
       if (target?.kind === "upload") return document.getElementById("marketplace-document-upload");
       if (target?.kind === "document-type") return document.getElementById("marketplace-document-kind");
       if (target?.kind === "budget") {
@@ -113,7 +118,7 @@ function Editor() {
     const issue = issues.find(item => item.key === requested);
     if (!issue?.target) return;
     // Deep links reveal local controls. Owner navigation remains a deliberate click.
-    requestNavigation(["field", "upload", "document-type", "budget"].includes(issue.target.kind) ? issue : { ...issue, target: undefined });
+    requestNavigation(["ppm", "field", "upload", "document-type", "budget"].includes(issue.target.kind) ? issue : { ...issue, target: undefined });
   });
 
   if (isLoading || !listing) return <Card><Loading>{isLoading ? "Loading listing…" : "Listing not found."}</Loading></Card>;
@@ -133,7 +138,7 @@ function Editor() {
     if (listing.publish_blockers.length) {
       setMsg(null); setActionIssues([]);
       const first = marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, context);
-      requestNavigation(first.find(issue => issue.target?.kind === "upload" && issue.target.documentKind === "ppm") ?? first.find(issue => ["field", "budget"].includes(issue.target?.kind ?? "")) ?? { ...first[0], target: undefined });
+      requestNavigation(first.find(issue => issue.target?.kind === "ppm") ?? first.find(issue => ["field", "budget"].includes(issue.target?.kind ?? "")) ?? { ...first[0], target: undefined });
       return;
     }
     const reason = window.prompt("Reason for the record (who approved, why now):", "Desk approved for the member marketplace");
@@ -226,7 +231,7 @@ function Editor() {
         { value: "events", label: "Events" },
       ]} />
       <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
-      {tab === "documents" ? <Documents listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /> : null}
+      {documentsVisited || tab === "documents" ? <div hidden={tab !== "documents"}><Documents listing={listing} active={tab === "documents"} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} onPpmApproved={() => setActionIssues(current => current.filter(issue => issue.target?.kind !== "ppm"))} /></div> : null}
       {tab === "subscriptions" ? <Subscriptions listing={listing} onRun={run} busy={act.isPending} /> : null}
       {tab === "participations" ? <Participations listing={listing} onMessage={setMsg} /> : null}
       {tab === "events" ? <Events listing={listing} /> : null}
@@ -373,7 +378,7 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
 // Documents
 // ---------------------------------------------------------------------------
 
-function Documents({ listing, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void }) {
+function Documents({ listing, active, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess, onPpmApproved }: { listing: CpListing; active: boolean; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void; onPpmApproved: () => void }) {
   const upload = useCpUploadDocument();
   const supersede = useCpSupersedeDocument();
   const confirm = useConfirmAction();
@@ -400,9 +405,10 @@ function Documents({ listing, onMessage, onError, guidance, onFix, onSnapshotErr
 
   return (
     <div className="grid">
+      <MarketplacePpmWorkspace listing={listing} active={active} onFix={onFix} onApproved={onPpmApproved} />
       {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={() => { onSnapshotSuccess(); onMessage({ tone: "ok", text: "The listing package was updated from the saved file." }); }} /> : null}
-      <p className="sub">Offering PDFs below are attached to this listing. Generated summaries and presentations do not replace the separately required private placement memorandum. Source documents on file use the engagement controls in the file document cockpit.</p>
-      <Panel title="Upload" bodyClass="row">
+      <p className="sub">Offering PDFs below are attached to this listing. Review the PPM in the workspace above. Source originals use the separate engagement controls in the file document cockpit.</p>
+      <Panel title="Upload an existing document" bodyClass="row">
         <Select id="marketplace-document-kind" aria-label="Document type" value={kind} onChange={(e) => setKind(e.target.value as CpDocumentKind)}>{DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select>
         <input id="marketplace-document-upload" aria-label="Upload document PDF" ref={fileRef} type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }} disabled={upload.isPending} />
         <span className="sub">{upload.isPending ? "Uploading…" : "A new file of the same kind supersedes the previous one. The private placement memorandum is required before publishing."}</span>
@@ -416,7 +422,7 @@ function Documents({ listing, onMessage, onError, guidance, onFix, onSnapshotErr
               <Tr key={doc.id}>
                 <Td>{doc.kind_label}</Td>
                 <Td>{doc.name}</Td>
-                <Td>{doc.source === "generated_package" ? "Generated listing package" : "Uploaded offering document"}</Td>
+                <Td>{doc.source === "generated_ppm" ? "Managed PPM" : doc.source === "generated_package" ? "Generated listing package" : "Uploaded offering document"}</Td>
                 <Td className="num" align="r">v{doc.version}</Td>
                 <Td className="num" align="r">{doc.size_bytes ? `${Math.round(doc.size_bytes / 1024)} KB` : "—"}</Td>
                 <Td><CellChip tone={doc.status === "ready" ? "ok" : doc.status === "pending" ? "warn" : "mut"}>{doc.status}</CellChip></Td>

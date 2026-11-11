@@ -9,7 +9,7 @@ export const MARKETPLACE_FIELD_LABELS = {
 export type MarketplaceField = keyof typeof MARKETPLACE_FIELD_LABELS;
 export type MarketplaceFinancialAction = "coverage" | "terms" | "use-of-funds";
 export type MarketplacePublishIssue = { code: string; message: string; section: "terms" | "documents" | "budget" | "coverage_plan" | "client_terms" | "use_of_funds" | "snapshot"; field?: string | null; document_kind?: "ppm" | null };
-export type MarketplaceIssueTarget = { kind: "field"; field: MarketplaceField } | { kind: "upload"; documentKind?: "ppm" } | { kind: "document-type" } | { kind: "budget" } | { kind: "file"; action: MarketplaceFinancialAction } | { kind: "snapshot" };
+export type MarketplaceIssueTarget = { kind: "field"; field: MarketplaceField } | { kind: "ppm" } | { kind: "upload"; documentKind?: "ppm" } | { kind: "document-type" } | { kind: "budget" } | { kind: "file"; action: MarketplaceFinancialAction } | { kind: "snapshot" };
 export type MarketplaceIssue = { key: string; message: string; instruction: string; actionLabel?: string; target?: MarketplaceIssueTarget };
 type Context = { linked: boolean; action?: "publish" | "terms" | "documents" | "snapshot" };
 
@@ -22,6 +22,7 @@ function targetIssue(message: string, target: MarketplaceIssueTarget): Marketpla
   if (message === "offered_amount exceeds the canonical financing amount") message = "Investor capital exceeds the saved financing amount.";
   switch (target.kind) {
     case "field": return { key: `field:${target.field}`, message, target, instruction: `Correct ${MARKETPLACE_FIELD_LABELS[target.field]}, then save the listing.`, actionLabel: `Fix ${MARKETPLACE_FIELD_LABELS[target.field]}` };
+    case "ppm": return { key: "document:ppm", message, target, instruction: "Generate or update the PPM draft in Documents, complete the missing facts, then explicitly review the current version before publishing.", actionLabel: "Review PPM in Documents" };
     case "upload": return { key: target.documentKind === "ppm" ? "document:ppm" : "document:upload", message, target, instruction: target.documentKind === "ppm" ? "Upload the private placement memorandum PDF under Documents. Once it is marked Ready, review and publish the offer." : "Review the selected document and upload status. Choose the appropriate PDF or retry the upload.", actionLabel: target.documentKind === "ppm" ? "Upload PPM in Documents" : "Review document upload" };
     case "document-type": return { key: "document:type", message, target, instruction: "Choose the document kind, then select the appropriate PDF.", actionLabel: "Choose document type" };
     case "budget": return { key: "owner:budget", message, target, instruction: "Review and save the shared investment and closing-cost budget, then refresh the listing from the saved file.", actionLabel: "Review shared deal budget" };
@@ -39,7 +40,7 @@ function fieldIssue(field: MarketplaceField, message: string, linked: boolean): 
 }
 
 const LEGACY_TARGETS: Record<string, MarketplaceIssueTarget> = {
-  "private placement memorandum not uploaded": { kind: "upload", documentKind: "ppm" },
+  "private placement memorandum not uploaded": { kind: "ppm" },
   "Restore or synchronize the working financing proposal before publishing; issued terms are a historical reference": { kind: "file", action: "coverage" },
   "Save an updated terms version for the changed financing or collateral before publishing": { kind: "file", action: "terms" },
   "Save an updated terms version for the changed cost budget before publishing": { kind: "file", action: "terms" },
@@ -53,7 +54,7 @@ const LEGACY_TARGETS: Record<string, MarketplaceIssueTarget> = {
 export function marketplacePublishIssues(blockers: string[], structured: MarketplacePublishIssue[] | undefined, context: Context): MarketplaceIssue[] {
   const fromStructured = (item: MarketplacePublishIssue) => {
     if (item.section === "terms" && isMarketplaceField(item.field)) return fieldIssue(item.field, item.message, context.linked);
-    if (item.section === "documents" && item.document_kind === "ppm") return targetIssue(item.message, { kind: "upload", documentKind: "ppm" });
+    if (item.section === "documents" && item.document_kind === "ppm") return targetIssue(item.message, { kind: "ppm" });
     if (item.section === "budget") return targetIssue(item.message, { kind: "budget" });
     if (item.section === "coverage_plan") return targetIssue(item.message, { kind: "file", action: "coverage" });
     if (item.section === "client_terms") return targetIssue(item.message, { kind: "file", action: "terms" });

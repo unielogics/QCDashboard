@@ -11,8 +11,8 @@ describe("actionable marketplace guidance", () => {
     const structured = marketplacePublishIssues([], [issue("private placement memorandum not uploaded", "documents", { document_kind: "ppm" })], context);
     const result = dedupeMarketplaceIssues([...legacy, ...structured]);
     expect(result).toHaveLength(1);
-    expect(result[0].target).toEqual({ kind: "upload", documentKind: "ppm" });
-    expect(result[0].instruction).toContain("marked Ready");
+    expect(result[0].target).toEqual({ kind: "ppm" });
+    expect(result[0].instruction).toContain("explicitly review the current version");
   });
   it("humanizes technical required-field messages in both response formats", () => {
     for (const result of [marketplacePublishIssues(["name"], undefined, { linked: false }), marketplacePublishIssues([], [issue("name", "terms", { field: "name" })], { linked: false })]) {
@@ -77,7 +77,7 @@ describe("actionable marketplace guidance", () => {
     const target = marketplaceApiIssues(apiError({ code: "incomplete", message: "Fill in: private placement memorandum not uploaded", publish_issues: [issue("private placement memorandum not uploaded", "documents", { document_kind: "ppm" })] }), { ...context, action: "publish" });
     expect(target[0].key).toBe("document:ppm");
     const legacy = marketplaceApiIssues(apiError({ code: "incomplete", message: "Fill in: Restore or synchronize the working financing proposal before publishing; issued terms are a historical reference; private placement memorandum not uploaded" }), { ...context, action: "publish" });
-    expect(legacy).toHaveLength(2); expect(legacy.map(item => item.target?.kind).sort()).toEqual(["file", "upload"]);
+    expect(legacy).toHaveLength(2); expect(legacy.map(item => item.target?.kind).sort()).toEqual(["file", "ppm"]);
   });
   it("keeps arbitrary failures and empty validation arrays honest", () => {
     expect(marketplaceApiIssues(new Error("Network unavailable"), context)[0]).toMatchObject({ message: "Network unavailable" });

@@ -57,6 +57,7 @@ jobs:
           src/lib/__tests__/loanTermsSync.test.ts
           src/lib/__tests__/termsSaveIntent.test.ts
           src/lib/__tests__/currentUserIdentity.test.ts
+          src/lib/__tests__/marketplacePpm.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -106,6 +107,12 @@ jobs:
           tests/loan-date-dealer.spec.ts
           tests/investor-document-cockpit.spec.ts
           tests/fixtures/investorDocumentCockpit.ts
+          src/components/marketplace/MarketplacePpmWorkspace.tsx
+          src/hooks/useMarketplacePpm.ts
+          src/lib/marketplacePpm.ts
+          src/lib/__tests__/marketplacePpm.test.ts
+          tests/marketplace-ppm.spec.ts
+          tests/fixtures/marketplacePpm.ts
 
       - name: Build production frontend
         run: pnpm build

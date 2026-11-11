@@ -92,7 +92,7 @@ export interface CpSyncState {
 export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean; sync?: CpSyncState | null }
 /** Scoped underwriting read model; no marketplace administration capability. */
 export interface CpProfilePublication { profile_id: string; listing: (CpListingRef & { published_at: string | null }) | null; can_manage: boolean }
-export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string; source?: "generated_package" | "uploaded" }
+export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string; source?: "generated_package" | "generated_ppm" | "uploaded" }
 export interface CpListingCard {
   id: string; ref: string; name: string; vertical: CpVertical; vertical_label: string; program_label: string; city: string | null; state: string | null;
   place: string | null; collateral_type: string | null; lien_position: "first" | "second"; note_rate_pct: string | null; term_months: number | null;
