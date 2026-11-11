@@ -491,6 +491,10 @@ export type ClientTermsCalculation = {
 };
 
 export type ApplicationClientTerms = {
+  expected_funding_date?: string | null;
+  maturity_date?: string | null;
+  maturity_date_mode?: "automatic" | "manual";
+  date_note?: string | null;
   deal_budget_snapshot?: Partial<import("./dealBudget").DealBudget>;
   deal_budget_revision?: number | null;
   current_deal_budget_revision?: number;
@@ -549,6 +553,9 @@ export type ApplicationClientTerms = {
 };
 
 export type ApplicationClientTermsWrite = {
+  expected_funding_date?: string | null;
+  maturity_date?: string | null;
+  maturity_date_mode?: "automatic" | "manual";
   deal_budget?: import("./dealBudget").DealBudgetWrite;
   idempotency_key?: string;
   expected_deal_budget_revision?: number;

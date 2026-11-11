@@ -16,6 +16,8 @@ import { DEAL_COST_BASES, DEAL_COST_CATEGORIES, dealBudgetChanged, dealBudgetDra
 import { money } from "@/lib/financialCockpit";
 import styles from "./DealBudgetSection.module.css";
 import { hasNewerMarketplaceBudgetDraft, marketplaceBudgetDraftFingerprint, type MarketplaceBudgetControls, type MarketplaceBudgetReceipt } from "@/lib/marketplacePreparation";
+import { CompanyFeeControls } from "./CompanyFeeControls";
+import { InvestorEconomicsPanel } from "./InvestorEconomicsPanel";
 
 const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : typeof value === "string" && value.trim() && Number.isFinite(Number(value)) ? Number(value) : null;
 function amount(calc: DealBudgetCalculation | undefined, key: string) { return numeric(calc?.[key]); }
@@ -61,7 +63,7 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const update = (patch: Partial<DealBudgetWrite>) => { if (value && canEdit) remember({ ...value, ...patch }); };
   const rowChange = (id: string, patch: Partial<DealCostRow>) => {
     if (!value) return;
-    const rows = value.rows.map(row => { if (row.id !== id) return row; const next = { ...row, ...patch }; if (next.settlement === "financed" && (next.payer !== "borrower" || next.timing !== "closing")) next.settlement = "separate"; return next; });
+    const rows = value.rows.map(row => { if (row.id !== id) return row; const next = { ...row, ...patch }; if (next.settlement === "financed" && (next.payer !== "borrower" || next.timing !== "closing") || next.settlement === "withheld" && (next.payer === "sponsor" || next.payer === "investor" && next.timing === "closing")) next.settlement = "separate"; return next; });
     const initializeTarget = !draft?.amountModeExplicit && patch.settlement === "financed" && (value.loan_amount_mode ?? "gross_loan") === "gross_loan" && value.base_loan_amount == null && value.target_net_amount == null && !value.rows.some(row => row.settlement === "financed");
     update({ rows, ...(initializeTarget ? { loan_amount_mode: "target_net", target_net_amount: currentGross } : {}) });
   };
@@ -154,6 +156,8 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
           {value.funding_mode === "multiple_investors" ? <label>Smallest investor contribution<Input aria-label="Smallest investor contribution" type="number" min={0} step="0.01" value={value.minimum_investor_contribution ?? ""} disabled={!canEdit} placeholder="Enter the smallest participation" onChange={event => update({ minimum_investor_contribution: event.target.value === "" ? null : Number(event.target.value) })} /></label> : <p className={styles.note}>One investor contributes the full capital amount; there is no separate minimum participation to configure.</p>}
         </div>
         <details><summary>Advanced · partial investor funding</summary><div className={styles.funding} style={{ marginTop: 10 }}><label>Capital to raise from investors, $<Input aria-label="Capital to raise from investors" type="number" min={0} step="0.01" disabled={!canEdit} value={value.investor_funding_amount ?? ""} placeholder="Blank uses the full gross loan" onChange={event => update({ investor_funding_amount: event.target.value === "" ? null : Number(event.target.value) })} /></label><p className={styles.note}>A partial raise requires another funding source for the remaining principal. It changes investor participation, rather than the client’s gross loan amount.</p></div></details>
+        <CompanyFeeControls value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} onRowChange={rowChange} />
+        <InvestorEconomicsPanel value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} />
         <label className={styles.label}><input type="checkbox" aria-label="Pricing and costs confirmed" checked={value.costs_confirmed} disabled={!canEdit} onChange={event => update({ costs_confirmed: event.target.checked })} /><span><strong>Costs reviewed / no additional fees</strong><br />An empty table confirms no additional fees. Active rows with unknown amounts still need completion.</span></label>
         <div className={styles.actions}><strong>Fee and cost rows</strong><Btn size="sm" disabled={!canEdit} onClick={() => update({ rows: [...value.rows, newDealCost()] })}><Icon name="plus" size={14} />Add cost</Btn><span className={styles.note}>Blank means unknown. Escrow and reserves are not income. Disabled rows stay in this budget but do not count.</span></div>
         <p className={styles.note}>Public cost labels appear in client and investor documents. Keep private recipient names and contact details in the separate recipient field.</p>

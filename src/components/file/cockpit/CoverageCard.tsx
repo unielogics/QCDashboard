@@ -77,6 +77,8 @@ import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
 import { BankReplayNotice } from "./BankReplayNotice";
 import { RefinanceSelectionSummary } from "./RefinanceSelectionSummary";
+import { LoanDateFields } from "@/components/application/LoanDateFields";
+import { addLoanMonths, loanDateProblem } from "@/lib/loanDates";
 import type { MarketplaceBudgetReceipt, MarketplacePlanControls } from "@/lib/marketplacePreparation";
 import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { refinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
@@ -103,6 +105,9 @@ function fromRecord(cockpit: Cockpit): FinancialPlanWrite {
     new_loan_amount: r.new_loan_amount,
     new_loan_rate_pct: r.new_loan_rate_pct,
     new_loan_term_months: r.new_loan_term_months,
+    ...(r.new_loan_expected_funding_date !== undefined ? { new_loan_expected_funding_date: r.new_loan_expected_funding_date } : {}),
+    ...(r.new_loan_maturity_date !== undefined ? { new_loan_maturity_date: r.new_loan_maturity_date } : {}),
+    ...(r.new_loan_maturity_mode !== undefined ? { new_loan_maturity_mode: r.new_loan_maturity_mode } : {}),
     new_loan_interest_only: !!r.new_loan_interest_only,
     new_loan_structure: r.new_loan_structure ?? null,
     new_loan_interest_only_months: r.new_loan_interest_only_months ?? null,
@@ -370,12 +375,14 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
         next.new_loan_structure = raw === true ? "interest_only" : defaultStructure(p.new_loan_term_months);
       }
       next.new_payment_source = next.new_loan_amount != null ? "manual_terms" : null;
+      if (next.new_loan_maturity_mode !== "manual" && next.new_loan_expected_funding_date !== undefined) next.new_loan_maturity_date = addLoanMonths(next.new_loan_expected_funding_date ?? "", next.new_loan_term_months) || null;
       return next;
     });
   };
   useAutomaticFinancedPrincipal(budgetPreview, plan.new_loan_amount, amount => setLoan("amount", String(amount)), canEdit);
   const targetNetMode = budgetPreview.value?.loan_amount_mode === "target_net";
-  const repaymentIssue = plan.new_loan_term_months != null && plan.new_loan_term_months < 1 ? "Loan maturity must be at least one month." : repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct, plan.new_loan_term_months, { structure: plan.new_loan_interest_only ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).error;
+  const dateIssue = loanDateProblem({ expected_funding_date: plan.new_loan_expected_funding_date ?? "", maturity_date: plan.new_loan_maturity_date ?? "", maturity_date_mode: plan.new_loan_maturity_mode ?? "automatic" }, plan.new_loan_term_months);
+  const repaymentIssue = dateIssue ?? (plan.new_loan_term_months != null && plan.new_loan_term_months < 1 ? "Loan maturity must be at least one month." : repaymentPreview(plan.new_loan_amount, plan.new_loan_rate_pct, plan.new_loan_term_months, { structure: plan.new_loan_interest_only ? "interest_only" : plan.new_loan_structure, interestOnlyMonths: plan.new_loan_interest_only_months, periodsPerYear: plan.new_loan_payments_per_year ?? 12, repaymentConfig: plan.new_loan_repayment_config }).error);
   const structureNow: LoanStructure = plan.new_loan_interest_only ? "interest_only" : (plan.new_loan_structure ?? defaultStructure(plan.new_loan_term_months));
   const setAmortization = (raw: string) => {
     const months = raw.trim() === "" ? null : Number(raw);
@@ -649,6 +656,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
             <div className="grid g2"><span className="sub">Residual balloon at maturity</span><strong className="num">{local.schedule ? money(local.schedule.balloon, 2) : "Enter loan details to calculate"}</strong><small className="sub">Unpaid principal is due at maturity{plan.new_loan_term_months != null ? ` in month ${plan.new_loan_term_months}` : ""}; additional principal payments are set below.</small></div>
           </div>
           {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
+          <LoanDateFields value={{ expected_funding_date: plan.new_loan_expected_funding_date ?? "", maturity_date: plan.new_loan_maturity_date ?? "", maturity_date_mode: plan.new_loan_maturity_mode ?? "automatic" }} termMonths={plan.new_loan_term_months} disabled={!canEdit} onChange={dates => { setSaved(null); setLoanDraftTouched(true); setPlan(current => ({ ...current, new_loan_expected_funding_date: dates.expected_funding_date || null, new_loan_maturity_date: dates.maturity_date || null, new_loan_maturity_mode: dates.maturity_date_mode })); }} />
           <FileCollateralSection profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
           <DealBudgetSection profileId={profileId} disabled={!canEdit} financialPlan={plan} onPending={setTermsPending} onGrossAmountChange={amount => setLoan("amount", amount == null ? "" : String(amount))} onApplySolvedPrincipal={amount => setLoan("amount", String(amount))} onFinancingSaved={financingSaved} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />

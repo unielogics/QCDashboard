@@ -340,6 +340,7 @@ export type TermSheetStructuredFields = {
 };
 
 export type TermSheetExtra = TermSheetStructuredFields & {
+  maturity_date_mode?: "automatic" | "manual" | null;
   payment_summary?: TermSheetPaymentSummary | null;
   /** Preserve server-authored metadata (for example DSCR snapshots). */
   [key: string]: unknown;
@@ -381,6 +382,7 @@ export type TermSheet = {
   approved_amount: number; min_activation_amount: number; rate_pct: number; term_months: number;
   monthly_debt_service: number; debt_service_is_level_payment: boolean;
   expected_funding_date: string | null; activation_date: string | null; commencement_date: string | null; maturity_date: string | null;
+  maturity_date_mode?: "automatic" | "manual" | null; date_note?: string | null;
   use_of_funds: TermSheetUseOfFunds | null; conditions: string | null; notes: string | null;
   extra?: TermSheetExtra | null;
   entered_at: string; entered_by_name: string | null; superseded_at: string | null; withdrawn_at: string | null;
