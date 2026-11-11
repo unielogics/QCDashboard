@@ -1,4 +1,5 @@
 "use client";
+import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -150,6 +151,7 @@ export function ApplicationEvidenceWorkspace({
   /** Underwriting roles may add requirements from the library. */
   canAddRequirements?: boolean;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const apiCall = useAuthedApi();
   const versions = useMemo(() => documentVersionService(apiCall, `/application-profiles/${profileId}/evidence`, { fileUrl: async (fileId, download) => (await apiCall<{ url: string }>(`/application-profiles/${profileId}/evidence/files/${fileId}/url?download=${download}`)).url }), [apiCall, profileId]);
   const productionCall = useProductionCall();
@@ -509,7 +511,7 @@ export function ApplicationEvidenceWorkspace({
         {onAttachBucket ? <ActionIcon icon="link" label="Attach an existing bucket to this file" onClick={onAttachBucket} /> : null}
         {onRequestDocument ? <ActionIcon icon="send" label="Request a document from the client" onClick={onRequestDocument} /> : null}
         {data.primary_bucket_id ? <ActionIcon icon="vault" label="Open the file room" onClick={() => setOpenBucketId(data.primary_bucket_id)} /> : null}
-        <span title="Fill in, share or download the PDS, debt schedule, P&L and balance sheet"><Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn></span>
+        <span title="Fill in, share or download the PDS, debt schedule, P&L and balance sheet">{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="forms">Forms</FileWorkspaceLink> : <Btn variant="pri" onClick={() => setFormsOpen(true)}><Icon name="file" size={14} />Forms</Btn>}</span>
       </div>
     </header>
 

@@ -7,6 +7,7 @@
 // from anywhere a debt schedule shows up, and the nudge a row can show while lines
 // read from a file are not on the schedule yet.
 
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { useState } from "react";
 import { Btn } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
@@ -49,11 +50,13 @@ export function DebtScheduleReviewButton({
   /** The button as the main action of its row. */
   primary?: boolean;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const { data: user } = useCurrentUser();
   const [open, setOpen] = useState(false);
   const toast = useToast();
   const canReview = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
   if (!profileId || !canReview) return null;
+  if (fileWorkspace) return <FileWorkspaceLink tool="forms" kind="debt_schedule" view="worksheet">{label ?? "Fill in the debt schedule table"}</FileWorkspaceLink>;
   const words = label ?? "Fill in the debt schedule table: take off what is not a loan and answer the rate, original amount and balance";
   return (
     <>

@@ -4,6 +4,7 @@
 // push updates offering documents; only the listing's lifecycle publishes it.
 
 import Link from "next/link";
+import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn, CellChip, StatusLine } from "@/components/ds";
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
@@ -42,6 +43,7 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
   onActionError?: (error: unknown) => void;
   onActionSuccess?: () => void;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const publication = useCpProfilePublication(profileId, !listing);
   const lookup = useCpSourceLookup({ profile_id: profileId ?? null }, Boolean(profileId) && !listing && canPublish);
   const act = useCpListingAction();
@@ -90,8 +92,8 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
             {act.isPending ? "Updating…" : "Update listing package"}
           </Btn>
           <Btn size="sm" disabled={act.isPending} onClick={() => void run(`/capital/admin/listings/${listingId}/refresh-snapshot`, "The listing figures now match the file. Its publication status has not changed.")}>Refresh figures only</Btn>
-          <Link className="btn btn-sm" href={`/admin/marketplace/${listingId}`}>{offer?.status === "draft" ? "Review and publish offer" : "Manage listing"}{offer?.ref ? ` ${offer.ref}` : ""}</Link>
-        </div> : onStartListing ? <Btn size="sm" onClick={onStartListing} disabled={!packageInSync}>Prepare marketplace listing</Btn> : null}
+          <Link className="btn btn-sm" href={`/admin/marketplace/${listingId}`} target={fileWorkspace ? "_blank" : undefined} rel={fileWorkspace ? "noopener noreferrer" : undefined}>{offer?.status === "draft" ? "Review and publish offer" : "Manage listing"}{offer?.ref ? ` ${offer.ref}` : ""}</Link>
+        </div> : onStartListing ? fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="marketplace">Prepare marketplace listing</FileWorkspaceLink> : <Btn size="sm" onClick={onStartListing} disabled={!packageInSync}>Prepare marketplace listing</Btn> : null}
         {!compact && listingId && sync?.published && !sync.up_to_date ? <span className="sub">Changed on the file since the last package update: {sync.changed.map(c => c.label.toLowerCase()).join(", ")}. Refresh the investor package, then update the listing package.</span> : null}
         {!compact && !listingId ? <span className="sub">{packageInSync ? "Review the investor terms, then prepare a listing draft. Publish offer makes it available to approved capital partners." : "Generate a current investor package before preparing its marketplace listing."}</span> : null}
       </> : null}

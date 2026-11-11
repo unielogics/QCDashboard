@@ -1,4 +1,5 @@
 "use client";
+import { useFileWorkspace, useFileWorkspaceDirty } from "@/components/file/FileWorkspaceContext";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ function Metric({ label, value, percent = false }: { label: string; value: numbe
 
 /** One cost and capital record, with one retained staff draft across financing tabs. */
 export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending, financialPlan, onApplySolvedPrincipal, onFinancingSaved, onGrossAmountChange, saveWithTerms = false, onSaveControlsChange }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void; financialPlan?: FinancialPlanWrite | null; onApplySolvedPrincipal?: (amount: number) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; onGrossAmountChange?: (amount: number | null) => void; saveWithTerms?: boolean; onSaveControlsChange?: (controls: MarketplaceBudgetControls | null) => void }) {
+  const fileWorkspace = useFileWorkspace();
   const api = useAuthedApi(), queryClient = useQueryClient(), query = useDealBudget(profileId);
   const [open, setOpen] = useState(inline), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [refreshWarning, setRefreshWarning] = useState("");
@@ -38,6 +40,7 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const saved = query.data, draft = kept?.profileId === profileId ? kept : null;
   const value = draft?.value ?? (saved ? dealBudgetWrite(saved) : null);
   const dirty = Boolean(saved && value && dealBudgetChanged(value, saved));
+  useFileWorkspaceDirty(dirty, busy);
   const conflict = Boolean(saved && value && value.expected_revision !== saved.revision && dirty);
   const canEdit = Boolean(saved?.can_edit && !disabled && !busy);
   const previewPlan = financialPlan ?? dealBudgetPlan(saved?.financial_plan, loan);
@@ -95,6 +98,7 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
       const latestDraft = queryClient.getQueryData<DealBudgetDraft | null>(dealBudgetDraftKey(profileId));
       const newerDraft = hasNewerMarketplaceBudgetDraft(profileId, submittedFingerprint, latestDraft);
       queryClient.setQueryData(dealBudgetKey(profileId), result);
+      fileWorkspace?.saved();
       if (!newerDraft) queryClient.setQueryData(dealBudgetDraftKey(profileId), null);
       if (newerDraft) { applyAttempt.current = null; throw new Error("The submitted budget and loan were saved, but newer cost edits remain. Review the retained budget draft before updating the listing."); }
       if (needsPrincipalSave && result.financial_plan && !viaControls) { queryClient.setQueryData(["financial-plan", profileId], result.financial_plan); queryClient.setQueryData(["financial-plan-applied", profileId], result.financial_plan); }

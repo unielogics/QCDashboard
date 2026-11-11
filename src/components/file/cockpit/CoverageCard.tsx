@@ -64,6 +64,7 @@ import {
   type PlanOverrides,
 } from "@/lib/financialCockpit";
 import { ChartCard, ColumnChart, LineChart, Meter, SERIES, type ChartTable } from "./CockpitCharts";
+import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 import { ClientTermsDrawer, ClientTermsStrip } from "./ClientTermsStrip";
 import { EbitdaRefinanceComparison } from "./EbitdaRefinanceComparison";
 import { RevenueTrendPanel } from "./RevenueTrendPanel";
@@ -145,7 +146,8 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, initialFinancialAction, onReviewClose, onMarketplaceSaveControlsChange }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; initialFinancialAction?: MarketplaceFinancialAction | null; onReviewClose?: () => void; onMarketplaceSaveControlsChange?: (controls: MarketplacePlanControls | null) => void }) {
+export function CoverageCard({ workspaceTool, cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, initialFinancialAction, onReviewClose, onMarketplaceSaveControlsChange }: { workspaceTool?: import("@/lib/fileWorkspace").FileWorkspaceTool; cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; initialFinancialAction?: MarketplaceFinancialAction | null; onReviewClose?: () => void; onMarketplaceSaveControlsChange?: (controls: MarketplacePlanControls | null) => void }) {
+  const fileWorkspace = useFileWorkspace();
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
   const canEdit = requestedCanEdit && !termsPending && !save.isPending && !setupBudgetSaving;
@@ -226,6 +228,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   }, [appliedBudgetPlan.data, profileId, savedRecord.expected_updated_at, cockpit]);
 
   const dirty = !same(plan, savedRecord);
+  useEffect(() => { if (!fileWorkspace?.pageMode) return; const warn = (event: BeforeUnloadEvent) => { if (dirty || termsPending) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [fileWorkspace?.pageMode, dirty, termsPending]);
   const workingPlanListener = useRef(onWorkingPlanChange);
   workingPlanListener.current = onWorkingPlanChange;
   useEffect(() => {
@@ -292,6 +295,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   };
   function termsSaved(terms: ApplicationClientTerms, savedPlan?: FinancialPlanRead) {
     if (activeProfile.current !== profileId) return;
+    fileWorkspace?.saved();
     if (savedPlan) {
       setPlan((current) => mergeAcknowledgedLoan(current, savedPlan.record));
       setPaymentText(numberValue(savedPlan.record.new_payment_monthly));
@@ -308,6 +312,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     setPlan(current => applyWorkingLoan(current, loan)); setPaymentText(""); setSaved(null); setLoanDraftTouched(true);
   }
   function financingSaved(result: FinancialPlanRead) {
+    fileWorkspace?.saved();
     const acknowledged = fromRecord({ ...cockpit, plan: { ...cockpit.plan, record: result.record } });
     previousSavedRecord.current = acknowledged;
     setPlan(acknowledged); setPaymentText(numberValue(acknowledged.new_payment_monthly)); setLoanDraftTouched(true);
@@ -465,6 +470,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     setPaymentText("");
   };
   const pendingTermsEdits = Boolean(clientTermsDraft?.editedInEditor && JSON.stringify(clientTermsDraft.draft) !== clientTermsDraft.savedFingerprint);
+  useEffect(() => { if (!fileWorkspace?.pageMode) return; const warn = (event: BeforeUnloadEvent) => { if (pendingTermsEdits) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [fileWorkspace?.pageMode, pendingTermsEdits]);
   const marketplaceBlocker = !requestedCanEdit ? "You cannot save the shared coverage plan." : pendingTermsEdits ? "The full terms editor has unsaved changes. Open full terms and save or discard that draft before updating the listing." : dirty && unresolvedPayoffs ? "Review the unresolved payoff selections in the coverage plan before saving." : dirty && repaymentIssue ? repaymentIssue : null;
   const persistPlan = async (receipt?: MarketplaceBudgetReceipt, force = false): Promise<FinancialPlanRead | null> => {
     if (activeProfile.current !== profileId) throw new Error("The active file changed. Return to its marketplace panel and try again.");
@@ -494,6 +500,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
       const changedDuringSave = !same(currentPlan.current, submitted);
       currentPlan.current = changedDuringSave ? { ...currentPlan.current, expected_updated_at: result.record.updated_at ?? null } : acknowledged;
       setPlan(currentPlan.current);
+      fileWorkspace?.saved();
       setSaved("Plan saved. The debt service, the offer and the advances read it now.");
       if (changedDuringSave) throw new Error("The coverage plan was saved, but newer edits remain. Review them and try again before updating the listing.");
       return result;
@@ -596,7 +603,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
 
       <div className="fc-grid">
         <div className="grid g8">
-          <div className="row"><Lbl>Saved and documented obligations ({accountLabel})</Lbl><span className="sp" />{canEdit ? <Btn size="sm" onClick={() => openDebt({ view: "form" })}><Icon name="pencil" size={13} />Open financial workspace</Btn> : null}</div>
+          <div className="row"><Lbl>Saved and documented obligations ({accountLabel})</Lbl><span className="sp" />{canEdit ? (fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form">Open financial workspace</FileWorkspaceLink> : <Btn size="sm" onClick={() => openDebt({ view: "form" })}><Icon name="pencil" size={13} />Open financial workspace</Btn>) : null}</div>
           {obligations.length ? (
             <div className={styles.obligationsWorkspace}>
             <div className={`tbl-wrap ${styles.obligationsScroll}`} tabIndex={0} role="region" aria-label="Loan obligations, scroll across for origination dates and paid-down percentages">
@@ -631,13 +638,13 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
                     ? "The uploaded schedule was read but none of its lines could be listed. Adopt it, enter the schedule, or ask again."
                     : `No obligations on file. Debt schedule: ${schedule.label.toLowerCase()}. Confirm the business is debt free, or get the schedule on the file.`}
               </span>
-              <Btn size="sm" onClick={() => openDebt({ view: "form" })}>Open working debt schedule</Btn>
+              {fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form">Open working debt schedule</FileWorkspaceLink> : <Btn size="sm" onClick={() => openDebt({ view: "form" })}>Open working debt schedule</Btn>}
             </div>
           )}
 
         </div>
         <div className="grid g8">
-          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}><IconBtn disabled={termsPending || save.isPending} aria-label="Expand full loan terms" title="Expand full loan terms" onClick={() => openClientTerms("terms")}><Icon name="maximize" size={16} /></IconBtn><IconBtn disabled={termsPending || save.isPending} aria-label="Expand amortization schedule" title="Expand amortization schedule" onClick={() => openClientTerms("schedule")}><Icon name="calc" size={16} /></IconBtn></div> : null}</div>
+          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}>{fileWorkspace ? <><FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Expand full loan terms</FileWorkspaceLink><FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Open loan terms and amortization</FileWorkspaceLink></> : <><IconBtn disabled={termsPending || save.isPending} aria-label="Expand full loan terms" title="Expand full loan terms" onClick={() => openClientTerms("terms")}><Icon name="maximize" size={16} /></IconBtn><IconBtn disabled={termsPending || save.isPending} aria-label="Expand amortization schedule" title="Expand amortization schedule" onClick={() => openClientTerms("schedule")}><Icon name="calc" size={16} /></IconBtn></>}</div> : null}</div>
           <div className="fc-loan-terms">
             <label className="grid g2"><span className="sub">{targetNetMode ? "Net to client, $" : "Total loan amount, $"}</span><Input aria-label={targetNetMode ? "Net to client" : "New loan amount"} type="number" inputMode="decimal" min={0} step="any" value={numberValue(targetNetMode ? budgetPreview.value?.target_net_amount : plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => targetNetMode ? budgetPreview.updateBudget({ target_net_amount: num(e.target.value) }) : setLoan("amount", e.target.value)} />{targetNetMode ? <small>Total loan including fees: {budgetPending ? "Calculating…" : money(plan.new_loan_amount, 2)}</small> : null}</label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
@@ -657,25 +664,25 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
           </div>
           {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
           <LoanDateFields value={{ expected_funding_date: plan.new_loan_expected_funding_date ?? "", maturity_date: plan.new_loan_maturity_date ?? "", maturity_date_mode: plan.new_loan_maturity_mode ?? "automatic" }} termMonths={plan.new_loan_term_months} disabled={!canEdit} onChange={dates => { setSaved(null); setLoanDraftTouched(true); setPlan(current => ({ ...current, new_loan_expected_funding_date: dates.expected_funding_date || null, new_loan_maturity_date: dates.maturity_date || null, new_loan_maturity_mode: dates.maturity_date_mode })); }} />
-          <FileCollateralSection profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
-          <DealBudgetSection profileId={profileId} disabled={!canEdit} financialPlan={plan} onPending={setTermsPending} onGrossAmountChange={amount => setLoan("amount", amount == null ? "" : String(amount))} onApplySolvedPrincipal={amount => setLoan("amount", String(amount))} onFinancingSaved={financingSaved} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
+          <FileCollateralSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
+          <DealBudgetSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!canEdit} financialPlan={plan} onPending={setTermsPending} onGrossAmountChange={amount => setLoan("amount", amount == null ? "" : String(amount))} onApplySolvedPrincipal={amount => setLoan("amount", String(amount))} onFinancingSaved={financingSaved} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
           <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
             {local.schedule ? "Scheduled installments, maturity principal and the underwriting stress basis are shown separately above." : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month for coverage.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month for coverage${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
-            {canRecordTerms ? <> <button type="button" className="linky" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record loan terms</button></> : null}
+            {canRecordTerms ? <> {fileWorkspace ? <FileWorkspaceLink tool="terms" className="linky">Record loan terms</FileWorkspaceLink> : <button type="button" className="linky" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record loan terms</button>}</> : null}
           </span>
           {recorded ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               {mirrorNow === "mirrored" ? <CellChip tone="ok">Mirrors {recorded.label}</CellChip> : mirrorNow === "recorded_not_in_plan" ? <CellChip tone="mut">{recorded.label} is recorded, not in the plan</CellChip> : mirrorNow ? <CellChip tone="warn">Differs from {recorded.label}: {mirrorNow.slice("differs:".length)}</CellChip> : null}
               {canEdit && mirrorNow !== "mirrored" ? <Btn size="sm" onClick={() => adoptTerms(true)}><Icon name="plus" size={12} /> Use the recorded terms ({money(recorded.payment_monthly)} / mo)</Btn> : null}
               {canEdit && termsAdopted ? <Btn size="sm" onClick={() => adoptTerms(false)}>Take them out of the plan</Btn> : null}
-              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record the term sheet from this loan</Btn> : null}
+              {canRecordTerms && mirrorNow && mirrorNow.startsWith("differs") ? (fileWorkspace ? <FileWorkspaceLink tool="terms">Record the term sheet from this loan</FileWorkspaceLink> : <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record the term sheet from this loan</Btn>) : null}
             </div>
           ) : local.newPayment && canRecordTerms ? (
             <div className="fc-chips" style={{ alignItems: "center" }}>
               <CellChip tone="mut">Not recorded on the Underwriting tab yet</CellChip>
-              <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record these terms</Btn>
+              {fileWorkspace ? <FileWorkspaceLink tool="terms">Record these terms</FileWorkspaceLink> : <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record these terms</Btn>}
             </div>
           ) : null}
           {termsKind === "client" ? (
@@ -913,11 +920,12 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   </details> : null;
   const planActions = canEdit ? <><Btn size="sm" onClick={clearPlan} disabled={!dirty && !plan.retire.length && !plan.exclude.length && !plan.new_payment_monthly && !plan.new_loan_amount}>Clear plan</Btn><Btn size="sm" variant="pri" disabled={!dirty && !legacySelectionsReviewed || save.isPending || unresolvedPayoffs || !!repaymentIssue} onClick={() => void submit()}>{save.isPending ? "Saving…" : "Save plan"}</Btn></> : null;
   const planReview = <>{programSelection}{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
+  if (workspaceTool) return <>{workspaceTool === "terms" ? <ClientTermsDrawer inline open={workspaceTool === "terms" || clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} /> : <><div className="row">{planActions}</div>{planReview}</>}</>;
   return <>
     <section className={`fc-card ${styles.summaryCard}`} aria-label="Debt coverage and financial review">
       <div className={styles.summaryHead}><div><h4>Debt coverage and financial review</h4><p className={styles.note}>Saved financial figures, the working debt schedule, and observed statement payments stay distinct.</p></div><div className={styles.summaryActions}>
-        <Btn variant="pri" size="sm" onClick={() => setReviewOpen(true)}>Advanced review</Btn>
-        {canReviewDebt ? <Btn size="sm" onClick={() => openDebt({ view: "form" })}>Edit debt schedule</Btn> : null}
+        {fileWorkspace && !fileWorkspace.pageMode ? <><FileWorkspaceLink tool="coverage" className="btn btn-sm pri">Advanced review</FileWorkspaceLink><FileWorkspaceLink tool="use-of-funds">Programs and use of funds</FileWorkspaceLink></> : <Btn variant="pri" size="sm" onClick={() => setReviewOpen(true)}>Advanced review</Btn>}
+        {canReviewDebt ? fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form">Edit debt schedule</FileWorkspaceLink> : <Btn size="sm" onClick={() => openDebt({ view: "form" })}>Edit debt schedule</Btn> : null}
         {profitAndLossIsEmpty(cockpit.profit_and_loss) && onRequestStatement ? <Btn size="sm" onClick={() => onRequestStatement("profit_and_loss")}>Request P&amp;L</Btn> : null}
         {balanceSheetIsEmpty(cockpit.balance_sheet) && onRequestStatement ? <Btn size="sm" onClick={() => onRequestStatement("balance_sheet")}>Request balance sheet</Btn> : null}
       </div></div>
@@ -936,6 +944,6 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     </section>
     <FinancialReviewDrawer setupBudgetSaving={setupBudgetSaving} open={reviewOpen} onClose={() => { if (setupBudgetSaving) return; setReviewOpen(false); onReviewClose?.(); }} tab={reviewTab} onTab={setReviewTab} cockpit={cockpit} profileId={profileId} months={months} summary={summary} accountLabel={accountLabel} accountKey={accountKey} businessName={businessName} canEdit={canReviewDebt} canCorrectMetrics={canCorrectMetrics} onRefresh={refresh} onOpenDebt={openDebt} onPreviewSource={onPreviewSource ? previewSource : undefined} onOpenEvidence={() => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence?.(); }} planContent={planReview} spendContent={spendContent} planActions={planActions} />
     {debtEditor ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" initialView={debtEditor.view} initialDebtId={debtEditor.rowId} onClose={closeDebt} onPublished={async () => { await refresh(); }} /> : null}
-    <ClientTermsDrawer open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
+    <ClientTermsDrawer inline={Boolean(fileWorkspace?.pageMode)} open={clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} />
   </>;
 }

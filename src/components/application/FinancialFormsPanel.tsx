@@ -18,6 +18,7 @@
 // packet link that opens all four at once, which the desk copies and forwards
 // — to the borrower, or on to their accountant — and can close from here.
 
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { useCallback, useEffect, useState } from "react";
 import { Btn, CellChip, Panel, StatusLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -223,6 +224,7 @@ function summaryLines(form: FormStatus): string[] {
 export function FinancialFormsPanel({ profileId, intakeId, nested = false, onChange, onUploadFiles }: {
   profileId?: string | null; intakeId?: string | null; nested?: boolean; onChange?: () => void; onUploadFiles?: (files: File[]) => Promise<void>; onPreviewFile?: (fileId: string) => void;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const api = useAuthedApi();
   const [resolvedId, setResolvedId] = useState<string | null>(profileId ?? null);
   const [forms, setForms] = useState<FormStatus[]>([]);
@@ -271,11 +273,11 @@ export function FinancialFormsPanel({ profileId, intakeId, nested = false, onCha
     {shown ? <div className="form-link-out"><span className="lbl">{copied === shown.kind ? "Copied" : "Secure borrower link"}</span><input readOnly value={shown.url} onFocus={(event) => event.currentTarget.select()} /><span className="sub">Expires in 30 days.</span></div> : null}
     {forms.map((form) => <div key={form.kind} className="filerow">
       <Icon name="doc" size={15} /><div className="grow grid g4"><div className="row"><b>{form.label}</b>{statusChip(form)}{form.figures_from === "document" ? <CellChip tone="mut">Read from document</CellChip> : null}</div>{summaryLines(form).map((line) => <span key={line} className="sub">{line}</span>)}</div>
-      <Btn size="sm" disabled={Boolean(busy)} onClick={() => setWorkspace({ kind: form.kind, view: "form" })}>Open workspace</Btn>
+      {fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool={form.kind === "operating_plan" ? "operating-plan" : "forms"} kind={form.kind} view="form" disabled={Boolean(busy)}>Open workspace</FileWorkspaceLink> : <Btn size="sm" disabled={Boolean(busy)} onClick={() => setWorkspace({ kind: form.kind, view: "form" })}>Open workspace</Btn>}
       <Btn size="sm" disabled={Boolean(busy)} onClick={() => copyLink(form.kind)}>{copied === form.kind ? "Copied" : "Copy link"}</Btn>
-      {form.source !== "none" || form.statement_id || form.row_count > 0 ? <Btn size="sm" onClick={() => setWorkspace({ kind: form.kind, view: "pdf" })}>PDF & versions</Btn> : null}
+      {form.source !== "none" || form.statement_id || form.row_count > 0 ? fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="forms" kind={form.kind} view="pdf">PDF & versions</FileWorkspaceLink> : <Btn size="sm" onClick={() => setWorkspace({ kind: form.kind, view: "pdf" })}>PDF & versions</Btn> : null}
     </div>)}
-    <div className="filerow"><Icon name="calc" size={15} /><div className="grow grid g4"><b>Financial worksheet</b><span className="sub">The same draft figures in a grid. Save a version to update financials and AI.</span></div><Btn size="sm" onClick={() => setWorkspace({ kind: "debt_schedule", view: "worksheet" })}>Open worksheet</Btn><Btn size="sm" onClick={() => setShareOpen(true)}>Share worksheet</Btn></div>
+    <div className="filerow"><Icon name="calc" size={15} /><div className="grow grid g4"><b>Financial worksheet</b><span className="sub">The same draft figures in a grid. Save a version to update financials and AI.</span></div>{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="worksheet">Open worksheet</FileWorkspaceLink> : <Btn size="sm" onClick={() => setWorkspace({ kind: "debt_schedule", view: "worksheet" })}>Open worksheet</Btn>}<Btn size="sm" onClick={() => setShareOpen(true)}>Share worksheet</Btn></div>
     <div className="filerow"><Icon name="link" size={15} /><div className="grow grid g4"><b>All four forms, one link</b><span className="sub">Send the borrower one link to complete all four forms. Expires in 30 days.</span></div><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyLink("packet")}>Copy packet link</Btn></div>
     {packets.filter((packet) => !packet.revoked).map((packet) => <div className="filerow" key={packet.packet_id}><Icon name="send" size={15} /><div className="grow grid g4"><b>Packet sent {shortDate(packet.created_at)}</b><span className="sub">{packet.completed_kinds.length} of 4 sent back · expires {shortDate(packet.expires_at)}</span></div><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("revoke", async () => { await api(`/application-profiles/${fileId}/financial-forms/packets/${packet.packet_id}/revoke`, { method: "POST" }); if (shown?.kind === "packet") setShown(null); })}>Close link</Btn></div>)}
     {workspace ? <FinancialWorkspace open profileId={fileId} initialKind={workspace.kind} initialView={workspace.view} onClose={() => { setWorkspace(null); void load(); }} onPublished={async () => { await load(); onChange?.(); }} onUploadFiles={onUploadFiles} /> : null}

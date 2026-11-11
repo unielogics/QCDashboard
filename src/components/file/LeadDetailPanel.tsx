@@ -51,6 +51,7 @@ import { pipelineApprovalDraft, validatePipelineApprovalDraft, type PipelineAppr
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
 import { creditStepProgress } from "@/lib/creditStepSync";
 import { calculateDealEarnings } from "@/lib/dealEconomics";
+import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, PackageGenerationOptions, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
 
@@ -645,6 +646,7 @@ export function LeadDetailPanel({
   onConfirmDeletion: (confirmName: string) => Promise<void>;
 }) {
   const toast = useToast();
+  const fileWorkspace = useFileWorkspace();
   const { getToken } = useConsoleAuth();
   const bookingLink = useBookingLink();
   const { data: currentUser } = useCurrentUser();
@@ -1907,8 +1909,8 @@ export function LeadDetailPanel({
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Dealer partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
-          { label: "Record loan terms", onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
-          { label: "Prepare marketplace listing", onSelect: () => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
+          { label: "Record loan terms", href: fileWorkspace?.href({ tool: "terms" }), newTab: Boolean(fileWorkspace), onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
+          { label: "Prepare marketplace listing", href: fileWorkspace?.href({ tool: "marketplace" }), newTab: Boolean(fileWorkspace), onSelect: () => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
           { label: "Archive lead", onSelect: () => setConfirmDeleteOpen(true), hidden: !detail || !canGovern },
         ]} />
         {onMinimize ? <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>

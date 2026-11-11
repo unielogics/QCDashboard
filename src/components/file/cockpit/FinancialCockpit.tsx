@@ -73,11 +73,14 @@ import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import financialReviewStyles from "./FinancialReview.module.css";
 import metricStyles from "./FinancialMetricReview.module.css";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
+import type { FileWorkspaceTool } from "@/lib/fileWorkspace";
+import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 import { DebtScheduleControls, OPEN_DEBT_SCHEDULE_EVENT } from "./DebtScheduleControls";
 
 export type CockpitPackageState = { generated: boolean; inSync: boolean; summaryVersion: number | null; packetVersion: number | null };
 
 type Props = {
+  workspaceTool?: FileWorkspaceTool;
   profileId: string;
   businessName: string;
   canPublish: boolean;
@@ -626,6 +629,7 @@ function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
 // ---------------------------------------------------------------------------
 
 export function FinancialCockpit(props: Props) {
+  const fileWorkspace = useFileWorkspace();
   const { profileId, onRefreshProgramReadiness, onWorkingFinancingChange } = props;
   const budgetDraftStore = useMemo(() => createUseOfFundsDraftStore(profileId), [profileId]);
   const activeBudgetStore = useRef(budgetDraftStore);
@@ -758,6 +762,56 @@ export function FinancialCockpit(props: Props) {
     ? "Negative days not fully reported"
     : `${riskCountLabel(risks.negative)} negative ${negativeUnit}`;
   const bankPeriod = summary.first_month && summary.last_month ? summary.first_month === summary.last_month ? monthShort(summary.first_month) : `${monthShort(summary.first_month)} – ${monthShort(summary.last_month)}` : "Period unconfirmed";
+  const auxiliaryContent = <>{metricReview?.profileId === props.profileId ? <FinancialMetricReviewWorkspace key={props.profileId} open={metricReview.open} metricKey={metricReview.key} cockpit={cockpit} options={metricOptions} profileId={props.profileId} canEdit={props.canUnderwrite} onClose={() => setMetricReview((current) => current ? { ...current, open: false } : null)} onRefresh={refreshFinancialFacts} onOpenDebt={openMetricDebt} onOpenPlan={openMetricPlan} /> : null}
+      {metricDebtOpen ? <FinancialWorkspace inline={Boolean(fileWorkspace?.pageMode)} open profileId={props.profileId} initialKind="debt_schedule" initialView="worksheet" onClose={() => { setMetricDebtOpen(false); setMetricReview((current) => current ? { ...current, open: true } : null); void refreshFinancialFacts(); }} onPublished={async () => { await refreshFinancialFacts(); }} /> : null}
+      {sourcePreview && sourcePreview.profileId === props.profileId ? <BucketFileReviewPanel
+        title="Bank statement evidence"
+        files={sourceFiles}
+        activeFileId={sourcePreview.fileId}
+        initialPage={sourcePreview.page}
+        pageRequestId={sourcePreview.requestId}
+        reviewKey={`${sourcePreview.profileId}:${sourcePreview.fileId}`}
+        loadReview={loadSourceReview}
+        annotationsEnabled={false}
+        onSelectFile={(fileId) => setSourcePreview((current) => current ? { ...current, fileId, page: undefined, requestId: current.requestId + 1 } : null)}
+        onClose={closeSourcePreview}
+      /> : null}
+      {statementRequest?.profileId === props.profileId ? <RequestFilesDialog key={props.profileId} open={statementRequest.open} profileId={props.profileId}
+        prefill={financialStatementRequest(statementRequest.kind, props.businessName)} prefillKey={statementRequest.key}
+        onClose={() => setStatementRequest((current) => current ? { ...current, open: false } : null)} onRequested={refreshFileRequests} /> : null}</>;
+  const coverageView = (<CoverageCard workspaceTool={props.workspaceTool} key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest}
+          onMarketplaceSaveControlsChange={marketplaceControlsChanged}
+          setupBudgetSaving={budgetSaving}
+          initialFinancialAction={props.initialFinancialAction}
+          programSelection={props.programReadiness ? <details className="fc-card fc-wide" id="fc-programs" open>
+            <summary><strong>Program criteria and use of funds</strong><span className="sub"> · {props.programReadiness.selections?.map((row) => row.program_name).join(", ") || "Choose programs"}</span></summary>
+            <div className="fc-card-h">
+              <div>
+                <h4>Programs and use of funds</h4>
+                <div className="sub">Choose the funding programs for this file and itemize how the money will be used. The programs decide which documents the file needs; those are listed on Evidence &amp; banking.</div>
+              </div>
+            </div>
+            <ApplicationProgramReadiness
+              section="setup"
+              initiallyOpenUseOfFunds={props.initialFinancialAction === "use-of-funds" || props.workspaceTool === "use-of-funds"}
+              canEditPrograms={props.canUnderwrite}
+              useOfFundsDraftStore={budgetDraftStore}
+              onUseOfFundsControlsChange={budgetControlsChanged}
+              onPreviewFinancialEvidence={openSourcePreview}
+              onRequestFinancialEvidence={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined}
+              profileId={props.profileId}
+              files={[]}
+              value={props.programReadiness}
+              onValueChange={props.onProgramReadinessChange}
+              onRefresh={props.onRefreshProgramReadiness}
+              showUploader={false}
+              canCreatePrograms={props.canCreatePrograms}
+              programVertical={props.programVertical}
+              intakeVariant={props.intakeVariant}
+            />
+          </details> : null}
+          onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />);
+  if (props.workspaceTool) return <div className="fin-cockpit">{coverageView}{props.workspaceTool === "marketplace" ? <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} /> : null}{auxiliaryContent}</div>;
   return (
     <div className={cx("fin-cockpit", query.isFetching && "is-refreshing")}>
       <div className="fc-head">
@@ -814,38 +868,7 @@ export function FinancialCockpit(props: Props) {
       </KpiRow></div>
 
       <div className="fc-grid">
-        <CoverageCard key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest}
-          onMarketplaceSaveControlsChange={marketplaceControlsChanged}
-          setupBudgetSaving={budgetSaving}
-          initialFinancialAction={props.initialFinancialAction}
-          programSelection={props.programReadiness ? <details className="fc-card fc-wide" id="fc-programs" open>
-            <summary><strong>Program criteria and use of funds</strong><span className="sub"> · {props.programReadiness.selections?.map((row) => row.program_name).join(", ") || "Choose programs"}</span></summary>
-            <div className="fc-card-h">
-              <div>
-                <h4>Programs and use of funds</h4>
-                <div className="sub">Choose the funding programs for this file and itemize how the money will be used. The programs decide which documents the file needs; those are listed on Evidence &amp; banking.</div>
-              </div>
-            </div>
-            <ApplicationProgramReadiness
-              section="setup"
-              initiallyOpenUseOfFunds={props.initialFinancialAction === "use-of-funds"}
-              canEditPrograms={props.canUnderwrite}
-              useOfFundsDraftStore={budgetDraftStore}
-              onUseOfFundsControlsChange={budgetControlsChanged}
-              onPreviewFinancialEvidence={openSourcePreview}
-              onRequestFinancialEvidence={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined}
-              profileId={props.profileId}
-              files={[]}
-              value={props.programReadiness}
-              onValueChange={props.onProgramReadinessChange}
-              onRefresh={props.onRefreshProgramReadiness}
-              showUploader={false}
-              canCreatePrograms={props.canCreatePrograms}
-              programVertical={props.programVertical}
-              intakeVariant={props.intakeVariant}
-            />
-          </details> : null}
-          onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />
+        {coverageView}
         <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} coverageEvaluation={cockpit.plan.evaluation} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       </div>
 
@@ -867,23 +890,7 @@ export function FinancialCockpit(props: Props) {
       <div className="fc-grid">
         {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} />}
       </div>
-      {metricReview?.profileId === props.profileId ? <FinancialMetricReviewWorkspace key={props.profileId} open={metricReview.open} metricKey={metricReview.key} cockpit={cockpit} options={metricOptions} profileId={props.profileId} canEdit={props.canUnderwrite} onClose={() => setMetricReview((current) => current ? { ...current, open: false } : null)} onRefresh={refreshFinancialFacts} onOpenDebt={openMetricDebt} onOpenPlan={openMetricPlan} /> : null}
-      {metricDebtOpen ? <FinancialWorkspace open profileId={props.profileId} initialKind="debt_schedule" initialView="worksheet" onClose={() => { setMetricDebtOpen(false); setMetricReview((current) => current ? { ...current, open: true } : null); void refreshFinancialFacts(); }} onPublished={async () => { await refreshFinancialFacts(); }} /> : null}
-      {sourcePreview && sourcePreview.profileId === props.profileId ? <BucketFileReviewPanel
-        title="Bank statement evidence"
-        files={sourceFiles}
-        activeFileId={sourcePreview.fileId}
-        initialPage={sourcePreview.page}
-        pageRequestId={sourcePreview.requestId}
-        reviewKey={`${sourcePreview.profileId}:${sourcePreview.fileId}`}
-        loadReview={loadSourceReview}
-        annotationsEnabled={false}
-        onSelectFile={(fileId) => setSourcePreview((current) => current ? { ...current, fileId, page: undefined, requestId: current.requestId + 1 } : null)}
-        onClose={closeSourcePreview}
-      /> : null}
-      {statementRequest?.profileId === props.profileId ? <RequestFilesDialog key={props.profileId} open={statementRequest.open} profileId={props.profileId}
-        prefill={financialStatementRequest(statementRequest.kind, props.businessName)} prefillKey={statementRequest.key}
-        onClose={() => setStatementRequest((current) => current ? { ...current, open: false } : null)} onRequested={refreshFileRequests} /> : null}
+      {auxiliaryContent}
     </div>
   );
 }

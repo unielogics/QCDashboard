@@ -59,6 +59,7 @@ jobs:
           src/lib/__tests__/currentUserIdentity.test.ts
           src/lib/__tests__/marketplacePpm.test.ts
           src/lib/__tests__/marketplacePpmPresets.test.ts
+          src/lib/__tests__/fileWorkspace.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -121,6 +122,31 @@ jobs:
           src/lib/__tests__/marketplacePpmPresets.test.ts
           tests/ppm-presets-membership.spec.ts
           tests/fixtures/ppmPresetsMembership.ts
+
+          'src/app/files/[id]/workspace/page.tsx'
+          src/components/application/ApplicationEvidenceWorkspace.tsx
+          src/components/application/DebtScheduleReadback.tsx
+          src/components/application/DebtScheduleReviewDrawer.tsx
+          src/components/application/FinancialFormsPanel.tsx
+          src/components/application/FinancialWorkspace.tsx
+          src/components/application/UseOfFundsBudgetEditor.tsx
+          src/components/ds/PageActionMenu.tsx
+          src/components/file/FileWorkspaceContext.tsx
+          src/components/file/FinancialEditorSurface.tsx
+          src/components/file/FinancingProposalSummary.tsx
+          src/components/file/InvestorCollateralEditor.tsx
+          src/components/file/UnderwritingFlow.tsx
+          src/components/file/cockpit/ClientTermsStrip.tsx
+          src/components/file/cockpit/DebtScheduleControls.tsx
+          src/components/file/cockpit/OfferPanel.tsx
+          src/components/file/cockpit/OperatingPlanEntry.tsx
+          src/lib/__tests__/fileWorkspace.test.ts
+          src/lib/fileWorkspace.ts
+          src/production-package/client.ts
+          tests/file-workspace-navigation.spec.ts
+          tests/fixtures/fileWorkspaceNavigation.ts
+
+          src/components/application/RequirementUseOfFundsActions.tsx
 
       - name: Build production frontend
         run: pnpm build

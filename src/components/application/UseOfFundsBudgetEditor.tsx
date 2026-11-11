@@ -1,4 +1,5 @@
 "use client";
+import { useFileWorkspace, useFileWorkspaceDirty } from "@/components/file/FileWorkspaceContext";
 
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { Btn, Callout, CellChip, Field, Input, Select } from "@/components/ds";
@@ -25,6 +26,7 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
   onControlsChange?: (controls: BudgetEditorControls | null) => void;
   draftStore?: UseOfFundsDraftStore;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const heading = useId();
   const [restored] = useState(() => draftStore?.read() ?? null);
   const draft = useRef(restored);
@@ -37,6 +39,7 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
   const [busy, setBusy] = useState(Boolean(restored));
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(Boolean(restored));
+  useFileWorkspaceDirty(dirty, saving);
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
   const [conflict, setConflict] = useState(false);
@@ -117,6 +120,7 @@ export function UseOfFundsBudgetEditor({ loadBudget, saveBudget, onSaved, audien
       latestBudget.current = next;
       apply(next);
       setSaved(next.complete ? audience === "client" ? "Budget saved and shared with your file team. This is not a financing approval." : "Budget saved. Program recommendations can now use this allocation; existing program selections and approval status are unchanged." : "Partial budget saved. Allocate the full requested amount to complete your budget.");
+      fileWorkspace?.saved();
       try { await onSaved?.(); } catch { setSaved("Budget saved. Refresh the file to see the latest results."); }
     } catch (reason) {
       if (!mounted.current) return;

@@ -1,3 +1,5 @@
+import { useFileWorkspace } from "@/components/file/FileWorkspaceContext";
+import { FinancialEditorSurface } from "@/components/file/FinancialEditorSurface";
 // The term sheet: loan terms a super admin or underwriter records on the file
 // before the final can be drafted. Versioned; the current row is what "Draft
 // final package" consumes. Lives on the profile, not the package.
@@ -355,15 +357,17 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
   };
 }
 
-export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved, financialPlanDraft }: {
-  client: PackageClient;
+export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved, financialPlanDraft, inline = false }: {
+  client: Pick<PackageClient, "termSheet" | "saveTermSheet" | "withdrawTermSheet">;
   profileId: string;
   open: boolean;
   onClose: () => void;
   pkg?: ProductionPackage | null;
   onSaved?: (result: TermSheetResult) => void;
   financialPlanDraft?: FinancialPlanWrite;
+  inline?: boolean;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const collateral = useTermsCollateral(profileId);
   const dealBudget = useDealBudget(profileId);
   const queryClient = useQueryClient();
@@ -602,6 +606,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
 
   const saveAttempt = useRef<{ signature: string; intent: string; payload: TermSheetBody } | null>(null);
   const retryableSave = Boolean(errors.length && saveAttempt.current && saveAttempt.current.intent === termsSaveIntent(form, editorPlan, costPreview.value));
+  const pageDirty = Boolean(form && state && JSON.stringify(form) !== JSON.stringify(formFrom(state.current, state.defaults)));
+  useEffect(() => { if (!inline) return; const warn = (event: BeforeUnloadEvent) => { if (pageDirty || busy || supportingPending) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [inline, pageDirty, busy, supportingPending]);
   const save = async (retry = false) => {
     if (loadedProfileId !== profileId || !form || !summary || !client.saveTermSheet || validationErrors.length || supportingPending || !retry && (versionConflict || principalBlocked) || retry && !retryableSave) return;
     setBusy("save"); setErrors([]); setDone(null);
@@ -628,6 +634,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
       setDraftBaseVersion(result.state.current?.version ?? 0); queryClient.removeQueries({ queryKey: draftKey });
       const version = result.state.current?.version;
       setDone(`Term sheet v${version ?? ""} recorded.${result.final ? " The draft final was re-applied with these terms." : ""}`);
+      fileWorkspace?.saved();
       onSaved?.(result);
     } catch (err) {
       fail(err, "The term sheet could not be recorded.");
@@ -754,7 +761,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   const showPaymentBasis = Boolean(form && (["interest_only", "interest_only_then_amortizing", "balloon", "revolving_interest_only"].includes(form.repayment_structure) || isRevolving));
 
   return (
-    <Drawer open={open} fullscreen={expanded} headerActions={<PBtn size="sm" onClick={() => setExpanded(value => !value)}>{expanded ? "Restore" : "Expand"}</PBtn>} onClose={() => { if (!busy && !supportingPending) onClose(); }} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} width="xl" bodyClass="pp-root" closeOnBackdrop={false} ariaLabel="Production loan terms">
+    <FinancialEditorSurface inline={inline} open={open} fullscreen={expanded} headerActions={inline ? undefined : <PBtn size="sm" onClick={() => setExpanded(value => !value)}>{expanded ? "Restore" : "Expand"}</PBtn>} onClose={() => { if (!busy && !supportingPending) onClose(); }} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} width="xl" bodyClass="pp-root" closeOnBackdrop={false} ariaLabel="Production loan terms">
       <div ref={viewAnchor} />
       <SavedTermsDownload profileId={profileId} kind="production_term_sheet" version={loadedProfileId === profileId ? current?.version : 0} disabled={Boolean(busy) || supportingPending} onDealerTermsRefreshed={setState} />
       <nav className={workspaceStyles.tabs} role="tablist" aria-label="Production financing workspace sections" onKeyDown={event => {
@@ -1009,6 +1016,6 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
       </div>
       {view !== "terms" && canEdit ? <div className="pp-row" style={{ paddingTop: 16 }}><PBtn variant="pri" onClick={() => void save()} busy={busy === "save"} disabled={Boolean(validationErrors.length) || supportingPending || versionConflict || principalBlocked}>Record term sheet v{nextVersion}</PBtn><span className="pp-sub">One Save records these terms, the fee budget and shared loan together.</span></div> : null}
       {view !== "terms" && visibleErrors.length ? <ul className="pp-errors" role="alert">{visibleErrors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
-    </Drawer>
+    </FinancialEditorSurface>
   );
 }

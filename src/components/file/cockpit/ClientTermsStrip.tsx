@@ -15,6 +15,7 @@ import { applyWorkingLoan, loanFromClientDraft, sameWorkingLoan, type LoanRefina
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { repaymentConfigLabel } from "@/lib/repaymentConfig";
 import { money } from "@/lib/financialCockpit";
+import { FinancialEditorSurface } from "@/components/file/FinancialEditorSurface";
 import { clientTermsSummaryKey } from "@/lib/fileOpening";
 
 /** The loan typed under the DSCR modifications, as the client terms: a line that says what is on file and
@@ -95,7 +96,7 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
   );
 }
 
-export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLoan, financialPlanDraft, refinanceContext, workingDraft, onWorkingDraftChange, onApplyLoan, onUpdateLoan, onFinancingSaved, canEdit = true, scenarioPaymentOnly = false, previewScenario, onPending, initialView = "terms" }: {
+export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLoan, financialPlanDraft, refinanceContext, workingDraft, onWorkingDraftChange, onApplyLoan, onUpdateLoan, onFinancingSaved, canEdit = true, scenarioPaymentOnly = false, previewScenario, onPending, initialView = "terms", inline = false }: {
   open: boolean; onClose: () => void; profileId: string; onSaved?: (terms: ApplicationClientTerms, plan?: FinancialPlanRead) => void;
   prefillLoan: SyncedLoan | null;
   financialPlanDraft?: FinancialPlanWrite; refinanceContext?: LoanRefinanceContext | null;
@@ -103,7 +104,7 @@ export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLo
   onApplyLoan?: (loan: SyncedLoan) => void; onUpdateLoan?: (loan: SyncedLoan) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; canEdit?: boolean; scenarioPaymentOnly?: boolean;
   previewScenario?: LoanScenarioPreviewer;
   onPending?: (pending: boolean) => void;
-  initialView?: ClientTermsView;
+  initialView?: ClientTermsView; inline?: boolean;
 }) {
   const [cached, setCached] = useState<ClientTermsWorkingDraft | null>(null);
   const [pending, setPending] = useState(false);
@@ -113,7 +114,7 @@ export function ClientTermsDrawer({ open, onClose, profileId, onSaved, prefillLo
   useEffect(() => { if (open) { setView(initialView); setExpanded(true); } }, [open, initialView, profileId]);
   const remember = useCallback((next: ClientTermsWorkingDraft) => { setCached(next); onWorkingDraftChange?.(next); }, [onWorkingDraftChange]);
   const pendingChanged = useCallback((value: boolean) => { setPending(value); onPending?.(value); }, [onPending]);
-  return <Drawer open={open} onClose={() => { if (!pending) onClose(); }} title={view === "schedule" ? "Loan amortization and risk" : "Client terms"} sub="One working loan: terms, principal and interest, payoff progress and repayment risk." headerActions={<IconBtn aria-label={expanded ? "Restore loan workspace size" : "Expand loan workspace"} title={expanded ? "Restore loan workspace size" : "Expand loan workspace"} aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}><Icon name={expanded ? "minimize" : "maximize"} size={16} /></IconBtn>} fullscreen={expanded} width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
+  return <FinancialEditorSurface inline={inline} open={open} onClose={() => { if (!pending) onClose(); }} title={view === "schedule" ? "Loan amortization and risk" : "Client terms"} sub="One working loan: terms, principal and interest, payoff progress and repayment risk." headerActions={inline ? undefined : <IconBtn aria-label={expanded ? "Restore loan workspace size" : "Expand loan workspace"} title={expanded ? "Restore loan workspace size" : "Expand loan workspace"} aria-pressed={expanded} onClick={() => setExpanded((value) => !value)}><Icon name={expanded ? "minimize" : "maximize"} size={16} /></IconBtn>} fullscreen={expanded} width="xl" closeOnBackdrop={false} ariaLabel="Client terms editor">
     {open ? <ApplicationClientTermsPanel key={`${profileId}-drawer`} profileId={profileId} onSaved={onSaved} prefillLoan={prefillLoan} financialPlanDraft={financialPlanDraft} refinanceContext={refinanceContext} workingDraft={workingDraft === undefined ? cached : workingDraft} onWorkingDraftChange={remember} onApplyLoan={onApplyLoan} onUpdateLoan={onUpdateLoan} onFinancingSaved={onFinancingSaved} onPending={pendingChanged} canEdit={canEdit} scenarioPaymentOnly={scenarioPaymentOnly} previewScenario={previewScenario} activeView={view} onViewChange={setView} /> : null}
-  </Drawer>;
+  </FinancialEditorSurface>;
 }

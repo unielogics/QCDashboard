@@ -1,4 +1,5 @@
 "use client";
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 
 import { Btn, CellChip } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -15,6 +16,7 @@ export function FinancingProposalSummary({ value, saved, terms, onEdit, onCovera
   onCoverage?: () => void;
   requestedAmount?: number | null;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const loaded = Boolean(value || saved);
   const live = liveFinancingPreview(value, terms);
   const amount = value ? live.amount : saved?.proposed_amount;
@@ -22,7 +24,7 @@ export function FinancingProposalSummary({ value, saved, terms, onEdit, onCovera
   return <section className="grid g8" aria-label="Shared financing proposal">
     <div className="row" style={{ justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
       <div className="row" style={{ gap: 8 }}><strong>Financing proposal</strong><CellChip tone={value?.dirty ? "warn" : "mut"}>{label}</CellChip></div>
-      <div className="row" style={{ gap: 8 }}><Btn size="sm" onClick={onEdit}><Icon name="pencil" size={14} />Structure loan</Btn>{onCoverage ? <Btn size="sm" onClick={onCoverage}>Coverage plan</Btn> : null}</div>
+      <div className="row" style={{ gap: 8 }}>{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="terms">Structure loan</FileWorkspaceLink> : <Btn size="sm" onClick={onEdit}><Icon name="pencil" size={14} />Structure loan</Btn>}{onCoverage ? fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="coverage">Coverage plan</FileWorkspaceLink> : <Btn size="sm" onClick={onCoverage}>Coverage plan</Btn> : null}</div>
     </div>
     <div className="fldgrid two">
       {requestedAmount !== undefined ? <div><span className="sub">Client requested</span><div><strong>{money(requestedAmount)}</strong></div></div> : null}

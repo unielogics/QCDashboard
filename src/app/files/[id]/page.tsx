@@ -14,6 +14,7 @@ import { Role } from "@/lib/enums.generated";
 import { SECTION_DEFINITIONS, parseFileSection } from "@/lib/fileRoutes";
 import { parseMarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { needsFullFileAnalysis } from "@/lib/fileOpening";
+import { FileWorkspaceProvider } from "@/components/file/FileWorkspaceContext";
 
 const LIST_HREF = "/admin/ai-underwriter-leads";
 
@@ -27,6 +28,7 @@ export default function FilePage() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const leadId = params?.id ?? null;
+  const packageWorkspace = searchParams.get("workspace") === "package";
   const section = parseFileSection(searchParams.get("section"));
   const financialAction = parseMarketplaceFinancialAction(searchParams.get("financial_action"));
   const requestedChannel = searchParams.get("channel");
@@ -39,27 +41,39 @@ export default function FilePage() {
   const [linkLead, setLinkLead] = useState<LinkLead | null>(null);
   // The server enforces the operator role. Start this permissioned factual
   // read alongside /auth/me instead of waiting an additional network roundtrip.
-  const file = useLeadFile({ leadId, notify: setNotice, includeDerived: needsFullFileAnalysis(section) });
+  const file = useLeadFile({ leadId, notify: setNotice, includeDerived: packageWorkspace || needsFullFileAnalysis(section) });
 
   useEffect(() => {
     if (!meLoading && me && !isDesk) router.replace("/");
   }, [isDesk, meLoading, me, router]);
 
+  useEffect(() => {
+    if (!packageWorkspace || !isDesk) return;
+    let stopped = false;
+    const observer = new MutationObserver(() => { const target = document.getElementById("package-readiness"); if (!stopped && target) { target.scrollIntoView({ block: "start" }); stop(); } });
+    const stop = () => { stopped = true; observer.disconnect(); };
+    observer.observe(document.body, { childList: true, subtree: true });
+    const ready = document.getElementById("package-readiness"); if (ready) { ready.scrollIntoView({ block: "start" }); stop(); }
+    const timer = window.setTimeout(stop, 15000);
+    window.addEventListener("wheel", stop, { once: true }); window.addEventListener("keydown", stop, { once: true });
+    return () => { stop(); window.clearTimeout(timer); window.removeEventListener("wheel", stop); window.removeEventListener("keydown", stop); };
+  }, [packageWorkspace, isDesk, leadId]);
+
   if (meLoading || !me || !isDesk || !leadId) return null;
 
   return (
-    <div className="file-page">
+    <FileWorkspaceProvider value={{ intakeId: leadId, profileId: file.detail?.application_profile_id, pageMode: false }}><div className="file-page">
       <div className="file-page-bar">
         <Link href={LIST_HREF} className="linky file-page-back"><Icon name="chevL" size={14} /> All files</Link>
       </div>
       {notice ? <WarnLine>{notice}</WarnLine> : null}
       <LeadDetailPanel
-        key={`${leadId}:${section}`}
+        key={`${leadId}:${section}:${packageWorkspace}`}
         detail={file.detail}
         loading={file.loading}
         refreshing={file.refreshing}
         onRequireAnalysis={file.requestDerived}
-        initialView={definition.view}
+        initialView={packageWorkspace ? "financials" : definition.view}
         initialActiveTab={definition.activeTab}
         initialWorkspaceSection={definition.workspaceSection}
         initialFinancialAction={financialAction}
@@ -68,14 +82,14 @@ export default function FilePage() {
         initialEmailThreadId={communicationChannel === "email" ? searchParams.get("thread") : null}
         onCommunicationNavigate={(channel) => {
           const query = new URLSearchParams(searchParams.toString());
-          query.delete("financial_action");
+          query.delete("financial_action"); query.delete("workspace");
           query.set("section", "communications"); query.set("channel", channel);
           if (channel !== "email") query.delete("thread");
           router.push(`/files/${leadId}?${query}`, { scroll: false });
         }}
         onEmailThreadNavigate={(threadId) => {
           const query = new URLSearchParams(searchParams.toString());
-          query.delete("financial_action");
+          query.delete("financial_action"); query.delete("workspace");
           query.set("section", "communications"); query.set("channel", "email"); query.set("thread", threadId);
           router.replace(`/files/${leadId}?${query}`, { scroll: false });
         }}
@@ -125,6 +139,6 @@ export default function FilePage() {
         initialIntakeId={linkLead?.id}
         title="Link file to room"
       />
-    </div>
+    </div></FileWorkspaceProvider>
   );
 }

@@ -1,4 +1,5 @@
 "use client";
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 
 import { Fragment, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -175,6 +176,7 @@ export function ApplicationProgramReadiness({
   onPreviewFinancialEvidence?: (fileId: string, page?: number) => void;
   onRequestFinancialEvidence?: () => void;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const apiCall = useAuthedApi();
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
@@ -918,7 +920,7 @@ export function ApplicationProgramReadiness({
           {askClient && !isDebt ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
           {askClient && !isDebt ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
           {askClient && !formKinds.length && requestable ? <span title="Emails the client the secure-room link for this item"><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailReminder(requirement)}><Icon name="mail" size={14} />Email the client</Btn></span> : null}
-          {askClient && !isDebt && formKinds.length && !debtHasWork && onOpenForms ? <span title="Open the forms and type it in yourself"><Btn size="sm" onClick={onOpenForms}><Icon name="pencil" size={14} />Fill it in yourself</Btn></span> : null}
+          {askClient && !isDebt && formKinds.length && !debtHasWork && onOpenForms ? <span title="Open the forms and type it in yourself">{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="forms" kind={formKinds[0]}>Fill it in yourself</FileWorkspaceLink> : <Btn size="sm" onClick={onOpenForms}><Icon name="pencil" size={14} />Fill it in yourself</Btn>}</span> : null}
           {linkedEvidence.length && !(isDebt && debtHasWork) ? formKinds.map((kind) => <ActionIcon key={`answers-${kind}`} icon="docCheck" label={`See the ${formLabel(kind)}: what was filled in`} onClick={() => setAnswersFor({ kind, requirementKey: requirement.requirement_key })} />) : null}
         </div>
         {linkingRequirementKey === requirement.requirement_key ? <div className="requirement-override-editor"><Field label={`Link a file to ${requirement.label}`}><Select aria-label={`Link existing evidence for ${requirement.label}`} value={selectedEvidenceId} disabled={Boolean(busy)} onChange={(event) => setEvidenceSelections((current) => ({ ...current, [requirement.requirement_key]: event.target.value }))}><option value="">Choose an existing document…</option>{evidenceOptions.map((file) => <option key={file.id} value={file.id}>{file.file_name}</option>)}</Select></Field><div className="program-readiness-actions"><Btn size="sm" disabled={Boolean(busy)} onClick={() => setLinkingRequirementKey(null)}>Cancel linking</Btn><Btn size="sm" variant="pri" disabled={Boolean(busy) || !selectedEvidenceId} onClick={() => void reviewRequirementAction(requirement, "link_evidence")}>Link selected file</Btn></div></div> : null}

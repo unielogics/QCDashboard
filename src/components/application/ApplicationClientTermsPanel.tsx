@@ -1,4 +1,5 @@
 "use client";
+import { useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -314,6 +315,7 @@ export function ApplicationClientTermsPanel({
   activeView?: ClientTermsView;
   onViewChange?: (view: ClientTermsView) => void;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const api = useAuthedApi();
   const collateral = useTermsCollateral(profileId);
   const dealBudget = useDealBudget(profileId);
@@ -429,6 +431,7 @@ export function ApplicationClientTermsPanel({
   const collateralChanged = Boolean(query.data?.version && collateral.data?.revision != null && collateral.data.revision !== query.data.collateral_revision);
   const budgetChanged = Boolean(query.data?.version && dealBudget.data?.revision != null && dealBudget.data.revision !== query.data.deal_budget_revision);
   const dirty = savedFingerprint !== JSON.stringify(draft) || collateralChanged || budgetChanged || budgetDirty;
+  useEffect(() => { if (!fileWorkspace?.pageMode) return; const warn = (event: BeforeUnloadEvent) => { if (dirty) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [fileWorkspace?.pageMode, dirty]);
   const offerSelection = useMemo<OfferSelection | null>(() => {
     const terms = query.data;
     if (!terms?.term_sheet_id || !terms.version || dirty || sourceConflict || principalSaveBlocked) return null;
@@ -485,6 +488,7 @@ export function ApplicationClientTermsPanel({
       queryClient.setQueryData(clientTermsSummaryKey(profileId), data);
       for (const key of ["file-deal-budget", "financial-cockpit", "financial-plan", "financial-metrics", "application-underwriting", "advances"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
       remember(draftRef.current);
+      fileWorkspace?.saved();
       onSaved?.(data, data.financial_plan);
     },
     onError: (reason) => {

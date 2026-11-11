@@ -1,5 +1,6 @@
 "use client";
 
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { useState } from "react";
 import { Btn, StatusLine } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -18,6 +19,7 @@ export const OPEN_DEBT_SCHEDULE_EVENT = "qc:open-debt-schedule";
  *  what is not a loan, answer the rate, original amount and balance) before they become the schedule.
  *  The same controls serve the coverage card's empty state and the debt card. */
 export function DebtScheduleControls({ cockpit, profileId, canEdit, onOpenEvidence, compact = false }: { cockpit: FinancialCockpit; profileId: string; canEdit: boolean; onOpenEvidence?: () => void; compact?: boolean }) {
+  const fileWorkspace = useFileWorkspace();
   const schedule = cockpit.debt.schedule;
   const rows = cockpit.debt.rows ?? [];
   const uploaded = cockpit.debt.document?.debts?.filter((d) => d && d.lender) ?? [];
@@ -82,7 +84,7 @@ export function DebtScheduleControls({ cockpit, profileId, canEdit, onOpenEviden
       <div className="fc-schedule-controls-row">
         {(uploaded.length > 0 || rows.length > 0) && !voided ? <DebtScheduleReviewButton profileId={profileId} variant="button" primary={canAdopt} label={canAdopt ? `Fill in the table: ${uploaded.length} line${uploaded.length === 1 ? "" : "s"} read` : "Fill in the table"} /> : null}
         {schedule.can_void ? <Btn variant={canAdopt ? undefined : "pri"} size="sm" onClick={() => void declareNoDebt()} disabled={voidIt.isPending}><Icon name="check" size={14} />{voidIt.isPending ? "Saving…" : "Debt free: no debt reported"}</Btn> : null}
-        {!voided ? <Btn size="sm" onClick={enter}><Icon name="pencil" size={14} />{rows.length ? "Edit the schedule" : "Enter the schedule"}</Btn> : null}
+        {!voided ? fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form">{rows.length ? "Edit the schedule" : "Enter the schedule"}</FileWorkspaceLink> : <Btn size="sm" onClick={enter}><Icon name="pencil" size={14} />{rows.length ? "Edit the schedule" : "Enter the schedule"}</Btn> : null}
         {onOpenEvidence && !voided ? <Btn size="sm" onClick={onOpenEvidence}><Icon name="upload" size={14} />Upload the schedule</Btn> : null}
         {canRequest ? <Btn size="sm" onClick={() => void ask()} disabled={emailIt.isPending || requestIt.isPending}><Icon name="mail" size={14} />{emailIt.isPending || requestIt.isPending ? "Sending…" : schedule.requested_at ? "Email the link again" : "Email the client the link"}</Btn> : null}
       </div>
