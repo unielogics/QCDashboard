@@ -61,6 +61,7 @@ function Editor() {
   const [tab, setTab] = useState<Tab>("terms");
   const [documentsVisited, setDocumentsVisited] = useState(false);
   const [ppmReadinessPending, setPpmReadinessPending] = useState(false);
+  const [ppmOwnsIssues, setPpmOwnsIssues] = useState(false);
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const confirm = useConfirmAction();
   const act = useCpListingAction();
@@ -209,7 +210,7 @@ function Editor() {
         actions={
           <div className="row">
             <Status value={listing.status} tones={LISTING_TONE} />
-            {listing.status === "draft" ? <Btn variant="pri" onClick={() => void publish()} disabled={act.isPending || ppmReadinessPending}>Publish offer</Btn> : null}
+            {listing.status === "draft" && !(tab === "documents" && ppmOwnsIssues) ? <Btn variant="pri" onClick={() => void publish()} disabled={act.isPending || ppmReadinessPending}>Publish offer</Btn> : null}
             {(next[listing.status] ?? []).map((s) => (
               <Btn key={s} size="sm" onClick={() => void setStatus(s)} disabled={act.isPending}>{label(s)}</Btn>
             ))}
@@ -222,7 +223,7 @@ function Editor() {
       <Panel title="Listing cockpit" sub="Saved financing, document readiness and controlled source-document access."><div className="grid cols-auto"><div><span className="sub">Capital to raise</span><strong style={{ display: "block" }}>{money(listing.offered_amount)}</strong></div><div><span className="sub">Offering PDFs ready</span><strong style={{ display: "block" }}>{listing.documents.filter(document => document.status === "ready").length}</strong></div><div><span className="sub">Publication readiness</span><strong style={{ display: "block" }}>{listing.publish_blockers.length ? `${listing.publish_blockers.length} items need review` : "No current publication blockers"}</strong></div><div><span className="sub">File snapshot</span><strong style={{ display: "block" }}>{listing.sync?.up_to_date ? "Up to date" : listing.profile_id ? "Review / refresh saved file" : "Standalone listing"}</strong></div></div><div className="row mt"><Btn size="sm" onClick={() => setTab("documents")}>Review offering documents</Btn></div></Panel>
       {listing.profile_id ? <MarketplaceFileInventory key={listing.id} listingId={listing.id} /> : null}
       {msg ? <StatusLine tone={msg.tone}>{msg.text}</StatusLine> : null}
-      <MarketplaceIssues id="marketplace-issues" issues={issues} onFix={issue => void fixIssue(issue)} busy={openingOwner || act.isPending} />
+      <MarketplaceIssues id="marketplace-issues" issues={issues.filter(issue => !(tab === "documents" && ppmOwnsIssues && issue.target?.kind === "ppm"))} onFix={issue => void fixIssue(issue)} busy={openingOwner || act.isPending} />
       <Seg as="tabs" className={editorStyles.tabs} ariaLabel="Listing sections" value={tab} onChange={setTab} options={[
         { value: "terms", label: "Terms and narrative" },
         { value: "documents", label: <>Documents <span className="num">{listing.documents.filter((d) => d.status === "ready").length}</span></> },
@@ -231,7 +232,7 @@ function Editor() {
         { value: "events", label: "Events" },
       ]} />
       <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
-      {documentsVisited || tab === "documents" ? <div hidden={tab !== "documents"}><Documents listing={listing} active={tab === "documents"} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} onPpmApproved={() => setActionIssues(current => current.filter(issue => issue.target?.kind !== "ppm"))} onPublish={() => void publish()} publishBusy={act.isPending} onPpmReadinessPending={setPpmReadinessPending} /></div> : null}
+      {documentsVisited || tab === "documents" ? <div hidden={tab !== "documents"}><Documents listing={listing} active={tab === "documents"} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} onPpmApproved={() => setActionIssues(current => current.filter(issue => issue.target?.kind !== "ppm"))} onPublish={() => void publish()} publishBusy={act.isPending} onPpmReadinessPending={setPpmReadinessPending} onOwnsPpmIssues={setPpmOwnsIssues} /></div> : null}
       {tab === "subscriptions" ? <Subscriptions listing={listing} onRun={run} busy={act.isPending} /> : null}
       {tab === "participations" ? <Participations listing={listing} onMessage={setMsg} /> : null}
       {tab === "events" ? <Events listing={listing} /> : null}
@@ -378,7 +379,7 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
 // Documents
 // ---------------------------------------------------------------------------
 
-function Documents({ listing, active, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess, onPpmApproved, onPublish, publishBusy, onPpmReadinessPending }: { listing: CpListing; active: boolean; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void; onPpmApproved: () => void; onPublish: () => void; publishBusy: boolean; onPpmReadinessPending: (pending: boolean) => void }) {
+function Documents({ listing, active, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess, onPpmApproved, onPublish, publishBusy, onPpmReadinessPending, onOwnsPpmIssues }: { listing: CpListing; active: boolean; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void; onPpmApproved: () => void; onPublish: () => void; publishBusy: boolean; onPpmReadinessPending: (pending: boolean) => void; onOwnsPpmIssues: (owns: boolean) => void }) {
   const upload = useCpUploadDocument();
   const supersede = useCpSupersedeDocument();
   const confirm = useConfirmAction();
@@ -405,7 +406,7 @@ function Documents({ listing, active, onMessage, onError, guidance, onFix, onSna
 
   return (
     <div className="grid">
-      <MarketplacePpmWorkspace listing={listing} active={active} onFix={onFix} onApproved={onPpmApproved} onPublish={onPublish} publishBusy={publishBusy} onReadinessPending={onPpmReadinessPending} />
+      <MarketplacePpmWorkspace listing={listing} active={active} onFix={onFix} onApproved={onPpmApproved} onPublish={onPublish} publishBusy={publishBusy} onReadinessPending={onPpmReadinessPending} onOwnsPpmIssues={onOwnsPpmIssues} />
       {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={() => { onSnapshotSuccess(); onMessage({ tone: "ok", text: "The listing package was updated from the saved file." }); }} /> : null}
       <p className="sub">Offering PDFs below are attached to this listing. Review the PPM in the workspace above. Source originals use the separate engagement controls in the file document cockpit.</p>
       <Panel title="Upload an existing document" bodyClass="row">

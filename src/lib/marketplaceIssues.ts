@@ -8,8 +8,9 @@ export const MARKETPLACE_FIELD_LABELS = {
 } as const;
 export type MarketplaceField = keyof typeof MARKETPLACE_FIELD_LABELS;
 export type MarketplaceFinancialAction = "coverage" | "terms" | "use-of-funds";
+export type MarketplaceOwnerAction = MarketplaceFinancialAction | "package";
 export type MarketplacePublishIssue = { code: string; message: string; section: "terms" | "documents" | "budget" | "coverage_plan" | "client_terms" | "use_of_funds" | "snapshot"; field?: string | null; document_kind?: "ppm" | null };
-export type MarketplaceIssueTarget = { kind: "field"; field: MarketplaceField } | { kind: "ppm" } | { kind: "upload"; documentKind?: "ppm" } | { kind: "document-type" } | { kind: "budget" } | { kind: "file"; action: MarketplaceFinancialAction } | { kind: "snapshot" };
+export type MarketplaceIssueTarget = { kind: "field"; field: MarketplaceField } | { kind: "ppm" } | { kind: "upload"; documentKind?: "ppm" } | { kind: "document-type" } | { kind: "budget" } | { kind: "file"; action: MarketplaceOwnerAction } | { kind: "snapshot" };
 export type MarketplaceIssue = { key: string; message: string; instruction: string; actionLabel?: string; target?: MarketplaceIssueTarget };
 type Context = { linked: boolean; action?: "publish" | "terms" | "documents" | "snapshot" };
 
@@ -26,7 +27,9 @@ function targetIssue(message: string, target: MarketplaceIssueTarget): Marketpla
     case "upload": return { key: target.documentKind === "ppm" ? "document:ppm" : "document:upload", message, target, instruction: target.documentKind === "ppm" ? "Upload the private placement memorandum PDF under Documents. Once it is marked Ready, review and publish the offer." : "Review the selected document and upload status. Choose the appropriate PDF or retry the upload.", actionLabel: target.documentKind === "ppm" ? "Upload PPM in Documents" : "Review document upload" };
     case "document-type": return { key: "document:type", message, target, instruction: "Choose the document kind, then select the appropriate PDF.", actionLabel: "Choose document type" };
     case "budget": return { key: "owner:budget", message, target, instruction: "Review and save the shared investment and closing-cost budget, then refresh the listing from the saved file.", actionLabel: "Review shared deal budget" };
-    case "file": return { key: `owner:${target.action}`, message, target, instruction: `${target.action === "terms" ? "Review and save the current full loan terms on the linked file, then refresh this listing." : target.action === "use-of-funds" ? "Reconcile the linked file’s itemized use of funds with net proceeds, then refresh this listing." : "Review and save the active coverage loan on the linked file, then refresh this listing."} The owner opens in a new tab so your unsaved listing edits stay here.`, actionLabel: target.action === "terms" ? "Open full terms in new tab" : target.action === "use-of-funds" ? "Open use of funds in new tab" : "Open coverage plan in new tab" };
+    case "file":
+      if (target.action === "package") return { key: "owner:package", message: "Refresh the file's document package", target, instruction: "Open the file, select Refresh package + preview, then return here and update the listing package.", actionLabel: "Open package in new tab" };
+      return { key: `owner:${target.action}`, message, target, instruction: `${target.action === "terms" ? "Review and save the current full loan terms on the linked file, then refresh this listing." : target.action === "use-of-funds" ? "Reconcile the linked file’s itemized use of funds with net proceeds, then refresh this listing." : "Review and save the active coverage loan on the linked file, then refresh this listing."} The owner opens in a new tab so your unsaved listing edits stay here.`, actionLabel: target.action === "terms" ? "Open full terms in new tab" : target.action === "use-of-funds" ? "Open use of funds in new tab" : "Open coverage plan in new tab" };
     case "snapshot": return { key: "owner:snapshot", message, target, instruction: "Refresh the listing figures from the saved file, review the resulting terms, then publish explicitly.", actionLabel: "Refresh saved file figures" };
   }
 }
@@ -41,6 +44,7 @@ function fieldIssue(field: MarketplaceField, message: string, linked: boolean): 
 
 const LEGACY_TARGETS: Record<string, MarketplaceIssueTarget> = {
   "private placement memorandum not uploaded": { kind: "ppm" },
+  "The file or program readiness changed. Refresh both PDFs before delivery.": { kind: "file", action: "package" },
   "Restore or synchronize the working financing proposal before publishing; issued terms are a historical reference": { kind: "file", action: "coverage" },
   "Save an updated terms version for the changed financing or collateral before publishing": { kind: "file", action: "terms" },
   "Save an updated terms version for the changed cost budget before publishing": { kind: "file", action: "terms" },
@@ -90,6 +94,7 @@ export function marketplaceApiIssues(error: unknown, context: Context): Marketpl
   const message = typeof detail === "string" ? detail : object?.message ?? (error instanceof Error ? error.message : "The marketplace action could not be completed.");
   if (object?.code === "closed" || ["This offering has committed or funded capital. Its financing, participation amount and linked file cannot be edited without reviewing those commitments.", "This listing has committed or funded capital. Financing and recorded collateral cannot be changed through a file refresh; review the existing commitments before issuing a revised offering."].includes(message)) return [{ ...unknownIssue(message), instruction: "This listing is locked. Review its lifecycle status and capital commitments with the marketplace administrator; changing a disabled input will not resolve the lock." }];
   if (message === "The file changed since this listing was prepared. Refresh its financial snapshot and review the current financing and collateral before publishing.") return [targetIssue(message, { kind: "snapshot" })];
+  if (message === "The file or program readiness changed. Refresh both PDFs before delivery.") return [targetIssue(message, { kind: "file", action: "package" })];
   if (context.action === "documents" && object?.code === "not_uploaded") return [targetIssue(message, { kind: "upload" })];
   if (context.action === "documents" && ["Document storage is not configured.", "Could not create an upload link."].includes(message)) return [{ ...unknownIssue(message), instruction: "Document storage is unavailable. Keep your current edits and retry the upload later; ask an administrator if storage is not configured." }];
   if (context.action === "publish" && object?.code === "incomplete" && message.startsWith("Fill in: ")) {
@@ -123,6 +128,7 @@ export function parseMarketplaceFinancialAction(value: string | null | undefined
   return value === "coverage" || value === "terms" || value === "use-of-funds" ? value : null;
 }
 
-export function marketplaceOwnerHref(intakeId: string, action: MarketplaceFinancialAction): string {
+export function marketplaceOwnerHref(intakeId: string, action: MarketplaceOwnerAction): string {
+  if (action === "package") return `/files/${encodeURIComponent(intakeId)}?workspace=package#package-readiness`;
   return `/files/${encodeURIComponent(intakeId)}?section=overview&financial_action=${action}`;
 }

@@ -36,6 +36,16 @@ export function ppmMissingLegalKey(missing: PpmMissing, fields: MarketplacePpm["
   const key = missing.key === "currency" ? "offering_currency" : missing.key;
   return fields.some(field => field.key === key) ? key : null;
 }
+export function ppmLegalFieldState(field: PpmLegalField, edit: PpmEdit, savedMissing: PpmMissing[], base?: PpmEdit | null): { required: boolean; invalid: boolean; needsSave: boolean } {
+  const savedIssue = savedMissing.some(item => item.required && ppmMissingLegalKey(item, [field]) === field.key);
+  const required = field.required || savedIssue;
+  const value = (edit.legalInputs[field.key] ?? "").trim();
+  const choice = edit.legalPresets[field.key];
+  const unresolved = field.options?.some(option => option.unresolved && (option.key === choice || option.text.trim() === value)) ?? false;
+  const changed = Boolean(base && (value !== (base.legalInputs[field.key] ?? "").trim() || choice !== base.legalPresets[field.key]));
+  const invalid = required && (!value || unresolved || savedIssue && !changed);
+  return { required, invalid, needsSave: savedIssue && changed && !invalid };
+}
 export const ppmEditableVersion = (state: MarketplacePpm | undefined) => state?.current_draft ?? state?.current_approved ?? null;
 export const ppmIsLegacy = (state: MarketplacePpm | undefined) => Boolean(state && !state.managed && state.current_approved?.source === "uploaded" && !state.current_draft);
 export function ppmConflict(edit: PpmEdit | null, state: MarketplacePpm | undefined) { return !ppmIsLegacy(state) && Boolean(edit && state && (edit.version !== ppmEditableVersion(state)?.version || edit.sourceFingerprint !== state.source_fingerprint)); }

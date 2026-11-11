@@ -5,7 +5,7 @@ import { Btn, CellChip, Input, Select, Textarea } from "@/components/ds";
 import { useMarketplacePpm } from "@/hooks/useMarketplacePpm";
 import { useMarketplaceDocumentLink } from "@/hooks/useMarketplaceDocumentLink";
 import type { CpListing } from "@/hooks/useCapitalPartners";
-import { ppmApplyEditsToLatest, ppmApprovalValues, ppmCanReview, ppmChoosePreset, ppmConflict, ppmContentKey, ppmDirty, ppmEdit, ppmEditableVersion, ppmIsLegacy, ppmLegalId, ppmMissingIssue, ppmMissingLegalKey, ppmNeedsRefresh, ppmSelectedPreset, ppmSetLegalText, type MarketplacePpm, type PpmEdit, type PpmGenerate, type PpmLegalField, type PpmReview, type PpmSave, type PpmVersion } from "@/lib/marketplacePpm";
+import { ppmApplyEditsToLatest, ppmApprovalValues, ppmCanReview, ppmChoosePreset, ppmConflict, ppmContentKey, ppmDirty, ppmEdit, ppmEditableVersion, ppmIsLegacy, ppmLegalFieldState, ppmLegalId, ppmMissingIssue, ppmMissingLegalKey, ppmNeedsRefresh, ppmSelectedPreset, ppmSetLegalText, type MarketplacePpm, type PpmEdit, type PpmGenerate, type PpmLegalField, type PpmMissing, type PpmReview, type PpmSave, type PpmVersion } from "@/lib/marketplacePpm";
 import type { MarketplaceIssue } from "@/lib/marketplaceIssues";
 import { focusMarketplaceControl } from "@/lib/marketplaceGuidanceFocus";
 import { MarketplaceMembershipPolicySummary } from "./MarketplaceMembershipPolicy";
@@ -24,35 +24,35 @@ function SavedPreview({ version }: { version: PpmVersion }) {
 
 function SavedSummary({ version, fields }: { version: PpmVersion; fields: PpmLegalField[] }) {
   const financing = version.document?.sections?.find(section => section.key === "terms");
-  const compact = new Set(["issuer_legal_name", "offering_structure", "offering_exemption", "jurisdiction", "offering_currency"]);
   const details = (items: PpmLegalField[]) => <dl className={styles.summary}>{items.map(field => <div key={field.key}><dt>{field.label}</dt><dd>{version.legal_inputs[field.key]?.trim() || "Not recorded"}</dd></div>)}</dl>;
   return <>
     {financing?.facts.length ? <section className={styles.section} aria-label="Saved financing facts"><h4>Saved financing</h4><dl className={styles.facts}>{financing.facts.map((fact, index) => <div key={index}><dt>{fact.label}</dt><dd>{fact.value}{fact.note ? <small>{fact.note}</small> : null}</dd></div>)}</dl></section> : null}
-    {details(fields.filter(field => compact.has(field.key)))}
-    {fields.some(field => !compact.has(field.key)) ? <details className={styles.disclosures}><summary>Saved legal disclosures</summary>{details(fields.filter(field => !compact.has(field.key)))}</details> : null}
+    <details className={styles.disclosures}><summary>Saved legal disclosures</summary>{details(fields)}</details>
   </>;
 }
 
-function LegalField({ field, edit, required, disabled, onPreset, onText }: { field: PpmLegalField; edit: PpmEdit; required: boolean; disabled: boolean; onPreset: (field: PpmLegalField, key: string) => void; onText: (key: string, text: string) => void }) {
+function LegalField({ field, edit, required, invalid, needsSave, disabled, onPreset, onText }: { field: PpmLegalField; edit: PpmEdit; required: boolean; invalid: boolean; needsSave: boolean; disabled: boolean; onPreset: (field: PpmLegalField, key: string) => void; onText: (key: string, text: string) => void }) {
   const id = ppmLegalId(field.key), selected = ppmSelectedPreset(field, edit);
   const option = field.options?.find(item => item.key === selected);
   const locked = disabled || field.read_only;
-  return <fieldset className={styles.legalField}><legend>{field.label}{required ? " *" : ""}</legend>
-    {field.options?.length ? <label className={styles.field}>Draft choice<Select id={`${id}-preset`} aria-label={`PPM ${field.label} preset`} value={selected} disabled={locked} onChange={event => onPreset(field, event.target.value)}><option value="" disabled>Choose draft wording</option>{field.options.filter(item => item.key !== "custom").map(item => <option key={item.key} value={item.key}>{item.label}</option>)}<option value="custom">Custom wording</option></Select></label> : null}
+  const describedBy = `${id}-help${invalid ? ` ${id}-required` : ""}`;
+  return <fieldset className={`${styles.legalField} ${invalid ? styles.requiredField : ""}`}><legend>{field.label}{invalid ? <span className={styles.requiredBadge}>Required</span> : null}</legend>
+    {field.options?.length ? <label className={styles.field}>Draft choice<Select id={`${id}-preset`} aria-label={`PPM ${field.label} preset`} aria-required={required} aria-invalid={invalid || undefined} aria-describedby={describedBy} value={selected} disabled={locked} onChange={event => onPreset(field, event.target.value)}><option value="" disabled>Choose draft wording</option>{field.options.filter(item => item.key !== "custom").map(item => <option key={item.key} value={item.key}>{item.label}</option>)}<option value="custom">Custom wording</option></Select></label> : null}
     <label className={styles.field} htmlFor={id}>{field.options?.length ? "Draft wording · editable" : field.label}</label>
-    <Textarea id={id} aria-label={`PPM ${field.label}`} aria-required={required} aria-describedby={`${id}-help`} rows={3} maxLength={12000} value={edit.legalInputs[field.key] ?? ""} disabled={locked} onChange={event => onText(field.key, event.target.value)} />
-    <div id={`${id}-help`} className={styles.note}>{field.help ? <p>{field.help}</p> : null}{option?.unresolved ? <p>Confirmation is still needed. This choice does not complete the required fact.</p> : selected === "custom" ? <p>Custom wording · retained when saved sources refresh.</p> : option ? <p>Draft preset · review this wording before approval. Editing it switches to Custom wording.</p> : null}</div>
+    <Textarea id={id} aria-label={`PPM ${field.label}`} aria-required={required} aria-invalid={invalid || undefined} aria-describedby={describedBy} rows={3} maxLength={12000} value={edit.legalInputs[field.key] ?? ""} disabled={locked} onChange={event => onText(field.key, event.target.value)} />
+    {invalid ? <p id={`${id}-required`} className={styles.requiredText}>Required — choose confirmed wording or enter the missing detail.</p> : needsSave ? <p className={styles.note}>Save to update checks.</p> : null}
+    <div id={`${id}-help`} className={styles.note}>{field.help ? <p>{field.help}</p> : null}{selected === "custom" ? <p>Custom wording is kept when saved facts change.</p> : option && !option.unresolved ? <p>Draft wording — edit it to customize.</p> : null}</div>
   </fieldset>;
 }
 
-type WorkspaceProps = { listing: CpListing; active: boolean; onFix: (issue: MarketplaceIssue) => void; onApproved: () => void; onPublish?: () => void; publishBusy?: boolean; onReadinessPending?: (pending: boolean) => void };
+type WorkspaceProps = { listing: CpListing; active: boolean; onFix: (issue: MarketplaceIssue) => void; onApproved: () => void; onPublish?: () => void; publishBusy?: boolean; onReadinessPending?: (pending: boolean) => void; onOwnsPpmIssues?: (owns: boolean) => void };
 
 export function MarketplacePpmWorkspace(props: WorkspaceProps) {
   const ppm = useMarketplacePpm(props.listing.id, props.active);
   return <PpmWorkspace key={ppm.scope} {...props} ppm={ppm} />;
 }
 
-function PpmWorkspace({ listing, active, onFix, onApproved, onPublish, publishBusy = false, onReadinessPending, ppm }: WorkspaceProps & { ppm: ReturnType<typeof useMarketplacePpm> }) {
+function PpmWorkspace({ listing, active, onFix, onApproved, onPublish, publishBusy = false, onReadinessPending, onOwnsPpmIssues, ppm }: WorkspaceProps & { ppm: ReturnType<typeof useMarketplacePpm> }) {
   const state = ppm.data, version = ppmEditableVersion(state);
   const links = useMarketplaceDocumentLink(`ppm:${listing.id}`);
   const [base, setBase] = useState<PpmEdit | null>(null), [edit, setEdit] = useState<PpmEdit | null>(null);
@@ -60,6 +60,7 @@ function PpmWorkspace({ listing, active, onFix, onApproved, onPublish, publishBu
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [refreshWarning, setRefreshWarning] = useState(false), [refreshingListing, setRefreshingListing] = useState(false);
   const [reason, setReason] = useState(""), [mode, setMode] = useState<"review" | "edit">("review");
+  const [visibleFieldKeys, setVisibleFieldKeys] = useState<string[]>([]), [showAllFields, setShowAllFields] = useState(false);
   const [focusField, setFocusField] = useState<{ key: string; sequence: number } | null>(null);
   const approvalRefresh = useRef(false);
   const [action, setAction] = useState<Action | null>(null), [failed, setFailed] = useState<Attempt | null>(null);
@@ -81,7 +82,16 @@ function PpmWorkspace({ listing, active, onFix, onApproved, onPublish, publishBu
   }, [active, mode, focusField]);
   useEffect(() => { onReadinessPending?.(ppm.busy || refreshingListing || refreshWarning); }, [ppm.busy, refreshingListing, refreshWarning, onReadinessPending]);
   useEffect(() => () => onReadinessPending?.(false), [onReadinessPending]);
-  const openEditor = (key?: string) => { setMode("edit"); if (key) setFocusField(current => ({ key, sequence: (current?.sequence ?? 0) + 1 })); };
+  useEffect(() => { onOwnsPpmIssues?.(active && Boolean(state) && !ppm.isError); }, [active, state, ppm.isError, onOwnsPpmIssues]);
+  useEffect(() => () => onOwnsPpmIssues?.(false), [onOwnsPpmIssues]);
+  const openEditor = (key?: string) => {
+    if (state && editRef.current) {
+      const attention = state.legal_fields.filter(field => { const result = ppmLegalFieldState(field, editRef.current!, state.missing, baseRef.current); return result.invalid || result.needsSave; }).map(field => field.key);
+      setVisibleFieldKeys(current => [...new Set([...(mode === "edit" || dirtyRef.current ? current : []), ...attention, ...(key ? [key] : [])])]);
+    }
+    if (mode !== "edit" && !dirtyRef.current) setShowAllFields(false);
+    setMode("edit"); if (key) setFocusField(current => ({ key, sequence: (current?.sequence ?? 0) + 1 }));
+  };
   const lastInput = useRef(listing.updated_at), wasActive = useRef(false);
   const refetchPpm = ppm.refetch;
   useEffect(() => {
@@ -92,13 +102,13 @@ function PpmWorkspace({ listing, active, onFix, onApproved, onPublish, publishBu
     const current = editRef.current;
     if (!current || !canEdit || ppm.busy && action !== "generate") return;
     const fields = { ...current[kind] }; if (value === undefined) delete fields[key]; else fields[key] = value;
-    const next = kind === "legalInputs" && value !== undefined ? ppmSetLegalText(current, key, value) : { ...current, [kind]: fields }; editRef.current = next; dirtyRef.current = ppmDirty(next, baseRef.current); setEdit(next); setNotice("");
+    const next = kind === "legalInputs" && value !== undefined ? ppmSetLegalText(current, key, value) : { ...current, [kind]: fields }; editRef.current = next; dirtyRef.current = ppmDirty(next, baseRef.current); setEdit(next); setNotice(""); setFailed(null); setError("");
   };
   const choosePreset = (field: PpmLegalField, key: string) => {
     const current = editRef.current;
     if (!current || !canEdit || field.read_only || ppm.busy && action !== "generate") return;
     const next = ppmChoosePreset(current, field, key);
-    editRef.current = next; dirtyRef.current = ppmDirty(next, baseRef.current); setEdit(next); setNotice("");
+    editRef.current = next; dirtyRef.current = ppmDirty(next, baseRef.current); setEdit(next); setNotice(""); setFailed(null); setError("");
   };
   const payload = <T extends Record<string, unknown>>(actionName: Action, values: T) => {
     const signature = JSON.stringify({ actionName, values });
@@ -159,50 +169,82 @@ function PpmWorkspace({ listing, active, onFix, onApproved, onPublish, publishBu
     catch { if (live.current) setRefreshWarning(true); }
     finally { if (live.current) setRefreshingListing(false); }
   };
+  const reloadStatus = async (reviewLatest = false) => {
+    const result = await ppm.refetch();
+    if (live.current && result.isSuccess && result.data) {
+      setError(""); setFailed(null);
+      if (!dirtyRef.current) { adopt(result.data); if (reviewLatest) setMode("review"); }
+    }
+  };
   const download = (saved: PpmVersion) => { setError(""); void links.open(`/capital/admin/listings/${listing.id}/ppm/versions/${saved.document_id}/url?download=true`).catch(error => { if (live.current) setError(error instanceof Error ? error.message : "The saved PPM could not be downloaded."); }); };
   const editingDisabled = !canEdit || ppm.busy && action !== "generate";
   const legacy = ppmIsLegacy(state);
   const currentApproved = state?.current_approved && !state.current_approved.stale && state.current_approved.source_fingerprint === state.source_fingerprint;
+  const fieldStates = new Map(state?.legal_fields.map(field => [field.key, edit ? ppmLegalFieldState(field, edit, state.missing, base) : { required: field.required, invalid: false, needsSave: false }]) ?? []);
+  const requiredItems: PpmMissing[] = state?.missing.filter(item => item.required) ?? [];
+  for (const field of state?.legal_fields ?? []) {
+    if (fieldStates.get(field.key)?.invalid && !requiredItems.some(item => ppmMissingLegalKey(item, state?.legal_fields ?? []) === field.key)) requiredItems.push({ key: field.key, label: field.label, section: "legal", required: true });
+  }
+  const fixRequired = (item: PpmMissing) => {
+    if (!state) return;
+    const key = ppmMissingLegalKey(item, state.legal_fields), issue = ppmMissingIssue(item, Boolean(listing.profile_id));
+    if (key) openEditor(key); else if (issue) onFix(issue);
+  };
+  const recoverReadiness = () => { if (failed?.action === "review" && currentApproved && !state?.current_draft) approvalRefresh.current = true; void retryListing(); };
+  const failedOutdated = Boolean(failed && state && (failed.payload.expected_source_fingerprint !== state.source_fingerprint || "expected_version" in failed.payload && failed.payload.expected_version !== version?.version));
+  const primary = () => {
+    if (ppm.busy || refreshingListing || publishBusy) return <Btn variant="pri" disabled>{publishBusy ? "Publishing offer…" : ppm.busy && action === "review" ? "Approving…" : ppm.busy && action === "draft" ? "Saving draft…" : ppm.busy ? "Preparing PPM draft…" : "Checking listing readiness…"}</Btn>;
+    if (ppm.isError) return <Btn variant="pri" onClick={() => void reloadStatus()}>Retry PPM status</Btn>;
+    if (refreshWarning || failed?.action === "review" && currentApproved && !state?.current_draft) return <Btn variant="pri" onClick={recoverReadiness}>Retry listing readiness</Btn>;
+    if (state && version && !dirty && !legacy && ppmNeedsRefresh(state)) return <Btn variant="pri" disabled={!canEdit} onClick={() => generate()}>Refresh PPM draft</Btn>;
+    if (error && failed?.action === "generate" && !failedOutdated) return <Btn variant="pri" disabled={!canEdit} onClick={() => void perform(failed)}>Retry previous generation</Btn>;
+    if (conflict) return dirty && version && !version.stale && version.source_fingerprint === state?.source_fingerprint ? <Btn variant="pri" disabled={!canEdit} onClick={() => save(true)}>Apply my edits to latest facts</Btn> : <Btn variant="pri" onClick={() => void reloadStatus(true)}>Review latest PPM</Btn>;
+    if (failedOutdated) return failed?.action === "generate" ? <Btn variant="pri" disabled={!canEdit} onClick={() => generate()}>Refresh PPM draft</Btn> : <Btn variant="pri" onClick={() => void reloadStatus(true)}>Review latest PPM</Btn>;
+    if (error && failed) return <Btn variant="pri" disabled={!canEdit || failed.action === "review" && !ppmCanReview(state, dirty, conflict)} onClick={() => void perform(failed)}>Retry previous {failed.action === "draft" ? "save" : failed.action === "review" ? "review" : "generation"}</Btn>;
+    if (error) return <Btn variant="pri" onClick={() => void reloadStatus()}>Reload PPM status</Btn>;
+    if (!state) return null;
+    if (mode === "edit") return dirty ? <Btn variant="pri" disabled={!canEdit} onClick={() => save()}>Save and review</Btn> : <Btn variant="pri" onClick={() => setMode("review")}>Review saved PPM</Btn>;
+    if (dirty) return <Btn variant="pri" onClick={() => openEditor()}>Back to edits</Btn>;
+    if (!version) return <Btn variant="pri" disabled={!canEdit} onClick={() => generate()}>Create AI PPM draft</Btn>;
+    if (requiredItems.length && !legacy) return <Btn variant="pri" disabled={!canEdit} onClick={() => fixRequired(requiredItems[0])}>Fix required items</Btn>;
+    if (ppmNeedsRefresh(state)) return <Btn variant="pri" disabled={!canEdit} onClick={() => generate()}>Refresh PPM draft</Btn>;
+    if (!legacy && (!currentApproved || state.current_draft)) return <Btn variant="pri" disabled={!canEdit || !ppmApprovalValues(state, dirty, conflict, reason)} onClick={approve}>Approve current PPM</Btn>;
+    return onPublish && listing.status === "draft" ? <Btn variant="pri" disabled={!canEdit} onClick={onPublish}>Publish offer</Btn> : null;
+  };
   return <section id="marketplace-ppm-workspace" tabIndex={-1} className={styles.root} aria-label="PPM draft and review">
-    <header className={styles.header}><div><h2 id="marketplace-ppm-heading" tabIndex={-1}>Private placement memorandum</h2><p className={styles.note}>Review the draft prepared from saved offering facts. Edit only what needs changing, approve the current version, then publish separately.</p></div>{state ? <CellChip tone={currentApproved && state.status === "approved" ? "ok" : "warn"}>{state.managed ? state.status === "approved" ? "Reviewed current PPM" : state.status === "stale" ? "Source changed · review needed" : "Draft · staff review required" : state.current_approved ? "Uploaded PPM · legacy current" : "PPM not drafted"}</CellChip> : null}</header>
-    {ppm.isPending && !state ? <p role="status">Loading PPM status…</p> : null}
-    {ppm.isError ? <div className={styles.warning} role="alert">PPM status could not be loaded. Existing edits are retained. <Btn size="sm" onClick={() => void ppm.refetch()}>Retry PPM status</Btn></div> : null}
-    {error ? <div className={styles.warning} role="alert">{error}{failed ? <Btn size="sm" disabled={ppm.busy || !canEdit || failed.action === "review" && !ppmCanReview(state, dirty, conflict)} onClick={() => void perform(failed)}>Retry previous {failed.action === "draft" ? "save" : failed.action === "review" ? "review" : "generation"}</Btn> : <Btn size="sm" onClick={() => void ppm.refetch()}>Reload PPM status</Btn>}</div> : null}
+    <header className={styles.header}><div><h2 id="marketplace-ppm-heading" tabIndex={-1}>Private placement memorandum</h2><p className={styles.note}>{version ? `${version.status === "approved" ? "Reviewed version" : "Saved draft"} v${version.version}` : "Preparing your saved offering facts"}</p></div>{state ? <CellChip tone={legacy || currentApproved && !state.current_draft ? "ok" : requiredItems.length ? "bad" : "warn"}>{legacy ? "Uploaded PPM" : currentApproved && !state.current_draft ? "Approved" : requiredItems.length ? "Required items missing" : state.status === "stale" ? "Update needed" : "Ready for review"}</CellChip> : null}</header>
+    {ppm.isPending && !state ? <p role="status">Loading PPM…</p> : null}
+    {ppm.isError ? <p className={styles.warning} role="alert">The PPM could not be loaded. Try again.</p> : null}
+    {error ? <div className={styles.warning} role="alert">{error}</div> : null}
+    {refreshWarning ? <p className={styles.warning} role="alert">Check listing readiness before publishing.</p> : null}
+    {conflict ? <div className={styles.warning} role="status"><strong>Saved facts or another PPM version changed.</strong><p>Your edits are kept. Apply them to the latest facts, or discard them.</p>{dirty ? <Btn size="sm" disabled={ppm.busy} onClick={() => { adopt(state!); setFailed(null); setError(""); }}>Discard edits and load latest</Btn> : null}</div> : null}
+    {requiredItems.length && !legacy ? <section aria-label="PPM facts still needed" className={styles.missing}><h3>Finish these required items</h3><ul>{requiredItems.map(item => { const key = ppmMissingLegalKey(item, state?.legal_fields ?? []), issue = ppmMissingIssue(item, Boolean(listing.profile_id)); return <li key={`${item.section}:${item.key}`}><div><strong>{item.label}</strong>{key && fieldStates.get(key)?.needsSave ? <p className={styles.note}>Save to update checks.</p> : null}</div>{key ? <Btn size="sm" onClick={() => openEditor(key)}>Complete {state?.legal_fields.find(field => field.key === key)?.label}</Btn> : issue ? <Btn size="sm" onClick={() => onFix(issue)}>{issue.actionLabel}</Btn> : null}</li>; })}</ul></section> : null}
+    <div className={styles.nextAction}>{primary()}{state?.managed && canEdit && mode === "review" && !dirty ? <Btn disabled={ppm.busy && action !== "generate"} onClick={() => openEditor()}>Back to edits</Btn> : mode === "edit" && dirty ? <Btn disabled={ppm.busy} onClick={() => setMode("review")}>Review saved PPM</Btn> : null}</div>
     {notice ? <p role="status" className={styles.notice}>{notice}</p> : null}
-    {refreshWarning ? <div className={styles.warning} role="alert">Refresh listing readiness to check the saved PPM before publishing. This read does not save or approve another version.<Btn size="sm" disabled={refreshingListing} onClick={() => void retryListing()}>Retry listing readiness</Btn></div> : null}
-    {state ? <>
-      <div className={styles.meta}><span>{state.generation_status === "ai_draft" ? "AI-assisted wording" : state.generation_status === "source_based" ? "Source-based fallback" : state.generation_status === "manual_upload" ? "Uploaded document" : "Draft not generated"}</span><span>{state.current_draft ? `Saved draft v${state.current_draft.version}` : state.current_approved ? `Reviewed version v${state.current_approved.version}` : "No saved version"}</span>{state.auto_refresh ? <span>Automatic refresh enabled for saved listing and file changes</span> : null}</div>
-      {!state.managed && state.current_approved?.source === "uploaded" ? <p className={styles.note}>The existing uploaded PPM remains in use. Create an AI PPM draft to start the managed drafting workflow; the new draft will require review.</p> : <p className={styles.note}>Saved source changes prepare a new draft. Approved PDF versions remain unchanged in history; refreshed drafts are not automatically approved or published.</p>}
-      {conflict ? <div className={styles.warning} role="status"><strong>Saved facts or another PPM version changed.</strong> Your edits are retained. Load the latest draft, or explicitly apply only your changed fields to its current facts.<div className={styles.actions}><Btn size="sm" disabled={ppm.busy} onClick={() => { adopt(state); setFailed(null); setError(""); }}>Discard edits and load latest</Btn>{dirty ? <Btn size="sm" disabled={ppm.busy || !canEdit || !version || version.stale || version.source_fingerprint !== state.source_fingerprint} onClick={() => save(true)}>Apply my edits to latest facts</Btn> : null}</div></div> : null}
-      {state.missing.length ? <section aria-label="PPM facts still needed" className={styles.missing}><h3>Still needed in the saved draft</h3><p className={styles.note}>Save edited details to update these checks. Canonical financing figures are changed in their owning workspace.</p><ul>{state.missing.map(item => { const issue = ppmMissingIssue(item, Boolean(listing.profile_id)), legalKey = ppmMissingLegalKey(item, state.legal_fields); return <li key={`${item.section}:${item.key}`}><span>{item.label}{!item.required ? " · suggested" : ""}</span>{legalKey ? <Btn size="sm" onClick={() => openEditor(legalKey)}>Complete {state.legal_fields.find(field => field.key === legalKey)?.label}</Btn> : issue ? <Btn size="sm" onClick={() => onFix(issue)}>{issue.actionLabel}</Btn> : null}</li>; })}</ul></section> : null}
-      {state.warnings.length ? <details><summary>Drafting notes · {state.warnings.length}</summary><ul className={styles.notes}>{state.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul></details> : null}
-      <div className={styles.actions}>{canEdit ? <Btn variant="pri" disabled={ppm.busy || ppm.isError || dirty} onClick={() => generate(true)}>{ppm.busy && action === "generate" ? "Preparing PPM draft…" : !state.managed ? "Create AI PPM draft" : "Regenerate AI wording"}</Btn> : null}{version ? <Btn disabled={links.busy} onClick={() => download(version)}>Download {version.status === "approved" ? "reviewed PPM" : "saved draft"} v{version.version}</Btn> : null}{state.current_approved && state.current_approved.document_id !== version?.document_id ? <Btn disabled={links.busy} onClick={() => download(state.current_approved!)}>Download reviewed PPM v{state.current_approved.version}{state.current_approved.stale ? " · historical" : ""}</Btn> : null}</div>
-      {dirty ? <p className={styles.note}>Unsaved wording is retained when you switch listing tabs. Downloads use the saved version. Save or discard your wording before regenerating.</p> : null}
-      {edit && version && state.managed && mode === "edit" ? <section className={styles.editing} aria-label="Edit PPM draft">
-        <div className={styles.actions}><h3>Edit draft</h3><Btn size="sm" disabled={ppm.busy} onClick={() => setMode("review")}>Review saved PPM</Btn></div>
-        {version.source === "uploaded" ? <p className={styles.note}>Uploaded PDF content stays unchanged. The fields below bind its review to the saved offering facts.</p> : null}
-        <section className={styles.section} aria-label="PPM offering legal details"><h3>Offering legal details</h3><p className={styles.note}>Start with the draft choices below, then confirm or customize the wording. Membership eligibility follows the platform rules shown here. Governing law remains incomplete until confirmed.</p>
-          {state.membership_policy ? <MarketplaceMembershipPolicySummary policy={state.membership_policy} showMemberLink compact /> : <p className={styles.note}>Membership policy was not supplied with this version. <a href="/admin/marketplace/members?tab=members" target="_blank" rel="noopener noreferrer">Review members and eligibility in a new tab</a>.</p>}
-          <div className={styles.fields}>{state.legal_fields.map(field => <LegalField key={field.key} field={field} edit={edit} required={field.required || state.missing.some(item => item.required && ppmMissingLegalKey(item, state.legal_fields) === field.key)} disabled={editingDisabled} onPreset={choosePreset} onText={(key, text) => patchEdit("legalInputs", key, text)} />)}</div>
-        </section>
-        {version.source === "generated_ppm" ? <details><summary>Edit PPM wording</summary><div className={styles.wording}>{state.narrative_fields.map(field => <label key={field.key} className={styles.field}>{field.label}<Textarea aria-label={`PPM wording: ${field.label}`} rows={5} value={Object.hasOwn(edit.narrativeSections, field.key) ? edit.narrativeSections[field.key] : version.ai_sections?.[field.key] ?? ""} disabled={editingDisabled} onChange={event => patchEdit("narrativeSections", field.key, event.target.value)} /><span className={styles.note}>{Object.hasOwn(edit.narrativeSections, field.key) ? "Your wording · preserved on source refresh" : "AI / source suggestion · edit to customize"}</span>{Object.hasOwn(edit.narrativeSections, field.key) ? <Btn size="sm" disabled={editingDisabled} onClick={() => patchEdit("narrativeSections", field.key)}>Restore suggested wording</Btn> : null}</label>)}</div></details> : null}
-        <div className={styles.actions}>{canEdit ? <Btn variant="pri" disabled={ppm.busy || ppm.isError || !dirty || conflict} onClick={() => save()}>{ppm.busy && action === "draft" ? "Saving draft…" : "Save and review"}</Btn> : null}{dirty ? <Btn disabled={ppm.busy} onClick={() => { adopt(state); setFailed(null); setError(""); }}>Discard PPM edits</Btn> : null}</div>
-      </section> : null}
-      {version && mode === "review" ? <section className={styles.review} aria-label="Review saved PPM">
-        <div className={styles.header}><div><h3>Review saved PPM · v{version.version}</h3><p className={styles.note}>{version.status === "approved" ? `Reviewed ${date(version.reviewed_at)}` : `Saved ${date(version.created_at)}`} · {listing.ref}</p></div>{state.managed && canEdit ? <Btn disabled={ppm.busy && action !== "generate"} onClick={() => openEditor()}>Back to edits</Btn> : null}</div>
-        <p className={styles.note}>{dirty ? "Your unsaved edits are retained. This summary and downloads still show the saved version; save your edits before approval." : conflict || version.stale ? "Saved facts changed. The prior saved content stays visible while a current draft is prepared." : state.draft_upgrade_available ? "Updating this saved draft with the current disclosure choices. Existing custom wording is retained." : legacy ? "The uploaded PPM remains in use. Create an AI PPM draft only if you want to replace it with a managed draft." : "Review the saved details and document below. Approval applies only to this version and its current saved facts."}</p>
-        {ppm.busy && action === "generate" ? <p className={styles.note} role="status">Preparing updated draft… The saved version remains visible.</p> : null}
-        <SavedSummary version={version} fields={state.legal_fields} />
-        {state.membership_policy ? <MarketplaceMembershipPolicySummary policy={state.membership_policy} showMemberLink compact /> : null}
-        <SavedPreview version={version} />
-        {!legacy && (!currentApproved || state.current_draft) ? <>
-          <p className={styles.note}>{dirty ? "Save your edits before approval." : conflict ? "Load or update the current saved draft before approval." : state.draft_upgrade_available || ppmNeedsRefresh(state) ? "Wait for the current saved draft to finish preparing before approval." : state.missing.some(item => item.required) ? "Complete and save the required facts listed above before approval." : "Select Approve current PPM to confirm you reviewed this saved version. Publishing is a separate action."}</p>
-          <details className={styles.optionalNote}><summary>Add review note (optional)</summary><label className={styles.field}>Review note<Input aria-label="PPM review note (optional)" value={reason} maxLength={2000} disabled={!canEdit || ppm.busy} onChange={event => setReason(event.target.value)} /></label></details>
-          <div className={styles.actions}><Btn variant="pri" disabled={!canEdit || ppm.busy || refreshingListing || ppm.isError || !ppmApprovalValues(state, dirty, conflict, reason)} onClick={approve}>{ppm.busy && action === "review" ? "Approving…" : "Approve current PPM"}</Btn></div>
-        </> : currentApproved && !state.current_draft ? <p className={styles.notice}>Current PPM v{version.version} approved. Review the offer and publish when ready.</p> : null}
-        {onPublish && listing.status === "draft" && (legacy || currentApproved && !state.current_draft) ? <div className={styles.actions}><Btn variant="pri" disabled={!canEdit || ppm.busy || refreshingListing || refreshWarning || ppm.isError || publishBusy || dirty || conflict} onClick={onPublish}>Publish offer</Btn>{refreshWarning || refreshingListing ? <span className={styles.note}>Refresh listing readiness before publishing.</span> : listing.publish_blockers.length ? <span className={styles.note}>Other offer requirements still need attention. Publish will show the exact items.</span> : null}</div> : null}
-      </section> : null}
-      {state.history.length ? <details><summary>PPM version history · {state.history.length}</summary><ul className={styles.history}>{state.history.map(saved => <li key={saved.document_id}><span>v{saved.version} · {saved.status}{saved.stale ? " · source changed" : ""} · {date(saved.created_at)}</span><Btn size="sm" disabled={links.busy} onClick={() => download(saved)}>Download PPM v{saved.version}</Btn></li>)}</ul></details> : null}
-    </> : null}
+    {dirty ? <p className={styles.note}>Unsaved edits are kept. Save them before approval.</p> : null}
+    {state && version && mode === "edit" && edit ? <section className={styles.editing} aria-label="Edit PPM draft">
+      <h3>Complete the required details</h3>
+      <section className={styles.section} aria-label="PPM offering legal details"><div className={styles.fields}>{state.legal_fields.filter(field => showAllFields || visibleFieldKeys.includes(field.key)).map(field => { const status = fieldStates.get(field.key)!; return <LegalField key={field.key} field={field} edit={edit} {...status} disabled={editingDisabled} onPreset={choosePreset} onText={(key, text) => patchEdit("legalInputs", key, text)} />; })}</div>
+      {!showAllFields && !visibleFieldKeys.length ? <p className={styles.note}>No required details need editing. You can review all saved disclosures below.</p> : null}
+      <div><Btn size="sm" onClick={() => setShowAllFields(value => !value)}>{showAllFields ? "Show required items only" : "Show all disclosure fields"}</Btn></div></section>
+      {version.source === "generated_ppm" ? <details><summary>Edit PPM wording</summary><div className={styles.wording}>{state.narrative_fields.map(field => <label key={field.key} className={styles.field}>{field.label}<Textarea aria-label={`PPM wording: ${field.label}`} rows={5} value={Object.hasOwn(edit.narrativeSections, field.key) ? edit.narrativeSections[field.key] : version.ai_sections?.[field.key] ?? ""} disabled={editingDisabled} onChange={event => patchEdit("narrativeSections", field.key, event.target.value)} />{Object.hasOwn(edit.narrativeSections, field.key) ? <Btn size="sm" disabled={editingDisabled} onClick={() => patchEdit("narrativeSections", field.key)}>Restore suggested wording</Btn> : null}</label>)}</div></details> : null}
+      {dirty ? <div><Btn disabled={ppm.busy} onClick={() => { adopt(state); setFailed(null); setError(""); }}>Discard PPM edits</Btn></div> : null}
+    </section> : null}
+    {state && version && mode === "review" ? <section className={styles.review} aria-label="Review saved PPM"><h3>Review saved PPM · v{version.version}</h3>
+      {ppm.busy && action === "generate" ? <p className={styles.note} role="status">Preparing updated draft… The saved version remains visible.</p> : null}
+      <SavedSummary version={version} fields={state.legal_fields} />
+      <SavedPreview version={version} />
+      {currentApproved && !state.current_draft ? <p className={styles.notice}>Current PPM v{version.version} approved. Publish when ready.</p> : null}
+      {!legacy && (!currentApproved || state.current_draft) ? <details className={styles.optionalNote}><summary>Add review note (optional)</summary><label className={styles.field}>Review note<Input aria-label="PPM review note (optional)" value={reason} maxLength={2000} disabled={!canEdit || ppm.busy} onChange={event => { setReason(event.target.value); setFailed(null); setError(""); }} /></label></details> : null}
+    </section> : null}
+    {state ? <details className={styles.options}><summary>PPM details and history</summary><div className={styles.optionBody}>
+      <p className={styles.note}>{state.generation_status === "ai_draft" ? "AI-assisted wording" : state.generation_status === "source_based" ? "Source-based draft" : state.generation_status === "manual_upload" ? "Uploaded document" : "Not generated"}{state.auto_refresh ? " · Updates from saved listing and file changes" : ""}</p>
+      {legacy ? <p className={styles.note}>Your uploaded PPM remains in use until you explicitly create and approve a replacement.</p> : null}
+      <div className={styles.actions}>{canEdit ? <Btn disabled={ppm.busy || ppm.isError || dirty} onClick={() => generate(true)}>{!state.managed ? "Create AI PPM draft" : "Regenerate AI wording"}</Btn> : null}{version ? <Btn disabled={links.busy} onClick={() => download(version)}>Download {version.status === "approved" ? "reviewed PPM" : "saved draft"} v{version.version}</Btn> : null}{state.current_approved && state.current_approved.document_id !== version?.document_id ? <Btn disabled={links.busy} onClick={() => download(state.current_approved!)}>Download reviewed PPM v{state.current_approved.version}{state.current_approved.stale ? " · historical" : ""}</Btn> : null}</div>
+      {state.membership_policy ? <MarketplaceMembershipPolicySummary policy={state.membership_policy} showMemberLink compact /> : null}
+      {state.missing.some(item => !item.required) ? <ul className={styles.notes}>{state.missing.filter(item => !item.required).map(item => <li key={`${item.section}:${item.key}`}>{item.label}</li>)}</ul> : null}
+      {state.warnings.length ? <ul className={styles.notes}>{state.warnings.map((warning, index) => <li key={index}>{warning}</li>)}</ul> : null}
+      {state.history.length ? <><h4>PPM version history · {state.history.length}</h4><ul className={styles.history}>{state.history.map(saved => <li key={saved.document_id}><span>v{saved.version} · {saved.status}{saved.stale ? " · source changed" : ""} · {date(saved.created_at)}</span><Btn size="sm" disabled={links.busy} onClick={() => download(saved)}>Download PPM v{saved.version}</Btn></li>)}</ul></> : null}
+    </div></details> : null}
   </section>;
 }

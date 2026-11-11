@@ -78,6 +78,16 @@ describe("actionable marketplace guidance", () => {
     const result = marketplaceApiIssues(apiError("The file changed since this listing was prepared. Refresh its financial snapshot and review the current financing and collateral before publishing."), { ...context, action: "publish" });
     expect(result[0].target).toEqual({ kind: "snapshot" });
   });
+  it("takes an outdated document package to its dedicated file owner without confusing it with financial refresh", () => {
+    const message = "The file or program readiness changed. Refresh both PDFs before delivery.";
+    const result = marketplaceApiIssues(apiError(message), { ...context, action: "snapshot" });
+    expect(result[0]).toMatchObject({ key: "owner:package", target: { kind: "file", action: "package" }, actionLabel: "Open package in new tab" });
+    expect(result[0].instruction).toContain("Refresh package + preview");
+    expect(marketplaceOwnerHref("intake/id", "package")).toBe("/files/intake%2Fid?workspace=package#package-readiness");
+    expect(parseMarketplaceFinancialAction("package")).toBeNull();
+    expect(marketplaceApiIssues(apiError("Another package error"), context)[0].target).toBeUndefined();
+    expect(marketplacePublishIssues([message], undefined, context)[0].target).toEqual(result[0].target);
+  });
   it("does not suggest refreshing away committed-capital financing locks", () => {
     const result = marketplaceApiIssues(apiError("This listing has committed or funded capital. Financing and recorded collateral cannot be changed through a file refresh; review the existing commitments before issuing a revised offering."), { ...context, action: "snapshot" });
     expect(result[0].target).toBeUndefined(); expect(result[0].instruction).toContain("commitments");
