@@ -79,6 +79,7 @@ function when(value: string | null) {
 export function ApplicationVerificationWorkspace({
   sourceKind,
   sourceId,
+  resolvedProfileId,
   mode = "full",
   onReadyForStep2,
   onStateChange,
@@ -90,6 +91,8 @@ export function ApplicationVerificationWorkspace({
 }: {
   sourceKind: ApplicationSourceKind;
   sourceId: string;
+  /** An authorised file detail can supply the existing profile without POST resolve. */
+  resolvedProfileId?: string | null;
   mode?: "full" | "owners" | "owners-credit" | "credit" | "banking" | "verification";
   onReadyForStep2?: () => void;
   onStateChange?: (state: FileOwnerRequirementState) => void;
@@ -110,9 +113,9 @@ export function ApplicationVerificationWorkspace({
       method: "POST",
       body: JSON.stringify({ source_kind: sourceKind, source_id: sourceId }),
     }),
-    enabled: Boolean(sourceId),
+    enabled: Boolean(sourceId) && !resolvedProfileId,
   });
-  const profileId = profileQuery.data?.id ?? "";
+  const profileId = resolvedProfileId ?? profileQuery.data?.id ?? "";
   const activeProfileId = useRef(profileId);
   activeProfileId.current = profileId;
   const [creditReadinessError, setCreditReadinessError] = useState("");
@@ -178,8 +181,8 @@ export function ApplicationVerificationWorkspace({
     } else if (onRefreshProgramReadiness) await onRefreshProgramReadiness();
   };
 
-  if (profileQuery.isLoading) return <div className="empty"><span className="spinner solo" />Preparing the application profile...</div>;
-  if (profileQuery.isError || !profileQuery.data) {
+  if (!profileId && profileQuery.isLoading) return <div className="empty"><span className="spinner solo" />Preparing the application profile...</div>;
+  if (!profileId && (profileQuery.isError || !profileQuery.data)) {
     return <Callout tone="bad" icon={<Icon name="alert" size={17} />}>{profileQuery.error instanceof Error ? profileQuery.error.message : "The application profile could not be opened."}</Callout>;
   }
 

@@ -143,6 +143,9 @@ export function isSourceEvidenceFile(file: UploadedFile): boolean {
 }
 
 export type LeadDetail = {
+  application_profile_id?: string | null;
+  /** Facts are ready; current financial analysis/freshness is loaded by its view. */
+  derived_pending?: boolean;
   application_source?: { entry_url: string | null; marketing_url: string | null; recorded: boolean; campaign: string | null; cta: string | null } | null;
   mca_refinance_policy?: McaRefinancePolicy | null;
   intake: LeadRow & {

@@ -6,6 +6,7 @@ import { Btn, Callout, CellChip, Field, IconBtn, Input, Row, Select, Textarea, c
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { apiBase } from "@/lib/api";
+import { clientTermsSummaryKey } from "@/lib/fileOpening";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import type {
   ApplicationClientTerms,
@@ -481,6 +482,7 @@ export function ApplicationClientTermsPanel({
       setError("");
       setNotice(`Client terms v${data.version} saved.${data.financial_plan ? " The scenario and loan were saved together." : " Payment and DSCR were recalculated from the stored evidence."}${unchanged ? "" : " Further edits remain unsaved."}`);
       queryClient.setQueryData(["application-client-terms", profileId], data);
+      queryClient.setQueryData(clientTermsSummaryKey(profileId), data);
       for (const key of ["file-deal-budget", "financial-cockpit", "financial-plan", "financial-metrics", "application-underwriting", "advances"]) void queryClient.invalidateQueries({ queryKey: [key, profileId] });
       remember(draftRef.current);
       onSaved?.(data, data.financial_plan);
@@ -528,7 +530,10 @@ export function ApplicationClientTermsPanel({
       URL.revokeObjectURL(url);
       setNotice(`${filename} downloaded.`);
       const fresh = await query.refetch();
-      if (fresh.data) onSaved?.(fresh.data);
+      if (fresh.data) {
+        queryClient.setQueryData(clientTermsSummaryKey(profileId), fresh.data);
+        onSaved?.(fresh.data);
+      }
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "The terms PDF could not be created.");
     } finally {

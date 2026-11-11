@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FileSection, useSectionState } from "./FileSection";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
 import { Btn, Callout, CellChip, cx, Field, IconBtn, Input, Lbl, Linky, Panel, Row, Seg, Select, StatusLine, Textarea, WarnLine } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
@@ -28,35 +29,16 @@ import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
 import { LeadProgramFitPanel } from "@/components/admin/LeadProgramFitPanel";
 import { LeadDscrPanel } from "@/components/admin/LeadDscrPanel";
-import { BankerSubmissionModal } from "@/components/admin/BankerSubmissionModal";
-import { IntakeNotificationRoutingDrawer } from "@/components/admin/IntakeNotificationRoutingDrawer";
-import { ApplicationVerificationWorkspace } from "@/components/application/ApplicationVerificationWorkspace";
-import { ApplicationEvidenceWorkspace } from "@/components/application/ApplicationEvidenceWorkspace";
-import { ApplicationClassificationPanel } from "@/components/application/ApplicationClassificationPanel";
-import { ApplicationIntelligencePanel } from "@/components/application/ApplicationIntelligencePanel";
-import { CapitalReadinessPanel } from "@/components/application/CapitalReadinessPanel";
-import { ExtractedFactsReview } from "@/components/application/ExtractedFactsReview";
-import { ApplicationAuditTimeline } from "@/components/application/ApplicationAuditTimeline";
-import { ProductionPackageTab } from "@/components/admin/ProductionPackageTab";
-import { ApplicationMissingItemCommunications } from "@/components/application/ApplicationMissingItemCommunications";
-import { ApplicationClientTermsPanel } from "@/components/application/ApplicationClientTermsPanel";
 import { FundingRequestControl } from "@/components/application/FundingRequestControl";
-import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
+import type { TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { FinancingProposalSummary } from "@/components/file/FinancingProposalSummary";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
-import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
-import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
 import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft } from "@/components/file/BusinessContactDetails";
-import { OfferDeliveryComposer, type OfferDeliveryReceipt, type OfferSelection } from "@/components/communications/OfferDeliveryComposer";
-import { OfferDeliveryHistory } from "@/components/communications/OfferDeliveryHistory";
-import { LeadNotesPanel } from "@/components/broker/LeadNotesPanel";
-import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
+import type { OfferDeliveryReceipt, OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
-import { PaymentsWorkspace } from "@/components/payments/PaymentsWorkspace";
-import { FinancialCockpit } from "@/components/file/cockpit/FinancialCockpit";
 import { FundingPackageWorkspace, type FundingPackageTab, type PackagePreparation } from "./FundingPackageWorkspace";
 import { InvestorPackageDetails, InvestorReportReferenceButton } from "./InvestorPackageDetails";
 import type { FinancialCockpit as FinancialCockpitData } from "@/lib/financialCockpit";
@@ -64,7 +46,6 @@ import type { IntakeResponse } from "@/lib/intake";
 import { leadCockpitNonDocumentMissingRows, leadCockpitOutstandingDocuments, preferredIntakeReviewResult } from "@/lib/leadCockpitDocuments";
 import { mcaRefinanceReviewState } from "@/lib/mcaRefinanceReview";
 import { PIPELINE_LIFECYCLE, underwritingStatusLabel, type PipelineMoveRequest, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
-import { ApplicationProgramReadiness as FundingProgramSetup } from "@/components/application/ApplicationProgramReadiness";
 import type { ApplicationProfile, ApplicationProgramReadiness, ApplicationTermSheetState, ApplicationUnderwritingPatch, ApplicationUnderwritingState, FileOwnerRequirementState } from "@/lib/applicationProfile";
 import { pipelineApprovalDraft, validatePipelineApprovalDraft, type PipelineApprovalDraft } from "@/lib/pipelineApproval";
 import { compactMissingItems, intelligenceActionDestination, reviewDestination, type ReviewDestination } from "@/lib/reviewNavigation";
@@ -72,6 +53,40 @@ import { creditStepProgress } from "@/lib/creditStepSync";
 import { calculateDealEarnings } from "@/lib/dealEconomics";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, PackageGenerationOptions, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
+
+// Load section editors only when their existing conditional mount opens them.
+// The file header/contact shell no longer downloads every financial/PDF editor.
+const sectionLoading = () => <div className="empty" role="status">Opening workspace…</div>;
+const BankerSubmissionModal = dynamic(() => import("@/components/admin/BankerSubmissionModal").then(m => m.BankerSubmissionModal));
+const IntakeNotificationRoutingDrawer = dynamic(() => import("@/components/admin/IntakeNotificationRoutingDrawer").then(m => m.IntakeNotificationRoutingDrawer));
+const ApplicationVerificationWorkspace = dynamic(() => import("@/components/application/ApplicationVerificationWorkspace").then(m => m.ApplicationVerificationWorkspace), { loading: sectionLoading });
+const ApplicationEvidenceWorkspace = dynamic(() => import("@/components/application/ApplicationEvidenceWorkspace").then(m => m.ApplicationEvidenceWorkspace), { loading: sectionLoading });
+const ApplicationClassificationPanel = dynamic(() => import("@/components/application/ApplicationClassificationPanel").then(m => m.ApplicationClassificationPanel), { loading: sectionLoading });
+const ApplicationIntelligencePanel = dynamic(() => import("@/components/application/ApplicationIntelligencePanel").then(m => m.ApplicationIntelligencePanel), { loading: sectionLoading });
+const CapitalReadinessPanel = dynamic(() => import("@/components/application/CapitalReadinessPanel").then(m => m.CapitalReadinessPanel), { loading: sectionLoading });
+const ExtractedFactsReview = dynamic(() => import("@/components/application/ExtractedFactsReview").then(m => m.ExtractedFactsReview), { loading: sectionLoading });
+const ApplicationAuditTimeline = dynamic(() => import("@/components/application/ApplicationAuditTimeline").then(m => m.ApplicationAuditTimeline), { loading: sectionLoading });
+const ProductionPackageTab = dynamic(() => import("@/components/admin/ProductionPackageTab").then(m => m.ProductionPackageTab), { loading: sectionLoading });
+const ApplicationMissingItemCommunications = dynamic(() => import("@/components/application/ApplicationMissingItemCommunications").then(m => m.ApplicationMissingItemCommunications), { loading: sectionLoading });
+const ApplicationClientTermsPanel = dynamic(() => import("@/components/application/ApplicationClientTermsPanel").then(m => m.ApplicationClientTermsPanel), { loading: sectionLoading });
+const UnderwritingFlow = dynamic(() => import("@/components/file/UnderwritingFlow").then(m => m.UnderwritingFlow), { loading: sectionLoading });
+const UnifiedThreadConversation = dynamic(() => import("@/components/communications/UnifiedThreadConversation").then(m => m.UnifiedThreadConversation), { loading: sectionLoading });
+const AIIntakeClientConversation = dynamic(() => import("@/components/communications/AIIntakeClientCommunications").then(m => m.AIIntakeClientConversation), { loading: sectionLoading });
+const AIIntakeEmailWorkspace = dynamic(() => import("@/components/communications/AIIntakeClientCommunications").then(m => m.AIIntakeEmailWorkspace), { loading: sectionLoading });
+const OfferDeliveryComposer = dynamic(() => import("@/components/communications/OfferDeliveryComposer").then(m => m.OfferDeliveryComposer));
+const OfferDeliveryHistory = dynamic(() => import("@/components/communications/OfferDeliveryHistory").then(m => m.OfferDeliveryHistory), { loading: sectionLoading });
+const LeadNotesPanel = dynamic(() => import("@/components/broker/LeadNotesPanel").then(m => m.LeadNotesPanel), { loading: sectionLoading });
+const BucketWorkspaceOverlay = dynamic(() => import("@/components/buckets/BucketWorkspaceOverlay").then(m => m.BucketWorkspaceOverlay));
+const PaymentsWorkspace = dynamic(() => import("@/components/payments/PaymentsWorkspace").then(m => m.PaymentsWorkspace), { loading: sectionLoading });
+const FinancialCockpit = dynamic(() => import("@/components/file/cockpit/FinancialCockpit").then(m => m.FinancialCockpit), { loading: sectionLoading });
+const FundingProgramSetup = dynamic(() => import("@/components/application/ApplicationProgramReadiness").then(m => m.ApplicationProgramReadiness), { loading: sectionLoading });
+
+function OpenedWorkspace({ open, children }: { open: boolean; children: ReactNode }) {
+  const [visited, setVisited] = useState(open);
+  useEffect(() => { if (open) setVisited(true); }, [open]);
+  // Once visited, keep editor state while closed; before that, defer its module.
+  return open || visited ? children : null;
+}
 
 export function Stat({
   title,
@@ -543,6 +558,8 @@ export function ConfirmDeleteLeadModal({
 export function LeadDetailPanel({
   detail,
   loading,
+  refreshing = false,
+  onRequireAnalysis,
   initialNotesOpen = false,
   initialView = "workspace",
   initialActiveTab = "conversation",
@@ -583,6 +600,8 @@ export function LeadDetailPanel({
 }: {
   detail: LeadDetail | null;
   loading: boolean;
+  refreshing?: boolean;
+  onRequireAnalysis?: () => void;
   initialNotesOpen?: boolean;
   initialView?: LeadDetailView;
   /** Which top-level tab opens first; the File page opens the workspace, the list the conversation. */
@@ -672,6 +691,8 @@ export function LeadDetailPanel({
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [prototypeView, setPrototypeView] = useState<LeadDetailView>(initialView);
+  const [financialWorkspaceActivated, setFinancialWorkspaceActivated] = useState(false);
+  const [reviewDetailsActivated, setReviewDetailsActivated] = useState(false);
   // Which Underwriting sections this viewer keeps open; the defaults open the step that needs attention.
   const uwSections = useSectionState("qc:file:underwriting-sections");
   const [productionShareOpen, setProductionShareOpen] = useState(false);
@@ -728,6 +749,9 @@ export function LeadDetailPanel({
   const [financingCoverageRequest, setFinancingCoverageRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const [noiReviewRequest, setNoiReviewRequest] = useState<{ profileId: string; sequence: number } | null>(null);
   const currentFinancing = workingFinancing?.profileId === profileId ? workingFinancing : null;
+  const underwritingRequest = useRef(0);
+  const activeIntake = useRef(detail?.intake.id);
+  activeIntake.current = detail?.intake.id;
   useEffect(() => { setFinancingTermsRequest(null); setFinancingCoverageRequest(null); setNoiReviewRequest(null); }, [profileId]);
   const requestSharedTerms = () => {
     if (isDealerFile) { openTermSheet(); return; }
@@ -787,6 +811,10 @@ export function LeadDetailPanel({
     business_website: "",
     business_description: "",
   });
+  const needsUnderwriting = prototypeView === "underwriting" || prototypeView === "financials" || prototypeView === "reviewer" || prototypeView === "production" || productionTermSheetOpen || offerComposerOpen;
+  const needsProgramReadiness = prototypeView === "financials" || prototypeView === "reviewer" || prototypeView === "production";
+  const needsSavedTerms = needsUnderwriting || contactPopup !== null;
+  useEffect(() => { if (needsUnderwriting) setFinancialWorkspaceActivated(true); }, [needsUnderwriting]);
   const mcaReview = mcaRefinanceReviewState(detail);
   const mcaAutoReviewBlocked = Boolean(mcaReview && mcaReview.mode !== "automated_review");
   const result = detail ? preferredIntakeReviewResult(detail) : null;
@@ -846,7 +874,7 @@ export function LeadDetailPanel({
     && presentation.status === "current"
     && presentation.is_fresh === true
   );
-  const packageNeedsRefresh = Boolean(summary && packet && !packageInSync);
+  const packageNeedsRefresh = Boolean(summary && packet && !detail?.derived_pending && !packageInSync);
   const evidenceFiles = detail?.files.filter(isSourceEvidenceFile) ?? [];
   const evidenceFileCount = evidenceFiles.length;
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
@@ -920,7 +948,7 @@ export function LeadDetailPanel({
     }
   }
 
-  const clientTermsQuery = useClientTermsSummary(underwriting?.profile_id, !isDealerFile && canUnderwrite);
+  const clientTermsQuery = useClientTermsSummary(profileId, !isDealerFile && canUnderwrite && needsSavedTerms);
   const clientTermsOnFile = clientTermsQuery.data ?? null;
   const clientTermsSelection = useMemo<OfferSelection | null>(() => {
     const t = clientTermsOnFile;
@@ -1035,32 +1063,37 @@ export function LeadDetailPanel({
   // The term sheet is keyed on the profile and exists only on dealer files; a
   // 404 (not a dealer file / no package visibility) simply means "none".
   const loadTermSheet = useCallback(async (profileId: string | null | undefined, authToken?: string | null) => {
+    const intakeId = detail?.intake.id;
     if (!profileId || !isDealerFile || !canUnderwrite) {
       setTermSheet(null);
       return;
     }
     try {
       const token = authToken ?? (await getToken());
-      setTermSheet(await api<ApplicationTermSheetState>(`/production-packages/term-sheets/${profileId}`, { authToken: token ?? undefined }));
+      const next = await api<ApplicationTermSheetState>(`/production-packages/term-sheets/${profileId}`, { authToken: token ?? undefined });
+      if (activeIntake.current === intakeId) setTermSheet(next);
     } catch {
-      setTermSheet(null);
+      if (activeIntake.current === intakeId) setTermSheet(null);
     }
-  }, [canUnderwrite, getToken, isDealerFile]);
+  }, [canUnderwrite, detail?.intake.id, getToken, isDealerFile]);
 
   const loadUnderwritingState = useCallback(async () => {
     const intakeId = detail?.intake.id;
-    setProfileId(null);
-    setProgramReadiness(null);
+    const requestId = ++underwritingRequest.current;
+    const current = () => requestId === underwritingRequest.current && activeIntake.current === intakeId;
+    const knownProfileId = detail?.application_profile_id;
+    setProfileId(knownProfileId ?? null);
     if (!intakeId || !canUnderwrite) {
       setUnderwriting(null);
       setUnderwritingDraft(emptyUnderwritingDraft());
       return;
     }
-    setUnderwritingLoading(true);
+    if (knownProfileId && !needsUnderwriting) { setUnderwritingLoading(false); return; }
+    setUnderwritingLoading(needsUnderwriting);
     setUnderwritingError(null);
     try {
       const authToken = await getToken();
-      const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
+      const profile = knownProfileId ? { id: knownProfileId } : await api<ApplicationProfile>("/application-profiles/resolve", {
         method: "POST",
         authToken: authToken ?? undefined,
         body: JSON.stringify({ source_kind: "intake", source_id: intakeId }),
@@ -1069,25 +1102,25 @@ export function LeadDetailPanel({
       // theirs), so the strip shows on the workspace view without a trip
       // through Underwriting — and it is set before the underwriting read, so
       // a failure there does not hide the team.
+      if (!current()) return;
       setProfileId(profile.id);
-      const [state, readiness] = await Promise.all([
-        api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting`, {
-          authToken: authToken ?? undefined,
-        }),
-        api<ApplicationProgramReadiness>(`/application-profiles/${profile.id}/program-readiness`, {
-          authToken: authToken ?? undefined,
-        }),
-      ]);
+      if (!needsUnderwriting) return;
+      // EvidenceWorkspace owns its own readiness read. Other views load theirs
+      // independently; a slow checklist must not withhold lifecycle controls.
+      if (needsProgramReadiness) void api<ApplicationProgramReadiness>(`/application-profiles/${profile.id}/program-readiness`, { authToken: authToken ?? undefined })
+        .then((readiness) => { if (current()) setProgramReadiness(readiness); })
+        .catch((reason) => { if (current()) setUnderwritingError(apiErrorMessage(reason, "Evidence readiness could not be loaded.")); });
+      if (isDealerFile) void loadTermSheet(profile.id, authToken);
+      const state = await api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting?include_financing=false`, { authToken: authToken ?? undefined });
+      if (!current()) return;
       setUnderwriting(state);
-      setProgramReadiness(readiness);
       setUnderwritingDraft(underwritingDraftFromState(state));
-      await loadTermSheet(profile.id, authToken);
     } catch (reason) {
-      setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be loaded."));
+      if (current()) setUnderwritingError(apiErrorMessage(reason, "Underwriting state could not be loaded."));
     } finally {
-      setUnderwritingLoading(false);
+      if (current()) setUnderwritingLoading(false);
     }
-  }, [canUnderwrite, detail?.intake.id, getToken, loadTermSheet]);
+  }, [canUnderwrite, detail?.application_profile_id, detail?.intake.id, getToken, isDealerFile, loadTermSheet, needsProgramReadiness, needsUnderwriting]);
 
   const refreshProgramReadiness = useCallback(async () => {
     if (!canUnderwrite) return;
@@ -1110,7 +1143,7 @@ export function LeadDetailPanel({
     if (!activeProfileId || !canUnderwrite) return;
     try {
       const authToken = await getToken();
-      const state = await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting`, {
+      const state = await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting?include_financing=false`, {
         authToken: authToken ?? undefined,
       });
       setUnderwriting(state);
@@ -1291,7 +1324,12 @@ export function LeadDetailPanel({
 
   useEffect(() => {
     void loadUnderwritingState();
+    return () => { underwritingRequest.current += 1; };
   }, [loadUnderwritingState]);
+
+  useEffect(() => {
+    if (prototypeView === "reviewer" || prototypeView === "production") onRequireAnalysis?.();
+  }, [onRequireAnalysis, prototypeView]);
 
   useEffect(() => {
     const refreshAfterReview = (event: Event) => {
@@ -1892,6 +1930,7 @@ export function LeadDetailPanel({
         {!detail.application_source.recorded ? <span className="sub">The original source was not captured for this older file.</span> : null}
       </div> : null}
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
+      {detail && (refreshing || detail.derived_pending) ? <div className="sub" role="status" style={{ padding: "8px 16px" }}>{refreshing ? "Refreshing file details… " : "File details are ready. "}Current financial calculations and package checks load in their workspace.</div> : null}
       {loading || !detail ? loading ? <PreparationProgress title="Opening file" description="Loading the application, linked evidence and financial workspace." /> : null : (
         <>
           <div className="intake-tabs" role="tablist" aria-label="File detail">
@@ -1935,7 +1974,7 @@ export function LeadDetailPanel({
             ) : null}
 
             <main className="grid intake-file-primary">
-              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} programReadiness={programReadiness} programReadinessLoading={underwritingLoading} onProgramReadinessChange={setProgramReadiness} onRefreshProgramReadiness={refreshProgramReadiness} onOpenPrograms={requestSharedCoverage} /> : null}
+              {prototypeView === "workspace" && submissionStep === 1 ? <ApplicationVerificationWorkspace sourceKind="intake" sourceId={detail.intake.id} resolvedProfileId={detail.application_profile_id} mode="owners-credit" onReadyForStep2={() => setSubmissionStep(2)} onStateChange={setProfileVerification} programReadiness={programReadiness} programReadinessLoading={underwritingLoading} onProgramReadinessChange={setProgramReadiness} onRefreshProgramReadiness={refreshProgramReadiness} onOpenPrograms={requestSharedCoverage} /> : null}
               {prototypeView === "workspace" && submissionStep === 2 ? (
                 profileId ? <ApplicationEvidenceWorkspace
                   profileId={profileId}
@@ -1966,7 +2005,7 @@ export function LeadDetailPanel({
                     <div className="ai-review-summary-strip">
                       <div className="ai-review-summary-primary">
                         <span>Probability</span>
-                        <strong>{String(result?.probability_status || "Awaiting evidence")}</strong>
+                        <strong>{detail.derived_pending ? "Analysis not refreshed" : String(result?.probability_status || "Awaiting evidence")}</strong>
                       </div>
                       <button type="button" onClick={openEvidenceFiles} aria-label={`Open ${evidenceFileCount} evidence file${evidenceFileCount === 1 ? "" : "s"}`}>
                         <span>Evidence</span>
@@ -1994,16 +2033,18 @@ export function LeadDetailPanel({
                         person overrides. Everything the engines computed stays one click
                         away instead of stacked under the verdict. */}
                     <div className="ai-review-overrides"><span className="lbl">Overrides</span><p>The AI accepts what it validated. A person corrects or overrides any decision from the requirements list.</p><Btn onClick={() => setSubmissionStep(2)}>Review requirements and override</Btn></div>
-                    <details className="ai-review-breakdown">
+                    <details className="ai-review-breakdown" onToggle={(event) => { if (event.currentTarget.open) { setReviewDetailsActivated(true); onRequireAnalysis?.(); } }}>
                       <summary>Full breakdown: capital readiness, intelligence and extracted facts</summary>
+                      {reviewDetailsActivated ? <>
                       {profileId ? <CapitalReadinessPanel profileId={profileId} refreshKey={financingRefreshRevision} locale={currentUser?.ui_locale === "es" ? "es" : "en"} canReview={canUnderwrite} /> : null}
                       <ApplicationIntelligencePanel sourceKind="intake" sourceId={detail.intake.id} canReviewNoi={canUnderwrite} onAction={(action) => openReviewDestination(intelligenceActionDestination(action))} />
                       <ExtractedFactsReview sourceKind="intake" sourceId={detail.intake.id} />
+                      </> : null}
                     </details>
                   </section>
                 </Panel>
               ) : null}
-              {canUnderwrite ? (
+              {canUnderwrite && (needsUnderwriting || financialWorkspaceActivated) ? (
                 <div hidden={prototypeView !== "financials"}>
                 {profileId ? (
                   <FinancialCockpit
@@ -2269,7 +2310,7 @@ export function LeadDetailPanel({
         </>
       )}
 
-      {detail && underwriting?.profile_id ? <OfferDeliveryComposer
+      {detail && underwriting?.profile_id ? <OpenedWorkspace open={offerComposerOpen}><OfferDeliveryComposer
         profileId={underwriting.profile_id}
         clientName={detail.intake.full_name}
         open={offerComposerOpen && selectedOfferSelections.length > 0}
@@ -2280,13 +2321,13 @@ export function LeadDetailPanel({
           setOfferDeliveryReceipt(receipt);
           setMerchantOfferStatus((current) => receipt.items.some((item) => item.kind === "merchant_offer") ? "sent" : current);
         }}
-      /> : null}
-      {detail ? <IntakeNotificationRoutingDrawer
+      /></OpenedWorkspace> : null}
+      {detail ? <OpenedWorkspace open={notificationRoutingOpen}><IntakeNotificationRoutingDrawer
         open={notificationRoutingOpen}
         onClose={() => setNotificationRoutingOpen(false)}
         intakeId={detail.intake.id}
         fileLabel={detail.intake.business_name || detail.intake.full_name || "AI Intake file"}
-      /> : null}
+      /></OpenedWorkspace> : null}
       <Drawer
         open={pendingApprovalPatch != null}
         onClose={cancelApproval}
@@ -2417,7 +2458,7 @@ export function LeadDetailPanel({
       >
         {rotatePinDone ? <div className="grid g12"><Callout tone="ok" icon={<Icon name="check" size={16} />}>The new PIN is active. Share it separately from the room link.</Callout><div className="secure-room-created-grid"><div><span className="lbl">New room PIN</span><b className="secure-room-pin num">{rotatePin}</b><Btn onClick={() => void navigator.clipboard.writeText(rotatePin)}><Icon name="copy" size={14} />Copy PIN</Btn></div></div></div> : <div className="grid g12"><Callout tone="warn" icon={<Icon name="alert" size={16} />}>This immediately invalidates the current PIN. Existing room URLs remain valid, but the client must use the new PIN.</Callout><div className="fldgrid two"><Field label="New six-digit PIN"><Input value={rotatePin} onChange={(event) => setRotatePin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" /></Field><Field label="Confirm PIN"><Input value={rotatePinConfirm} onChange={(event) => setRotatePinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" /></Field></div><div className="review-effects"><div><span>Actor</span><b>Current operator</b></div><div><span>Execution</span><b>Immediately</b></div><div><span>Reversible</span><b>Rotate again</b></div></div></div>}
       </Drawer>
-      <BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => setOpenBucketId(null)} />
+      <OpenedWorkspace open={Boolean(openBucketId)}><BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => setOpenBucketId(null)} /></OpenedWorkspace>
     </div>
   );
 
@@ -2943,12 +2984,12 @@ export function LeadDetailPanel({
         onUnpick={(id) => setIngestFiles((prev) => prev.filter((f) => f.id !== id))}
         onConfirm={runIngest}
       />
-      {detail ? (
+      {detail ? (<OpenedWorkspace open={bankerModalOpen}>
         <BankerSubmissionModal
           open={bankerModalOpen}
           onClose={() => setBankerModalOpen(false)}
           intakeId={detail.intake.id}
-        />
+        /></OpenedWorkspace>
       ) : null}
       {detail && canDelete ? (
         <ConfirmDeleteLeadModal
@@ -2961,7 +3002,7 @@ export function LeadDetailPanel({
           }}
         />
       ) : null}
-      <BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => setOpenBucketId(null)} />
+      <OpenedWorkspace open={Boolean(openBucketId)}><BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => setOpenBucketId(null)} /></OpenedWorkspace>
     </div>
   );
 }

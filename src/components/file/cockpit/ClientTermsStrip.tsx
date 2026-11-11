@@ -15,6 +15,7 @@ import { applyWorkingLoan, loanFromClientDraft, sameWorkingLoan, type LoanRefina
 import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockpit";
 import { repaymentConfigLabel } from "@/lib/repaymentConfig";
 import { money } from "@/lib/financialCockpit";
+import { clientTermsSummaryKey } from "@/lib/fileOpening";
 
 /** The loan typed under the DSCR modifications, as the client terms: a line that says what is on file and
  *  whether it matches, one button to save the plan's loan as the terms, and the full editor in a drawer
@@ -60,7 +61,7 @@ export function ClientTermsStrip({ profileId, loan, linkSummary, linkState, canE
       if (financialPlanDraft) payload.financial_plan = { ...applyWorkingLoan(financialPlanDraft, loan), expected_updated_at: financialPlanDraft.expected_updated_at ?? null };
       return api<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`, { method: "PUT", body: JSON.stringify(payload) });
     },
-    onSuccess: (data) => { queryClient.setQueryData(["application-client-terms", profileId], data); refresh(); onSaved?.(data, data.financial_plan); },
+    onSuccess: (data) => { queryClient.setQueryData(["application-client-terms", profileId], data); queryClient.setQueryData(clientTermsSummaryKey(profileId), data); refresh(); onSaved?.(data, data.financial_plan); },
     onSettled: () => onPending?.(false),
   });
   const mirrored = !!loan && !!terms && sameWorkingLoan(loan, loanFromClientDraft(draftFromTerms(terms)));
