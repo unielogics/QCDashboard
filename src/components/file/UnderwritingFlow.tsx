@@ -1,5 +1,6 @@
 "use client";
 
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Btn, Callout, CellChip, Input, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -50,6 +51,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
   offer: { termsSelection: OfferSelection | null; merchantSelection: OfferSelection | null; merchantStatus: string | null; merchantStrip: ReactNode; selectedKeys: string[]; onSelectedKeys: (keys: string[]) => void; onCompose: () => void; receipt: OfferDeliveryReceipt | null; contactSuppressed: boolean };
   loanId: string | null; onCreateFundingFile: () => void; canUnderwrite: boolean;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const [active, setActive] = useState<StepKey>("terms");
   const [deliveries, setDeliveries] = useState<OfferDelivery[]>([]);
   const [achOpen, setAchOpen] = useState(false);
@@ -103,19 +105,22 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
     {error ? <Callout tone="bad">{error}</Callout> : null}
 
     <Step n={1} step="terms" active={active} title="Client terms" state={states.terms} chip={financing?.dirty ? "Working draft" : terms ? `Saved v${terms.version}` : "Not started"} sub="Preview the current loan, then open the full editor to adjust terms, collateral and closing costs.">
-      {programSelection}
+      {fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="use-of-funds">Program criteria and use of funds</FileWorkspaceLink> : programSelection}
       <div className="uw-terms-layout">
         <div className="grid g12">
           <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} terms={terms} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
-          <div className="uw-actions"><Btn variant="pri" onClick={onEditTerms} disabled={termsLoading || saving}><Icon name="maximize" size={14} />Open full terms</Btn><span className="sub">Loan terms · Amortization & risk · Collateral · Investment & costs</span></div>
+          <div className="uw-actions">{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="terms" disabled={termsLoading || saving}>Open full terms</FileWorkspaceLink> : <Btn variant="pri" onClick={onEditTerms} disabled={termsLoading || saving}><Icon name="maximize" size={14} />Open full terms</Btn>}<span className="sub">Loan terms · Amortization & risk · Collateral · Investment & costs</span></div>
           <SavedTermsDownload profileId={profileId} kind={terms?.kind ?? "application_term_sheet"} version={terms?.version} disabled={termsLoading || saving} />
           {financing?.dirty ? <Callout tone="warn">The preview follows your working loan and fee calculations. Save a new terms version to record these changes.</Callout> : null}
           {termsActions ? <div className="uw-terms-actions">{termsActions}</div> : null}
         </div>
-        <button className="uw-terms-preview" type="button" onClick={onEditTerms} disabled={termsLoading || saving} aria-label={preview.working ? "Working financing preview" : terms ? `Preview and edit client terms version ${terms.version}` : "Create client terms"}>
+        {fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="terms" className="uw-terms-preview" disabled={termsLoading || saving}>
           <div className="uw-preview-brand"><span className="qc-mini">QC</span><span><b>Qualified Commercial</b><small>Financing terms</small></span><Icon name="maximize" size={16} /></div>
           <div className="uw-preview-content"><small>{!preview.working && termsLoading ? "Reading saved terms…" : preview.label}</small><strong>{preview.pending ? "Calculating…" : preview.working ? preview.hasLoan ? money(preview.amount) : "No working loan" : terms ? money(preview.amount) : "Create client terms"}</strong><span>{preview.working ? "Shared financing plan" : terms?.label ?? "Structure the loan in the full editor"}</span><div className="uw-terms-figures"><div><small>Rate</small><b>{preview.ratePct != null ? `${preview.ratePct}%` : "—"}</b></div><div><small>Maturity</small><b>{preview.termMonths ? `${preview.termMonths} months` : "—"}</b></div><div><small>{preview.paymentLabel}</small><b>{preview.pending ? "Calculating…" : money(preview.paymentAmount, 2)}</b></div><div><small>Coverage after</small><b>{preview.pending ? "Calculating…" : ratio(preview.coverageAfter)}</b></div></div><small>{preview.structureLabel}{preview.interestOnlyMonths ? ` · ${preview.interestOnlyMonths} interest-only months` : ""}{!preview.working && terms?.recordedAt ? ` · ${when(terms.recordedAt)}` : ""}</small>{preview.working && terms ? <small aria-label="Saved terms reference">Saved terms v{terms.version} · {money(terms.amount)}. Delivery and acceptance remain linked to that version.</small> : null}<span className="uw-preview-edit"><Icon name="pencil" size={13} />Open to edit and view the full preview</span></div>
-        </button>
+        </FileWorkspaceLink> : <button className="uw-terms-preview" type="button" onClick={onEditTerms} disabled={termsLoading || saving} aria-label={preview.working ? "Working financing preview" : terms ? `Preview and edit client terms version ${terms.version}` : "Create client terms"}>
+          <div className="uw-preview-brand"><span className="qc-mini">QC</span><span><b>Qualified Commercial</b><small>Financing terms</small></span><Icon name="maximize" size={16} /></div>
+          <div className="uw-preview-content"><small>{!preview.working && termsLoading ? "Reading saved terms…" : preview.label}</small><strong>{preview.pending ? "Calculating…" : preview.working ? preview.hasLoan ? money(preview.amount) : "No working loan" : terms ? money(preview.amount) : "Create client terms"}</strong><span>{preview.working ? "Shared financing plan" : terms?.label ?? "Structure the loan in the full editor"}</span><div className="uw-terms-figures"><div><small>Rate</small><b>{preview.ratePct != null ? `${preview.ratePct}%` : "—"}</b></div><div><small>Maturity</small><b>{preview.termMonths ? `${preview.termMonths} months` : "—"}</b></div><div><small>{preview.paymentLabel}</small><b>{preview.pending ? "Calculating…" : money(preview.paymentAmount, 2)}</b></div><div><small>Coverage after</small><b>{preview.pending ? "Calculating…" : ratio(preview.coverageAfter)}</b></div></div><small>{preview.structureLabel}{preview.interestOnlyMonths ? ` · ${preview.interestOnlyMonths} interest-only months` : ""}{!preview.working && terms?.recordedAt ? ` · ${when(terms.recordedAt)}` : ""}</small>{preview.working && terms ? <small aria-label="Saved terms reference">Saved terms v{terms.version} · {money(terms.amount)}. Delivery and acceptance remain linked to that version.</small> : null}<span className="uw-preview-edit"><Icon name="pencil" size={13} />Open to edit and view the full preview</span></div>
+        </button>}
       </div>
     </Step>
 
@@ -149,7 +154,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
       {accepted ? <>
         <div className="uw-accept-grid"><div><span className="sub">{feeInfo.label || "Origination fee"}{points != null ? ` · ${points}%` : ""}</span><strong>{money(originationFee)}</strong></div><div><span className="sub">Consulting fee</span><strong>{money(consulting ?? 0)}</strong></div><div><span className="sub">Accepted-basis earnings</span><strong>{money(forecastEarnings)}</strong></div></div>
         {feeInfo.reviewRequired ? <Callout tone="bad">{feeInfo.reviewReason || "The proposed fees require review."}</Callout> : null}
-        <div className="uw-actions"><Btn size="sm" onClick={() => setAchOpen(value => !value)}>{achOpen ? "Hide fee collection" : "Fee collection (ACH)"}</Btn><Btn size="sm" onClick={onEditTerms}>Review costs in full terms</Btn></div>
+        <div className="uw-actions"><Btn size="sm" onClick={() => setAchOpen(value => !value)}>{achOpen ? "Hide fee collection" : "Fee collection (ACH)"}</Btn>{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="terms">Review costs in full terms</FileWorkspaceLink> : <Btn size="sm" onClick={onEditTerms}>Review costs in full terms</Btn>}</div>
         {achOpen ? <div className="uw-sub"><FeeAllocationEditor profileId={profileId} originationFee={originationFee ?? 0} consultingFee={consulting ?? 0} compact /></div> : null}
         <div className="uw-actions">{loanId ? <a className="btn" href={`/loans/${loanId}`}>Open funding file</a> : <Btn onClick={onCreateFundingFile} disabled={saving || !canUnderwrite || !currentAccepted}>Create funding file</Btn>}{!closed ? <><Btn variant="pri" onClick={() => onStatusChange("closed_won")} disabled={saving || !canUnderwrite || !currentAccepted || !readyToClose}>Record funded closing</Btn><Btn onClick={() => onStatusChange("closed_lost")} disabled={saving || !canUnderwrite}>Closed lost</Btn></> : null}</div>
       </> : null}

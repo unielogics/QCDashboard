@@ -83,6 +83,11 @@ export interface PackageClient {
   revisionDocument?(revisionId: string, phase: "unsigned" | "current" | "executed"): Promise<{ url: string | null; sha256: string | null; phase: string }>;
 }
 
+/** Profile-level terms do not require creating or loading a production package. */
+export function createProfileTermsClient(call: ApiCall): Pick<PackageClient, "termSheet" | "saveTermSheet" | "withdrawTermSheet"> {
+  return { termSheet: profileId => call<TermSheetState>(`/production-packages/term-sheets/${profileId}`), saveTermSheet: (profileId, body) => call<TermSheetResult>(`/production-packages/term-sheets/${profileId}`, json(body)), withdrawTermSheet: (profileId, reason) => call<TermSheetState>(`/production-packages/term-sheets/${profileId}/withdraw`, json({ reason })) };
+}
+
 export type ShareLinkCreateBody = {
   // `rep`: one signed-in field rep. `public`: anyone with the link, opened with a PIN.
   kind?: "rep" | "public"; rep_user_id?: string; recipient_name?: string; recipient_email?: string;

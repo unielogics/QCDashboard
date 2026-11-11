@@ -1,1 +1,3 @@
 .surface{display:grid;gap:16px;min-width:0}.surface>header h3{margin:0;font-size:16px}.surface>header p{margin:5px 0 0;font-size:12px;color:var(--mut);line-height:1.5}.footer{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:12px 0;border-top:1px solid var(--line);min-width:0}
+
+.surface>div:not(.footer){display:grid;gap:16px;min-width:0}

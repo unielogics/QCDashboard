@@ -42,6 +42,8 @@ import { LoanFilePicker, LoanImageName, LoanImagePreviewProvider } from "./LoanI
 import { loanPreviewReference } from "@/lib/loanImagePreview";
 import { formatLoanOriginationDate, formatLoanPaidDown, loanPaidDownDescription } from "@/lib/loanProgress";
 import { canDraftDebtIntake, hasPendingDebtIntakeReview } from "@/lib/financialDebtIntake";
+import { FinancialEditorSurface } from "@/components/file/FinancialEditorSurface";
+import { useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 
 type View = "form" | "worksheet" | "pdf" | "history";
 const VIEWS: Array<{ id: View; label: string; icon: string }> = [
@@ -54,10 +56,13 @@ const newId = () => crypto.randomUUID();
 const rowsOf = (body: FinancialBody): FinancialDebtRow[] => (body.debts as FinancialDebtRow[] | undefined) ?? [];
 
 /** A draft has one body. Form fields, worksheet cells, and source review all edit that body. */
-export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, onPublished, onUploadFiles }: {
+export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, onPublished, onUploadFiles, inline = false }: {
   open: boolean; onClose: () => void; profileId: string; initialKind?: SheetKind; initialView?: View; initialDebtId?: string;
   onPublished?: () => void | Promise<void>; onUploadFiles?: (files: File[]) => Promise<void>;
+  inline?: boolean;
 }) {
+  const fileWorkspace = useFileWorkspace();
+  const registerExit = fileWorkspace?.registerExit;
   const api = useAuthedApi();
   const queryClient = useQueryClient();
   const { getToken, isSignedIn } = useConsoleAuth();
@@ -68,6 +73,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const [expanded, setExpanded] = useState(true);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState("");
+  const busyRef = useRef(busy); busyRef.current = busy;
   const [publishPhase, setPublishPhase] = useState<"draft" | "pdf" | "refresh" | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [localDirty, setLocalDirty] = useState(false);
@@ -174,6 +180,8 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     try { await promise; } finally { if (inFlight.current === promise) inFlight.current = null; }
   }, [api, profileId]);
 
+  useEffect(() => inline ? registerExit?.(async () => { if (busyRef.current) throw new Error("Wait for the current operation before leaving."); await flush(); }) : undefined, [inline, registerExit, flush]);
+
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   useEffect(() => {
     if (!open) return;
@@ -190,10 +198,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     return () => clearTimeout(timer);
   }, [body, conflict, flush, localDirty]);
   useEffect(() => {
-    const beforeUnload = (event: BeforeUnloadEvent) => { if (changed.current !== persisted.current || inFlight.current || newDebtRef.current && !isBlankFinancialDebt(newDebtRef.current)) { event.preventDefault(); event.returnValue = ""; } };
+    const beforeUnload = (event: BeforeUnloadEvent) => { if (inline && busyRef.current || changed.current !== persisted.current || inFlight.current || newDebtRef.current && !isBlankFinancialDebt(newDebtRef.current)) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", beforeUnload);
     return () => window.removeEventListener("beforeunload", beforeUnload);
-  }, []);
+  }, [inline]);
   useEffect(() => () => { if (pdfUrl) URL.revokeObjectURL(pdfUrl); }, [pdfUrl]);
   useEffect(() => () => { if (sourceBlob.current) URL.revokeObjectURL(sourceBlob.current); }, []);
   useEffect(() => { setSourceOriginalUrl(null); setSourceContentType(null); setImageFailed(false); }, [sourceFile]);
@@ -220,6 +228,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     publishKey.current ??= newId();
     setPublishPhase("pdf");
     const next = await saveFinancialVersion(api, profileId, current.current, `${publishKey.current}:${submit ? "file" : "save"}`, submit);
+    fileWorkspace?.saved();
     pdfRequest.current += 1;
     accept(next); publishKey.current = null;
     setPdfUrl(null); setPdfVersionId(next.saved_version?.id ?? next.current_version_id);
@@ -453,10 +462,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   </>) : null;
 
   return <>
-    <Drawer open={open} onClose={close} fullscreen={expanded} width="xl" closeOnBackdrop={false} title="Financial workspace" sub={snapshot?.label ?? FINANCIAL_LABELS[kind]} ariaLabel="Financial workspace" bodyClass="financial-workspace-body" headerActions={<>
+    <FinancialEditorSurface inline={inline} open={open} onClose={close} fullscreen={expanded} width="xl" closeOnBackdrop={false} title="Financial workspace" sub={snapshot?.label ?? FINANCIAL_LABELS[kind]} ariaLabel="Financial workspace" bodyClass="financial-workspace-body" headerActions={<>
       <span className="sub" aria-live="polite">{savingDraft ? "Saving draft…" : localDirty ? "Unsaved draft changes" : hasDraft ? "Draft saved" : currentVersion ? `Current v${currentVersion.version_number}` : "No saved version"}</span>
       <Btn size="sm" disabled={Boolean(busy)} onClick={() => { void run("request", async () => { await flush(); setRequestOpen(true); }); }}><Icon name="mail" size={14} />{kind === "operating_plan" ? "Request client plan" : "Request files"}</Btn>
-      <Btn size="sm" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace size" : "Expand workspace"}><Icon name={expanded ? "layers" : "external"} size={14} />{expanded ? "Restore" : "Expand"}</Btn>
+      {!inline ? <Btn size="sm" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace size" : "Expand workspace"}><Icon name={expanded ? "layers" : "external"} size={14} />{expanded ? "Restore" : "Expand"}</Btn> : null}
       {kind !== "debt_schedule" ? <Btn size="sm" disabled={!snapshot || Boolean(busy) || conflict} onClick={() => publish(true)}>{busy === "file" ? "Filing…" : "File on checklist"}</Btn> : null}
       <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsCompletedDebtVersion} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn>
     </>}>
@@ -567,7 +576,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
           </>}
         </main>
       </div></LoanImagePreviewProvider>
-    </Drawer>
+    </FinancialEditorSurface>
     {newDebt ? <Drawer open onClose={() => { if (!busy) setNewDebt(null); }} title="Add loan row" sub="Save adds this loan to the working draft. Save version publishes financial figures and a dated PDF." width="lg" closeOnBackdrop={false} bodyClass={workspaceStyles.newRowForm} footer={<><Btn disabled={Boolean(busy)} onClick={() => setNewDebt(null)}>Cancel</Btn><span className="sp" /><Btn disabled={Boolean(busy) || conflict || isBlankFinancialDebt(newDebt)} onClick={() => void saveNewDebt(true)}>Add another</Btn><Btn variant="pri" disabled={Boolean(busy) || conflict || isBlankFinancialDebt(newDebt)} onClick={() => void saveNewDebt(false)}>{busy === "add-debt" ? "Saving…" : "Save"}</Btn></>}><DebtScheduleForm key={newDebt.id} singleRow rowEntry scheduleCompletion value={{ business_name: String(body.business_name ?? ""), debts: [{ ...newDebt, editable: true } as DebtRow] }} disabled={Boolean(busy)} onChange={(next) => { const row = next.debts?.[0]; if (row) setNewDebt({ ...newDebt, ...row, id: newDebt.id }); }} />{newDebtError ? <Callout tone="bad">{newDebtError}{conflict ? <p>The shared draft changed. Close this popup and resolve the draft conflict before adding this loan.</p> : <p>Your entered details remain here. Retry Save or Add another.</p>}</Callout> : null}</Drawer> : null}
     {requestOpen ? <RequestFilesDialog profileId={profileId} open prefill={kind === "operating_plan" ? operatingPlanRequest(String(body.business_name ?? "")) : undefined} prefillKey={kind === "operating_plan" ? `operating-plan:${snapshot?.family_id}` : undefined} onClose={() => setRequestOpen(false)} onRequested={() => { void onPublished?.(); }} /> : null}
   </>;

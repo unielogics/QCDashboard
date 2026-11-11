@@ -1,4 +1,5 @@
 "use client";
+import { useFileWorkspaceDirty } from "@/components/file/FileWorkspaceContext";
 
 import { useEffect, useRef, useState } from "react";
 import type { QueryClient } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ export function InvestorCollateralEditor({ open, initialEnabled, data, load, sav
   const [removedAssets, setRemovedAssets] = useState<CollateralAssetDraft[]>([]);
   const [dirty, setDirty] = useState(false), [working, setWorking] = useState<"loading" | "saving" | "refreshing" | null>(null), [conflict, setConflict] = useState(false), [closing, setClosing] = useState(false);
   const busy = working !== null;
+  useFileWorkspaceDirty(dirty, working === "saving" || working === "refreshing");
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
   const message = useRef<HTMLDivElement>(null);
   const activeProfile = useRef(data.profile_id); activeProfile.current = data.profile_id;

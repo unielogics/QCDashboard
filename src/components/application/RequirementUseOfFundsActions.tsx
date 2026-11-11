@@ -1,5 +1,6 @@
 "use client";
 
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { useEffect, useRef, useState } from "react";
 import { Btn, Callout, Input } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
@@ -10,6 +11,7 @@ import styles from "./RequirementCollectionActions.module.css";
 export function RequirementUseOfFundsActions({ profileId, canEdit, disabled = false, onFill }: {
   profileId: string; canEdit: boolean; disabled?: boolean; onFill: () => void;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const api = useAuthedApi();
   const [sharing, setSharing] = useState(false);
   const [link, setLink] = useState("");
@@ -49,7 +51,7 @@ export function RequirementUseOfFundsActions({ profileId, canEdit, disabled = fa
 
   if (!canEdit) return null;
   return <>
-    <Btn size="sm" disabled={disabled || sharing} onClick={onFill}><Icon name="pencil" size={14} />Fill in use of proceeds</Btn>
+    {fileWorkspace ? <FileWorkspaceLink tool="use-of-funds" disabled={disabled || sharing}>Fill in use of proceeds</FileWorkspaceLink> : <Btn size="sm" disabled={disabled || sharing} onClick={onFill}><Icon name="pencil" size={14} />Fill in use of proceeds</Btn>}
     <Btn size="sm" disabled={disabled || sharing} onClick={() => void share()}><Icon name="link" size={14} />{sharing ? "Preparing link…" : "Share link"}</Btn>
     {link ? <div className={styles.link}>
       <label><span>Client use of proceeds link</span><Input aria-label="Client use of proceeds link" value={link} readOnly onFocus={(event) => event.target.select()} /></label>

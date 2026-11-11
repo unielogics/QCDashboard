@@ -10,6 +10,7 @@ import { IconBtn } from "./index";
 export type PageActionMenuItem = {
   label: string;
   href?: string;
+  newTab?: boolean;
   onSelect?: () => void;
   hidden?: boolean;
   tone?: "default" | "danger";
@@ -144,6 +145,8 @@ export function PageActionMenu({ items, label = "More actions" }: { items: PageA
               <Link
                 key={item.label}
                 href={item.href}
+                target={item.newTab ? "_blank" : undefined}
+                rel={item.newTab ? "noopener noreferrer" : undefined}
                 role="menuitem"
                 onClick={() => {
                   menuReceivedFocusRef.current = false;

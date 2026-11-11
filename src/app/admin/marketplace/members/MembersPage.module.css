@@ -1,0 +1,1 @@
+.stack{min-width:0;grid-template-columns:minmax(0,1fr)}.stack>*{min-width:0}.filters{min-width:0;max-width:100%}.filters :global(.seg){min-width:0;max-width:100%;overflow-x:auto;flex:0 1 auto}.filters :global(.seg) button{flex:none}.filters>input{min-width:0;max-width:100%}

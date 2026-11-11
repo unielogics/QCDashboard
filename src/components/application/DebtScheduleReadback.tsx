@@ -1,4 +1,5 @@
 "use client";
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 
 import { Btn, CellChip } from "@/components/ds";
 import { meaningfulFinancialDebts, financialDebtReviewSummary, financialDebtTotals, type FinancialDebtRow, type FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
@@ -22,6 +23,7 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
   onFiles: (rowId: string) => void;
   onHistory: () => void;
 }) {
+  const fileWorkspace = useFileWorkspace();
   const summary = financialDebtReviewSummary(workspace);
   const rows = meaningfulFinancialDebts(workspace.body);
   const excluded = ((workspace.body.debts as FinancialDebtRow[] | undefined) ?? []).filter((row) => row.status === "dismissed" || row.status === "duplicate" || row.duplicate_of_id);
@@ -46,8 +48,8 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
         <CellChip tone={summary.publishNeeded ? "acc" : "mut"}>{summary.publishNeeded ? "Working draft" : "Saved version"}</CellChip>
       </div>
       <div className={styles.actions}>
-        <Btn size="sm" onClick={() => onEdit()}>Edit schedule</Btn>
-        {workspace.versions.length ? <Btn size="sm" onClick={onHistory}>PDFs and history</Btn> : null}
+        {fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form">Edit schedule</FileWorkspaceLink> : <Btn size="sm" onClick={() => onEdit()}>Edit schedule</Btn>}
+        {workspace.versions.length ? fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="history">PDFs and history</FileWorkspaceLink> : <Btn size="sm" onClick={onHistory}>PDFs and history</Btn> : null}
       </div>
     </div>
     <p className={styles.guidance} role="status">{guidance}</p>
@@ -62,8 +64,8 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
             return <tr key={row.id}>
               <th scope="row"><span>{String(row.lender || "Lender needed")}</span>{missing.length ? <small>Needed: {[...new Set(missing)].join(", ")}</small> : null}</th>
               <td>{formatLoanOriginationDate(row.originated_on)}</td><td>{money(row.balance)}</td><td title={loanPaidDownDescription(row.original_amount, row.balance)}>{formatLoanPaidDown(row.original_amount, row.balance)}</td><td>{money(row.payment_amount)}</td><td>{paymentFrequency(row.payment_frequency)}</td><td>{money(row.monthly_payment)}</td>
-              <td><button type="button" className={styles.link} onClick={() => onFiles(row.id)}>{row.evidence_links?.length ? `${row.evidence_links.length} linked ${row.evidence_links.length === 1 ? "file" : "files"}` : "Link files"}</button></td>
-              <td><div className={styles.actions}><Btn size="sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.lender || "obligation"}`}>Edit</Btn><PageActionMenu label={`Manage ${row.lender || "obligation"}`} items={[{ label: "Remove row…", onSelect: () => onEdit(row.id) }, { label: "Mark duplicate of another obligation…", onSelect: () => onEdit(row.id) }, { label: "Link supporting documents", onSelect: () => onFiles(row.id) }]} /></div></td>
+              <td>{fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="pdf" debtId={row.id} className={styles.link}>{row.evidence_links?.length ? `${row.evidence_links.length} linked files` : "Link files"}</FileWorkspaceLink> : <button type="button" className={styles.link} onClick={() => onFiles(row.id)}>{row.evidence_links?.length ? `${row.evidence_links.length} linked ${row.evidence_links.length === 1 ? "file" : "files"}` : "Link files"}</button>}</td>
+              <td><div className={styles.actions}>{fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form" debtId={row.id}>Edit</FileWorkspaceLink> : <Btn size="sm" onClick={() => onEdit(row.id)} aria-label={`Edit ${row.lender || "obligation"}`}>Edit</Btn>}<PageActionMenu label={`Manage ${row.lender || "obligation"}`} items={[{ label: "Remove row…", href: fileWorkspace ? fileWorkspace.href({tool:"forms",kind:"debt_schedule",view:"form",debtId:row.id}) : undefined, newTab: Boolean(fileWorkspace), onSelect: () => onEdit(row.id) }, { label: "Mark duplicate of another obligation…", href: fileWorkspace ? fileWorkspace.href({tool:"forms",kind:"debt_schedule",view:"form",debtId:row.id}) : undefined, newTab: Boolean(fileWorkspace), onSelect: () => onEdit(row.id) }, { label: "Link supporting documents", href: fileWorkspace ? fileWorkspace.href({tool:"forms",kind:"debt_schedule",view:"pdf",debtId:row.id}) : undefined, newTab: Boolean(fileWorkspace), onSelect: () => onFiles(row.id) }]} /></div></td>
             </tr>;
           })}</tbody>
           <tfoot><tr><th scope="row" colSpan={2}>Totals</th><td>{money(totals.total_balance)}</td><td title="Paid-down percentages are calculated per loan, not combined in totals.">—</td><td colSpan={2}>Active obligations only</td><td>{money(totals.total_monthly_payment)}</td><td colSpan={2}>{summary.removed} excluded</td></tr></tfoot>
@@ -71,6 +73,6 @@ export function DebtScheduleReadback({ workspace, onEdit, onFiles, onHistory }: 
       </div>
       {summary.publishedComplete && published ? <p className={styles.note}>Last completed version: v{published.version_number}{published.created_at ? ` · ${new Date(published.created_at).toLocaleString()}` : ""}. {summary.publishedRows} saved {summary.publishedRows === 1 ? "obligation" : "obligations"}.</p> : null}
     </> : workspace.body.no_debt === true ? <p className={styles.note}>The working schedule explicitly declares no outstanding business debt.</p> : null}
-    {excluded.length ? <details className={styles.excluded}><summary>{excluded.length} excluded {excluded.length === 1 ? "row" : "rows"} · kept for history</summary><ul>{excluded.map((row) => <li key={row.id}><span>{String(row.lender || "Unnamed obligation")} · {row.duplicate_of_id ? "Duplicate" : "Removed"}</span><button type="button" className={styles.link} onClick={() => onEdit(row.id)}>Review or restore</button></li>)}</ul></details> : null}
+    {excluded.length ? <details className={styles.excluded}><summary>{excluded.length} excluded {excluded.length === 1 ? "row" : "rows"} · kept for history</summary><ul>{excluded.map((row) => <li key={row.id}><span>{String(row.lender || "Unnamed obligation")} · {row.duplicate_of_id ? "Duplicate" : "Removed"}</span>{fileWorkspace ? <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form" debtId={row.id} className={styles.link}>Review or restore</FileWorkspaceLink> : <button type="button" className={styles.link} onClick={() => onEdit(row.id)}>Review or restore</button>}</li>)}</ul></details> : null}
   </section>;
 }

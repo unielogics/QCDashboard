@@ -1,0 +1,3 @@
+.root{display:grid;grid-template-columns:minmax(0,1fr);gap:10px;min-width:0;padding:12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}.root>*{min-width:0}.root h3,.root p{margin:0}.root h3{font-size:14px}.root p,.root li{font-size:12px;line-height:1.5}.root p,.root li{overflow-wrap:anywhere}.root ul{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 20px;margin:0;padding-left:18px}.root li span{display:block;color:var(--muted)}.root a{justify-self:start;white-space:normal;text-align:left;max-width:100%}.limitations{display:grid;gap:6px;color:var(--muted)}@media(max-width:600px){.root ul{grid-template-columns:minmax(0,1fr)}}
+
+.rules summary{font-size:12px;cursor:pointer}.rules>div{display:grid;gap:10px;padding-top:10px}

@@ -11,7 +11,7 @@
 // (default from the issuer settings). The server, not this screen, decides
 // when a member may see offerings.
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Btn, Card, CellChip, Empty, Field, Input, Loading, PageHeader, Panel, Seg, StatusLine, Table, Td, Textarea, Tr } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import {
@@ -19,6 +19,8 @@ import {
   type CpAccessRequest, type CpMember, type CpMemberStatus,
 } from "@/hooks/useCapitalPartners";
 import { MEMBER_TONE, Status, SuperAdminOnly, day, errorMessage, label, when } from "@/components/marketplace/shared";
+import { MarketplaceMembershipPolicyPanel } from "@/components/marketplace/MarketplaceMembershipPolicy";
+import styles from "./MembersPage.module.css";
 
 type Tab = "requests" | "members";
 type MemberFilter = CpMemberStatus | "all";
@@ -33,13 +35,15 @@ export default function MembersPage() {
 
 function Members() {
   const [tab, setTab] = useState<Tab>("requests");
+  useEffect(() => { if (new URLSearchParams(window.location.search).get("tab") === "members") setTab("members"); }, []);
   return (
-    <div className="grid">
+    <div className={`grid ${styles.stack}`}>
       <PageHeader
         title="Capital partners"
-        lede="Introduction requests from the public page, and the members behind the portal. A member sees offerings only after you approve the accreditation questionnaire and the waiting period has run."
+        lede="Introduction requests and member reviews. Staff-approved members can see published offerings after any recorded waiting period has passed."
         actions={<Seg as="tabs" ariaLabel="Section" value={tab} onChange={setTab} options={[{ value: "requests", label: "Access requests" }, { value: "members", label: "Members" }]} />}
       />
+      <MarketplaceMembershipPolicyPanel />
       {tab === "requests" ? <AccessRequests /> : <MemberList />}
     </div>
   );
@@ -80,8 +84,8 @@ function AccessRequests() {
   };
 
   return (
-    <div className="grid">
-      <div className="row">
+    <div className={`grid ${styles.stack}`}>
+      <div className={`row ${styles.filters}`}>
         <Seg as="filter" ariaLabel="Request status" value={filter} onChange={setFilter} options={(["new", "contacted", "invited", "declined", "all"] as const).map((s) => ({ value: s, label: (<>{label(s)} <span className="num">{counts[s] ?? 0}</span></>) }))} />
       </div>
       <Panel title="Invite by email" bodyClass="row">
@@ -143,8 +147,8 @@ function MemberList() {
   const visible = useMemo(() => (filter === "all" ? rows : rows.filter((r) => r.status === filter)), [rows, filter]);
   const counts = useMemo(() => rows.reduce<Record<string, number>>((acc, r) => ({ ...acc, [r.status]: (acc[r.status] ?? 0) + 1 }), { all: rows.length }), [rows]);
   return (
-    <div className="grid">
-      <div className="row">
+    <div className={`grid ${styles.stack}`}>
+      <div className={`row ${styles.filters}`}>
         <Seg as="filter" ariaLabel="Member status" value={filter} onChange={setFilter} options={MEMBER_FILTERS.map((s) => ({ value: s, label: (<>{label(s)} <span className="num">{counts[s] ?? 0}</span></>) }))} />
         <Input placeholder="Search name or email" value={q} onChange={(e) => setQ(e.target.value)} />
       </div>

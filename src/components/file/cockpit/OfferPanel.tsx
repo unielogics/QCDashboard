@@ -1,4 +1,5 @@
 "use client";
+import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 
 // The capital-partners panel, editable in place. An unfunded file is listed
 // with suggested terms: the desk picks the products to offer (several if it
@@ -125,6 +126,7 @@ const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
 export function OfferPanel({ cockpit, props, innerRef, embedded = false, workingFinancing, planSaveControls }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement>; embedded?: boolean; workingFinancing?: WorkingFinancing | null; planSaveControls?: MarketplacePlanControls | null }) {
   const { profileId, programReadiness, termSheet, packageState, canPublish, canRecordTerms, onRecordTerms, onOpenEvidence, onOpenPackage } = props;
+  const fileWorkspace = useFileWorkspace();
   const api = useAuthedApi();
   const queryClient = useQueryClient();
   const [acknowledgedListing, setAcknowledgedListing] = useState<{ profileId: string; id: string } | null>(null);
@@ -152,6 +154,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  useEffect(() => { if (!fileWorkspace?.pageMode) return; const warn = (event: BeforeUnloadEvent) => { if (dirty || busy) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", warn); return () => window.removeEventListener("beforeunload", warn); }, [fileWorkspace?.pageMode, dirty, busy]);
   const operation = useRef<{ profileId: string } | null>(null);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
@@ -377,6 +380,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
         }
       }
       persistedListing = result;
+      fileWorkspace?.saved();
       if (mounted.current && activeProfile.current === requestedProfile) {
         setAcknowledgedListing({ profileId, id: result.id });
         queryClient.setQueryData(["cp-listing", result.id], result);
@@ -415,6 +419,8 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const editable = listingEditable && !busy;
   const preparationBlocker = planSaveControls?.profileId !== profileId || budgetControls?.profileId !== profileId ? "Loading the shared financial editors…" : planSaveControls.blocker || (budgetControls.needsSave ? budgetControls.blocker : null);
 
+if (fileWorkspace && !fileWorkspace.pageMode) return <section className="fc-card fc-wide" ref={innerRef}><h4>Marketplace setup</h4><p className="sub">Open a separate workspace from saved file data. Unsaved changes stay in this tab.</p><div className="row"><FileWorkspaceLink tool="marketplace">Open marketplace setup</FileWorkspaceLink>{listingId ? <a className="btn btn-sm" href={`/admin/marketplace/${listingId}`} target="_blank" rel="noopener noreferrer">Manage existing listing</a> : null}</div></section>;
+
   return (
     <section className={embedded ? "grid g12" : "fc-card fc-wide"} id="fc-marketplace" ref={node => { sectionRef.current = node; if (typeof innerRef === "function") innerRef(node); else if (innerRef) (innerRef as { current: HTMLElement | null }).current = node; }}>
       <div className="fc-card-h">
@@ -425,14 +431,14 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
           </div>
         </div>
         <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          {props.onStructureLoan ? <Btn size="sm" variant="pri" onClick={props.onStructureLoan}><Icon name="pencil" size={13} />Structure loan / Coverage plan</Btn> : null}
+          {props.onStructureLoan ? (fileWorkspace ? <FileWorkspaceLink tool="terms" disabled={busy}>Structure loan / Coverage plan</FileWorkspaceLink> : <Btn size="sm" variant="pri" onClick={props.onStructureLoan}><Icon name="pencil" size={13} />Structure loan / Coverage plan</Btn>) : null}
           {lookup.data?.listing ? (
             <>
               <CellChip tone={LISTING_TONE[lookup.data.listing.status] ?? "mut"}>{lookup.data.listing.ref} · {lookup.data.listing.status.replace(/_/g, " ")}</CellChip>
               <MarketplaceOfferLink listing={lookup.data.listing} compact showStatus={false} />
-              <Btn size="sm" onClick={() => window.location.assign(`/admin/marketplace/${lookup.data?.listing?.id}`)}>
+              {fileWorkspace ? <a className="btn btn-sm" href={`/admin/marketplace/${lookup.data?.listing?.id}`} target="_blank" rel="noopener noreferrer">Documents and publish <Icon name="arrowR" size={13} /></a> : <Btn size="sm" onClick={() => window.location.assign(`/admin/marketplace/${lookup.data?.listing?.id}`)}>
                 Documents and publish <Icon name="arrowR" size={13} />
-              </Btn>
+              </Btn>}
             </>
           ) : null}
           {!canPublish ? <span className="sub">A super admin publishes listings.</span> : null}
@@ -454,20 +460,20 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
             <CellChip tone={coverage.tax_years.length ? "ok" : "warn"}>{coverage.tax_years.length ? `Tax years ${coverage.tax_years.join(", ")}` : "No tax return"}</CellChip>
             <CellChip tone={scheduleStatusTone(coverage.debt_schedule_status ?? "missing")}>Debt schedule · {scheduleStatusShort(coverage.debt_schedule_status ?? "missing", coverage.debt_rows)}</CellChip>
           </div>
-          <Btn size="sm" onClick={onOpenEvidence}>Open the evidence room</Btn>
+          {fileWorkspace ? <a className="btn btn-sm" href={`/files/${encodeURIComponent(fileWorkspace.intakeId)}?section=evidence`} target="_blank" rel="noopener noreferrer">Open the evidence room</a> : <Btn size="sm" onClick={onOpenEvidence}>Open the evidence room</Btn>}
         </div>
         <div className="fc-listing-item">
           <Lbl>Loan terms on record</Lbl>
           <strong>{sharedLoan ? `${money(sharedLoan.amount)} at ${sharedLoan.ratePct ?? "—"}% for ${sharedLoan.termMonths ?? "—"} mo` : sheet ? `${money(sheet.approved_amount)} at ${sheet.rate_pct}% for ${sheet.term_months} mo` : cockpit.proposed_terms ? `${money(cockpit.proposed_terms.amount)} at ${cockpit.proposed_terms.rate_pct ?? "—"}%` : "Not recorded"}</strong>
           <div className="sub">{sharedLoan ? workingFinancing?.dirty ? "Working loan · save before updating the listing" : "Mirrored from the saved coverage plan" : recordedReferenceOnly ? "Historical terms reference · no active proposal" : sheet ? `${sheet.funding_party_name} · v${sheet.version}` : "Structure the shared loan before preparing its offering."}</div>
-          {canRecordTerms && !props.onStructureLoan ? <Btn size="sm" onClick={onRecordTerms}>{sheet ? "Update loan terms" : "Record loan terms"}</Btn> : null}
+          {canRecordTerms && !props.onStructureLoan ? (fileWorkspace ? <FileWorkspaceLink tool="terms" disabled={busy}>{sheet ? "Update loan terms" : "Record loan terms"}</FileWorkspaceLink> : <Btn size="sm" onClick={onRecordTerms}>{sheet ? "Update loan terms" : "Record loan terms"}</Btn>) : null}
         </div>
         <div className="fc-listing-item">
           <Lbl>Package</Lbl>
           <strong>{packageState.generated ? `Summary v${packageState.summaryVersion ?? "?"} · packet v${packageState.packetVersion ?? "?"}` : "Not generated"}</strong>
           <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Generate before publishing" : packageState.inSync ? "Current" : "Refresh before publishing"}</CellChip></div>
           <small className="sub">A listing draft can be created now. Package and publication readiness are reviewed separately.</small>
-          <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>
+          {fileWorkspace ? <a className="btn btn-sm" href={`/files/${encodeURIComponent(fileWorkspace.intakeId)}?workspace=package#package-readiness`} target="_blank" rel="noopener noreferrer">Package readiness</a> : <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>}
         </div>
         {cockpit.plan?.evaluation?.active ? (
           <div className="fc-listing-item">
@@ -485,7 +491,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
 
       {canPublish ? (
         <>
-          <DealBudgetSection profileId={profileId} disabled={!listingEditable} compact={false} financialPlan={workingFinancing?.profileId === profileId ? workingFinancing.plan : undefined} loan={sharedLoan ? { amount: sharedLoan.amount, rate_pct: sharedLoan.ratePct, term_months: sharedLoan.termMonths, structure: sharedLoan.structure, interest_only_months: sharedLoan.interestOnlyMonths, repayment_config: sharedLoan.repaymentConfig, payments_per_year: sharedLoan.paymentsPerYear } : null} onSaveControlsChange={budgetControlsChanged} existingFunding={listing.data ? { capital: num(listing.data.offered_amount), minimum: num(listing.data.minimum_investment) } : undefined} />
+          <DealBudgetSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!listingEditable} compact={false} financialPlan={workingFinancing?.profileId === profileId ? workingFinancing.plan : undefined} loan={sharedLoan ? { amount: sharedLoan.amount, rate_pct: sharedLoan.ratePct, term_months: sharedLoan.termMonths, structure: sharedLoan.structure, interest_only_months: sharedLoan.interestOnlyMonths, repayment_config: sharedLoan.repaymentConfig, payments_per_year: sharedLoan.paymentsPerYear } : null} onSaveControlsChange={budgetControlsChanged} existingFunding={listing.data ? { capital: num(listing.data.offered_amount), minimum: num(listing.data.minimum_investment) } : undefined} />
           <div className="grid g8" aria-label="Selected offering product">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}><Lbl>Product to offer</Lbl><strong>{primary?.draft.label || "Choose a product"}</strong>{primary ? <span className="sub">{money(num(primary.draft.amount))} · {multiple(primary.dscr)} projected DSCR</span> : null}{sharedLoan ? <CellChip tone="acc">Shared coverage loan</CellChip> : null}{sharedProposalChanged ? <CellChip tone="warn">Listing needs the current proposal</CellChip> : null}</div>
             <details>
@@ -522,7 +528,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
                 <tbody>
                   {computed.map(({ draft, payment, coveragePayment, dscr, schedule }) => {
                     const status = dscrStatusOf(dscr);
-                    return (
+  return (
                       <tr key={draft.key}>
                         <td><input type="radio" name="primary-product" aria-label={`Make ${draft.label} the primary product`} checked={draft.primary} disabled={!editable || Boolean(sharedLoan && canonicalProgram)} onChange={() => makePrimary(draft.key)} /></td>
                         <td>
@@ -599,7 +605,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
             </div> : null}
           </section>
           {repaymentError ? <StatusLine tone="bad">{repaymentError} Resolve the repayment schedule before saving.</StatusLine> : null}
-          {preparationBlocker ? <StatusLine tone="warn">{preparationBlocker}{props.onStructureLoan ? <Btn size="sm" onClick={props.onStructureLoan} disabled={busy}>Review shared loan / full terms</Btn> : null}</StatusLine> : null}
+          {preparationBlocker ? <StatusLine tone="warn">{preparationBlocker}{props.onStructureLoan ? (fileWorkspace ? <FileWorkspaceLink tool="terms" disabled={busy}>Review shared loan / full terms</FileWorkspaceLink> : <Btn size="sm" onClick={props.onStructureLoan} disabled={busy}>Review shared loan / full terms</Btn>) : null}</StatusLine> : null}
           {listingId && !embedded ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             <Btn variant="pri" size="sm" aria-label={listingId ? "Save & refresh listing from file" : "Save & create listing draft"} onClick={() => void save()} disabled={busy || !listingEditable || lookup.isLoading || !primary || recordedReferenceOnly || !!repaymentError || Boolean(preparationBlocker) || Boolean(planSaveControls?.busy || budgetControls?.busy)}>
