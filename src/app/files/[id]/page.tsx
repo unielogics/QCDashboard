@@ -63,12 +63,14 @@ export default function FilePage() {
         initialEmailThreadId={communicationChannel === "email" ? searchParams.get("thread") : null}
         onCommunicationNavigate={(channel) => {
           const query = new URLSearchParams(searchParams.toString());
+          query.delete("financial_action");
           query.set("section", "communications"); query.set("channel", channel);
           if (channel !== "email") query.delete("thread");
           router.push(`/files/${leadId}?${query}`, { scroll: false });
         }}
         onEmailThreadNavigate={(threadId) => {
           const query = new URLSearchParams(searchParams.toString());
+          query.delete("financial_action");
           query.set("section", "communications"); query.set("channel", "email"); query.set("thread", threadId);
           router.replace(`/files/${leadId}?${query}`, { scroll: false });
         }}
