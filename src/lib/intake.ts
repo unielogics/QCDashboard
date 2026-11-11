@@ -103,6 +103,7 @@ export type Widget = {
 };
 
 export type IntakeResponse = {
+  room_pin_setup_required?: boolean;
   intake: Intake;
   mca_refinance_policy?: import("@/lib/mcaRefinancePolicy").McaRefinancePolicy | null;
   token?: string | null;

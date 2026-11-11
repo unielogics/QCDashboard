@@ -7,6 +7,8 @@ import type { CSSProperties, DragEvent, MutableRefObject, ReactNode } from "reac
 import { uploadFile } from "@/lib/fileUpload";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
+import { RoomPinFields, IntakeRoomPinGate } from "@/components/room/RoomPinFields";
+import { chosenRoomPinProblem } from "@/lib/roomPin";
 import { apiBase } from "@/lib/api";
 import { clientActionableRequestedDocumentUploadTarget, clientApiError, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
@@ -120,6 +122,7 @@ type Widget = {
 };
 
 type IntakeResponse = {
+  room_pin_setup_required?: boolean;
   intake: Intake;
   // Non-null while the desk has taken the conversation over: a person is
   // answering and the assistant is standing down until this time.
@@ -305,6 +308,8 @@ export default function DealerAIUnderwriterPage() {
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [roomPin, setRoomPin] = useState("");
+  const [roomPinConfirmation, setRoomPinConfirmation] = useState("");
   const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [resumeEmail, setResumeEmail] = useState("");
   const [loginCode, setLoginCode] = useState("");
@@ -514,6 +519,8 @@ export default function DealerAIUnderwriterPage() {
       setStatus(profileProblem);
       return;
     }
+    const pinProblem = chosenRoomPinProblem(roomPin, roomPinConfirmation, language ?? "en");
+    if (pinProblem) { setStatus(pinProblem); return; }
     if (!legalAccepted) {
       setStatus(c.errAcceptTerms);
       return;
@@ -535,6 +542,7 @@ export default function DealerAIUnderwriterPage() {
           monthly_rent: numericOrNull(contact.monthly_rent),
           estimated_credit_tier: contact.estimated_credit_tier.trim() || null,
           ...newBusinessProfileBody(contact),
+          secure_room_pin: roomPin,
           terms_accepted: true,
           privacy_accepted: true,
           ...smsChoicesBody(sms),
@@ -547,6 +555,7 @@ export default function DealerAIUnderwriterPage() {
           ...readPublicIntakeAttribution(),
         }),
       });
+      setRoomPin(""); setRoomPinConfirmation("");
       applyResponse(payload, payload.token ?? "", true);
       pushAssistantFromPayload(payload);
       if (typeof window !== "undefined") {
@@ -1070,6 +1079,7 @@ export default function DealerAIUnderwriterPage() {
   }
 
   function logoutRoom() {
+    setRoomPin(""); setRoomPinConfirmation("");
     const currentSession = dealerSessionToken || (typeof window !== "undefined" ? window.sessionStorage.getItem(DEALER_AI_SESSION_KEY) || "" : "");
     if (currentSession) {
       call("/public/funding-review/logout", {
@@ -1109,6 +1119,13 @@ export default function DealerAIUnderwriterPage() {
 
   function pushUser(content: string) {
     setChat((current) => [...current, { id: cryptoId(), role: "user", content }]);
+  }
+
+  if (mounted && response?.room_pin_setup_required) {
+    return <main className="qc-public-intake-theme"><IntakeRoomPinGate locale={language ?? "en"} onSave={async (pin) => {
+      await call<SecureRoomHandoff>(`/public/funding-review/${encodeURIComponent(token)}/secure-room`, { method: "POST", body: JSON.stringify({ new_passcode: pin }) });
+      setResponse((current) => current ? { ...current, room_pin_setup_required: false } : current);
+    }} /></main>;
   }
 
   if (!mounted) {
@@ -1189,6 +1206,10 @@ export default function DealerAIUnderwriterPage() {
                     setContact={setContact}
                     busy={busy || emailLookupBusy}
                     emailLookupBusy={emailLookupBusy}
+                    roomPin={roomPin}
+                    roomPinConfirmation={roomPinConfirmation}
+                    setRoomPin={setRoomPin}
+                    setRoomPinConfirmation={setRoomPinConfirmation}
                     legalAccepted={legalAccepted}
                     setLegalAccepted={setLegalAccepted}
                     sms={sms}
@@ -1474,6 +1495,10 @@ function ContactWidget({
   setContact,
   busy,
   emailLookupBusy,
+  roomPin,
+  roomPinConfirmation,
+  setRoomPin,
+  setRoomPinConfirmation,
   legalAccepted,
   setLegalAccepted,
   sms,
@@ -1488,6 +1513,10 @@ function ContactWidget({
   setContact: (value: typeof initialContact) => void;
   busy: boolean;
   emailLookupBusy: boolean;
+  roomPin: string;
+  roomPinConfirmation: string;
+  setRoomPin: (value: string) => void;
+  setRoomPinConfirmation: (value: string) => void;
   legalAccepted: boolean;
   setLegalAccepted: (value: boolean) => void;
   sms: SmsChoices;
@@ -1577,6 +1606,7 @@ function ContactWidget({
         </div>
       </div>
       <Field label="Monthly rent" value={contact.monthly_rent} onChange={(value) => setContact({ ...contact, monthly_rent: onlyDigits(value) })} placeholder="4500" />
+      <RoomPinFields pin={roomPin} confirmation={roomPinConfirmation} onPinChange={setRoomPin} onConfirmationChange={setRoomPinConfirmation} disabled={busy} locale={language} />
       <OnboardingConsent
         language={language}
         legalAccepted={legalAccepted}

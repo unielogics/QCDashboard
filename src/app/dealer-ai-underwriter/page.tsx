@@ -8,6 +8,8 @@ import { uploadFile } from "@/lib/fileUpload";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { QCMark } from "@/components/QCMark";
+import { RoomPinFields, IntakeRoomPinGate } from "@/components/room/RoomPinFields";
+import { chosenRoomPinProblem } from "@/lib/roomPin";
 import { apiBase } from "@/lib/api";
 import { clientActionableRequestedDocumentUploadTarget, clientApiError, clientRequestedDocumentNeedsAction, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
@@ -118,6 +120,7 @@ type Widget = {
 };
 
 type IntakeResponse = {
+  room_pin_setup_required?: boolean;
   intake: Intake;
   // Non-null while the desk has taken the conversation over: a person is
   // answering and the assistant is standing down until this time.
@@ -378,6 +381,8 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
   const [reviewProgress, setReviewProgress] = useState<ReviewProgressStage>("idle");
   const [reviewCompletedAt, setReviewCompletedAt] = useState<string | null>(null);
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [roomPin, setRoomPin] = useState("");
+  const [roomPinConfirmation, setRoomPinConfirmation] = useState("");
   const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [resumeEmail, setResumeEmail] = useState("");
   const [loginCode, setLoginCode] = useState("");
@@ -569,6 +574,8 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
       setStatus(profileProblem);
       return;
     }
+    const pinProblem = chosenRoomPinProblem(roomPin, roomPinConfirmation, language ?? "en");
+    if (pinProblem) { setStatus(pinProblem); return; }
     if (!legalAccepted) {
       setStatus(c.errAcceptTerms);
       return;
@@ -601,6 +608,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
           phone: contact.phone.trim(),
           business_name: contact.business_name.trim() || null,
           ...newBusinessProfileBody(contact),
+          secure_room_pin: roomPin,
           terms_accepted: true,
           privacy_accepted: true,
           ...smsChoicesBody(sms),
@@ -627,6 +635,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
           ...attribution,
         }),
       });
+      setRoomPin(""); setRoomPinConfirmation("");
       applyResponse(payload, payload.token ?? "", true);
       pushAssistantFromPayload(payload);
       if (isEquipment) emitPublicIntakeConversion("qc_application_start", attribution, language ?? "en");
@@ -1169,6 +1178,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
   }
 
   function logoutRoom() {
+    setRoomPin(""); setRoomPinConfirmation("");
     const currentSession = dealerSessionToken || (typeof window !== "undefined" ? window.sessionStorage.getItem(sessionStorageKey) || "" : "");
     if (currentSession) {
       call("/public/dealer-ai-intake/logout", {
@@ -1208,6 +1218,13 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
 
   function pushUser(content: string) {
     setChat((current) => [...current, { id: cryptoId(), role: "user", content }]);
+  }
+
+  if (mounted && response?.room_pin_setup_required) {
+    return <main className="qc-public-intake-theme"><IntakeRoomPinGate locale={language ?? "en"} onSave={async (pin) => {
+      await call<SecureRoomHandoff>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/secure-room`, { method: "POST", body: JSON.stringify({ new_passcode: pin }) });
+      setResponse((current) => current ? { ...current, room_pin_setup_required: false } : current);
+    }} /></main>;
   }
 
   if (!mounted) {
@@ -1298,6 +1315,10 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                     equipmentCopy={equipmentC}
                     busy={busy || emailLookupBusy}
                     emailLookupBusy={emailLookupBusy}
+                    roomPin={roomPin}
+                    roomPinConfirmation={roomPinConfirmation}
+                    setRoomPin={setRoomPin}
+                    setRoomPinConfirmation={setRoomPinConfirmation}
                     legalAccepted={legalAccepted}
                     setLegalAccepted={setLegalAccepted}
                     sms={sms}
@@ -1620,6 +1641,10 @@ function ContactWidget({
   equipmentCopy: equipmentFieldsCopy,
   busy,
   emailLookupBusy,
+  roomPin,
+  roomPinConfirmation,
+  setRoomPin,
+  setRoomPinConfirmation,
   legalAccepted,
   setLegalAccepted,
   sms,
@@ -1637,6 +1662,10 @@ function ContactWidget({
   equipmentCopy: (typeof equipmentFormCopy)[Lang];
   busy: boolean;
   emailLookupBusy: boolean;
+  roomPin: string;
+  roomPinConfirmation: string;
+  setRoomPin: (value: string) => void;
+  setRoomPinConfirmation: (value: string) => void;
   legalAccepted: boolean;
   setLegalAccepted: (value: boolean) => void;
   sms: SmsChoices;
@@ -1747,6 +1776,7 @@ function ContactWidget({
           />
         </section>
       ) : null}
+      <RoomPinFields pin={roomPin} confirmation={roomPinConfirmation} onPinChange={setRoomPin} onConfirmationChange={setRoomPinConfirmation} disabled={busy} locale={language} />
       <OnboardingConsent
         language={language}
         legalAccepted={legalAccepted}

@@ -6,6 +6,8 @@ import { useEffect, useState } from "react";
 import { Btn, Field, Input, PageHeader, Panel, StatusLine } from "@/components/ds";
 import { useAuthedApi } from "@/hooks/useApi";
 import { ApiError } from "@/lib/api";
+import { RoomPinFields } from "@/components/room/RoomPinFields";
+import { chosenRoomPinProblem } from "@/lib/roomPin";
 import type { User } from "@/lib/types";
 import { PRIVACY_VERSION, TERMS_VERSION } from "@/lib/legal";
 import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
@@ -36,6 +38,8 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
   const [businessName, setBusinessName] = useState("");
   const [phone, setPhone] = useState(user.phone ?? "");
   const [consented, setConsented] = useState(false);
+  const [roomPin, setRoomPin] = useState("");
+  const [roomPinConfirmation, setRoomPinConfirmation] = useState("");
   const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [busy, setBusy] = useState(false);
@@ -52,7 +56,7 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
   const es = pending.locale === "es";
   const normalizedPhone = normalizePhone(phone);
   const profileProblem = newBusinessProfileProblem(businessProfile, pending.locale);
-  const canSubmit = businessName.trim().length > 1 && normalizedPhone !== null && profileProblem === null && consented && !busy;
+  const canSubmit = businessName.trim().length > 1 && normalizedPhone !== null && profileProblem === null && chosenRoomPinProblem(roomPin, roomPinConfirmation, pending.locale) === null && consented && !busy;
 
   async function claim() {
     if (!pending || !canSubmit) return;
@@ -70,6 +74,7 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
         method: "POST",
         body: JSON.stringify({
           idempotency_key: idempotencyKey,
+          secure_room_pin: roomPin,
           capital_readiness_diagnostic: diagnostic satisfies CapitalReadinessDiagnosticHandoff,
           business_name: businessName.trim(),
           phone: normalizedPhone,
@@ -119,6 +124,7 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
             </Field>
             <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} language={pending.locale} />
             {profileProblem && Object.values(businessProfile).some((value) => value.trim()) ? <StatusLine tone="warn">{profileProblem}</StatusLine> : null}
+            <RoomPinFields pin={roomPin} confirmation={roomPinConfirmation} onPinChange={setRoomPin} onConfirmationChange={setRoomPinConfirmation} disabled={busy} locale={pending.locale} />
             <OnboardingConsent
               language={pending.locale}
               legalAccepted={consented}

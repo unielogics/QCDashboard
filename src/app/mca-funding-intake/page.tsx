@@ -1,5 +1,7 @@
 "use client";
 
+import { chosenRoomPinProblem } from "@/lib/roomPin";
+
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { QCMark } from "@/components/QCMark";
 import { apiBase } from "@/lib/api";
@@ -63,7 +65,8 @@ export default function McaFundingIntakePage() {
     if (step === 1) { setStep(2); return; }
     if (submitting.current) return;
     if (!Object.values(answers).every((value) => value.trim()) || !validPhone(answers.phone) || !consent) { setError(c.invalid); return; }
-    if (!/^\d{6}$/.test(pin) || pin !== confirmPin) { setError(c.invalidPin); return; }
+    const pinProblem = chosenRoomPinProblem(pin, confirmPin, locale);
+    if (pinProblem) { setError(pinProblem); return; }
     submitting.current = true; setBusy(true);
     try {
       attempt.current ||= crypto.randomUUID();

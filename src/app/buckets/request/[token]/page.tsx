@@ -86,9 +86,6 @@ export default function BucketRequestPage() {
   const [info, setInfo] = useState<RequestInfo | null>(null);
   const [session, setSession] = useState<UploadSession | null>(null);
   const [passcode, setPasscode] = useState("");
-  // True when the confirmation link carried the PIN, so the client has never typed it.
-  const [arrivedWithCode, setArrivedWithCode] = useState(false);
-  const [pinSetupDismissed, setPinSetupDismissed] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [note, setNote] = useState("");
@@ -142,7 +139,7 @@ export default function BucketRequestPage() {
     const match = /(?:^#|&)p=(\d{6})(?:&|$)/.exec(window.location.hash || "");
     // Arriving with the code in hand is the one moment the client has never
     // had to know their PIN; the room asks them to choose one before going on.
-    if (match) { setPasscode(match[1]); setArrivedWithCode(true); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
+    if (match) { setPasscode(match[1]); window.history.replaceState(null, "", window.location.pathname + window.location.search); }
   }, []);
   useEffect(() => {
     fetch(`${apiBase}/api/v1/buckets/request/${token}`)
@@ -161,6 +158,8 @@ export default function BucketRequestPage() {
         setStatus(error.message);
       });
   }, [isOfferDeepLink, token]);
+
+  const pinSetup = roomPinSetupMode({ needsSetup: Boolean(session?.passcode_needs_setup), offerOnly: offerOnlyAccess });
 
   const uploadedFiles = useMemo(() => session?.files ?? [], [session?.files]);
   const versionedFiles = useMemo(() => latestDocumentFiles(uploadedFiles), [uploadedFiles]);
@@ -208,7 +207,7 @@ export default function BucketRequestPage() {
   const processingFileCount = session?.evidence_banking_summary?.processing_file_count ?? 0;
 
   useEffect(() => {
-    if (processingFileCount <= 0 && !hasCheckingUnlockedCopyTask) return;
+    if (pinSetup === "required" || (processingFileCount <= 0 && !hasCheckingUnlockedCopyTask)) return;
     let cancelled = false;
     let attempt = 0;
     let timer: number | undefined;
@@ -229,7 +228,7 @@ export default function BucketRequestPage() {
     };
     timer = window.setTimeout(() => { void poll(); }, 4_000);
     return () => { cancelled = true; if (timer !== undefined) window.clearTimeout(timer); };
-  }, [hasCheckingUnlockedCopyTask, passcode, processingFileCount, token]);
+  }, [hasCheckingUnlockedCopyTask, passcode, pinSetup, processingFileCount, token]);
 
   function chooseTheme(next: "light" | "obsidian") {
     setTheme(next);
@@ -240,14 +239,13 @@ export default function BucketRequestPage() {
 
   // Entering the room records a sign-in; refreshing an open room must not,
   // so the first call goes to /access and every later one to /status.
-  async function fetchSession(endpoint: "access" | "status"): Promise<UploadSession> {
-    const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: passcode.trim() }) });
+  async function fetchSession(endpoint: "access" | "status", code = passcode.trim()): Promise<UploadSession> {
+    const response = await fetch(`${apiBase}/api/v1/buckets/request/${token}/${endpoint}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
     if (!response.ok) throw await responseError(response, "The room PIN did not work.");
     const data = await response.json() as UploadSession;
     return { ...data, room_kind: data.room_kind ?? "basic" };
   }
   async function fetchAccessSession(): Promise<UploadSession> { return fetchSession("access"); }
-  async function fetchStatusSession(): Promise<UploadSession> { return fetchSession("status"); }
   async function fetchOfferOnlySession(code: string): Promise<UploadSession> {
     const response = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/offer-deliveries`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ passcode: code }) });
     if (!response.ok) throw await responseError(response, "The room PIN did not work.");
@@ -380,12 +378,14 @@ export default function BucketRequestPage() {
     setHasMcaAgreements(loaded.hasAgreements);
     if (loaded.roomKind) setPrecallRoomKind(loaded.roomKind);
   }
-  async function refreshRoom() {
-    const nextSession = await fetchStatusSession();
-    const context = await fetchRoomContext(passcode.trim(), nextSession.room_kind);
+  async function refreshRoomWithCode(code: string) {
+    const nextSession = await fetchSession("status", code);
+    setSession(nextSession);
+    if (nextSession.passcode_needs_setup) return;
+    const context = await fetchRoomContext(code, nextSession.room_kind);
     const [nextOffer, nextUpdates] = await Promise.all([
-      context.hasMerchantOffer ? fetchOffer(passcode.trim()) : Promise.resolve(null),
-      context.hasTimeline ? fetchUpdates(passcode.trim()) : Promise.resolve(null),
+      context.hasMerchantOffer ? fetchOffer(code) : Promise.resolve(null),
+      context.hasTimeline ? fetchUpdates(code) : Promise.resolve(null),
     ]);
     setSession(nextSession);
     setPrecall(context.precall);
@@ -396,6 +396,7 @@ export default function BucketRequestPage() {
     setOffer(nextOffer);
     setUpdates(nextUpdates);
   }
+  async function refreshRoom() { return refreshRoomWithCode(passcode.trim()); }
   async function openInvite() {
     if (!isValidRoomPin(passcode.trim())) return;
     setIsAccessing(true); setStatus("");
@@ -416,6 +417,10 @@ export default function BucketRequestPage() {
         setHasApplication(false);
         setHasMcaReview(false);
         setHasMcaAgreements(false); setHasMcaPayments(false);
+        return;
+      }
+      if (data.passcode_needs_setup) {
+        setSession(data); setName(data.recipient_name || ""); setEmail(data.recipient_email || ""); setStatus(""); setOfferOnlyAccess(false);
         return;
       }
       const context = await fetchRoomContext(passcode.trim(), data.room_kind);
@@ -511,8 +516,15 @@ export default function BucketRequestPage() {
     } finally { submitInFlightRef.current = false; setIsUploading(false); }
   }
 
-  // Whether, and how firmly, the room asks the client to choose their own PIN.
-  const pinSetup = roomPinSetupMode({ needsSetup: Boolean(session?.passcode_needs_setup), arrivedWithCode, dismissed: pinSetupDismissed, offerOnly: offerOnlyAccess });
+  if (session && pinSetup === "required") return <main className={`application-room ${theme === "obsidian" ? "is-obsidian" : "is-light"}`}>
+    <div className="application-room-topline" />
+    <section className="application-room-shell is-pin-setup"><header className="application-room-header"><RoomBrand /></header>
+      <RoomPinSetup token={token} passcode={passcode.trim()} onSaved={(pin) => {
+        setPasscode(pin); setSession((current) => current ? { ...current, passcode_needs_setup: false } : current);
+        void refreshRoomWithCode(pin).catch((error) => setStatus(error instanceof Error ? error.message : "Your PIN was saved. Refresh the room to continue."));
+      }} />
+    </section>
+  </main>;
 
   return <main className={`application-room ${theme === "obsidian" ? "is-obsidian" : "is-light"}`}>
     <div className="application-room-topline" />
@@ -520,13 +532,12 @@ export default function BucketRequestPage() {
       <RoomBrand />
       <div className="application-room-gate-copy"><span className="application-room-eyebrow">Secure application room</span><h1>Welcome{info?.recipient_name ? `, ${info.recipient_name}` : ""}</h1><p>{info ? <>Enter the six-digit room PIN for <strong>{info.bucket.name}</strong>.</> : "Opening your secure application room."}</p></div>
       {info && !info.requires_passcode ? <div className="application-room-alert bad">Ask Qualified Commercial to regenerate this room with a PIN.</div> : null}
-      <label className="application-room-field"><span>Room PIN</span><input value={passcode} onChange={(event) => setPasscode(normalizeRoomPin(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="6-digit PIN" autoComplete="one-time-code" inputMode="numeric" maxLength={6} disabled={!info || !info.requires_passcode || isAccessing} /></label>
+      <label className="application-room-field"><span>Room PIN</span><input value={passcode} onChange={(event) => setPasscode(normalizeRoomPin(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="6-digit PIN" type="password" autoComplete="current-password" inputMode="numeric" maxLength={6} disabled={!info || !info.requires_passcode || isAccessing} /></label>
       <button className="application-room-primary" onClick={() => void openInvite()} disabled={!info || !info.requires_passcode || !isValidRoomPin(passcode.trim()) || isAccessing}>{isAccessing ? "Checking PIN..." : "Open application room"}</button>
       {status ? <div className={`application-room-status ${status.toLowerCase().includes("not") || status.toLowerCase().includes("unavailable") ? "bad" : ""}`}>{status}</div> : null}
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
     </section> : <section className={`application-room-shell${pinSetup === "required" ? " is-pin-setup" : ""}`}>
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending || (hasApplication && !precall?.complete) ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : hasMcaReview ? "Source verification pending" : hasApplication && !precall?.complete ? "Application in progress" : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
-      {pinSetup !== "hidden" ? <RoomPinSetup token={token} passcode={passcode.trim()} required={pinSetup === "required"} onSaved={(pin) => { setPasscode(pin); setArrivedWithCode(false); setSession((current) => current ? { ...current, passcode_needs_setup: false } : current); }} onDismiss={() => setPinSetupDismissed(true)} /> : null}
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && totalPending ? <span>{totalPending}</span> : null}</button>)}</nav>
 
       {hasMcaReview ? <div hidden={activeTab !== "ai-review"}><McaRoomReview key={token} token={token} passcode={passcode.trim()} active={activeTab === "ai-review"} onPaymentMethods={setHasMcaPayments} refreshKey={collectionTaskReadModelKey(session.evidence_banking_summary?.requirements ?? [], [processingFileCount, uploadedFiles.length, missingDocs.length])} onUpload={() => { setActiveRequestedDocumentId(""); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }} onApplication={() => setActiveTab("application")} onDebtSchedule={() => setActiveTab("todo")} /></div> : null}

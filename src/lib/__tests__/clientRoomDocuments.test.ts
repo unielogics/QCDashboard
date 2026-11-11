@@ -33,9 +33,9 @@ describe("choosing a room PIN", () => {
     expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: true, dismissed: true })).toBe("required");
   });
 
-  it("is offered, and can be put off, when the client typed the PIN we sent", () => {
-    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: false, dismissed: false })).toBe("offered");
-    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: false, dismissed: true })).toBe("hidden");
+  it("is required even when the client typed the PIN we sent or previously dismissed setup", () => {
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: false, dismissed: false })).toBe("required");
+    expect(roomPinSetupMode({ needsSetup: true, arrivedWithCode: false, dismissed: true })).toBe("required");
   });
 
   it("stays out of the way once the client has chosen a PIN, and on an offer-only visit", () => {
