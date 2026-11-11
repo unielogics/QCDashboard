@@ -19,6 +19,8 @@ import { useActiveProfile } from "@/store/role";
 import { STRUCTURE_LABELS, normalizeRepaymentConfig, defaultStructure, describeSchedule, riskProfile, type LoanStructure, type RepaymentConfig } from "@/lib/loanSchedule";
 import { sameWorkingLoan, applyWorkingLoan, clientDraftLoanFields, loanFromClientDraft, type LoanRefinanceContext, type LoanScenarioPreviewer, type SyncedLoan } from "@/lib/loanTermsSync";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
+import { LoanDateFields } from "@/components/application/LoanDateFields";
+import { addLoanBusinessDays, localDateToday, loanDateProblem, resolveLoanDates, savedLoanDates } from "@/lib/loanDates";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
@@ -60,6 +62,9 @@ export type Draft = {
   repayment_config: RepaymentConfig | null;
   expiration_days: string;
   closing_estimate_days: string;
+  expected_funding_date?: string;
+  maturity_date?: string;
+  maturity_date_mode?: "automatic" | "manual";
   co_brand_enabled: boolean;
   sponsor_name: string;
   client_note: string;
@@ -122,6 +127,9 @@ export function emptyDraft(): Draft {
     repayment_config: null,
     expiration_days: "7",
     closing_estimate_days: "5",
+    expected_funding_date: addLoanBusinessDays(localDateToday(), 5),
+    maturity_date: "",
+    maturity_date_mode: "automatic",
     co_brand_enabled: true,
     sponsor_name: "UrChoice",
     client_note: "",
@@ -130,7 +138,10 @@ export function emptyDraft(): Draft {
 }
 
 export function draftFromTerms(terms: ApplicationClientTerms): Draft {
+  const dates = savedLoanDates({ expected_funding_date: terms.expected_funding_date ?? (terms.version === 0 ? addLoanBusinessDays(localDateToday(), terms.closing_estimate_days ?? 5) : ""),
+    maturity_date: terms.maturity_date, maturity_date_mode: terms.maturity_date_mode }, terms.term_months);
   return {
+    ...dates,
     loan_type: terms.loan_type ?? terms.loan_type_options[0]?.value ?? "",
     amount: terms.amount == null ? "" : String(terms.amount),
     apr_pct: terms.apr_pct == null ? "" : String(terms.apr_pct),
@@ -226,8 +237,12 @@ export function payloadFromDraft(draft: Draft, expectedVersion: number): Applica
   normalizeRepaymentConfig(draft.repayment_config, Math.round(term), { structure: draft.loan_structure || null, interestOnlyMonths: ioMonths, periodsPerYear: draft.repayment_frequency === "custom" ? custom! : PERIODS[draft.repayment_frequency] });
   const pricing = repaymentPreview(amount, apr, Math.round(term), { structure: draft.loan_structure || null, interestOnlyMonths: ioMonths, periodsPerYear: draft.repayment_frequency === "custom" ? custom! : PERIODS[draft.repayment_frequency], repaymentConfig: draft.repayment_config });
   if (pricing.error) throw new Error(pricing.error);
+  const dates = resolveLoanDates({ expected_funding_date: draft.expected_funding_date ?? "", maturity_date: draft.maturity_date ?? "", maturity_date_mode: draft.maturity_date_mode ?? "automatic" }, term);
+  const dateIssue = loanDateProblem(dates, term);
+  if (dateIssue) throw new Error(dateIssue);
   return {
     expected_version: expectedVersion,
+    ...(draft.expected_funding_date !== undefined || draft.maturity_date !== undefined || draft.maturity_date_mode !== undefined ? { expected_funding_date: dates.expected_funding_date || null, maturity_date: dates.maturity_date || null, maturity_date_mode: dates.maturity_date_mode } : {}),
     repayment_config: copyRepaymentConfig(draft.repayment_config),
     loan_type: draft.loan_type,
     amount,
@@ -527,6 +542,7 @@ export function ApplicationClientTermsPanel({
   }
 
   function replaceDraft(next: Draft) {
+    if (next.expected_funding_date !== undefined || next.maturity_date !== undefined || next.maturity_date_mode !== undefined) next = { ...next, ...resolveLoanDates({ expected_funding_date: next.expected_funding_date ?? "", maturity_date: next.maturity_date ?? "", maturity_date_mode: next.maturity_date_mode ?? "automatic" }, finite(next.term_months)) };
     if (save.isPending || downloading || !canEdit) return;
     editorEditedRef.current = true;
     draftRef.current = next;
@@ -677,6 +693,7 @@ export function ApplicationClientTermsPanel({
             <Field label="Time before expiration"><div className="terms-input-suffix"><Input aria-label="Time before expiration in days" inputMode="numeric" value={draft.expiration_days} onChange={(event) => patch("expiration_days", event.target.value)} /><span>days</span></div></Field>
             <Field label="Closing estimate after approval"><div className="terms-input-suffix"><Input aria-label="Closing estimate after approval in business days" inputMode="numeric" value={draft.closing_estimate_days} onChange={(event) => patch("closing_estimate_days", event.target.value)} /><span>business days</span></div></Field>
           </div>
+          <LoanDateFields value={{ expected_funding_date: draft.expected_funding_date ?? "", maturity_date: draft.maturity_date ?? "", maturity_date_mode: draft.maturity_date_mode ?? "automatic" }} termMonths={finite(draft.term_months)} disabled={!canEdit || save.isPending} onChange={dates => replaceDraft({ ...draftRef.current, ...dates })} />
           <label className="terms-check"><input type="checkbox" checked={draft.co_brand_enabled} onChange={(event) => patch("co_brand_enabled", event.target.checked)} /><span><b>Co-brand this PDF</b><small>Show Qualified Commercial with the sponsor partner.</small></span></label>
           {draft.co_brand_enabled ? <Field label="Sponsor partner"><Input aria-label="Sponsor partner" value={draft.sponsor_name} onChange={(event) => patch("sponsor_name", event.target.value)} placeholder="UrChoice" /></Field> : null}
           <Field label="Client note (optional)"><Textarea aria-label="Client note" rows={3} value={draft.client_note} onChange={(event) => patch("client_note", event.target.value)} placeholder="A short, client-facing explanation of this structure." /></Field>

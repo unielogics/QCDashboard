@@ -1,0 +1,3 @@
+.root{grid-template-columns:minmax(0,1fr);min-width:0;overflow-wrap:anywhere}.root>*{min-width:0;max-width:100%}.root :global(.ckrow)>*{min-width:0;max-width:100%}.root :global(.pgacts){width:auto}.tabs{width:100%;max-width:100%;min-width:0;box-sizing:border-box;overflow-x:auto}.tabs>button{flex:none}
+.stack{grid-template-columns:minmax(0,1fr);min-width:0}.stack>*{min-width:0;max-width:100%}.stack :global(.row)>*{min-width:0;max-width:100%}.stack :global(.sub){white-space:normal;overflow-wrap:anywhere}
+.stack :global(.tbl){overflow-wrap:normal;word-break:normal}.stack :global(.tbl td:first-child),.stack :global(.tbl .r){white-space:nowrap}

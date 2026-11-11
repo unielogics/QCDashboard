@@ -34,6 +34,11 @@ import { MarketplaceIssues } from "@/components/marketplace/MarketplaceIssues";
 import guidanceStyles from "@/components/marketplace/MarketplaceIssues.module.css";
 import { dedupeMarketplaceIssues, marketplaceApiIssues, marketplaceFieldId, marketplaceOwnerHref, marketplacePublishIssues, unknownIssue, type MarketplaceField, type MarketplaceIssue } from "@/lib/marketplaceIssues";
 import { focusMarketplaceControl } from "@/lib/marketplaceGuidanceFocus";
+import { LoanDateFields } from "@/components/application/LoanDateFields";
+import { LOAN_DATE_NOTE, resolveLoanDates } from "@/lib/loanDates";
+import { MarketplaceFileInventory } from "@/components/marketplace/MarketplaceFileInventory";
+import { useMarketplaceDocumentLink } from "@/hooks/useMarketplaceDocumentLink";
+import editorStyles from "@/components/marketplace/MarketplaceEditor.module.css";
 
 export default function ListingEditorPage() {
   const params = useParams<{ id: string }>();
@@ -192,7 +197,7 @@ function Editor() {
   };
 
   return (
-    <div className="grid">
+    <div className={`grid ${editorStyles.root}`}>
       <PageHeader
         title={`${listing.ref} · ${listing.name}`}
         lede={`${VERTICAL_LABEL[listing.vertical]} · ${listing.program_label}${listing.place ? ` · ${listing.place}` : ""} · ${money(listing.committed_amount, true)} of ${money(listing.offered_amount, true)} committed (${listing.pct_committed}%) · ${listing.investor_count} investor${listing.investor_count === 1 ? "" : "s"}${listing.first_sale_at ? ` · first sale ${day(listing.first_sale_at)}` : ""}`}
@@ -209,9 +214,11 @@ function Editor() {
         }
       />
       <MarketplaceOfferLink listing={listing} />
+      <Panel title="Listing cockpit" sub="Saved financing, document readiness and controlled source-document access."><div className="grid cols-auto"><div><span className="sub">Capital to raise</span><strong style={{ display: "block" }}>{money(listing.offered_amount)}</strong></div><div><span className="sub">Offering PDFs ready</span><strong style={{ display: "block" }}>{listing.documents.filter(document => document.status === "ready").length}</strong></div><div><span className="sub">Publication readiness</span><strong style={{ display: "block" }}>{listing.publish_blockers.length ? `${listing.publish_blockers.length} items need review` : "No current publication blockers"}</strong></div><div><span className="sub">File snapshot</span><strong style={{ display: "block" }}>{listing.sync?.up_to_date ? "Up to date" : listing.profile_id ? "Review / refresh saved file" : "Standalone listing"}</strong></div></div><div className="row mt"><Btn size="sm" onClick={() => setTab("documents")}>Review offering documents</Btn></div></Panel>
+      {listing.profile_id ? <MarketplaceFileInventory key={listing.id} listingId={listing.id} /> : null}
       {msg ? <StatusLine tone={msg.tone}>{msg.text}</StatusLine> : null}
       <MarketplaceIssues id="marketplace-issues" issues={issues} onFix={issue => void fixIssue(issue)} busy={openingOwner || act.isPending} />
-      <Seg as="tabs" ariaLabel="Listing sections" value={tab} onChange={setTab} options={[
+      <Seg as="tabs" className={editorStyles.tabs} ariaLabel="Listing sections" value={tab} onChange={setTab} options={[
         { value: "terms", label: "Terms and narrative" },
         { value: "documents", label: <>Documents <span className="num">{listing.documents.filter((d) => d.status === "ready").length}</span></> },
         { value: "subscriptions", label: <>Subscriptions <span className="num">{listing.subscriptions.length}</span></> },
@@ -219,7 +226,7 @@ function Editor() {
         { value: "events", label: "Events" },
       ]} />
       <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
-      {tab === "documents" ? <Documents listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} /> : null}
+      {tab === "documents" ? <Documents listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /> : null}
       {tab === "subscriptions" ? <Subscriptions listing={listing} onRun={run} busy={act.isPending} /> : null}
       {tab === "participations" ? <Participations listing={listing} onMessage={setMsg} /> : null}
       {tab === "events" ? <Events listing={listing} /> : null}
@@ -235,7 +242,7 @@ type Draft = {
   vertical: string; program_label: string; name: string; summary: string; city: string; state: string; collateral_type: string; lien_position: string;
   note_rate_pct: string; term_months: string; ltv_pct: string; ltv_kind: string; loan_amount: string; offered_amount: string; minimum_investment: string;
   payment_frequency: string; personal_guarantee: boolean; guarantee_text: string; borrower_track_record: string; exit_plan: string; valuation_amount: string;
-  valuation_source: string; title_status: string; servicer_label: string; maturity_date: string; closes_at: string;
+  valuation_source: string; title_status: string; servicer_label: string; expected_funding_date: string; maturity_date: string; maturity_date_mode: string; closes_at: string;
 };
 
 function toDraft(l: CpListing): Draft {
@@ -246,7 +253,7 @@ function toDraft(l: CpListing): Draft {
     loan_amount: s(l.loan_amount), offered_amount: s(l.offered_amount), minimum_investment: s(l.minimum_investment), payment_frequency: l.payment_frequency,
     personal_guarantee: l.personal_guarantee, guarantee_text: s(l.guarantee_text), borrower_track_record: s(l.borrower_track_record), exit_plan: s(l.exit_plan),
     valuation_amount: s(l.valuation_amount), valuation_source: s(l.valuation_source), title_status: s(l.title_status), servicer_label: s(l.servicer_label),
-    maturity_date: s(l.maturity_date), closes_at: l.closes_at ? l.closes_at.slice(0, 16) : "",
+    expected_funding_date: s(l.expected_funding_date), maturity_date: s(l.maturity_date), maturity_date_mode: l.maturity_date_mode ?? (l.maturity_date ? "manual" : "automatic"), closes_at: l.closes_at ? l.closes_at.slice(0, 16) : "",
   };
 }
 
@@ -284,7 +291,7 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
       loan_amount: num(d.loan_amount), offered_amount: num(d.offered_amount), minimum_investment: num(d.minimum_investment),
       payment_frequency: d.payment_frequency as CpListingPatch["payment_frequency"], personal_guarantee: d.personal_guarantee, guarantee_text: d.guarantee_text || null,
       borrower_track_record: d.borrower_track_record || null, exit_plan: d.exit_plan || null, valuation_amount: num(d.valuation_amount), valuation_source: d.valuation_source || null,
-      title_status: d.title_status || null, servicer_label: d.servicer_label || null, maturity_date: d.maturity_date || null, closes_at: d.closes_at ? new Date(d.closes_at).toISOString() : null,
+      title_status: d.title_status || null, servicer_label: d.servicer_label || null, ...(!listing.profile_id ? (() => { const dates = resolveLoanDates({ expected_funding_date: d.expected_funding_date, maturity_date: d.maturity_date, maturity_date_mode: d.maturity_date_mode as "automatic" | "manual" }, d.term_months ? Number(d.term_months) : null); return { ...dates, expected_funding_date: dates.expected_funding_date || null, maturity_date: dates.maturity_date || null }; })() : {}), closes_at: d.closes_at ? new Date(d.closes_at).toISOString() : null,
     };
     try {
       if (listing.profile_id) body.expected_deal_budget_revision = await budget.verifyRevision();
@@ -321,10 +328,10 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
         <ListingField {...fieldProps} k="offered_amount" label="Capital to raise from investors, $" type="number" hint={listing.profile_id ? "Set once in the shared deal budget above; defaults to full loan funding." : "Investor capital funding this loan."} />
         <ListingField {...fieldProps} k="minimum_investment" label="Smallest investor contribution, $" type="number" hint="One investor contributes the full amount unless multiple investors are configured." />
         <Field label="Payment frequency" error={inlineError("payment_frequency")}><Select {...binding("payment_frequency")} aria-label="Payment frequency" value={d.payment_frequency} onChange={(e) => set("payment_frequency", e.target.value)} disabled={readOnly}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="at_maturity">At maturity</option></Select></Field>
-        <ListingField {...fieldProps} k="maturity_date" label="Maturity date" type="date" />
         <ListingField {...fieldProps} k="closes_at" label="Subscriptions close" type="datetime-local" hint="Drives the members' days-left counter." />
         <label className="pick" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><input {...binding("personal_guarantee")} type="checkbox" checked={d.personal_guarantee} onChange={(e) => set("personal_guarantee", e.target.checked)} disabled={readOnly} /><span>Personal guarantee</span></label>{inlineError("personal_guarantee")}
       </Panel>
+      <Panel title="Estimated loan dates">{listing.profile_id ? <div className="grid g10"><div className="grid cols-auto"><div><span className="sub">Estimated funding date</span><strong style={{ display: "block" }}>{day(listing.expected_funding_date)}</strong></div><div><span className="sub">Estimated maturity date</span><strong style={{ display: "block" }}>{day(listing.maturity_date)}</strong></div><div><span className="sub">Maturity calculation</span><strong style={{ display: "block" }}>{listing.maturity_date_mode === "manual" ? "Manual date override" : "Automatic from funding + term"}</strong></div></div><p className="sub">{listing.date_note || LOAN_DATE_NOTE} Dates follow the linked file’s shared coverage loan.</p><div><Btn size="sm" onClick={() => onFix({ key: "owner:coverage", message: "Review estimated loan dates on the linked file.", instruction: "Save the shared coverage loan, then refresh this listing.", target: { kind: "file", action: "coverage" } })}>Edit loan dates on linked file</Btn></div></div> : <LoanDateFields value={{ expected_funding_date: d.expected_funding_date, maturity_date: d.maturity_date, maturity_date_mode: d.maturity_date_mode as "automatic" | "manual" }} ids={{ expected_funding_date: marketplaceFieldId("expected_funding_date"), maturity_date: marketplaceFieldId("maturity_date"), maturity_date_mode: marketplaceFieldId("maturity_date_mode") }} errors={{ expected_funding_date: fieldIssues.expected_funding_date?.message, maturity_date: fieldIssues.maturity_date?.message, maturity_date_mode: fieldIssues.maturity_date_mode?.message }} termMonths={d.term_months ? Number(d.term_months) : null} disabled={readOnly} onChange={dates => { dirtyRef.current = true; setD(current => ({ ...current, ...dates })); }} />}</Panel>
       {listing.products?.length ? (
         <Panel title="Products offered" sub="Edited from the file's Financials tab (Send the file to capital partners). The primary product supplies the headline rate, term and amount above.">
           <Table caption="Products" cols={[{ label: "Product" }, { label: "Amount", align: "r" }, { label: "Rate", align: "r" }, { label: "Term", align: "r" }, { label: "Payment / mo", align: "r" }, { label: "Coverage", align: "r" }]}>
@@ -366,12 +373,13 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
 // Documents
 // ---------------------------------------------------------------------------
 
-function Documents({ listing, onMessage, onError, guidance }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null }) {
+function Documents({ listing, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void }) {
   const upload = useCpUploadDocument();
   const supersede = useCpSupersedeDocument();
   const confirm = useConfirmAction();
   const [kind, setKind] = useState<CpDocumentKind>("ppm");
   const fileRef = useRef<HTMLInputElement>(null);
+  const links = useMarketplaceDocumentLink(listing.id);
   useEffect(() => { const target = guidance?.issue.target; if (target?.kind === "upload" && target.documentKind === "ppm") setKind("ppm"); }, [guidance]);
 
   const send = async (file: File) => {
@@ -392,6 +400,8 @@ function Documents({ listing, onMessage, onError, guidance }: { listing: CpListi
 
   return (
     <div className="grid">
+      {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={() => { onSnapshotSuccess(); onMessage({ tone: "ok", text: "The listing package was updated from the saved file." }); }} /> : null}
+      <p className="sub">Offering PDFs below are attached to this listing. Generated summaries and presentations do not replace the separately required private placement memorandum. Source documents on file use the engagement controls in the file document cockpit.</p>
       <Panel title="Upload" bodyClass="row">
         <Select id="marketplace-document-kind" aria-label="Document type" value={kind} onChange={(e) => setKind(e.target.value as CpDocumentKind)}>{DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select>
         <input id="marketplace-document-upload" aria-label="Upload document PDF" ref={fileRef} type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }} disabled={upload.isPending} />
@@ -401,15 +411,16 @@ function Documents({ listing, onMessage, onError, guidance }: { listing: CpListi
         <Card><span className="sub">No documents yet.</span></Card>
       ) : (
         <Panel noPad>
-          <Table caption="Offering documents" cols={[{ label: "Kind" }, { label: "Name" }, { label: "Version", align: "r" }, { label: "Size", align: "r" }, { label: "Status" }, { label: "" }]}>
+          <Table caption="Offering documents" cols={[{ label: "Kind" }, { label: "Name" }, { label: "Origin" }, { label: "Version", align: "r" }, { label: "Size", align: "r" }, { label: "Status" }, { label: "Actions" }]}>
             {listing.documents.map((doc) => (
               <Tr key={doc.id}>
                 <Td>{doc.kind_label}</Td>
                 <Td>{doc.name}</Td>
+                <Td>{doc.source === "generated_package" ? "Generated listing package" : "Uploaded offering document"}</Td>
                 <Td className="num" align="r">v{doc.version}</Td>
                 <Td className="num" align="r">{doc.size_bytes ? `${Math.round(doc.size_bytes / 1024)} KB` : "—"}</Td>
                 <Td><CellChip tone={doc.status === "ready" ? "ok" : doc.status === "pending" ? "warn" : "mut"}>{doc.status}</CellChip></Td>
-                <Td>{doc.status !== "superseded" ? <Btn size="sm" className="danger" onClick={() => void remove(doc.id, doc.name)} disabled={supersede.isPending}>Supersede</Btn> : null}</Td>
+                <Td><div className="row">{doc.status === "ready" ? [false, true].map(download => <Btn size="sm" key={String(download)} disabled={links.busy} onClick={() => void links.open(`/capital/admin/listings/${listing.id}/documents/${doc.id}/url?download=${download}`).catch(onError)}>{download ? "Download PDF" : "View PDF"}</Btn>) : null}{doc.status !== "superseded" ? <Btn size="sm" className="danger" onClick={() => void remove(doc.id, doc.name)} disabled={supersede.isPending}>Supersede</Btn> : null}</div></Td>
               </Tr>
             ))}
           </Table>

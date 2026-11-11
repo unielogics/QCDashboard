@@ -20,6 +20,8 @@ import { computePaymentSummary, defaultProgramCoverage, effectiveAnnualRate, per
 import type { RepaymentConfig } from "@/lib/loanSchedule";
 import { repaymentPreview, copyRepaymentConfig } from "@/lib/repaymentConfig";
 import { AdvancedRepaymentEditor } from "@/components/application/AdvancedRepaymentEditor";
+import { LoanDateFields } from "@/components/application/LoanDateFields";
+import { loanDateProblem, resolveLoanDates, savedLoanDates } from "@/lib/loanDates";
 import { FileCollateralSection } from "@/components/file/FileCollateralSection";
 import { useTermsCollateral } from "@/hooks/useTermsCollateral";
 import { useDealBudget } from "@/hooks/useDealBudget";
@@ -99,6 +101,7 @@ type FormState = {
   debt_service_treatment: DebtServiceTreatment;
   retained_annual_debt_service: string;
   expected_funding_date: string;
+  maturity_date_mode: "automatic" | "manual";
   first_payment_date: string;
   activation_date: string;
   commencement_date: string;
@@ -240,11 +243,10 @@ function formFrom(sheet: TermSheet | null, defaults: Record<string, unknown>): F
       : defaultCoverage,
     debt_service_treatment: extraValue(src, extra, "debt_service_treatment") === "refinance" ? "refinance" : "additive",
     retained_annual_debt_service: str(extraValue(src, extra, "retained_annual_debt_service")),
-    expected_funding_date: str(src.expected_funding_date).slice(0, 10),
+    ...savedLoanDates({ expected_funding_date: str(src.expected_funding_date).slice(0, 10), maturity_date: str(src.maturity_date).slice(0, 10), maturity_date_mode: str(src.maturity_date_mode) || str(extra.maturity_date_mode) || null }, maybeNumber(str(src.term_months))),
     first_payment_date: str(extraValue(src, extra, "first_payment_date")).slice(0, 10),
     activation_date: str(src.activation_date).slice(0, 10),
     commencement_date: str(src.commencement_date).slice(0, 10),
-    maturity_date: str(src.maturity_date).slice(0, 10),
     expiration_days: str(extraValue(src, extra, "expiration_days")) || "7",
     closing_estimate_days: str(extraValue(src, extra, "closing_estimate_days")) || "5",
     use_of_funds: split,
@@ -327,6 +329,7 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
   const extra: TermSheetExtra = {
     ...form.extra,
     ...structured,
+    maturity_date_mode: form.maturity_date_mode,
     payment_summary: summary,
   };
   return {
@@ -343,7 +346,7 @@ function toBody(form: FormState, summary: TermSheetPaymentSummary, annualRatePct
     expected_funding_date: form.expected_funding_date || null,
     activation_date: form.activation_date || null,
     commencement_date: form.commencement_date || null,
-    maturity_date: form.maturity_date || null,
+    maturity_date: resolveLoanDates(form, toNumber(form.term_months)).maturity_date || null,
     use_of_funds: any ? uof : null,
     conditions: form.conditions.trim() || null,
     notes: form.notes.trim() || null,
@@ -435,7 +438,11 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     const source = src(k);
     return source ? <PChip tone="acc" title={`Prefilled: ${SOURCE_LABELS[source] ?? source}`}>{SOURCE_LABELS[source] ?? source}</PChip> : null;
   };
-  const upd = (patch: Partial<FormState>) => setForm((value) => value ? { ...value, ...patch } : value);
+  const upd = (patch: Partial<FormState>) => setForm((value) => {
+    if (!value) return value;
+    const next = { ...value, ...patch };
+    return { ...next, ...resolveLoanDates(next, maybeNumber(next.term_months)) };
+  });
 
   const approved = form ? toNumber(form.approved_amount) : 0;
   const initialDraw = form ? maybeNumber(form.initial_draw_amount) : null;
@@ -580,6 +587,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
     if (form.debt_service_treatment === "refinance" && maybeNumber(form.retained_annual_debt_service) === null) issues.push("Enter annual debt service that remains after payoff; use 0 when all existing debt is replaced.");
     if (toNumber(form.expiration_days) <= 0) issues.push("Term validity must be at least one day.");
     if (toNumber(form.closing_estimate_days) < 0) issues.push("Closing estimate cannot be negative.");
+    const dateIssue = loanDateProblem(form, maybeNumber(form.term_months));
+    if (dateIssue) issues.push(dateIssue);
     if (form.expected_funding_date && form.activation_date && form.activation_date < form.expected_funding_date) issues.push("Program activation cannot be before expected funding or opening.");
     if (form.expected_funding_date && form.commencement_date && form.commencement_date < form.expected_funding_date) issues.push("Production commencement cannot be before expected funding or opening.");
     if (form.expected_funding_date && form.first_payment_date && form.first_payment_date < form.expected_funding_date) issues.push("The first payment cannot be before expected funding or opening.");
@@ -938,9 +947,8 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
               <section className="pp-ts-section">
                 <div className="pp-ts-section-head"><span>5</span><div><h4>Timeline</h4><p>Keep facility timing separate from production-program activation.</p></div></div>
                 <div className="pp-grid">
-                  <label className="pp-field"><span className="pp-lbl">Expected funding / opening <SrcChip k="expected_funding_date" /></span><input type="date" className="pp-input" value={form.expected_funding_date} onChange={(event) => upd({ expected_funding_date: event.target.value })} /></label>
+                  <div style={{ gridColumn: "1 / -1" }}><LoanDateFields value={form} termMonths={maybeNumber(form.term_months)} disabled={!canEdit || Boolean(busy)} onChange={upd} /></div>
                   <label className="pp-field"><span className="pp-lbl">First payment</span><input type="date" className="pp-input" value={form.first_payment_date} onChange={(event) => upd({ first_payment_date: event.target.value })} /></label>
-                  <label className="pp-field"><span className="pp-lbl">Maturity <SrcChip k="maturity_date" /></span><input type="date" className="pp-input" value={form.maturity_date} onChange={(event) => upd({ maturity_date: event.target.value })} /></label>
                   <label className="pp-field"><span className="pp-lbl">Program activation <SrcChip k="activation_date" /></span><input type="date" className="pp-input" value={form.activation_date} onChange={(event) => upd({ activation_date: event.target.value })} /></label>
                   <label className="pp-field"><span className="pp-lbl">Production commencement <SrcChip k="commencement_date" /></span><input type="date" className="pp-input" value={form.commencement_date} onChange={(event) => upd({ commencement_date: event.target.value })} /></label>
                   <div className="pp-field"><span className="pp-lbl">Offer timing</span><div className="pp-ts-inline-fields"><label><input className="pp-input" inputMode="numeric" value={form.expiration_days} onChange={(event) => upd({ expiration_days: integer(event.target.value) })} /><span>valid days</span></label><label><input className="pp-input" inputMode="numeric" value={form.closing_estimate_days} onChange={(event) => upd({ closing_estimate_days: integer(event.target.value) })} /><span>business days to close</span></label></div></div>

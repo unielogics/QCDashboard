@@ -491,6 +491,9 @@ export type FinancialPlanRecord = {
   new_loan_amount: number | null;
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
+  new_loan_expected_funding_date?: string | null;
+  new_loan_maturity_date?: string | null;
+  new_loan_maturity_mode?: "automatic" | "manual" | null;
   new_loan_interest_only?: boolean;
   new_loan_structure?: "amortizing" | "simple_interest" | "interest_only" | null;
   new_loan_interest_only_months?: number | null;
@@ -507,6 +510,7 @@ export type FinancialPlanRecord = {
 export type PlanTermsRef = { kind: "client_terms" | "production_term_sheet" | string; id: string; version: number; label: string; adopted_at?: string | null; treatment?: "additive" | "refinance"; retained_annual_debt_service?: number | null };
 /** The recorded terms as the plan reads them (the Underwriting tab's client terms or the dealer's term sheet). */
 export type RecordedTerms = { kind: string; id: string; version: number; label: string; amount: number | null; rate_pct: number | null; term_months: number | null; interest_only: boolean; structure?: string; interest_only_months?: number; repayment_config?: RepaymentConfig | null; payments_per_year?: number | null; payment_monthly: number | null; treatment: string; retained_annual_debt_service: number | null;
+  expected_funding_date?: string | null; maturity_date?: string | null; maturity_date_mode?: "automatic" | "manual" | null; date_note?: string | null;
   regular_payment_monthly?: number | null; interest_only_payment_monthly?: number | null; repayment_payment_monthly?: number | null; maturity_balance?: number | null; payment_phases?: LoanPaymentPhase[];
 };
 /** Does the plan's loan mirror the recorded terms? */
@@ -665,6 +669,9 @@ export type FinancialPlanWrite = {
   new_loan_amount: number | null;
   new_loan_rate_pct: number | null;
   new_loan_term_months: number | null;
+  new_loan_expected_funding_date?: string | null;
+  new_loan_maturity_date?: string | null;
+  new_loan_maturity_mode?: "automatic" | "manual" | null;
   new_loan_interest_only: boolean;
   new_loan_structure: "amortizing" | "simple_interest" | "interest_only" | null;
   new_loan_interest_only_months: number | null;
