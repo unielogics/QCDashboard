@@ -122,7 +122,6 @@ jobs:
           src/lib/__tests__/marketplacePpmPresets.test.ts
           tests/ppm-presets-membership.spec.ts
           tests/fixtures/ppmPresetsMembership.ts
-
           'src/app/files/[id]/workspace/page.tsx'
           src/components/application/ApplicationEvidenceWorkspace.tsx
           src/components/application/DebtScheduleReadback.tsx
@@ -145,7 +144,6 @@ jobs:
           src/production-package/client.ts
           tests/file-workspace-navigation.spec.ts
           tests/fixtures/fileWorkspaceNavigation.ts
-
           src/components/application/RequirementUseOfFundsActions.tsx
 
       - name: Build production frontend
