@@ -9,6 +9,7 @@ import { guidanceBudget } from "./fixtures/marketplaceErrorGuidance";
 import { savedTermsTransportPdf } from "./fixtures/savedTermsDownload";
 import { reviewListing, reviewState, reviewVersion, legacyBlankReviewState, customBlankReviewState } from "./fixtures/ppmReviewFlow";
 import { presetFields } from "./fixtures/ppmPresetsMembership";
+import type { CpListing } from "../src/hooks/useCapitalPartners";
 
 const ORIGIN = "https://ppm-review-flow.test";
 let script: Buffer, css: Buffer;
@@ -37,7 +38,8 @@ test.beforeAll(async () => {
 type Json = Record<string, unknown>;
 type Options = { legacyBlank?: boolean; customBlank?: boolean; missingLaw?: boolean; otherBlocker?: boolean; closed?: boolean; failReview?: boolean; lostReviewAck?: boolean; conflictReview?: boolean; failReadiness?: boolean; holdReview?: boolean; holdGenerate?: boolean; isolated?: boolean };
 async function fixture(page: Page, options: Options = {}) {
-  let listing = reviewListing(), state = options.legacyBlank ? legacyBlankReviewState() : options.customBlank ? customBlankReviewState() : reviewState();
+  let listing: Omit<ReturnType<typeof reviewListing>, "documents"> & Pick<CpListing, "documents"> = reviewListing();
+  let state = options.legacyBlank ? legacyBlankReviewState() : options.customBlank ? customBlankReviewState() : reviewState();
   if (options.missingLaw) { const v = reviewVersion(); v.legal_inputs.jurisdiction = presetFields().find(field => field.key === "jurisdiction")!.default_value!; v.legal_presets = { ...v.legal_presets, jurisdiction: "to_be_confirmed" }; state = reviewState(v); }
   if (options.closed) listing = { ...listing, status: "repaid" };
   const requests: Array<{ method: string; path: string; body: Json; actor: string }> = [], errors: string[] = [], nativeDialogs: string[] = [];
