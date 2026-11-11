@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, Input, Select, Textarea } from "@/components/ds";
 import { FinancialEditorSurface } from "./FinancialEditorSurface";
@@ -15,6 +15,7 @@ import type { FinancialPlanRead, FinancialPlanWrite } from "@/lib/financialCockp
 import { DEAL_COST_BASES, DEAL_COST_CATEGORIES, dealBudgetChanged, dealBudgetDraftKey, dealBudgetKey, dealBudgetWrite, newDealCost, type DealBudget, type DealBudgetCalculation, type DealBudgetDraft, type DealBudgetLoan, type DealBudgetWrite, type DealCostRow } from "@/lib/dealBudget";
 import { money } from "@/lib/financialCockpit";
 import styles from "./DealBudgetSection.module.css";
+import { hasNewerMarketplaceBudgetDraft, marketplaceBudgetDraftFingerprint, type MarketplaceBudgetControls, type MarketplaceBudgetReceipt } from "@/lib/marketplacePreparation";
 
 const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : typeof value === "string" && value.trim() && Number.isFinite(Number(value)) ? Number(value) : null;
 function amount(calc: DealBudgetCalculation | undefined, key: string) { return numeric(calc?.[key]); }
@@ -22,11 +23,12 @@ function messages(calc: DealBudgetCalculation | undefined, key: string): string[
 function Metric({ label, value, percent = false }: { label: string; value: number | null; percent?: boolean }) { return <div><small>{label}</small><strong>{value == null ? "Not established" : percent ? `${value.toFixed(2)}%` : money(value, 2)}</strong></div>; }
 
 /** One cost and capital record, with one retained staff draft across financing tabs. */
-export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending, financialPlan, onApplySolvedPrincipal, onFinancingSaved, onGrossAmountChange, saveWithTerms = false }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void; financialPlan?: FinancialPlanWrite | null; onApplySolvedPrincipal?: (amount: number) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; onGrossAmountChange?: (amount: number | null) => void; saveWithTerms?: boolean }) {
+export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending, financialPlan, onApplySolvedPrincipal, onFinancingSaved, onGrossAmountChange, saveWithTerms = false, onSaveControlsChange }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void; financialPlan?: FinancialPlanWrite | null; onApplySolvedPrincipal?: (amount: number) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; onGrossAmountChange?: (amount: number | null) => void; saveWithTerms?: boolean; onSaveControlsChange?: (controls: MarketplaceBudgetControls | null) => void }) {
   const api = useAuthedApi(), queryClient = useQueryClient(), query = useDealBudget(profileId);
   const [open, setOpen] = useState(inline), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [refreshWarning, setRefreshWarning] = useState("");
   const liveRef = useRef<HTMLElement | null>(null);
+  const activeProfile = useRef(profileId); activeProfile.current = profileId;
   const applyAttempt = useRef<{ signature: string; key: string } | null>(null);
   useQuery<DealBudgetDraft | null>({ queryKey: dealBudgetDraftKey(profileId), queryFn: async () => null, enabled: false, initialData: null, gcTime: Infinity });
   const [, renderDraft] = useState(0);
@@ -73,10 +75,14 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
     await onSaved?.();
     setRefreshWarning("");
   };
-  const save = async () => {
-    if (!value || !canEdit) return;
+  const persistBudget = async (viaControls = false): Promise<MarketplaceBudgetReceipt> => {
+    if (!value || !canEdit) throw new Error("The deal budget is not available for editing.");
+    if (conflict) throw new Error("The budget changed in another session. Review the current saved budget before continuing.");
+    if (previewing || previewError || solution && solution.status !== "calculated") throw new Error(previewError || "Complete the cost calculation before saving the listing.");
     setBusy(true); setError(""); setNotice(""); setRefreshWarning("");
     try {
+      const submittedDraft = queryClient.getQueryData<DealBudgetDraft | null>(dealBudgetDraftKey(profileId));
+      const submittedFingerprint = marketplaceBudgetDraftFingerprint(value, submittedDraft?.removed ?? []);
       const context = saved?.financing_context;
       if (needsPrincipalSave && !context) throw new Error("Reload the current loan context before saving the revised principal.");
       const planTimestamp = previewPlan && "expected_updated_at" in previewPlan ? previewPlan.expected_updated_at ?? null : context?.plan_updated_at ?? null;
@@ -84,22 +90,32 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
       const signature = JSON.stringify({ profileId, payload });
       if (needsPrincipalSave && applyAttempt.current?.signature !== signature) applyAttempt.current = { signature, key: crypto.randomUUID() };
       const result = await api<DealBudget>(`/application-profiles/${profileId}/deal-budget${needsPrincipalSave ? "/apply-principal" : ""}`, { method: needsPrincipalSave ? "POST" : "PATCH", body: JSON.stringify(needsPrincipalSave ? { ...payload, idempotency_key: applyAttempt.current!.key } : payload) });
-      queryClient.setQueryData(dealBudgetKey(profileId), result); queryClient.setQueryData(dealBudgetDraftKey(profileId), null);
-      if (result.financial_plan) { queryClient.setQueryData(["financial-plan", profileId], result.financial_plan); queryClient.setQueryData(["financial-plan-applied", profileId], result.financial_plan); }
+      const latestDraft = queryClient.getQueryData<DealBudgetDraft | null>(dealBudgetDraftKey(profileId));
+      const newerDraft = hasNewerMarketplaceBudgetDraft(profileId, submittedFingerprint, latestDraft);
+      queryClient.setQueryData(dealBudgetKey(profileId), result);
+      if (!newerDraft) queryClient.setQueryData(dealBudgetDraftKey(profileId), null);
+      if (newerDraft) { applyAttempt.current = null; throw new Error("The submitted budget and loan were saved, but newer cost edits remain. Review the retained budget draft before updating the listing."); }
+      if (needsPrincipalSave && result.financial_plan && !viaControls) { queryClient.setQueryData(["financial-plan", profileId], result.financial_plan); queryClient.setQueryData(["financial-plan-applied", profileId], result.financial_plan); }
       applyAttempt.current = null;
       setNotice(`Deal budget revision ${result.revision}${result.financial_plan ? " and the shared loan were" : ""} saved. Save a new terms version to include these costs in its PDF.`);
-      try { if (result.financial_plan) onFinancingSaved?.(result.financial_plan); await refreshSavedBudget(); }
+      try { if (needsPrincipalSave && result.financial_plan) onFinancingSaved?.(result.financial_plan); await refreshSavedBudget(); }
       catch { setRefreshWarning("The budget was saved successfully. Financial summaries could not be refreshed; retry refresh without saving another revision."); }
-    } catch (reason) { setError(reason instanceof Error ? reason.message : "The deal budget could not be saved. Your changes are retained."); }
+      return { budget: result, planSaved: needsPrincipalSave, submittedPlan: needsPrincipalSave ? previewPlan ?? null : null };
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The deal budget could not be saved. Your changes are retained."); throw reason; }
     finally { setBusy(false); }
   };
-  const calc = open ? preview ?? undefined : saved?.calculation;
+  const save = async () => { try { await persistBudget(); } catch { /* The editor retains its error and working rows. */ } };
+  const calc = open || dirty ? preview ?? undefined : saved?.calculation;
   const solution = calc?.principal_solution && typeof calc.principal_solution === "object" ? calc.principal_solution as Record<string, unknown> : null;
   const payment = calc?.scheduled_payment && typeof calc.scheduled_payment === "object" ? calc.scheduled_payment as Record<string, unknown> : null;
   const solvedGross = numeric(solution?.gross_loan_amount ?? calc?.gross_loan_amount);
   const currentGross = loan?.amount ?? saved?.financing_context?.current_loan_amount ?? numeric(saved?.calculation.gross_loan_amount);
   const mode = value?.loan_amount_mode ?? "gross_loan";
   const needsPrincipalSave = solution?.status === "calculated" && solvedGross != null && (saved?.financing_context ? saved.financing_context.current_loan_amount == null || Math.abs(solvedGross - saved.financing_context.current_loan_amount) > 0.005 : solution.requires_apply === true);
+  const persistRef = useRef(persistBudget); persistRef.current = persistBudget;
+  const persistControl = useMemo(() => () => { if (activeProfile.current !== profileId) throw new Error("The active budget file changed."); return persistRef.current(true); }, [profileId]);
+  const saveBlocker = query.isPending ? "Loading the shared deal budget…" : query.isError ? "Load the shared deal budget before saving the listing." : !saved?.can_edit ? "The deal budget is read-only." : conflict ? "The budget changed in another session. Review or discard the conflicting cost draft." : previewing ? "Calculating the pending cost changes…" : previewError || (solution && solution.status !== "calculated" ? "Complete the missing cost inputs before saving." : null);
+  useEffect(() => { onSaveControlsChange?.({ profileId, needsSave: dirty || needsPrincipalSave, busy, blocker: saveBlocker, persist: persistControl }); return () => onSaveControlsChange?.(null); }, [onSaveControlsChange, profileId, dirty, needsPrincipalSave, busy, saveBlocker, persistControl]);
   useAutomaticFinancedPrincipal(live, currentGross, amount => onApplySolvedPrincipal?.(amount), !saveWithTerms && Boolean(onApplySolvedPrincipal) && canEdit);
   const summaryCalc = dirty ? preview ?? undefined : saved?.calculation;
   const warnings = messages(calc, "issues");

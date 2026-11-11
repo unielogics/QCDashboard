@@ -9,7 +9,8 @@
 // editor, where the PPM is attached. Readiness, loan terms on record and the
 // package sit above the products so nothing is sent out blind.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Btn, CellChip, Input, Lbl, Select, StatusLine, Textarea, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { LISTING_TONE, errorMessage } from "@/components/marketplace/shared";
@@ -28,6 +29,7 @@ import {
   type CpListingStatus,
   type CpOfferSuggestion,
   type CpOfferSuggestions,
+  type CpListing,
 } from "@/hooks/useCapitalPartners";
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import { compactMoney, dscrLabel, dscrStatusOf, dscrTone, dscrWithPayment, money, multiple, scheduleStatusShort, scheduleStatusTone, sourceLabel, type FinancialCockpit as Cockpit } from "@/lib/financialCockpit";
@@ -42,6 +44,8 @@ import { sharedFinancingOfferFields } from "@/lib/sharedFinancingOffer";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { PreparationProgress } from "@/components/design-system/PreparationProgress";
+import { explicitMarketplaceCopy, existingMarketplaceListingId, prepareMarketplaceFinancing, type MarketplaceBudgetControls, type MarketplacePlanControls } from "@/lib/marketplacePreparation";
+import { dealBudgetChanged, dealBudgetDraftKey, dealBudgetKey, type DealBudget, type DealBudgetDraft } from "@/lib/dealBudget";
 
 type Props = {
   profileId: string;
@@ -119,11 +123,13 @@ function toProduct(draft: ProductDraft, payment: number | null, dscr: number | n
 
 const yesNo = (value: boolean) => (value ? "Yes" : "No");
 
-export function OfferPanel({ cockpit, props, innerRef, embedded = false, workingFinancing }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement>; embedded?: boolean; workingFinancing?: WorkingFinancing | null }) {
+export function OfferPanel({ cockpit, props, innerRef, embedded = false, workingFinancing, planSaveControls }: { cockpit: Cockpit; props: Props; innerRef: React.Ref<HTMLElement>; embedded?: boolean; workingFinancing?: WorkingFinancing | null; planSaveControls?: MarketplacePlanControls | null }) {
   const { profileId, programReadiness, termSheet, packageState, canPublish, canRecordTerms, onRecordTerms, onOpenEvidence, onOpenPackage } = props;
   const api = useAuthedApi();
+  const queryClient = useQueryClient();
+  const [acknowledgedListing, setAcknowledgedListing] = useState<{ profileId: string; id: string } | null>(null);
   const lookup = useCpSourceLookup({ profile_id: profileId }, canPublish);
-  const listingId = lookup.data?.listing?.id ?? null;
+  const listingId = lookup.data?.listing?.id ?? (acknowledgedListing?.profileId === profileId ? acknowledgedListing.id : null);
   const listing = useCpListing(canPublish ? listingId : null);
   const suggestions = useCpSuggestTerms(profileId, null, canPublish);
   const prefill = useCpPrefill();
@@ -146,13 +152,24 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const operation = useRef<{ profileId: string } | null>(null);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [stage, setStage] = useState("");
+  const [budgetControls, setBudgetControls] = useState<MarketplaceBudgetControls | null>(null);
+  const budgetControlsChanged = useCallback((controls: MarketplaceBudgetControls | null) => {
+    if (controls?.profileId === profileId) setBudgetControls(controls);
+    else if (!controls) setBudgetControls(current => current?.profileId === profileId ? null : current);
+  }, [profileId]);
+  const currentPlanControls = useRef(planSaveControls); currentPlanControls.current = planSaveControls;
+  const currentInputs = useRef(""); currentInputs.current = JSON.stringify({ head, products, appliedDraft });
   const [productSearch, setProductSearch] = useState("");
   const generateListingDraft = () => {
     const requestedProfile = profileId;
     aiDraft.mutate({ profile_id: profileId, ...(listingId ? { listing_id: listingId } : {}), expected_deal_budget_revision: budget.data?.revision, current_title: head.name, current_summary: head.summary, preserve_title: true, preserve_summary: true }, { onSuccess: () => { if (activeProfile.current === requestedProfile) setDraftChoice({ title: !touched.current.title, summary: !touched.current.summary }); } });
   };
   const generateRef = useRef(generateListingDraft); generateRef.current = generateListingDraft;
-  useEffect(() => { autoRequested.current = false; touched.current = { title: false, summary: false }; setAppliedDraft(null); aiDraft.reset(); }, [profileId]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { autoRequested.current = false; touched.current = { title: false, summary: false }; setAppliedDraft(null); setDirty(false); setHead({ name: "", offered_amount: "", minimum_investment: "", summary: "" }); setProducts([]); setError(null); setNotice(null); setBusy(false); setStage(""); aiDraft.reset(); }, [profileId]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const element = sectionRef.current;
     if (!element || typeof IntersectionObserver === "undefined") return;
@@ -173,7 +190,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
 
   // Seed from the listing when there is one, else from the suggestions, until the desk edits.
   useEffect(() => {
-    if (dirty) return;
+    if (dirty || busy) return;
     if (listing.data) {
       setProducts(listing.data.products.map(fromListing));
       setHead({ name: listing.data.name ?? "", offered_amount: text(listing.data.offered_amount), minimum_investment: text(listing.data.minimum_investment), summary: listing.data.summary ?? "" });
@@ -182,7 +199,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
       const first = suggestions.data.products.find((item) => item.program_key != null && selected.has(item.program_key));
       setProducts(first ? [fromSuggestion(first, true)] : []);
     }
-  }, [dirty, listing.data, listingId, suggestions.data, programReadiness]);
+  }, [dirty, busy, listing.data, listingId, suggestions.data, programReadiness]);
 
   // The plan's income (add-backs, exclusions, overrides) and its debt service after retirements are what the offer stands on.
   const evaluation = cockpit.plan?.evaluation;
@@ -304,55 +321,81 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const unreviewedExistingFunding = Boolean(listing.data && budget.data?.revision === 0);
   const loanFingerprint = (product: Partial<CpListingProduct> | null | undefined) => JSON.stringify(product ? [product.program_key, num(product.amount), num(product.rate_pct), num(product.term_months), product.structure, num(product.interest_only_months) ?? 0, product.payment_frequency, num(product.payments_per_year), product.repayment_config ?? null, product.dscr] : null);
   const sharedProposalChanged = Boolean(sharedLoan && primary && listing.data && loanFingerprint(toProduct(primary.draft, primary.payment, primary.dscr, primary.coveragePayment, primary.schedule)) !== loanFingerprint(listedPrimary));
-  const headlinePatch = () => ({
-    expected_deal_budget_revision: budget.data?.revision,
-    ...(appliedDraft ? { ai_draft_id: appliedDraft.id, expected_source_fingerprint: appliedDraft.fingerprint } : {}),
-    products: payload(),
-    // Decimals travel as strings on the listing API.
-    ...(primary
-      ? {
-          program_label: primary.draft.label.trim() || undefined,
-          note_rate_pct: num(primary.draft.rate_pct) == null ? undefined : String(num(primary.draft.rate_pct)),
-          term_months: num(primary.draft.term_months) == null ? undefined : num(primary.draft.term_months) as number,
-          loan_amount: num(primary.draft.amount) == null ? undefined : String(num(primary.draft.amount)),
-          ...(!unreviewedExistingFunding ? { offered_amount: num(budget.data?.calculation.investor_funding_amount as number | string | null) == null ? undefined : String(budget.data?.calculation.investor_funding_amount) } : {}),
-        }
-      : {}),
-    ...(head.name.trim() ? { name: head.name.trim() } : {}),
-    ...(!unreviewedExistingFunding && num(budget.data?.calculation.minimum_investor_contribution as number | string | null) != null ? { minimum_investment: String(budget.data?.calculation.minimum_investor_contribution) } : {}),
-    ...(head.summary.trim() ? { summary: head.summary.trim() } : {}),
-  });
-
   const save = async () => {
+    if (operation.current?.profileId === profileId) return;
+    const marker = { profileId };
+    operation.current = marker;
+    const requestedProfile = profileId, inputFingerprint = currentInputs.current;
+    let confirmedBudget: DealBudget | null = null;
+    const guard = () => {
+      if (!mounted.current || activeProfile.current !== requestedProfile) throw new Error("The active file changed. Return to its marketplace panel to continue.");
+      if (currentInputs.current !== inputFingerprint) throw new Error("The listing inputs changed during preparation. Your edits are preserved; try again.");
+      if (confirmedBudget) {
+        const latest = queryClient.getQueryData<DealBudgetDraft | null>(dealBudgetDraftKey(requestedProfile));
+        if (latest?.profileId === requestedProfile && dealBudgetChanged(latest.value, confirmedBudget)) throw new Error("Newer cost changes remain unsaved. They were retained; review them and retry the listing refresh.");
+        currentPlanControls.current?.assertCurrent();
+      }
+    };
     setError(null);
     setNotice(null);
     setBusy(true);
+    let financialsSaved = false;
+    let persistedListing: CpListing | null = null;
     try {
-      await budget.verifyRevision();
-      if (workingFinancing?.dirty) throw new Error("Save the shared coverage plan or terms before updating the marketplace proposal.");
+      if (!canPublish) throw new Error("You cannot manage this marketplace listing.");
       if (recordedReferenceOnly) throw new Error("The active coverage loan was cleared. Structure and save a new proposal before updating the marketplace listing; the old terms remain a historical reference.");
       if (!primary) throw new Error("Choose a primary product before creating its marketplace proposal.");
-      if (!listingId && (!packageState.generated || !packageState.inSync)) throw new Error("Generate a current investor package before creating its marketplace listing.");
-      if (listingId) {
-        await patch.mutateAsync({ id: listingId, ...headlinePatch() });
-        setDirty(false);
-        setNotice("Saved to the listing draft.");
+      if (touched.current.title && head.name.trim().length < 2) throw new Error("Enter a deal title of at least two characters.");
+      const manualProducts = payload().filter(product => product.financing_source !== "canonical_financing");
+      const copy = explicitMarketplaceCopy(head, touched.current);
+      const draftReceipt = appliedDraft ? { ai_draft_id: appliedDraft.id, expected_source_fingerprint: appliedDraft.fingerprint } : {};
+      await prepareMarketplaceFinancing(profileId, budgetControls, currentPlanControls.current ?? null, message => { guard(); setStage(message); }, guard);
+      financialsSaved = true;
+      setStage("Reading the latest saved file data…");
+      const freshBudget = await api<DealBudget>(`/application-profiles/${encodeURIComponent(profileId)}/deal-budget`);
+      guard();
+      const keptBudget = queryClient.getQueryData<DealBudgetDraft | null>(dealBudgetDraftKey(profileId));
+      if (keptBudget?.profileId === profileId && dealBudgetChanged(keptBudget.value, freshBudget)) throw new Error("Newer cost changes remain unsaved. Review the budget and try again.");
+      confirmedBudget = freshBudget;
+      queryClient.setQueryData(dealBudgetKey(profileId), freshBudget);
+      const fresh = await prefill.mutateAsync({ profile_id: profileId });
+      guard(); currentPlanControls.current?.assertCurrent();
+      const { existing_listing: existing, ...fileFields } = fresh;
+      let id = listingId ?? existing?.id ?? null;
+      const reviewed = { ...copy, products: manualProducts, ...draftReceipt, expected_deal_budget_revision: freshBudget.revision };
+      setStage(id ? "Refreshing the listing from saved file data…" : "Creating the marketplace listing draft…");
+      let result: CpListing;
+      if (id) {
+        result = await patch.mutateAsync({ id, ...reviewed });
       } else {
-        const draft = await prefill.mutateAsync({ profile_id: profileId });
-        if (draft.existing_listing) {
-          await patch.mutateAsync({ id: draft.existing_listing.id, ...headlinePatch() });
-        } else {
-          const { existing_listing: _existing, ...rest } = draft;
-          const created = await create.mutateAsync({ ...rest, ...headlinePatch() });
-          setNotice(`Listing draft ${created.ref} started. Attach the PPM and publish from the marketplace editor.`);
+        try { result = await create.mutateAsync({ ...fileFields, ...reviewed, products: [...(fileFields.products ?? []).filter(product => product.financing_source === "canonical_financing"), ...manualProducts] }); }
+        catch (failure) {
+          id = existingMarketplaceListingId(failure);
+          if (!id) throw failure;
+          guard(); currentPlanControls.current?.assertCurrent();
+          result = await patch.mutateAsync({ id, ...reviewed });
         }
-        setDirty(false);
-        await lookup.refetch();
       }
+      persistedListing = result;
+      if (mounted.current && activeProfile.current === requestedProfile) {
+        setAcknowledgedListing({ profileId, id: result.id });
+        queryClient.setQueryData(["cp-listing", result.id], result);
+      }
+      guard(); currentPlanControls.current?.assertCurrent();
+      // Refresh data is distinct from text drafting and publication.
+      result = await api<CpListing>(`/capital/admin/listings/${encodeURIComponent(result.id)}/refresh-snapshot`, { method: "POST", body: "{}" });
+      guard();
+      queryClient.setQueryData(["cp-listing", result.id], result);
+      setAcknowledgedListing({ profileId, id: result.id });
+      setHead({ name: result.name ?? head.name, summary: result.summary ?? "", offered_amount: text(result.offered_amount), minimum_investment: text(result.minimum_investment) });
+      setProducts(result.products.map(fromListing)); setAppliedDraft(null); setDirty(false);
+      setNotice(`Listing ${result.ref} refreshed from the saved file. Your reviewed title and summary were kept. Publication status is unchanged.`);
+      await lookup.refetch();
     } catch (e) {
-      setError(errorMessage(e, "The listing could not be saved."));
+      if (mounted.current && activeProfile.current === requestedProfile) setError(`${persistedListing ? `Listing ${persistedListing.ref} was saved; its file-data snapshot refresh still needs retry. ` : financialsSaved ? "Shared financial changes are saved. " : ""}${errorMessage(e, "The listing could not be saved. Your edits are preserved; try again.")}`);
     } finally {
-      setBusy(false);
+      if (operation.current === marker) operation.current = null;
+      if (mounted.current && activeProfile.current === requestedProfile) { setBusy(false); setStage(""); }
     }
   };
 
@@ -368,7 +411,9 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const coverage = cockpit.coverage;
   const sheet = termSheet?.current ?? null;
   const status = (lookup.data?.listing?.status ?? null) as CpListingStatus | null;
-  const editable = canPublish && (!status || status === "draft" || status === "open");
+  const listingEditable = canPublish && (!status || status === "draft" || status === "open");
+  const editable = listingEditable && !busy;
+  const preparationBlocker = planSaveControls?.profileId !== profileId || budgetControls?.profileId !== profileId ? "Loading the shared financial editors…" : planSaveControls.blocker || (budgetControls.needsSave ? budgetControls.blocker : null);
 
   return (
     <section className={embedded ? "grid g12" : "fc-card fc-wide"} id="fc-marketplace" ref={node => { sectionRef.current = node; if (typeof innerRef === "function") innerRef(node); else if (innerRef) (innerRef as { current: HTMLElement | null }).current = node; }}>
@@ -420,7 +465,8 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
         <div className="fc-listing-item">
           <Lbl>Package</Lbl>
           <strong>{packageState.generated ? `Summary v${packageState.summaryVersion ?? "?"} · packet v${packageState.packetVersion ?? "?"}` : "Not generated"}</strong>
-          <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Generate before creating a listing" : packageState.inSync ? "Current" : "Needs a refresh"}</CellChip></div>
+          <div className="fc-chips"><CellChip tone={!packageState.generated ? "mut" : packageState.inSync ? "ok" : "warn"}>{!packageState.generated ? "Generate before publishing" : packageState.inSync ? "Current" : "Refresh before publishing"}</CellChip></div>
+          <small className="sub">A listing draft can be created now. Package and publication readiness are reviewed separately.</small>
           <Btn size="sm" onClick={onOpenPackage}>Package readiness</Btn>
         </div>
         {cockpit.plan?.evaluation?.active ? (
@@ -439,7 +485,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
 
       {canPublish ? (
         <>
-          <DealBudgetSection profileId={profileId} disabled={!editable} compact={false} existingFunding={listing.data ? { capital: num(listing.data.offered_amount), minimum: num(listing.data.minimum_investment) } : undefined} />
+          <DealBudgetSection profileId={profileId} disabled={!listingEditable} compact={false} financialPlan={workingFinancing?.profileId === profileId ? workingFinancing.plan : undefined} loan={sharedLoan ? { amount: sharedLoan.amount, rate_pct: sharedLoan.ratePct, term_months: sharedLoan.termMonths, structure: sharedLoan.structure, interest_only_months: sharedLoan.interestOnlyMonths, repayment_config: sharedLoan.repaymentConfig, payments_per_year: sharedLoan.paymentsPerYear } : null} onSaveControlsChange={budgetControlsChanged} existingFunding={listing.data ? { capital: num(listing.data.offered_amount), minimum: num(listing.data.minimum_investment) } : undefined} />
           <div className="grid g8" aria-label="Selected offering product">
             <div className="row" style={{ gap: 8, flexWrap: "wrap" }}><Lbl>Product to offer</Lbl><strong>{primary?.draft.label || "Choose a product"}</strong>{primary ? <span className="sub">{money(num(primary.draft.amount))} · {multiple(primary.dscr)} projected DSCR</span> : null}{sharedLoan ? <CellChip tone="acc">Shared coverage loan</CellChip> : null}{sharedProposalChanged ? <CellChip tone="warn">Listing needs the current proposal</CellChip> : null}</div>
             <details>
@@ -516,7 +562,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
           )}
           {computed.filter(({ draft }) => !(sharedLoan && draft.primary)).map(({ draft, schedule, repaymentError: issue }) => <section key={draft.key} aria-label={`${draft.label} repayment details`}><span className="sub">{draft.label || "Loan"} repayment</span><Select aria-label={`${draft.label} payment frequency`} value={draft.payment_frequency ?? "monthly"} disabled={!editable} onChange={(event) => update(draft.key, { payment_frequency: event.target.value as ProductDraft["payment_frequency"] })}><option value="monthly">Monthly</option><option value="weekly">Weekly</option><option value="biweekly">Every two weeks</option><option value="daily">Daily (business days)</option><option value="custom">Custom</option></Select>{draft.payment_frequency === "custom" ? <label>Payments per year<Input aria-label={`${draft.label} custom payments per year`} type="number" min={1} max={366} step="any" value={draft.payments_per_year} disabled={!editable} onChange={(event) => update(draft.key, { payments_per_year: event.target.value })} /></label> : null}<AdvancedRepaymentEditor value={draft.repayment_config} onChange={(config) => update(draft.key, { repayment_config: config })} amount={num(draft.amount)} ratePct={num(draft.rate_pct)} termMonths={num(draft.term_months)} structure={draft.interest_only ? "interest_only" : draft.structure ?? defaultStructure(num(draft.term_months))} interestOnlyMonths={num(draft.interest_only_months)} periodsPerYear={draft.payment_frequency === "custom" ? num(draft.payments_per_year) ?? 0 : draft.payment_frequency === "daily" ? 252 : draft.payment_frequency === "weekly" ? 51.96 : draft.payment_frequency === "biweekly" ? 25.98 : 12} disabled={!editable} unsupportedReason={draft.factor_rate ? "Advanced repayment requires an APR-based offer; factor pricing keeps its stated repayment." : null} />{schedule && !issue && !draft.factor_rate ? <LoanPaymentPhases schedule={schedule} /> : null}</section>)}
           </details>
-          {workingFinancing?.dirty ? <StatusLine tone="warn">The shared loan has unsaved changes. Save the coverage plan or terms before updating the marketplace listing.</StatusLine> : null}
+          {workingFinancing?.dirty || budgetControls?.needsSave ? <StatusLine tone="acc">This action saves valid pending costs and the shared coverage plan before updating the listing. Issued terms and publication stay separate.</StatusLine> : null}
           {recordedReferenceOnly ? <StatusLine tone="warn">No active loan proposal. The earlier terms are retained for history; structure and save a loan in the coverage plan before updating the listing.</StatusLine> : null}
           <div className="fc-listing-grid">
             <div className="fc-listing-item">
@@ -537,7 +583,8 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
             <Textarea rows={2} aria-label="Listing summary" value={head.summary} disabled={!editable} placeholder="Review the investor summary drafted from this file." onChange={(e) => { touched.current.summary = true; setDraftChoice(current => ({ ...current, summary: false })); setDirty(true); setHead({ ...head, summary: e.target.value }); }} />
           </div>
           <section className="grid g8" aria-label="AI listing draft">
-            <div className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><strong>Listing draft from the file</strong><Btn size="sm" disabled={!editable || aiDraft.isPending || !budget.data} onClick={generateListingDraft}><Icon name="sparkles" size={13} />{aiDraft.isPending ? "Preparing draft…" : aiDraft.data ? "Regenerate listing draft" : "Draft listing from file"}</Btn></div>
+            <div className="row" style={{ justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}><strong>Optional listing text draft</strong><Btn size="sm" disabled={!editable || aiDraft.isPending || !budget.data} onClick={generateListingDraft}><Icon name="sparkles" size={13} />{aiDraft.isPending ? "Preparing text…" : aiDraft.data ? "Regenerate text draft" : "Draft new listing text"}</Btn></div>
+            <p className="sub">Refreshing file data does not regenerate this text or replace your inputs. Apply selected draft text only when you want to replace those fields.</p>
             {aiDraft.isPending ? <PreparationProgress compact title="Preparing the investor listing" description="Reading the structured loan, reviewed budget and financial evidence. Nothing is published." /> : null}
             {aiDraft.error ? <StatusLine tone="warn">{errorMessage(aiDraft.error, "The listing draft could not be prepared. Your edits are retained.")}<Btn size="sm" onClick={generateListingDraft}>Retry listing draft</Btn></StatusLine> : null}
             {aiDraft.data && (!aiDraft.data.profile_id || aiDraft.data.profile_id === profileId) ? <div className="grid g8" style={{ border: "1px solid var(--line)", borderRadius: 10, padding: 12 }}>
@@ -552,10 +599,11 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
             </div> : null}
           </section>
           {repaymentError ? <StatusLine tone="bad">{repaymentError} Resolve the repayment schedule before saving.</StatusLine> : null}
+          {preparationBlocker ? <StatusLine tone="warn">{preparationBlocker}{props.onStructureLoan ? <Btn size="sm" onClick={props.onStructureLoan} disabled={busy}>Review shared loan / full terms</Btn> : null}</StatusLine> : null}
           {listingId && !embedded ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Btn variant="pri" size="sm" onClick={() => void save()} disabled={busy || !editable || !primary || recordedReferenceOnly || !!repaymentError || !!workingFinancing?.dirty || (!!listingId && !dirty && !sharedProposalChanged) || (!listingId && (!packageState.generated || !packageState.inSync))}>
-              {busy ? "Saving…" : listingId ? "Save terms to the listing" : "Create marketplace listing draft"}
+            <Btn variant="pri" size="sm" aria-label={listingId ? "Save & refresh listing from file" : "Save & create listing draft"} onClick={() => void save()} disabled={busy || !listingEditable || lookup.isLoading || !primary || recordedReferenceOnly || !!repaymentError || Boolean(preparationBlocker) || Boolean(planSaveControls?.busy || budgetControls?.busy)}>
+              {busy ? stage || "Preparing listing…" : listingId ? "Save & refresh listing from file" : "Save & create listing draft"}
             </Btn>
             {dirty ? <span className="sub">Unsaved changes.</span> : null}
             {status && status !== "draft" ? <span className="sub">The listing is {status.replace(/_/g, " ")}; saved terms go live for members immediately.</span> : null}

@@ -77,6 +77,7 @@ import styles from "./FinancialReview.module.css";
 import { ObligationPlanRow } from "./ObligationRowEditor";
 import { BankReplayNotice } from "./BankReplayNotice";
 import { RefinanceSelectionSummary } from "./RefinanceSelectionSummary";
+import type { MarketplaceBudgetReceipt, MarketplacePlanControls } from "@/lib/marketplacePreparation";
 import { refinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
 import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, riskProfile } from "@/lib/loanSchedule";
 
@@ -138,7 +139,7 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, onReviewClose }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; onReviewClose?: () => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, onReviewClose, onMarketplaceSaveControlsChange }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; onReviewClose?: () => void; onMarketplaceSaveControlsChange?: (controls: MarketplacePlanControls | null) => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
   const canEdit = requestedCanEdit && !termsPending && !save.isPending && !setupBudgetSaving;
@@ -180,6 +181,7 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   };
   const previewSource = (fileId: string, page?: number) => { if (setupBudgetSaving) return; setReviewOpen(false); onPreviewSource?.(fileId, page); };
   const [plan, setPlan] = useState<FinancialPlanWrite>(() => fromRecord(cockpit));
+  const currentPlan = useRef(plan); currentPlan.current = plan;
   const [paymentText, setPaymentText] = useState<string>(() => (cockpit.plan.record.new_payment_monthly == null ? "" : String(cockpit.plan.record.new_payment_monthly)));
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
@@ -440,21 +442,50 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
     setPlan({ ...EMPTY_PLAN, expected_updated_at: plan.expected_updated_at ?? null });
     setPaymentText("");
   };
-  const submit = async () => {
+  const pendingTermsEdits = Boolean(clientTermsDraft?.editedInEditor && JSON.stringify(clientTermsDraft.draft) !== clientTermsDraft.savedFingerprint);
+  const marketplaceBlocker = !requestedCanEdit ? "You cannot save the shared coverage plan." : pendingTermsEdits ? "The full terms editor has unsaved changes. Open full terms and save or discard that draft before updating the listing." : dirty && unresolvedPayoffs ? "Review the unresolved payoff selections in the coverage plan before saving." : dirty && repaymentIssue ? repaymentIssue : null;
+  const persistPlan = async (receipt?: MarketplaceBudgetReceipt, force = false): Promise<FinancialPlanRead | null> => {
+    if (activeProfile.current !== profileId) throw new Error("The active file changed. Return to its marketplace panel and try again.");
+    if (receipt?.planSaved) {
+      const result = receipt.budget.financial_plan;
+      if (!result || result.profile_id !== profileId) throw new Error("The budget save did not acknowledge this file’s shared loan. Refresh its saved financial data before continuing.");
+      const acknowledged = fromRecord({ ...cockpit, plan: { ...cockpit.plan, record: result.record } });
+      if (!same(currentPlan.current, acknowledged) && (!receipt.submittedPlan || !same(currentPlan.current, receipt.submittedPlan))) {
+        previousSavedRecord.current = acknowledged;
+        setPlan(current => ({ ...current, expected_updated_at: result.record.updated_at ?? null }));
+        throw new Error("The costs and loan were saved, but newer coverage edits remain. Review those changes and try again; the listing was not updated.");
+      }
+      currentPlan.current = acknowledged;
+      financingSaved(result);
+      return result;
+    }
+    if (marketplaceBlocker) throw new Error(marketplaceBlocker);
+    if (save.isPending || termsPending || setupBudgetSaving) throw new Error("A financial save is in progress. Wait for it to finish.");
+    if (!dirty && !force) return null;
+    if (repaymentIssue) throw new Error(repaymentIssue);
     setError(null);
-    try {
-      if (repaymentIssue) throw new Error(repaymentIssue);
       const submitted = { ...plan, expected_deal_budget_revision: await budgetPreview.budget.verifyRevision() };
       const result = await save.mutateAsync(submitted);
-      if (activeProfile.current !== profileId) return;
+      if (activeProfile.current !== profileId) throw new Error("The active file changed after the coverage plan was saved. Its listing was not updated.");
       const acknowledged = fromRecord({ ...cockpit, plan: { ...cockpit.plan, record: result.record } });
       previousSavedRecord.current = acknowledged;
-      setPlan((current) => same(current, submitted) ? acknowledged : { ...current, expected_updated_at: result.record.updated_at ?? null });
+      const changedDuringSave = !same(currentPlan.current, submitted);
+      currentPlan.current = changedDuringSave ? { ...currentPlan.current, expected_updated_at: result.record.updated_at ?? null } : acknowledged;
+      setPlan(currentPlan.current);
       setSaved("Plan saved. The debt service, the offer and the advances read it now.");
-    } catch (e) {
-      setError(errorMessage(e, "The plan could not be saved."));
-    }
+      if (changedDuringSave) throw new Error("The coverage plan was saved, but newer edits remain. Review them and try again before updating the listing.");
+      return result;
   };
+  const assertMarketplaceCurrent = () => {
+    if (activeProfile.current !== profileId) throw new Error("The active file changed. Its listing was not updated.");
+    if (pendingTermsEdits || !same(currentPlan.current, previousSavedRecord.current)) throw new Error("Newer financing edits remain unsaved. The listing does not include those newer changes; review the shared loan and try again.");
+  };
+  const assertMarketplaceRef = useRef(assertMarketplaceCurrent); assertMarketplaceRef.current = assertMarketplaceCurrent;
+  const assertMarketplaceControl = useMemo(() => () => { if (activeProfile.current !== profileId) throw new Error("The active file changed."); return assertMarketplaceRef.current(); }, [profileId]);
+  const persistMarketplacePlan = useRef(persistPlan); persistMarketplacePlan.current = persistPlan;
+  const persistMarketplaceControl = useMemo(() => (receipt?: MarketplaceBudgetReceipt) => { if (activeProfile.current !== profileId) throw new Error("The active file changed."); return persistMarketplacePlan.current(receipt); }, [profileId]);
+  useEffect(() => { onMarketplaceSaveControlsChange?.({ profileId, dirty, busy: save.isPending || termsPending || setupBudgetSaving, blocker: marketplaceBlocker, persist: persistMarketplaceControl, assertCurrent: assertMarketplaceControl }); return () => onMarketplaceSaveControlsChange?.(null); }, [onMarketplaceSaveControlsChange, profileId, dirty, save.isPending, termsPending, setupBudgetSaving, marketplaceBlocker, persistMarketplaceControl, assertMarketplaceControl]);
+  const submit = async () => { try { await persistPlan(undefined, legacySelectionsReviewed); } catch (e) { setError(errorMessage(e, "The plan could not be saved.")); } };
 
   const marks = [
     { at: thresholds.acceptable, label: `${thresholds.acceptable.toFixed(2)}x` },
