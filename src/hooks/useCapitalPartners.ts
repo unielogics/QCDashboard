@@ -5,6 +5,7 @@
 // Decimals arrive as strings and stay strings until formatted.
 
 import type { RepaymentConfig } from "@/lib/loanSchedule";
+import type { MarketplacePublishIssue } from "@/lib/marketplaceIssues";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi } from "@/hooks/useApi";
 
@@ -119,7 +120,7 @@ export interface CpListing extends CpListingCard {
   valuation_source: string | null; title_status: string | null; servicer_label: string | null; documents: CpDocument[]; can_subscribe: boolean;
   source_kind: string; loan_id: string | null; profile_id: string | null; first_sale_at: string | null; published_by_id: string | null; publish_reason: string | null; sync?: CpSyncState | null;
   withdrawn_at: string | null; withdrawn_reason: string | null; source_snapshot: Record<string, unknown>; created_by_id: string | null; created_at: string;
-  updated_at: string; investor_count: number; subscriptions: CpSubscription[]; participations: CpParticipation[]; events: CpListingEvent[]; publish_blockers: string[];
+  updated_at: string; investor_count: number; subscriptions: CpSubscription[]; participations: CpParticipation[]; events: CpListingEvent[]; publish_blockers: string[]; publish_issues?: MarketplacePublishIssue[];
 }
 export type CpListingPatch = Partial<{
   expected_deal_budget_revision: number; ai_draft_id: string; expected_source_fingerprint: string;

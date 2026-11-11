@@ -44,6 +44,7 @@ import { FundingRequestControl } from "@/components/application/FundingRequestCo
 import { UnderwritingFlow, type TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { FinancingProposalSummary } from "@/components/file/FinancingProposalSummary";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
+import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { UnifiedThreadConversation } from "@/components/communications/UnifiedThreadConversation";
 import { AIIntakeClientConversation, AIIntakeEmailWorkspace } from "@/components/communications/AIIntakeClientCommunications";
 import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
@@ -546,6 +547,7 @@ export function LeadDetailPanel({
   initialView = "workspace",
   initialActiveTab = "conversation",
   initialWorkspaceSection = "overview",
+  initialFinancialAction,
   initialCommunicationChannel = "underwriter",
   initialEmailThreadId,
   onCommunicationNavigate,
@@ -587,6 +589,7 @@ export function LeadDetailPanel({
   initialActiveTab?: "conversation" | "workspace";
   /** Which workspace section opens first, so a rail item lands on its part of the file. */
   initialWorkspaceSection?: "overview" | "documents" | "client" | "credit" | "contracts" | "package";
+  initialFinancialAction?: MarketplaceFinancialAction | null;
   initialCommunicationChannel?: "updates" | "underwriter" | "client" | "email" | "partner" | "internal";
   initialEmailThreadId?: string | null;
   onCommunicationNavigate?: (channel: "updates" | "underwriter" | "client" | "email" | "partner" | "internal") => void;
@@ -1344,6 +1347,20 @@ export function LeadDetailPanel({
     });
   }, [detail, initialCommunicationChannel, initialEvidenceTab, initialSubmissionStep, initialView, canUnderwrite, canViewPayments]);
 
+  const handledFinancialAction = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialFinancialAction || !profileId || !detail || !canUnderwrite) return;
+    const request = `${detail.intake.id}:${profileId}:${initialFinancialAction}`;
+    if (handledFinancialAction.current === request) return;
+    handledFinancialAction.current = request;
+    if (initialFinancialAction === "terms" && isDealerFile) {
+      setPrototypeView("production");
+      setProductionTermSheetOpen(true);
+    } else {
+      setPrototypeView("financials");
+    }
+  }, [initialFinancialAction, profileId, detail, canUnderwrite, isDealerFile]);
+
   async function saveContact() {
     if (!contactDraft.full_name.trim() || !contactDraft.email.trim()) {
       toast.show("Principal name and email are required.");
@@ -1992,6 +2009,7 @@ export function LeadDetailPanel({
                   <FinancialCockpit
                     key={profileId}
                     profileId={profileId}
+                    initialFinancialAction={isDealerFile && initialFinancialAction === "terms" ? null : initialFinancialAction}
                     termsRequest={financingTermsRequest?.profileId === profileId ? financingTermsRequest.sequence : 0}
                     coverageRequest={financingCoverageRequest?.profileId === profileId ? financingCoverageRequest.sequence : 0}
                     noiReviewRequest={noiReviewRequest?.profileId === profileId ? noiReviewRequest.sequence : 0}

@@ -12,6 +12,7 @@ import type { LinkLead } from "@/components/file/leadFile";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { SECTION_DEFINITIONS, parseFileSection } from "@/lib/fileRoutes";
+import { parseMarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 
 const LIST_HREF = "/admin/ai-underwriter-leads";
 
@@ -26,6 +27,7 @@ export default function FilePage() {
   const router = useRouter();
   const leadId = params?.id ?? null;
   const section = parseFileSection(searchParams.get("section"));
+  const financialAction = parseMarketplaceFinancialAction(searchParams.get("financial_action"));
   const requestedChannel = searchParams.get("channel");
   const communicationChannel = requestedChannel === "client" || requestedChannel === "email" || requestedChannel === "updates" || requestedChannel === "partner" || requestedChannel === "internal" ? requestedChannel : requestedChannel === "sms" ? "client" : "underwriter";
   const definition = SECTION_DEFINITIONS[section];
@@ -55,6 +57,7 @@ export default function FilePage() {
         initialView={definition.view}
         initialActiveTab={definition.activeTab}
         initialWorkspaceSection={definition.workspaceSection}
+        initialFinancialAction={financialAction}
         initialEvidenceTab={definition.evidenceTab ?? "requirements"}
         initialCommunicationChannel={communicationChannel}
         initialEmailThreadId={communicationChannel === "email" ? searchParams.get("thread") : null}

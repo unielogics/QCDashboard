@@ -6,10 +6,11 @@
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn, CellChip, StatusLine } from "@/components/ds";
-import { errorMessage } from "@/components/marketplace/shared";
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 import { useCpListingAction, useCpProfilePublication, useCpSourceLookup, type CpListing, type CpSyncState } from "@/hooks/useCapitalPartners";
 import { marketplacePublicationState, type MarketplacePublicationState } from "@/lib/marketplacePublication";
+import { dedupeMarketplaceIssues, marketplaceApiIssues, marketplacePublishIssues, type MarketplaceIssue } from "@/lib/marketplaceIssues";
+import { MarketplaceIssues } from "./MarketplaceIssues";
 
 export type { MarketplacePublicationState } from "@/lib/marketplacePublication";
 
@@ -26,7 +27,7 @@ export function SyncChips({ sync }: { sync: CpSyncState | null | undefined }) {
   return <><CellChip tone="warn">Package changes to push</CellChip>{sync.changed.map((c) => <CellChip key={c.key} tone="mut">{c.label}</CellChip>)}</>;
 }
 
-export function MarketplacePublishStrip({ profileId, listing, packageInSync, canPublish, compact = false, onStartListing, onPublicationState }: {
+export function MarketplacePublishStrip({ profileId, listing, packageInSync, canPublish, compact = false, onStartListing, onPublicationState, onFixIssue, onActionError, onActionSuccess }: {
   /** Lookup mode is available to staff with underwriting access to this file. */
   profileId?: string | null;
   /** Admin listing mode already has the full listing and package sync state. */
@@ -37,11 +38,15 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
   compact?: boolean;
   onStartListing?: () => void;
   onPublicationState?: (state: MarketplacePublicationState) => void;
+  onFixIssue?: (issue: MarketplaceIssue) => void;
+  onActionError?: (error: unknown) => void;
+  onActionSuccess?: () => void;
 }) {
   const publication = useCpProfilePublication(profileId, !listing);
   const lookup = useCpSourceLookup({ profile_id: profileId ?? null }, Boolean(profileId) && !listing && canPublish);
   const act = useCpListingAction();
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [actionIssues, setActionIssues] = useState<MarketplaceIssue[]>([]);
   const offer = listing ?? publication.data?.listing ?? null;
   const listingId = offer?.id ?? null;
   const sync = listing?.sync ?? (lookup.data?.listing?.id === listingId ? lookup.data?.sync : null) ?? null;
@@ -55,17 +60,21 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
   const scope = useRef("");
   scope.current = `${profileId ?? ""}:${listingId ?? ""}`;
   useEffect(() => { callback.current?.(state); }, [state]);
-  useEffect(() => { setNote(null); }, [profileId, listingId]);
+  useEffect(() => { setNote(null); setActionIssues([]); }, [profileId, listingId]);
 
   const run = async (path: string, done: string) => {
     const currentScope = scope.current;
     setNote(null);
+    setActionIssues([]);
     try {
       await act.mutateAsync({ listingId: listingId as string, path });
       if (profileId && !listing) await Promise.all([lookup.refetch(), publication.refetch()]);
-      if (scope.current === currentScope) setNote({ tone: "ok", text: done });
+      if (scope.current === currentScope) { setNote({ tone: "ok", text: done }); onActionSuccess?.(); }
     } catch (e) {
-      if (scope.current === currentScope) setNote({ tone: "bad", text: errorMessage(e, "The marketplace could not be updated.") });
+      if (scope.current === currentScope) {
+        if (onActionError) onActionError(e);
+        else setActionIssues(marketplaceApiIssues(e, { linked: Boolean(resolvedProfile), action: "snapshot" }));
+      }
     }
   };
   return (
@@ -87,6 +96,7 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
         {!compact && !listingId ? <span className="sub">{packageInSync ? "Review the investor terms, then prepare a listing draft. Publish offer makes it available to approved capital partners." : "Generate a current investor package before preparing its marketplace listing."}</span> : null}
       </> : null}
       {note ? <StatusLine tone={note.tone}>{note.text}</StatusLine> : null}
+      {!onFixIssue ? <MarketplaceIssues listingId={listingId ?? undefined} issues={dedupeMarketplaceIssues([...actionIssues, ...(listing?.status === "draft" ? marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, { linked: Boolean(resolvedProfile) }) : [])])} /> : null}
     </div>
   );
 }

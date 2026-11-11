@@ -33,6 +33,7 @@ import { ApplicationLenderSubmissions } from "@/components/application/Applicati
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import type { BudgetEditorControls } from "@/components/application/UseOfFundsBudgetEditor";
 import { createUseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
+import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { noiGovernancePresentation } from "@/lib/noiGovernance";
 import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
@@ -105,6 +106,7 @@ type Props = {
   termsKind?: "production" | "client";
   /** Open the same mounted editor from Underwriting without leaving that tab. */
   termsRequest?: number;
+  initialFinancialAction?: MarketplaceFinancialAction | null;
   coverageRequest?: number;
   noiReviewRequest?: number;
   onWorkingFinancingChange?: (value: WorkingFinancing) => void;
@@ -816,6 +818,7 @@ export function FinancialCockpit(props: Props) {
         <CoverageCard key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest}
           onMarketplaceSaveControlsChange={marketplaceControlsChanged}
           setupBudgetSaving={budgetSaving}
+          initialFinancialAction={props.initialFinancialAction}
           programSelection={props.programReadiness ? <details className="fc-card fc-wide" id="fc-programs" open>
             <summary><strong>Program criteria and use of funds</strong><span className="sub"> · {props.programReadiness.selections?.map((row) => row.program_name).join(", ") || "Choose programs"}</span></summary>
             <div className="fc-card-h">
@@ -826,6 +829,7 @@ export function FinancialCockpit(props: Props) {
             </div>
             <ApplicationProgramReadiness
               section="setup"
+              initiallyOpenUseOfFunds={props.initialFinancialAction === "use-of-funds"}
               canEditPrograms={props.canUnderwrite}
               useOfFundsDraftStore={budgetDraftStore}
               onUseOfFundsControlsChange={budgetControlsChanged}
