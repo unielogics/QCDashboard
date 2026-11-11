@@ -166,6 +166,19 @@ function toDraft(l: CpListing): Draft {
   };
 }
 
+type TextDraftKey = Exclude<keyof Draft, "personal_guarantee">;
+
+// Keep the component type stable as its controlled value changes so native
+// focus, selection and partially entered numeric strings stay in the input.
+function ListingField({ k, label, type = "text", hint, draft, onChange, readOnly, linkedProfile }: {
+  k: TextDraftKey; label: string; type?: string; hint?: string;
+  draft: Draft; onChange: (key: TextDraftKey, value: string) => void; readOnly: boolean; linkedProfile: boolean;
+}) {
+  return <Field label={label} hint={hint}>
+    <Input aria-label={label} type={type} value={String(draft[k] ?? "")} onChange={event => onChange(k, event.target.value)} disabled={readOnly || linkedProfile && ["loan_amount", "note_rate_pct", "term_months", "offered_amount", "minimum_investment"].includes(k)} className={type === "number" ? "num" : undefined} />
+  </Field>;
+}
+
 function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void }) {
   const budget = useDealBudget(listing.profile_id ?? "");
   const [d, setD] = useState<Draft>(() => toDraft(listing));
@@ -197,33 +210,29 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
     }
   };
 
-  const F = ({ k, label: l, type = "text", hint }: { k: keyof Draft; label: string; type?: string; hint?: string }) => (
-    <Field label={l} hint={hint}>
-      <Input type={type} value={String(d[k] ?? "")} onChange={(e) => set(k, e.target.value as never)} disabled={readOnly || Boolean(listing.profile_id && ["loan_amount", "note_rate_pct", "term_months", "offered_amount", "minimum_investment"].includes(k))} className={type === "number" ? "num" : undefined} />
-    </Field>
-  );
+  const fieldProps = { draft: d, onChange: set, readOnly, linkedProfile: Boolean(listing.profile_id) };
 
   return (
     <div className="grid">
       {listing.profile_id ? <DealBudgetSection profileId={listing.profile_id} disabled={readOnly} compact={false} existingFunding={{ capital: listing.offered_amount == null ? null : Number(listing.offered_amount), minimum: listing.minimum_investment == null ? null : Number(listing.minimum_investment) }} /> : null}
       <Panel title="Terms" bodyClass="grid cols-auto">
         <Field label="Vertical"><Select value={d.vertical} onChange={(e) => set("vertical", e.target.value)} disabled={readOnly}><option value="real_estate">Real estate</option><option value="auto">Auto</option><option value="business">Business</option></Select></Field>
-        <F k="program_label" label="Program label" hint="What members see: Bridge, Fix and flip, Floorplan, Equipment…" />
-        <F k="name" label="Deal title" hint="Describes the financing proposal and location." />
-        <F k="city" label="City" />
-        <F k="state" label="State (2 letters)" />
-        <F k="collateral_type" label="Collateral type" hint="Multifamily, Residential 1-4, Vehicle inventory, Equipment, Receivables…" />
+        <ListingField {...fieldProps} k="program_label" label="Program label" hint="What members see: Bridge, Fix and flip, Floorplan, Equipment…" />
+        <ListingField {...fieldProps} k="name" label="Deal title" hint="Describes the financing proposal and location." />
+        <ListingField {...fieldProps} k="city" label="City" />
+        <ListingField {...fieldProps} k="state" label="State (2 letters)" />
+        <ListingField {...fieldProps} k="collateral_type" label="Collateral type" hint="Multifamily, Residential 1-4, Vehicle inventory, Equipment, Receivables…" />
         <Field label="Lien position"><Select value={d.lien_position} onChange={(e) => set("lien_position", e.target.value)} disabled={readOnly}><option value="first">1st</option><option value="second">2nd</option></Select></Field>
-        <F k="note_rate_pct" label="Note rate, % paid to participants" type="number" />
-        <F k="term_months" label="Term, months" type="number" />
-        <F k="ltv_pct" label="LTV / LTC / CLTV, %" type="number" />
+        <ListingField {...fieldProps} k="note_rate_pct" label="Note rate, % paid to participants" type="number" />
+        <ListingField {...fieldProps} k="term_months" label="Term, months" type="number" />
+        <ListingField {...fieldProps} k="ltv_pct" label="LTV / LTC / CLTV, %" type="number" />
         <Field label="Ratio kind"><Select value={d.ltv_kind} onChange={(e) => set("ltv_kind", e.target.value)} disabled={readOnly}><option value="ltv">LTV</option><option value="ltc">LTC</option><option value="cltv">CLTV</option></Select></Field>
-        <F k="loan_amount" label="Loan amount, $" type="number" />
-        <F k="offered_amount" label="Capital to raise from investors, $" type="number" hint={listing.profile_id ? "Set once in the shared deal budget above; defaults to full loan funding." : "Investor capital funding this loan."} />
-        <F k="minimum_investment" label="Smallest investor contribution, $" type="number" hint="One investor contributes the full amount unless multiple investors are configured." />
+        <ListingField {...fieldProps} k="loan_amount" label="Loan amount, $" type="number" />
+        <ListingField {...fieldProps} k="offered_amount" label="Capital to raise from investors, $" type="number" hint={listing.profile_id ? "Set once in the shared deal budget above; defaults to full loan funding." : "Investor capital funding this loan."} />
+        <ListingField {...fieldProps} k="minimum_investment" label="Smallest investor contribution, $" type="number" hint="One investor contributes the full amount unless multiple investors are configured." />
         <Field label="Payment frequency"><Select value={d.payment_frequency} onChange={(e) => set("payment_frequency", e.target.value)} disabled={readOnly}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="at_maturity">At maturity</option></Select></Field>
-        <F k="maturity_date" label="Maturity date" type="date" />
-        <F k="closes_at" label="Subscriptions close" type="datetime-local" hint="Drives the members' days-left counter." />
+        <ListingField {...fieldProps} k="maturity_date" label="Maturity date" type="date" />
+        <ListingField {...fieldProps} k="closes_at" label="Subscriptions close" type="datetime-local" hint="Drives the members' days-left counter." />
         <label className="pick" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={d.personal_guarantee} onChange={(e) => set("personal_guarantee", e.target.checked)} disabled={readOnly} /><span>Personal guarantee</span></label>
       </Panel>
       {listing.products?.length ? (
@@ -245,16 +254,16 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
       <Panel title="Narrative" bodyClass="grid g10">
         <Field label="Summary"><Textarea rows={3} value={d.summary} onChange={(e) => set("summary", e.target.value)} disabled={readOnly} /></Field>
         <div className="grid cols-auto">
-          <F k="guarantee_text" label="Guarantee, as shown" hint="Full personal guarantee from principals / Non-recourse with standard carve-outs" />
-          <F k="borrower_track_record" label="Borrower track record" hint="Count, not names: 7 completed projects / 12 years in operation" />
+          <ListingField {...fieldProps} k="guarantee_text" label="Guarantee, as shown" hint="Full personal guarantee from principals / Non-recourse with standard carve-outs" />
+          <ListingField {...fieldProps} k="borrower_track_record" label="Borrower track record" hint="Count, not names: 7 completed projects / 12 years in operation" />
         </div>
         <Field label="Exit plan"><Textarea rows={3} value={d.exit_plan} onChange={(e) => set("exit_plan", e.target.value)} disabled={readOnly} /></Field>
       </Panel>
       <Panel title="Collateral and valuation" bodyClass="grid cols-auto">
-        <F k="valuation_amount" label="Valuation, $" type="number" />
-        <F k="valuation_source" label="Valuation source" hint="Third-party appraisal, Inventory audit, Equipment appraisal…" />
-        <F k="title_status" label="Title" hint="Lien search clear…" />
-        <F k="servicer_label" label="Servicer, as shown" />
+        <ListingField {...fieldProps} k="valuation_amount" label="Valuation, $" type="number" />
+        <ListingField {...fieldProps} k="valuation_source" label="Valuation source" hint="Third-party appraisal, Inventory audit, Equipment appraisal…" />
+        <ListingField {...fieldProps} k="title_status" label="Title" hint="Lien search clear…" />
+        <ListingField {...fieldProps} k="servicer_label" label="Servicer, as shown" />
       </Panel>
       {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish /> : null}
       <SourceSnapshotCard snapshot={listing.source_snapshot} />
