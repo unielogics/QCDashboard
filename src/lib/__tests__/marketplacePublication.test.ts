@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { marketplacePublicationLabel, marketplacePublicationState } from "@/lib/marketplacePublication";
+
+vi.mock("@/lib/appUrl", () => ({ CAPITAL_APP_ORIGIN: "https://capital.example.test" }));
 
 describe("marketplace offer publication", () => {
   it("keeps draft and withdrawn investor links unavailable regardless of old timestamps", () => {
@@ -8,7 +10,7 @@ describe("marketplace offer publication", () => {
     }
   });
   it("uses the actual member route and reference, never the internal editor ID", () => {
-    expect(marketplacePublicationState({ id: "private-id", ref: "QC-0042", status: "open" })).toMatchObject({ isPublished: true, isOpenForInvestment: true, memberUrl: "https://capital.qualifiedcommercial.com/marketplace/QC-0042" });
+    expect(marketplacePublicationState({ id: "private-id", ref: "QC-0042", status: "open" })).toMatchObject({ isPublished: true, isOpenForInvestment: true, memberUrl: "https://capital.example.test/marketplace/QC-0042" });
     expect(marketplacePublicationState({ id: "private-id", ref: "QC/a?x=1", status: "open" }).memberUrl).toContain("/marketplace/QC%2Fa%3Fx%3D1");
   });
   it("separates historical member visibility from availability for investment", () => {
