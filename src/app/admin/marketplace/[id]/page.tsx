@@ -29,11 +29,17 @@ import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePub
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { useDealBudget } from "@/hooks/useDealBudget";
+import { useAuthedApi } from "@/hooks/useApi";
+import { MarketplaceIssues } from "@/components/marketplace/MarketplaceIssues";
+import guidanceStyles from "@/components/marketplace/MarketplaceIssues.module.css";
+import { dedupeMarketplaceIssues, marketplaceApiIssues, marketplaceFieldId, marketplaceOwnerHref, marketplacePublishIssues, unknownIssue, type MarketplaceField, type MarketplaceIssue } from "@/lib/marketplaceIssues";
+import { focusMarketplaceControl } from "@/lib/marketplaceGuidanceFocus";
 
 export default function ListingEditorPage() {
+  const params = useParams<{ id: string }>();
   return (
     <SuperAdminOnly>
-      <Editor />
+      <Editor key={params?.id ?? ""} />
     </SuperAdminOnly>
   );
 }
@@ -49,6 +55,61 @@ function Editor() {
   const [msg, setMsg] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
   const confirm = useConfirmAction();
   const act = useCpListingAction();
+  const api = useAuthedApi();
+  const [actionIssues, setActionIssues] = useState<MarketplaceIssue[]>([]);
+  const issueOrigin = useRef<"publish" | "terms" | "documents" | "snapshot" | null>(null);
+  const [navigation, setNavigation] = useState<{ issue: MarketplaceIssue; sequence: number } | null>(null);
+  const [openingOwner, setOpeningOwner] = useState(false);
+  const ownerRequest = useRef<{ controller: AbortController; popup: Window } | null>(null);
+  const appliedQuery = useRef<string | null>(null);
+  const context = { linked: Boolean(listing?.profile_id) };
+  const issues = dedupeMarketplaceIssues([...actionIssues, ...(listing?.status === "draft" ? marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, context) : [])]);
+  const requestNavigation = (issue: MarketplaceIssue) => {
+    if (["upload", "document-type"].includes(issue.target?.kind ?? "")) setTab("documents");
+    else if (["field", "budget"].includes(issue.target?.kind ?? "")) setTab("terms");
+    setNavigation(current => ({ issue, sequence: (current?.sequence ?? 0) + 1 }));
+  };
+  const showFailure = (error: unknown, action: "publish" | "terms" | "documents" | "snapshot") => {
+    const next = marketplaceApiIssues(error, { ...context, action });
+    issueOrigin.current = action;
+    setMsg(null); setActionIssues(next);
+    requestNavigation(next.find(issue => ["field", "upload", "document-type", "budget"].includes(issue.target?.kind ?? "")) ?? { ...next[0], target: undefined });
+  };
+  const clearResolvedIssues = (action: "publish" | "terms" | "documents" | "snapshot") => setActionIssues(current => {
+    if (issueOrigin.current === action) return [];
+    return current.filter(issue => action === "documents" ? !["upload", "document-type"].includes(issue.target?.kind ?? "") : action === "snapshot" ? issue.target?.kind !== "snapshot" : true);
+  });
+  useEffect(() => () => { ownerRequest.current?.controller.abort(); ownerRequest.current?.popup.close(); ownerRequest.current = null; }, []);
+  useEffect(() => {
+    if (!navigation) return;
+    const target = navigation.issue.target;
+    let budgetOpened = false;
+    return focusMarketplaceControl(() => {
+      if (target?.kind === "field") return document.getElementById(marketplaceFieldId(target.field));
+      if (target?.kind === "upload") return document.getElementById("marketplace-document-upload");
+      if (target?.kind === "document-type") return document.getElementById("marketplace-document-kind");
+      if (target?.kind === "budget") {
+        const control = document.querySelector<HTMLElement>('[aria-label="Deal budget editor"] [aria-label="Funding format"]:not(:disabled)');
+        if (control) return control;
+        if (!budgetOpened) {
+          const opener = Array.from(document.querySelectorAll<HTMLButtonElement>("[data-marketplace-budget] button")).find(button => button.textContent?.trim() === "Edit deal budget" && !button.disabled);
+          if (opener) { budgetOpened = true; opener.click(); }
+        }
+        return null;
+      }
+      return document.getElementById("marketplace-issues");
+    }, guidanceStyles.highlight);
+  }, [navigation]);
+  useEffect(() => {
+    if (!listing) return;
+    const requested = new URLSearchParams(window.location.search).get("fix");
+    if (!requested || appliedQuery.current === `${listing.id}:${requested}`) return;
+    appliedQuery.current = `${listing.id}:${requested}`;
+    const issue = issues.find(item => item.key === requested);
+    if (!issue?.target) return;
+    // Deep links reveal local controls. Owner navigation remains a deliberate click.
+    requestNavigation(["field", "upload", "document-type", "budget"].includes(issue.target.kind) ? issue : { ...issue, target: undefined });
+  });
 
   if (isLoading || !listing) return <Card><Loading>{isLoading ? "Loading listing…" : "Listing not found."}</Loading></Card>;
 
@@ -56,15 +117,18 @@ function Editor() {
     setMsg(null);
     try {
       await act.mutateAsync({ listingId: listing.id, path, body });
+      clearResolvedIssues(path.endsWith("/publish") ? "publish" : "snapshot");
       if (okText) setMsg({ tone: "ok", text: okText });
     } catch (e) {
-      setMsg({ tone: "bad", text: errorMessage(e) });
+      showFailure(e, path.endsWith("/publish") ? "publish" : "snapshot");
     }
   };
 
   const publish = async () => {
     if (listing.publish_blockers.length) {
-      setMsg({ tone: "bad", text: `Before publishing: ${listing.publish_blockers.join("; ")}.` });
+      setMsg(null); setActionIssues([]);
+      const first = marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, context);
+      requestNavigation(first.find(issue => issue.target?.kind === "upload" && issue.target.documentKind === "ppm") ?? first.find(issue => ["field", "budget"].includes(issue.target?.kind ?? "")) ?? { ...first[0], target: undefined });
       return;
     }
     const reason = window.prompt("Reason for the record (who approved, why now):", "Desk approved for the member marketplace");
@@ -106,6 +170,26 @@ function Editor() {
   };
 
   const next: Record<string, string[]> = { open: ["closing", "fully_subscribed", "funded"], closing: ["open", "fully_subscribed", "funded"], fully_subscribed: ["open", "funded"], funded: ["repaid", "workout"], workout: ["repaid", "funded"] };
+  const fixIssue = async (issue: MarketplaceIssue) => {
+    if (issue.target?.kind === "snapshot") { await run(`/capital/admin/listings/${listing.id}/refresh-snapshot`, {}, "Saved file figures refreshed. Review the listing before publishing."); return; }
+    if (issue.target?.kind !== "file") { requestNavigation(issue); return; }
+    if (!listing.profile_id || openingOwner || ownerRequest.current) { if (!listing.profile_id) setActionIssues([unknownIssue("This listing has no linked application profile. Review its source loan or contact the file team.")]); return; }
+    const popup = window.open("about:blank", "_blank");
+    if (!popup) { setActionIssues(current => dedupeMarketplaceIssues([unknownIssue("The file tab was blocked by your browser. Allow a new tab and click the Fix action again; your listing edits are retained."), issue, ...current])); return; }
+    popup.opener = null;
+    popup.document.title = "Opening linked financial editor";
+    popup.document.body.textContent = "Reading the linked file…";
+    const controller = new AbortController(); ownerRequest.current = { controller, popup }; setOpeningOwner(true);
+    try {
+      const profile = await api<{ intake_id: string | null }>(`/application-profiles/${encodeURIComponent(listing.profile_id)}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      if (popup.closed) throw new Error("The file tab was closed. Click the Fix action again to reopen it.");
+      if (!profile.intake_id) throw new Error("This source has no intake file. Review its original loan workspace or contact the file team; your listing edits remain here.");
+      popup.location.replace(marketplaceOwnerHref(profile.intake_id, issue.target.action));
+      ownerRequest.current = null;
+    } catch (error) { popup.close(); if (!controller.signal.aborted) setActionIssues(current => dedupeMarketplaceIssues([unknownIssue(errorMessage(error)), issue, ...current])); }
+    finally { if (ownerRequest.current?.controller === controller) ownerRequest.current = null; if (!controller.signal.aborted) setOpeningOwner(false); }
+  };
 
   return (
     <div className="grid">
@@ -126,7 +210,7 @@ function Editor() {
       />
       <MarketplaceOfferLink listing={listing} />
       {msg ? <StatusLine tone={msg.tone}>{msg.text}</StatusLine> : null}
-      {listing.status === "draft" && listing.publish_blockers.length ? <StatusLine tone="warn">Before publishing: {listing.publish_blockers.join("; ")}.</StatusLine> : null}
+      <MarketplaceIssues id="marketplace-issues" issues={issues} onFix={issue => void fixIssue(issue)} busy={openingOwner || act.isPending} />
       <Seg as="tabs" ariaLabel="Listing sections" value={tab} onChange={setTab} options={[
         { value: "terms", label: "Terms and narrative" },
         { value: "documents", label: <>Documents <span className="num">{listing.documents.filter((d) => d.status === "ready").length}</span></> },
@@ -134,8 +218,8 @@ function Editor() {
         { value: "participations", label: <>Participations <span className="num">{listing.participations.length}</span></> },
         { value: "events", label: "Events" },
       ]} />
-      {tab === "terms" ? <TermsForm listing={listing} onMessage={setMsg} /> : null}
-      {tab === "documents" ? <Documents listing={listing} onMessage={setMsg} /> : null}
+      <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
+      {tab === "documents" ? <Documents listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} /> : null}
       {tab === "subscriptions" ? <Subscriptions listing={listing} onRun={run} busy={act.isPending} /> : null}
       {tab === "participations" ? <Participations listing={listing} onMessage={setMsg} /> : null}
       {tab === "events" ? <Events listing={listing} /> : null}
@@ -170,16 +254,18 @@ type TextDraftKey = Exclude<keyof Draft, "personal_guarantee">;
 
 // Keep the component type stable as its controlled value changes so native
 // focus, selection and partially entered numeric strings stay in the input.
-function ListingField({ k, label, type = "text", hint, draft, onChange, readOnly, linkedProfile }: {
+function ListingField({ k, label, type = "text", hint, draft, onChange, readOnly, linkedProfile, issues }: {
   k: TextDraftKey; label: string; type?: string; hint?: string;
-  draft: Draft; onChange: (key: TextDraftKey, value: string) => void; readOnly: boolean; linkedProfile: boolean;
+  draft: Draft; onChange: (key: TextDraftKey, value: string) => void; readOnly: boolean; linkedProfile: boolean; issues: Partial<Record<MarketplaceField, MarketplaceIssue>>;
 }) {
-  return <Field label={label} hint={hint}>
-    <Input aria-label={label} type={type} value={String(draft[k] ?? "")} onChange={event => onChange(k, event.target.value)} disabled={readOnly || linkedProfile && ["loan_amount", "note_rate_pct", "term_months", "offered_amount", "minimum_investment"].includes(k)} className={type === "number" ? "num" : undefined} />
+  const issue = issues[k];
+  const errorId = `${marketplaceFieldId(k)}-error`;
+  return <Field label={label} hint={hint} error={issue ? <span id={errorId}>{issue.message} {issue.instruction}</span> : undefined}>
+    <Input id={marketplaceFieldId(k)} aria-label={label} aria-invalid={issue ? true : undefined} aria-describedby={issue ? errorId : undefined} type={type} value={String(draft[k] ?? "")} onChange={event => onChange(k, event.target.value)} disabled={readOnly || linkedProfile && ["loan_amount", "note_rate_pct", "term_months", "offered_amount", "minimum_investment"].includes(k)} className={type === "number" ? "num" : undefined} />
   </Field>;
 }
 
-function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void }) {
+function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError, onSnapshotSuccess }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; issues: MarketplaceIssue[]; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void }) {
   const budget = useDealBudget(listing.profile_id ?? "");
   const [d, setD] = useState<Draft>(() => toDraft(listing));
   const dirtyRef = useRef(false);
@@ -206,34 +292,38 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
       dirtyRef.current = false;
       onMessage({ tone: "ok", text: "Saved." });
     } catch (e) {
-      onMessage({ tone: "bad", text: errorMessage(e, "Save failed.") });
+      onError(e);
     }
   };
 
-  const fieldProps = { draft: d, onChange: set, readOnly, linkedProfile: Boolean(listing.profile_id) };
+  const fieldIssues: Partial<Record<MarketplaceField, MarketplaceIssue>> = {};
+  for (const issue of issues) if (issue.target?.kind === "field") fieldIssues[issue.target.field] = issue;
+  const binding = (field: MarketplaceField) => ({ id: marketplaceFieldId(field), "aria-invalid": fieldIssues[field] ? true as const : undefined, "aria-describedby": fieldIssues[field] ? `${marketplaceFieldId(field)}-error` : undefined });
+  const inlineError = (field: MarketplaceField) => fieldIssues[field] ? <span id={`${marketplaceFieldId(field)}-error`}>{fieldIssues[field]!.message} {fieldIssues[field]!.instruction}</span> : undefined;
+  const fieldProps = { draft: d, onChange: set, readOnly, linkedProfile: Boolean(listing.profile_id), issues: fieldIssues };
 
   return (
     <div className="grid">
-      {listing.profile_id ? <DealBudgetSection profileId={listing.profile_id} disabled={readOnly} compact={false} existingFunding={{ capital: listing.offered_amount == null ? null : Number(listing.offered_amount), minimum: listing.minimum_investment == null ? null : Number(listing.minimum_investment) }} /> : null}
+      {listing.profile_id ? <div data-marketplace-budget><DealBudgetSection profileId={listing.profile_id} disabled={readOnly} compact={false} existingFunding={{ capital: listing.offered_amount == null ? null : Number(listing.offered_amount), minimum: listing.minimum_investment == null ? null : Number(listing.minimum_investment) }} /></div> : null}
       <Panel title="Terms" bodyClass="grid cols-auto">
-        <Field label="Vertical"><Select value={d.vertical} onChange={(e) => set("vertical", e.target.value)} disabled={readOnly}><option value="real_estate">Real estate</option><option value="auto">Auto</option><option value="business">Business</option></Select></Field>
+        <Field label="Vertical" error={inlineError("vertical")}><Select {...binding("vertical")} aria-label="Vertical" value={d.vertical} onChange={(e) => set("vertical", e.target.value)} disabled={readOnly}><option value="real_estate">Real estate</option><option value="auto">Auto</option><option value="business">Business</option></Select></Field>
         <ListingField {...fieldProps} k="program_label" label="Program label" hint="What members see: Bridge, Fix and flip, Floorplan, Equipment…" />
         <ListingField {...fieldProps} k="name" label="Deal title" hint="Describes the financing proposal and location." />
         <ListingField {...fieldProps} k="city" label="City" />
         <ListingField {...fieldProps} k="state" label="State (2 letters)" />
         <ListingField {...fieldProps} k="collateral_type" label="Collateral type" hint="Multifamily, Residential 1-4, Vehicle inventory, Equipment, Receivables…" />
-        <Field label="Lien position"><Select value={d.lien_position} onChange={(e) => set("lien_position", e.target.value)} disabled={readOnly}><option value="first">1st</option><option value="second">2nd</option></Select></Field>
+        <Field label="Lien position" error={inlineError("lien_position")}><Select {...binding("lien_position")} aria-label="Lien position" value={d.lien_position} onChange={(e) => set("lien_position", e.target.value)} disabled={readOnly}><option value="first">1st</option><option value="second">2nd</option></Select></Field>
         <ListingField {...fieldProps} k="note_rate_pct" label="Note rate, % paid to participants" type="number" />
         <ListingField {...fieldProps} k="term_months" label="Term, months" type="number" />
         <ListingField {...fieldProps} k="ltv_pct" label="LTV / LTC / CLTV, %" type="number" />
-        <Field label="Ratio kind"><Select value={d.ltv_kind} onChange={(e) => set("ltv_kind", e.target.value)} disabled={readOnly}><option value="ltv">LTV</option><option value="ltc">LTC</option><option value="cltv">CLTV</option></Select></Field>
+        <Field label="Ratio kind" error={inlineError("ltv_kind")}><Select {...binding("ltv_kind")} aria-label="Ratio kind" value={d.ltv_kind} onChange={(e) => set("ltv_kind", e.target.value)} disabled={readOnly}><option value="ltv">LTV</option><option value="ltc">LTC</option><option value="cltv">CLTV</option></Select></Field>
         <ListingField {...fieldProps} k="loan_amount" label="Loan amount, $" type="number" />
         <ListingField {...fieldProps} k="offered_amount" label="Capital to raise from investors, $" type="number" hint={listing.profile_id ? "Set once in the shared deal budget above; defaults to full loan funding." : "Investor capital funding this loan."} />
         <ListingField {...fieldProps} k="minimum_investment" label="Smallest investor contribution, $" type="number" hint="One investor contributes the full amount unless multiple investors are configured." />
-        <Field label="Payment frequency"><Select value={d.payment_frequency} onChange={(e) => set("payment_frequency", e.target.value)} disabled={readOnly}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="at_maturity">At maturity</option></Select></Field>
+        <Field label="Payment frequency" error={inlineError("payment_frequency")}><Select {...binding("payment_frequency")} aria-label="Payment frequency" value={d.payment_frequency} onChange={(e) => set("payment_frequency", e.target.value)} disabled={readOnly}><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="at_maturity">At maturity</option></Select></Field>
         <ListingField {...fieldProps} k="maturity_date" label="Maturity date" type="date" />
         <ListingField {...fieldProps} k="closes_at" label="Subscriptions close" type="datetime-local" hint="Drives the members' days-left counter." />
-        <label className="pick" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><input type="checkbox" checked={d.personal_guarantee} onChange={(e) => set("personal_guarantee", e.target.checked)} disabled={readOnly} /><span>Personal guarantee</span></label>
+        <label className="pick" style={{ display: "inline-flex", gap: 8, alignItems: "center" }}><input {...binding("personal_guarantee")} type="checkbox" checked={d.personal_guarantee} onChange={(e) => set("personal_guarantee", e.target.checked)} disabled={readOnly} /><span>Personal guarantee</span></label>{inlineError("personal_guarantee")}
       </Panel>
       {listing.products?.length ? (
         <Panel title="Products offered" sub="Edited from the file's Financials tab (Send the file to capital partners). The primary product supplies the headline rate, term and amount above.">
@@ -252,12 +342,12 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
         </Panel>
       ) : null}
       <Panel title="Narrative" bodyClass="grid g10">
-        <Field label="Summary"><Textarea rows={3} value={d.summary} onChange={(e) => set("summary", e.target.value)} disabled={readOnly} /></Field>
+        <Field label="Summary" error={inlineError("summary")}><Textarea {...binding("summary")} aria-label="Summary" rows={3} value={d.summary} onChange={(e) => set("summary", e.target.value)} disabled={readOnly} /></Field>
         <div className="grid cols-auto">
           <ListingField {...fieldProps} k="guarantee_text" label="Guarantee, as shown" hint="Full personal guarantee from principals / Non-recourse with standard carve-outs" />
           <ListingField {...fieldProps} k="borrower_track_record" label="Borrower track record" hint="Count, not names: 7 completed projects / 12 years in operation" />
         </div>
-        <Field label="Exit plan"><Textarea rows={3} value={d.exit_plan} onChange={(e) => set("exit_plan", e.target.value)} disabled={readOnly} /></Field>
+        <Field label="Exit plan" error={inlineError("exit_plan")}><Textarea {...binding("exit_plan")} aria-label="Exit plan" rows={3} value={d.exit_plan} onChange={(e) => set("exit_plan", e.target.value)} disabled={readOnly} /></Field>
       </Panel>
       <Panel title="Collateral and valuation" bodyClass="grid cols-auto">
         <ListingField {...fieldProps} k="valuation_amount" label="Valuation, $" type="number" />
@@ -265,7 +355,7 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
         <ListingField {...fieldProps} k="title_status" label="Title" hint="Lien search clear…" />
         <ListingField {...fieldProps} k="servicer_label" label="Servicer, as shown" />
       </Panel>
-      {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish /> : null}
+      {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={onSnapshotSuccess} /> : null}
       <SourceSnapshotCard snapshot={listing.source_snapshot} />
       {!readOnly ? <div className="row"><Btn variant="pri" onClick={() => void save()} disabled={patch.isPending}>{patch.isPending ? "Saving…" : "Save"}</Btn><span className="sub">Saving a published listing changes what members see at once.</span></div> : null}
     </div>
@@ -276,12 +366,13 @@ function TermsForm({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
 // Documents
 // ---------------------------------------------------------------------------
 
-function Documents({ listing, onMessage }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void }) {
+function Documents({ listing, onMessage, onError, guidance }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null }) {
   const upload = useCpUploadDocument();
   const supersede = useCpSupersedeDocument();
   const confirm = useConfirmAction();
   const [kind, setKind] = useState<CpDocumentKind>("ppm");
   const fileRef = useRef<HTMLInputElement>(null);
+  useEffect(() => { const target = guidance?.issue.target; if (target?.kind === "upload" && target.documentKind === "ppm") setKind("ppm"); }, [guidance]);
 
   const send = async (file: File) => {
     onMessage(null);
@@ -289,21 +380,21 @@ function Documents({ listing, onMessage }: { listing: CpListing; onMessage: (m: 
       await upload.mutateAsync({ listingId: listing.id, kind, file });
       onMessage({ tone: "ok", text: `${file.name} uploaded as ${DOC_KINDS.find((k) => k.value === kind)?.label}.` });
     } catch (e) {
-      onMessage({ tone: "bad", text: errorMessage(e, "Upload failed.") });
+      onError(e);
     } finally {
       if (fileRef.current) fileRef.current.value = "";
     }
   };
   const remove = async (docId: string, name: string) => {
     if (!(await confirm({ title: `Supersede ${name}?`, body: "Members stop seeing it. The file itself is kept for the record.", confirmLabel: "Supersede", tone: "danger", reversible: false }))) return;
-    try { await supersede.mutateAsync({ listingId: listing.id, documentId: docId }); } catch (e) { onMessage({ tone: "bad", text: errorMessage(e) }); }
+    try { await supersede.mutateAsync({ listingId: listing.id, documentId: docId }); } catch (e) { onError(e); }
   };
 
   return (
     <div className="grid">
       <Panel title="Upload" bodyClass="row">
-        <Select value={kind} onChange={(e) => setKind(e.target.value as CpDocumentKind)}>{DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select>
-        <input ref={fileRef} type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }} disabled={upload.isPending} />
+        <Select id="marketplace-document-kind" aria-label="Document type" value={kind} onChange={(e) => setKind(e.target.value as CpDocumentKind)}>{DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select>
+        <input id="marketplace-document-upload" aria-label="Upload document PDF" ref={fileRef} type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }} disabled={upload.isPending} />
         <span className="sub">{upload.isPending ? "Uploading…" : "A new file of the same kind supersedes the previous one. The private placement memorandum is required before publishing."}</span>
       </Panel>
       {listing.documents.length === 0 ? (

@@ -78,6 +78,7 @@ import { ObligationPlanRow } from "./ObligationRowEditor";
 import { BankReplayNotice } from "./BankReplayNotice";
 import { RefinanceSelectionSummary } from "./RefinanceSelectionSummary";
 import type { MarketplaceBudgetReceipt, MarketplacePlanControls } from "@/lib/marketplacePreparation";
+import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { refinanceSelectionTotals } from "@/lib/refinanceSelectionTotals";
 import { STRUCTURE_LABELS, defaultStructure, type LoanStructure, describeSchedule, riskProfile } from "@/lib/loanSchedule";
 
@@ -139,7 +140,7 @@ function Stat({ label, children }: { label: ReactNode; children: ReactNode }) {
   );
 }
 
-export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, onReviewClose, onMarketplaceSaveControlsChange }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; onReviewClose?: () => void; onMarketplaceSaveControlsChange?: (controls: MarketplacePlanControls | null) => void }) {
+export function CoverageCard({ cockpit, months, summary, accountLabel, accountKey, businessName, canEdit: requestedCanEdit, canReviewDebt = requestedCanEdit, canCorrectMetrics = false, profileId, canRecordTerms, onRecordTerms, onEconomicsSaved, termsKind = "client", onOpenEvidence, onRefresh, onPreviewSource, onRequestStatement, onWorkingPlanChange, programSelection, setupBudgetSaving = false, reviewRequest = 0, termsRequest = 0, initialFinancialAction, onReviewClose, onMarketplaceSaveControlsChange }: { cockpit: Cockpit; months: CockpitMonth[]; summary: CockpitBankSummary; accountLabel: string; accountKey?: string; businessName?: string; canEdit: boolean; canReviewDebt?: boolean; canCorrectMetrics?: boolean; profileId: string; canRecordTerms: boolean; onRecordTerms: () => void; onEconomicsSaved?: () => void; termsKind?: "production" | "client"; onOpenEvidence?: () => void; onRefresh?: () => Promise<unknown> | void; onPreviewSource?: (fileId: string, page?: number) => void; onRequestStatement?: (kind: "profit_and_loss" | "balance_sheet") => void; onWorkingPlanChange?: (value: WorkingFinancing) => void; programSelection?: ReactNode; setupBudgetSaving?: boolean; reviewRequest?: number; termsRequest?: number; initialFinancialAction?: MarketplaceFinancialAction | null; onReviewClose?: () => void; onMarketplaceSaveControlsChange?: (controls: MarketplacePlanControls | null) => void }) {
   const save = useSaveFinancialPlan(profileId);
   const [termsPending, setTermsPending] = useState(false);
   const canEdit = requestedCanEdit && !termsPending && !save.isPending && !setupBudgetSaving;
@@ -164,6 +165,20 @@ export function CoverageCard({ cockpit, months, summary, accountLabel, accountKe
   const returnToReview = useRef(false);
   const openClientTerms = (view: ClientTermsView) => { if (setupBudgetSaving) return; returnToReview.current = reviewOpen; setClientTermsView(view); setReviewOpen(false); setClientTermsOpen(true); };
   const lastTermsRequest = useRef(0);
+  const handledFinancialAction = useRef<string | null>(null);
+  useEffect(() => {
+    if (!initialFinancialAction || !requestedCanEdit || setupBudgetSaving) return;
+    const request = `${profileId}:${initialFinancialAction}`;
+    if (handledFinancialAction.current === request) return;
+    handledFinancialAction.current = request;
+    returnToReview.current = false;
+    if (initialFinancialAction === "terms") {
+      if (termsKind !== "client") return;
+      setClientTermsView("terms"); setReviewOpen(false); setClientTermsOpen(true);
+    } else {
+      setReviewTab("plan"); setReviewOpen(true);
+    }
+  }, [initialFinancialAction, profileId, requestedCanEdit, setupBudgetSaving, termsKind]);
   useEffect(() => {
     if (setupBudgetSaving || lastTermsRequest.current === termsRequest) return;
     lastTermsRequest.current = termsRequest;

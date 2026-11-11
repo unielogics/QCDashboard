@@ -137,6 +137,7 @@ export function ApplicationProgramReadiness({
   onRequestFinancialEvidence,
   useOfFundsDraftStore,
   onUseOfFundsControlsChange,
+  initiallyOpenUseOfFunds = false,
 }: {
   profileId: string;
   files: EvidenceFile[];
@@ -158,6 +159,7 @@ export function ApplicationProgramReadiness({
   canEditPrograms?: boolean;
   useOfFundsDraftStore?: UseOfFundsDraftStore;
   onUseOfFundsControlsChange?: (controls: BudgetEditorControls | null) => void;
+  initiallyOpenUseOfFunds?: boolean;
   programVertical?: FundingProgramVertical;
   intakeVariant?: string | null;
   /** Which half to show: the documents the file needs, or the programs and use of funds that decide them. */
@@ -973,7 +975,7 @@ export function ApplicationProgramReadiness({
   return <div className="program-readiness-workspace">
     {error ? <Callout tone="warn">{error}</Callout> : null}
     {section === "setup" || section === "programs" ? <>
-    {section === "setup" && readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} draftStore={useOfFundsDraftStore} onControlsChange={onUseOfFundsControlsChange} /> : null}
+    {section === "setup" && readiness.lending_applicable ? <UseOfFundsEditor key={profileId} profileId={profileId} onSaved={load} draftStore={useOfFundsDraftStore} onControlsChange={onUseOfFundsControlsChange} initiallyOpen={initiallyOpenUseOfFunds} /> : null}
     <details className="program-readiness-programs" open>
       <summary>
         <span><strong>Programs and criteria</strong><small>{readiness.selections.length ? readiness.selections.map((item) => item.program_name).join(", ") : "Choose a catalog program or add one manually"}</small></span>
