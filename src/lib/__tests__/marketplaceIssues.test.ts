@@ -20,6 +20,15 @@ describe("actionable marketplace guidance", () => {
       expect(result[0].target).toEqual({ kind: "field", field: "name" });
     }
   });
+  it("describes the PPM workflow accurately while preserving specific server explanations", () => {
+    const legacy = marketplacePublishIssues(["private placement memorandum not uploaded"], undefined, context)[0];
+    const structured = marketplacePublishIssues([], [issue("private placement memorandum not uploaded", "documents", { document_kind: "ppm" })], context)[0];
+    expect(legacy.message).toBe("Prepare and approve the private placement memorandum");
+    expect(structured.message).toBe(legacy.message);
+    const detail = "The approved PPM is stale because saved financing changed.";
+    expect(marketplacePublishIssues([], [issue(detail, "documents", { document_kind: "ppm" })], context)[0].message).toBe(detail);
+    expect(marketplacePublishIssues(["Another document is missing"], undefined, context)[0].message).toBe("Another document is missing");
+  });
   it("keeps every distinct budget reason grouped under the same owner action", () => {
     const result = marketplacePublishIssues([], [issue("Budget needs review", "budget"), issue("Principal needs review", "budget"), issue("Budget needs review", "budget"), issue("Budget", "budget")], context);
     expect(result).toHaveLength(1);

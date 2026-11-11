@@ -82,7 +82,7 @@ async function fixture(page: Page, options: { ready?: boolean; approved?: boolea
       const legal = action === "draft" ? body.legal_inputs as Record<string, string> : { issuer_legal_name: "Example Lending LLC", ...editable?.legal_inputs };
       const next = ppmVersion(number, state.source_fingerprint, legal, action === "draft" ? body.narrative_sections as Record<string, string> : editable?.narrative_sections, amount);
       if (action === "generate" && !state.managed && editable?.source === "uploaded") editable.stale = true;
-      if (action === "review") { expect(body.confirmed).toBe(true); expect(String(body.reason).length).toBeGreaterThan(2); next.status = "approved"; next.reviewed_at = "2026-11-11T15:00:00Z"; listing = { ...listing, publish_blockers: [], publish_issues: [] }; reviewSaved = true; }
+      if (action === "review") { expect(body.confirmed).toBe(true); expect(body.decision).toBe("approve"); next.status = "approved"; next.reviewed_at = "2026-11-11T15:00:00Z"; listing = { ...listing, publish_blockers: [], publish_issues: [] }; reviewSaved = true; }
       const updated = ppmState(next, state.history); states.set(id, updated); appliedKeys.add(requestKey); return json(updated);
     }
     if (p.endsWith("/file-documents")) return json(fileCatalog(true));
@@ -99,13 +99,14 @@ const workspace = (page: Page) => page.getByRole("region", { name: "PPM draft an
 const docs = (page: Page) => page.getByRole("tab", { name: /^Documents/ });
 const terms = (page: Page) => page.getByRole("tab", { name: "Terms and narrative", exact: true });
 const ppmCalls = (f: Awaited<ReturnType<typeof fixture>>, action: string) => f.requests.filter(row => row.path.endsWith(`/ppm/${action}`));
-async function openPpm(page: Page) { await docs(page).click(); await expect(workspace(page).getByText("Saved draft v1", { exact: true })).toBeVisible(); }
-async function completeAndSave(page: Page) { const area = workspace(page); for (const field of ppmLegalFields) await area.getByLabel(`PPM ${field.label}`, { exact: true }).fill(`Synthetic staff confirmation: ${field.label}`); await area.getByRole("button", { name: "Save PPM draft", exact: true }).click(); await expect(area.getByText("Saved draft v2", { exact: true })).toBeVisible(); }
-async function approve(page: Page) { const area = workspace(page); await area.getByLabel("PPM review reason").fill("Reviewed current synthetic saved facts"); await area.getByRole("checkbox", { name: "I reviewed the current saved PPM" }).check(); await area.getByRole("button", { name: "Approve current PPM", exact: true }).click(); await expect(area.getByText("Reviewed version v3", { exact: true })).toBeVisible(); }
+async function openPpm(page: Page, editing = true) { await docs(page).click(); await expect(workspace(page).getByText("Saved draft v1", { exact: true })).toBeVisible(); if (editing) await backToEdits(page); }
+async function backToEdits(page: Page) { await workspace(page).getByRole("button", { name: "Back to edits", exact: true }).click(); }
+async function completeAndSave(page: Page) { const area = workspace(page); if (await area.getByRole("region", { name: "Review saved PPM", exact: true }).isVisible()) await backToEdits(page); for (const field of ppmLegalFields) await area.getByLabel(`PPM ${field.label}`, { exact: true }).fill(`Synthetic staff confirmation: ${field.label}`); await area.getByRole("button", { name: "Save and review", exact: true }).click(); await expect(area.getByText("Saved draft v2", { exact: true })).toBeVisible(); }
+async function approve(page: Page) { const area = workspace(page); if (await area.getByRole("region", { name: "Edit PPM draft", exact: true }).isVisible()) await area.getByRole("button", { name: "Review saved PPM", exact: true }).first().click(); await area.getByRole("button", { name: "Approve current PPM", exact: true }).click(); await expect(area.getByText("Reviewed version v3", { exact: true })).toBeVisible(); }
 
 test("first Documents visit creates one draft from saved facts without publishing", async ({ page }, info) => {
   const f = await fixture(page); expect(f.requests.some(row => row.path.includes("/ppm"))).toBe(false);
-  await openPpm(page); const area = workspace(page);
+  await openPpm(page, false); const area = workspace(page);
   await expect(area.getByRole("button", { name: "Approve current PPM" })).toBeDisabled();
   await area.getByText("Saved PPM preview · v1", { exact: true }).click(); await expect(area).toContainText("175,000.00 USD"); await expect(area).toContainText("2027-01-15");
   expect(ppmCalls(f, "generate")).toHaveLength(1); expect(ppmCalls(f, "review")).toEqual([]); expect(f.requests.some(row => row.path.endsWith("/publish"))).toBe(false);
@@ -124,7 +125,7 @@ test("missing legal facts focus their exact input and dirty edits survive listin
 
 test("only explicit current review approves a saved version and publication stays separate", async ({ page }, info) => {
   const f = await fixture(page); await openPpm(page); await completeAndSave(page); const area = workspace(page);
-  await expect(area.getByRole("button", { name: "Approve current PPM" })).toBeDisabled(); await approve(page);
+  await expect(area.getByRole("button", { name: "Approve current PPM" })).toBeEnabled(); await approve(page);
   expect(ppmCalls(f, "review")).toHaveLength(1); expect(ppmCalls(f, "review")[0].body).toMatchObject({ expected_version: 2, expected_source_fingerprint: "a".repeat(64), confirmed: true });
   expect(ppmCalls(f, "generate")).toHaveLength(1); expect(f.requests.some(row => row.path.endsWith("/publish"))).toBe(false);
   await area.scrollIntoViewIfNeeded(); await page.screenshot({ path: info.outputPath("ppm-reviewed.png"), fullPage: false }); await area.evaluate(node => node.scrollIntoView({ block: "start" })); await page.screenshot({ path: info.outputPath("ppm-reviewed-overview.png"), fullPage: false }); expect(f.errors).toEqual([]);
@@ -133,11 +134,11 @@ test("only explicit current review approves a saved version and publication stay
 test("saved source refresh keeps unsaved wording and requires deliberate merge into latest facts", async ({ page }) => {
   const f = await fixture(page); await openPpm(page); const area = workspace(page); await area.getByText("Edit PPM wording", { exact: true }).click(); const input = area.getByLabel("PPM wording: Business and offering overview", { exact: true });
   await input.fill("Unsaved staff wording retained across source refresh."); await f.changeSource(); await expect(area.getByText("Saved draft v2", { exact: true })).toBeVisible(); await expect(input).toHaveValue("Unsaved staff wording retained across source refresh.");
-  await expect(area.getByText("Saved facts or another PPM version changed.", { exact: true })).toBeVisible(); await expect(area.getByRole("button", { name: "Save PPM draft", exact: true })).toBeDisabled();
+  await expect(area.getByText("Saved facts or another PPM version changed.", { exact: true })).toBeVisible(); await expect(area.getByRole("button", { name: "Save and review", exact: true })).toBeDisabled();
   await area.getByRole("button", { name: "Apply my edits to latest facts", exact: true }).click(); await expect(area.getByText("Saved draft v3", { exact: true })).toBeVisible();
   expect(ppmCalls(f, "draft")[0].body).toMatchObject({ expected_version: 2, expected_source_fingerprint: "b".repeat(64), narrative_sections: { overview: "Unsaved staff wording retained across source refresh." } });
-  await expect(area.getByLabel("PPM Governing law and offering jurisdictions", { exact: true })).toHaveValue("Remote confirmed jurisdiction update"); await expect(area.getByRole("button", { name: "Save PPM draft", exact: true })).toBeDisabled();
-  await area.getByText("Saved PPM preview · v3", { exact: true }).click(); await expect(area).toContainText("225,000.00 USD"); expect(ppmCalls(f, "review")).toEqual([]); expect(f.errors).toEqual([]);
+  await backToEdits(page); await expect(area.getByLabel("PPM Governing law and offering jurisdictions", { exact: true })).toHaveValue("Remote confirmed jurisdiction update"); await expect(area.getByRole("button", { name: "Save and review", exact: true })).toBeDisabled();
+  await area.getByRole("button", { name: "Review saved PPM", exact: true }).first().click(); await area.getByText("Saved PPM preview · v3", { exact: true }).click(); await expect(area).toContainText("225,000.00 USD"); expect(ppmCalls(f, "review")).toEqual([]); expect(f.errors).toEqual([]);
 });
 
 test("each deliberate successful regeneration creates a new intent while retries keep their old key", async ({ page }) => {
@@ -153,7 +154,7 @@ test("failed automatic generation retries the identical intent without duplicate
 });
 
 test("failed draft save retains legal text and retries the same request", async ({ page }) => {
-  const f = await fixture(page, { failure: "draft" }); await openPpm(page); const area = workspace(page), input = area.getByLabel("PPM Governing law and offering jurisdictions", { exact: true }); await input.fill("Retained synthetic jurisdiction text"); await area.getByRole("button", { name: "Save PPM draft", exact: true }).click(); await expect(area.getByRole("alert")).toContainText("no version was saved"); await expect(input).toHaveValue("Retained synthetic jurisdiction text"); await area.getByRole("button", { name: "Retry previous save" }).click(); await expect(area.getByText("Saved draft v2", { exact: true })).toBeVisible(); const calls = ppmCalls(f, "draft"); expect(calls).toHaveLength(2); expect(calls[1].body).toEqual(calls[0].body); expect(f.errors).toEqual([]);
+  const f = await fixture(page, { failure: "draft" }); await openPpm(page); const area = workspace(page), input = area.getByLabel("PPM Governing law and offering jurisdictions", { exact: true }); await input.fill("Retained synthetic jurisdiction text"); await area.getByRole("button", { name: "Save and review", exact: true }).click(); await expect(area.getByRole("alert")).toContainText("no version was saved"); await expect(input).toHaveValue("Retained synthetic jurisdiction text"); await area.getByRole("button", { name: "Retry previous save" }).click(); await expect(area.getByText("Saved draft v2", { exact: true })).toBeVisible(); const calls = ppmCalls(f, "draft"); expect(calls).toHaveLength(2); expect(calls[1].body).toEqual(calls[0].body); expect(f.errors).toEqual([]);
 });
 
 test("saved draft and approved history download their bound PDF versions through protected tabs", async ({ page }) => {
@@ -166,11 +167,11 @@ test("saved draft and approved history download their bound PDF versions through
 });
 
 test("PPM edits are scoped to their listing and closed offerings have no write actions", async ({ page }) => {
-  const f = await fixture(page); await openPpm(page); await workspace(page).getByLabel("PPM Issuer legal name", { exact: true }).fill("Unsaved first-listing issuer"); await page.evaluate(id => (window as unknown as { switchListing: (id: string) => void }).switchListing(id), OTHER_PPM_LISTING_ID); await expect(page.getByRole("heading", { name: /CP-PPM-OTHER-QA/ })).toBeVisible(); await docs(page).click(); await expect(workspace(page).getByLabel("PPM Issuer legal name", { exact: true })).toHaveValue("Example Lending LLC"); expect(f.errors).toEqual([]);
+  const f = await fixture(page); await openPpm(page); await workspace(page).getByLabel("PPM Issuer legal name", { exact: true }).fill("Unsaved first-listing issuer"); await page.evaluate(id => (window as unknown as { switchListing: (id: string) => void }).switchListing(id), OTHER_PPM_LISTING_ID); await expect(page.getByRole("heading", { name: /CP-PPM-OTHER-QA/ })).toBeVisible(); await docs(page).click(); await backToEdits(page); await expect(workspace(page).getByLabel("PPM Issuer legal name", { exact: true })).toHaveValue("Example Lending LLC"); expect(f.errors).toEqual([]);
 });
 
 test("closed offering PPM remains readable without automatic generation or editing", async ({ page }) => {
-  const f = await fixture(page, { ready: true, closed: true }); await openPpm(page); const area = workspace(page); await expect(area.getByLabel("PPM Issuer legal name", { exact: true })).toBeDisabled(); await expect(area.getByRole("button", { name: "Save PPM draft", exact: true })).toHaveCount(0); await expect(area.getByRole("button", { name: "Regenerate AI wording", exact: true })).toHaveCount(0); await expect(area.getByRole("button", { name: "Approve current PPM", exact: true })).toBeDisabled(); expect(ppmCalls(f, "generate")).toEqual([]); expect(f.errors).toEqual([]);
+  const f = await fixture(page, { ready: true, closed: true }); await openPpm(page, false); const area = workspace(page); await expect(area.getByRole("button", { name: "Back to edits", exact: true })).toHaveCount(0); await expect(area.getByRole("region", { name: "Review saved PPM", exact: true })).toContainText("Synthetic staff confirmation"); await expect(area.getByRole("button", { name: "Save and review", exact: true })).toHaveCount(0); await expect(area.getByRole("button", { name: "Regenerate AI wording", exact: true })).toHaveCount(0); await expect(area.getByRole("button", { name: "Approve current PPM", exact: true })).toBeDisabled(); expect(ppmCalls(f, "generate")).toEqual([]); expect(f.errors).toEqual([]);
 });
 
 test("legacy uploaded PPM is adopted only by an explicit action and remains in history", async ({ page }) => {
@@ -193,7 +194,7 @@ test("PPM publication guidance focuses the heading on first and cached Documents
 
 test("post-review listing readiness failure retries only its read and keeps the approved version", async ({ page }) => {
   const f = await fixture(page, { failReadinessAfterReview: true }); await openPpm(page); await completeAndSave(page); await approve(page); const area = workspace(page);
-  await expect(area.getByRole("alert")).toContainText("PPM operation was saved, but listing readiness could not be refreshed");
+  await expect(area.getByRole("alert")).toContainText("Refresh listing readiness to check the saved PPM before publishing");
   const writesBefore = f.requests.filter(row => row.method !== "GET"); await area.getByRole("button", { name: "Retry listing readiness", exact: true }).click();
   await expect(area.getByRole("button", { name: "Retry listing readiness", exact: true })).toHaveCount(0); await expect(area.getByText("Reviewed version v3", { exact: true })).toBeVisible();
   expect(f.requests.filter(row => row.method !== "GET")).toEqual(writesBefore); expect(ppmCalls(f, "review")).toHaveLength(1); expect(f.states.get(ID)!.history).toHaveLength(3); expect(f.errors).toEqual([]);
