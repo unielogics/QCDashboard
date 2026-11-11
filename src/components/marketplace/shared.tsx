@@ -4,16 +4,18 @@
 // and date formatting, and the status vocabularies as chip tones.
 
 import { useRouter } from "next/navigation";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { Btn, CellChip, Loading, Panel, type ChipTone } from "@/components/ds";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import type { CpFilingStatus, CpListingStatus, CpMemberStatus, CpServicerStatus, CpSubscriptionStatus, CpTransferStatus } from "@/hooks/useCapitalPartners";
 
 export function SuperAdminOnly({ children }: { children: ReactNode }) {
-  const { data: me, isLoading } = useCurrentUser();
+  const { data: me, isLoading, isError, refetch, authScope, authReady } = useCurrentUser();
   const router = useRouter();
-  if (isLoading || !me) return <Loading />;
+  if (authReady === false || isLoading) return <Loading />;
+  if (isError) return <Panel title="Marketplace access could not be verified"><div className="sub">Your current account permissions could not be loaded.</div><Btn onClick={() => void refetch()}>Retry access check</Btn></Panel>;
+  if (!me) return <Loading />;
   if (me.role !== Role.SUPER_ADMIN) {
     return (
       <Panel title="Super-admin only">
@@ -24,7 +26,7 @@ export function SuperAdminOnly({ children }: { children: ReactNode }) {
       </Panel>
     );
   }
-  return <>{children}</>;
+  return <Fragment key={authScope ?? me.id}>{children}</Fragment>;
 }
 
 export const money = (v: string | number | null | undefined, compact = false) => {

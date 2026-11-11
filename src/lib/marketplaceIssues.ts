@@ -4,7 +4,7 @@ export const MARKETPLACE_FIELD_LABELS = {
   ltv_pct: "LTV / LTC / CLTV, %", ltv_kind: "Ratio kind", loan_amount: "Loan amount, $", offered_amount: "Capital to raise from investors, $",
   minimum_investment: "Smallest investor contribution, $", payment_frequency: "Payment frequency", personal_guarantee: "Personal guarantee",
   guarantee_text: "Guarantee, as shown", borrower_track_record: "Borrower track record", exit_plan: "Exit plan", valuation_amount: "Valuation, $",
-  valuation_source: "Valuation source", title_status: "Title", servicer_label: "Servicer, as shown", maturity_date: "Maturity date", closes_at: "Subscriptions close",
+  valuation_source: "Valuation source", title_status: "Title", servicer_label: "Servicer, as shown", expected_funding_date: "Estimated funding date", maturity_date: "Estimated maturity date", maturity_date_mode: "Maturity calculation", closes_at: "Subscriptions close",
 } as const;
 export type MarketplaceField = keyof typeof MARKETPLACE_FIELD_LABELS;
 export type MarketplaceFinancialAction = "coverage" | "terms" | "use-of-funds";
@@ -34,7 +34,7 @@ function fieldIssue(field: MarketplaceField, message: string, linked: boolean): 
   if (isMarketplaceField(message)) message = `${MARKETPLACE_FIELD_LABELS[message]} is required.`;
   if (message === "minimum_investment exceeds offered_amount") message = "The smallest investor contribution exceeds the capital to raise.";
   if (linked && ["offered_amount", "minimum_investment"].includes(field)) return targetIssue(message, { kind: "budget" });
-  if (linked && ["loan_amount", "note_rate_pct", "term_months"].includes(field)) return targetIssue(message, { kind: "file", action: "coverage" });
+  if (linked && ["loan_amount", "note_rate_pct", "term_months", "expected_funding_date", "maturity_date", "maturity_date_mode"].includes(field)) return targetIssue(message, { kind: "file", action: "coverage" });
   return targetIssue(message, { kind: "field", field });
 }
 

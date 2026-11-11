@@ -46,12 +46,17 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run marketplace helper tests
+      - name: Run marketplace and financing helper tests
         run: >-
           pnpm exec vitest run
           src/lib/__tests__/marketplaceIssues.test.ts
           src/lib/__tests__/marketplacePreparation.test.ts
           src/lib/__tests__/marketplacePublication.test.ts
+          src/lib/__tests__/investorEconomics.test.ts
+          src/lib/__tests__/loanDates.test.ts
+          src/lib/__tests__/loanTermsSync.test.ts
+          src/lib/__tests__/termsSaveIntent.test.ts
+          src/lib/__tests__/currentUserIdentity.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -74,6 +79,33 @@ jobs:
           tests/marketplace-error-guidance.spec.ts
           tests/fixtures/marketplaceErrorGuidance.ts
           tests/marketplace-owner-destination.spec.ts
+          src/components/file/DealBudgetSection.tsx
+          src/components/file/CompanyFeeControls.tsx
+          src/components/file/InvestorEconomicsPanel.tsx
+          src/components/marketplace/MarketplaceFileInventory.tsx
+          src/components/marketplace/MarketplaceDocumentGrants.tsx
+          src/hooks/useMarketplaceDocumentLink.ts
+          src/lib/dealBudget.ts
+          src/lib/investorEconomics.ts
+          src/lib/marketplaceFileDocuments.ts
+          src/lib/loanDates.ts
+          src/lib/loanTermsSync.ts
+          src/components/application/LoanDateFields.tsx
+          src/components/application/ApplicationClientTermsPanel.tsx
+          src/production-package/TermSheetDrawer.tsx
+          src/lib/__tests__/investorEconomics.test.ts
+          src/lib/__tests__/loanDates.test.ts
+          src/lib/__tests__/loanTermsSync.test.ts
+          tests/investor-economics.spec.ts
+          tests/fixtures/investorEconomics.ts
+          src/hooks/useApi.ts
+          src/components/marketplace/shared.tsx
+          src/lib/__tests__/currentUserIdentity.test.ts
+          tests/marketplace-auth-cache.spec.ts
+          tests/loan-date-coverage.spec.ts
+          tests/loan-date-dealer.spec.ts
+          tests/investor-document-cockpit.spec.ts
+          tests/fixtures/investorDocumentCockpit.ts
 
       - name: Build production frontend
         run: pnpm build

@@ -92,14 +92,14 @@ export interface CpSyncState {
 export interface CpSourceLookup { profile_id: string | null; loan_id: string | null; listing: CpListingRef | null; underwriting_status: string | null; has_term_sheet: boolean; sync?: CpSyncState | null }
 /** Scoped underwriting read model; no marketplace administration capability. */
 export interface CpProfilePublication { profile_id: string; listing: (CpListingRef & { published_at: string | null }) | null; can_manage: boolean }
-export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string }
+export interface CpDocument { id: string; kind: CpDocumentKind; kind_label: string; name: string; content_type: string | null; size_bytes: number | null; version: number; status: string; source?: "generated_package" | "uploaded" }
 export interface CpListingCard {
   id: string; ref: string; name: string; vertical: CpVertical; vertical_label: string; program_label: string; city: string | null; state: string | null;
   place: string | null; collateral_type: string | null; lien_position: "first" | "second"; note_rate_pct: string | null; term_months: number | null;
   ltv_pct: string | null; ltv_kind: "ltv" | "ltc" | "cltv"; minimum_investment: string | null; loan_amount: string | null; offered_amount: string | null;
   committed_amount: string; remaining_amount: string; pct_committed: number; payment_frequency: "monthly" | "quarterly" | "at_maturity";
   personal_guarantee: boolean; status: CpListingStatus; outcome: CpListingOutcome | null; opens_at: string | null; closes_at: string | null;
-  days_left: number | null; funded_at: string | null; repaid_at: string | null; maturity_date: string | null; published_at: string | null; products: CpListingProduct[];
+  days_left: number | null; funded_at: string | null; repaid_at: string | null; maturity_date: string | null; expected_funding_date?: string | null; maturity_date_mode?: "automatic" | "manual"; date_note?: string; published_at: string | null; products: CpListingProduct[];
 }
 export interface CpSubscription {
   id: string; listing_id: string; listing_ref: string | null; listing_name: string | null; entity_id: string | null; entity_name: string | null;
@@ -129,7 +129,7 @@ export type CpListingPatch = Partial<{
   term_months: number | null; ltv_pct: string | null; ltv_kind: "ltv" | "ltc" | "cltv"; loan_amount: string | null; offered_amount: string | null;
   minimum_investment: string | null; payment_frequency: "monthly" | "quarterly" | "at_maturity"; personal_guarantee: boolean; guarantee_text: string | null;
   borrower_track_record: string | null; exit_plan: string | null; valuation_amount: string | null; valuation_source: string | null; title_status: string | null;
-  servicer_label: string | null; maturity_date: string | null; closes_at: string | null; source_snapshot: Record<string, unknown>; products: CpListingProduct[];
+  servicer_label: string | null; maturity_date: string | null; expected_funding_date: string | null; maturity_date_mode: "automatic" | "manual"; closes_at: string | null; source_snapshot: Record<string, unknown>; products: CpListingProduct[];
 }>;
 export interface CpTransfer {
   id: string; ref: string; listing_id: string; listing_ref: string; listing_name: string; vertical: CpVertical; vertical_label: string; principal_amount: string;

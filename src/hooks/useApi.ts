@@ -289,13 +289,26 @@ export function useAuthedApi() {
 // invite/promote flow in Settings → Team) propagate within a tab-switch.
 // Without this, a user demoted from super_admin → client would keep seeing
 // the operator console for up to 5 minutes after the DB change.
+/** Cache ownership follows the actual authenticated principal and session. */
+export function currentUserIdentity(auth: { isLoaded: boolean; isSignedIn?: boolean; userId?: string | null; sessionId?: string | null }, devIdentity: string, visualMode = process.env.NEXT_PUBLIC_QC_VISUAL_QA === "1"): string | null {
+  if (!auth.isLoaded || auth.isSignedIn !== true) return null;
+  if (visualMode) return `visual:${devIdentity}`;
+  return auth.userId ? `clerk:${auth.userId}:${auth.sessionId ?? ""}` : null;
+}
+
 export function useCurrentUser() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
-  const { isLoaded, isSignedIn } = useConsoleAuth();
-  return useQuery({
-    queryKey: ["auth-me", isSignedIn],
-    queryFn: () => apiCall<User>("/auth/me"),
+  const auth = useConsoleAuth();
+  const authScope = currentUserIdentity(auth, devUser);
+  const activeScope = useRef(authScope); activeScope.current = authScope;
+  const query = useQuery({
+    queryKey: ["auth-me", authScope],
+    queryFn: async ({ signal }) => {
+      const result = await apiCall<User>("/auth/me", { signal });
+      if (activeScope.current !== authScope) throw new Error("The signed-in account changed while its permissions were loading.");
+      return result;
+    },
     staleTime: 30 * 1000,
     refetchOnWindowFocus: true,
     retry: false, // 401s should not retry
@@ -303,8 +316,9 @@ export function useCurrentUser() {
     // loaded but signed out (expired session, explicit sign-out, or a stale
     // protected tab), a request here would intentionally have no bearer token
     // and the backend would correctly 401.
-    enabled: isLoaded && isSignedIn === true,
+    enabled: Boolean(authScope),
   });
+  return { ...query, data: authScope && !query.isError ? query.data : undefined, authScope, authReady: Boolean(authScope) };
 }
 
 // Dealer-partner communication inbox: one row per lead with a team<->partner
