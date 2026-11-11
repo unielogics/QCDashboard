@@ -58,6 +58,7 @@ jobs:
           src/lib/__tests__/termsSaveIntent.test.ts
           src/lib/__tests__/currentUserIdentity.test.ts
           src/lib/__tests__/marketplacePpm.test.ts
+          src/lib/__tests__/marketplacePpmPresets.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -113,6 +114,13 @@ jobs:
           src/lib/__tests__/marketplacePpm.test.ts
           tests/marketplace-ppm.spec.ts
           tests/fixtures/marketplacePpm.ts
+          'src/app/admin/marketplace/members/page.tsx'
+          src/components/marketplace/MarketplaceMembershipPolicy.tsx
+          src/hooks/useMarketplaceMembershipPolicy.ts
+          src/lib/marketplaceMembership.ts
+          src/lib/__tests__/marketplacePpmPresets.test.ts
+          tests/ppm-presets-membership.spec.ts
+          tests/fixtures/ppmPresetsMembership.ts
 
       - name: Build production frontend
         run: pnpm build
