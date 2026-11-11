@@ -105,3 +105,55 @@ test("a financial action preserves the existing read-only permissions", async ({
   await expect(page.getByRole("dialog")).toHaveCount(0);
   expectNoSaves(f);
 });
+
+test.describe("FilePage communication navigation", () => {
+  let navigationScript: Buffer, navigationCss: Buffer;
+  const navigationOrigin = "https://marketplace-navigation.test";
+  const intake = "99100000-0000-0000-0000-000000000001";
+  const thread = "synthetic-email-thread-2";
+
+  test.beforeAll(async () => {
+    const root = process.cwd(), require = createRequire(path.join(root, "package.json"));
+    const esbuild = createRequire(createRequire(require.resolve("vitest/package.json")).resolve("vite/package.json"))("esbuild");
+    const directory = await mkdtemp(path.join(os.tmpdir(), "qc-marketplace-navigation-"));
+    // Real FilePage owns query mutation and the remount key. Only its child boundary
+    // exposes those actual callbacks; the original tests above retain real editors.
+    const mocks: Record<string, string> = {
+      "next/navigation": `import{useMemo,useSyncExternalStore}from'react';const listeners=new Set();const update=(method,url,options)=>{history[method==='push'?'pushState':'replaceState'](null,'',url);window.routeEvents.push({method,url,scroll:options?.scroll});listeners.forEach(fn=>fn())};const router={push:(url,options)=>update('push',url,options),replace:(url,options)=>update('replace',url,options)};export const useRouter=()=>router;export const useParams=()=>({id:'${intake}'});export function useSearchParams(){const search=useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn)},()=>location.search,()=>location.search);return useMemo(()=>new URLSearchParams(search),[search])}`,
+      "next/link": "export default function Link({href,children,...props}){return <a href={href} {...props}>{children}</a>}",
+      "@/hooks/useApi": "export const useCurrentUser=()=>({data:{role:'super_admin'},isLoading:false});",
+      "@/components/file/useLeadFile": `export const useLeadFile=()=>({detail:{intake:{id:'${intake}',business_name:'Example navigation file',full_name:'Synthetic Client'}},loading:false,reload:async()=>{}});`,
+      "@/components/operator/UnifiedOperator": "export const BucketIntakeLinkDrawer=()=>null;",
+      "@/components/file/LeadDetailPanel": `import{useEffect}from'react';export function LeadDetailPanel(props){useEffect(()=>{window.ownerProps.push(props.initialFinancialAction??null)},[props.initialFinancialAction]);return <section aria-label='FilePage child contract'><output data-testid='owner-action'>{props.initialFinancialAction??'none'}</output><output data-testid='communication-channel'>{props.initialCommunicationChannel}</output><output data-testid='email-thread'>{props.initialEmailThreadId??'none'}</output><button onClick={()=>props.onCommunicationNavigate('email')}>Email channel</button><button onClick={()=>props.onCommunicationNavigate('client')}>Client channel</button><button onClick={()=>props.onCommunicationNavigate('underwriter')}>Underwriter channel</button><button onClick={()=>props.onEmailThreadNavigate('${thread}')}>Open email thread</button></section>}`,
+    };
+    await esbuild.build({ stdin: { resolveDir: root, loader: "tsx", contents: `import React from'react';import{createRoot}from'react-dom/client';import FilePage from'@/app/files/[id]/page';import'@/app/globals.css';import'@/app/app-extras.css';window.routeEvents=[];window.ownerProps=[];createRoot(document.getElementById('root')).render(<main style={{padding:16}}><FilePage/></main>);` }, outfile: path.join(directory, "navigation.js"), bundle: true, format: "iife", platform: "browser", jsx: "automatic", nodePaths: [path.join(root, "node_modules")], alias: { "@": path.join(root, "src") }, define: { "process.env": "{}", "process.env.NODE_ENV": '"development"' }, loader: { ".module.css": "local-css" }, logLevel: "silent", plugins: [{ name: "file-route-services", setup(build: { onResolve: (options: { filter: RegExp }, callback: (args: { path: string }) => unknown) => void; onLoad: (options: { filter: RegExp; namespace: string }, callback: (args: { path: string }) => unknown) => void }) { build.onResolve({ filter: /.*/ }, args => args.path in mocks ? { path: args.path, namespace: "fixture-navigation" } : undefined); build.onLoad({ filter: /.*/, namespace: "fixture-navigation" }, args => ({ contents: mocks[args.path], loader: "tsx", resolveDir: root })); } }] });
+    [navigationScript, navigationCss] = await Promise.all([readFile(path.join(directory, "navigation.js")), readFile(path.join(directory, "navigation.css"))]);
+  });
+
+  for (const action of ["coverage", "terms", "use-of-funds"] as const) test(`${action} owner action is consumed before channel and thread navigation`, async ({ page }, info) => {
+    const errors: string[] = [], unexpectedRequests: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.route("**/*", route => {
+      const url = new URL(route.request().url());
+      if (url.origin !== navigationOrigin || url.pathname.startsWith("/api/")) { unexpectedRequests.push(route.request().url()); return route.fulfill({ status: 500, body: "Unexpected synthetic navigation request" }); }
+      return route.fulfill(url.pathname === "/navigation.js" ? { contentType: "text/javascript", body: navigationScript } : url.pathname === "/navigation.css" ? { contentType: "text/css", body: navigationCss } : { contentType: "text/html", body: '<html><head><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/navigation.css"></head><body><div id="root"></div><script src="/navigation.js"></script></body></html>' });
+    });
+    await page.goto(`${navigationOrigin}/files/${intake}?section=overview&financial_action=${action}&channel=email&thread=synthetic-old-thread&notes=1`);
+    await expect(page.getByTestId("owner-action")).toHaveText(action);
+    const assertRoute = async (channel: string, expectedThread: string | null, method: "push" | "replace") => {
+      await expect.poll(() => new URL(page.url()).searchParams.get("channel")).toBe(channel);
+      const url = new URL(page.url()); expect(url.pathname).toBe(`/files/${intake}`); expect(url.searchParams.get("section")).toBe("communications"); expect(url.searchParams.get("financial_action")).toBeNull(); expect(url.searchParams.get("thread")).toBe(expectedThread); expect(url.searchParams.get("notes")).toBe("1");
+      await expect(page.getByTestId("owner-action")).toHaveText("none"); await expect(page.getByTestId("communication-channel")).toHaveText(channel);
+      await expect(page.getByTestId("email-thread")).toHaveText(expectedThread && channel === "email" ? expectedThread : "none");
+      const events = await page.evaluate(() => (window as unknown as { routeEvents: Array<{ method: string; scroll: boolean }>; ownerProps: Array<string | null> }).routeEvents);
+      expect(events.at(-1)).toMatchObject({ method, scroll: false });
+      expect(await page.evaluate(value => (window as unknown as { ownerProps: Array<string | null> }).ownerProps.filter(item => item === value).length, action)).toBe(1);
+    };
+    await page.getByRole("button", { name: "Email channel", exact: true }).click(); await assertRoute("email", "synthetic-old-thread", "push");
+    await page.getByRole("button", { name: "Client channel", exact: true }).click(); await assertRoute("client", null, "push");
+    await page.getByRole("button", { name: "Open email thread", exact: true }).click(); await assertRoute("email", thread, "replace");
+    await page.getByRole("button", { name: "Underwriter channel", exact: true }).click(); await assertRoute("underwriter", null, "push");
+    expect(errors).toEqual([]); expect(unexpectedRequests).toEqual([]);
+    await page.screenshot({ path: path.resolve(process.cwd(), "../../artifacts/marketplace-guidance-navigation-qa", info.project.name, `${action}-communications.png`) });
+  });
+});
