@@ -15,6 +15,7 @@ import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { currentTermsDelivery, termsReferenceMatches, type OfferDelivery } from "@/lib/offerDeliveryState";
 import { FinancingProposalSummary } from "./FinancingProposalSummary";
 import { liveFinancingPreview } from "@/lib/liveFinancingPreview";
+import { SavedTermsDownload } from "@/components/application/SavedTermsDownload";
 
 /** The immutable terms saved by the same editor used in Financials. */
 export type TermsOnFile = {
@@ -107,6 +108,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
         <div className="grid g12">
           <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} terms={terms} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
           <div className="uw-actions"><Btn variant="pri" onClick={onEditTerms} disabled={termsLoading || saving}><Icon name="maximize" size={14} />Open full terms</Btn><span className="sub">Loan terms · Amortization & risk · Collateral · Investment & costs</span></div>
+          <SavedTermsDownload profileId={profileId} kind={terms?.kind ?? "application_term_sheet"} version={terms?.version} disabled={termsLoading || saving} />
           {financing?.dirty ? <Callout tone="warn">The preview follows your working loan and fee calculations. Save a new terms version to record these changes.</Callout> : null}
           {termsActions ? <div className="uw-terms-actions">{termsActions}</div> : null}
         </div>

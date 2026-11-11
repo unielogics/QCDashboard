@@ -39,6 +39,7 @@ import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
 import scheduleStyles from "./LoanScheduleReview.module.css";
 import { CoverageFundingGap } from "./CoverageFundingGap";
 import type { OfferSelection } from "@/components/communications/OfferDeliveryComposer";
+import { SavedTermsDownload } from "./SavedTermsDownload";
 
 export type Draft = {
   loan_type: string;
@@ -607,7 +608,8 @@ export function ApplicationClientTermsPanel({
           disabled={!offerSelection}
           onClick={() => onSelectedChange(!selected)}
         ><span aria-hidden="true">{selected ? <Icon name="check" size={13} /> : null}</span><span>Financing terms</span></button> : null}
-        <Btn onClick={downloadPdf} disabled={!terms.version || dirty || sourceConflict || principalSaveBlocked || save.isPending || supportingPending || downloading || (!canEdit && terms.status !== "issued")}>{downloading ? "Building PDF..." : terms.status === "issued" ? "Download issued PDF" : "Issue & download"}</Btn>
+        <SavedTermsDownload profileId={profileId} kind="application_term_sheet" version={terms.version} disabled={save.isPending || supportingPending || downloading} />
+        {terms.status !== "issued" ? <Btn onClick={downloadPdf} disabled={!terms.version || dirty || sourceConflict || principalSaveBlocked || save.isPending || supportingPending || downloading || !canEdit}>{downloading ? "Building PDF..." : "Issue & download"}</Btn> : null}
         <IconBtn className="pri" onClick={() => { setError(""); onSelectedChange?.(true); onCompose?.(); }} aria-label="Compose client email with financing terms" title="Add to client offer email" disabled={!offerSelection || terms.direct_client_contact_suppressed}><Icon name="mail" size={15} /></IconBtn>
       </div>
     </header>

@@ -38,6 +38,7 @@ import { Drawer } from "@/components/ds/Drawer";
 import workspaceStyles from "@/components/application/LoanScheduleReview.module.css";
 import { LoanScheduleTable } from "@/components/application/LoanScheduleTable";
 import { LoanPaymentPhases } from "@/components/application/LoanPaymentPhases";
+import { SavedTermsDownload } from "@/components/application/SavedTermsDownload";
 import { Callout, KV, MoneySplit, PBtn, PChip, Picks, emptyUseOfFunds } from "./ui";
 import type {
   DebtServiceTreatment,
@@ -746,6 +747,7 @@ export function TermSheetDrawer({ client, profileId, open, onClose, pkg, onSaved
   return (
     <Drawer open={open} fullscreen={expanded} headerActions={<PBtn size="sm" onClick={() => setExpanded(value => !value)}>{expanded ? "Restore" : "Expand"}</PBtn>} onClose={() => { if (!busy && !supportingPending) onClose(); }} title={current ? `Term sheet · v${current.version}` : "Record the term sheet"} width="xl" bodyClass="pp-root" closeOnBackdrop={false} ariaLabel="Production loan terms">
       <div ref={viewAnchor} />
+      <SavedTermsDownload profileId={profileId} kind="production_term_sheet" version={loadedProfileId === profileId ? current?.version : 0} disabled={Boolean(busy) || supportingPending} onDealerTermsRefreshed={setState} />
       <nav className={workspaceStyles.tabs} role="tablist" aria-label="Production financing workspace sections" onKeyDown={event => {
         if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
         event.preventDefault(); const views = ["terms", "collateral", "budget"] as const;
