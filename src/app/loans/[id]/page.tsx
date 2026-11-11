@@ -127,27 +127,35 @@ export default function LoanDetailPage() {
   const sendClientEmail = useSendClientEmail();
   const canEmailClient = !!client?.email && (profile.role === Role.SUPER_ADMIN || profile.role === Role.LOAN_EXEC || profile.role === Role.BROKER);
 
+  const calculationInputs = loan ? {
+    loanId: loan.id,
+    discount_points: loan.discount_points,
+    loan_amount: loan.amount,
+    base_rate: loan.base_rate ?? undefined,
+    annual_taxes: loan.annual_taxes,
+    annual_insurance: loan.annual_insurance,
+    monthly_hoa: loan.monthly_hoa,
+    term_months: loan.term_months,
+    monthly_rent: loan.monthly_rent,
+    purpose: loan.purpose,
+    arv: loan.arv,
+    ltv: loan.ltv ?? undefined,
+  } : undefined;
+  const calculationKey = JSON.stringify(calculationInputs);
+  // A completed mutation can belong to the preceding loan or operands until
+  // the next request starts. Never show that result as the current math.
+  const calculationMatches = !!calculationInputs && JSON.stringify(recalc.variables) === calculationKey;
+  const calculation = calculationMatches && !recalc.isPending ? recalc.data : undefined;
+  const calculating = !!loan && (recalc.isPending || !calculationMatches);
+
   // Trigger recalc whenever loan numerics change so the warnings list
   // is fresh for the BlockersPopup, regardless of which tab the user
-  // is on. Cheap — same effect that used to live in FundingFileTab.
+  // is on. The funding tab consumes this same result instead of issuing a
+  // second identical request when the default tab mounts.
   useEffect(() => {
-    if (!loan) return;
-    recalc.mutate({
-      loanId: loan.id,
-      discount_points: loan.discount_points,
-      loan_amount: loan.amount,
-      base_rate: loan.base_rate ?? undefined,
-      annual_taxes: loan.annual_taxes,
-      annual_insurance: loan.annual_insurance,
-      monthly_hoa: loan.monthly_hoa,
-      term_months: loan.term_months,
-      monthly_rent: loan.monthly_rent,
-      purpose: loan.purpose,
-      arv: loan.arv,
-      ltv: loan.ltv ?? undefined,
-    });
+    if (calculationInputs) recalc.mutate(calculationInputs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loan?.id, loan?.amount, loan?.base_rate, loan?.discount_points, loan?.annual_taxes, loan?.annual_insurance, loan?.monthly_hoa, loan?.term_months, loan?.monthly_rent, loan?.purpose, loan?.arv, loan?.ltv]);
+  }, [calculationKey]);
 
   // Subscribe to live message updates so the AI rail / messages are realtime
   useDealChannel(params.id, loan?.deal_id ?? null);
@@ -173,7 +181,7 @@ export default function LoanDetailPage() {
   const completion = getFileCompletion(loan, docs);
   const stageIndex = completion.stage.index;
   // Blockers data for the popup that the file-completion strip opens.
-  const warnings = recalc.data?.warnings ?? [];
+  const warnings = calculation?.warnings ?? [];
   const totalBlockers = warnings.length + missingCriteria.length + flaggedDocs.length;
   const canTransitionStage = isInternal;
   // Docs + workflow edits are open to BROKER too — agents need to
@@ -248,7 +256,7 @@ export default function LoanDetailPage() {
       </div>
 
       {activeTab === "file" && (
-        <FundingFileTab loan={loan} docs={docs} activity={activity} canEdit={canTransitionStage} onOpenTab={openLoanArea} />
+        <FundingFileTab loan={loan} docs={docs} activity={activity} calculation={calculation} calculating={calculating} canEdit={canTransitionStage} onOpenTab={openLoanArea} />
       )}
       {activeTab === "verification" && <ApplicationVerificationWorkspace sourceKind="loan" sourceId={loan.id} />}
       {activeTab === "payments" && <PaymentsWorkspace profileId={unifiedLoanFile?.file.profile_id} sourceLabel={loan.entity_name || client?.name || loan.client_name || undefined} />}

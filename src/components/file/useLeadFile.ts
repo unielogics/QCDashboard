@@ -1,11 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAIReview } from "@/components/admin/AIReviewProvider";
 import type { ClientThreadResponse, LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { reviewCompletionNotice } from "@/lib/aiReviewJobs";
-import { useConsoleAuth } from "@/lib/consoleAuth";
+import { isVisualQa, useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
+import { fileAuthScope, fileDetailKey, fileDetailPath } from "@/lib/fileOpening";
 import type { IntakeResponse } from "@/lib/intake";
 import { mcaRefinanceReviewState } from "@/lib/mcaRefinanceReview";
 import {
@@ -39,6 +41,7 @@ export type UseLeadFileOptions = {
   leadId: string | null;
   notify: (text: string) => void;
   onListChanged?: () => void;
+  includeDerived?: boolean;
 };
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -60,51 +63,70 @@ function downloadFilename(res: Response, dealer: string, fallbackSuffix: string,
   return (match && decodeURIComponent(match[1].trim().replace(/"/g, ""))) || (safeDealer ? `${safeDealer}-${fallbackSuffix}` : fallback);
 }
 
-export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOptions) {
-  const { getToken } = useConsoleAuth();
+export function useLeadFile({ leadId, notify, onListChanged, includeDerived = false }: UseLeadFileOptions) {
+  const auth = useConsoleAuth();
+  const { getToken } = auth;
   const { requestReview, isReviewing } = useAIReview();
-  const [detail, setDetail] = useState<LeadDetail | null>(null);
-  const [loading, setLoading] = useState(false);
-  const requestRef = useRef(0);
-  const loadingRequestRef = useRef(0);
+  const queryClient = useQueryClient();
+  const [analysisRequestedFor, setAnalysisRequestedFor] = useState<string | null>(null);
+  const scope = fileAuthScope(auth, isVisualQa ? visualQaUser("admin@qc.dev") : null);
+  const enabled = Boolean(leadId && auth.isLoaded && auth.isSignedIn && auth.userId);
+  const wantsAnalysis = includeDerived || analysisRequestedFor === leadId;
+  const factsKey = fileDetailKey(scope, leadId);
+  const analysisKey = fileDetailKey(scope, leadId, true);
+  const notifyRef = useRef(notify);
+  const activeLead = useRef(leadId);
+  activeLead.current = leadId;
+  useEffect(() => { activeLead.current = leadId; return () => { activeLead.current = null; }; }, [leadId]);
+  useEffect(() => { notifyRef.current = notify; }, [notify]);
 
   const call = useCallback(async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
     return api<T>(path, { ...init, authToken: token ?? undefined });
   }, [getToken]);
 
-  const load = useCallback(async (id: string, options: { background?: boolean } = {}) => {
-    const requestId = ++requestRef.current;
-    if (!options.background) {
-      loadingRequestRef.current = requestId;
-      setLoading(true);
-    }
-    try {
-      const data = await call<LeadDetail>(`/admin/ai-underwriter-leads/${id}`);
-      if (requestId !== requestRef.current) return;
-      setDetail(data);
-    } catch (error) {
-      if (requestId === requestRef.current) notify(error instanceof Error ? error.message : "Lead detail is unavailable.");
-    } finally {
-      if (!options.background && requestId === loadingRequestRef.current) setLoading(false);
-    }
-  }, [call, notify]);
-
-  // A new file id loads fresh; clearing the id drops the detail and cancels
-  // any response still in flight for the previous one.
+  // The factual shell never waits for financial recomputation or package
+  // fingerprints. Concurrent readers share a request; obsolete reads abort.
+  const facts = useQuery({ queryKey: factsKey, queryFn: ({ signal }) => call<LeadDetail>(fileDetailPath(leadId!), { signal }), enabled,
+    staleTime: 0, gcTime: 5 * 60_000, refetchOnMount: "always", refetchOnWindowFocus: false, retry: false });
+  const analysis = useQuery({ queryKey: analysisKey, queryFn: ({ signal }) => call<LeadDetail>(fileDetailPath(leadId!, true), { signal }),
+    enabled: enabled && wantsAnalysis && facts.data?.derived_pending === true && !facts.isFetching,
+    staleTime: 0, gcTime: 5 * 60_000, refetchOnMount: "always", refetchOnWindowFocus: false, retry: false });
+  // Never render another file's object, even for the frame before effects run.
+  const denied = [facts.error, analysis.error].some(error => error instanceof ApiError && [401, 403, 404].includes(error.status));
+  const factualDetail = enabled && !denied && facts.data?.intake.id === leadId ? facts.data : null;
+  const detailedAnalysis = enabled && analysis.data?.intake.id === leadId && analysis.dataUpdatedAt >= facts.dataUpdatedAt ? analysis.data : null;
+  const detail = !denied && wantsAnalysis && detailedAnalysis && !detailedAnalysis.derived_pending && !facts.isFetching && !analysis.isFetching ? detailedAnalysis : factualDetail;
+  const loading = Boolean(enabled && !factualDetail && (facts.isPending || facts.isFetching));
+  const refreshing = Boolean(detail && (facts.isFetching || analysis.isFetching));
   useEffect(() => {
-    if (!leadId) {
-      requestRef.current += 1;
-      setDetail(null);
-      setLoading(false);
-      return;
+    const error = facts.error ?? analysis.error;
+    if (!error) return;
+    if (error instanceof ApiError && [401, 403, 404].includes(error.status)) {
+      // A 404 can be a deliberately concealed revocation/archive. Replace the
+      // cached snapshots with empty sentinels without retrying a denied read.
+      queryClient.setQueryData<LeadDetail | null>(fileDetailKey(scope, leadId), null);
+      queryClient.setQueryData<LeadDetail | null>(fileDetailKey(scope, leadId, true), null);
     }
-    void load(leadId);
-  }, [leadId, load]);
-
-  const reload = useCallback(async (options: { background?: boolean } = { background: true }) => {
-    if (leadId) await load(leadId, options);
-  }, [leadId, load]);
+    notifyRef.current(error instanceof Error ? error.message : "File detail is unavailable.");
+  }, [facts.error, analysis.error, leadId, queryClient, scope]);
+  const requestDerived = useCallback(() => { if (leadId) setAnalysisRequestedFor(leadId); }, [leadId]);
+  const refetchFacts = facts.refetch;
+  const refetchAnalysis = analysis.refetch;
+  const reload = useCallback(async (_options: { background?: boolean } = { background: true }) => {
+    if (!leadId || !enabled || activeLead.current !== leadId) return;
+    // A mutation must not reuse an analysis request started before its write.
+    await queryClient.cancelQueries({ queryKey: fileDetailKey(scope, leadId, true), exact: true });
+    queryClient.setQueryData<LeadDetail>(fileDetailKey(scope, leadId, true), current => current ? { ...current, derived_pending: true } : current);
+    try {
+      const current = await refetchFacts({ throwOnError: true });
+      if (activeLead.current === leadId && wantsAnalysis && current.data?.derived_pending) await refetchAnalysis({ throwOnError: true, cancelRefetch: false });
+    } catch (error) {
+      // The preceding write may already have committed (or sent a message).
+      // A failed refresh must not invite retrying that successful operation.
+      notifyRef.current(error instanceof Error ? error.message : "The file changed, but its display could not be refreshed.");
+    }
+  }, [enabled, refetchAnalysis, refetchFacts, leadId, queryClient, scope, wantsAnalysis]);
 
   // The AI review runs elsewhere and announces completion on the window.
   useEffect(() => {
@@ -184,6 +206,7 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ confirm_name: confirmName }),
     });
+    queryClient.removeQueries({ queryKey: ["lead-file", scope, id] });
     onListChanged?.();
   }
 
@@ -354,8 +377,9 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
 
   /** Fold a cockpit response (chat turn, upload, re-run) back into the detail so switching tabs keeps the live conversation. */
   function foldCockpitResponse(r: IntakeResponse) {
-    setDetail((current) =>
-      current
+    if (!leadId || (r.intake?.id && r.intake.id !== leadId)) return;
+    const fold = (current: LeadDetail | undefined) =>
+      current?.intake.id === leadId
         ? {
             ...current,
             messages: r.messages ?? current.messages,
@@ -371,13 +395,17 @@ export function useLeadFile({ leadId, notify, onListChanged }: UseLeadFileOption
               status: r.intake?.status ?? current.intake.status,
             },
           }
-        : current,
-    );
+        : current;
+    queryClient.setQueryData<LeadDetail>(factsKey, fold);
+    queryClient.setQueryData<LeadDetail>(analysisKey, fold);
+    void queryClient.invalidateQueries({ queryKey: analysisKey, exact: true });
   }
 
   return {
     detail,
     loading,
+    refreshing,
+    requestDerived,
     reload,
     rerunning: Boolean(leadId && isReviewing(leadId)),
     cockpitResponse,

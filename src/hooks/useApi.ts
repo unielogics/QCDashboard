@@ -1,4 +1,5 @@
 "use client";
+import { clientTermsSummaryKey } from "@/lib/fileOpening";
 
 import type { ApplicationClientTerms } from "@/lib/applicationProfile";
 import type { InlineImage } from "@/lib/inlineImages";
@@ -1166,12 +1167,12 @@ export function useFinancialCockpit(profileId: string | null | undefined, enable
   });
 }
 
-/** The client terms as saved on the Financials tab, on the editor's own query key so both stay one read. */
+/** Lightweight saved terms, isolated from the editor's full current-plan payload. */
 export function useClientTermsSummary(profileId: string | null | undefined, enabled = true) {
   const apiCall = useAuthedApi();
   return useQuery({
-    queryKey: ["application-client-terms", profileId],
-    queryFn: () => apiCall<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms`),
+    queryKey: clientTermsSummaryKey(profileId),
+    queryFn: () => apiCall<ApplicationClientTerms>(`/application-profiles/${profileId}/client-terms?include_current_plan=false`),
     enabled: !!profileId && enabled,
     staleTime: 15_000,
   });
@@ -2455,9 +2456,8 @@ export function useEmailDraftDecision() {
 export function useRecalc() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
-  const qc = useQueryClient();
   return useMutation({
-    // invalidates: ["loan", loanId]
+    // Pure calculation; persisted loan writes invalidate through useUpdateLoan.
     mutationFn: ({
       loanId,
       ...body
@@ -2491,7 +2491,6 @@ export function useRecalc() {
         method: "POST",
         body: JSON.stringify(body),
       }),
-    onSuccess: (_, vars) => qc.invalidateQueries({ queryKey: ["loan", vars.loanId] }),
   });
 }
 

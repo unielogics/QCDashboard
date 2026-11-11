@@ -6,8 +6,7 @@
 // system in globals.css / app-extras.css. Every control, endpoint, panel, empty
 // state and callback is the one that was here before — the five workspace
 // panels, the two "open the full workbench" jumps, the per-criterion and
-// per-condition drill-throughs, and the recalc effect with its exact payload
-// and dependency list.
+// per-condition drill-throughs. The page supplies its shared live calculation.
 //
 // The components below the exported tab (OperationalHeader, CompletionGauge,
 // MiniTile, PathTile, Track, LoanStageStepper, FileCompletionStrip,
@@ -20,7 +19,7 @@
 // panel body. A 224px nav column is a design decision, not 3/12 of the cockpit
 // grid — `.cg` would give it ~430px on the wide cockpit content width.
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { VerifiedBadge } from "@/components/design-system/primitives";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
@@ -38,8 +37,8 @@ import {
   type ChipTone,
 } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
-import { useLoanPrequalRequests, useRecalc } from "@/hooks/useApi";
-import type { Activity, Document, Loan } from "@/lib/types";
+import { useLoanPrequalRequests } from "@/hooks/useApi";
+import type { Activity, Document, Loan, RecalcResponse } from "@/lib/types";
 import { getCriteriaItems, getFileCompletion, FILE_STAGE_KEYS, FILE_STAGE_LABELS } from "../fileReadiness";
 // PropertyTab is now embedded inside FundingFileTab instead of living
 // on its own tab — property details belong with the rest of the deal
@@ -75,49 +74,25 @@ export function FundingFileTab({
   loan,
   docs,
   activity,
+  calculation,
+  calculating = false,
   canEdit = false,
   onOpenTab,
 }: {
   loan: Loan;
   docs: Document[];
   activity: Activity[];
+  calculation?: RecalcResponse;
+  calculating?: boolean;
   canEdit?: boolean;
   onOpenTab?: (tab: string, targetId?: string) => void;
 }) {
-  const recalc = useRecalc();
+  // The page owns the live calculation and its operand-change lifecycle.
+  // Sharing it also keeps the header's blockers and this tab in agreement.
+  const recalc = { data: calculation, isPending: calculating };
   const { data: prequalRequests = [] } = useLoanPrequalRequests(loan.id);
   const [activePanel, setActivePanel] = useState<"math" | "criteria" | "documents" | "property" | "activity">("math");
   const [showBlockers, setShowBlockers] = useState(false);
-
-  useEffect(() => {
-    recalc.mutate({
-      loanId: loan.id,
-      discount_points: loan.discount_points,
-      loan_amount: loan.amount,
-      base_rate: loan.base_rate ?? undefined,
-      annual_taxes: loan.annual_taxes,
-      annual_insurance: loan.annual_insurance,
-      monthly_hoa: loan.monthly_hoa,
-      term_months: loan.term_months,
-      monthly_rent: loan.monthly_rent,
-      purpose: loan.purpose,
-      arv: loan.arv,
-      ltv: loan.ltv ?? undefined,
-    });
-  }, [
-    loan.id,
-    loan.amount,
-    loan.base_rate,
-    loan.discount_points,
-    loan.annual_taxes,
-    loan.annual_insurance,
-    loan.monthly_hoa,
-    loan.term_months,
-    loan.monthly_rent,
-    loan.purpose,
-    loan.arv,
-    loan.ltv,
-  ]);
 
   const warnings = recalc.data?.warnings ?? [];
   const completion = getFileCompletion(loan, docs, warnings.length);

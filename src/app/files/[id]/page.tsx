@@ -13,6 +13,7 @@ import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { SECTION_DEFINITIONS, parseFileSection } from "@/lib/fileRoutes";
 import { parseMarketplaceFinancialAction } from "@/lib/marketplaceIssues";
+import { needsFullFileAnalysis } from "@/lib/fileOpening";
 
 const LIST_HREF = "/admin/ai-underwriter-leads";
 
@@ -36,7 +37,9 @@ export default function FilePage() {
   const canGovern = me?.role === Role.SUPER_ADMIN;
   const [notice, setNotice] = useState("");
   const [linkLead, setLinkLead] = useState<LinkLead | null>(null);
-  const file = useLeadFile({ leadId: isDesk ? leadId : null, notify: setNotice });
+  // The server enforces the operator role. Start this permissioned factual
+  // read alongside /auth/me instead of waiting an additional network roundtrip.
+  const file = useLeadFile({ leadId, notify: setNotice, includeDerived: needsFullFileAnalysis(section) });
 
   useEffect(() => {
     if (!meLoading && me && !isDesk) router.replace("/");
@@ -54,6 +57,8 @@ export default function FilePage() {
         key={`${leadId}:${section}`}
         detail={file.detail}
         loading={file.loading}
+        refreshing={file.refreshing}
+        onRequireAnalysis={file.requestDerived}
         initialView={definition.view}
         initialActiveTab={definition.activeTab}
         initialWorkspaceSection={definition.workspaceSection}
