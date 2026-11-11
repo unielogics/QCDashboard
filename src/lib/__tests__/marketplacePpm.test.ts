@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ppmApplyEditsToLatest, ppmCanReview, ppmConflict, ppmDirty, ppmEdit, ppmMissingIssue, ppmMissingLegalKey, ppmNeedsRefresh, type MarketplacePpm, type PpmVersion } from "../marketplacePpm";
+import { ppmApplyEditsToLatest, ppmApprovalValues, ppmCanReview, ppmConflict, ppmDirty, ppmEdit, ppmMissingIssue, ppmMissingLegalKey, ppmNeedsRefresh, type MarketplacePpm, type PpmVersion } from "../marketplacePpm";
 
 const version = (overrides: Partial<PpmVersion> = {}): PpmVersion => ({ document_id: "draft-1", version: 1, source: "generated_ppm", status: "draft", source_fingerprint: "current-facts", stale: false, created_at: "2026-11-11T12:00:00Z", reviewed_at: null, document: { title: "Draft PPM", listing_ref: "QC-1", issuer: "Fictional business", source_fingerprint: "current-facts", sections: [], missing: [], warnings: [] }, legal_inputs: { issuer_legal_name: "Fictional LLC", jurisdiction: "NY" }, narrative_sections: {}, ai_sections: { overview: "Suggested wording" }, ...overrides });
 const state = (overrides: Partial<MarketplacePpm> = {}): MarketplacePpm => ({ managed: true, auto_refresh: true, status: "draft", generation_status: "source_based", source_fingerprint: "current-facts", current_draft: version(), current_approved: null, history: [], missing: [], warnings: [], legal_fields: [{ key: "issuer_legal_name", label: "Issuer legal name", required: true }, { key: "offering_currency", label: "Offering currency", required: false }], narrative_fields: [{ key: "overview", label: "Overview" }], ...overrides });
@@ -56,5 +56,33 @@ describe("managed PPM draft lifecycle", () => {
     expect(ppmMissingIssue({ key: "loan_amount", label: "Loan amount missing", section: "coverage_plan", required: true }, true)?.target).toEqual({ kind: "file", action: "coverage" });
     expect(ppmMissingIssue({ key: "unknown.path", label: "Unknown", section: "terms", required: true }, false)).toBeNull();
     expect(ppmMissingIssue({ key: "name_required", label: "Deal title missing", section: "terms", required: true }, false)?.target).toEqual({ kind: "field", field: "name" });
+  });
+  it("refreshes a server-identified legacy disclosure upgrade even with unchanged source facts", () => {
+    const old = state({ draft_upgrade_available: true });
+    expect(ppmNeedsRefresh(old)).toBe(true);
+    expect(ppmCanReview(old, false, false)).toBe(false);
+    expect(ppmEdit(old.current_draft!).legalInputs).toEqual(old.current_draft!.legal_inputs);
+    const reviewed = state({ draft_upgrade_available: true, current_draft: null, current_approved: version({ status: "approved" }) });
+    expect(ppmNeedsRefresh(reviewed)).toBe(true);
+  });
+  it("does not invent an upgrade or saved defaults for intentional current custom blanks", () => {
+    const saved = version({ legal_inputs: { jurisdiction: "" }, legal_presets: { jurisdiction: "custom" } });
+    const current = state({ current_draft: saved, legal_defaults: { jurisdiction: "Suggested law" }, draft_upgrade_available: false, missing: [{ key: "jurisdiction", label: "Governing law", section: "legal", required: true }] });
+    expect(ppmNeedsRefresh(current)).toBe(false);
+    expect(ppmEdit(saved).legalInputs.jurisdiction).toBe("");
+    expect(ppmCanReview(current, false, false)).toBe(false);
+  });
+  it("binds action-only approval to the exact current saved version without requiring a note", () => {
+    expect(ppmApprovalValues(state(), false, false)).toEqual({ expected_version: 1, expected_source_fingerprint: "current-facts", confirmed: true, decision: "approve" });
+    expect(ppmApprovalValues(state(), false, false, "  ")).not.toHaveProperty("reason");
+    expect(ppmApprovalValues(state(), false, false, " ok ")).toMatchObject({ reason: "ok" });
+    expect(ppmApprovalValues(state(), false, false, "x".repeat(2001))).toBeNull();
+  });
+  it("keeps action-only approval blocked for unsaved, stale, missing or upgrading content", () => {
+    expect(ppmApprovalValues(state(), true, false)).toBeNull();
+    expect(ppmApprovalValues(state(), false, true)).toBeNull();
+    expect(ppmApprovalValues(state({ source_fingerprint: "changed" }), false, false)).toBeNull();
+    expect(ppmApprovalValues(state({ draft_upgrade_available: true }), false, false)).toBeNull();
+    expect(ppmApprovalValues(state({ missing: [{ key: "jurisdiction", label: "Governing law", section: "legal", required: true }] }), false, false)).toBeNull();
   });
 });

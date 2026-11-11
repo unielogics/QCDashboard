@@ -37,5 +37,5 @@ export function useMarketplacePpm(listingId: string, active: boolean) {
     client.setQueryData(["cp-listing", listingId], listing);
     void client.invalidateQueries({ queryKey: ["cp-listings"] });
   };
-  return { ...query, data: allowed ? query.data : undefined, allowed, busy, mutate, refreshListing };
+  return { ...query, data: allowed ? query.data : undefined, allowed, scope, busy, mutate, refreshListing };
 }

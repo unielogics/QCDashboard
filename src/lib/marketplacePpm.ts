@@ -6,11 +6,11 @@ export type PpmDocument = { title: string; listing_ref: string; issuer: string; 
 export type PpmLegalPreset = { key: string; label: string; text: string; unresolved?: boolean };
 export type PpmLegalField = { key: string; label: string; required: boolean; options?: PpmLegalPreset[]; default_value?: string | null; default_preset?: string | null; help?: string | null; read_only?: boolean };
 export type PpmVersion = { document_id: string; version: number; source: "generated_ppm" | "uploaded"; status: "draft" | "approved" | "superseded"; source_fingerprint: string; stale: boolean; created_at: string; reviewed_at: string | null; document: PpmDocument; legal_inputs: Record<string, string>; legal_presets?: Record<string, string>; narrative_sections: Record<string, string>; ai_sections?: Record<string, string> };
-export type MarketplacePpm = { managed: boolean; auto_refresh: boolean; status: "not_started" | "draft" | "approved" | "stale"; generation_status: "not_generated" | "source_based" | "ai_draft" | "manual_upload"; source_fingerprint: string; current_draft: PpmVersion | null; current_approved: PpmVersion | null; history: PpmVersion[]; missing: PpmMissing[]; warnings: string[]; legal_fields: PpmLegalField[]; narrative_fields: Array<{ key: string; label: string }>; membership_policy?: MarketplaceMembershipPolicy; legal_defaults?: Record<string, string>; legal_default_presets?: Record<string, string> };
+export type MarketplacePpm = { managed: boolean; auto_refresh: boolean; draft_upgrade_available?: boolean; status: "not_started" | "draft" | "approved" | "stale"; generation_status: "not_generated" | "source_based" | "ai_draft" | "manual_upload"; source_fingerprint: string; current_draft: PpmVersion | null; current_approved: PpmVersion | null; history: PpmVersion[]; missing: PpmMissing[]; warnings: string[]; legal_fields: PpmLegalField[]; narrative_fields: Array<{ key: string; label: string }>; membership_policy?: MarketplaceMembershipPolicy; legal_defaults?: Record<string, string>; legal_default_presets?: Record<string, string> };
 export type PpmEdit = { version: number; sourceFingerprint: string; legalInputs: Record<string, string>; legalPresets: Record<string, string>; narrativeSections: Record<string, string> };
 export type PpmGenerate = { expected_source_fingerprint: string; idempotency_key: string; force?: boolean; auto_refresh?: boolean };
 export type PpmSave = { expected_version: number; expected_source_fingerprint: string; idempotency_key: string; legal_inputs: Record<string, string>; legal_presets?: Record<string, string>; narrative_sections: Record<string, string> };
-export type PpmReview = { expected_version: number; expected_source_fingerprint: string; idempotency_key: string; confirmed: boolean; reason: string };
+export type PpmReview = { expected_version: number; expected_source_fingerprint: string; idempotency_key: string; confirmed: boolean; decision?: "approve"; reason?: string | null };
 
 export const ppmLegalId = (key: string) => `marketplace-ppm-legal-${encodeURIComponent(key)}`;
 export const ppmContentKey = (value: PpmEdit | null) => JSON.stringify({ legal: Object.fromEntries(Object.entries(value?.legalInputs ?? {}).sort()), presets: Object.fromEntries(Object.entries(value?.legalPresets ?? {}).sort()), narrative: Object.fromEntries(Object.entries(value?.narrativeSections ?? {}).sort()) });
@@ -41,12 +41,18 @@ export const ppmIsLegacy = (state: MarketplacePpm | undefined) => Boolean(state 
 export function ppmConflict(edit: PpmEdit | null, state: MarketplacePpm | undefined) { return !ppmIsLegacy(state) && Boolean(edit && state && (edit.version !== ppmEditableVersion(state)?.version || edit.sourceFingerprint !== state.source_fingerprint)); }
 export function ppmNeedsRefresh(state: MarketplacePpm) {
   if (!state.managed && state.current_approved?.source === "uploaded") return false;
+  if (state.draft_upgrade_available) return true;
   if (!state.current_draft && state.current_approved && !state.current_approved.stale && state.current_approved.source_fingerprint === state.source_fingerprint) return false;
   return !state.current_draft || state.current_draft.stale || state.current_draft.source_fingerprint !== state.source_fingerprint;
 }
 export function ppmCanReview(state: MarketplacePpm | undefined, dirty: boolean, conflict: boolean) {
   const draft = state?.current_draft;
-  return Boolean(draft && !draft.stale && draft.source_fingerprint === state?.source_fingerprint && !state?.missing.some(item => item.required) && !dirty && !conflict && !(state?.current_approved?.document_id === draft.document_id && !state.current_approved.stale));
+  return Boolean(draft && !state?.draft_upgrade_available && !draft.stale && draft.source_fingerprint === state?.source_fingerprint && !state?.missing.some(item => item.required) && !dirty && !conflict && !(state?.current_approved?.document_id === draft.document_id && !state.current_approved.stale));
+}
+export function ppmApprovalValues(state: MarketplacePpm | undefined, dirty: boolean, conflict: boolean, note = ""): Omit<PpmReview, "idempotency_key"> | null {
+  const reason = note.trim();
+  if (!ppmCanReview(state, dirty, conflict) || !state?.current_draft || reason.length > 2000) return null;
+  return { expected_version: state.current_draft.version, expected_source_fingerprint: state.source_fingerprint, confirmed: true, decision: "approve", ...(reason ? { reason } : {}) };
 }
 export function ppmApplyEditsToLatest(base: PpmEdit, edit: PpmEdit, latest: PpmVersion): PpmEdit {
   const next = ppmEdit(latest);

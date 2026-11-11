@@ -85,8 +85,10 @@ const area = (page: Page) => page.getByRole("region", { name: "PPM draft and rev
 const field = (page: Page, label: string) => area(page).getByLabel(`PPM ${label}`, { exact: true });
 const choice = (page: Page, label: string) => area(page).getByLabel(`PPM ${label} preset`, { exact: true });
 const writes = (f: Awaited<ReturnType<typeof fixture>>) => f.requests.filter(row => row.method !== "GET" && !row.path.endsWith("/deal-budget/preview"));
-async function open(page: Page) { await page.getByRole("tab", { name: /^Documents/ }).click(); await expect(area(page).getByText("Saved draft v1", { exact: true })).toBeVisible(); }
-async function save(page: Page, version: number) { await area(page).getByRole("button", { name: "Save PPM draft", exact: true }).click(); await expect(area(page).getByText(`Saved draft v${version}`, { exact: true })).toBeVisible(); }
+async function open(page: Page) { await page.getByRole("tab", { name: /^Documents/ }).click(); await expect(area(page).getByText("Saved draft v1", { exact: true })).toBeVisible(); await backToEdits(page); }
+async function backToEdits(page: Page) { await area(page).getByRole("button", { name: "Back to edits", exact: true }).click(); }
+async function approvalBlocked(page: Page) { await area(page).getByRole("button", { name: "Review saved PPM", exact: true }).first().click(); await expect(area(page).getByRole("button", { name: "Approve current PPM" })).toBeDisabled(); await backToEdits(page); }
+async function save(page: Page, version: number) { await area(page).getByRole("button", { name: "Save and review", exact: true }).click(); await expect(area(page).getByText(`Saved draft v${version}`, { exact: true })).toBeVisible(); await backToEdits(page); }
 
 test("new draft prefills issuer and finite preset choices but unknown governing law still blocks review", async ({ page }, info) => {
   const f = await fixture(page); await open(page);
@@ -95,7 +97,7 @@ test("new draft prefills issuer and finite preset choices but unknown governing 
   await expect(field(page, "Investor eligibility requirements")).toHaveValue(/17 calendar days/);
   const jurisdiction = choice(page, "Governing law and offering jurisdictions"); await expect(jurisdiction).toHaveValue("to_be_confirmed");
   await expect(jurisdiction.locator("option")).toHaveCount(54); await expect(jurisdiction.locator('option[value="custom"]')).toHaveCount(1);
-  await expect(field(page, "Governing law and offering jurisdictions")).toHaveValue(/remain to be confirmed/); await expect(area(page).getByRole("button", { name: "Approve current PPM" })).toBeDisabled();
+  await expect(field(page, "Governing law and offering jurisdictions")).toHaveValue(/remain to be confirmed/); await approvalBlocked(page);
   await area(page).getByRole("button", { name: "Complete Governing law and offering jurisdictions", exact: true }).click(); await expect(jurisdiction).toBeFocused(); await expect(jurisdiction).toBeInViewport();
   expect(writes(f).map(row => row.path)).toEqual([`/capital/admin/listings/${ID}/ppm/generate`]);
   await area(page).getByRole("heading", { name: "Private placement memorandum", exact: true }).evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" })); await page.screenshot({ path: info.outputPath("ppm-presets-overview.png"), fullPage: false });
@@ -117,15 +119,15 @@ test("saved custom issuer and eligibility wording are never replaced by a defaul
 
 test("same-text Custom intent pins wording during rebase and keeps unrelated remote field changes", async ({ page }) => {
   const f = await fixture(page); await open(page); const old = await field(page, "Investor eligibility requirements").inputValue(); await choice(page, "Investor eligibility requirements").selectOption("custom");
-  await f.changeSource(7, "USD", true); await expect(area(page).getByText("Saved draft v2", { exact: true })).toBeVisible(); await area(page).getByRole("button", { name: "Apply my edits to latest facts" }).click(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible();
+  await f.changeSource(7, "USD", true); await expect(area(page).getByText("Saved draft v2", { exact: true })).toBeVisible(); await area(page).getByRole("button", { name: "Apply my edits to latest facts" }).click(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible(); await backToEdits(page);
   await expect(field(page, "Investor eligibility requirements")).toHaveValue(old); await expect(choice(page, "Investor eligibility requirements")).toHaveValue("custom");
-  await expect(field(page, "Subscription, acceptance and funding process")).toHaveValue("Updated remote subscription workflow."); await expect(choice(page, "Subscription, acceptance and funding process")).toHaveValue("custom"); await expect(area(page).getByRole("button", { name: "Save PPM draft", exact: true })).toBeDisabled();
+  await expect(field(page, "Subscription, acceptance and funding process")).toHaveValue("Updated remote subscription workflow."); await expect(choice(page, "Subscription, acceptance and funding process")).toHaveValue("custom"); await expect(area(page).getByRole("button", { name: "Save and review", exact: true })).toBeDisabled();
   expect(f.errors).toEqual([]);
 });
 
 test("typing and intentionally clearing custom issuer keeps it blank through save and regeneration", async ({ page }) => {
   const f = await fixture(page); await open(page); await field(page, "Issuer legal name").fill(""); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await save(page, 2); await f.changeSource(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible();
-  await expect(field(page, "Issuer legal name")).toHaveValue(""); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await expect(area(page).getByRole("region", { name: "PPM facts still needed" })).toContainText("Issuer legal name"); await expect(area(page).getByRole("button", { name: "Approve current PPM" })).toBeDisabled(); expect(f.errors).toEqual([]);
+  await expect(field(page, "Issuer legal name")).toHaveValue(""); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await expect(area(page).getByRole("region", { name: "PPM facts still needed" })).toContainText("Issuer legal name"); await approvalBlocked(page); expect(f.errors).toEqual([]);
 });
 
 test("PPM membership link opens the actual Members tab with the identical server policy", async ({ page }, info) => {

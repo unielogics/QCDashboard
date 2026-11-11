@@ -145,6 +145,8 @@ jobs:
           tests/file-workspace-navigation.spec.ts
           tests/fixtures/fileWorkspaceNavigation.ts
           src/components/application/RequirementUseOfFundsActions.tsx
+          tests/ppm-review-flow.spec.ts
+          tests/fixtures/ppmReviewFlow.ts
 
       - name: Build production frontend
         run: pnpm build
