@@ -29,7 +29,6 @@ import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { balanceRiskMonths, riskCountLabel, riskTotals } from "@/lib/balanceRisk";
 import { ebitdaIsStaffCorrected, ebitdaKpi, metricAmountLabel, metricCurrency } from "@/lib/financialMetrics";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
-import { ApplicationLenderSubmissions } from "@/components/application/ApplicationLenderSubmissions";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import type { BudgetEditorControls } from "@/components/application/UseOfFundsBudgetEditor";
 import { createUseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
@@ -865,13 +864,6 @@ export function FinancialCockpit(props: Props) {
         <NetProfitCard cockpit={cockpit} />
         <ExpensesCard cockpit={cockpit} />
       </div>
-
-
-
-      <div className="fc-grid">
-        <ApplicationLenderSubmissions key={props.profileId} profileId={props.profileId} />
-      </div>
-
       <div className="fc-grid">
         {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} />}
       </div>
