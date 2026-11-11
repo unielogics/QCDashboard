@@ -12,7 +12,9 @@
 // than asking — a statement filed against the wrong application is difficult to
 // notice and annoying to unpick.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { IntakeRoomPinGate } from "@/components/room/RoomPinFields";
+import { clientApiErrorCode } from "@/lib/clientRoomDocuments";
 import { useSearchParams } from "next/navigation";
 import { Btn, Panel, StatusLine } from "@/components/ds";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -32,6 +34,11 @@ export default function ClientFinancialFormsPage() {
   const [intakes, setIntakes] = useState<Intake[]>([]);
   const [intakeId, setIntakeId] = useState<string | null>(params?.get("intake") ?? null);
   const [state, setState] = useState<StatementState | null>(null);
+  const [roomAccess, setRoomAccess] = useState<{ intakeId: string; required: boolean } | null>(null);
+  const activeIntake = useRef(intakeId);
+  const intakeRead = useRef(0);
+  const loadedIntake = useRef<string | null>(null);
+  activeIntake.current = intakeId;
   const [body, setBody] = useState<PfsBody>({});
   const [busy, setBusy] = useState("");
   const [done, setDone] = useState(false);
@@ -54,15 +61,25 @@ export default function ClientFinancialFormsPage() {
 
   const load = useCallback(async () => {
     if (!intakeId) return;
-    setError(null);
+    const requestedId = intakeId;
+    const requestId = ++intakeRead.current;
+    setError(null); setRoomAccess(null);
     try {
+      const access = await api<{ room_pin_setup_required: boolean }>(`/buckets/client/intakes/${requestedId}/secure-room`);
+      if (activeIntake.current !== requestedId || requestId !== intakeRead.current) return;
+      if (typeof access.room_pin_setup_required !== "boolean") throw new Error("We could not verify your room access. Please try again.");
+      setRoomAccess({ intakeId: requestedId, required: access.room_pin_setup_required });
+      if (access.room_pin_setup_required) return;
       const data = await api<StatementState>(
         `/buckets/client/intakes/${intakeId}/financial-statement`,
       );
+      if (activeIntake.current !== requestedId || requestId !== intakeRead.current) return;
       setState(data);
       setBody(data.body ?? {});
+      loadedIntake.current = requestedId;
       setDone(data.status === "submitted");
     } catch (reason) {
+      if (activeIntake.current !== requestedId || requestId !== intakeRead.current) return;
       setError(
         reason instanceof Error ? reason.message : "We could not open your financial statement.",
       );
@@ -76,7 +93,7 @@ export default function ClientFinancialFormsPage() {
   // Keep progress without being asked. A 413 is long and most people meet it on
   // a phone; losing it to a closed tab is most of why the old form went unused.
   useEffect(() => {
-    if (!intakeId || !state || done) return;
+    if (!intakeId || !state || done || roomAccess?.intakeId !== intakeId || roomAccess.required) return;
     const timer = window.setTimeout(async () => {
       try {
         await api(`/buckets/client/intakes/${intakeId}/financial-statement`, {
@@ -84,16 +101,17 @@ export default function ClientFinancialFormsPage() {
           body: JSON.stringify({ body, submit: false }),
         });
         setSavedAt(new Date().toLocaleTimeString());
-      } catch {
+      } catch (reason) {
+        if (activeIntake.current === intakeId && clientApiErrorCode(reason) === "room_pin_setup_required") setRoomAccess({ intakeId, required: true });
         // Silent. A failed autosave must not interrupt someone mid-form; Save
         // reports its own failure.
       }
     }, 4000);
     return () => window.clearTimeout(timer);
-  }, [api, body, done, intakeId, state]);
+  }, [api, body, done, intakeId, roomAccess, state]);
 
   const save = async () => {
-    if (!intakeId) return;
+    if (!intakeId || roomAccess?.intakeId !== intakeId || roomAccess.required) return;
     setBusy("save");
     setError(null);
     try {
@@ -103,11 +121,25 @@ export default function ClientFinancialFormsPage() {
       });
       setDone(true);
     } catch (reason) {
+      if (activeIntake.current === intakeId && clientApiErrorCode(reason) === "room_pin_setup_required") setRoomAccess({ intakeId, required: true });
       setError(reason instanceof Error ? reason.message : "That did not save. Please try again.");
     } finally {
       setBusy("");
     }
   };
+
+  if (intakeId && roomAccess?.intakeId !== intakeId) return <Panel title="Personal financial statement">{error ? <><StatusLine tone="bad">{error}</StatusLine><Btn onClick={() => void load()}>Try again</Btn></> : <div className="empty">Checking your secure room access…</div>}</Panel>;
+  if (intakeId && roomAccess?.required) return <IntakeRoomPinGate key={intakeId} onSave={async (pin) => {
+    const requestedId = intakeId;
+    await api(`/buckets/client/intakes/${requestedId}/secure-room`, { method: "POST", body: JSON.stringify({ new_passcode: pin }) });
+    if (activeIntake.current === requestedId) {
+      setError(null);
+      setRoomAccess({ intakeId: requestedId, required: false });
+      // A mid-edit PIN rotation must not replace unsaved form answers with the
+      // previous server draft. Initial access still loads that draft normally.
+      if (loadedIntake.current !== requestedId) await load();
+    }
+  }} />;
 
   if (done) {
     return (

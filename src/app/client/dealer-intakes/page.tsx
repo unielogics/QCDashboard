@@ -14,6 +14,7 @@ import { chatActionStatusText, resolveChatActionTarget } from "@/components/inta
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
 import { useCurrentUser } from "@/hooks/useApi";
+import { IntakeRoomPinGate } from "@/components/room/RoomPinFields";
 
 type Intake = {
   id: string;
@@ -41,7 +42,7 @@ type ChatAction = {
   status: string;
 };
 type ChatActionResult = { action_id: string; status: "executed" | "failed"; detail: string; download_url?: string | null; room_url?: string | null; form_url?: string | null; access_code?: string | null; delivery?: { recipient_masked?: string; provider_accepted?: boolean; status?: string } | null };
-type IntakeDetail = { intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null; capital_readiness?: ApplicationCapitalReadinessSnapshot | null; communication_locale?: "en" | "es" | null };
+type IntakeDetail = { room_pin_setup_required?: boolean; intake: Intake; requested_documents: RequestedDoc[]; files: UploadedFile[]; assistant_message: string; messages: ChatMessage[]; chat_actions: ChatAction[]; ai_summary?: Record<string, unknown> | null; capital_readiness?: ApplicationCapitalReadinessSnapshot | null; communication_locale?: "en" | "es" | null };
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
 export default function ClientDealerIntakesPage() {
@@ -51,6 +52,8 @@ export default function ClientDealerIntakesPage() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [rows, setRows] = useState<Intake[]>([]);
   const [selectedId, setSelectedId] = useState("");
+  const activeIntake = useRef("");
+  const intakeRead = useRef(0);
   const [detail, setDetail] = useState<IntakeDetail | null>(null);
   const [queuedFiles, setQueuedFiles] = useState<QueuedFile[]>([]);
   const [chatText, setChatText] = useState("");
@@ -81,8 +84,11 @@ export default function ClientDealerIntakesPage() {
   }
 
   async function openIntake(id: string) {
-    setSelectedId(id);
+    const requestId = ++intakeRead.current;
+    setSelectedId(id); activeIntake.current = id;
+    setDetail((current) => current?.intake.id === id ? current : null);
     const data = await authed<IntakeDetail>(`/buckets/client/intakes/${id}`);
+    if (activeIntake.current !== id || requestId !== intakeRead.current) return;
     setDetail(data);
     setMessages(data.messages?.length ? data.messages : [{ id: `welcome-${id}`, role: "assistant", content: data.assistant_message }]);
   }
@@ -277,7 +283,7 @@ export default function ClientDealerIntakesPage() {
           </div>
         </aside>
         <section style={panel()}>
-          {detail ? (
+          {detail?.room_pin_setup_required ? <IntakeRoomPinGate key={detail.intake.id} locale={(detail.communication_locale ?? detail.intake.preferred_language) === "es" ? "es" : "en"} onSave={async (pin) => { await authed(`/buckets/client/intakes/${detail.intake.id}/secure-room`, { method: "POST", body: JSON.stringify({ new_passcode: pin }) }); if (activeIntake.current === detail.intake.id) await openIntake(detail.intake.id); }} /> : detail ? (
             <div style={{ display: "grid", gap: 16 }}>
               <div style={summary}>
                 <div>

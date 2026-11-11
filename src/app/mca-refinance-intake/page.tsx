@@ -20,6 +20,8 @@ import type { ReactNode } from "react";
 import { uploadFile, type UploadStage } from "@/lib/fileUpload";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { QCMark } from "@/components/QCMark";
+import { RoomPinFields, IntakeRoomPinGate } from "@/components/room/RoomPinFields";
+import { chosenRoomPinProblem } from "@/lib/roomPin";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { IntakeChatActions } from "@/components/intake/IntakeChatActions";
 import { chatActionStatusText, resolveChatActionTarget } from "@/components/intake/chatActionTargets";
@@ -729,6 +731,8 @@ export default function McaRefinanceIntakePage() {
   // Start screen
   const [startForm, setStartForm] = useState({ ...emptyBusinessProfile(), full_name: "", business_name: "", email: "", phone: "", business_website: "", business_description: "" });
   const [legalAccepted, setLegalAccepted] = useState(false);
+  const [roomPin, setRoomPin] = useState("");
+  const [roomPinConfirmation, setRoomPinConfirmation] = useState("");
   const [sms, setSms] = useState<SmsChoices>(NO_SMS_CHOICES);
   const [startBusy, setStartBusy] = useState(false);
   const [startError, setStartError] = useState<string | null>(null);
@@ -1019,6 +1023,8 @@ export default function McaRefinanceIntakePage() {
       setStartError(profileProblem);
       return;
     }
+    const pinProblem = chosenRoomPinProblem(roomPin, roomPinConfirmation, language ?? "en");
+    if (pinProblem) { setStartError(pinProblem); return; }
     if (!legalAccepted) {
       setStartError(c.errTermsCheckbox);
       return;
@@ -1045,6 +1051,7 @@ export default function McaRefinanceIntakePage() {
     setStartBusy(true);
     setStartError(null);
     const body: Record<string, unknown> = {
+      secure_room_pin: roomPin,
       full_name: fullName,
       email,
       terms_accepted: true,
@@ -1066,6 +1073,7 @@ export default function McaRefinanceIntakePage() {
     try {
       const payload = await call<McaIntakeResponse>("/start", { method: "POST", body: JSON.stringify(body) });
       qualificationDirty.current = false;
+      setRoomPin(""); setRoomPinConfirmation("");
       adopt(payload);
       setPhase("room");
     } catch (error) {
@@ -1546,7 +1554,12 @@ export default function McaRefinanceIntakePage() {
   );
 
   let content: ReactNode;
-  if (phase === "boot") {
+  if (response?.room_pin_setup_required) {
+    content = <IntakeRoomPinGate key={response.intake.id} locale={language ?? "en"} onSave={async (pin) => {
+      await call<SecureRoomHandoff>(`/${encodeURIComponent(tokenRef.current)}/secure-room`, { method: "POST", body: JSON.stringify({ new_passcode: pin }) });
+      setResponse((current) => current ? { ...current, room_pin_setup_required: false } : current);
+    }} />;
+  } else if (phase === "boot") {
     content = <div className="vm-loading">{c.loading}</div>;
   } else if (phase === "restore-error") {
     content = <div className="vm-mid code"><section className="vm-card"><p role="alert">{c.restoreError}</p><button type="button" className="vm-primary" onClick={() => { setPhase("boot"); if (tokenRef.current) void restoreToken(tokenRef.current, Boolean(language)); else void restoreSession(Boolean(language)); }}>{c.retry}</button><button type="button" className="vm-secondary" onClick={() => setPhase("code")}>{c.haveCode}</button></section></div>;
@@ -1657,6 +1670,7 @@ export default function McaRefinanceIntakePage() {
               placeholder="100000"
             />
           </div>
+          <RoomPinFields pin={roomPin} confirmation={roomPinConfirmation} onPinChange={setRoomPin} onConfirmationChange={setRoomPinConfirmation} disabled={startBusy} locale={language ?? "en"} />
           <OnboardingConsent
             language={language ?? "en"}
             legalAccepted={legalAccepted}
