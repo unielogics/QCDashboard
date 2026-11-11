@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Btn, CellChip, IconBtn } from "@/components/ds";
+import { Btn, CellChip } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
@@ -35,7 +35,7 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
   const money = (value: number | null | undefined) => currency ? operatingMoney(value, currency) : value == null ? "—" : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: ["operating-plan-summary", profileId] }); await onRefresh(); };
   return <>
-    <section className="fc-card fc-wide"><div className="fc-card-h"><div><h4>Operating expenses and earnings plan</h4><div className="sub">Current costs, proposed changes and their effect on earnings and coverage.</div></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{summary.data?.has_plan ? <CellChip tone="mut">{summary.data.state === "published" ? `Published v${summary.data.version_number ?? version ?? "—"}` : summary.data.state === "client_submitted" ? "Client submitted · review needed" : "Working draft"}</CellChip> : summary.data ? <CellChip tone="mut">No plan yet</CellChip> : version ? <CellChip tone="mut">v{version}</CellChip> : null}<IconBtn aria-label="Open earnings plan" title="Open earnings plan" onClick={() => setOpen(true)}><Icon name="edit" size={16} /></IconBtn>{canEdit ? <Btn size="sm" onClick={() => setRequest(crypto.randomUUID())}>Request client plan</Btn> : null}</div></div>
+    <section className="fc-card fc-wide"><div className="fc-card-h"><div><h4>Operating expenses and earnings plan</h4><div className="sub">Current costs, proposed changes and their effect on earnings and coverage.</div></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{summary.data?.has_plan ? <CellChip tone="mut">{summary.data.state === "published" ? `Published v${summary.data.version_number ?? version ?? "—"}` : summary.data.state === "client_submitted" ? "Client submitted · review needed" : "Working draft"}</CellChip> : summary.data ? <CellChip tone="mut">No plan yet</CellChip> : version ? <CellChip tone="mut">v{version}</CellChip> : null}<Btn size="sm" onClick={() => setOpen(true)}><Icon name="pencil" size={14} aria-hidden="true" />Open earnings plan</Btn>{canEdit ? <Btn size="sm" onClick={() => setRequest(crypto.randomUUID())}>Request client plan</Btn> : null}</div></div>
       {release?.required ? <div className={styles.releaseRequirement} role="status">
         <div><strong>{release.complete ? "Released cash flow allocated" : "Required: allocate released cash flow"}</strong><p>The saved coverage plan releases {operatingMoney(release.amount_monthly, release.currency)} per month. {release.complete ? "The operating plan allocates this recurring amount." : "Review and allocate the full recurring amount in the operating plan."}</p></div>
         <Btn size="sm" onClick={() => setOpen(true)}>{canEdit ? "Allocate released cash flow" : "View cash flow allocation"}</Btn>
