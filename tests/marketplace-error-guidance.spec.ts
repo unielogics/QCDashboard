@@ -4,6 +4,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { GUIDANCE_LISTING_ID as ID, OTHER_GUIDANCE_LISTING_ID as OTHER_ID, GUIDANCE_INTAKE_ID, PPM_BLOCKER, PPM_ISSUE, STALE_FILE_MESSAGE, BUDGET_ISSUES, COVERAGE_ISSUE, guidanceBudget, guidanceListing } from "./fixtures/marketplaceErrorGuidance";
+import { ppmState } from "./fixtures/marketplacePpm";
+import { fileCatalog } from "./fixtures/investorDocumentCockpit";
 
 const ORIGIN = "https://listing-guidance.test";
 let script: Buffer, css: Buffer;
@@ -14,7 +16,7 @@ test.beforeAll(async () => {
   const hooks = await readFile(path.join(root, "src/hooks/useApi.ts"), "utf8");
   const names = [...hooks.matchAll(/export (?:async )?(?:function|const|class) (\w+)/g)].map(match => match[1]);
   const mocks: Record<string, string> = {
-    "@/hooks/useApi": `const call=(...args)=>window.fixtureApi(...args);${names.map(name => name === "useAuthedApi" ? "export const useAuthedApi=()=>call;" : name === "useCurrentUser" ? "export const useCurrentUser=()=>({data:{role:'super_admin'},isLoading:false});" : `export const ${name}=()=>({});`).join("\n")}`,
+    "@/hooks/useApi": `const call=(...args)=>window.fixtureApi(...args);${names.map(name => name === "useAuthedApi" ? "export const useAuthedApi=()=>call;" : name === "useCurrentUser" ? "export const useCurrentUser=()=>({data:{id:'synthetic-guidance-staff',role:'super_admin'},authScope:'synthetic-guidance-staff:session',authReady:true,isLoading:false});" : `export const ${name}=()=>({});`).join("\n")}`,
     "next/navigation": `import{useSyncExternalStore}from'react';let current='${ID}';const listeners=new Set();window.switchListing=id=>{current=id;listeners.forEach(fn=>fn())};const router={push:url=>window.fixtureNavigation=url};export const useParams=()=>({id:useSyncExternalStore(fn=>{listeners.add(fn);return()=>listeners.delete(fn)},()=>current,()=>current)});export const useRouter=()=>router;const search=new URLSearchParams(location.search);export const useSearchParams=()=>search;export const usePathname=()=>'/admin/marketplace/'+current;`,
     "@/lib/consoleAuth": "export const useConsoleAuth=()=>({isLoaded:true,isSignedIn:true,getToken:async()=> 'synthetic-staff-token'});export const visualQaUser=()=>null;",
   };
@@ -68,6 +70,8 @@ async function fixture(page: Page, options: { ready?: boolean; linked?: boolean;
       if (options.pendingUpload) listing = { ...listing, publish_blockers: [PPM_BLOCKER], publish_issues: [PPM_ISSUE], documents: listing.documents.map(document => ({ ...document, status: "pending" })) };
       return json(listing.documents[0]);
     }
+    if (pathname.endsWith("/ppm") && method === "GET") return json({ ...ppmState(null), managed: false, missing: [], history: [], current_draft: null, current_approved: null, active_version: null });
+    if (pathname.endsWith("/file-documents") && method === "GET") return json(fileCatalog(true));
     if (pathname.endsWith("/publish")) {
       if (options.stalePublish) return json({ detail: STALE_FILE_MESSAGE }, 409);
       if (options.serverPublishBlocked) { listing = guidanceListing({ ...options, ready: false }); return json({ detail: { code: "incomplete", message: `Fill in: ${PPM_BLOCKER}`, publish_issues: [PPM_ISSUE] } }, 409); }
@@ -194,7 +198,7 @@ test("eligible Publish still requires the real confirmation before its mocked re
   await confirmation.getByRole("button", { name: "Cancel", exact: true }).click(); expect(writes(f)).toEqual([]);
   await page.getByRole("button", { name: "Publish offer", exact: true }).click(); await confirmation.getByRole("button", { name: "Publish", exact: true }).click();
   await expect.poll(() => f.requests.filter(row => row.path.endsWith("/publish")).length).toBe(1);
-  expect(f.requests.find(row => row.path.endsWith("/publish"))?.body.confirmed).toBe(true); expect(f.prompts).toEqual(["prompt", "prompt"]); expect(f.errors).toEqual([]);
+  expect(f.requests.find(row => row.path.endsWith("/publish"))?.body.confirmed).toBe(true); expect(f.prompts).toEqual([]); expect(f.errors).toEqual([]);
 });
 
 test("a server incomplete response uses structured PPM guidance after an explicit publish attempt", async ({ page }) => {

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuthedApi, useCurrentUser } from "./useApi";
 import { Role } from "@/lib/enums.generated";
-import type { MarketplacePpm, PpmGenerate, PpmReview, PpmSave } from "@/lib/marketplacePpm";
+import type { MarketplacePpm, PpmGenerate, PpmReinstate, PpmReview, PpmSave } from "@/lib/marketplacePpm";
 import type { CpListing } from "./useCapitalPartners";
 
 export function useMarketplacePpm(listingId: string, active: boolean) {
@@ -33,6 +33,8 @@ export function useMarketplacePpm(listingId: string, active: boolean) {
   };
   const mutate = (action: "generate" | "draft" | "review", body: PpmGenerate | PpmSave | PpmReview) => run(controller =>
     api<MarketplacePpm>(`/capital/admin/listings/${listingId}/ppm/${action}`, { method: action === "draft" ? "PATCH" : "POST", body: JSON.stringify(body), signal: controller.signal }));
+  const reinstate = (documentId: string, body: PpmReinstate) => run(controller =>
+    api<MarketplacePpm>(`/capital/admin/listings/${listingId}/ppm/versions/${encodeURIComponent(documentId)}/reinstate`, { method: "POST", body: JSON.stringify(body), signal: controller.signal }));
   const prepare = (body: PpmGenerate, linked: boolean) => run(async (controller, isCurrent) => {
     await client.cancelQueries({ queryKey: ["cp-listing", listingId] });
     if (!isCurrent()) return null;
@@ -67,5 +69,5 @@ export function useMarketplacePpm(listingId: string, active: boolean) {
     client.setQueryData(["cp-listing", listingId], listing);
     void client.invalidateQueries({ queryKey: ["cp-listings"] });
   };
-  return { ...query, data: allowed ? query.data : undefined, allowed, scope, busy, mutate, prepare, refreshListing };
+  return { ...query, data: allowed ? query.data : undefined, allowed, scope, busy, mutate, reinstate, prepare, refreshListing };
 }

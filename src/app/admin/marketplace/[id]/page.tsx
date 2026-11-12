@@ -22,7 +22,7 @@ import { Btn, Card, CellChip, Field, Input, Loading, PageHeader, Panel, Seg, Sel
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import {
   useCpListing, useCpListingAction, useCpPatchListing, useCpPatchParticipation, useCpSupersedeDocument, useCpUploadDocument,
-  type CpDocumentKind, type CpListing, type CpListingPatch, type CpParticipation, type CpServicerStatus, type CpSubscription,
+  type CpDocument, type CpDocumentKind, type CpListing, type CpListingPatch, type CpParticipation, type CpServicerStatus, type CpSubscription,
 } from "@/hooks/useCapitalPartners";
 import { DOC_KINDS, FREQ_LABEL, LIEN_LABEL, LISTING_TONE, SERVICER_TONE, SUB_TONE, Status, SuperAdminOnly, VERTICAL_LABEL, day, errorMessage, label, money, pct, when } from "@/components/marketplace/shared";
 import { SourceSnapshotCard } from "@/components/marketplace/SourceSnapshotCard";
@@ -30,7 +30,7 @@ import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePub
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { useDealBudget } from "@/hooks/useDealBudget";
-import { useAuthedApi } from "@/hooks/useApi";
+import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { MarketplaceIssues } from "@/components/marketplace/MarketplaceIssues";
 import guidanceStyles from "@/components/marketplace/MarketplaceIssues.module.css";
 import { dedupeMarketplaceIssues, marketplaceApiIssues, marketplaceFieldId, marketplaceOwnerHref, marketplacePublishIssues, unknownIssue, type MarketplaceField, type MarketplaceIssue } from "@/lib/marketplaceIssues";
@@ -40,6 +40,8 @@ import { LOAN_DATE_NOTE, resolveLoanDates } from "@/lib/loanDates";
 import { MarketplaceFileInventory } from "@/components/marketplace/MarketplaceFileInventory";
 import { useMarketplaceDocumentLink } from "@/hooks/useMarketplaceDocumentLink";
 import editorStyles from "@/components/marketplace/MarketplaceEditor.module.css";
+import { offeringDocumentStatus, offeringDocumentUrl, offeringDocumentVersions, type OfferingDocumentVersion } from "@/lib/marketplaceDocumentVersions";
+import type { MarketplacePpm, PpmDocumentControls } from "@/lib/marketplacePpm";
 const MarketplacePpmWorkspace = dynamic(() => import("@/components/marketplace/MarketplacePpmWorkspace").then(module => module.MarketplacePpmWorkspace), { ssr: false, loading: () => <p className="sub" role="status">Loading PPM workspace…</p> });
 
 export default function ListingEditorPage() {
@@ -66,6 +68,11 @@ function Editor() {
   const confirm = useConfirmAction();
   const act = useCpListingAction();
   const api = useAuthedApi();
+  const staff = useCurrentUser();
+  const publicationScope = `${id}:${staff.authScope ?? staff.data?.id ?? "unresolved"}`;
+  const currentPublicationScope = useRef(publicationScope); currentPublicationScope.current = publicationScope;
+  const publicationPending = useRef(false);
+  useEffect(() => { currentPublicationScope.current = publicationScope; publicationPending.current = false; return () => { if (currentPublicationScope.current === publicationScope) currentPublicationScope.current = ""; }; }, [publicationScope]);
   const [actionIssues, setActionIssues] = useState<MarketplaceIssue[]>([]);
   const issueOrigin = useRef<"publish" | "terms" | "documents" | "snapshot" | null>(null);
   const [navigation, setNavigation] = useState<{ issue: MarketplaceIssue; sequence: number } | null>(null);
@@ -137,15 +144,26 @@ function Editor() {
   };
 
   const publish = async () => {
-    if (ppmReadinessPending || act.isPending) return;
+    if (ppmReadinessPending || act.isPending || publicationPending.current) return;
+    publicationPending.current = true;
+    const capturedScope = publicationScope;
+    try {
     if (listing.publish_blockers.length) {
       setMsg(null); setActionIssues([]);
       const first = marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, context);
       requestNavigation(first.find(issue => issue.target?.kind === "ppm") ?? first.find(issue => ["field", "budget"].includes(issue.target?.kind ?? "")) ?? { ...first[0], target: undefined });
       return;
     }
+    const savedPpm = await api<MarketplacePpm>(`/capital/admin/listings/${listing.id}/ppm`);
+    if (currentPublicationScope.current !== capturedScope) return;
+    const selected = savedPpm.current_approved;
+    if (savedPpm.managed && (!selected || savedPpm.current_draft || selected.stale || selected.source_fingerprint !== savedPpm.source_fingerprint || savedPpm.missing.some(item => item.required))) {
+      const first = marketplacePublishIssues([], [{ code: "ppm_review_required", message: "Review the current saved PPM before publishing.", section: "documents", document_kind: "ppm" }], context);
+      setActionIssues(first); requestNavigation(first[0]); return;
+    }
+    const updating = listing.status === "open";
     const ok = await confirm({
-      title: `Publish ${listing.ref} to members?`,
+      title: updating ? `Publish the reviewed update to ${listing.ref}?` : `Publish ${listing.ref} to members?`,
       body: (
         <div className="grid g6">
           <p>Approved members past their waiting period will see this listing with exactly these figures:</p>
@@ -153,15 +171,17 @@ function Editor() {
             <li>{listing.name} · {VERTICAL_LABEL[listing.vertical]} · {listing.program_label} · {LIEN_LABEL[listing.lien_position]} lien</li>
             <li>Note rate {pct(listing.note_rate_pct)} · term {listing.term_months} months · {listing.ltv_kind.toUpperCase()} {pct(listing.ltv_pct, 1)}</li>
             <li>Offered {money(listing.offered_amount)} · minimum {money(listing.minimum_investment)} · {FREQ_LABEL[listing.payment_frequency]} payments</li>
-            <li>{listing.documents.filter((d) => d.status === "ready").length} documents ready</li>
+            <li>{selected ? `PPM v${selected.version} will be the active published version.` : `${listing.documents.filter((d) => d.status === "ready").length} documents ready`}</li>
           </ul>
-          <p>Nothing is shown to the public site. The listing opens now and the Form D clock starts at the first binding subscription.</p>
+          <p>{updating ? "The offer stays open. The reviewed PPM becomes active; the original publication date and subscription records are retained." : "Nothing is shown to the public site. The listing opens now and the Form D clock starts at the first binding subscription."}</p>
         </div>
       ),
-      confirmLabel: "Publish",
+      confirmLabel: updating ? "Publish update" : "Publish",
     });
-    if (!ok) return;
-    await run(`/capital/admin/listings/${listing.id}/publish`, { reason: "Published after reviewing the current marketplace offer", confirmed: true }, "Published. Members past their waiting period can see it now.");
+    if (!ok || currentPublicationScope.current !== capturedScope) return;
+    await run(`/capital/admin/listings/${listing.id}/publish`, { reason: updating ? "Published the reviewed PPM update" : "Published after reviewing the current marketplace offer", confirmed: true, ...(selected ? { expected_ppm_document_id: selected.document_id, expected_ppm_source_fingerprint: savedPpm.source_fingerprint } : {}) }, updating ? "The reviewed PPM is now the active published version." : "Published. Members past their waiting period can see it now.");
+    } catch (error) { if (currentPublicationScope.current === capturedScope) showFailure(error, "publish"); }
+    finally { if (currentPublicationScope.current === capturedScope) publicationPending.current = false; }
   };
 
   const setStatus = async (status: string) => {
@@ -232,7 +252,7 @@ function Editor() {
         { value: "events", label: "Events" },
       ]} />
       <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
-      {documentsVisited || tab === "documents" ? <div hidden={tab !== "documents"}><Documents listing={listing} active={tab === "documents"} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} onPpmApproved={() => setActionIssues(current => current.filter(issue => issue.target?.kind !== "ppm"))} onPublish={() => void publish()} publishBusy={act.isPending} onPpmReadinessPending={setPpmReadinessPending} onOwnsPpmIssues={setPpmOwnsIssues} /></div> : null}
+      {documentsVisited || tab === "documents" ? <div hidden={tab !== "documents"}><Documents listing={listing} active={tab === "documents"} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} onPpmApproved={() => setActionIssues(current => current.filter(issue => issue.target?.kind !== "ppm"))} onPublish={() => publish()} publishBusy={act.isPending} onPpmReadinessPending={setPpmReadinessPending} onOwnsPpmIssues={setPpmOwnsIssues} /></div> : null}
       {tab === "subscriptions" ? <Subscriptions listing={listing} onRun={run} busy={act.isPending} /> : null}
       {tab === "participations" ? <Participations listing={listing} onMessage={setMsg} /> : null}
       {tab === "events" ? <Events listing={listing} /> : null}
@@ -379,62 +399,81 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
 // Documents
 // ---------------------------------------------------------------------------
 
-function Documents({ listing, active, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess, onPpmApproved, onPublish, publishBusy, onPpmReadinessPending, onOwnsPpmIssues }: { listing: CpListing; active: boolean; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void; onPpmApproved: () => void; onPublish: () => void; publishBusy: boolean; onPpmReadinessPending: (pending: boolean) => void; onOwnsPpmIssues: (owns: boolean) => void }) {
-  const upload = useCpUploadDocument();
-  const supersede = useCpSupersedeDocument();
-  const confirm = useConfirmAction();
+function Documents({ listing, active, onMessage, onError, guidance, onFix, onSnapshotError, onSnapshotSuccess, onPpmApproved, onPublish, publishBusy, onPpmReadinessPending, onOwnsPpmIssues }: { listing: CpListing; active: boolean; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; guidance: { issue: MarketplaceIssue; sequence: number } | null; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void; onPpmApproved: () => void; onPublish: () => Promise<unknown> | void; publishBusy: boolean; onPpmReadinessPending: (pending: boolean) => void; onOwnsPpmIssues: (owns: boolean) => void }) {
+  const upload = useCpUploadDocument(), supersede = useCpSupersedeDocument(), confirm = useConfirmAction();
   const [kind, setKind] = useState<CpDocumentKind>("ppm");
+  const [documentControls, setDocumentControls] = useState<PpmDocumentControls | null>(null);
+  const [documentError, setDocumentError] = useState(""), [restoring, setRestoring] = useState(false);
+  const controlsRef = useRef(documentControls); controlsRef.current = documentControls;
+  const currentListing = useRef(listing); currentListing.current = listing;
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const fileRef = useRef<HTMLInputElement>(null);
-  const links = useMarketplaceDocumentLink(listing.id);
+  const links = useMarketplaceDocumentLink(`${listing.id}:${documentControls?.scope ?? "pending"}:documents`);
+  const versions = offeringDocumentVersions(listing.documents, documentControls?.state);
+  const busy = upload.isPending || supersede.isPending || restoring || Boolean(documentControls?.busy);
+  const readOnly = ["repaid", "withdrawn"].includes(listing.status);
+  useEffect(() => { setDocumentError(""); }, [documentControls?.scope]);
   useEffect(() => { const target = guidance?.issue.target; if (target?.kind === "upload" && target.documentKind === "ppm") setKind("ppm"); }, [guidance]);
-
+  const signature = (controls: PpmDocumentControls) => JSON.stringify([controls.scope, controls.state?.latest_version, controls.state?.source_fingerprint, controls.state?.active_version?.document_id, controls.state?.working_draft_document_id]);
   const send = async (file: File) => {
     onMessage(null);
     try {
       await upload.mutateAsync({ listingId: listing.id, kind, file });
-      onMessage({ tone: "ok", text: `${file.name} uploaded as ${DOC_KINDS.find((k) => k.value === kind)?.label}.` });
-    } catch (e) {
-      onError(e);
-    } finally {
-      if (fileRef.current) fileRef.current.value = "";
-    }
+      if (mounted.current) onMessage({ tone: "ok", text: `${file.name} uploaded as ${DOC_KINDS.find((k) => k.value === kind)?.label}.` });
+    } catch (e) { if (mounted.current) onError(e); }
+    finally { if (fileRef.current) fileRef.current.value = ""; }
   };
-  const remove = async (docId: string, name: string) => {
-    if (!(await confirm({ title: `Supersede ${name}?`, body: "Members stop seeing it. The file itself is kept for the record.", confirmLabel: "Supersede", tone: "danger", reversible: false }))) return;
-    try { await supersede.mutateAsync({ listingId: listing.id, documentId: docId }); } catch (e) { onError(e); }
+  const remove = async (document: CpDocument) => {
+    if (busy || document.kind === "ppm" || document.status !== "ready") return;
+    const accepted = await confirm({ title: `Remove ${document.name} from the active offer?`, body: "This attachment will be removed from the offer. Its saved record remains in version history.", confirmLabel: "Remove from active offer", tone: "danger", reversible: false });
+    if (!accepted || !mounted.current) return;
+    if (currentListing.current.id !== listing.id || currentListing.current.documents.find(row => row.id === document.id)?.status !== "ready") { setDocumentError("This document changed. Review the current versions before trying again."); return; }
+    try { await supersede.mutateAsync({ listingId: listing.id, documentId: document.id }); }
+    catch (e) { if (mounted.current) onError(e); }
   };
-
-  return (
-    <div className="grid">
-      <MarketplacePpmWorkspace listing={listing} active={active} onFix={onFix} onApproved={onPpmApproved} onPublish={onPublish} publishBusy={publishBusy} onReadinessPending={onPpmReadinessPending} onOwnsPpmIssues={onOwnsPpmIssues} />
-      {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={() => { onSnapshotSuccess(); onMessage({ tone: "ok", text: "The listing package was updated from the saved file." }); }} /> : null}
-      <p className="sub">Prepare and approve the generated PPM above. Additional offering PDFs appear below. Source documents remain subject to engagement access.</p>
-      <Panel title="Upload a document (optional)" bodyClass="row">
-        <Select id="marketplace-document-kind" aria-label="Document type" value={kind} onChange={(e) => setKind(e.target.value as CpDocumentKind)}>{DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select>
-        <input id="marketplace-document-upload" aria-label="Upload document PDF" ref={fileRef} type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }} disabled={upload.isPending} />
-        <span className="sub">{upload.isPending ? "Uploading…" : "Use this to supply an existing PDF. A new file of the same kind supersedes the previous one."}</span>
-      </Panel>
-      {listing.documents.length === 0 ? (
-        <Card><span className="sub">No additional offering documents are attached.</span></Card>
-      ) : (
-        <Panel noPad>
-          <Table caption="Offering documents" cols={[{ label: "Kind" }, { label: "Name" }, { label: "Origin" }, { label: "Version", align: "r" }, { label: "Size", align: "r" }, { label: "Status" }, { label: "Actions" }]}>
-            {listing.documents.map((doc) => (
-              <Tr key={doc.id}>
-                <Td>{doc.kind_label}</Td>
-                <Td>{doc.name}</Td>
-                <Td>{doc.source === "generated_ppm" ? "Managed PPM" : doc.source === "generated_package" ? "Generated listing package" : "Uploaded offering document"}</Td>
-                <Td className="num" align="r">v{doc.version}</Td>
-                <Td className="num" align="r">{doc.size_bytes ? `${Math.round(doc.size_bytes / 1024)} KB` : "—"}</Td>
-                <Td><CellChip tone={doc.status === "ready" ? "ok" : doc.status === "pending" ? "warn" : "mut"}>{doc.status}</CellChip></Td>
-                <Td><div className="row">{doc.status === "ready" ? [false, true].map(download => <Btn size="sm" key={String(download)} disabled={links.busy} onClick={() => void links.open(`/capital/admin/listings/${listing.id}/documents/${doc.id}/url?download=${download}`).catch(onError)}>{download ? "Download PDF" : "View PDF"}</Btn>) : null}{doc.status !== "superseded" ? <Btn size="sm" className="danger" onClick={() => void remove(doc.id, doc.name)} disabled={supersede.isPending}>Supersede</Btn> : null}</div></Td>
-              </Tr>
-            ))}
-          </Table>
-        </Panel>
-      )}
-    </div>
-  );
+  const reinstate = async (row: OfferingDocumentVersion) => {
+    const before = controlsRef.current;
+    if (!before?.canReinstate || before.busy || restoring) return;
+    const captured = signature(before), id = listing.id;
+    const accepted = await confirm({ title: `Use PPM v${row.document.version} as a new draft?`, body: <div className="grid g8"><p>Use this version’s wording in a new draft bound to the current saved offering facts. The active published version stays unchanged until you review and explicitly publish a replacement.</p>{row.ppmVersion?.source === "uploaded" ? <p>The uploaded PDF keeps its original contents. Check those contents against current facts before approving the new draft.</p> : null}</div>, confirmLabel: "Create draft from this version" });
+    if (!accepted || !mounted.current) return;
+    const current = controlsRef.current;
+    if (currentListing.current.id !== id || !current || current.busy || !current.canReinstate || signature(current) !== captured) { setDocumentError("The PPM state changed while this confirmation was open. Review the current versions and try again."); return; }
+    setDocumentError(""); setRestoring(true);
+    try { await current.reinstate(row.document.id); }
+    catch { /* The scoped PPM controller presents server failures and preserves its retry intent. */ }
+    finally { if (mounted.current) setRestoring(false); }
+  };
+  const preview = (document: CpDocument, download: boolean) => {
+    setDocumentError("");
+    void links.open(offeringDocumentUrl(listing.id, document, download)).catch(reason => { if (mounted.current) setDocumentError(errorMessage(reason, "This saved PDF could not be opened. Try again.")); });
+  };
+  const rows = (items: OfferingDocumentVersion[], history = false) => items.map(row => {
+    const doc = row.document, ppm = doc.kind === "ppm", previewable = Boolean(row.ppmVersion) || doc.status === "ready";
+    return <Tr key={doc.id} aria-label={`${doc.kind_label} v${doc.version} · ${offeringDocumentStatus(row)}`}>
+      <Td><div className="grid g4"><strong>{doc.kind_label}</strong><span>{doc.name}</span><small className="sub">{doc.source === "generated_ppm" ? "Generated PPM" : doc.source === "generated_package" ? "Generated listing package" : "Uploaded PDF"}{doc.size_bytes ? ` · ${Math.round(doc.size_bytes / 1024)} KB` : ""}</small></div></Td>
+      <Td className="num" align="r">v{doc.version}</Td>
+      <Td><CellChip tone={row.ppmVersion?.stale ? "warn" : row.role === "published" || row.role === "attachment" ? "ok" : row.role === "working" || row.role === "reviewed" ? "warn" : "mut"}>{offeringDocumentStatus(row)}</CellChip></Td>
+      <Td><div className="row"><Btn size="sm" aria-label={`Preview ${doc.kind_label} v${doc.version}`} disabled={!previewable || links.busy || !documentControls?.scope} title={previewable ? undefined : "This attachment is not available to open."} onClick={() => preview(doc, false)}>Preview PDF</Btn><Btn size="sm" aria-label={`Download ${doc.kind_label} v${doc.version}`} disabled={!previewable || links.busy || !documentControls?.scope} title={previewable ? undefined : "This attachment is not available to open."} onClick={() => preview(doc, true)}>Download PDF</Btn>{history && ppm && row.ppmVersion && !readOnly ? <Btn size="sm" disabled={!documentControls?.canReinstate || busy} title={documentControls?.canReinstate ? undefined : "Save or discard current PPM edits, or finish the current action, before choosing another version."} onClick={() => void reinstate(row)}>Use this version as draft</Btn> : row.role === "attachment" ? <Btn size="sm" className="danger" disabled={busy || readOnly} onClick={() => void remove(doc)}>Remove from active offer</Btn> : null}</div></Td>
+    </Tr>;
+  });
+  const columns = [{ label: "Document" }, { label: "Version", align: "r" as const }, { label: "Lifecycle" }, { label: "Actions" }];
+  return <div className={`grid ${editorStyles.stack}`}>
+    <MarketplacePpmWorkspace listing={listing} active={active} onFix={onFix} onApproved={onPpmApproved} onPublish={onPublish} publishBusy={publishBusy} onReadinessPending={onPpmReadinessPending} onOwnsPpmIssues={onOwnsPpmIssues} onDocumentControls={setDocumentControls} />
+    {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={() => { onSnapshotSuccess(); onMessage({ tone: "ok", text: "The listing package was updated from the saved file." }); }} /> : null}
+    <Panel title="Offering document versions" sub="Published, working and reviewed versions are separate. Previous PPM PDFs remain available in history.">
+      <p className="sub">{versions.active ? `PPM v${versions.active.document.version} is the published version.${versions.active.ppmVersion?.stale ? " Saved facts changed; prepare and publish an update." : ""}` : versions.publicationKnown ? "No PPM has been published for this offer yet." : "Checking the published PPM version…"}</p>
+      {documentError ? <StatusLine tone="bad"><span role="alert">{documentError}</span></StatusLine> : null}
+      {versions.current.length ? <Table caption="Current offering document versions" cols={columns}>{rows(versions.current)}</Table> : <p className="sub">{documentControls?.state ? "No current offering documents are recorded." : "Published and working PPM status is not available yet. Recorded PDFs remain in history."}</p>}
+      {versions.history.length ? <details><summary>Version history · {versions.history.length}</summary><p className="sub">Using an earlier PPM version creates a new draft. It does not approve or publish the old PDF.</p><Table caption="Historical offering document versions" cols={columns}>{rows(versions.history, true)}</Table></details> : null}
+    </Panel>
+    <Panel title="Upload a document (optional)" bodyClass="row">
+      <Select id="marketplace-document-kind" aria-label="Document type" value={kind} disabled={busy || readOnly} onChange={event => setKind(event.target.value as CpDocumentKind)}>{DOC_KINDS.map(item => <option key={item.value} value={item.value}>{item.label}</option>)}</Select>
+      <input id="marketplace-document-upload" aria-label="Upload document PDF" ref={fileRef} type="file" accept="application/pdf" onChange={event => { const file = event.target.files?.[0]; if (file) void send(file); }} disabled={busy || readOnly} />
+      <span className="sub">{upload.isPending ? "Uploading…" : "Supply an existing PDF here. PPM drafts still require review and an explicit publication action."}</span>
+    </Panel>
+  </div>;
 }
 
 // ---------------------------------------------------------------------------

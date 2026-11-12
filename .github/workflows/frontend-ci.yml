@@ -60,6 +60,7 @@ jobs:
           src/lib/__tests__/marketplacePpm.test.ts
           src/lib/__tests__/marketplacePpmPresets.test.ts
           src/lib/__tests__/fileWorkspace.test.ts
+          src/lib/__tests__/marketplaceDocumentVersions.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -149,6 +150,8 @@ jobs:
           tests/fixtures/ppmReviewFlow.ts
           src/lib/marketplacePublication.ts
           src/lib/__tests__/marketplacePublication.test.ts
+          src/lib/marketplaceDocumentVersions.ts
+          src/lib/__tests__/marketplaceDocumentVersions.test.ts
 
       - name: Build production frontend
         run: pnpm build

@@ -92,6 +92,7 @@ export function marketplaceApiIssues(error: unknown, context: Context): Marketpl
     return unknownIssue(message);
   }));
   const message = typeof detail === "string" ? detail : object?.message ?? (error instanceof Error ? error.message : "The marketplace action could not be completed.");
+  if (context.action === "publish" && ["ppm_source_changed", "ppm_version_changed", "ppm_review_required"].includes(object?.code ?? "")) return [targetIssue(message, { kind: "ppm" })];
   if (object?.code === "closed" || ["This offering has committed or funded capital. Its financing, participation amount and linked file cannot be edited without reviewing those commitments.", "This listing has committed or funded capital. Financing and recorded collateral cannot be changed through a file refresh; review the existing commitments before issuing a revised offering."].includes(message)) return [{ ...unknownIssue(message), instruction: "This listing is locked. Review its lifecycle status and capital commitments with the marketplace administrator; changing a disabled input will not resolve the lock." }];
   if (message === "The file changed since this listing was prepared. Refresh its financial snapshot and review the current financing and collateral before publishing.") return [targetIssue(message, { kind: "snapshot" })];
   if (message === "The file or program readiness changed. Refresh both PDFs before delivery.") return [targetIssue(message, { kind: "file", action: "package" })];

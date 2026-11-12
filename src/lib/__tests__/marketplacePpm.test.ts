@@ -1,10 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { ppmApplyEditsToLatest, ppmApprovalValues, ppmCanReview, ppmConflict, ppmDirty, ppmEdit, ppmMissingIssue, ppmMissingLegalKey, ppmNeedsPreparation, ppmNeedsRefresh, type MarketplacePpm, type PpmMissing, type PpmVersion } from "../marketplacePpm";
+import { ppmApplyEditsToLatest, ppmApprovalValues, ppmCanReview, ppmConflict, ppmDirty, ppmEdit, ppmFailure, ppmMissingIssue, ppmMissingLegalKey, ppmNeedsPreparation, ppmNeedsRefresh, type MarketplacePpm, type PpmMissing, type PpmVersion } from "../marketplacePpm";
 
 const version = (overrides: Partial<PpmVersion> = {}): PpmVersion => ({ document_id: "draft-1", version: 1, source: "generated_ppm", status: "draft", source_fingerprint: "current-facts", stale: false, created_at: "2026-11-11T12:00:00Z", reviewed_at: null, document: { title: "Draft PPM", listing_ref: "QC-1", issuer: "Fictional business", source_fingerprint: "current-facts", sections: [], missing: [], warnings: [] }, legal_inputs: { issuer_legal_name: "Fictional LLC", jurisdiction: "NY" }, narrative_sections: {}, ai_sections: { overview: "Suggested wording" }, ...overrides });
 const state = (overrides: Partial<MarketplacePpm> = {}): MarketplacePpm => ({ managed: true, auto_refresh: true, status: "draft", generation_status: "source_based", source_fingerprint: "current-facts", current_draft: version(), current_approved: null, history: [], missing: [], warnings: [], legal_fields: [{ key: "issuer_legal_name", label: "Issuer legal name", required: true }, { key: "offering_currency", label: "Offering currency", required: false }], narrative_fields: [{ key: "overview", label: "Overview" }], ...overrides });
 
 describe("managed PPM draft lifecycle", () => {
+  it("explains a source conflict in the action that failed instead of sending approval failures back to a save loop", () => {
+    const conflict = Object.assign(new Error("Server conflict"), { body: { detail: { code: "ppm_source_changed" } } });
+    expect(ppmFailure("review", conflict).message).toContain("Approval could not finish");
+    expect(ppmFailure("review", conflict).message).toContain("Prepare latest offer");
+    expect(ppmFailure("review", conflict).message).not.toContain("Finish saving");
+    expect(ppmFailure("generate", conflict).message).toContain("draft could not be prepared");
+    expect(ppmFailure("reinstate", conflict).message).toContain("choose the historical version again");
+    expect(ppmFailure("review", new Error("Storage unavailable"))).toEqual({ code: "", message: "Storage unavailable" });
+  });
   it("prepares stale listing figures even when the saved PPM fingerprint matches, while preserving approval authority", () => {
     const missing: PpmMissing[] = [{ key: "listing_snapshot", label: "Refresh saved figures", section: "snapshot", required: true }];
     const current = state({ missing });
