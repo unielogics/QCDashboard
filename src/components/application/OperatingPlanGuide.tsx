@@ -3,41 +3,40 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { metricAmountLabel } from "@/lib/financialMetrics";
 import { addOperatingCandidate, addOperatingGroup, DEFAULT_OPERATING_ESSENTIALS, operatingCandidateKey, operatingChangeExplanation, operatingRatioChangeExplanation, operatingRecurringSubtotal, unansweredOperatingCategories, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
-import { clearOperatingReview, linkOperatingActionExpense, OPERATING_ACTIONS, OPERATING_CADENCES, OPERATING_CATEGORIES, operatingExpenseAmount, operatingLabel, type OperatingAction, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { OPERATING_CADENCES, OPERATING_CATEGORIES, operatingLabel, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
 import styles from "./OperatingPlanGuide.module.css";
 import { OperatingAmountInput } from "./OperatingAmountInput";
 import { NoiGovernanceSummary } from "@/components/file/cockpit/NoiGovernanceSummary";
 import { OperatingUnitReadout, OperatingVolumeBehavior } from "./OperatingUnitPlanning";
-import { invalidateOperatingUnitVolume, normalizeOperatingUnitAction, operatingUnitsUsed, proposeOperatingUnitVolume } from "@/lib/operatingUnitPlanning";
+import { invalidateOperatingUnitVolume, operatingUnitsUsed } from "@/lib/operatingUnitPlanning";
+import { OperatingPlanChanges } from "./OperatingPlanChanges";
 import { StableOperatingPreview } from "./StableOperatingPreview";
 
 const STEPS = ["Choose source costs", "Confirm current expenses", "Plan your changes", "Compare results"];
 const active = <T extends { excluded?: boolean; duplicate_of?: string | null }>(rows: T[] = []) => rows.filter(row => !row.excluded && !row.duplicate_of);
 const uid = () => crypto.randomUUID();
 
-export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, stepRequest, onEditUnits = () => {} }: {
+export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, stepRequest, onAdvancedAction, onEditUnits = () => {} }: {
   value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void;
   guidance?: OperatingGuidance | null; evidence?: OperatingGuidanceEvidence | null;
   evaluation?: OperatingEvaluation | null; evaluating?: boolean; disabled?: boolean;
   layoutEvaluation?: OperatingEvaluation | null;
   onPreviewSource?: (id: string) => void; detailedImpact?: ReactNode; reviewControls?: ReactNode;
-  stepRequest?: { index: number; key: number } | null; onEditUnits?: () => void;
+  stepRequest?: { index: number; key: number } | null; onEditUnits?: () => void; onAdvancedAction?: (id: string) => void;
 }) {
   const [step, setStep] = useState(0);
   useEffect(() => { if (stepRequest) setStep(stepRequest.index); }, [stepRequest]);
-  const expenses = active(value.expenses), actions = active(value.adjustments);
+  const expenses = active(value.expenses);
   const unitsUsed = operatingUnitsUsed(value);
   const units = !evaluating ? evaluation?.unit_economics : null;
   const currency = value.currency || guidance?.reporting.currency;
   const money = (amount: number | null | undefined, sourceCurrency = currency) => metricAmountLabel(amount, sourceCurrency);
   const change = (patch: Partial<OperatingPlanBody>) => onChange({ ...value, schema_version: "operating-plan-v1", ...patch });
   const changeExpense = (id: string, patch: Partial<OperatingExpense>) => onChange(invalidateOperatingUnitVolume(updateOperatingExpense(value, id, patch)));
-  const changeAction = (id: string, patch: Partial<OperatingAction>) => change({ adjustments: value.adjustments?.map(row => row.id === id ? clearOperatingReview(normalizeOperatingUnitAction({ ...row, ...patch })) : row) });
   const amount = (label: string, current: unknown, commit: (value: string) => void, locked = false) => <label>{label}<OperatingAmountInput label={label} value={current} disabled={disabled || locked} onCommit={commit} /></label>;
   const frequency = (label: string, current: OperatingExpense["cadence"], commit: (value: OperatingExpense["cadence"]) => void) => <label>{label}<select aria-label={label} value={current ?? "monthly"} disabled={disabled} onChange={event => commit(event.target.value as OperatingExpense["cadence"])}>{OPERATING_CADENCES.map(([key, name]) => <option key={key} value={key}>{name}</option>)}</select></label>;
   const files = (ids: string[]) => ids.map(id => <button key={id} type="button" disabled={!onPreviewSource} onClick={() => onPreviewSource?.(id)}>View {evidence?.files?.find(file => file.file_id === id)?.file_name || "source document"}</button>);
   const addExpense = (category = "other", sourceGroupKey = "") => onChange(addOperatingCandidate(value, { category, label: "", current_amount: null, cadence: "monthly", source_group_key: sourceGroupKey }, uid()));
-  const addAction = (kind: OperatingAction["kind"], label = "") => kind === "unit_volume" ? onChange(proposeOperatingUnitVolume(value, {}, uid)) : change({ adjustments: [...(value.adjustments ?? []), { id: uid(), kind, label, current_amount: null, proposed_amount: null, cadence: "monthly", implementation_cost: null, implementation_cost_cadence: "one_time", status: "proposed", source_file_ids: [] }] });
   const essentials = guidance?.essentials?.length ? guidance.essentials : DEFAULT_OPERATING_ESSENTIALS;
   const unanswered = unansweredOperatingCategories(value, guidance);
   const categoryKeys = [...new Set([...essentials.map(row => row.category), ...expenses.map(row => row.category || "other")])];
@@ -78,29 +77,7 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
       <button type="button" disabled={disabled} onClick={() => addExpense()}>Add another expense category</button>
       {!expenses.length ? <label><input type="checkbox" disabled={disabled} checked={value.no_operating_expenses_confirmed || false} onChange={event => change({ no_operating_expenses_confirmed: event.target.checked })} />The business has no operating expenses for this period.</label> : null}
     </> : step === 2 ? <>
-      <p>Propose changes to products, services, prices, operating costs or marketing. Keep related price and product-cost changes on the same product/service key. Your team will review the assumptions and timing before using the changes in projected coverage.</p>
-      {guidance?.business.questions?.map(question => <p key={question} className={styles.notice}>{question}</p>)}
-      <div className={styles.actions}>{(guidance?.action_templates?.length ? guidance.action_templates : OPERATING_ACTIONS.map(([kind, label]) => ({ key: kind, kind, label, explanation: "" }))).map(template => <button key={template.key} type="button" disabled={disabled} title={template.explanation} onClick={() => addAction(template.kind, template.label)}>Add {template.label}</button>)}</div>
-      <button type="button" disabled={disabled} onClick={() => { onChange(proposeOperatingUnitVolume(value, {}, uid)); onEditUnits(); }}>Plan annual business unit change</button>
-      <label>Changes start<input type="date" value={value.projection_start || ""} disabled={disabled} onChange={event => change({ projection_start: event.target.value || null })} /></label>
-      {actions.map(row => {
-        const product = row.kind === "price_change" || row.kind === "product_cost_change";
-        const marketing = row.kind === "marketing_investment";
-        const linkedCost = !product && ["expense_reduction", "expense_increase", "marketing_investment", "processing_cost_change"].includes(row.kind || "");
-        const result = evaluation?.actions.find(action => action.id === row.id);
-        return <article key={row.id} className={styles.card} aria-label={`Proposed action ${row.label || "new action"}`}><div className={styles.fields}>
-          <label>Action name<input value={row.label || ""} disabled={disabled} onChange={event => changeAction(row.id, { label: event.target.value })} /></label><label>Change type<select value={row.kind || "expense_reduction"} disabled={disabled} onChange={event => changeAction(row.id, { kind: event.target.value as OperatingAction["kind"] })}>{OPERATING_ACTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label>
-          {linkedCost ? <label>Link a current expense<select aria-label={`Linked expense for ${row.label || "action"}`} value={row.expense_row_id || ""} disabled={disabled} onChange={event => onChange(linkOperatingActionExpense(value, row.id, event.target.value || null))}><option value="">Separate disclosed assumption</option>{expenses.filter(expense => !marketing || expense.category === "marketing").map(expense => <option key={expense.id} value={expense.id}>{expense.label || operatingLabel(expense.category || "other")}</option>)}</select></label> : null}
-          <label>Product or service<input maxLength={160} value={row.product_name || ""} disabled={disabled} onChange={event => changeAction(row.id, { product_name: event.target.value })} placeholder="For example, a service visit or product line" /></label><label>Product / service key<input maxLength={120} value={row.driver_key || ""} disabled={disabled} onChange={event => changeAction(row.id, { driver_key: event.target.value })} placeholder="Same key for related price and cost changes" /></label>
-          {row.kind === "unit_volume" ? <p><button type="button" onClick={onEditUnits}>Edit unit plan above</button> · Calculated from your annual units and cost assumptions.</p> : product ? <>{amount("Current amount per unit", row.kind === "price_change" ? row.current_unit_price : row.current_unit_cost, number => changeAction(row.id, { [row.kind === "price_change" ? "current_unit_price" : "current_unit_cost"]: number }))}{amount("Proposed amount per unit", row.kind === "price_change" ? row.proposed_unit_price : row.proposed_unit_cost, number => changeAction(row.id, { [row.kind === "price_change" ? "proposed_unit_price" : "proposed_unit_cost"]: number }))}{amount("Units per period", row.units_per_period, units_per_period => changeAction(row.id, { units_per_period }))}</> : <>{amount(marketing ? "Current marketing spend" : "Current amount", row.current_amount, current_amount => changeAction(row.id, { current_amount }), Boolean(row.expense_row_id))}{amount(marketing ? "Proposed marketing spend" : "Proposed amount", row.proposed_amount, proposed_amount => changeAction(row.id, { proposed_amount }))}</>}
-          {row.kind === "unit_volume" ? <p>Frequency: annual</p> : frequency("Action frequency", row.cadence, cadence => changeAction(row.id, { cadence }))}
-          {marketing ? amount("Revenue per $1 of additional marketing spend (assumption)", row.revenue_return_multiple, revenue_return_multiple => changeAction(row.id, { revenue_return_multiple })) : null}
-          {marketing || row.kind === "revenue_change" ? amount("Contribution margin percent (assumption)", row.contribution_margin_pct, contribution_margin_pct => changeAction(row.id, { contribution_margin_pct })) : null}
-          <label>Effective date<input type="date" value={row.effective_date || ""} disabled={disabled} onChange={event => changeAction(row.id, { effective_date: event.target.value || null })} /></label>{amount("Implementation / transition cost", row.implementation_cost, implementation_cost => changeAction(row.id, { implementation_cost }))}<label>Implementation cost timing<select value={row.implementation_cost_cadence || "one_time"} disabled={disabled} onChange={event => changeAction(row.id, { implementation_cost_cadence: event.target.value as OperatingAction["implementation_cost_cadence"] })}><option value="one_time">One time</option><option value="monthly">Monthly</option><option value="annual">Annual</option></select></label>
-          <label className={styles.wide}>Why should this change work?<textarea value={row.explanation || ""} disabled={disabled} onChange={event => changeAction(row.id, { explanation: event.target.value })} placeholder="Describe the change, expected demand and why it is achievable" /></label><label className={styles.wide}>Evidence and assumptions<textarea value={row.source_note || ""} disabled={disabled} onChange={event => changeAction(row.id, { source_note: event.target.value })} placeholder="Source, quote, prior results and assumptions your team should verify" /></label>
-        </div>{marketing ? <><p className={styles.warning}>Marketing return and contribution margin are assumptions, not guaranteed sales or profit. The preview subtracts additional marketing spend once and applies the timing and implementation costs. Leave unknown inputs blank.</p>{result?.calculation ? <p>Per action period: additional spend {money(result.calculation.incremental_spend)} · assumed additional revenue {money(result.calculation.incremental_revenue)} · contribution before additional spend {money(result.calculation.incremental_contribution)}. {result.calculation.formula}</p> : null}</> : null}{row.kind === "processing_cost_change" ? <p>Use Advanced tables to reconcile statement rates, pass-through costs and proposed processing quotes.</p> : null}<p>{operatingLabel(result?.review_state || row.status || "proposed")} · First-year earnings change: {money(result?.first_year_impact)}</p>{result?.issues.map(issue => <p className={styles.warning} key={issue}>{issue}</p>)}<div className={styles.actions}>{files(row.source_file_ids || [])}<button type="button" disabled={disabled} onClick={() => changeAction(row.id, { excluded: true })}>Remove action</button></div></article>;
-      })}
-      {!actions.length ? <p>No changes proposed yet. You can confirm current costs without making a growth assumption.</p> : null}
+      <OperatingPlanChanges onAdvancedAction={onAdvancedAction} onReviewCurrent={() => setStep(1)} baseline={evaluation?.baseline ?? layoutEvaluation?.baseline} value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} onEditUnits={onEditUnits} />
     </> : <>
       {unanswered.length ? <div className={styles.notice} aria-label="Unanswered expense categories"><strong>Current expense answers still needed</strong><ul>{unanswered.map(question => <li key={question.category}>{question.label}: confirm current costs, choose not applicable, or request help.</li>)}</ul><button type="button" onClick={() => setStep(1)}>Return to current expense questions</button></div> : null}
       <StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingGuidedComparison evaluation={evaluation} evaluating={evaluating} /></StableOperatingPreview>
