@@ -19,6 +19,7 @@ import styles from "./DealBudgetSection.module.css";
 import { hasNewerMarketplaceBudgetDraft, marketplaceBudgetDraftFingerprint, type MarketplaceBudgetControls, type MarketplaceBudgetReceipt } from "@/lib/marketplacePreparation";
 import { CompanyFeeControls } from "./CompanyFeeControls";
 import { InvestorEconomicsPanel } from "./InvestorEconomicsPanel";
+import { focusMarketplaceControl } from "@/lib/marketplaceGuidanceFocus";
 
 const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : typeof value === "string" && value.trim() && Number.isFinite(Number(value)) ? Number(value) : null;
 function amount(calc: DealBudgetCalculation | undefined, key: string) { return numeric(calc?.[key]); }
@@ -26,12 +27,16 @@ function messages(calc: DealBudgetCalculation | undefined, key: string): string[
 function Metric({ label, value, percent = false }: { label: string; value: number | null; percent?: boolean }) { return <div><small>{label}</small><strong>{value == null ? "Not established" : percent ? `${value.toFixed(2)}%` : money(value, 2)}</strong></div>; }
 
 /** One cost and capital record, with one retained staff draft across financing tabs. */
-export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending, financialPlan, onApplySolvedPrincipal, onFinancingSaved, onGrossAmountChange, saveWithTerms = false, onSaveControlsChange }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void; financialPlan?: FinancialPlanWrite | null; onApplySolvedPrincipal?: (amount: number) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; onGrossAmountChange?: (amount: number | null) => void; saveWithTerms?: boolean; onSaveControlsChange?: (controls: MarketplaceBudgetControls | null) => void }) {
+export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending, financialPlan, onApplySolvedPrincipal, onFinancingSaved, onGrossAmountChange, saveWithTerms = false, onSaveControlsChange, companyFeesRequest = 0 }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void; financialPlan?: FinancialPlanWrite | null; onApplySolvedPrincipal?: (amount: number) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; onGrossAmountChange?: (amount: number | null) => void; saveWithTerms?: boolean; onSaveControlsChange?: (controls: MarketplaceBudgetControls | null) => void; companyFeesRequest?: number }) {
   const fileWorkspace = useFileWorkspace();
   const api = useAuthedApi(), queryClient = useQueryClient(), query = useDealBudget(profileId);
   const [open, setOpen] = useState(inline), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [refreshWarning, setRefreshWarning] = useState("");
   const liveRef = useRef<HTMLElement | null>(null);
+  const companyFeesHeading = useRef<HTMLHeadingElement | null>(null);
+  const [companyFeesFocus, setCompanyFeesFocus] = useState(0);
+  const handledCompanyFeesFocus = useRef(0);
+  const lastCompanyFeesRequest = useRef({ profileId, sequence: companyFeesRequest });
   const activeProfile = useRef(profileId); activeProfile.current = profileId;
   const applyAttempt = useRef<{ signature: string; key: string } | null>(null);
   useQuery<DealBudgetDraft | null>({ queryKey: dealBudgetDraftKey(profileId), queryFn: async () => null, enabled: false, initialData: null, gcTime: Infinity });
@@ -48,6 +53,20 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const preview = live.data?.calculation ?? null, previewing = live.pending;
   const previewError = live.error instanceof Error ? live.error.message : live.error ? "The working budget could not be calculated." : "";
   useEffect(() => { setOpen(inline); setError(""); setNotice(""); setRefreshWarning(""); }, [profileId, inline]);
+  useEffect(() => {
+    const previous = lastCompanyFeesRequest.current;
+    lastCompanyFeesRequest.current = { profileId, sequence: companyFeesRequest };
+    if (previous.profileId !== profileId || !companyFeesRequest || previous.sequence === companyFeesRequest || disabled || busy) return;
+    setOpen(true); setCompanyFeesFocus(current => current + 1);
+  }, [profileId, companyFeesRequest, disabled, busy]);
+  useEffect(() => {
+    if (!open || !companyFeesFocus || handledCompanyFeesFocus.current === companyFeesFocus) return;
+    handledCompanyFeesFocus.current = companyFeesFocus;
+    return focusMarketplaceControl(() => {
+      const heading = companyFeesHeading.current;
+      return heading && !heading.closest('[aria-hidden="true"], [inert]') ? heading : null;
+    }, styles.feeFocus);
+  }, [open, companyFeesFocus, profileId]);
   useEffect(() => { onPending?.(busy); }, [busy, onPending]);
   useEffect(() => () => onPending?.(false), [onPending]);
   useEffect(() => {
@@ -128,7 +147,7 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const feeCoverage = calc?.financing_fee_coverage && typeof calc.financing_fee_coverage === "object" ? calc.financing_fee_coverage as Record<string, unknown> : null;
   return <>
     {!inline ? <section className={styles.summary} aria-label={title}>
-      <div className={styles.head}><div><strong>{title}</strong><p>{dirty ? "Working cost changes are retained · awaiting Save budget" : "One shared budget for the loan, investor capital and financing costs"}</p></div><Btn size="sm" onClick={() => setOpen(true)} disabled={query.isPending || disabled}><Icon name="calc" size={14} />{saved?.can_edit ? "Edit deal budget" : "View deal budget"}</Btn></div>
+      <div className={styles.head}><div><strong>{title}</strong><p>{dirty ? "Working cost changes are retained · awaiting Save budget" : "One shared budget for the loan, investor capital and financing costs"}</p></div><div className={styles.summaryActions}><Btn size="sm" onClick={() => { setOpen(true); setCompanyFeesFocus(current => current + 1); }} disabled={query.isPending || disabled || busy}>Company fees &amp; investor return</Btn><Btn size="sm" onClick={() => setOpen(true)} disabled={query.isPending || disabled || busy}><Icon name="calc" size={14} />{saved?.can_edit ? "Edit deal budget" : "View deal budget"}</Btn></div></div>
       {query.isPending ? <span className={styles.note}>Loading the saved financing budget…</span> : query.isError ? <Callout tone="warn">Budget unavailable. <Btn size="sm" onClick={() => void query.refetch()}>Retry budget</Btn></Callout> : <div className={styles.stats}><Metric label="Gross loan" value={amount(summaryCalc, "gross_loan_amount")} /><Metric label="Capital to raise" value={amount(summaryCalc, "investor_funding_amount")} /><Metric label="Client net proceeds" value={amount(summaryCalc, "net_client_cash")} /><Metric label="Projected investor net profit" value={amount(summaryCalc, "investor_net_income")} />{!compact ? <Metric label="Investor net ROI · full term" value={amount(summaryCalc, "investor_net_roi_pct")} percent /> : null}</div>}
     </section> : null}
     <FinancialEditorSurface inline={inline} open={open} onClose={() => { if (!busy) setOpen(false); }} title="Investment and closing costs" sub="Separate gross loan principal, investor funding, client proceeds and the costs each party pays." width="xl" closeOnBackdrop={false} ariaLabel="Deal budget editor" footer={saveWithTerms ? undefined : <div className={styles.footer}>{!inline ? <Btn onClick={() => setOpen(false)} disabled={busy}>Close</Btn> : null}{dirty ? <Btn onClick={() => { queryClient.setQueryData(dealBudgetDraftKey(profileId), null); setError(""); }} disabled={busy}>Discard changes</Btn> : null}<span className={styles.note}>{dirty ? "Draft kept when closed. Save records costs; revised principal saves the loan too." : saved ? `Saved budget · revision ${saved.revision}` : "Loading budget…"}</span>{saved?.can_edit ? <Btn variant="pri" onClick={() => void save()} disabled={!canEdit || !dirty && !needsPrincipalSave || conflict || previewing || Boolean(previewError) || Boolean(solution && solution.status !== "calculated")}>{busy ? "Saving…" : needsPrincipalSave ? "Save budget & loan" : "Save budget"}</Btn> : null}</div>}>
@@ -160,7 +179,7 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
           {value.funding_mode === "multiple_investors" ? <label>Smallest investor contribution<Input aria-label="Smallest investor contribution" type="number" min={0} step="0.01" value={value.minimum_investor_contribution ?? ""} disabled={!canEdit} placeholder="Enter the smallest participation" onChange={event => update({ minimum_investor_contribution: event.target.value === "" ? null : Number(event.target.value) })} /></label> : <p className={styles.note}>One investor contributes the full capital amount; there is no separate minimum participation to configure.</p>}
         </div>
         <details><summary>Advanced · partial investor funding</summary><div className={styles.funding} style={{ marginTop: 10 }}><label>Capital to raise from investors, $<Input aria-label="Capital to raise from investors" type="number" min={0} step="0.01" disabled={!canEdit} value={value.investor_funding_amount ?? ""} placeholder="Blank uses the full gross loan" onChange={event => update({ investor_funding_amount: event.target.value === "" ? null : Number(event.target.value) })} /></label><p className={styles.note}>A partial raise requires another funding source for the remaining principal. It changes investor participation, rather than the client’s gross loan amount.</p></div></details>
-        <CompanyFeeControls value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} onRowChange={rowChange} />
+        <CompanyFeeControls headingRef={companyFeesHeading} value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} onRowChange={rowChange} />
         <InvestorEconomicsPanel value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} />
         <label className={styles.label}><input type="checkbox" aria-label="Pricing and costs confirmed" checked={value.costs_confirmed} disabled={!canEdit} onChange={event => update({ costs_confirmed: event.target.checked })} /><span><strong>Costs reviewed / no additional fees</strong><br />An empty table confirms no additional fees. Active rows with unknown amounts still need completion.</span></label>
         <div className={styles.actions}><strong>Fee and cost rows</strong><Btn size="sm" disabled={!canEdit} onClick={() => update({ rows: [...value.rows, newDealCost()] })}><Icon name="plus" size={14} />Add cost</Btn><span className={styles.note}>Blank means unknown. Escrow and reserves are not income. Disabled rows stay in this budget but do not count.</span></div>

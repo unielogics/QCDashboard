@@ -161,6 +161,8 @@ jobs:
           src/lib/__tests__/chatgptProductFeed.test.ts
           src/components/__tests__/ChatgptProductFeed.test.ts
           tests/chatgpt-product-feed.spec.ts
+          tests/marketplace-shell-scroll.spec.ts
+          tests/fixtures/marketplaceShell.ts
 
       - name: Build production frontend
         run: pnpm build

@@ -61,6 +61,7 @@ function Editor() {
   const router = useRouter();
   const { data: listing, isLoading } = useCpListing(id || null);
   const [tab, setTab] = useState<Tab>("terms");
+  const [companyFeesRequest, setCompanyFeesRequest] = useState(0);
   const [documentsVisited, setDocumentsVisited] = useState(false);
   const [ppmReadinessPending, setPpmReadinessPending] = useState(false);
   const [ppmOwnsIssues, setPpmOwnsIssues] = useState(false);
@@ -230,6 +231,7 @@ function Editor() {
         actions={
           <div className="row">
             <Status value={listing.status} tones={LISTING_TONE} />
+            {listing.profile_id ? <Btn size="sm" onClick={() => { setTab("terms"); setCompanyFeesRequest(current => current + 1); }} disabled={act.isPending || listing.status === "repaid" || listing.status === "withdrawn"}>Company fees &amp; investor return</Btn> : null}
             {listing.status === "draft" && !(tab === "documents" && ppmOwnsIssues) ? <Btn variant="pri" onClick={() => void publish()} disabled={act.isPending || ppmReadinessPending}>Publish offer</Btn> : null}
             {(next[listing.status] ?? []).map((s) => (
               <Btn key={s} size="sm" onClick={() => void setStatus(s)} disabled={act.isPending}>{label(s)}</Btn>
@@ -251,7 +253,7 @@ function Editor() {
         { value: "participations", label: <>Participations <span className="num">{listing.participations.length}</span></> },
         { value: "events", label: "Events" },
       ]} />
-      <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
+      <div hidden={tab !== "terms"}><TermsForm key={listing.id} listing={listing} companyFeesRequest={companyFeesRequest} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("terms"); }} onError={error => showFailure(error, "terms")} issues={issues} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} /></div>
       {documentsVisited || tab === "documents" ? <div hidden={tab !== "documents"}><Documents listing={listing} active={tab === "documents"} onMessage={message => { setMsg(message); if (message?.tone === "ok") clearResolvedIssues("documents"); }} onError={error => showFailure(error, "documents")} guidance={navigation} onFix={issue => void fixIssue(issue)} onSnapshotError={error => showFailure(error, "snapshot")} onSnapshotSuccess={() => clearResolvedIssues("snapshot")} onPpmApproved={() => setActionIssues(current => current.filter(issue => issue.target?.kind !== "ppm"))} onPublish={() => publish()} publishBusy={act.isPending} onPpmReadinessPending={setPpmReadinessPending} onOwnsPpmIssues={setPpmOwnsIssues} /></div> : null}
       {tab === "subscriptions" ? <Subscriptions listing={listing} onRun={run} busy={act.isPending} /> : null}
       {tab === "participations" ? <Participations listing={listing} onMessage={setMsg} /> : null}
@@ -298,7 +300,7 @@ function ListingField({ k, label, type = "text", hint, draft, onChange, readOnly
   </Field>;
 }
 
-function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError, onSnapshotSuccess }: { listing: CpListing; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; issues: MarketplaceIssue[]; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void }) {
+function TermsForm({ listing, companyFeesRequest, onMessage, onError, issues, onFix, onSnapshotError, onSnapshotSuccess }: { listing: CpListing; companyFeesRequest: number; onMessage: (m: { tone: "ok" | "bad"; text: string } | null) => void; onError: (error: unknown) => void; issues: MarketplaceIssue[]; onFix: (issue: MarketplaceIssue) => void; onSnapshotError: (error: unknown) => void; onSnapshotSuccess: () => void }) {
   const budget = useDealBudget(listing.profile_id ?? "");
   const [d, setD] = useState<Draft>(() => toDraft(listing));
   const dirtyRef = useRef(false);
@@ -337,7 +339,7 @@ function TermsForm({ listing, onMessage, onError, issues, onFix, onSnapshotError
 
   return (
     <div className="grid">
-      {listing.profile_id ? <div data-marketplace-budget><DealBudgetSection profileId={listing.profile_id} disabled={readOnly} compact={false} existingFunding={{ capital: listing.offered_amount == null ? null : Number(listing.offered_amount), minimum: listing.minimum_investment == null ? null : Number(listing.minimum_investment) }} /></div> : null}
+      {listing.profile_id ? <div data-marketplace-budget><DealBudgetSection profileId={listing.profile_id} disabled={readOnly} compact={false} title="Company fees & investor return" companyFeesRequest={companyFeesRequest} existingFunding={{ capital: listing.offered_amount == null ? null : Number(listing.offered_amount), minimum: listing.minimum_investment == null ? null : Number(listing.minimum_investment) }} /></div> : null}
       <Panel title="Terms" bodyClass="grid cols-auto">
         <Field label="Vertical" error={inlineError("vertical")}><Select {...binding("vertical")} aria-label="Vertical" value={d.vertical} onChange={(e) => set("vertical", e.target.value)} disabled={readOnly}><option value="real_estate">Real estate</option><option value="auto">Auto</option><option value="business">Business</option></Select></Field>
         <ListingField {...fieldProps} k="program_label" label="Program label" hint="What members see: Bridge, Fix and flip, Floorplan, Equipment…" />
