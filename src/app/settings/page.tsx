@@ -76,6 +76,8 @@ import { BookingPageSettingsSection } from "@/components/settings/BookingPageSet
 import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
 import { FundingProgramsSection } from "@/components/settings/FundingProgramsSection";
 import { CreditLinkingSection } from "@/components/settings/CreditLinkingSection";
+import { ChatgptProductFeedSection } from "@/components/settings/ChatgptProductFeedSection";
+import { canManageChatgptFeed } from "@/lib/chatgptProductFeed";
 import { usePinnedRows } from "@/lib/tablePinning";
 
 // Doc Checklists + AI Cadence are reachable via deep-link from the
@@ -87,6 +89,7 @@ const SECTIONS = [
   { id: "booking", label: "Booking page", icon: "cal" as const, hidden: false },
   { id: "client_access", label: "Client access", icon: "shield" as const, hidden: false },
   { id: "funding_programs", label: "Funding programs", icon: "vault" as const, hidden: false },
+  { id: "chatgpt_product_feed", label: "ChatGPT product feed", icon: "link" as const, hidden: false },
   { id: "file_updates", label: "File updates", icon: "bell" as const, hidden: false },
   { id: "credit_linking", label: "Credit pulls", icon: "shield" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
@@ -144,6 +147,8 @@ function defaultChecklist(loanType: string): LoanTypeChecklist {
 
 export default function SettingsPage() {
   const profile = useActiveProfile();
+  const signedInUser = useCurrentUser();
+  const canManageFeed = canManageChatgptFeed(signedInUser.data);
   const router = useRouter();
   const searchParams = useSearchParams();
   // Deep-link: /settings?section=cadence opens that section directly.
@@ -314,7 +319,7 @@ export default function SettingsPage() {
   // Nav model for the strip. `client_access` stays out of it for anyone who
   // is not a super-admin, exactly as the rail had it: still reachable by URL,
   // where the body answers with its own warn line.
-  const visibleSections = SECTIONS.filter((s) => !s.hidden && (s.id !== "client_access" || canEdit));
+  const visibleSections = SECTIONS.filter((s) => !s.hidden && (s.id !== "client_access" || canEdit) && (s.id !== "chatgpt_product_feed" || canManageFeed));
   // Doc checklists and AI cadence are deliberately not in the strip, but they
   // still render when deep-linked. One earns a tab while it is open, so the
   // strip never reads as "nothing is selected", and keeps it while it holds
@@ -441,6 +446,7 @@ export default function SettingsPage() {
         {section === "client_access" && !canEdit ? <WarnLine>Super-admin access is required to manage client logins.</WarnLine> : null}
         {section === "funding_programs" && canEdit ? <FundingProgramsSection /> : null}
         {section === "funding_programs" && !canEdit ? <WarnLine>Super-admin access is required to publish funding criteria.</WarnLine> : null}
+        {section === "chatgpt_product_feed" ? <ChatgptProductFeedSection /> : null}
         {section === "credit_linking" && canEdit ? <CreditLinkingSection /> : null}
         {section === "credit_linking" && !canEdit ? <WarnLine>Super-admin access is required to decide how credit pulls link to owners.</WarnLine> : null}
 
