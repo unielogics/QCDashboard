@@ -13,12 +13,17 @@ const SAVED_ECONOMICS = {
 };
 
 async function mockFile(page: Page, options: { updates?: boolean } = {}) {
+  let releaseInitialUnderwriting = () => {};
+  let initialUnderwritingReleased = false;
+  const initialUnderwritingGate = new Promise<void>((resolve) => { releaseInitialUnderwriting = resolve; });
   const state = {
     status: "submitted",
     moves: [] as MoveBody[],
     detailReads: [] as string[],
     timelineReads: 0,
     underwritingReads: 0,
+    underwritingReadQueries: [] as string[],
+    programReadinessReads: 0,
     underwritingPatches: [] as Record<string, unknown>[],
     economics: { ...SAVED_ECONOMICS } as Record<string, unknown>,
     audit: [] as Record<string, unknown>[],
@@ -55,7 +60,6 @@ async function mockFile(page: Page, options: { updates?: boolean } = {}) {
           bucket_name: "Client application", full_name: "Jane Client",
           business_name: name(), email: "jane@example.com", phone: null,
           status: state.status === "closed_lost" || state.status === "denied" ? "denied" : "collecting",
-          underwriting_status: state.status,
           outcome_status: state.status === "closed_lost" ? "closed" : state.status === "denied" ? "denied" : "submitted",
           preferred_language: "en", booking_recommended: false, call_booked: false,
           file_count: 0, missing_required_count: 0, requested_loan_amount: 100_000,
@@ -72,6 +76,8 @@ async function mockFile(page: Page, options: { updates?: boolean } = {}) {
         Object.assign(state.economics, patch);
       } else {
         state.underwritingReads += 1;
+        state.underwritingReadQueries.push(new URL(request.url()).search);
+        if (!initialUnderwritingReleased) await initialUnderwritingGate;
       }
       body = underwriting();
     } else if (path.endsWith(`/operator-files/intake/${INTAKE_ID}/pipeline-move`)) {
@@ -113,6 +119,7 @@ async function mockFile(page: Page, options: { updates?: boolean } = {}) {
         })),
       };
     } else if (path.endsWith(`/application-profiles/${PROFILE_ID}/program-readiness`)) {
+      state.programReadinessReads += 1;
       body = { profile_id: PROFILE_ID, programs: [], selections: [], requirements: [], required_documents: [], missing_documents: [], can_advance: false, automation: { enabled: false, eligible: false, next_requirement_key: null, stop_reason: null } };
     } else if (path.endsWith("/operator-files/link-options")) {
       body = { buckets: [], intakes: [] };
@@ -127,6 +134,16 @@ async function mockFile(page: Page, options: { updates?: boolean } = {}) {
   });
   await page.goto(`/files/${INTAKE_ID}?section=${options.updates ? "communications&channel=updates" : "timeline"}`, { waitUntil: "domcontentloaded" });
   const select = page.getByRole("combobox", { name: "Underwriting lifecycle status" });
+  await expect(select).toBeVisible();
+  try {
+    // DealerIntakeRead does not include underwriting_status. Keep the control
+    // disabled until its separate canonical read can replace the draft default.
+    await expect(select).toBeDisabled();
+    await expect.poll(() => state.underwritingReads).toBeGreaterThan(0);
+  } finally {
+    initialUnderwritingReleased = true;
+    releaseInitialUnderwriting();
+  }
   await expect(select).toBeEnabled();
   await expect(select).toHaveValue("submitted");
   return { state, select };
@@ -135,8 +152,9 @@ async function mockFile(page: Page, options: { updates?: boolean } = {}) {
 test("uses the latest status and immediately refreshes the file after consecutive changes", async ({ page }) => {
   const { state, select } = await mockFile(page);
   await expect(page.getByText("No audited file activity yet.")).toBeVisible();
-  // The factual header has the canonical status before lazy underwriting loads.
-  expect(state.underwritingReads).toBe(0);
+  expect(state.underwritingReads).toBeGreaterThan(0);
+  expect(state.underwritingReadQueries.every((query) => query.includes("include_financing=false"))).toBe(true);
+  expect(state.programReadinessReads).toBe(0);
 
   // Another operation has moved the file after this page's initial read.
   state.status = "collecting_docs";
@@ -181,8 +199,7 @@ test("refreshes a racing conflict to the canonical status without retrying the m
   await expect(page.getByText(/File moved from submitted to denied; refresh and try again/).first()).toBeVisible();
   expect(state.economics).toEqual(SAVED_ECONOMICS);
 
-  // Recovering a lazy first-open conflict must not leave an empty economics
-  // draft that clears persisted figures on the next legitimate change.
+  // Recovering a conflict must not clear persisted figures on the next change.
   await select.selectOption("closed_lost");
   await expect(select).toBeEnabled();
   await expect(select).toHaveValue("closed_lost");
