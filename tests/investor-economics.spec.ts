@@ -9,7 +9,7 @@ test.beforeAll(async () => {
   const root = process.cwd(), require = createRequire(path.join(root, "package.json"));
   const esbuild = createRequire(createRequire(require.resolve("vitest/package.json")).resolve("vite/package.json"))("esbuild");
   const directory = await mkdtemp(path.join(os.tmpdir(), "qc-investor-net-"));
-  await writeFile(path.join(directory, "api.js"), "export const useAuthedApi=()=>window.fixtureApi;");
+  await writeFile(path.join(directory, "api.js"), "export const useAuthedApi=()=>window.fixtureApi;export const useCurrentUser=()=>({data:{id:'synthetic-investor-staff',role:'super_admin'},authScope:'synthetic-investor-staff:session',authReady:true});");
   await esbuild.build({ stdin: { resolveDir: root, loader: "tsx", contents: `
     import React from'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{DealBudgetSection}from'@/components/file/DealBudgetSection';import{investorEconomicsCases as cases}from'./tests/fixtures/investorEconomics';import'@/app/globals.css';import'@/app/app-extras.css';
     const base=structuredClone(cases.base);let record={...base.budget,profile_id:'synthetic-investor',can_edit:!location.search.includes('readonly'),investor_funding_amount:null,minimum_investor_contribution:null};window.writes=[];window.failPreview=false;window.previewDelay=0;window.failSave=false;

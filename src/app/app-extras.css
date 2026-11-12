@@ -831,9 +831,9 @@
   box-shadow: var(--sh2); z-index: 761; padding: 22px 24px 24px;
 }
 
-/* Elara rail — a sticky sibling of .content, not a grid column, so opening it
-   does not reflow the page it sits beside. */
-.rail { width: 360px; flex: 0 0 360px; position: sticky; top: 0; height: 100vh; border-left: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
+/* Elara shares the remaining-height row below the topbar. A full viewport
+   height here would push the document down by the topbar's height. */
+.rail { width: 360px; flex: 0 0 360px; position: sticky; top: 0; height: 100%; border-left: 1px solid var(--line); background: var(--surface); display: flex; flex-direction: column; overflow: hidden; }
 
 /* Tabular figures. Referenced by broker/ai-underwriter-leads and never defined
    until now — a silent no-op in production. */
@@ -1907,6 +1907,11 @@ button.pick { width: 100%; text-align: left; }
    pins the shell to exactly the viewport so `main.content` is the only
    scroller — otherwise the sticky topbar and `.ckhead` scroll away with it. */
 .app { height: 100vh; }
+
+/* Hidden table headings/captions are positioned absolutely. Keep their
+   containing block inside the scroll area so they cannot extend the document
+   past the shell and pull the sidebar away at the scroll boundary. */
+.app main.content { position: relative; }
 
 /* Route identity and control bands sit directly against the global top bar.
    They get there by cancelling the padding themselves — `.ckhead` and the two

@@ -1,16 +1,17 @@
 "use client";
 
+import type { Ref } from "react";
 import { Btn, Input, Select, Textarea } from "@/components/ds";
 import { DEAL_COST_BASES, DEAL_COST_CATEGORIES, type DealBudgetCalculation, type DealBudgetWrite, type DealCostRow, type DealInvestorScenarioRow, type DealSoftwareMonitoring } from "@/lib/dealBudget";
 import { COMPANY_FEE_CATEGORIES, investorFeeStatus, investorMoney, isCompanyFee, newCompanyFee } from "@/lib/investorEconomics";
 import styles from "./InvestorEconomicsPanel.module.css";
 
-export function CompanyFeeControls({ value, calculation, pending, disabled, onChange, onRowChange }: { value: DealBudgetWrite; calculation?: DealBudgetCalculation; pending: boolean; disabled: boolean; onChange: (patch: Partial<DealBudgetWrite>) => void; onRowChange: (id: string, patch: Partial<DealCostRow>) => void }) {
+export function CompanyFeeControls({ value, calculation, pending, disabled, onChange, onRowChange, headingRef }: { value: DealBudgetWrite; calculation?: DealBudgetCalculation; pending: boolean; disabled: boolean; onChange: (patch: Partial<DealBudgetWrite>) => void; onRowChange: (id: string, patch: Partial<DealCostRow>) => void; headingRef?: Ref<HTMLHeadingElement> }) {
   const setup: DealSoftwareMonitoring = { software_status: "not_set", monitoring_status: "not_set", ...value.software_monitoring };
   const calculatedRows = (Array.isArray(calculation?.rows) ? calculation.rows : []) as DealInvestorScenarioRow[];
   const rows = value.rows.filter(isCompanyFee);
   return <section className={styles.section} aria-label="Company fees and loan setup">
-    <div><h3>Company fees and loan setup</h3><p className={styles.note}>Choose who manages servicing, then enter the actual fees. Percentage fees use the selected basis and timing; investor-paid charges reduce investor net profit.</p></div>
+    <div><h3 ref={headingRef} tabIndex={-1}>Company fees and loan setup</h3><p className={styles.note}>Choose who manages servicing, then enter the actual fees. Percentage fees use the selected basis and timing; investor-paid charges reduce investor net profit.</p></div>
     <label className={styles.field}>Servicing arrangement<Select aria-label="Servicing arrangement" value={value.servicing_mode ?? "not_set"} disabled={disabled} onChange={event => onChange({ servicing_mode: event.target.value as DealBudgetWrite["servicing_mode"] })}><option value="not_set">Choose servicing arrangement</option><option value="company_managed">Company-managed servicing</option><option value="transferred">Servicing transferred</option></Select></label>
     <div className={styles.actions}>{COMPANY_FEE_CATEGORIES.map(category => <Btn key={category} size="sm" disabled={disabled} onClick={() => onChange({ rows: [...value.rows, newCompanyFee(category)] })}>Add {DEAL_COST_CATEGORIES[category].toLowerCase()} fee</Btn>)}</div>
     {!rows.length ? <p className={styles.note}>No company fees entered. Add the applicable charges, or confirm no additional fees under Costs reviewed below.</p> : rows.map((row, index) => {
