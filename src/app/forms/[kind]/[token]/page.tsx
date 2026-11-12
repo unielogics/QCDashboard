@@ -32,7 +32,9 @@ import { RealEstateScheduleForm } from "@/components/application/RealEstateSched
 import { PublicFormVersionNotice } from "@/components/application/PublicFormVersionNotice";
 import { PublicFinancialFormWriter, publicFinancialBody, publicFinancialResponse, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
+import { useDocumentWindow } from "@/hooks/useDocumentWindow";
 import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
+import { plannerSaveIssues } from "@/lib/recognizablePlan";
 import type { OperatingPlanBody, OperatingPlanSchema } from "@/lib/operatingPlan";
 import { unansweredOperatingCategories, type OperatingGuidanceReply } from "@/lib/operatingGuidance";
 import { BucketFileReviewPanel, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
@@ -117,6 +119,8 @@ export default function FinancialFormPage() {
   const [operatingPreview, setOperatingPreview] = useState<OperatingGuidanceReply | null>(null);
   const [operatingEvaluating, setOperatingEvaluating] = useState(false);
   const [operatingPreviewError, setOperatingPreviewError] = useState("");
+  const [operatingSourceError, setOperatingSourceError] = useState("");
+  const lastOperatingSource = useRef<string | null>(null);
   const [operatingPreviewRetry, setOperatingPreviewRetry] = useState(0);
   const [sourcePreviewId, setSourcePreviewId] = useState<string | null>(null);
   const [operatingGuided, setOperatingGuided] = useState(true);
@@ -141,10 +145,12 @@ export default function FinancialFormPage() {
   // hand-written fetch in this app has to add it too. This one did not, so every
   // link minted for a borrower 404'd on load while the token behind it was fine.
   const base = `${apiBase}/api/v1/application-profiles/public/financial-forms/${encodeURIComponent(token)}`;
+  const sourceWindow = useDocumentWindow(base);
+  const openOperatingSource = (fileId: string) => { lastOperatingSource.current = fileId; setOperatingSourceError(""); void sourceWindow.open(async signal => { const reply = await publicFinancialResponse<Omit<BucketFileReview, "annotations">>(await fetch(`${base}/evidence/${encodeURIComponent(fileId)}`, { signal })); if (reply.file.id !== fileId || !reply.preview_url) throw new Error("This source document is not available. Refresh the source list or ask your team for help."); return reply.preview_url; }).catch(reason => setOperatingSourceError(reason instanceof Error ? reason.message : "The source document could not be opened.")); };
 
   useEffect(() => {
     if (!token) return;
-    setSourcePreviewId(null);
+    setSourcePreviewId(null); setOperatingSourceError(""); lastOperatingSource.current = null;
     setOperatingGuided(true); setGuidedStepRequest(null);
     let cancelled = false;
     (async () => {
@@ -292,8 +298,40 @@ export default function FinancialFormPage() {
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "We could not save this version. Your answers are still here.");
-      setStatus("review");
+      setStatus(state?.kind === "operating_plan" ? "ready" : "review");
     }
+  };
+
+  const saveOperatingPlanVersion = async () => {
+    if (!canEdit || !writer.current || statusRef.current !== "ready") return;
+    setError(null);
+    const activeWriter = writer.current;
+    const sent = bodyRef.current;
+    const fingerprint = JSON.stringify(publicFinancialBody(sent));
+    statusRef.current = "preparing"; setStatus("preparing");
+    try {
+      // Validate the exact body being saved; a pending preview belongs to an earlier edit.
+      let currentPreview = operatingPreview;
+      if (operatingEvaluating || visiblePreviewBody.current !== `${base}:${fingerprint}` || !currentPreview?.evaluation) {
+        currentPreview = await publicFinancialResponse<OperatingGuidanceReply>(await fetch(`${base}/evaluate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: sent }) }));
+        if (writer.current !== activeWriter || bodyRef.current !== sent) throw new Error("The form changed. Review the current plan before saving.");
+        setOperatingPreview(currentPreview);
+        previewBody.current = fingerprint;
+        visiblePreviewBody.current = currentPreview.evaluation ? `${base}:${fingerprint}` : "";
+      }
+      if (!currentPreview?.evaluation) throw new Error("The current preview is unavailable. Retry the financial preview before saving.");
+      const unanswered = unansweredOperatingCategories(sent, currentPreview.guidance);
+      const issues = plannerSaveIssues(sent, currentPreview.evaluation);
+      if (unanswered.length || issues.length) {
+        setGuidedStepRequest(current => ({ index: 1, key: (current?.key ?? 0) + 1 }));
+        throw new Error(unanswered.length ? `Confirm the current expense categories before saving: ${unanswered.map(row => row.label).join(", ")}.` : issues.some(path => path.startsWith("historical_corrections.")) ? "Finish the historical correction reason and evidence, or remove the optional correction. Return to Itemize current costs." : "Complete the itemization or document its historical correction for tax preparer review. Return to Itemize current costs.");
+      }
+      await saveDraft(sent);
+      // An earlier failed submit remains the writer tail; retry the same intent after the current draft is saved.
+      await activeWriter.flush().catch(() => undefined);
+      if (writer.current !== activeWriter) throw new Error("The form changed. Review the current plan before saving.");
+      await submit();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "The version could not be saved. Your entries are retained."); setStatus("ready"); }
   };
 
   const title = state ? TITLES[state.kind] : "";
@@ -360,7 +398,7 @@ export default function FinancialFormPage() {
     );
   }
 
-  if (status === "review" || (status === "saving" && state)) {
+  if (status === "review" || (status === "saving" && state && state.kind !== "operating_plan")) {
     return (
       <div className="fp">
         <header className="fp-header">
@@ -510,7 +548,7 @@ export default function FinancialFormPage() {
           ) : state?.kind === "real_estate_schedule" ? (
             <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "operating_plan" ? (
-            <><OperatingPlanForm key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={operatingPreview?.evaluation} evaluating={operatingEvaluating} onPreviewSource={setSourcePreviewId} />{operatingPreviewError ? <div role="alert"><p>{operatingPreviewError} Your entries are retained.</p><button type="button" onClick={() => setOperatingPreviewRetry(value => value + 1)}>Retry financial preview</button></div> : null}</>
+            <><OperatingPlanForm sourceMessage={operatingSourceError ? <div role="alert"><p>{operatingSourceError}</p><button type="button" onClick={() => { if (lastOperatingSource.current) openOperatingSource(lastOperatingSource.current); }}>Retry source document</button></div> : null} onSaveVersion={saveOperatingPlanVersion} saveVersionBusy={status === "preparing" || status === "saving"} saveVersionDisabled={!canEdit || status === "preparing" || status === "saving"} saveVersionLabel="Save version for your team" key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={operatingPreview?.evaluation} evaluating={operatingEvaluating} onPreviewSource={openOperatingSource} />{operatingPreviewError ? <div role="alert"><p>{operatingPreviewError} Your entries are retained.</p><button type="button" onClick={() => setOperatingPreviewRetry(value => value + 1)}>Retry financial preview</button></div> : null}</>
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}
@@ -529,7 +567,7 @@ export default function FinancialFormPage() {
       </main>
 
       {sourcePreviewId && state?.kind === "operating_plan" ? <BucketFileReviewPanel title="Operating plan source document" reviewKey={`operating-source:${token}:${sourcePreviewId}`} loadReview={loadOperatingSource} activeFileId={sourcePreviewId} annotationsEnabled={false} onClose={() => setSourcePreviewId(null)} /> : null}
-      <div className="fp-actions">
+      {state?.kind !== "operating_plan" ? <div className="fp-actions">
         <div className="fp-actions-inner">
           {canEdit ? <button type="button" className="fp-submit" disabled={status === "preparing"} onClick={() => void review()}>
             {status === "preparing" ? "Saving draft…" : "Review and save version"}
@@ -546,7 +584,7 @@ export default function FinancialFormPage() {
             )}
           </span>
         </div>
-      </div>
+      </div> : null}
     </div>
   );
 }

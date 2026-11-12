@@ -70,6 +70,7 @@ jobs:
           src/lib/__tests__/operatingSourceDraft.test.ts
           src/lib/__tests__/operatingUnitPlanning.test.ts
           src/lib/__tests__/operatingStep3.test.ts
+          src/lib/__tests__/recognizablePlan.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
           src/components/application/__tests__/OperatingPlanGuide.test.ts
           src/components/application/__tests__/OperatingPlanForm.test.ts
@@ -188,6 +189,7 @@ jobs:
           src/lib/__tests__/operatingSourceDraft.test.ts
           src/lib/__tests__/operatingUnitPlanning.test.ts
           src/lib/__tests__/operatingStep3.test.ts
+          src/lib/__tests__/recognizablePlan.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
           src/components/application/__tests__/OperatingPlanGuide.test.ts
           src/components/application/__tests__/OperatingPlanForm.test.ts
@@ -209,6 +211,12 @@ jobs:
           'src/app/forms/[kind]/[token]/page.tsx'
           tests/operating-plan-step3.spec.ts
           tests/fixtures/operatingPlanStep3.ts
+          src/hooks/useDocumentWindow.ts
+          src/lib/recognizablePlan.ts
+          src/components/application/OperatingPlanItemization.tsx
+          src/components/application/OperatingPlanCommands.tsx
+          tests/recognizable-plan.spec.ts
+          tests/fixtures/recognizablePlan.ts
 
       - name: Build production frontend
         run: pnpm build

@@ -10,9 +10,9 @@ export type OperatingUnitCost = {
   cost_basis?: OperatingCostBasis; unit_label?: string; current_units_per_period?: PlanAmount;
   current_unit_cost?: PlanAmount; current_fixed_amount?: PlanAmount;
 };
-export type OperatingActionKind = "price_change" | "product_cost_change" | "revenue_change" | "expense_reduction" | "expense_increase" | "one_time_adjustment" | "processing_cost_change" | "marketing_investment" | "unit_volume";
+export type OperatingActionKind = "price_change" | "product_cost_change" | "revenue_change" | "expense_reduction" | "expense_increase" | "one_time_adjustment" | "processing_cost_change" | "marketing_investment" | "unit_volume" | "expense_group_change";
 export type OperatingExpense = OperatingUnitCost & {
-  id: string; category?: string; label?: string; payee?: string; current_amount?: PlanAmount;
+  id: string; itemization_parent_id?: string | null; category?: string; label?: string; payee?: string; current_amount?: PlanAmount;
   cadence?: OperatingCadence; essential?: boolean; source_file_ids?: string[]; bank_vendor_key?: string | null;
   notes?: string; excluded?: boolean; duplicate_of?: string | null;
   source_group_key?: string; source_candidate_key?: string;
@@ -38,6 +38,8 @@ export type OperatingAction = OperatingUnitCost & {
   merchant_source_key?: string | null; merchant_offer_id?: string | null;
   proposed_units_per_period?: PlanAmount; proposed_fixed_amount?: PlanAmount;
   product_name?: string; revenue_return_multiple?: PlanAmount;
+  command?: { target: "total_cost" | "unit_cost" | "unit_quantity" | "unit_price" | "annual_price_revenue"; mode: "amount" | "percent"; direction: "increase" | "decrease"; value: PlanAmount; allocation?: "none" | "proportional" };
+  price_basis?: "per_unit" | "annual_revenue";
   unit_change_mode?: "absolute" | "percent"; unit_change_value?: PlanAmount;
 };
 export type OperatingPlanBody = Record<string, unknown> & {
@@ -47,6 +49,7 @@ export type OperatingPlanBody = Record<string, unknown> & {
   expenses?: OperatingExpense[]; adjustments?: OperatingAction[];
   released_cash_flow?: { source_fingerprint: string | null; allocations: ReleasedCashFlowAllocation[] };
   category_confirmations?: Record<string, "confirmed" | "not_applicable" | "needs_help">;
+  client_attestation?: boolean; historical_corrections?: Array<{ source_group_key: string; reason: string; source_file_ids?: string[]; evidence_note?: string }>;
   unit_label?: string; historical_units_annual?: PlanAmount; historical_revenue_annual?: PlanAmount;
   historical_units_period_start?: string | null; historical_units_period_end?: string | null;
 };
@@ -87,6 +90,9 @@ export type OperatingExpenseChanges = {
   gross_projection: { scope: "linked_expense_changes_only"; status: string; noi: number | null; earnings: number | null; dscr_current: number | null; dscr_with_refinance: number | null };
 };
 export type OperatingEvaluation = {
+  commands?: Array<{ action_id: string; expense_row_id: string | null; expense_category: string | null; source_group_key: string; target: string; status: string; current_annual_revenue?: number | null; proposed_annual_revenue?: number | null; included_in_proposed_projection?: boolean; included_in_approved_projection?: boolean; projection_issues?: string[]; current_value: number | null; proposed_value: number | null; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null; participant_expense_row_ids: string[]; allocations: Array<{ expense_row_id: string; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null }>; issues: string[]; assumptions: string[]; command: OperatingAction["command"] }>;
+  itemization?: Array<{ parent_expense_row_id: string; expense_category: string; source_group_key: string; reference_annual_amount: number | null; recorded_parent_annual_amount?: number | null; reference_authority?: string; source_comparable?: boolean | null; year?: string | number | null; source_label?: string | null; source_fact_keys?: string[]; children_annual_amount: number | null; remainder_annual_amount: number | null; status: "unknown" | "balanced" | "unallocated" | "overallocated"; child_expense_row_ids: string[] }>;
+
   expense_changes?: OperatingExpenseChanges;
   unit_economics?: OperatingUnitEconomics;
   expense_groups?: Array<{ key: string; category: string; label: string; baseline_annual_amount: number | null; disclosed_annual_amount: number | null; difference_annual: number | null; status: "no_detail" | "incomplete" | "matches_source" | "differs_from_source" | "source_changed"; notes: string[] }>;

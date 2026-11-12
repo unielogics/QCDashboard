@@ -2,7 +2,10 @@ import { clearOperatingReview, type OperatingAction, type OperatingEvaluation, t
 import type { OperatingGuidance } from "./operatingGuidance";
 
 export const operatingUnitAction = (body: OperatingPlanBody) => body.adjustments?.find(row => row.kind === "unit_volume" && !row.excluded && !row.duplicate_of);
-export const operatingUnitsUsed = (body: OperatingPlanBody) => Boolean(body.unit_label?.trim() || body.historical_units_annual != null || body.historical_revenue_annual != null || operatingUnitAction(body) || body.expenses?.some(row => !row.excluded && !row.duplicate_of && row.volume_behavior && row.volume_behavior !== "unknown"));
+export const operatingUnitsUsed = (body: OperatingPlanBody) => {
+  const annualPricing = body.adjustments?.some(row => !row.excluded && row.kind === "price_change" && row.price_basis === "annual_revenue");
+  return Boolean(body.unit_label?.trim() || body.historical_units_annual != null || body.historical_revenue_annual != null && !annualPricing || body.adjustments?.some(row => !row.excluded && row.kind === "unit_volume") || body.expenses?.some(row => !row.excluded && row.volume_behavior && row.volume_behavior !== "unknown"));
+};
 export const operatingUnitPeriodMatches = (body: OperatingPlanBody) => {
   if (!body.period_start || !body.period_end || body.historical_units_period_start !== body.period_start || body.historical_units_period_end !== body.period_end) return false;
   const days = (Date.parse(`${body.period_end}T00:00:00Z`) - Date.parse(`${body.period_start}T00:00:00Z`)) / 86400000 + 1;

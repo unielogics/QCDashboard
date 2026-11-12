@@ -195,7 +195,7 @@ export function updateOperatingExpense(body: OperatingPlanBody, id: string, patc
       ...(!["expense_reduction", "expense_increase", "marketing_investment"].includes(row.kind ?? "") ? {} : row.kind === "marketing_investment" ? { cost_basis: "total" as const, current_amount: operatingExpenseAmount(expense), cadence: expense.cadence ?? "monthly" } : { cost_basis: expense.cost_basis ?? "total", unit_label: expense.unit_label ?? "", current_units_per_period: expense.current_units_per_period,
         current_unit_cost: expense.current_unit_cost, current_fixed_amount: expense.current_fixed_amount, current_amount: expense.cost_basis === "per_unit" ? null : expense.current_amount,
         ...(expense.cost_basis === "per_unit" ? { proposed_amount: null } : {}), cadence: expense.cadence }),
-      ...(dimensionChanged && ["expense_reduction", "expense_increase", "marketing_investment"].includes(row.kind ?? "") ? { proposed_amount: null, proposed_units_per_period: null, proposed_unit_cost: null, proposed_fixed_amount: null } : {}),
+      ...(dimensionChanged && ["expense_reduction", "expense_increase", "marketing_investment"].includes(row.kind ?? "") ? { proposed_amount: null, proposed_units_per_period: null, proposed_unit_cost: null, proposed_fixed_amount: null, ...(row.command ? { command: { ...row.command, value: null } } : {}) } : {}),
       ...("label" in patch ? { label: expense.label } : {}),
       ...("source_file_ids" in patch ? { source_file_ids: [...new Set([...(row.source_file_ids ?? []).filter(file => !priorEvidence.has(file)), ...(expense.source_file_ids ?? [])])] } : {}),
     })),

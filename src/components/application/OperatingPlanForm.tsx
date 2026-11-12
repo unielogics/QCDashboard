@@ -10,9 +10,9 @@ import { NoiGovernanceSummary } from "@/components/file/cockpit/NoiGovernanceSum
 import { OperatingPlanGuide } from "./OperatingPlanGuide";
 import { OperatingAmountInput } from "./OperatingAmountInput";
 import { OperatingUnitHeader, OperatingUnitReadout, OperatingVolumeBehavior } from "./OperatingUnitPlanning";
-import { invalidateOperatingUnitVolume, normalizeOperatingUnitAction, operatingSourceRevenue, operatingUnitsUsed } from "@/lib/operatingUnitPlanning";
+import { invalidateOperatingUnitVolume, normalizeOperatingUnitAction, operatingSourceRevenue, operatingUnitsUsed, operatingUnitAction, proposeOperatingUnitVolume } from "@/lib/operatingUnitPlanning";
 import { StableOperatingPreview } from "./StableOperatingPreview";
-import { addOperatingCandidate, operatingRecurringSubtotal, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
+import { addOperatingCandidate, draftOperatingSourceCosts, operatingRecurringSubtotal, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
 
 export type OperatingSource = { file_id: string; file_name: string };
 type Tab = "expenses" | "actions" | "impact";
@@ -26,7 +26,7 @@ function WrappedCell({ label, value, disabled, placeholder, onChange }: { label:
 }
 
 /** Staff and clients edit the same versioned body; approvals belong to staff review. */
-export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, releasedCashFlow, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference, guidance, evidence, guidedDefault = false, onGuidedModeChange, guidedStepRequest, sourceDraftRequest = 0, onOpenSources }: {
+export function OperatingPlanForm({ value: rawValue, onChange, disabled = false, sources = [], onPreviewSource, evaluation, releasedCashFlow, evaluating, reviewControls, staff = false, processingReferences, onProcessingReference, guidance, evidence, guidedDefault = false, onGuidedModeChange, guidedStepRequest, sourceDraftRequest = 0, onOpenSources, sourceTools, sourceMessage, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version" }: {
   value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void; disabled?: boolean;
   sources?: OperatingSource[]; onPreviewSource?: (id: string) => void;
   evaluation?: OperatingEvaluation | null; evaluating?: boolean; reviewControls?: ReactNode; staff?: boolean;
@@ -35,21 +35,29 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
   onProcessingReference?: (row: OperatingAction, sourceKey: string, offerId: string) => void;
   guidance?: OperatingGuidance | null; evidence?: OperatingGuidanceEvidence | null; guidedDefault?: boolean;
   onGuidedModeChange?: (guided: boolean) => void; guidedStepRequest?: { index: number; key: number } | null;
-  sourceDraftRequest?: number; onOpenSources?: () => void;
+  sourceDraftRequest?: number; onOpenSources?: () => void; sourceTools?: ReactNode; sourceMessage?: ReactNode; onConfirmSource?: () => void; onSaveVersion?: () => void | Promise<void>; saveVersionDisabled?: boolean; saveVersionBusy?: boolean; saveVersionLabel?: string;
 }) {
   const value = normalizeOperatingPlanBody(rawValue);
   const lastEvaluation = useRef<OperatingEvaluation | null>(evaluation ?? null);
-  if (evaluation && !evaluating) lastEvaluation.current = evaluation;
+  const sourceKey = JSON.stringify(guidance?.reporting || {});
+  const lastReadySource = useRef(sourceKey);
+  if (evaluation && !evaluating) { lastEvaluation.current = evaluation; lastReadySource.current = sourceKey; }
+  const pricingSourceRevenue = lastReadySource.current === sourceKey && guidance?.reporting.source_file_id ? operatingSourceRevenue(value, lastEvaluation.current, guidance) : null;
   const [tab, setTab] = useState<Tab>("expenses");
   const [selected, setSelected] = useState<{ collection: "expenses" | "adjustments"; id: string } | null>(null);
   const [showExcluded, setShowExcluded] = useState(false);
-  const [guided, setGuided] = useState(guidedDefault);
+  const guided = true;
+  const [plannerStep, setPlannerStep] = useState(0);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const formElement = useRef<HTMLDivElement>(null);
   const unitHeader = useRef<HTMLElement>(null);
+  const unitProposalHeader = useRef<HTMLElement>(null);
   const [unitFix, setUnitFix] = useState<string | null>(null);
-  const focusUnits = () => { unitHeader.current?.focus({ preventScroll: true }); unitHeader.current?.scrollIntoView({ block: "start", behavior: "smooth" }); };
+  const focusUnits = () => { setPlannerStep(2); requestAnimationFrame(() => { const target = unitProposalHeader.current; const details = target?.closest("details"); if (details) details.open = true; target?.focus({ preventScroll: true }); target?.scrollIntoView({ block: "start", behavior: "smooth" }); }); };
   const fixUnitField = (path: string) => {
-    setGuided(false); onGuidedModeChange?.(false);
+    const primaryHeader = path.includes("historical_") || path === "unit_label" || path.includes("period_start") || path.includes("period_end");
+    setAdvancedOpen(!primaryHeader);
+    if (primaryHeader) setPlannerStep(path.includes("period_start") || path.includes("period_end") ? 0 : 1);
     const row = value.expenses?.find(item => path.includes(item.id));
     const action = value.adjustments?.find(item => path.includes(item.id));
     setTab(action ? "actions" : "expenses");
@@ -65,59 +73,18 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
       : action ? unitFix.includes("processing_volume") ? "Card volume per period" : unitFix.includes("unit_change_value") || unitFix.includes("proposed_units") || unitFix.includes("proposed_revenue") ? "Planned annual unit change" : "Earnings action details"
       : unitFix.includes("revenue") ? "Historical annual business revenue" : unitFix.includes("unit_label") ? "Business unit definition" : unitFix.includes("period") ? "Operating reporting period start" : unitFix.includes("expenses_or_no_expenses") ? "Operating expenses table. Scroll across columns or down rows." : "Historical annual business units";
     const target = [...(formElement.current?.querySelectorAll<HTMLElement>("[aria-label]") ?? [])].find(item => item.getAttribute("aria-label") === label);
-    if (target) { if (!target.matches("input,select,textarea,button")) target.tabIndex = -1; target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    if (target) { const details = target.closest("details"); if (details) details.open = true; if (!target.matches("input,select,textarea,button")) target.tabIndex = -1; target.focus({ preventScroll: true }); target.scrollIntoView({ block: "center", behavior: "smooth" }); }
     setUnitFix(null);
   }, [unitFix, value.expenses, value.adjustments]);
   const unitsUsed = operatingUnitsUsed(value);
   const unitEvaluation = !evaluating ? evaluation?.unit_economics : null;
   const lastSourceDraft = useRef(0);
-  const hasActiveExpenses = value.expenses?.some(row => !row.excluded && !row.duplicate_of) ?? false;
   useEffect(() => {
     if (!sourceDraftRequest || lastSourceDraft.current === sourceDraftRequest) return;
-    setTab("expenses"); setSelected(null);
-    const element = formElement.current;
-    if (!element) return;
-    const mobile = guided && window.matchMedia("(max-width: 650px)").matches;
-    let frame = 0, settleTimer = 0, timeout = 0;
-    let stopped = false;
-    let focused: HTMLElement | null = null;
-    const stop = () => {
-      stopped = true;
-      lastSourceDraft.current = sourceDraftRequest;
-      cancelAnimationFrame(frame); window.clearTimeout(settleTimer); window.clearTimeout(timeout);
-      changes.disconnect(); layout.disconnect();
-      for (const event of ["pointerdown", "wheel", "touchstart", "keydown"]) window.removeEventListener(event, stop, true);
-    };
-    const align = () => {
-      frame = 0;
-      if (stopped) return;
-      // The guide switches steps in its own effect. Wait for the actual cost card,
-      // rather than focusing the old step heading before the fields are mounted.
-      const firstExpense = element.querySelector<HTMLElement>('[aria-label^="Current expense "][aria-label$=" name"]');
-      const target = mobile && hasActiveExpenses ? firstExpense?.closest<HTMLElement>("article") : element.querySelector<HTMLElement>(guided ? '[aria-label="Guided operating expenses and earnings plan"] h4' : '[aria-label^="Operating expenses table"]');
-      if (!target) return;
-      if (focused !== target) {
-        focused = target;
-        target.tabIndex = -1;
-        target.focus({ preventScroll: true });
-        lastSourceDraft.current = sourceDraftRequest;
-        // A financial preview can insert reconciliation above the card. Briefly
-        // keep it aligned, then release scrolling; any user interaction stops it.
-        settleTimer = window.setTimeout(stop, 1500);
-      }
-      target.scrollIntoView({ block: "start", behavior: mobile ? "instant" : "smooth" });
-      if (!mobile) stop();
-    };
-    const schedule = () => { if (!stopped && !frame) frame = requestAnimationFrame(align); };
-    const changes = new MutationObserver(schedule);
-    const layout = new ResizeObserver(schedule);
-    changes.observe(element, { childList: true, subtree: true });
-    layout.observe(element);
-    for (const event of ["pointerdown", "wheel", "touchstart", "keydown"]) window.addEventListener(event, stop, true);
-    timeout = window.setTimeout(stop, 3000);
-    schedule();
-    return stop;
-  }, [guided, hasActiveExpenses, sourceDraftRequest]);
+    lastSourceDraft.current = sourceDraftRequest; setPlannerStep(1); setAdvancedOpen(false); setTab("expenses"); setSelected(null);
+    const frame = requestAnimationFrame(() => { const heading = formElement.current?.querySelector<HTMLElement>("[data-operating-step-heading]"); heading?.focus({ preventScroll: true }); formElement.current?.querySelector<HTMLElement>('[aria-label="Guided operating expenses and earnings plan"]')?.scrollIntoView({ block: "start", behavior: "smooth" }); });
+    return () => cancelAnimationFrame(frame);
+  }, [sourceDraftRequest]);
   const expenses = value.expenses ?? []; const actions = value.adjustments ?? [];
   const totals = operatingExpenseTotal(expenses); const currency = value.currency || "USD";
   const activeExpenses = expenses.filter(row => !row.excluded && !row.duplicate_of);
@@ -165,10 +132,8 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
     {(row.source_file_ids ?? []).map((id) => <button key={id} type="button" className={styles.link} onClick={() => onPreviewSource?.(id)} disabled={!onPreviewSource}>{sources.find((file) => file.file_id === id)?.file_name ?? "Linked supporting file"}</button>)}
   </div>;
   return <div ref={formElement} className={styles.plan}>
-    <OperatingUnitHeader value={value} onChange={onChange} disabled={disabled} evaluation={evaluation} evaluating={evaluating} headerRef={unitHeader} sourceRevenue={!evaluating ? operatingSourceRevenue(value, evaluation, guidance) : null} onFix={fixUnitField} onEditReporting={() => fixUnitField("period_start")} />
-    <ReleasedCashFlowAllocation value={value} onChange={onChange} source={evaluation?.released_cash_flow ?? releasedCashFlow} disabled={disabled} evaluating={evaluating} />
-    <div className={styles.toolbar} aria-label="Operating plan mode"><button type="button" aria-pressed={guided} onClick={() => { setGuided(true); onGuidedModeChange?.(true); }}>Guided steps</button><button type="button" aria-pressed={!guided} onClick={() => { setGuided(false); onGuidedModeChange?.(false); }}>Advanced tables</button><span className={styles.muted}>Both views edit the same working plan.</span></div>
-    {guided ? <OperatingPlanGuide value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} layoutEvaluation={lastEvaluation.current} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} reviewControls={reviewControls} stepRequest={guidedStepRequest} onAdvancedAction={id => fixUnitField(`adjustments.${id}.processing_volume`)} onEditUnits={focusUnits} detailedImpact={<StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingPlanImpact evaluation={evaluation} evaluating={evaluating} currency={currency} client={!staff} /></StableOperatingPreview>} /> : <>
+    <OperatingPlanGuide stepIndex={plannerStep} onStepChange={setPlannerStep} sourceAnnualRevenue={pricingSourceRevenue} onReviewRevenue={() => fixUnitField("historical_revenue_annual")} unitProposal={operatingUnitAction(value) ? <OperatingUnitHeader section="proposal" value={value} onChange={onChange} disabled={disabled} evaluation={evaluation} evaluating={evaluating} headerRef={unitProposalHeader} onFix={fixUnitField} onEditReporting={() => fixUnitField("period_start")} /> : null} onAddUnitPlan={() => { onChange(proposeOperatingUnitVolume(value, {}, uid)); focusUnits(); }} sourceTools={sourceTools} sourceMessage={sourceMessage} onConfirmSource={onConfirmSource ?? (() => { if (guidance) { const result = draftOperatingSourceCosts(value, guidance, uid); if (result.body !== value) onChange(result.body); } })} onSaveVersion={onSaveVersion} saveVersionDisabled={saveVersionDisabled} saveVersionBusy={saveVersionBusy} saveVersionLabel={saveVersionLabel} unitControls={<OperatingUnitHeader section="baseline" value={value} onChange={onChange} disabled={disabled} evaluation={evaluation} evaluating={evaluating} headerRef={unitHeader} onFix={fixUnitField} onEditReporting={() => fixUnitField("period_start")} />} allocationControls={<ReleasedCashFlowAllocation value={value} onChange={onChange} source={evaluation?.released_cash_flow ?? releasedCashFlow} disabled={disabled} evaluating={evaluating} />} value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} layoutEvaluation={lastEvaluation.current} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} reviewControls={reviewControls} stepRequest={guidedStepRequest} onAdvancedAction={id => fixUnitField(`adjustments.${id}.processing_volume`)} onEditUnits={focusUnits} detailedImpact={<StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingPlanImpact evaluation={evaluation} evaluating={evaluating} currency={currency} client={!staff} /></StableOperatingPreview>} />
+    <details open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}><summary>Advanced tables</summary>
     <div className={styles.identity}>
       <label>Business<input value={value.business_name ?? ""} disabled={disabled} onChange={(event) => change({ business_name: event.target.value })} /></label>
       <label>Period start<input aria-label="Operating reporting period start" type="date" value={value.period_start ?? ""} disabled={disabled} onChange={(event) => change({ period_start: event.target.value })} /></label>
@@ -194,7 +159,7 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
           <td>{row.cost_basis === "per_unit" ? <><strong>{linked ? money(operatingExpenseAmount(linked, true)) : "—"}</strong><button type="button" className={styles.link} onClick={() => setSelected({ collection: "expenses", id: row.id })}>Edit unit costs</button></> : number(`Proposed amount for ${row.label || "expense"}`, linked?.proposed_amount, (text) => onChange(proposeExpense(value, row.id, text, uid)))}</td>
           <td>{cadence(`Frequency for ${row.label || "expense"}`, row.cadence, (text) => changeExpense(row.id, { cadence: text }))}</td>
           <td className={styles.amount}>{linked ? money(result ? result.net_annual_impact : illustrativeActionImpact(linked)) : "—"}</td><td>{evidenceLinks(row.source_file_ids)}</td><td>{linked ? operatingLabel(result?.review_state ?? linked.status ?? "proposed") : "Disclosure"}</td><td>{rowTools("expenses", row)}</td>
-        </tr>; })}{!active(expenses).length ? <tr><td colSpan={10} className={styles.empty}>{staff ? <>No costs drafted yet. Use Draft from tax/P&amp;L above, or add an expense manually.{onOpenSources ? <button type="button" onClick={onOpenSources}>Go to source costs</button> : null}</> : "No operating expenses entered. Add a line or confirm there are none."}</td></tr> : null}</tbody>
+        </tr>; })}{!active(expenses).length ? <tr><td colSpan={10} className={styles.empty}>{staff ? <>No costs drafted yet. Use Draft from tax/P&amp;L above, or add an expense manually.{onOpenSources ? <button type="button" onClick={() => { setPlannerStep(0); setAdvancedOpen(false); requestAnimationFrame(() => onOpenSources?.()); }}>Go to source costs</button> : null}</> : "No operating expenses entered. Add a line or confirm there are none."}</td></tr> : null}</tbody>
         <tfoot><tr><th>{!activeExpenses.length && !noCostsConfirmed ? "No costs drafted yet" : recurringSubtotal.incomplete ? "Incomplete known recurring subtotal" : "Current disclosed totals"}</th><td colSpan={3}>{recurringAnnual == null ? "Unknown" : money(recurringAnnual / 12)} / month</td><td colSpan={2}>{recurringAnnual == null ? "Unknown" : money(recurringAnnual)} / year</td><td colSpan={4}>{totals.missing ? `${totals.missing} unknown amount(s) · ` : ""}{!activeExpenses.length && !noCostsConfirmed ? "Unknown" : money(totals.oneTime)} one time</td></tr></tfoot>
       </table></div>
       {!expenses.some((row) => !row.excluded && !row.duplicate_of) ? <label className={styles.check}><input type="checkbox" checked={value.no_operating_expenses_confirmed ?? false} disabled={disabled} onChange={(event) => change({ no_operating_expenses_confirmed: event.target.checked })} />The business has no operating expenses for this period.</label> : null}
@@ -255,7 +220,7 @@ export function OperatingPlanForm({ value: rawValue, onChange, disabled = false,
     </div>{([...(actionResult(focusedAction)?.issues ?? []), ...(actionResult(focusedAction)?.risk_flags ?? [])]).length ? <ul className={styles.issues}>{[...(actionResult(focusedAction)?.issues ?? []), ...(actionResult(focusedAction)?.risk_flags ?? [])].map((issue, index) => <li key={`${index}:${issue}`}>{issue}</li>)}</ul> : null}</section> : null}
     <label className={styles.notes}>Plan notes<textarea value={value.notes ?? ""} disabled={disabled} onChange={(event) => change({ notes: event.target.value })} /></label>
     <p className={styles.muted}>Proposals are separate from historical financial results. Your team reviews evidence and reconciles the baseline before using a change in an underwriting projection.</p>
-    </>}
+    </details>
   </div>;
 }
 

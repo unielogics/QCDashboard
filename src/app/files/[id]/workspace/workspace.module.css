@@ -1,1 +1,12 @@
 .root{display:grid;grid-template-columns:minmax(0,1fr);gap:18px;min-width:0;max-width:100%;padding:20px}.root>*{min-width:0}.root>header{display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap}.root h1{font-size:22px;margin:0}.root p{margin:5px 0}.root small{color:var(--muted)}.tools{display:flex;gap:8px;overflow-x:auto;max-width:100%;padding-bottom:5px}.tools>a{flex:none}.root :global(.financial-workspace-body){overflow:visible;max-height:none;padding:0}.root :global(.fw-shell){height:auto;min-height:70vh;overflow:visible}.root :global(.fw-main){overflow:visible;min-width:0}.root :global(.fw-sidebar){max-height:none}.root :global(.table-workspace){max-width:100%}@media(max-width:650px){.root{padding:12px}.root h1{font-size:19px}}
+
+.operatingPlan{gap:12px;padding:16px}
+.root>.planHeader{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 16px;align-items:start}
+.planContext{grid-column:1/-1;display:flex;align-items:center;gap:12px;min-width:0}
+.planContext>span{min-width:0;overflow-wrap:anywhere;color:var(--muted);font-size:14px}
+.planHeader h1{font-size:24px;line-height:1.25}
+.planTools{position:relative;align-self:center;min-width:0}
+.planTools>summary{cursor:pointer;font-size:13px;color:var(--muted);padding:5px 0}
+.planTools>.tools{position:absolute;right:0;z-index:20;display:grid;grid-template-columns:minmax(0,1fr);width:min(310px,calc(100vw - 48px));padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface,#fff);box-shadow:0 8px 24px #00000016}
+.planTools>.tools>a{white-space:normal;max-width:100%}
+@media(max-width:650px){.operatingPlan{padding:12px}.root>.planHeader{gap:8px 12px}.planHeader h1{font-size:20px}.planContext{align-items:flex-start}.planTools>summary{font-size:12px}}
