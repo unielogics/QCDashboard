@@ -60,6 +60,7 @@ jobs:
           src/lib/__tests__/marketplacePpm.test.ts
           src/lib/__tests__/marketplacePpmPresets.test.ts
           src/lib/__tests__/fileWorkspace.test.ts
+          src/lib/__tests__/marketplaceDocumentVersions.test.ts
           src/lib/__tests__/chatgptProductFeed.test.ts
           src/components/__tests__/ChatgptProductFeed.test.ts
 
@@ -151,6 +152,8 @@ jobs:
           tests/fixtures/ppmReviewFlow.ts
           src/lib/marketplacePublication.ts
           src/lib/__tests__/marketplacePublication.test.ts
+          src/lib/marketplaceDocumentVersions.ts
+          src/lib/__tests__/marketplaceDocumentVersions.test.ts
           src/app/settings/page.tsx
           src/components/settings/ChatgptProductFeedSection.tsx
           src/hooks/useChatgptProductFeed.ts

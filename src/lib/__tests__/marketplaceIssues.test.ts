@@ -78,6 +78,13 @@ describe("actionable marketplace guidance", () => {
     const result = marketplaceApiIssues(apiError("The file changed since this listing was prepared. Refresh its financial snapshot and review the current financing and collateral before publishing."), { ...context, action: "publish" });
     expect(result[0].target).toEqual({ kind: "snapshot" });
   });
+  it("takes a changed PPM publication candidate back to the saved PPM review", () => {
+    for (const code of ["ppm_version_changed", "ppm_source_changed", "ppm_review_required"]) {
+      const result = marketplaceApiIssues(apiError({ code, message: "The selected PPM changed before publication." }), { ...context, action: "publish" });
+      expect(result[0]).toMatchObject({ target: { kind: "ppm" }, actionLabel: "Review PPM in Documents" });
+    }
+    expect(marketplaceApiIssues(apiError({ code: "unknown", message: "Other publication failure" }), { ...context, action: "publish" })[0].target).toBeUndefined();
+  });
   it("takes an outdated document package to its dedicated file owner without confusing it with financial refresh", () => {
     const message = "The file or program readiness changed. Refresh both PDFs before delivery.";
     const result = marketplaceApiIssues(apiError(message), { ...context, action: "snapshot" });

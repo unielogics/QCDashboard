@@ -6,11 +6,24 @@ export type PpmDocument = { title: string; listing_ref: string; issuer: string; 
 export type PpmLegalPreset = { key: string; label: string; text: string; unresolved?: boolean };
 export type PpmLegalField = { key: string; label: string; required: boolean; options?: PpmLegalPreset[]; default_value?: string | null; default_preset?: string | null; help?: string | null; read_only?: boolean };
 export type PpmVersion = { document_id: string; version: number; source: "generated_ppm" | "uploaded"; status: "draft" | "approved" | "superseded"; source_fingerprint: string; stale: boolean; created_at: string; reviewed_at: string | null; document: PpmDocument; legal_inputs: Record<string, string>; legal_presets?: Record<string, string>; narrative_sections: Record<string, string>; ai_sections?: Record<string, string> };
-export type MarketplacePpm = { managed: boolean; auto_refresh: boolean; draft_upgrade_available?: boolean; status: "not_started" | "draft" | "approved" | "stale"; generation_status: "not_generated" | "source_based" | "ai_draft" | "manual_upload"; source_fingerprint: string; current_draft: PpmVersion | null; current_approved: PpmVersion | null; history: PpmVersion[]; missing: PpmMissing[]; warnings: string[]; legal_fields: PpmLegalField[]; narrative_fields: Array<{ key: string; label: string }>; membership_policy?: MarketplaceMembershipPolicy; legal_defaults?: Record<string, string>; legal_default_presets?: Record<string, string> };
+export type MarketplacePpm = { managed: boolean; auto_refresh: boolean; draft_upgrade_available?: boolean; status: "not_started" | "draft" | "approved" | "stale"; generation_status: "not_generated" | "source_based" | "ai_draft" | "manual_upload"; source_fingerprint: string; current_draft: PpmVersion | null; current_approved: PpmVersion | null; active_version?: PpmVersion | null; working_draft_document_id?: string | null; latest_version?: number | null; history: PpmVersion[]; missing: PpmMissing[]; warnings: string[]; legal_fields: PpmLegalField[]; narrative_fields: Array<{ key: string; label: string }>; membership_policy?: MarketplaceMembershipPolicy; legal_defaults?: Record<string, string>; legal_default_presets?: Record<string, string> };
 export type PpmEdit = { version: number; sourceFingerprint: string; legalInputs: Record<string, string>; legalPresets: Record<string, string>; narrativeSections: Record<string, string> };
 export type PpmGenerate = { expected_source_fingerprint: string; idempotency_key: string; force?: boolean; auto_refresh?: boolean };
 export type PpmSave = { expected_version: number; expected_source_fingerprint: string; idempotency_key: string; legal_inputs: Record<string, string>; legal_presets?: Record<string, string>; narrative_sections: Record<string, string> };
 export type PpmReview = { expected_version: number; expected_source_fingerprint: string; idempotency_key: string; confirmed: boolean; decision?: "approve"; reason?: string | null };
+export type PpmReinstate = { expected_version: number; expected_source_fingerprint: string; idempotency_key: string };
+export type PpmDocumentControls = { scope: string; state: MarketplacePpm | undefined; busy: boolean; canReinstate: boolean; reinstate: (documentId: string) => Promise<unknown> };
+export function ppmFailure(action: "generate" | "draft" | "review" | "reinstate", error: unknown): { code: string; message: string } {
+  const code = (error as { body?: { detail?: { code?: string } } } | null)?.body?.detail?.code ?? "";
+  if (code === "ppm_source_changed") {
+    const message = action === "review" ? "Approval could not finish against these saved facts. Choose Prepare latest offer, preview the saved PPM, then approve the current version."
+      : action === "draft" ? "The saved facts changed while saving. Your edits are kept. Prepare the latest offer, then apply your edits to the current draft."
+      : action === "reinstate" ? "The saved offering changed before reinstatement. Review the latest PPM, then choose the historical version again."
+      : "The draft could not be prepared against the latest saved facts. Choose Prepare latest offer to check them again.";
+    return { code, message };
+  }
+  return { code, message: error instanceof Error ? error.message : "The PPM action could not be completed. Your saved version and edits are kept." };
+}
 
 export const ppmLegalId = (key: string) => `marketplace-ppm-legal-${encodeURIComponent(key)}`;
 export const ppmContentKey = (value: PpmEdit | null) => JSON.stringify({ legal: Object.fromEntries(Object.entries(value?.legalInputs ?? {}).sort()), presets: Object.fromEntries(Object.entries(value?.legalPresets ?? {}).sort()), narrative: Object.fromEntries(Object.entries(value?.narrativeSections ?? {}).sort()) });

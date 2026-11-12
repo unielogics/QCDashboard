@@ -86,11 +86,11 @@ const area = (page: Page) => page.getByRole("region", { name: "PPM draft and rev
 const field = (page: Page, label: string) => area(page).getByLabel(`PPM ${label}`, { exact: true });
 const choice = (page: Page, label: string) => area(page).getByLabel(`PPM ${label} preset`, { exact: true });
 const writes = (f: Awaited<ReturnType<typeof fixture>>) => f.requests.filter(row => row.method !== "GET" && !row.path.endsWith("/deal-budget/preview"));
-async function open(page: Page) { await page.getByRole("tab", { name: /^Documents/ }).click(); await expect(area(page).getByText("Saved draft v1", { exact: true })).toBeVisible(); await backToEdits(page); }
+async function open(page: Page) { await page.getByRole("tab", { name: /^Documents/ }).click(); await expect(area(page).getByText("Working draft v1", { exact: true })).toBeVisible(); await backToEdits(page); }
 async function backToEdits(page: Page) { await area(page).getByRole("button", { name: "Back to edits", exact: true }).click(); const show = area(page).getByRole("button", { name: "Show all disclosure fields", exact: true }); if (await show.isVisible()) await show.click(); }
-async function openDetails(page: Page) { const toggle = area(page).getByText("PPM details and history", { exact: true }); if (!await toggle.evaluate(node => node.parentElement!.hasAttribute("open"))) await toggle.click(); }
+async function openDetails(page: Page) { const toggle = area(page).getByText("PPM details", { exact: true }); if (!await toggle.evaluate(node => node.parentElement!.hasAttribute("open"))) await toggle.click(); }
 async function approvalBlocked(page: Page) { await area(page).getByRole("button", { name: "Review saved PPM", exact: true }).first().click(); await expect(area(page).getByRole("button", { name: "Approve current PPM" })).toHaveCount(0); await backToEdits(page); }
-async function save(page: Page, version: number) { await area(page).getByRole("button", { name: "Save and review", exact: true }).click(); await expect(area(page).getByText(`Saved draft v${version}`, { exact: true })).toBeVisible(); await backToEdits(page); }
+async function save(page: Page, version: number) { await area(page).getByRole("button", { name: "Save and review", exact: true }).click(); await expect(area(page).getByText(`Working draft v${version}`, { exact: true })).toBeVisible(); await backToEdits(page); }
 
 test("new draft prefills issuer and finite preset choices but unknown governing law still blocks review", async ({ page }, info) => {
   const f = await fixture(page); await open(page);
@@ -109,26 +109,26 @@ test("new draft prefills issuer and finite preset choices but unknown governing 
 test("selected jurisdiction text and stable ID save and survive a policy source refresh", async ({ page }) => {
   const f = await fixture(page); await open(page); await choice(page, "Governing law and offering jurisdictions").selectOption("us_state_NJ"); await expect(field(page, "Governing law and offering jurisdictions")).toHaveValue(/New Jersey/); await save(page, 2);
   const sent = writes(f).find(row => row.path.endsWith("/ppm/draft"))!; expect((sent.body.legal_presets as Record<string, string>).jurisdiction).toBe("us_state_NJ");
-  await f.changeSource(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible(); await expect(choice(page, "Governing law and offering jurisdictions")).toHaveValue("us_state_NJ"); await expect(field(page, "Investor eligibility requirements")).toHaveValue(/7 calendar days/);
+  await f.changeSource(); await expect(area(page).getByText("Working draft v3", { exact: true })).toBeVisible(); await expect(choice(page, "Governing law and offering jurisdictions")).toHaveValue("us_state_NJ"); await expect(field(page, "Investor eligibility requirements")).toHaveValue(/7 calendar days/);
   expect(writes(f).some(row => /\/members\/|\/ppm\/review|\/publish/.test(row.path))).toBe(false); expect(f.errors).toEqual([]);
 });
 
 test("saved custom issuer and eligibility wording are never replaced by a default preset", async ({ page }) => {
   const f = await fixture(page, { existingCustom: true }); await open(page); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await expect(field(page, "Issuer legal name")).toHaveValue("Existing Example Issuer LLC");
-  await openDetails(page); await area(page).getByRole("button", { name: "Regenerate AI wording", exact: true }).click(); await expect(area(page).getByText("Saved draft v2", { exact: true })).toBeVisible();
+  await openDetails(page); await area(page).getByRole("button", { name: "Regenerate AI wording", exact: true }).click(); await expect(area(page).getByText("Working draft v2", { exact: true })).toBeVisible();
   await expect(field(page, "Issuer legal name")).toHaveValue("Existing Example Issuer LLC"); await expect(field(page, "Investor eligibility requirements")).toHaveValue("Additional bespoke investor restriction."); await expect(choice(page, "Investor eligibility requirements")).toHaveValue("custom"); expect(f.errors).toEqual([]);
 });
 
 test("same-text Custom intent pins wording during rebase and keeps unrelated remote field changes", async ({ page }) => {
   const f = await fixture(page); await open(page); const old = await field(page, "Investor eligibility requirements").inputValue(); await choice(page, "Investor eligibility requirements").selectOption("custom");
-  await f.changeSource(7, "USD", true); await expect(area(page).getByText("Saved draft v2", { exact: true })).toBeVisible(); await area(page).getByRole("button", { name: "Apply my edits to latest facts" }).click(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible(); await backToEdits(page);
+  await f.changeSource(7, "USD", true); await expect(area(page).getByText("Working draft v2", { exact: true })).toBeVisible(); await area(page).getByRole("button", { name: "Apply my edits to latest facts" }).click(); await expect(area(page).getByText("Working draft v3", { exact: true })).toBeVisible(); await backToEdits(page);
   await expect(field(page, "Investor eligibility requirements")).toHaveValue(old); await expect(choice(page, "Investor eligibility requirements")).toHaveValue("custom");
   await expect(field(page, "Subscription, acceptance and funding process")).toHaveValue("Updated remote subscription workflow."); await expect(choice(page, "Subscription, acceptance and funding process")).toHaveValue("custom"); await expect(area(page).getByRole("button", { name: "Save and review", exact: true })).toHaveCount(0);
   expect(f.errors).toEqual([]);
 });
 
 test("typing and intentionally clearing custom issuer keeps it blank through save and regeneration", async ({ page }) => {
-  const f = await fixture(page); await open(page); await field(page, "Issuer legal name").fill(""); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await save(page, 2); await f.changeSource(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible();
+  const f = await fixture(page); await open(page); await field(page, "Issuer legal name").fill(""); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await save(page, 2); await f.changeSource(); await expect(area(page).getByText("Working draft v3", { exact: true })).toBeVisible();
   await expect(field(page, "Issuer legal name")).toHaveValue(""); await expect(choice(page, "Issuer legal name")).toHaveValue("custom"); await expect(area(page).getByRole("region", { name: "PPM facts still needed" })).toContainText("Issuer legal name"); await approvalBlocked(page); expect(f.errors).toEqual([]);
 });
 
@@ -150,5 +150,5 @@ test("membership policy read failure retries only the policy and keeps member re
 });
 
 test("saved currency preset follows canonical currency changes without turning into Custom", async ({ page }) => {
-  const f = await fixture(page); await open(page); const currency = choice(page, "Offering currency"); await expect(currency).toHaveValue("saved_financing_currency"); await f.changeSource(7, "EUR"); await expect(area(page).getByText("Saved draft v2", { exact: true })).toBeVisible(); await expect(currency).toHaveValue("saved_financing_currency"); await expect(field(page, "Offering currency")).toHaveValue("EUR"); expect(f.errors).toEqual([]);
+  const f = await fixture(page); await open(page); const currency = choice(page, "Offering currency"); await expect(currency).toHaveValue("saved_financing_currency"); await f.changeSource(7, "EUR"); await expect(area(page).getByText("Working draft v2", { exact: true })).toBeVisible(); await expect(currency).toHaveValue("saved_financing_currency"); await expect(field(page, "Offering currency")).toHaveValue("EUR"); expect(f.errors).toEqual([]);
 });
