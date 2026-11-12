@@ -23,10 +23,11 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   onPreviewSource: (fileId: string) => void; onBusyChange: (busy: boolean) => void;
 }) {
   const api = useAuthedApi();
-  const role = useCurrentUser().data?.role;
+  const actor = useCurrentUser();
+  const role = actor.data?.role;
   const canReview = role === Role.SUPER_ADMIN || role === Role.LOAN_EXEC;
   const root = `/application-profiles/${encodeURIComponent(profileId)}/operating-plan`;
-  const scope = `${root}:${snapshot.family_id}`;
+  const scope = `${actor.authScope ?? actor.data?.id ?? "unresolved"}:${root}:${snapshot.family_id}`;
   const [source, setSource] = useState<{ scope: string; data: OperatingEvidence | null; loading: boolean; error: string }>({ scope, data: null, loading: true, error: "" });
   const [preview, setPreview] = useState<{ scope: string; value: OperatingEvaluation | null; loading: boolean; error: string }>({ scope, value: null, loading: false, error: "" });
   const [evaluationRetry, setEvaluationRetry] = useState(0);
