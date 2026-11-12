@@ -64,6 +64,15 @@ jobs:
           src/lib/__tests__/chatgptProductFeed.test.ts
           src/components/__tests__/ChatgptProductFeed.test.ts
           src/lib/__tests__/investorReturnModel.test.ts
+          src/lib/__tests__/operatingPlan.test.ts
+          src/lib/__tests__/operatingGuidance.test.ts
+          src/lib/__tests__/operatingCoverage.test.ts
+          src/lib/__tests__/operatingSourceDraft.test.ts
+          src/lib/__tests__/operatingUnitPlanning.test.ts
+          src/components/application/__tests__/OperatingPlanGuide.test.ts
+          src/components/application/__tests__/OperatingPlanForm.test.ts
+          src/components/application/__tests__/StaffOperatingSources.test.ts
+          src/components/file/cockpit/__tests__/OperatingPlanEntry.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -171,6 +180,25 @@ jobs:
           tests/fixtures/monthlyInvestorReturns.ts
           tests/monthly-investor-returns-staff.spec.ts
           tests/fixtures/monthlyInvestorReturnsStaff.ts
+          src/lib/__tests__/operatingPlan.test.ts
+          src/lib/__tests__/operatingGuidance.test.ts
+          src/lib/__tests__/operatingCoverage.test.ts
+          src/lib/__tests__/operatingSourceDraft.test.ts
+          src/lib/__tests__/operatingUnitPlanning.test.ts
+          src/components/application/__tests__/OperatingPlanGuide.test.ts
+          src/components/application/__tests__/OperatingPlanForm.test.ts
+          src/components/application/__tests__/StaffOperatingSources.test.ts
+          src/components/file/cockpit/__tests__/OperatingPlanEntry.test.ts
+          src/lib/operatingUnitPlanning.ts
+          src/lib/operatingPlan.ts
+          src/components/application/OperatingPlanForm.tsx
+          src/components/application/OperatingPlanGuide.tsx
+          src/components/application/OperatingPlanEditor.tsx
+          src/components/application/OperatingAmountInput.tsx
+          src/components/application/OperatingUnitPlanning.tsx
+          src/components/application/StableOperatingPreview.tsx
+          tests/operating-plan-editing.spec.ts
+          tests/fixtures/operatingPlanEditing.ts
 
       - name: Build production frontend
         run: pnpm build
