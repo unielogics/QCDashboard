@@ -46,7 +46,7 @@ jobs:
       - name: Install locked dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Run marketplace and financing helper tests
+      - name: Run financing and catalog helper tests
         run: >-
           pnpm exec vitest run
           src/lib/__tests__/marketplaceIssues.test.ts
@@ -60,6 +60,8 @@ jobs:
           src/lib/__tests__/marketplacePpm.test.ts
           src/lib/__tests__/marketplacePpmPresets.test.ts
           src/lib/__tests__/fileWorkspace.test.ts
+          src/lib/__tests__/chatgptProductFeed.test.ts
+          src/components/__tests__/ChatgptProductFeed.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -149,6 +151,13 @@ jobs:
           tests/fixtures/ppmReviewFlow.ts
           src/lib/marketplacePublication.ts
           src/lib/__tests__/marketplacePublication.test.ts
+          src/app/settings/page.tsx
+          src/components/settings/ChatgptProductFeedSection.tsx
+          src/hooks/useChatgptProductFeed.ts
+          src/lib/chatgptProductFeed.ts
+          src/lib/__tests__/chatgptProductFeed.test.ts
+          src/components/__tests__/ChatgptProductFeed.test.ts
+          tests/chatgpt-product-feed.spec.ts
 
       - name: Build production frontend
         run: pnpm build
