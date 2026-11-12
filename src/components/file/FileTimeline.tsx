@@ -35,12 +35,14 @@ export function FileTimeline({
   profileId,
   tier,
   compact = false,
+  refreshKey = 0,
 }: {
   profileId: string | null | undefined;
   /** Copy only — the server decides the tier it returns. */
   tier?: FileEventVisibility;
   /** Titles and times only, no bodies. */
   compact?: boolean;
+  refreshKey?: number;
 }) {
   const api = useAuthedApi();
   const [events, setEvents] = useState<FileEvent[]>([]);
@@ -51,6 +53,7 @@ export function FileTimeline({
   const [error, setError] = useState<string | null>(null);
   // The oldest row on screen, read by "Load more" without a stale closure.
   const oldestRef = useRef<string | null>(null);
+  const lastRefreshKey = useRef(refreshKey);
 
   const refresh = useCallback(async () => {
     if (!profileId) return;
@@ -70,6 +73,12 @@ export function FileTimeline({
       setLoaded(true);
     }
   }, [api, profileId]);
+
+  useEffect(() => {
+    if (lastRefreshKey.current === refreshKey) return;
+    lastRefreshKey.current = refreshKey;
+    void refresh();
+  }, [refreshKey, refresh]);
 
   useEffect(() => {
     setEvents([]);

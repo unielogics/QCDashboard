@@ -8,6 +8,7 @@ import type { AttentionItemKind, AttentionQueue, AttentionQueueActionResult, Att
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ApiError, api, apiBase, type ApiOptions } from "@/lib/api";
 import { LIVE_MESSAGE_QUERY_OPTIONS } from "@/lib/communications";
+import { moveOperatorPipelineFile, type PipelineMoveVariables } from "@/lib/pipelineMove";
 import type { AdvanceIn, AdvancesRead, BankAccountsRead, BankAccountsWrite, DebtScheduleVoidWrite, FinancialCockpit, FinancialPlanRead, FinancialPlanWrite, StatementRereadResult } from "@/lib/financialCockpit";
 import { useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
@@ -184,8 +185,6 @@ import type {
   OperatorBucketFile,
   OperatorFileForecastPatch,
   OperatorFileForecastResult,
-  PipelineMoveRequest,
-  PipelineMoveResult,
   UnifiedActionDefinition,
   UnifiedFileDetail,
   UnifiedFilePage,
@@ -7789,21 +7788,28 @@ export function useMoveOperatorPipelineFile() {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
+  const refreshFile = async (sourceKind: UnifiedSourceKind, sourceId: string) => {
+    const keys = [
+      ["operator-files", devUser],
+      ["operator-file", devUser],
+      ["application-profile"],
+      ["application-profile-audit"],
+      ["ai-underwriter-leads"],
+      ["lead-funnel"],
+      ["loans"],
+      ["loan"],
+      ["financial-cockpit"],
+      ["dashboard-report"],
+      ...(sourceKind === "intake" ? [["ai-underwriter-lead", sourceId]] : []),
+    ];
+    await Promise.all(keys.map((queryKey) => qc.invalidateQueries({ queryKey })));
+  };
   return useMutation({
-    mutationFn: ({ sourceKind, sourceId, body }: { sourceKind: UnifiedSourceKind; sourceId: string; body: PipelineMoveRequest }) =>
-      apiCall<PipelineMoveResult>(`/operator-files/${sourceKind}/${sourceId}/pipeline-move`, {
-        method: "POST",
-        body: JSON.stringify(body),
-      }),
-    onSuccess: (_, vars) => {
-      qc.invalidateQueries({ queryKey: ["operator-files", devUser] });
-      qc.invalidateQueries({ queryKey: ["operator-file", devUser] });
-      qc.invalidateQueries({ queryKey: ["application-profile"] });
-      qc.invalidateQueries({ queryKey: ["ai-underwriter-leads"] });
-      qc.invalidateQueries({ queryKey: ["lead-funnel"] });
-      qc.invalidateQueries({ queryKey: ["loans"] });
-      if (vars.sourceKind === "intake") {
-        qc.invalidateQueries({ queryKey: ["ai-underwriter-lead", vars.sourceId] });
+    mutationFn: (vars: PipelineMoveVariables) => moveOperatorPipelineFile(apiCall, vars),
+    onSuccess: (_, vars) => refreshFile(vars.sourceKind, vars.sourceId),
+    onError: async (error, vars) => {
+      if (error instanceof ApiError && error.status === 409) {
+        await refreshFile(vars.sourceKind, vars.sourceId);
       }
     },
   });

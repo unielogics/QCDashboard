@@ -207,13 +207,11 @@ function OperatorPipeline() {
                     sourceId: pendingMove.row.source_id,
                     body: {
                       target_status: pendingMove.targetStatus,
-                      expected_status: pendingMove.row.pipeline_status ?? pendingMove.row.underwriting_status ?? "collecting_docs",
                       ...(approval?.value ?? { note: moveDetails.note.trim() || undefined }),
                     },
                   });
                   setPendingMove(null);
                   setMoveDetails(pipelineApprovalDraft());
-                  void files.refetch();
                 } catch (cause) {
                   setMoveError(cause instanceof Error ? cause.message : "Unable to move this file.");
                 }
