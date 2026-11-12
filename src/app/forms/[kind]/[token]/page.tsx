@@ -123,6 +123,7 @@ export default function FinancialFormPage() {
   const [guidedStepRequest, setGuidedStepRequest] = useState<{ index: number; key: number } | null>(null);
   const previewRequest = useRef(0);
   const previewBody = useRef("");
+  const visiblePreviewBody = useRef("");
   const writer = useRef<PublicFinancialFormWriter | null>(null);
   const bodyRef = useRef(body);
   const loadedBody = useRef("");
@@ -162,6 +163,7 @@ export default function FinancialFormPage() {
         setBody(next);
         loadedBody.current = JSON.stringify(next);
         previewBody.current = data.operating_plan ? JSON.stringify(next) : "";
+        visiblePreviewBody.current = data.operating_plan?.evaluation ? `${base}:${previewBody.current}` : "";
         writer.current = new PublicFinancialFormWriter(base, data.workspace);
         setStatus(data.completed && !data.workspace?.dirty && data.can_edit !== false && data.permission !== "view" ? "done" : "ready");
       } catch {
@@ -178,14 +180,15 @@ export default function FinancialFormPage() {
     if (state?.kind !== "operating_plan" || status !== "ready" || !canEdit) { setOperatingEvaluating(false); return; }
     const sent = publicFinancialBody(body);
     const fingerprint = JSON.stringify(sent);
-    if (!operatingPreviewRetry && fingerprint === previewBody.current) return;
+    if (!operatingPreviewRetry && fingerprint === previewBody.current && visiblePreviewBody.current === `${base}:${fingerprint}`) { setOperatingEvaluating(false); setOperatingPreviewError(""); return; }
     const controller = new AbortController();
+    visiblePreviewBody.current = "";
     setOperatingEvaluating(true); setOperatingPreviewError("");
     setOperatingPreview(current => current ? { ...current, evaluation: null } : current);
     const timer = window.setTimeout(() => {
       void fetch(`${base}/evaluate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: sent }), signal: controller.signal })
         .then(response => publicFinancialResponse<OperatingGuidanceReply>(response))
-        .then(reply => { if (!controller.signal.aborted && sequence === previewRequest.current) { previewBody.current = fingerprint; setOperatingPreview(reply); } })
+        .then(reply => { if (!controller.signal.aborted && sequence === previewRequest.current) { previewBody.current = fingerprint; visiblePreviewBody.current = reply.evaluation ? `${base}:${fingerprint}` : ""; setOperatingPreview(reply); } })
         .catch(reason => { if (!controller.signal.aborted && sequence === previewRequest.current) setOperatingPreviewError(reason instanceof Error ? reason.message : "The preview could not be refreshed. Your entries are retained."); })
         .finally(() => { if (!controller.signal.aborted && sequence === previewRequest.current) setOperatingEvaluating(false); });
     }, 500);
@@ -204,6 +207,7 @@ export default function FinancialFormPage() {
     if (reply.operating_plan && bodyRef.current === sent) {
       setOperatingPreview(reply.operating_plan);
       previewBody.current = JSON.stringify(reply.body ?? sent);
+      visiblePreviewBody.current = reply.operating_plan.evaluation ? `${base}:${previewBody.current}` : "";
     }
     loadedBody.current = JSON.stringify(sent);
     // A canonical response must not erase typing that happened while it saved.
@@ -214,7 +218,7 @@ export default function FinancialFormPage() {
       loadedBody.current = JSON.stringify(next);
     }
     if (reply.saved_version) setSavedVersion(reply.saved_version);
-  }, []);
+  }, [base]);
 
   const saveDraft = useCallback(async (sent: FormBody = bodyRef.current) => {
     if (!writer.current || !canEdit || JSON.stringify(sent) === loadedBody.current) return;

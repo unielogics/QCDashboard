@@ -187,13 +187,15 @@ export function updateOperatingExpense(body: OperatingPlanBody, id: string, patc
   if (!old) return body;
   const expense = { ...old, ...patch };
   const priorEvidence = new Set(old.source_file_ids ?? []);
+  const dimensionChanged = (["cadence", "cost_basis", "unit_label"] as const).some(key => key in patch && old[key] !== expense[key]);
   return { ...body, no_operating_expenses_confirmed: false,
     ...clearCategoryConfirmation(body, old.category || "other", expense.category || "other"),
     expenses: body.expenses?.map(row => row.id === id ? expense : row),
-    adjustments: body.adjustments?.map(row => row.expense_row_id !== id ? row : clearOperatingReview({ ...row,
-      ...(row.kind === "processing_cost_change" ? {} : row.kind === "marketing_investment" ? { cost_basis: "total" as const, current_amount: operatingExpenseAmount(expense), cadence: expense.cadence ?? "monthly" } : { cost_basis: expense.cost_basis ?? "total", unit_label: expense.unit_label ?? "", current_units_per_period: expense.current_units_per_period,
+    adjustments: body.adjustments?.map(row => row.expense_row_id !== id || row.status === "rejected" ? row : clearOperatingReview({ ...row,
+      ...(!["expense_reduction", "expense_increase", "marketing_investment"].includes(row.kind ?? "") ? {} : row.kind === "marketing_investment" ? { cost_basis: "total" as const, current_amount: operatingExpenseAmount(expense), cadence: expense.cadence ?? "monthly" } : { cost_basis: expense.cost_basis ?? "total", unit_label: expense.unit_label ?? "", current_units_per_period: expense.current_units_per_period,
         current_unit_cost: expense.current_unit_cost, current_fixed_amount: expense.current_fixed_amount, current_amount: expense.cost_basis === "per_unit" ? null : expense.current_amount,
         ...(expense.cost_basis === "per_unit" ? { proposed_amount: null } : {}), cadence: expense.cadence }),
+      ...(dimensionChanged && ["expense_reduction", "expense_increase", "marketing_investment"].includes(row.kind ?? "") ? { proposed_amount: null, proposed_units_per_period: null, proposed_unit_cost: null, proposed_fixed_amount: null } : {}),
       ...("label" in patch ? { label: expense.label } : {}),
       ...("source_file_ids" in patch ? { source_file_ids: [...new Set([...(row.source_file_ids ?? []).filter(file => !priorEvidence.has(file)), ...(expense.source_file_ids ?? [])])] } : {}),
     })),
