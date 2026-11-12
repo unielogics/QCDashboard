@@ -55,6 +55,9 @@ export function ppmNeedsRefresh(state: MarketplacePpm) {
   if (!state.current_draft && state.current_approved && !state.current_approved.stale && state.current_approved.source_fingerprint === state.source_fingerprint) return false;
   return !state.current_draft || state.current_draft.stale || state.current_draft.source_fingerprint !== state.source_fingerprint;
 }
+export function ppmNeedsPreparation(state: MarketplacePpm) {
+  return !ppmIsLegacy(state) && (ppmNeedsRefresh(state) || state.missing.some(item => item.required && item.section === "snapshot"));
+}
 export function ppmCanReview(state: MarketplacePpm | undefined, dirty: boolean, conflict: boolean) {
   const draft = state?.current_draft;
   return Boolean(draft && !state?.draft_upgrade_available && !draft.stale && draft.source_fingerprint === state?.source_fingerprint && !state?.missing.some(item => item.required) && !dirty && !conflict && !(state?.current_approved?.document_id === draft.document_id && !state.current_approved.stale));

@@ -147,6 +147,8 @@ jobs:
           src/components/application/RequirementUseOfFundsActions.tsx
           tests/ppm-review-flow.spec.ts
           tests/fixtures/ppmReviewFlow.ts
+          src/lib/marketplacePublication.ts
+          src/lib/__tests__/marketplacePublication.test.ts
 
       - name: Build production frontend
         run: pnpm build

@@ -9,7 +9,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Btn, CellChip, StatusLine } from "@/components/ds";
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
 import { useCpListingAction, useCpProfilePublication, useCpSourceLookup, type CpListing, type CpSyncState } from "@/hooks/useCapitalPartners";
-import { marketplacePublicationState, type MarketplacePublicationState } from "@/lib/marketplacePublication";
+import { marketplacePublicationState, marketplaceReviewHref, type MarketplacePublicationState } from "@/lib/marketplacePublication";
 import { dedupeMarketplaceIssues, marketplaceApiIssues, marketplacePublishIssues, type MarketplaceIssue } from "@/lib/marketplaceIssues";
 import { MarketplaceIssues } from "./MarketplaceIssues";
 
@@ -79,6 +79,13 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
       }
     }
   };
+  const packageTools = listingId ? <>
+          <SyncChips sync={sync} />
+          <Btn size="sm" disabled={act.isPending || !packageInSync} title={packageInSync ? undefined : "Refresh the investor package before updating its listing documents."} onClick={() => void run(`/capital/admin/listings/${listingId}/publish-package`, "The listing package and financial figures were updated. A draft still needs Publish offer in the listing editor before members can see it.")}>
+            {act.isPending ? "Updating…" : "Update listing package"}
+          </Btn>
+          <Btn size="sm" disabled={act.isPending} onClick={() => void run(`/capital/admin/listings/${listingId}/refresh-snapshot`, "The listing figures now match the file. Its publication status has not changed.")}>Refresh figures only</Btn>
+  </> : null;
   return (
     <div className="grid g8" data-testid="marketplace-publish-strip">
       <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -86,16 +93,12 @@ export function MarketplacePublishStrip({ profileId, listing, packageInSync, can
         {loading ? <span className="sub" role="status">Checking offer publication…</span> : failed ? <><StatusLine tone="bad">Offer publication could not be verified.</StatusLine><Btn size="sm" onClick={() => void publication.refetch()}>Retry publication status</Btn></> : offer ? <MarketplaceOfferLink listing={offer} compact={compact} /> : <CellChip tone="mut">No marketplace offer</CellChip>}
       </div>
       {canPublish && !loading && !failed ? <>
-        {listingId ? <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <SyncChips sync={sync} />
-          <Btn size="sm" variant="pri" disabled={act.isPending || !packageInSync} title={packageInSync ? undefined : "Refresh the investor package before updating its listing documents."} onClick={() => void run(`/capital/admin/listings/${listingId}/publish-package`, "The listing package and financial figures were updated. A draft still needs Publish offer in the listing editor before members can see it.")}>
-            {act.isPending ? "Updating…" : "Update listing package"}
-          </Btn>
-          <Btn size="sm" disabled={act.isPending} onClick={() => void run(`/capital/admin/listings/${listingId}/refresh-snapshot`, "The listing figures now match the file. Its publication status has not changed.")}>Refresh figures only</Btn>
-          <Link className="btn btn-sm" href={`/admin/marketplace/${listingId}`} target={fileWorkspace ? "_blank" : undefined} rel={fileWorkspace ? "noopener noreferrer" : undefined}>{offer?.status === "draft" ? "Review and publish offer" : "Manage listing"}{offer?.ref ? ` ${offer.ref}` : ""}</Link>
-        </div> : onStartListing ? fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="marketplace">Prepare marketplace listing</FileWorkspaceLink> : <Btn size="sm" onClick={onStartListing} disabled={!packageInSync}>Prepare marketplace listing</Btn> : null}
-        {!compact && listingId && sync?.published && !sync.up_to_date ? <span className="sub">Changed on the file since the last package update: {sync.changed.map(c => c.label.toLowerCase()).join(", ")}. Refresh the investor package, then update the listing package.</span> : null}
-        {!compact && !listingId ? <span className="sub">{packageInSync ? "Review the investor terms, then prepare a listing draft. Publish offer makes it available to approved capital partners." : "Generate a current investor package before preparing its marketplace listing."}</span> : null}
+        {listingId ? listing ? <details><summary>Package tools</summary><div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>{packageTools}</div></details> : <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <Link className="btn pri btn-sm" href={marketplaceReviewHref(listingId)} target={fileWorkspace ? "_blank" : undefined} rel={fileWorkspace ? "noopener noreferrer" : undefined}>Review and publish offer{offer?.ref ? ` ${offer.ref}` : ""}</Link>
+          {packageTools}
+        </div> : onStartListing ? fileWorkspace ? <FileWorkspaceLink className="btn pri btn-sm" tool="marketplace">Review and publish offer</FileWorkspaceLink> : <Btn variant="pri" size="sm" onClick={onStartListing}>Create offer draft</Btn> : null}
+        {!compact && !listing && listingId && sync?.published && !sync.up_to_date ? <span className="sub">Changed on the file since the last package update: {sync.changed.map(c => c.label.toLowerCase()).join(", ")}. Refresh the investor package, then update the listing package.</span> : null}
+        {!compact && !listingId ? <span className="sub">Create an offer draft from the saved file, then review its PPM and publication requirements. Opening this link does not create or publish an offer.</span> : null}
       </> : null}
       {note ? <StatusLine tone={note.tone}>{note.text}</StatusLine> : null}
       {!onFixIssue ? <MarketplaceIssues listingId={listingId ?? undefined} issues={dedupeMarketplaceIssues([...actionIssues, ...(listing?.status === "draft" ? marketplacePublishIssues(listing.publish_blockers, listing.publish_issues, { linked: Boolean(resolvedProfile) }) : [])])} /> : null}

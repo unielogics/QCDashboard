@@ -22,7 +22,7 @@ import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
-import { marketplacePublicationLabel, type MarketplacePublicationState } from "@/lib/marketplacePublication";
+import { marketplaceEntryHref, marketplacePublicationLabel, type MarketplacePublicationState } from "@/lib/marketplacePublication";
 import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary, useIntakeCommunicationUnread } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
@@ -1837,7 +1837,7 @@ export function LeadDetailPanel({
                     </div>
                     <UnderwriterDigest artifact={summary} />
                   </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate the investor presentation, executive summary and lender package from one evidence snapshot. Each PDF is versioned and saved in this file&apos;s room.</p></div>}
-    marketplaceContent={<><MarketplacePublishStrip profileId={profileId} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onStartListing={() => { setPackageTab("marketplace"); setCockpitFocus("marketplace"); }} />{marketplace}</>}
+    marketplaceContent={<><MarketplacePublishStrip profileId={profileId} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onStartListing={() => { setPackageTab("marketplace"); setCockpitFocus("marketplace"); }} />{!fileWorkspace ? marketplace : null}</>}
     historyContent={<div className="package-version-workspace">
                     <Callout tone="acc">The current generation is the active package in the room. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
                     <div className="package-version-columns">
@@ -1910,7 +1910,7 @@ export function LeadDetailPanel({
           { label: "Dealer partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Record loan terms", href: fileWorkspace?.href({ tool: "terms" }), newTab: Boolean(fileWorkspace), onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
-          { label: "Prepare marketplace listing", href: fileWorkspace?.href({ tool: "marketplace" }), newTab: Boolean(fileWorkspace), onSelect: () => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
+          { label: "Review and publish offer", href: marketplaceEntryHref(marketplacePublication?.profileId === detail?.application_profile_id ? marketplacePublication?.listingId : null, fileWorkspace?.intakeId), newTab: Boolean(fileWorkspace), onSelect: () => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
           { label: "Archive lead", onSelect: () => setConfirmDeleteOpen(true), hidden: !detail || !canGovern },
         ]} />
         {onMinimize ? <IconBtn aria-label="Minimize file workspace" title="Minimize" onClick={onMinimize}>

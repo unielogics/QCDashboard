@@ -17,6 +17,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { LISTING_TONE, errorMessage } from "@/components/marketplace/shared";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
+import { marketplaceEntryHref, marketplaceReviewHref } from "@/lib/marketplacePublication";
 import { useAuthedApi } from "@/hooks/useApi";
 import {
   useCpCreateListing,
@@ -419,7 +420,7 @@ export function OfferPanel({ cockpit, props, innerRef, embedded = false, working
   const editable = listingEditable && !busy;
   const preparationBlocker = planSaveControls?.profileId !== profileId || budgetControls?.profileId !== profileId ? "Loading the shared financial editors…" : planSaveControls.blocker || (budgetControls.needsSave ? budgetControls.blocker : null);
 
-if (fileWorkspace && !fileWorkspace.pageMode) return <section className="fc-card fc-wide" ref={innerRef}><h4>Marketplace setup</h4><p className="sub">Open a separate workspace from saved file data. Unsaved changes stay in this tab.</p><div className="row"><FileWorkspaceLink tool="marketplace">Open marketplace setup</FileWorkspaceLink>{listingId ? <a className="btn btn-sm" href={`/admin/marketplace/${listingId}`} target="_blank" rel="noopener noreferrer">Manage existing listing</a> : null}</div></section>;
+if (fileWorkspace && !fileWorkspace.pageMode) return <section className="fc-card fc-wide" id="fc-marketplace" ref={innerRef}><h4>Review and publish offer</h4><p className="sub">{listingId ? "Review the saved offer, its PPM and publication requirements. Unsaved file changes stay in this tab." : "Create an offer draft from saved file data, then review and publish it."}</p>{!canPublish ? <p className="sub">A super admin reviews and publishes offers.</p> : lookup.isLoading ? <p className="sub" role="status">Finding the saved offer…</p> : lookup.isError ? <StatusLine tone="bad">The saved offer could not be checked.<Btn size="sm" onClick={() => void lookup.refetch()}>Retry offer lookup</Btn></StatusLine> : <div className="row"><a className="btn pri btn-sm" href={marketplaceEntryHref(listingId, fileWorkspace.intakeId)} target="_blank" rel="noopener noreferrer">Review and publish offer</a></div>}</section>;
 
   return (
     <section className={embedded ? "grid g12" : "fc-card fc-wide"} id="fc-marketplace" ref={node => { sectionRef.current = node; if (typeof innerRef === "function") innerRef(node); else if (innerRef) (innerRef as { current: HTMLElement | null }).current = node; }}>
@@ -436,8 +437,8 @@ if (fileWorkspace && !fileWorkspace.pageMode) return <section className="fc-card
             <>
               <CellChip tone={LISTING_TONE[lookup.data.listing.status] ?? "mut"}>{lookup.data.listing.ref} · {lookup.data.listing.status.replace(/_/g, " ")}</CellChip>
               <MarketplaceOfferLink listing={lookup.data.listing} compact showStatus={false} />
-              {fileWorkspace ? <a className="btn btn-sm" href={`/admin/marketplace/${lookup.data?.listing?.id}`} target="_blank" rel="noopener noreferrer">Documents and publish <Icon name="arrowR" size={13} /></a> : <Btn size="sm" onClick={() => window.location.assign(`/admin/marketplace/${lookup.data?.listing?.id}`)}>
-                Documents and publish <Icon name="arrowR" size={13} />
+              {fileWorkspace ? <a className="btn btn-sm" href={marketplaceReviewHref(lookup.data.listing.id)} target="_blank" rel="noopener noreferrer">Review and publish offer <Icon name="arrowR" size={13} /></a> : <Btn size="sm" onClick={() => window.location.assign(marketplaceReviewHref(lookup.data!.listing!.id))}>
+                Review and publish offer <Icon name="arrowR" size={13} />
               </Btn>}
             </>
           ) : null}
@@ -608,7 +609,7 @@ if (fileWorkspace && !fileWorkspace.pageMode) return <section className="fc-card
           {preparationBlocker ? <StatusLine tone="warn">{preparationBlocker}{props.onStructureLoan ? (fileWorkspace ? <FileWorkspaceLink tool="terms" disabled={busy}>Review shared loan / full terms</FileWorkspaceLink> : <Btn size="sm" onClick={props.onStructureLoan} disabled={busy}>Review shared loan / full terms</Btn>) : null}</StatusLine> : null}
           {listingId && !embedded ? <MarketplacePublishStrip profileId={profileId} packageInSync={packageState.inSync} canPublish={canPublish} compact /> : null}
           <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-            <Btn variant="pri" size="sm" aria-label={listingId ? "Save & refresh listing from file" : "Save & create listing draft"} onClick={() => void save()} disabled={busy || !listingEditable || lookup.isLoading || !primary || recordedReferenceOnly || !!repaymentError || Boolean(preparationBlocker) || Boolean(planSaveControls?.busy || budgetControls?.busy)}>
+            <Btn variant={listingId ? undefined : "pri"} size="sm" aria-label={listingId ? "Save & refresh listing from file" : "Save & create listing draft"} onClick={() => void save()} disabled={busy || !listingEditable || lookup.isLoading || !primary || recordedReferenceOnly || !!repaymentError || Boolean(preparationBlocker) || Boolean(planSaveControls?.busy || budgetControls?.busy)}>
               {busy ? stage || "Preparing listing…" : listingId ? "Save & refresh listing from file" : "Save & create listing draft"}
             </Btn>
             {dirty ? <span className="sub">Unsaved changes.</span> : null}
