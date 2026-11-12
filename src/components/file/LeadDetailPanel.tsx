@@ -17,13 +17,13 @@ import { FileTeamStrip } from "@/components/file/FileTeamStrip";
 import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
 import { DealerTermSheetDocumentActions } from "@/components/admin/DealerTermSheetDocumentActions";
-import { api } from "@/lib/api";
+import { ApiError, api } from "@/lib/api";
 import { isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, documentUploadErrorMessage, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { Role } from "@/lib/enums.generated";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
 import { marketplaceEntryHref, marketplacePublicationLabel, type MarketplacePublicationState } from "@/lib/marketplacePublication";
-import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary, useIntakeCommunicationUnread } from "@/hooks/useApi";
+import { useCurrentUser, useBookingLink, useDriveFiles, type DriveFile, useClientTermsSummary, useIntakeCommunicationUnread, useMoveOperatorPipelineFile } from "@/hooks/useApi";
 import { LeadCockpit, type LeadCockpitAdapter, type ClientThreadMessage, type ClientThreadResponse } from "@/components/admin/LeadCockpit";
 import { LeadCreditPanel } from "@/components/admin/LeadCreditPanel";
 import { LeadContractsPanel } from "@/components/admin/LeadContractsPanel";
@@ -577,6 +577,7 @@ export function LeadDetailPanel({
   onClose,
   onMinimize,
   onExport,
+  onRefresh,
   onGenerateSummary,
   onGeneratePacket,
   onGeneratePackage,
@@ -623,6 +624,7 @@ export function LeadDetailPanel({
   /** Absent when the panel is the page: there is nothing to minimise into. */
   onMinimize?: () => void;
   onExport: () => Promise<void> | void;
+  onRefresh: () => Promise<void>;
   onGenerateSummary: () => Promise<void> | void;
   onGeneratePacket: () => Promise<void> | void;
   onGeneratePackage: (options?: PackageGenerationOptions) => Promise<PackageReadinessGeneration>;
@@ -648,6 +650,7 @@ export function LeadDetailPanel({
   const toast = useToast();
   const fileWorkspace = useFileWorkspace();
   const { getToken } = useConsoleAuth();
+  const movePipeline = useMoveOperatorPipelineFile();
   const bookingLink = useBookingLink();
   const { data: currentUser } = useCurrentUser();
   const canUnderwrite = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.LOAN_EXEC;
@@ -765,6 +768,8 @@ export function LeadDetailPanel({
   const [underwritingDraft, setUnderwritingDraft] = useState<UnderwritingDraft>(() => emptyUnderwritingDraft());
   const [underwritingLoading, setUnderwritingLoading] = useState(false);
   const [underwritingSaving, setUnderwritingSaving] = useState(false);
+  const underwritingSavingRef = useRef(false);
+  const [fileRevision, setFileRevision] = useState(0);
   const [underwritingError, setUnderwritingError] = useState<string | null>(null);
   const [pendingApprovalPatch, setPendingApprovalPatch] = useState<ApplicationUnderwritingPatch | null>(null);
   const [approvalDraft, setApprovalDraft] = useState<PipelineApprovalDraft>(() => pipelineApprovalDraft());
@@ -1140,8 +1145,8 @@ export function LeadDetailPanel({
     }
   }, [canUnderwrite, getToken, loadUnderwritingState, profileId]);
 
-  const refreshUnderwritingInPlace = useCallback(async (syncClientResponse = false) => {
-    const activeProfileId = underwriting?.profile_id ?? profileId;
+  const refreshUnderwritingInPlace = useCallback(async (syncClientResponse = false, resolvedProfileId?: string | null) => {
+    const activeProfileId = resolvedProfileId ?? underwriting?.profile_id ?? profileId;
     if (!activeProfileId || !canUnderwrite) return;
     try {
       const authToken = await getToken();
@@ -1179,24 +1184,37 @@ export function LeadDetailPanel({
   }
 
   async function saveUnderwritingPatch(patch: ApplicationUnderwritingPatch): Promise<boolean> {
-    if (!detail || !canUnderwrite) return false;
+    if (!detail || !canUnderwrite || underwritingSavingRef.current) return false;
+    underwritingSavingRef.current = true;
     setUnderwritingSaving(true);
     setUnderwritingError(null);
+    let currentState = underwriting;
+    let lifecycleSaved = false;
+    let activeProfileId = underwriting?.profile_id ?? profileId;
     try {
       const authToken = await getToken();
-      let profileId = underwriting?.profile_id;
-      if (!profileId) {
+      if (!activeProfileId) {
         const profile = await api<ApplicationProfile>("/application-profiles/resolve", {
           method: "POST",
           authToken: authToken ?? undefined,
           body: JSON.stringify({ source_kind: "intake", source_id: detail.intake.id }),
         });
-        profileId = profile.id;
+        activeProfileId = profile.id;
+        setProfileId(profile.id);
       }
-      const statusChanged = Boolean(patch.underwriting_status && patch.underwriting_status !== underwriting?.underwriting_status);
+      // Terms and other operators can advance the file while this panel is
+      // open. Compare this command against a fresh read, not its initial load.
+      if (patch.underwriting_status) {
+        currentState = await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting?include_financing=false`, {
+          authToken: authToken ?? undefined,
+        });
+        setUnderwriting(currentState);
+      }
+      const statusChanged = Boolean(patch.underwriting_status && patch.underwriting_status !== currentState?.underwriting_status);
       const isApprovalMove = statusChanged && patch.underwriting_status === "approved";
       const remainingPatch = { ...patch };
-      if (statusChanged) delete remainingPatch.underwriting_status;
+      // Lifecycle writes always use pipeline-move, including its race check.
+      delete remainingPatch.underwriting_status;
       if (isApprovalMove) {
         // Approval details belong to the lifecycle transaction below. Keep
         // unrelated reviewer fields (for example, policy target DSCR) out of
@@ -1206,7 +1224,7 @@ export function LeadDetailPanel({
         delete remainingPatch.approved_dscr;
         delete remainingPatch.reviewer_notes;
         if (Object.keys(remainingPatch).length) {
-          await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
+          await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting`, {
             method: "PATCH",
             authToken: authToken ?? undefined,
             body: JSON.stringify(remainingPatch),
@@ -1216,7 +1234,7 @@ export function LeadDetailPanel({
       if (statusChanged) {
         const moveBody: PipelineMoveRequest = {
           target_status: patch.underwriting_status!,
-          expected_status: underwriting?.underwriting_status ?? "collecting_docs",
+          expected_status: currentState!.underwriting_status,
           note: patch.reviewer_notes || undefined,
         };
         if (patch.underwriting_status === "approved") {
@@ -1224,30 +1242,51 @@ export function LeadDetailPanel({
           moveBody.approved_dscr = patch.approved_dscr ?? null;
           moveBody.note = patch.reviewer_notes ?? null;
         }
-        await api(`/operator-files/intake/${detail.intake.id}/pipeline-move`, {
-          method: "POST",
-          authToken: authToken ?? undefined,
-          body: JSON.stringify(moveBody),
+        const moved = await movePipeline.mutateAsync({
+          sourceKind: "intake",
+          sourceId: detail.intake.id,
+          body: moveBody,
         });
+        lifecycleSaved = true;
+        setUnderwriting((current) => current ? { ...current, underwriting_status: moved.underwriting_status, loan_id: moved.loan_id } : current);
+        setUnderwritingDraft((current) => ({ ...current, underwriting_status: moved.underwriting_status }));
       }
       const updated = !isApprovalMove && Object.keys(remainingPatch).length
-        ? await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
+        ? await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting`, {
             method: "PATCH",
             authToken: authToken ?? undefined,
             body: JSON.stringify(remainingPatch),
           })
-        : await api<ApplicationUnderwritingState>(`/application-profiles/${profileId}/underwriting`, {
+        : await api<ApplicationUnderwritingState>(`/application-profiles/${activeProfileId}/underwriting?include_financing=false`, {
             authToken: authToken ?? undefined,
           });
       setUnderwriting(updated);
       setUnderwritingDraft(underwritingDraftFromState(updated));
+      setFileRevision((current) => current + 1);
+      await Promise.all([
+        onRefresh(),
+        ...(needsProgramReadiness || programReadiness !== null ? [refreshProgramReadiness()] : []),
+      ]);
       toast.show(statusChanged ? "Pipeline status updated." : "Underwriting fields saved.");
       return true;
     } catch (reason) {
-      setUnderwritingError(apiErrorMessage(reason, "Underwriting could not be saved."));
-      toast.show(apiErrorMessage(reason, "Underwriting could not be saved."));
+      if ((reason instanceof ApiError && reason.status === 409) || lifecycleSaved) {
+        // Refresh the local control as well as the query cache. Keep unrelated
+        // draft fields so a concurrent change does not erase the operator's work.
+        await Promise.all([refreshUnderwritingInPlace(false, activeProfileId), onRefresh()]);
+        setFileRevision((current) => current + 1);
+      } else if (currentState) {
+        const restoredStatus = currentState.underwriting_status;
+        setUnderwritingDraft((current) => ({ ...current, underwriting_status: restoredStatus }));
+      }
+      const message = lifecycleSaved
+        ? `Pipeline status updated, but the remaining file changes could not be refreshed. ${apiErrorMessage(reason, "Try refreshing the file.")}`
+        : apiErrorMessage(reason, "Underwriting could not be saved.");
+      setUnderwritingError(message);
+      toast.show(message);
       return false;
     } finally {
+      underwritingSavingRef.current = false;
       setUnderwritingSaving(false);
     }
   }
@@ -1269,17 +1308,15 @@ export function LeadDetailPanel({
   }
 
   function changeUnderwritingStatus(statusValue: UnderwritingLifecycleStatus) {
-    const forecastPatch: Pick<ApplicationUnderwritingPatch, "accepted_amount" | "estimated_close_date" | "funded_amount"> = {
-      accepted_amount: numberOrNull(underwritingDraft.accepted_amount),
-      estimated_close_date: underwritingDraft.estimated_close_date || null,
-      funded_amount: numberOrNull(underwritingDraft.funded_amount),
-    };
+    if (underwritingSavingRef.current) return;
+    // A status command must not save unrelated draft fields. The header is
+    // available before lazy underwriting reads and economics have their own save.
     if (statusValue === "approved" && underwriting?.underwriting_status !== "approved") {
-      openApproval({ underwriting_status: statusValue, reviewer_notes: underwritingDraft.reviewer_notes.trim() || null, ...forecastPatch });
+      openApproval({ underwriting_status: statusValue });
       return;
     }
     setUnderwritingDraft((current) => ({ ...current, underwriting_status: statusValue }));
-    void saveUnderwritingPatch({ underwriting_status: statusValue, reviewer_notes: underwritingDraft.reviewer_notes.trim() || null, ...forecastPatch });
+    void saveUnderwritingPatch({ underwriting_status: statusValue });
   }
 
   function openApproval(patch: ApplicationUnderwritingPatch) {
@@ -1880,7 +1917,7 @@ export function LeadDetailPanel({
         {detail && canUnderwrite ? <ActionIcon icon="bell" label="Choose who is notified about this file" onClick={() => setNotificationRoutingOpen(true)} /> : null}
         {detail && canUnderwrite ? (
           <Select
-            value={underwritingDraft.underwriting_status}
+            value={underwriting || underwritingSaving ? underwritingDraft.underwriting_status : detail.intake.underwriting_status ?? underwritingDraft.underwriting_status}
             disabled={underwritingLoading || underwritingSaving}
             onChange={(event) => changeUnderwritingStatus(event.target.value as UnderwritingLifecycleStatus)}
             aria-label="Underwriting lifecycle status"
@@ -2242,7 +2279,7 @@ export function LeadDetailPanel({
                   <div className="intake-channel-tabs" role="tablist" aria-label="Intake communication channel">
                     {([['updates', 'Updates'], ['underwriter', 'Underwriter AI'], ['client', 'Client conversation'], ['email', 'Email'], ['partner', 'Partner channel'], ['internal', 'Internal notes']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={communicationChannel === id} className={communicationChannel === id ? "on" : undefined} onClick={() => navigateCommunication(id)}>{label}{id === "client" ? <CommunicationUnreadBadge count={smsUnread} channel="SMS" /> : id === "email" ? <CommunicationUnreadBadge count={emailUnread} channel="email" /> : null}</button>)}
                   </div>
-                  {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" /> : null}
+                  {communicationChannel === "updates" ? <FileTimeline profileId={profileId} tier="desk" refreshKey={fileRevision} /> : null}
                   {communicationChannel === "underwriter" ? (cockpitResponse && cockpitAdapter ? <div className="intake-underwriter-stage"><LeadCockpit hideFinancialForms response={cockpitResponse} adapter={cockpitAdapter} variant={detail.intake.variant} initialMessages={detail.messages} onResponse={handleCockpitResponse} onRequestRerun={onRerun} programReadiness={programReadiness} /></div> : <div className="empty">Loading the private underwriting conversation...</div>) : null}
                   {communicationChannel === "client" && cockpitAdapter ? <AIIntakeClientConversation adapter={cockpitAdapter} intakeId={detail.intake.id} profileId={underwriting?.profile_id ?? profileId} clientName={detail.intake.full_name} /> : null}
                   {communicationChannel === "email" ? communicationProfileId ? <AIIntakeEmailWorkspace key={communicationProfileId} profileId={communicationProfileId} intakeId={detail.intake.id} initialThreadId={initialEmailThreadId} onThreadNavigate={onEmailThreadNavigate} clientName={detail.intake.full_name} contactSuppressed={Boolean(detail.intake.client_contact_suppressed)} offerSelectionCount={availableOfferSelections.length} onComposeOffer={openCurrentOffersComposer} /> : <div className="empty">Email is unavailable until this file’s communication profile can be loaded.</div> : null}

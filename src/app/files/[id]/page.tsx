@@ -98,6 +98,7 @@ export default function FilePage() {
         canDelete={isDesk}
         onClose={() => router.push(LIST_HREF)}
         onExport={file.exportPdf}
+        onRefresh={file.reload}
         onGenerateSummary={file.generateExecutiveSummary}
         onGeneratePacket={file.generateLenderPacket}
         onGeneratePackage={file.generatePackageReadiness}
