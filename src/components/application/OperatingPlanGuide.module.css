@@ -4,3 +4,9 @@
 .guide>*{min-width:0;max-width:100%}
 
 .guide details>*{min-width:0;max-width:100%}
+
+.navigation{position:sticky;bottom:0;z-index:4;background:var(--surface,#fff);padding:12px;border:1px solid var(--line,#dce1e8);border-radius:8px;box-shadow:0 -4px 12px #00000008}.guide>header h3{font-size:23px}.guide>details{border-top:1px solid var(--line,#dce1e8)}
+
+.navigation>button:last-child{background:var(--brand,#3157b7);border-color:var(--brand,#3157b7);color:#fff;font-weight:650}.navigation>button:disabled{opacity:.45;cursor:not-allowed}.guide [aria-invalid=true]{border-color:var(--danger,#a5372b)}@media(max-width:600px){.navigation{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;min-height:62px;padding:8px}.navigation>span{min-width:0;text-align:center;font-size:12px}.navigation>button{width:auto!important;min-height:42px;max-width:150px;font-size:13px}}
+
+.guide .check{display:flex;flex-direction:row;align-items:flex-start;gap:8px}.guide .check input{flex:0 0 auto;width:16px;margin-top:2px}

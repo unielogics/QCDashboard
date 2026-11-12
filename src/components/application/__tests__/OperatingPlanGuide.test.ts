@@ -13,7 +13,20 @@ describe("guided operating plan presentation", () => {
     const guidance = { business: { name: "Synthetic studio", industry: "Services" }, reporting: { source_label: "2025 business return", currency: "USD" }, expense_groups: [{ key: "rent", label: "Office rent", category: "rent", baseline_annual_amount: 24000, currency: "USD", year: 2025, source_file_ids: ["tax"], notes: [], source_fact_keys: [] }], essentials: [], action_templates: [], warnings: [] } as unknown as OperatingGuidance;
     const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: {}, onChange: () => { changes++; }, guidance, evidence: { expense_candidates: [{ source_candidate_key: "bank:rent", label: "Bank rent", current_amount: 2000, cadence: "monthly", source_file_ids: ["bank"] }] } }));
     expect(changes).toBe(0);
-    for (const text of ["Choose source costs", "Confirm current expenses", "Plan your changes", "Compare results", "Add Office rent for review", "Add statement suggestion", "Suggestions from supporting documents"]) expect(html).toContain(text);
+    for (const text of ["Confirm source", "Itemize current costs", "Plan changes", "Review and save", "Add Office rent for review", "Add statement suggestion", "Suggestions from supporting documents"]) expect(html).toContain(text);
+  });
+  it("keeps empty categories available through a compact explicit activity chooser without creating rows", () => {
+    let changes = 0;
+    const value = { expenses: [], adjustments: [] };
+    const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value, stepIndex: 2, onChange: () => { changes++; } }));
+    expect(changes).toBe(0);
+    expect(value).toEqual({ expenses: [], adjustments: [] });
+    expect(html).toContain("Add activity in another category");
+    expect(html).toContain("No changes planned");
+    expect(html).not.toContain("Annual effect before setup costs");
+    expect(html).toContain('aria-label="New activity category"');
+    expect(html).toContain("Add new activity (current cost 0)");
+    expect(html).not.toContain('aria-label="Planned category');
   });
   it("keeps independent NOI visible while missing DSCR stays unknown and pending reviews stay distinct", () => {
     const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation }));
