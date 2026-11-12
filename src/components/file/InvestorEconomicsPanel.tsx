@@ -1,5 +1,6 @@
 "use client";
 
+import type { Ref } from "react";
 import { Btn, Input, Select } from "@/components/ds";
 import type { DealBudgetCalculation, DealBudgetWrite, DealCostRow, DealInvestorScenario, DealPayoffTerms } from "@/lib/dealBudget";
 import { investorAmount, investorFeeStatus, investorMissingAssumption, investorMoney } from "@/lib/investorEconomics";
@@ -36,13 +37,14 @@ function Scenario({ title, scenario, rows, currency, pending }: { title: string;
   </article>;
 }
 
-export function InvestorEconomicsPanel({ value, calculation, pending, disabled, onChange }: { value: DealBudgetWrite; calculation?: DealBudgetCalculation; pending: boolean; disabled: boolean; onChange: (patch: Partial<DealBudgetWrite>) => void }) {
+export function InvestorEconomicsPanel({ value, calculation, pending, disabled, onChange, onViewMonthlyReturns, payoffHeadingRef }: { value: DealBudgetWrite; calculation?: DealBudgetCalculation; pending: boolean; disabled: boolean; onChange: (patch: Partial<DealBudgetWrite>) => void; onViewMonthlyReturns?: () => void; payoffHeadingRef?: Ref<HTMLHeadingElement> }) {
   const payoff: DealPayoffTerms = { interest_policy: "unknown", minimum_interest_months: null, charge_amount: null, charge_recipient: "unknown", reserve_release: "unknown", ...value.payoff_terms };
   const changePayoff = (patch: Partial<DealPayoffTerms>) => onChange({ payoff_terms: { ...payoff, ...patch } });
   return <section className={styles.section} aria-label="Investor net return comparison">
     <div><h3>Investor NET returns</h3><p className={styles.note}>Compare a full payoff at six months with payments through the full contractual term. The saved loan schedule, investor participation and applicable fee rows supply these illustrations. Defaults, delays and unrecorded charges can change actual returns.</p></div>
+    {onViewMonthlyReturns ? <div><Btn onClick={onViewMonthlyReturns} disabled={pending}>View working monthly returns</Btn><p className={styles.note}>Server-calculated preview of this editor’s loan and fees. Unsaved changes remain separate from the saved offering.</p></div> : null}
     <section className={styles.setup} aria-label="Early payoff assumptions">
-      <div><h4>Confirm early payoff terms</h4><p className={styles.note}>Use the contracted payoff treatment. Unknown terms leave the early-payoff NET result unconfirmed.</p></div>
+      <div><h4 ref={payoffHeadingRef} tabIndex={-1}>Confirm early payoff terms</h4><p className={styles.note}>Use the contracted payoff treatment. Unknown terms leave the early-payoff NET result unconfirmed.</p></div>
       <div className={styles.fields}>
         <label className={styles.field}>Interest due at early payoff<Select aria-label="Early payoff interest policy" value={payoff.interest_policy} disabled={disabled} onChange={event => changePayoff({ interest_policy: event.target.value as DealPayoffTerms["interest_policy"] })}><option value="unknown">Not confirmed</option><option value="accrued_only">Accrued interest only</option><option value="minimum_months">Contractual minimum interest months</option></Select></label>
         {payoff.interest_policy === "minimum_months" ? <label className={styles.field}>Minimum interest months<Input aria-label="Minimum interest months at payoff" type="number" min={1} step={1} value={payoff.minimum_interest_months ?? ""} disabled={disabled} onChange={event => changePayoff({ minimum_interest_months: event.target.value === "" ? null : Number(event.target.value) })} /></label> : null}
@@ -52,7 +54,7 @@ export function InvestorEconomicsPanel({ value, calculation, pending, disabled, 
       </div>
       <div><Btn size="sm" disabled={disabled} onClick={() => changePayoff({ charge_amount: 0 })}>Confirm no additional payoff charge</Btn></div>
     </section>
-    <div className={styles.scenarios}><Scenario title="Six-month full payoff" scenario={calculation?.investor_scenarios?.six_month_payoff} rows={value.rows} currency={value.currency} pending={pending} /><Scenario title="Full contractual term" scenario={calculation?.investor_scenarios?.full_term} rows={value.rows} currency={value.currency} pending={pending} /></div>
+    <details><summary>Six-month and full-term details</summary><div className={styles.scenarios}><Scenario title="Six-month full payoff" scenario={calculation?.investor_scenarios?.six_month_payoff} rows={value.rows} currency={value.currency} pending={pending} /><Scenario title="Full contractual term" scenario={calculation?.investor_scenarios?.full_term} rows={value.rows} currency={value.currency} pending={pending} /></div></details>
     <p className={styles.note}>If the loan matures before month six, the payoff scenario ends at that earlier maturity. The server calculates the remaining principal and accrued charges; future interest is not assumed unless a confirmed minimum-interest provision applies.</p>
   </section>;
 }

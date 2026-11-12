@@ -1,13 +1,14 @@
 "use client";
 import { useFileWorkspace, useFileWorkspaceDirty } from "@/components/file/FileWorkspaceContext";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import dynamic from "next/dynamic";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Btn, Callout, Input, Select, Textarea } from "@/components/ds";
 import { FinancialEditorSurface } from "./FinancialEditorSurface";
 import { Icon } from "@/components/design-system/Icon";
 import { PreparationProgress } from "@/components/design-system/PreparationProgress";
-import { useAuthedApi } from "@/hooks/useApi";
+import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { useAutomaticFinancedPrincipal } from "@/hooks/useAutomaticFinancedPrincipal";
 import { useDealBudgetPreview } from "@/hooks/useDealBudgetPreview";
@@ -20,20 +21,30 @@ import { hasNewerMarketplaceBudgetDraft, marketplaceBudgetDraftFingerprint, type
 import { CompanyFeeControls } from "./CompanyFeeControls";
 import { InvestorEconomicsPanel } from "./InvestorEconomicsPanel";
 import { focusMarketplaceControl } from "@/lib/marketplaceGuidanceFocus";
+import type { InvestorProjectionRequest, InvestorReturnProjection } from "@/components/investor/investorReturnModel";
+const InvestorReturnExplorer = dynamic(() => import("@/components/investor/InvestorReturnExplorer").then(module => module.InvestorReturnExplorer), { ssr: false, loading: () => <p role="status">Loading monthly returns…</p> });
 
 const numeric = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : typeof value === "string" && value.trim() && Number.isFinite(Number(value)) ? Number(value) : null;
 function amount(calc: DealBudgetCalculation | undefined, key: string) { return numeric(calc?.[key]); }
 function messages(calc: DealBudgetCalculation | undefined, key: string): string[] { const values = calc?.[key]; return Array.isArray(values) ? values.map(value => typeof value === "string" ? value : JSON.stringify(value)) : []; }
-function Metric({ label, value, percent = false }: { label: string; value: number | null; percent?: boolean }) { return <div><small>{label}</small><strong>{value == null ? "Not established" : percent ? `${value.toFixed(2)}%` : money(value, 2)}</strong></div>; }
+function Metric({ label, value, percent = false, inline = false }: { label: string; value: number | null; percent?: boolean; inline?: boolean }) { const Element = inline ? "span" : "div"; return <Element><small>{label}</small><strong>{value == null ? "Not established" : percent ? `${value.toFixed(2)}%` : money(value, 2)}</strong></Element>; }
 
 /** One cost and capital record, with one retained staff draft across financing tabs. */
 export function DealBudgetSection({ profileId, disabled, onSaved, compact = true, loan, existingFunding, title = "Investment and closing costs", inline = false, onPending, financialPlan, onApplySolvedPrincipal, onFinancingSaved, onGrossAmountChange, saveWithTerms = false, onSaveControlsChange, companyFeesRequest = 0 }: { profileId: string; disabled?: boolean; onSaved?: () => Promise<unknown> | void; compact?: boolean; loan?: DealBudgetLoan | null; existingFunding?: { capital: number | null; minimum: number | null }; title?: string; inline?: boolean; onPending?: (pending: boolean) => void; financialPlan?: FinancialPlanWrite | null; onApplySolvedPrincipal?: (amount: number) => void; onFinancingSaved?: (plan: FinancialPlanRead) => void; onGrossAmountChange?: (amount: number | null) => void; saveWithTerms?: boolean; onSaveControlsChange?: (controls: MarketplaceBudgetControls | null) => void; companyFeesRequest?: number }) {
   const fileWorkspace = useFileWorkspace();
+  const staff = useCurrentUser();
+  const returnsScope = `${staff.authScope ?? staff.data?.id ?? "unresolved"}:${profileId}`;
+  const canViewReturns = staff.authReady !== false && Boolean(staff.data?.id);
   const api = useAuthedApi(), queryClient = useQueryClient(), query = useDealBudget(profileId);
   const [open, setOpen] = useState(inline), [busy, setBusy] = useState(false), [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [refreshWarning, setRefreshWarning] = useState("");
+  const [returnsOpen, setReturnsOpen] = useState(false);
+  const [returnsMode, setReturnsMode] = useState<"saved" | "working">("saved");
   const liveRef = useRef<HTMLElement | null>(null);
   const companyFeesHeading = useRef<HTMLHeadingElement | null>(null);
+  const payoffHeading = useRef<HTMLHeadingElement | null>(null);
+  const [payoffFocus, setPayoffFocus] = useState(0);
+  const handledPayoffFocus = useRef(0);
   const [companyFeesFocus, setCompanyFeesFocus] = useState(0);
   const handledCompanyFeesFocus = useRef(0);
   const lastCompanyFeesRequest = useRef({ profileId, sequence: companyFeesRequest });
@@ -52,6 +63,18 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const live = useDealBudgetPreview(profileId, { enabled: open || dirty, value, loan, financialPlan: previewPlan });
   const preview = live.data?.calculation ?? null, previewing = live.pending;
   const previewError = live.error instanceof Error ? live.error.message : live.error ? "The working budget could not be calculated." : "";
+  const loadSavedReturns = useCallback((request: InvestorProjectionRequest, signal: AbortSignal) => {
+    const query = new URLSearchParams({ exit_month: String(request.exit_month) });
+    if (request.investment_amount != null) query.set("investment_amount", String(request.investment_amount));
+    return api<InvestorReturnProjection>(`/application-profiles/${encodeURIComponent(profileId)}/investor-returns?${query}`, { signal });
+  }, [api, profileId]);
+  const loadWorkingReturns = useCallback((request: InvestorProjectionRequest, signal: AbortSignal) => {
+    if (!value) throw new Error("Load the shared budget before viewing its working returns.");
+    const query = new URLSearchParams({ exit_month: String(request.exit_month) });
+    if (request.investment_amount != null) query.set("investment_amount", String(request.investment_amount));
+    return api<InvestorReturnProjection>(`/application-profiles/${encodeURIComponent(profileId)}/investor-returns/preview?${query}`, { method: "POST", signal, body: JSON.stringify({ ...value, ...(loan ? { loan } : {}), ...(previewPlan ? { financial_plan: previewPlan } : {}) }) });
+  }, [api, profileId, value, loan, previewPlan]);
+  useEffect(() => { setReturnsOpen(false); }, [returnsScope]);
   useEffect(() => { setOpen(inline); setError(""); setNotice(""); setRefreshWarning(""); }, [profileId, inline]);
   useEffect(() => {
     const previous = lastCompanyFeesRequest.current;
@@ -67,6 +90,14 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
       return heading && !heading.closest('[aria-hidden="true"], [inert]') ? heading : null;
     }, styles.feeFocus);
   }, [open, companyFeesFocus, profileId]);
+  useEffect(() => {
+    if (!open || !payoffFocus || handledPayoffFocus.current === payoffFocus) return;
+    handledPayoffFocus.current = payoffFocus;
+    return focusMarketplaceControl(() => {
+      const heading = payoffHeading.current;
+      return heading && !heading.closest('[aria-hidden="true"], [inert]') ? heading : null;
+    }, styles.feeFocus);
+  }, [open, payoffFocus, profileId]);
   useEffect(() => { onPending?.(busy); }, [busy, onPending]);
   useEffect(() => () => onPending?.(false), [onPending]);
   useEffect(() => {
@@ -142,13 +173,13 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
   const saveBlocker = query.isPending ? "Loading the shared deal budget…" : query.isError ? "Load the shared deal budget before saving the listing." : !saved?.can_edit ? "The deal budget is read-only." : conflict ? "The budget changed in another session. Review or discard the conflicting cost draft." : previewing ? "Calculating the pending cost changes…" : previewError || (solution && solution.status !== "calculated" ? "Complete the missing cost inputs before saving." : null);
   useEffect(() => { onSaveControlsChange?.({ profileId, needsSave: dirty || needsPrincipalSave, busy, blocker: saveBlocker, persist: persistControl }); return () => onSaveControlsChange?.(null); }, [onSaveControlsChange, profileId, dirty, needsPrincipalSave, busy, saveBlocker, persistControl]);
   useAutomaticFinancedPrincipal(live, currentGross, amount => onApplySolvedPrincipal?.(amount), !saveWithTerms && Boolean(onApplySolvedPrincipal) && canEdit);
-  const summaryCalc = dirty ? preview ?? undefined : saved?.calculation;
+  const summaryCalc = saved?.calculation;
   const warnings = messages(calc, "issues");
   const feeCoverage = calc?.financing_fee_coverage && typeof calc.financing_fee_coverage === "object" ? calc.financing_fee_coverage as Record<string, unknown> : null;
   return <>
     {!inline ? <section className={styles.summary} aria-label={title}>
       <div className={styles.head}><div><strong>{title}</strong><p>{dirty ? "Working cost changes are retained · awaiting Save budget" : "One shared budget for the loan, investor capital and financing costs"}</p></div><div className={styles.summaryActions}><Btn size="sm" onClick={() => { setOpen(true); setCompanyFeesFocus(current => current + 1); }} disabled={query.isPending || disabled || busy}>Company fees &amp; investor return</Btn><Btn size="sm" onClick={() => setOpen(true)} disabled={query.isPending || disabled || busy}><Icon name="calc" size={14} />{saved?.can_edit ? "Edit deal budget" : "View deal budget"}</Btn></div></div>
-      {query.isPending ? <span className={styles.note}>Loading the saved financing budget…</span> : query.isError ? <Callout tone="warn">Budget unavailable. <Btn size="sm" onClick={() => void query.refetch()}>Retry budget</Btn></Callout> : <div className={styles.stats}><Metric label="Gross loan" value={amount(summaryCalc, "gross_loan_amount")} /><Metric label="Capital to raise" value={amount(summaryCalc, "investor_funding_amount")} /><Metric label="Client net proceeds" value={amount(summaryCalc, "net_client_cash")} /><Metric label="Projected investor net profit" value={amount(summaryCalc, "investor_net_income")} />{!compact ? <Metric label="Investor net ROI · full term" value={amount(summaryCalc, "investor_net_roi_pct")} percent /> : null}</div>}
+      {query.isPending ? <span className={styles.note}>Loading the saved financing budget…</span> : query.isError ? <Callout tone="warn">Budget unavailable. <Btn size="sm" onClick={() => void query.refetch()}>Retry budget</Btn></Callout> : <button type="button" className={styles.returnsSummary} disabled={!canViewReturns} onClick={() => { setReturnsMode("saved"); setReturnsOpen(true); }} aria-label="View monthly returns"><span className={styles.stats}><Metric inline label="Gross loan" value={amount(summaryCalc, "gross_loan_amount")} /><Metric inline label="Capital to raise" value={amount(summaryCalc, "investor_funding_amount")} /><Metric inline label="Client net proceeds" value={amount(summaryCalc, "net_client_cash")} /><Metric inline label="Projected investor net profit" value={amount(summaryCalc, "investor_net_income")} />{!compact ? <Metric inline label="Investor net ROI · full term" value={amount(summaryCalc, "investor_net_roi_pct")} percent /> : null}</span><span className={styles.summaryLink}>View monthly returns →</span><small className={styles.note}>Saved budget · revision {saved?.revision}{dirty ? " · working fee changes are shown inside the editor" : ""}</small></button>}
     </section> : null}
     <FinancialEditorSurface inline={inline} open={open} onClose={() => { if (!busy) setOpen(false); }} title="Investment and closing costs" sub="Separate gross loan principal, investor funding, client proceeds and the costs each party pays." width="xl" closeOnBackdrop={false} ariaLabel="Deal budget editor" footer={saveWithTerms ? undefined : <div className={styles.footer}>{!inline ? <Btn onClick={() => setOpen(false)} disabled={busy}>Close</Btn> : null}{dirty ? <Btn onClick={() => { queryClient.setQueryData(dealBudgetDraftKey(profileId), null); setError(""); }} disabled={busy}>Discard changes</Btn> : null}<span className={styles.note}>{dirty ? "Draft kept when closed. Save records costs; revised principal saves the loan too." : saved ? `Saved budget · revision ${saved.revision}` : "Loading budget…"}</span>{saved?.can_edit ? <Btn variant="pri" onClick={() => void save()} disabled={!canEdit || !dirty && !needsPrincipalSave || conflict || previewing || Boolean(previewError) || Boolean(solution && solution.status !== "calculated")}>{busy ? "Saving…" : needsPrincipalSave ? "Save budget & loan" : "Save budget"}</Btn> : null}</div>}>
       {!saved || !value ? query.isError ? <Callout tone="warn">The saved budget could not be loaded.<Btn onClick={() => void query.refetch()}>Retry budget load</Btn></Callout> : <PreparationProgress compact title="Loading deal budget" description="Reading the current loan and recorded costs." /> : <div className={styles.grid}>
@@ -180,7 +211,7 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
         </div>
         <details><summary>Advanced · partial investor funding</summary><div className={styles.funding} style={{ marginTop: 10 }}><label>Capital to raise from investors, $<Input aria-label="Capital to raise from investors" type="number" min={0} step="0.01" disabled={!canEdit} value={value.investor_funding_amount ?? ""} placeholder="Blank uses the full gross loan" onChange={event => update({ investor_funding_amount: event.target.value === "" ? null : Number(event.target.value) })} /></label><p className={styles.note}>A partial raise requires another funding source for the remaining principal. It changes investor participation, rather than the client’s gross loan amount.</p></div></details>
         <CompanyFeeControls headingRef={companyFeesHeading} value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} onRowChange={rowChange} />
-        <InvestorEconomicsPanel value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} />
+        <InvestorEconomicsPanel payoffHeadingRef={payoffHeading} value={value} calculation={calc} pending={previewing} disabled={!canEdit} onChange={update} onViewMonthlyReturns={canViewReturns ? () => { setReturnsMode("working"); setReturnsOpen(true); } : undefined} />
         <label className={styles.label}><input type="checkbox" aria-label="Pricing and costs confirmed" checked={value.costs_confirmed} disabled={!canEdit} onChange={event => update({ costs_confirmed: event.target.checked })} /><span><strong>Costs reviewed / no additional fees</strong><br />An empty table confirms no additional fees. Active rows with unknown amounts still need completion.</span></label>
         <div className={styles.actions}><strong>Fee and cost rows</strong><Btn size="sm" disabled={!canEdit} onClick={() => update({ rows: [...value.rows, newDealCost()] })}><Icon name="plus" size={14} />Add cost</Btn><span className={styles.note}>Blank means unknown. Escrow and reserves are not income. Disabled rows stay in this budget but do not count.</span></div>
         <p className={styles.note}>Public cost labels appear in client and investor documents. Keep private recipient names and contact details in the separate recipient field.</p>
@@ -209,6 +240,9 @@ export function DealBudgetSection({ profileId, disabled, onSaved, compact = true
         <label className={styles.cell}>Budget explanation<Textarea aria-label="Budget explanation" value={value.note ?? ""} rows={2} disabled={!canEdit} onChange={event => update({ note: event.target.value })} /></label>
         <p className={styles.note}>{loan ? "The illustration uses the loan currently in this editor. Save budget & loan applies a revised principal. Save new terms version creates its updated PDF. " : ""}Returns are schedule-based illustrations before defaults, delays and unrecorded costs. Gross interest, returned principal, net profit and fee revenue are different amounts. Unknown fees or reserve release prevent a complete net return.</p>
       </div>}
+    </FinancialEditorSurface>
+    <FinancialEditorSurface open={returnsOpen} onClose={() => setReturnsOpen(false)} title="Monthly investor returns" sub={returnsMode === "working" ? "Unsaved editor preview · server-calculated working illustration" : "Saved financing and fee schedule · separate from returned principal"} fullscreen width="xl" ariaLabel="Monthly investor returns explorer">
+      {returnsOpen && canViewReturns ? <InvestorReturnExplorer key={`${returnsScope}:${returnsMode}`} sourceKey={`${returnsScope}:${returnsMode}:${returnsMode === "working" ? live.fingerprint : saved?.revision ?? "loading"}`} sourceLabel="Saved loan and fee schedule" preview={returnsMode === "working"} loadProjection={returnsMode === "working" ? loadWorkingReturns : loadSavedReturns} onReviewAssumptions={disabled ? undefined : missing => { setReturnsOpen(false); setOpen(true); if (missing.some(code => ["interest_policy", "charge_amount", "charge_recipient", "minimum_interest_months", "reserve_release"].includes(code))) setPayoffFocus(current => current + 1); else setCompanyFeesFocus(current => current + 1); }} /> : <p role="status">Verifying access to the saved source…</p>}
     </FinancialEditorSurface>
   </>;
 }

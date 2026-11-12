@@ -24,7 +24,7 @@ test.beforeEach(async ({ page }) => { await page.route("http://localhost:3414/**
 test("server NET figures distinguish six-month payoff, full term and transferred servicing", async ({ page }, info) => {
   const errors: string[] = []; page.on("pageerror", error => errors.push(error.message));
   await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click();
-  const editor = page.getByRole("dialog", { name: "Deal budget editor" }), early = editor.getByRole("article", { name: "Six-month full payoff" }), full = editor.getByRole("article", { name: "Full contractual term" });
+  const editor = page.getByRole("dialog", { name: "Deal budget editor" }); await editor.getByText("Six-month and full-term details", {exact:true}).click(); const early = editor.getByRole("article", { name: "Six-month full payoff" }), full = editor.getByRole("article", { name: "Full contractual term" });
   await expect(early).toContainText("USD 5,880.00"); await expect(early).toContainText("5.88%"); await expect(full).toContainText("USD 11,760.00");
   await expect(editor.getByLabel("Company fee 1 full-term amount")).toContainText("USD 120.00");
   await editor.getByLabel("Servicing arrangement").selectOption("transferred");
@@ -35,7 +35,7 @@ test("server NET figures distinguish six-month payoff, full term and transferred
 });
 
 test("unknown payoff charge remains unconfirmed until staff explicitly enters zero", async ({ page }) => {
-  await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" });
+  await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" }); await editor.getByText("Six-month and full-term details", {exact:true}).click();
   await editor.getByLabel("Additional early payoff charge", { exact: true }).fill("");
   const early = editor.getByRole("article", { name: "Six-month full payoff" });
   await expect(early).toContainText("Not established"); await expect(early).toContainText("Enter the additional payoff charge");
@@ -44,7 +44,7 @@ test("unknown payoff charge remains unconfirmed until staff explicitly enters ze
 });
 
 test("setup tracking and conditional fees save through the existing budget and survive reopen", async ({ page }) => {
-  await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" });
+  await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" }); await editor.getByText("Six-month and full-term details", {exact:true}).click();
   await editor.getByLabel("Monitoring setup status").selectOption("in_progress"); await editor.getByLabel("Software and monitoring provider").fill("Synthetic system"); await editor.getByLabel("Software and monitoring setup notes").fill("Credentials still pending");
   await editor.getByLabel("Company fee 1 applicability").selectOption("company_managed");
   await editor.getByRole("button", { name: "Save budget", exact: true }).click(); await expect(editor).toContainText("revision 2 saved");
@@ -55,7 +55,7 @@ test("setup tracking and conditional fees save through the existing budget and s
 });
 
 test("new company fees start unknown, and pending or failed previews do not show stale NET figures", async ({ page }) => {
-  await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" });
+  await page.goto("http://localhost:3414/"); await page.getByRole("button", { name: "Edit deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" }); await editor.getByText("Six-month and full-term details", {exact:true}).click();
   await expect(editor.getByRole("article", { name: "Full contractual term" })).toContainText("USD 11,760.00");
   await page.evaluate(() => { (window as unknown as { previewDelay: number }).previewDelay = 500; (window as unknown as { failPreview: boolean }).failPreview = true; });
   await editor.getByRole("button", { name: "Add maintenance fee", exact: true }).click(); await expect(editor.getByLabel("Company fee 3 value")).toHaveValue("");
@@ -65,7 +65,7 @@ test("new company fees start unknown, and pending or failed previews do not show
 });
 
 test("read-only budgets retain results but expose no editable fee or payoff controls", async ({ page }) => {
-  await page.goto("http://localhost:3414/?readonly"); await page.getByRole("button", { name: "View deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" });
+  await page.goto("http://localhost:3414/?readonly"); await page.getByRole("button", { name: "View deal budget", exact: true }).click(); const editor = page.getByRole("dialog", { name: "Deal budget editor" }); await editor.getByText("Six-month and full-term details", {exact:true}).click();
   await expect(editor.getByLabel("Servicing arrangement")).toBeDisabled(); await expect(editor.getByLabel("Company fee 1 value")).toBeDisabled(); await expect(editor.getByLabel("Additional early payoff charge", { exact: true })).toBeDisabled();
   await expect(editor.getByRole("button", { name: "Save budget", exact: true })).toHaveCount(0); await expect(editor.getByRole("article", { name: "Full contractual term" })).toContainText("USD 11,760.00");
 });
