@@ -5,7 +5,7 @@ export type FileWorkspaceTool = typeof FILE_WORKSPACE_TOOLS[number];
 const KINDS: SheetKind[] = ["debt_schedule", "pfs", "real_estate_schedule", "p_and_l", "balance_sheet", "operating_plan"];
 const VIEWS = ["form", "worksheet", "pdf", "history"] as const;
 export type FileWorkspaceRequest = { tool: FileWorkspaceTool; kind?: SheetKind; view?: typeof VIEWS[number]; debtId?: string };
-export const FILE_WORKSPACE_LABELS: Record<FileWorkspaceTool, string> = { forms: "Financial forms", "operating-plan": "Operating expenses and earnings plan", coverage: "Coverage plan", terms: "Loan terms", "use-of-funds": "Program criteria and use of funds", marketplace: "Marketplace setup" };
+export const FILE_WORKSPACE_LABELS: Record<FileWorkspaceTool, string> = { forms: "Financial forms", "operating-plan": "Operating expenses and earnings plan", coverage: "Coverage plan", terms: "Loan terms", "use-of-funds": "Program criteria and use of funds", marketplace: "Review and publish offer" };
 export function parseFileWorkspaceRequest(params: Pick<URLSearchParams, "get">): FileWorkspaceRequest | null {
   const tool = params.get("tool");
   if (!(FILE_WORKSPACE_TOOLS as readonly string[]).includes(tool ?? "")) return null;

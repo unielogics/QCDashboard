@@ -41,9 +41,9 @@ test.beforeAll(async () => {
   [script, css] = await Promise.all([readFile(path.join(directory, "app.js")), readFile(path.join(directory, "app.css"))]);
 });
 
-async function fixture(page: Page, options: { role?: string; missingProfile?: boolean; conflict?: boolean; holdPlan?: boolean; existingListing?: boolean; simpleParent?: boolean; requirementActions?: boolean; linkedDebt?: boolean; url?: string } = {}) {
+async function fixture(page: Page, options: { role?: string; missingProfile?: boolean; conflict?: boolean; holdPlan?: boolean; existingListing?: boolean; lookupFailure?: boolean; simpleParent?: boolean; requirementActions?: boolean; linkedDebt?: boolean; url?: string } = {}) {
   const requests: Array<{ method: string; path: string; body: Json }> = [], errors: string[] = [];
-  let record = marketplacePlan(), current = workspaceFinancial(), created = 0;
+  let record = marketplacePlan(), current = workspaceFinancial(), created = 0, lookupFailed = false, savedName = "Example workspace financing", savedSummary = "Operator summary retained";
   let releasePlan = () => {}; const planGate = options.holdPlan ? new Promise<void>(resolve => { releasePlan = resolve; }) : Promise.resolve();
   page.context().on("page", child => child.on("pageerror", error => errors.push(error.message))); page.on("pageerror", error => errors.push(error.message));
   await page.context().route("**/*", async route => {
@@ -74,14 +74,15 @@ async function fixture(page: Page, options: { role?: string; missingProfile?: bo
     if (p.endsWith("/collateral")) return json({ profile_id: PROFILE, enabled: false, revision: 1, can_edit: true, properties: [], assets: [], property_options: [], source_file_options: [] });
     if (p.endsWith("/client-terms")) return json({ profile_id: PROFILE, version: 0, status: "not_started", conditions: [], loan_type_options: [], calculation: {} });
     if (p.endsWith("/use-of-funds")) return json({ profile_id: PROFILE, revision: 1, currency: "USD", requested_amount: 175000, can_edit: true, items: [], complete: false, allocated_amount: 0, remaining_amount: 175000, warnings: [], requires_exact_allocation: false });
+    if (p.endsWith("/sources/lookup") && options.lookupFailure && !lookupFailed) { lookupFailed = true; return json({ detail: "Synthetic offer lookup temporarily unavailable" }, 503); }
     if (p.endsWith("/sources/lookup")) return json({ listing: options.existingListing || created ? { id: "synthetic-listing", ref: "CP-SYNTHETIC", status: "draft" } : null });
     if (p.endsWith("/sources/suggest-terms")) return json({ profile_id: PROFILE, income_annual: 180000, existing_debt_service_monthly: 2000, products: [marketplaceProduct(record.new_loan_amount)] });
-    if (p.endsWith("/marketplace-publication")) return json({ profile_id: PROFILE, listing: null, can_manage: options.role !== "loan_exec" });
+    if (p.endsWith("/marketplace-publication")) return json({ profile_id: PROFILE, listing: options.existingListing || created ? marketplaceListing(record.new_loan_amount) : null, can_manage: options.role !== "loan_exec" });
     if (p.endsWith("/listings/ai-draft")) return json({ profile_id: PROFILE, draft_id: "example-ai-listing-draft", source_fingerprint: `source-${record.updated_at}`, deal_budget_revision: 1, draft: { name: body.current_title || "Example workspace financing", summary: body.current_summary || "Synthetic financing draft", vertical: "main_street" }, field_provenance: [], missing: [], warnings: [], preserved_fields: ["name", "summary"] });
     if (p.endsWith("/listings/prefill")) return json({ profile_id: PROFILE, source_kind: "profile", name: "Example workspace financing", vertical: "main_street", summary: "Saved synthetic financing", products: [marketplaceProduct(record.new_loan_amount)], existing_listing: null });
-    if (p.endsWith("/listings") && method === "POST") { created += 1; return json(marketplaceListing(record.new_loan_amount)); }
-    if (p === "/capital/admin/listings/synthetic-listing") return json(marketplaceListing(record.new_loan_amount));
-    if (p.endsWith("/refresh-snapshot")) return json(marketplaceListing(record.new_loan_amount));
+    if (p.endsWith("/listings") && method === "POST") { created += 1; savedName = String(body.name); savedSummary = String(body.summary); return json({ ...marketplaceListing(record.new_loan_amount), name: savedName, summary: savedSummary }); }
+    if (p === "/capital/admin/listings/synthetic-listing") return json({ ...marketplaceListing(record.new_loan_amount), name: savedName, summary: savedSummary });
+    if (p.endsWith("/refresh-snapshot")) return json({ ...marketplaceListing(record.new_loan_amount), name: savedName, summary: savedSummary });
     if (p.endsWith("/financial-plan") && method === "PUT") { await planGate; record = { ...record, ...body, updated_at: "2026-11-11T17:00:02Z" }; return json({ profile_id: PROFILE, record }); }
     if (p === `/application-profiles/${PROFILE}`) return json({ id: PROFILE, intake_id: INTAKE, vertical: "mca" });
     throw new Error(`Unexpected workspace API: ${method} ${p}`);
@@ -96,10 +97,14 @@ async function popup(page: Page, linkName: string) { const ready = page.waitForE
 // the unrelated intake-detail adapter are synthetic. No replacement editor buttons.
 
 test("actual file editor links open internal workspaces in new tabs without mutating", async ({ page }) => {
-  const f = await fixture(page, { requirementActions: true, linkedDebt: true }); await expect(page.getByRole("heading", { name: BUSINESS, exact: true })).toBeVisible();
-  for (const tool of ["forms", "operating-plan", "coverage", "terms", "use-of-funds", "marketplace"]) {
+  const f = await fixture(page, { requirementActions: true, linkedDebt: true, existingListing: true }); await expect(page.getByRole("heading", { name: BUSINESS, exact: true })).toBeVisible();
+  for (const tool of ["forms", "operating-plan", "coverage", "terms", "use-of-funds"]) {
     const link = page.locator(`a[href^="/files/${INTAKE}/workspace?tool=${tool}"]`).first(); await expect(link).toHaveAttribute("target", "_blank"); await expect(link).toHaveAttribute("rel", /noopener/);
   }
+  const offer = page.getByRole("link", { name: "Review and publish offer", exact: true }); await expect(offer).toHaveCount(1); await expect(offer).toHaveAttribute("href", "/admin/marketplace/synthetic-listing"); await expect(offer).toHaveAttribute("target", "_blank"); await expect(offer).toHaveAttribute("rel", /noopener/); await expect(page.getByRole("link", { name: /Open marketplace setup|Manage listing|Documents and publish/ })).toHaveCount(0);
+  const contact = page.getByRole("textbox", { name: /Business street address/ }); await contact.fill("Unsaved original file contact detail"); await offer.click({ trial: true }); const parentUrl = page.url(), parentAnchor = (await offer.boundingBox())!.y;
+  const offerReady = page.waitForEvent("popup"); await offer.click(); const offering = await offerReady; await offering.waitForURL(`${ORIGIN}/admin/marketplace/synthetic-listing`);
+  expect(await offering.evaluate(() => window.opener === null)).toBe(true); expect(page.url()).toBe(parentUrl); expect(Math.abs((await offer.boundingBox())!.y - parentAnchor)).toBeLessThan(4); await expect(contact).toHaveValue("Unsaved original file contact detail"); expect(mutations(f)).toEqual([]); await offering.close();
   const link = page.getByRole("link", { name: "Open worksheet", exact: true }); const ready = page.waitForEvent("popup"); await link.click(); const child = await ready;
   await expect(child.getByRole("heading", { name: "Financial forms", exact: true })).toBeVisible(); expect(child.url()).toContain("kind=debt_schedule"); expect(child.url()).toContain("view=worksheet"); expect(await child.evaluate(() => window.opener === null)).toBe(true);
   await expect(child.getByRole("tab", { name: "Worksheet", exact: true })).toHaveAttribute("aria-selected", "true"); await expect(child).toHaveTitle(`Financial forms · ${BUSINESS}`); await expect(child.getByRole("button", { name: "Documents for Example lender: 1 linked", exact: true })).toBeVisible(); await expect(child.getByRole("button", { name: /Restore workspace size|Expand workspace/ })).toHaveCount(0); await expect(child.getByRole("link", { name: "Back to file", exact: true })).toHaveAttribute("href", `/files/${INTAKE}`);
@@ -124,7 +129,7 @@ test("a child saved version announces IDs only while the original file URL scrol
 
 for (const [tool, label, control] of [
   ["coverage", "Coverage plan", "New loan amount"], ["terms", "Loan terms", null],
-  ["use-of-funds", "Program criteria and use of funds", null], ["marketplace", "Marketplace setup", null],
+  ["use-of-funds", "Program criteria and use of funds", null], ["marketplace", "Review and publish offer", null],
 ] as const) test(`direct ${tool} workspace renders the actual owner without passive save create or publication`, async ({ page }, info) => {
   const f = await fixture(page, { url: `/files/${INTAKE}/workspace?tool=${tool}` }); await expect(page.getByRole("heading", { name: label, exact: true }).first()).toBeVisible(); await expect(page.getByRole("link", { name: "Back to file", exact: true })).toHaveAttribute("href", `/files/${INTAKE}`);
   if (control) await expect(page.getByLabel(control, { exact: true })).toBeVisible();
@@ -167,10 +172,17 @@ test("non-file callers retain their existing financial workspace drawer and rest
 
 test("standalone marketplace reuses the real guarded loan save before creating a draft", async ({ page }) => {
   const f = await fixture(page, { holdPlan: true, url: `/files/${INTAKE}/workspace?tool=marketplace` }); await page.getByLabel("New loan amount", { exact: true }).fill("225000");
+  const summary = page.getByLabel("Listing summary", { exact: true }); await summary.fill("Retained first-offer workspace wording"); const original = page.url();
+  for (const [name, expected] of [["Structure loan / Coverage plan", `/files/${INTAKE}/workspace?tool=terms`], ["Package readiness", `/files/${INTAKE}?workspace=package`], ["Open the evidence room", `/files/${INTAKE}?section=evidence`]] as const) {
+    const child = await popup(page, name); const url = new URL(child.url()), destination = new URL(ORIGIN + expected); expect(url.pathname).toBe(destination.pathname); expect(url.search).toBe(destination.search);
+    if (name === "Package readiness") { await expect(child.getByRole("heading", { name: "Investor package & capital partners", exact: true })).toBeVisible(); await expect(child.locator("#package-readiness")).toBeInViewport(); }
+    await expect(summary).toHaveValue("Retained first-offer workspace wording"); expect(page.url()).toBe(original); await child.close();
+  }
   const create = page.getByRole("button", { name: "Save & create listing draft", exact: true }); await expect(create).toBeEnabled(); await create.click();
   try { await expect.poll(() => f.requests.filter(row => row.method === "PUT" && row.path.endsWith("/financial-plan")).length).toBe(1); expect(f.created()).toBe(0); await expect(create).toBeDisabled(); }
   finally { f.releasePlan(); }
-  await expect.poll(() => f.created()).toBe(1); const write = f.requests.find(row => row.method === "POST" && row.path.endsWith("/listings"))!; expect((write.body.products as Json[])[0].amount).toBe(225000);
+  await expect.poll(() => f.created()).toBe(1); const write = f.requests.find(row => row.method === "POST" && row.path.endsWith("/listings"))!; expect((write.body.products as Json[])[0].amount).toBe(225000); expect(write.body.summary).toBe("Retained first-offer workspace wording");
+  await expect(summary).toHaveValue("Retained first-offer workspace wording"); expect(page.url()).toBe(original);
   expect(f.requests.filter(row => /\/publish|\/issue|\/send/.test(row.path))).toEqual([]); expect(f.errors).toEqual([]);
 });
 
@@ -182,12 +194,10 @@ test("coverage cross-tool debt and full-terms links open working owners while pr
   expect(mutations(f)).toEqual([]); expect(f.errors).toEqual([]);
 });
 
-test("marketplace cross-tool links open terms package evidence and existing listing separately", async ({ page }) => {
-  const f = await fixture(page, { existingListing: true, url: `/files/${INTAKE}/workspace?tool=marketplace` }); const summary = page.getByLabel("Listing summary", { exact: true }); await summary.fill("Retained marketplace workspace wording"); const original = page.url();
-  for (const [name, expected] of [["Structure loan / Coverage plan", `/files/${INTAKE}/workspace?tool=terms`], ["Package readiness", `/files/${INTAKE}?workspace=package`], ["Open the evidence room", `/files/${INTAKE}?section=evidence`], ["Documents and publish", "/admin/marketplace/synthetic-listing"]] as const) {
-    const child = await popup(page, name); const url = new URL(child.url()), destination = new URL(ORIGIN + expected); expect(url.pathname).toBe(destination.pathname); expect(url.search).toBe(destination.search);
-    if (name === "Package readiness") { await expect(child.getByRole("heading", { name: "Investor package & capital partners", exact: true })).toBeVisible(); await expect(child.locator("#package-readiness")).toBeInViewport(); expect(await child.evaluate(() => (window as unknown as { fixtureFileProps: { initialView: string } }).fixtureFileProps.initialView)).toBe("financials"); await child.evaluate(() => (window as unknown as { fixtureFileProps: { onCommunicationNavigate: (channel: string) => void } }).fixtureFileProps.onCommunicationNavigate("client")); await expect.poll(() => new URL(child.url()).searchParams.get("section")).toBe("communications"); expect(new URL(child.url()).searchParams.has("workspace")).toBe(false); }
-    await expect(summary).toHaveValue("Retained marketplace workspace wording"); expect(page.url()).toBe(original); await child.close();
-  }
-  expect(mutations(f)).toEqual([]); expect(f.errors).toEqual([]);
+test("legacy marketplace workspace looks up the canonical offer and never treats a failed read as first creation", async ({ page }) => {
+  const f = await fixture(page, { existingListing: true, lookupFailure: true, url: `/files/${INTAKE}/workspace?tool=marketplace` });
+  await expect(page.getByText("The saved offer could not be checked. No draft was created.", { exact: false })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save & create listing draft", exact: true })).toHaveCount(0); await expect(page.getByLabel("New loan amount", { exact: true })).toHaveCount(0);
+  expect(mutations(f)).toEqual([]); await page.getByRole("button", { name: "Retry offer lookup", exact: true }).click();
+  await page.waitForURL(`${ORIGIN}/admin/marketplace/synthetic-listing`); expect(f.created()).toBe(0); expect(mutations(f)).toEqual([]); expect(f.errors).toEqual([]);
 });

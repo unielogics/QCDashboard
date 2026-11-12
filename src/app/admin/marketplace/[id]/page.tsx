@@ -408,14 +408,14 @@ function Documents({ listing, active, onMessage, onError, guidance, onFix, onSna
     <div className="grid">
       <MarketplacePpmWorkspace listing={listing} active={active} onFix={onFix} onApproved={onPpmApproved} onPublish={onPublish} publishBusy={publishBusy} onReadinessPending={onPpmReadinessPending} onOwnsPpmIssues={onOwnsPpmIssues} />
       {listing.profile_id ? <MarketplacePublishStrip listing={listing} packageInSync canPublish onFixIssue={onFix} onActionError={onSnapshotError} onActionSuccess={() => { onSnapshotSuccess(); onMessage({ tone: "ok", text: "The listing package was updated from the saved file." }); }} /> : null}
-      <p className="sub">Offering PDFs below are attached to this listing. Review the PPM in the workspace above. Source originals use the separate engagement controls in the file document cockpit.</p>
-      <Panel title="Upload an existing document" bodyClass="row">
+      <p className="sub">Prepare and approve the generated PPM above. Additional offering PDFs appear below. Source documents remain subject to engagement access.</p>
+      <Panel title="Upload a document (optional)" bodyClass="row">
         <Select id="marketplace-document-kind" aria-label="Document type" value={kind} onChange={(e) => setKind(e.target.value as CpDocumentKind)}>{DOC_KINDS.map((k) => <option key={k.value} value={k.value}>{k.label}</option>)}</Select>
         <input id="marketplace-document-upload" aria-label="Upload document PDF" ref={fileRef} type="file" accept="application/pdf" onChange={(e) => { const f = e.target.files?.[0]; if (f) void send(f); }} disabled={upload.isPending} />
-        <span className="sub">{upload.isPending ? "Uploading…" : "A new file of the same kind supersedes the previous one. The private placement memorandum is required before publishing."}</span>
+        <span className="sub">{upload.isPending ? "Uploading…" : "Use this to supply an existing PDF. A new file of the same kind supersedes the previous one."}</span>
       </Panel>
       {listing.documents.length === 0 ? (
-        <Card><span className="sub">No documents yet.</span></Card>
+        <Card><span className="sub">No additional offering documents are attached.</span></Card>
       ) : (
         <Panel noPad>
           <Table caption="Offering documents" cols={[{ label: "Kind" }, { label: "Name" }, { label: "Origin" }, { label: "Version", align: "r" }, { label: "Size", align: "r" }, { label: "Status" }, { label: "Actions" }]}>

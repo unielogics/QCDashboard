@@ -1,5 +1,11 @@
 import { CAPITAL_APP_ORIGIN } from "@/lib/appUrl";
 import type { CpListingStatus } from "@/hooks/useCapitalPartners";
+import { fileWorkspaceHref } from "@/lib/fileWorkspace";
+
+export const marketplaceReviewHref = (listingId: string) => `/admin/marketplace/${encodeURIComponent(listingId)}`;
+export function marketplaceEntryHref(listingId: string | null | undefined, intakeId?: string | null): string | undefined {
+  return listingId ? marketplaceReviewHref(listingId) : intakeId ? fileWorkspaceHref(intakeId, { tool: "marketplace" }) : undefined;
+}
 
 export type MarketplaceOfferReference = {
   id: string;

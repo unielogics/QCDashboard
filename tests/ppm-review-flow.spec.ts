@@ -36,16 +36,17 @@ test.beforeAll(async () => {
 // The lifecycle cases below exercise the real page and PPM workspace. Only
 // authentication and HTTP/storage responses are replaced with synthetic data.
 type Json = Record<string, unknown>;
-type Options = { legacyBlank?: boolean; customBlank?: boolean; missingLaw?: boolean; otherBlocker?: boolean; closed?: boolean; failReview?: boolean; failDownload?: boolean; failSourceGenerate?: boolean; lostReviewAck?: boolean; conflictReview?: boolean; failReadiness?: boolean; holdReview?: boolean; holdGenerate?: boolean; isolated?: boolean };
+type Options = { legacyBlank?: boolean; customBlank?: boolean; missingLaw?: boolean; otherBlocker?: boolean; closed?: boolean; failReview?: boolean; failDownload?: boolean; failSourceGenerate?: boolean; renderRace?: boolean; snapshotAuthorityChange?: boolean; lostReviewAck?: boolean; conflictReview?: boolean; failReadiness?: boolean; holdReview?: boolean; holdGenerate?: boolean; holdSnapshot?: boolean; isolated?: boolean };
 async function fixture(page: Page, options: Options = {}) {
   let listing: Omit<ReturnType<typeof reviewListing>, "documents"> & Pick<CpListing, "documents"> = reviewListing();
   let state = options.legacyBlank ? legacyBlankReviewState() : options.customBlank ? customBlankReviewState() : reviewState();
   if (options.missingLaw) { const v = reviewVersion(); v.legal_inputs.jurisdiction = presetFields().find(field => field.key === "jurisdiction")!.default_value!; v.legal_presets = { ...v.legal_presets, jurisdiction: "to_be_confirmed" }; state = reviewState(v); }
   if (options.closed) listing = { ...listing, status: "repaid" };
   const requests: Array<{ method: string; path: string; body: Json; actor: string }> = [], errors: string[] = [], nativeDialogs: string[] = [];
-  let failed = false, reviewSaved = false, readinessFailed = false, downloadFailed = false, sourceGenerateFailed = false, remoteSubscription = false, amount = 175000;
+  let failed = false, reviewSaved = false, readinessFailed = false, downloadFailed = false, sourceGenerateFailed = false, renderFailed = false, remoteSubscription = false, amount = 175000;
   let releaseReview = () => {}; const reviewGate = options.holdReview ? new Promise<void>(resolve => { releaseReview = resolve; }) : Promise.resolve();
   let releaseGenerate = () => {}; const generateGate = options.holdGenerate ? new Promise<void>(resolve => { releaseGenerate = resolve; }) : Promise.resolve();
+  let releaseSnapshot = () => {}; const snapshotGate = options.holdSnapshot ? new Promise<void>(resolve => { releaseSnapshot = resolve; }) : Promise.resolve();
   const applied = new Set<string>();
   page.on("pageerror", error => errors.push(error.message)); page.on("dialog", dialog => { nativeDialogs.push(dialog.type()); void dialog.dismiss(); });
   await page.context().route("**/*", async route => {
@@ -63,12 +64,20 @@ async function fixture(page: Page, options: Options = {}) {
     }
     if (p === `/capital/admin/listings/${ID}/publish`) { expect(method).toBe("POST"); expect(state.current_approved?.status).toBe("approved"); expect(listing.publish_blockers).toEqual([]); expect(body.confirmed).toBe(true); listing = { ...listing, status: "open" }; return json(listing); }
     if (p === `/capital/admin/listings/${ID}/publish-package`) return json({ detail: "The file or program readiness changed. Refresh both PDFs before delivery." }, 409);
+    if (p === `/capital/admin/listings/${ID}/refresh-snapshot`) {
+      expect(method).toBe("POST"); expect(body).toEqual({}); await snapshotGate;
+      if (options.snapshotAuthorityChange && state.source_fingerprint === "b".repeat(64)) state.source_fingerprint = "c".repeat(64);
+      state.missing = state.missing.filter(item => item.key !== "listing_snapshot");
+      if (remoteSubscription) listing = { ...listing, loan_amount: String(amount) };
+      return json(listing);
+    }
     if (p === `/application-profiles/${listing.profile_id}`) return json({ intake_id: "93000000-0000-0000-0000-000000000003" });
     const match = p.match(/\/capital\/admin\/listings\/[^/]+\/ppm(?:\/(.*))?$/);
     if (match) {
       const action = match[1]; if (!action) return json(state);
       if (action.startsWith("versions/")) { if (options.failDownload && !downloadFailed) { downloadFailed = true; return json({ detail: "Synthetic saved PDF link temporarily unavailable" }, 503); } return json({ url: "https://review-pdf.test/saved-ppm.pdf", expires_in_seconds: 60 }); }
       if (action === "review") await reviewGate; if (action === "generate") await generateGate;
+      if (action === "generate" && options.renderRace && !renderFailed) { renderFailed = true; state.source_fingerprint = "d".repeat(64); state.missing.push({ key: "listing_snapshot", label: "Refresh the listing from the latest saved file before approving the PPM.", section: "snapshot", required: true }); return json({ detail: { code: "ppm_source_changed", message: "The saved file changed while rendering. Retry with current facts." } }, 409); }
       if (action === "generate" && options.failSourceGenerate && state.source_fingerprint === "b".repeat(64) && !sourceGenerateFailed) { sourceGenerateFailed = true; return json({ detail: "Synthetic source refresh failed before creating a draft" }, 503); }
       if (action === "review" && options.failReview && !failed) { failed = true; return json({ detail: "Synthetic review request failed before saving" }, 503); }
       if (action === "review" && options.conflictReview && !failed) { failed = true; state = reviewState(reviewVersion(3, "b".repeat(64)), state.history); return json({ detail: { code: "ppm_version_changed", message: "A newer saved PPM exists; review its current facts" } }, 409); }
@@ -100,8 +109,9 @@ async function fixture(page: Page, options: Options = {}) {
   });
   await page.goto(ORIGIN + (options.isolated ? "/isolated" : "/"));
   if (!options.isolated) await expect(page.getByRole("heading", { name: /CP-PPM-QA/ })).toBeVisible();
-  return { requests, errors, nativeDialogs, releaseReview, releaseGenerate, state: () => state, changeSource: async () => {
+  return { requests, errors, nativeDialogs, releaseReview, releaseGenerate, releaseSnapshot, state: () => state, changeSource: async () => {
     state = { ...state, source_fingerprint: "b".repeat(64), status: "stale" }; for (const version of state.history) version.stale = true; remoteSubscription = true; amount = 225000; listing = { ...listing, updated_at: "2026-11-11T18:01:00Z" };
+    if (options.snapshotAuthorityChange) state.missing.push({ key: "listing_snapshot", label: "Refresh the listing from the latest saved file before approving the PPM.", section: "snapshot", required: true });
     await page.evaluate(() => (window as unknown as { refreshListing: () => Promise<void> }).refreshListing());
   } };
 }
@@ -127,7 +137,7 @@ test("review-first approval needs no typed reason and hands off to the actual pu
   await expect(area(page).getByLabel("PPM Issuer legal name", { exact: true })).toHaveCount(0);
   await expect(area(page).getByRole("checkbox")).toHaveCount(0);
   await expect(area(page).getByRole("button", { name: "Approve current PPM", exact: true })).toBeEnabled();
-  const directory = path.resolve(process.cwd(), "../../artifacts/ppm-review-simple-qa"); await mkdir(directory, { recursive: true });
+  const directory = path.resolve(process.cwd(), "../../artifacts/ppm-publish-flow-qa"); await mkdir(directory, { recursive: true });
   await summary(page).getByRole("heading", { name: /Review saved PPM/ }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(directory, `${info.project.name}-review-first.png`) });
   expect(f.requests.filter(row => row.method !== "GET")).toEqual([]);
@@ -144,6 +154,14 @@ test("review-first approval needs no typed reason and hands off to the actual pu
   await area(page).getByRole("button", { name: "Publish offer", exact: true }).click();
   await page.getByRole("dialog").getByRole("button", { name: "Publish", exact: true }).click();
   await expect.poll(() => f.requests.filter(row => row.path.endsWith("/publish")).length).toBe(1);
+  await expect(area(page).getByRole("button", { name: "Publish offer", exact: true })).toHaveCount(0);
+  await f.changeSource(); await expect(area(page).getByRole("button", { name: "Prepare latest offer", exact: true })).toBeEnabled();
+  expect(f.requests.filter(row => row.path.endsWith("/refresh-snapshot"))).toEqual([]); expect(calls(f, "generate")).toEqual([]);
+  await theme(page, false); await area(page).getByRole("heading", { name: "Private placement memorandum", exact: true }).evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" }));
+  await page.screenshot({ path: path.join(directory, `${info.project.name}-published-explicit-prepare.png`) });
+  await area(page).getByRole("button", { name: "Prepare latest offer", exact: true }).click(); await expect(area(page).getByText("Saved draft v4", { exact: true })).toBeVisible();
+  expect(f.requests.filter(row => row.path.endsWith("/refresh-snapshot"))).toHaveLength(1); expect(calls(f, "generate")).toHaveLength(1);
+  expect(calls(f, "review")).toHaveLength(1); expect(f.requests.filter(row => row.path.endsWith("/publish"))).toHaveLength(1);
   expect(f.nativeDialogs).toEqual([]); expect(f.errors).toEqual([]);
 });
 
@@ -162,17 +180,17 @@ test("Back to edits retains local wording while the review summary remains the s
 
 test("missing facts reveal and focus the exact preset without approving or publishing", async ({ page }, info) => {
   const f = await fixture(page, { missingLaw: true }); await open(page);
-  await mkdir(path.resolve(process.cwd(), "../../artifacts/ppm-review-simple-qa"), { recursive: true });
+  await mkdir(path.resolve(process.cwd(), "../../artifacts/ppm-publish-flow-qa"), { recursive: true });
   await expect(area(page).locator("button.pri:visible")).toHaveCount(1);
   await expect(area(page).getByRole("textbox")).toHaveCount(0);
-  for (const dark of [false, true]) { await theme(page, dark); await area(page).getByRole("heading", { name: "Private placement memorandum", exact: true }).evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" })); await page.screenshot({ path: path.resolve(process.cwd(), `../../artifacts/ppm-review-simple-qa/${info.project.name}-${dark ? "obsidian" : "light"}-checklist.png`) }); }
+  for (const dark of [false, true]) { await theme(page, dark); await area(page).getByRole("heading", { name: "Private placement memorandum", exact: true }).evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" })); await page.screenshot({ path: path.resolve(process.cwd(), `../../artifacts/ppm-publish-flow-qa/${info.project.name}-${dark ? "obsidian" : "light"}-checklist.png`) }); }
   await area(page).getByRole("button", { name: "Fix required items", exact: true }).click();
   const law = area(page).getByLabel(/PPM Governing law.*preset/); await expect(law).toBeFocused(); await expect(law).toBeInViewport();
   const wording = area(page).getByLabel("PPM Governing law and offering jurisdictions", { exact: true }), group = wording.locator("xpath=ancestor::fieldset");
   await expect(law).toHaveAttribute("aria-invalid", "true"); await expect(wording).toHaveAttribute("aria-invalid", "true");
   await expect(group.getByText("Required", { exact: true })).toBeVisible(); await expect(area(page).locator('[aria-label="PPM offering legal details"] fieldset:visible')).toHaveCount(1);
   await expect(area(page).getByLabel("PPM Issuer legal name", { exact: true })).toHaveCount(0);
-  for (const dark of [false, true]) { await theme(page, dark); await red(group); await red(group.getByText("Required", { exact: true }), "color"); await wording.focus(); await red(law); await law.focus(); await law.scrollIntoViewIfNeeded(); const width = page.viewportSize()!.width; expect((await area(page).boundingBox())!.width).toBeGreaterThan(Math.min(900, width - 60)); expect((await law.boundingBox())!.width).toBeGreaterThan(Math.min(300, width * .6)); await page.screenshot({ path: path.resolve(process.cwd(), `../../artifacts/ppm-review-simple-qa/${info.project.name}-${dark ? "obsidian" : "light"}-required.png`) }); }
+  for (const dark of [false, true]) { await theme(page, dark); await red(group); await red(group.getByText("Required", { exact: true }), "color"); await wording.focus(); await red(law); await law.focus(); await law.scrollIntoViewIfNeeded(); const width = page.viewportSize()!.width; expect((await area(page).boundingBox())!.width).toBeGreaterThan(Math.min(900, width - 60)); expect((await law.boundingBox())!.width).toBeGreaterThan(Math.min(300, width * .6)); await page.screenshot({ path: path.resolve(process.cwd(), `../../artifacts/ppm-publish-flow-qa/${info.project.name}-${dark ? "obsidian" : "light"}-required.png`) }); }
   const pendingWords = await wording.inputValue(); await law.selectOption("custom"); await expect(wording).toHaveValue(pendingWords); await expect(law).toHaveAttribute("aria-invalid", "true");
   await law.selectOption("us_state_NJ"); await expect(law).not.toHaveAttribute("aria-invalid", "true"); await expect(group.getByText("Required", { exact: true })).toHaveCount(0);
   await expect(group).toContainText("Save to update checks"); await expect(area(page).getByRole("region", { name: "PPM facts still needed" })).toContainText("Governing law");
@@ -192,6 +210,7 @@ test("approved PPM still uses the real page's independent publication requiremen
   expect(f.requests.filter(row => row.path.endsWith("/publish"))).toEqual([]); expect(f.errors).toEqual([]);
   await page.keyboard.press("Escape"); await expect(page.getByRole("dialog")).toHaveCount(0);
   await page.getByRole("tab", { name: /^Documents/ }).click();
+  await page.locator("summary:visible").filter({ hasText: /^Package tools$/ }).click();
   await page.getByRole("button", { name: "Update listing package", exact: true }).click();
   await expect(page.getByText("Refresh the file's document package", { exact: true })).toBeVisible();
   const originalUrl = page.url(), popupReady = page.waitForEvent("popup");
@@ -206,12 +225,12 @@ test("same-fingerprint legacy blank upgrade prepares once and preserves the save
   const f = await fixture(page, { legacyBlank: true, holdGenerate: true, failSourceGenerate: true }); await open(page);
   await expect.poll(() => calls(f, "generate").length).toBe(1);
   await expect(summary(page)).toContainText("Existing Example Issuer LLC");
-  await expect(area(page).getByRole("button", { name: "Preparing PPM draft…", exact: true })).toBeDisabled();
+  await expect(area(page).getByRole("button", { name: "Preparing latest offer…", exact: true })).toBeDisabled();
   f.releaseGenerate(); await expect(area(page).getByText("Saved draft v2", { exact: true })).toBeVisible();
   await expect(summary(page)).toContainText("Existing Example Issuer LLC");
   expect(calls(f, "generate")).toHaveLength(1); expect(calls(f, "review")).toEqual([]);
   await f.changeSource(); await expect(area(page).getByRole("alert")).toContainText("Synthetic source refresh failed");
-  await area(page).getByRole("button", { name: "Refresh PPM draft", exact: true }).click(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible();
+  await area(page).getByRole("button", { name: "Prepare latest offer", exact: true }).click(); await expect(area(page).getByText("Saved draft v3", { exact: true })).toBeVisible();
   expect(calls(f, "generate")).toHaveLength(3); expect(calls(f, "generate")[2].body).toEqual(calls(f, "generate")[1].body);
   expect(calls(f, "draft")).toEqual([]); expect(calls(f, "review")).toEqual([]);
 });
@@ -231,17 +250,35 @@ test("explicit Custom blank is retained and never triggers legacy auto-upgrade",
   expect(calls(f, "generate")).toEqual([]); expect(calls(f, "review")).toEqual([]);
 });
 
-test("source refresh retains dirty edits and rebases only local changes onto the new saved facts", async ({ page }) => {
-  const f = await fixture(page, { holdGenerate: true }); await open(page); await edit(page);
+test("source refresh retains dirty edits and rebases only local changes onto the new saved facts", async ({ page }, info) => {
+  const f = await fixture(page, { holdGenerate: true, holdSnapshot: true, snapshotAuthorityChange: true, renderRace: true }); await open(page); await edit(page);
   await area(page).getByLabel("PPM Issuer legal name", { exact: true }).fill("Example Retained Draft LLC");
-  await f.changeSource(); await expect.poll(() => calls(f, "generate").length).toBe(1);
+  await f.changeSource(); await expect.poll(() => f.requests.filter(row => row.path.endsWith("/refresh-snapshot")).length).toBe(1);
+  expect(calls(f, "generate")).toEqual([]); expect(calls(f, "review")).toEqual([]);
+  await expect(area(page).getByRole("region", { name: "PPM facts still needed" })).toHaveCount(0);
+  f.releaseSnapshot(); await expect.poll(() => calls(f, "generate").length).toBe(1);
+  expect(calls(f, "generate")[0].body.expected_source_fingerprint).toBe("c".repeat(64));
   await expect(area(page).getByLabel("PPM Issuer legal name", { exact: true })).toHaveValue("Example Retained Draft LLC");
   f.releaseGenerate(); await expect(area(page).getByRole("button", { name: "Apply my edits to latest facts", exact: true })).toBeEnabled();
+  expect(calls(f, "generate")).toHaveLength(2); expect(calls(f, "generate")[1].body.expected_source_fingerprint).toBe("d".repeat(64));
+  expect(calls(f, "generate")[1].body.idempotency_key).not.toBe(calls(f, "generate")[0].body.idempotency_key);
   await area(page).getByRole("button", { name: "Apply my edits to latest facts", exact: true }).click();
   await expect(summary(page)).toBeVisible(); await edit(page);
   await expect(area(page).getByLabel("PPM Issuer legal name", { exact: true })).toHaveValue("Example Retained Draft LLC");
   await expect(area(page).getByLabel("PPM Subscription, acceptance and funding process", { exact: true })).toHaveValue("Updated saved subscription process.");
-  expect(calls(f, "draft")[0].body.expected_source_fingerprint).toBe("b".repeat(64)); expect(calls(f, "review")).toEqual([]); expect(f.errors).toEqual([]);
+  expect(calls(f, "draft")[0].body.expected_source_fingerprint).toBe("d".repeat(64)); expect(calls(f, "review")).toEqual([]);
+  await area(page).getByRole("button", { name: "Review saved PPM", exact: true }).first().click();
+  await expect(area(page).getByRole("button", { name: "Approve current PPM", exact: true })).toBeEnabled();
+  await expect(page.getByRole("heading", { name: "Upload a document (optional)", exact: true })).toBeVisible();
+  await expect(page.getByText(/private placement memorandum is required before publishing/)).toHaveCount(0);
+  await expect(page.getByText("No documents yet.", { exact: true })).toHaveCount(0);
+  await mkdir(path.resolve(process.cwd(), "../../artifacts/ppm-publish-flow-qa"), { recursive: true });
+  for (const dark of [false, true]) { await theme(page, dark); await area(page).getByRole("heading", { name: "Private placement memorandum", exact: true }).evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" })); await page.screenshot({ path: path.resolve(process.cwd(), `../../artifacts/ppm-publish-flow-qa/${info.project.name}-${dark ? "obsidian" : "light"}-latest-offer-ready.png`) }); }
+  await approve(page); expect(calls(f, "review")[0].body).toMatchObject({ expected_version: 4, expected_source_fingerprint: "d".repeat(64) });
+  expect(f.requests.filter(row => row.path.endsWith("/publish"))).toEqual([]);
+  await area(page).getByRole("button", { name: "Publish offer", exact: true }).click(); await page.getByRole("dialog").getByRole("button", { name: "Publish", exact: true }).click();
+  await expect.poll(() => f.requests.filter(row => row.path.endsWith("/publish")).length).toBe(1);
+  expect(f.state().history.find(version => version.version === 2)?.legal_inputs.issuer_legal_name).toBe("Qualified Commercial LLC"); expect(f.errors).toEqual([]);
 });
 
 test("optional short note and a failed review retry retain exactly the same intent", async ({ page }) => {

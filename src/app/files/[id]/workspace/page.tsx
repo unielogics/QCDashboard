@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams, useSearchParams } from "next/navigation";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -14,6 +14,8 @@ import { FILE_WORKSPACE_LABELS, FILE_WORKSPACE_TOOLS, parseFileWorkspaceRequest 
 import type { ApplicationProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import { createProfileTermsClient } from "@/production-package/client";
 import styles from "./workspace.module.css";
+import type { CpSourceLookup } from "@/hooks/useCapitalPartners";
+import { marketplaceReviewHref } from "@/lib/marketplacePublication";
 
 const loading = () => <p role="status">Opening editor…</p>;
 const FinancialWorkspace = dynamic(() => import("@/components/application/FinancialWorkspace").then(module => module.FinancialWorkspace), { ssr: false, loading });
@@ -29,8 +31,21 @@ export default function FileWorkspacePage() {
 
 function Workspace({ intakeId, request, canPublish, authScope }: { authScope: string; intakeId: string; request: ReturnType<typeof parseFileWorkspaceRequest>; canPublish: boolean }) {
   const [notice, setNotice] = useState(""), [resolved, setResolved] = useState<string | null>(null), [error, setError] = useState("");
+  const [creationProfile, setCreationProfile] = useState<string | null>(null);
+  const redirected = useRef<string | null>(null);
   const file = useLeadFile({ leadId: intakeId, notify: setNotice, includeDerived: request?.tool === "marketplace" }), api = useAuthedApi(), cache = useQueryClient();
   const knownProfile = file.detail?.application_profile_id, profileId = knownProfile ?? resolved;
+  const creationMode = Boolean(profileId && creationProfile === profileId);
+  const offerLookup = useQuery({ queryKey: ["file-workspace-offer", profileId, authScope], queryFn: ({ signal }) => api<CpSourceLookup>(`/capital/admin/sources/lookup?profile_id=${encodeURIComponent(profileId!)}`, { signal }), enabled: Boolean(profileId && canPublish && request?.tool === "marketplace"), retry: false, staleTime: 0 });
+  useEffect(() => {
+    if (request?.tool !== "marketplace" || !canPublish || !profileId || !offerLookup.isSuccess || creationMode) return;
+    const listingId = offerLookup.data.listing?.id;
+    if (!listingId) { setCreationProfile(profileId); return; }
+    const target = marketplaceReviewHref(listingId);
+    if (redirected.current === target) return;
+    redirected.current = target;
+    window.location.replace(target);
+  }, [request?.tool, canPublish, profileId, offerLookup.isSuccess, offerLookup.data, creationMode]);
   const dealer = file.detail?.intake.variant === "dealer_gatekeeper_v1";
   const hasFile = Boolean(file.detail), validRequest = Boolean(request);
   const tool = request?.tool, fileName = file.detail?.intake.business_name || file.detail?.intake.full_name;
@@ -61,10 +76,10 @@ function Workspace({ intakeId, request, canPublish, authScope }: { authScope: st
   return <FileWorkspaceProvider value={{ intakeId, profileId, pageMode: true, tool: request.tool }}><main className={styles.root}>
     <header><FileWorkspaceBackLink /><div><h1>{FILE_WORKSPACE_LABELS[request.tool]}</h1><p>{title}</p><small>The original file stays open in its tab. This workspace starts from saved file data.</small></div></header>
     <nav className={styles.tools} aria-label="File workspaces">{FILE_WORKSPACE_TOOLS.map(tool => <FileWorkspaceLink key={tool} tool={tool}>{FILE_WORKSPACE_LABELS[tool]}</FileWorkspaceLink>)}</nav>
-    {request.tool === "marketplace" ? <div className="row"><a className="btn btn-sm" href={`/files/${encodeURIComponent(intakeId)}?workspace=package#package-readiness`} target="_blank" rel="noopener noreferrer">Prepare / refresh investor package</a><span className="sub">{packageCurrent ? "Current package on file" : "Review or refresh the saved package before delivery."}</span></div> : null}
+    {request.tool === "marketplace" && creationMode ? <div className="row"><a className="btn btn-sm" href={`/files/${encodeURIComponent(intakeId)}?workspace=package#package-readiness`} target="_blank" rel="noopener noreferrer">Prepare / refresh investor package</a><span className="sub">{packageCurrent ? "Current package on file" : "Package readiness is checked before publication."}</span></div> : null}
     {readiness.isError ? <Callout tone="warn">Program readiness could not be loaded. <Btn onClick={() => void readiness.refetch()}>Retry program readiness</Btn></Callout> : null}
     {error ? <Callout tone="bad">{error}</Callout> : null}
     {notice ? <Callout tone="warn">{notice}</Callout> : null}
-    {profileId ? request.tool === "forms" || request.tool === "operating-plan" ? <FinancialWorkspace key={profileId} inline open profileId={profileId} initialKind={request.tool === "operating-plan" ? "operating_plan" : request.kind ?? "debt_schedule"} initialView={request.view} initialDebtId={request.debtId} onClose={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}`)} /> : request.tool === "terms" && dealer ? <TermSheetDrawer inline open client={termsClient} profileId={profileId} onClose={() => undefined} /> : <FinancialCockpit key={profileId} workspaceTool={request.tool} profileId={profileId} businessName={title} canPublish={canPublish} canRecordTerms={dealer} canUnderwrite programReadiness={readiness.data ?? null} onProgramReadinessChange={value => cache.setQueryData(readinessKey, value)} onRefreshProgramReadiness={() => readiness.refetch()} canCreatePrograms={canPublish} intakeVariant={file.detail.intake.variant} termSheet={dealerTerms.data ?? null} packageState={packageState} focus={null} onFocusHandled={() => undefined} onRecordTerms={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}/workspace?tool=terms`)} onOpenEvidence={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}?section=evidence`)} onOpenPackage={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}`)} termsKind={dealer ? "production" : "client"} /> : !error ? <p role="status">Resolving the linked application…</p> : null}
+    {profileId && request.tool === "marketplace" && canPublish && !creationMode ? offerLookup.isError ? <Callout tone="bad">The saved offer could not be checked. No draft was created.<Btn onClick={() => void offerLookup.refetch()}>Retry offer lookup</Btn></Callout> : <p role="status">{offerLookup.data?.listing?.id ? "Opening Review and publish offer…" : "Finding the saved offer…"}</p> : profileId ? request.tool === "forms" || request.tool === "operating-plan" ? <FinancialWorkspace key={profileId} inline open profileId={profileId} initialKind={request.tool === "operating-plan" ? "operating_plan" : request.kind ?? "debt_schedule"} initialView={request.view} initialDebtId={request.debtId} onClose={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}`)} /> : request.tool === "terms" && dealer ? <TermSheetDrawer inline open client={termsClient} profileId={profileId} onClose={() => undefined} /> : <FinancialCockpit key={profileId} workspaceTool={request.tool} profileId={profileId} businessName={title} canPublish={canPublish} canRecordTerms={dealer} canUnderwrite programReadiness={readiness.data ?? null} onProgramReadinessChange={value => cache.setQueryData(readinessKey, value)} onRefreshProgramReadiness={() => readiness.refetch()} canCreatePrograms={canPublish} intakeVariant={file.detail.intake.variant} termSheet={dealerTerms.data ?? null} packageState={packageState} focus={null} onFocusHandled={() => undefined} onRecordTerms={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}/workspace?tool=terms`)} onOpenEvidence={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}?section=evidence`)} onOpenPackage={() => window.location.assign(`/files/${encodeURIComponent(intakeId)}`)} termsKind={dealer ? "production" : "client"} /> : !error ? <p role="status">Resolving the linked application…</p> : null}
   </main></FileWorkspaceProvider>;
 }

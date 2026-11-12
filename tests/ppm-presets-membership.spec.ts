@@ -50,6 +50,7 @@ async function fixture(page: Page, options: { existingCustom?: boolean; policyFa
     if (p === "/capital/admin/access-requests") return json([]);
     if (p.endsWith("/file-documents")) return json(fileCatalog(true));
     if (p.endsWith("/deal-budget") || p.endsWith("/deal-budget/preview")) return json(guidanceBudget());
+    if (p.endsWith("/refresh-snapshot")) { expect(method).toBe("POST"); expect(body).toEqual({}); return json(listing); }
     if (p === `/capital/admin/listings/${ID}/ppm`) return json(state);
     if (p.endsWith("/ppm/generate") || p.endsWith("/ppm/draft")) {
       expect(method).toBe(p.endsWith("/draft") ? "PATCH" : "POST");
@@ -100,7 +101,7 @@ test("new draft prefills issuer and finite preset choices but unknown governing 
   await expect(jurisdiction.locator("option")).toHaveCount(54); await expect(jurisdiction.locator('option[value="custom"]')).toHaveCount(1);
   await expect(field(page, "Governing law and offering jurisdictions")).toHaveValue(/remain to be confirmed/); await approvalBlocked(page);
   await area(page).getByRole("button", { name: "Complete Governing law and offering jurisdictions", exact: true }).click(); await expect(jurisdiction).toBeFocused(); await expect(jurisdiction).toBeInViewport();
-  expect(writes(f).map(row => row.path)).toEqual([`/capital/admin/listings/${ID}/ppm/generate`]);
+  expect(writes(f).map(row => row.path)).toEqual([`/capital/admin/listings/${ID}/refresh-snapshot`, `/capital/admin/listings/${ID}/ppm/generate`]);
   await area(page).getByRole("heading", { name: "Private placement memorandum", exact: true }).evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" })); await page.screenshot({ path: info.outputPath("ppm-presets-overview.png"), fullPage: false });
   await choice(page, "Issuer legal name").evaluate(node => node.closest("label")?.scrollIntoView({ block: "start", behavior: "instant" })); await page.screenshot({ path: info.outputPath("ppm-preset-fields.png"), fullPage: false }); expect(f.errors).toEqual([]);
 });
@@ -141,7 +142,7 @@ test("PPM membership link opens the actual Members tab with the identical server
   await shown.evaluate(node => node.scrollIntoView({ block: "start", behavior: "instant" })); await members.screenshot({ path: info.outputPath("members-policy.png"), fullPage: false });
   const lastColumn = members.getByRole("columnheader", { name: "Activity", exact: true });
   await lastColumn.evaluate(node => { let parent = node.parentElement; while (parent) { if (parent.scrollWidth > parent.clientWidth && /auto|scroll/.test(getComputedStyle(parent).overflowX)) { parent.scrollLeft = parent.scrollWidth; break; } parent = parent.parentElement; } }); await lastColumn.scrollIntoViewIfNeeded(); await expect(lastColumn).toBeInViewport({ ratio: 0.99 }); expect(await members.evaluate(() => document.documentElement.scrollLeft)).toBe(0);
-  expect(writes(f).filter(row => !row.path.endsWith("/ppm/generate"))).toEqual([]); expect(f.errors).toEqual([]); await members.close();
+  expect(writes(f).filter(row => !row.path.endsWith("/ppm/generate") && !row.path.endsWith("/refresh-snapshot"))).toEqual([]); expect(f.errors).toEqual([]); await members.close();
 });
 
 test("membership policy read failure retries only the policy and keeps member review separate", async ({ page }) => {

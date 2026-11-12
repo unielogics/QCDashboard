@@ -65,6 +65,7 @@ async function fixture(page: Page, options: { ready?: boolean; approved?: boolea
       if (options.failReadinessAfterReview && reviewSaved && !readinessFailed) { readinessFailed = true; return json({ detail: "Synthetic listing readiness read failed after PPM review was saved" }, 503); }
       return json(p.endsWith(ID) ? listing : other);
     }
+    if (p.endsWith("/refresh-snapshot")) { expect(method).toBe("POST"); expect(body).toEqual({}); return json(p.includes(OTHER_PPM_LISTING_ID) ? other : listing); }
     const match = p.match(/\/capital\/admin\/listings\/([^/]+)\/ppm(?:\/(.*))?$/);
     if (match) {
       const [, id, action] = match, state = states.get(id)!;
@@ -150,7 +151,7 @@ test("each deliberate successful regeneration creates a new intent while retries
 });
 
 test("failed automatic generation retries the identical intent without duplicate versions", async ({ page }) => {
-  const f = await fixture(page, { failure: "generate" }); await docs(page).click(); const area = workspace(page); await expect(area.getByRole("alert")).toContainText("no version was saved"); await area.getByRole("button", { name: "Retry previous generation" }).click(); await expect(area.getByText("Saved draft v1", { exact: true })).toBeVisible();
+  const f = await fixture(page, { failure: "generate" }); await docs(page).click(); const area = workspace(page); await expect(area.getByRole("alert")).toContainText("no version was saved"); await area.getByRole("button", { name: "Prepare latest offer" }).click(); await expect(area.getByText("Saved draft v1", { exact: true })).toBeVisible();
   const calls = ppmCalls(f, "generate"); expect(calls).toHaveLength(2); expect(calls[1].body).toEqual(calls[0].body); expect(f.states.get(ID)!.history).toHaveLength(1); expect(f.errors).toEqual([]);
 });
 
