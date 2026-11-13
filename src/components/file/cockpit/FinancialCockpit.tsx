@@ -72,6 +72,7 @@ import { metricEntries, type FinancialKpiKey } from "@/lib/financialKpiReview";
 import type { FinancialPlanWrite } from "@/lib/financialCockpit";
 import financialReviewStyles from "./FinancialReview.module.css";
 import metricStyles from "./FinancialMetricReview.module.css";
+import layoutStyles from "./FileFinancialLayout.module.css";
 import { ChartCard, ColumnChart, HBarList, LineChart, Meter, SERIES, Sparkline, type ChartBand, type ChartTable } from "./CockpitCharts";
 import type { FileWorkspaceTool } from "@/lib/fileWorkspace";
 import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
@@ -813,7 +814,7 @@ export function FinancialCockpit(props: Props) {
           onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />);
   if (props.workspaceTool) return <div className="fin-cockpit">{coverageView}{props.workspaceTool === "marketplace" ? <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} /> : null}{auxiliaryContent}</div>;
   return (
-    <div className={cx("fin-cockpit", query.isFetching && "is-refreshing")}>
+    <div className={cx("fin-cockpit", layoutStyles.layout, query.isFetching && "is-refreshing")}>
       <div className="fc-head">
         <div>
           <h3>Financial cockpit</h3>
@@ -852,7 +853,9 @@ export function FinancialCockpit(props: Props) {
         </div>
       ) : null}
       <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} coverageEvaluation={cockpit.plan?.evaluation} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
-      <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
+      <details className={layoutStyles.sourceMetrics} open={!cockpit.operating_plan?.evaluation?.comparison}>
+        <summary>Review financial source metrics<span>Source evidence, corrections and bank indicators</span></summary>
+        <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
           const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "noi" && noiGovernancePresentation(cockpit.noi).tone === "warn" ? "warn" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "noi", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
           const valueLabel = entry.unit === "currency" && entry.currentValue != null ? metricAmountLabel(entry.currentValue, entry.currency, 0, false) : entry.valueLabel;
@@ -867,25 +870,27 @@ export function FinancialCockpit(props: Props) {
           </FinancialKpiCard>;
         })}
       </KpiRow></div>
+      </details>
 
       <div className="fc-grid">
         {coverageView}
       </div>
 
-      <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
-        <summary>Bank trends and cash flow · {summary.months} statement months</summary>
-        <div className="fc-grid fc-grid-charts"><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
-      </details>
-
-      <div className="fc-evidence-columns">
+      <div className={layoutStyles.evidenceColumns}>
         <div>
           <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
           <NetProfitCard cockpit={cockpit} />
         </div>
         <div>
           <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
-          <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
           <ExpensesCard cockpit={cockpit} />
+        </div>
+        <div>
+          <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
+          <details className={`fc-card ${financialReviewStyles.mainDetails} ${layoutStyles.bankDetails}`} open>
+            <summary>Bank trends and cash flow<span>{summary.months} statement months</span></summary>
+            <div className={layoutStyles.bankCards}><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
+          </details>
         </div>
       </div>
 

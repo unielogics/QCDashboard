@@ -46,7 +46,7 @@ type RequestRow={method:string;path:string;payload:Json;canonical_body?:Operatin
 const activeEngines:CanonicalEngine[]=[];
 test.skip(!canonicalBridgeConfigured,canonicalBridgeSetupMessage);
 test.afterEach(async({page})=>{for(const owned of page.context().pages())await owned.close();for(const engine of activeEngines.splice(0))await engine.close();});
-async function fixture(page:Page,options:{client?:boolean;readOnly?:boolean;seed?:MarketingSeed}={}){
+async function fixture(page:Page,options:{client?:boolean;readOnly?:boolean;seed?:MarketingSeed;goalUnset?:boolean}={}){
  const engine=await createCanonicalEngine(options.seed||"base");activeEngines.push(engine);
  let quote=engine.initial,body=quote.body,revision=4;const requests:RequestRow[]=[],errors:string[]=[];
  let version:{id:string;version_number:number;created_at:string;pdf_url:string}|null=null,savedSignature:string|null=null;
@@ -77,7 +77,7 @@ async function fixture(page:Page,options:{client?:boolean;readOnly?:boolean;seed
    expect(req.headers().authorization).toBe("Bearer synthetic-staff-token");
    if(p.startsWith("/admin/ai-underwriter-leads/")){const detail=workspaceDetail(PROFILE);return json({...detail,intake:{...detail.intake,business_name:body.business_name}});}
    if(p==="/application-profiles/resolve")return json({id:PROFILE,intake_id:INTAKE,vertical:"mca",program_selections:[]});
-   if(p.endsWith("/operating-plan/goal"))return json(quote.reply.goal);
+   if(p.endsWith("/operating-plan/goal"))return json(options.goalUnset ? {...quote.reply.goal, amount: null, currency: null, status: "awaiting_staff"} : quote.reply.goal);
    if(p.endsWith("/operating-plan/evidence"))return json(quote.reply.evidence);
    if(p.endsWith("/operating-plan/evaluate")){const value=await price(payload.body as OperatingPlanBody,"preview",record);return json({...value.reply,context_stamp:"a".repeat(64)});}
    if(p.endsWith("/financial-workspace/draft")){expect(payload.expected_revision).toBe(revision);quote=await price(payload.body as OperatingPlanBody,"draft",record);body=quote.body;revision++;return json(snapshot());}
@@ -103,7 +103,8 @@ const artifactRoot=()=>process.env.QC_MARKETING_ARTIFACT_DIR||path.resolve("test
 async function capture(page:Page,f:Awaited<ReturnType<typeof fixture>>,name:string){
  const dir=artifactRoot();await mkdir(dir,{recursive:true});
  await page.screenshot({path:path.join(dir,name+".png"),fullPage:true});
- const geometry=await page.evaluate(()=>({viewport:innerWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth}));
+ const geometry=await page.evaluate(()=>({viewport:document.documentElement.clientWidth,document:document.documentElement.scrollWidth,body:document.body.scrollWidth,overflow:[...document.querySelectorAll("*")].filter(e=>e.getBoundingClientRect().right>innerWidth+2&&getComputedStyle(e).display!=="none").map(e=>({tag:e.tagName,cls:e.className,width:e.getBoundingClientRect().width,right:e.getBoundingClientRect().right})).slice(0,18)}));
+ await writeFile(path.join(dir,name+"-geometry.json"),JSON.stringify(geometry,null,2));
  expect(geometry.document).toBeLessThanOrEqual(geometry.viewport+1);
  await writeFile(path.join(dir,name+".json"),JSON.stringify({geometry,body:f.body(),requests:f.requests,errors:f.errors,worker_pid:f.engine.pid},null,2));expect(f.errors).toEqual([]);
 }
@@ -193,4 +194,34 @@ test("mobile malformed Marketing command repairs explicitly and filled group ali
  await value.fill("2.5");await expect(value).toBeFocused();await expect.poll(()=>g.body().adjustments!.find(row=>row.kind==="expense_group_change")?.command?.value).toBe(2.5);const groupId=g.body().adjustments!.find(row=>row.kind==="expense_group_change")!.id;await assertCanonicalEffect(g,groupId,300);await expect(groupPage.getByRole("button",{name:"To finish: 0 required items",exact:true})).toBeVisible();
  await value.fill("0");await assertCanonicalEffect(g,groupId,0);await expect(groupPage.getByRole("button",{name:"To finish: 0 required items",exact:true})).toBeVisible();expect(g.body().adjustments!.find(row=>row.label==="Inactive earlier item proposal")?.excluded).toBe(true);
  await capture(groupPage,g,"mobile-filled-group-no-false-errors");await saveAndReload(groupPage,g,true);await capture(groupPage,g,"mobile-filled-group-saved");
+});
+
+test("reference layout keeps all four stages usable and the impact rail beside desktop content", async ({ page }, testInfo) => {
+ test.setTimeout(60000);
+ const f = await fixture(page, {seed: "marketing_existing"});
+ for (const [index, title] of ["Confirm source", "Confirm current costs", "Plan changes", "Review and save"].entries()) {
+  await stage(page, title).click();
+  await expect(wizard(page)).toBeVisible();
+  const dimensions = await page.evaluate(() => {
+   const wizard = document.querySelector('[aria-label="Guided operating expenses and earnings plan"]')!;
+   const rail = wizard.querySelector('[aria-label="Plan metrics and required items"]')!.getBoundingClientRect();
+   const nav = wizard.querySelector('nav')!.getBoundingClientRect();
+   return {railWidth: rail.width, viewport: document.documentElement.clientWidth, pageWidth: document.documentElement.scrollWidth, navWidth: nav.width};
+  });
+  expect(dimensions.pageWidth).toBeLessThanOrEqual(dimensions.viewport + 1);
+  if (dimensions.viewport >= 1000) expect(dimensions.railWidth).toBeGreaterThan(270);
+  await capture(page, f, `reference-${testInfo.project.name}-step-${index + 1}`);
+ }
+ expect(f.versions).toHaveLength(0);
+});
+
+test("staff can inspect sources and plan changes while setting the first NOI goal", async ({ page }) => {
+ test.setTimeout(45000);
+ const f = await fixture(page, {goalUnset: true});
+ await expect(page.getByRole("navigation", {name: "Guided operating plan steps"})).toBeVisible();
+ await expect(page.getByLabel("Annual NOI goal", {exact: true})).toBeVisible();
+ await expect(wizard(page).getByRole("table", {name: "Source cost comparison", exact: true})).toBeVisible();
+ await stage(page, "Plan changes").click();
+ await expect(changes(page)).toBeVisible();
+ expect(f.versions).toHaveLength(0);
 });

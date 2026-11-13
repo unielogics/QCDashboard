@@ -42,6 +42,7 @@ describe("guided operating plan presentation", () => {
     const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation }));
     expect(html).toContain("$10,000.00");
     expect(html).toContain("-$10,000.00");
+    expect(html).toContain("<th>Reviewed</th>");
     expect(html).toContain("Change (Δ)");
     expect(html).toContain("+$50,000.00");
     expect(html).toContain("+$30,000.00");
@@ -55,7 +56,7 @@ describe("guided operating plan presentation", () => {
     expect(html).toContain("-$40,000.00");
     expect(html).not.toContain("$10,000.00");
     expect(html).not.toContain("0.06x");
-    expect(html).toContain("Calculating…");
+    expect(html).toContain("Calculating.");
   });
 });
 
@@ -65,17 +66,44 @@ describe("current debt ratio applicability", () => {
  it("keeps truly missing debt inputs distinct from no debt", () => { const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation: debtCase(null) })); expect(html).toContain("Confirm current debt inputs with your team"); expect(html).not.toContain("Not applicable · no current debt"); });
 });
 
-describe("source-only current cost review", () => {
- it("shows only imported source groups with read-only amounts and explicit decisions", () => {
+describe("source review and revenue step placement", () => {
+ it("shows imported source groups in the first step with read-only amounts and explicit decisions", () => {
   const guidance = { business: {}, reporting: {}, expense_groups: [{ key: "tax:rent", label: "Imported rent", category: "rent", baseline_annual_amount: 12000, currency: "USD", year: 2025, source_file_ids: [], notes: [], source_fact_keys: [] }], essentials: [{ category: "cogs", label: "Cost of goods", prompt: "Old question" }] } as unknown as OperatingGuidance;
   let writes = 0;
-  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: { expenses: [{ id: "legacy", label: "Manual cost", current_amount: 0 }] }, guidance, stepIndex: 1, onChange: () => writes++ }));
-  expect(writes).toBe(0); expect(html).toContain("Imported rent"); expect(html).toContain("$12,000.00 / year"); expect(html).toContain('aria-label="Confirm Imported rent"'); expect(html).toContain('aria-label="Correct Imported rent"'); expect(html).toContain("retained item");
-  expect(html).not.toContain("Add item"); expect(html).not.toContain("AI suggestion"); expect(html).not.toContain("Other categories"); expect(html).not.toContain("Business units and consultations"); expect(html).not.toContain('<select');
+  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: { expenses: [{ id: "legacy", label: "Manual cost", current_amount: 0 }] }, guidance, stepIndex: 0, onChange: () => writes++ }));
+  const table = html.match(/<table\b[^>]*aria-label="Source cost comparison"[\s\S]*?<\/table>/)?.[0];
+  expect(writes).toBe(0);
+  expect(html).toContain('aria-label="Source cost confirmations"');
+  expect(html).toContain("retained item");
+  expect(table).toBeDefined();
+  for (const text of ["Cost group", "Selected source / year", "Disclosed / year", "Variance", "Status", "Imported rent", "$12,000.00 / year"]) expect(table).toContain(text);
+  expect(table).toContain('aria-label="Confirm Imported rent"');
+  expect(table).toContain('aria-label="Correct Imported rent"');
+  expect(table).not.toContain("Manual cost");
+  expect(table).not.toContain('<input');
+  expect(table).not.toContain('<select');
  });
  it("keeps the source confirmation requirement reachable in the persistent right repair list", () => {
-  const guidance = { reporting: {}, expense_groups: [{ key: "tax:rent", label: "Imported rent", category: "rent", baseline_annual_amount: 12000, currency: "USD", source_file_ids: [] }] } as unknown as OperatingGuidance;
-  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: {}, guidance, stepIndex: 1, onChange: () => undefined }));
+  const guidance = { business: {}, reporting: {}, expense_groups: [{ key: "tax:rent", label: "Imported rent", category: "rent", baseline_annual_amount: 12000, currency: "USD", source_file_ids: [], source_fact_keys: [], notes: [] }] } as unknown as OperatingGuidance;
+  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: {}, guidance, stepIndex: 0, onChange: () => undefined }));
   expect(html).toContain('aria-label="To finish"'); expect(html).toContain("Confirm Imported rent"); expect(html).toContain('aria-label="To finish:');
  });
+ it("places the revenue model and editable current costs together in the second step", () => {
+  let writes = 0;
+  const guidance = { business: {}, reporting: {}, expense_groups: [{ key: "tax:rent", label: "Imported rent", category: "rent", baseline_annual_amount: 12000, currency: "USD", source_file_ids: [], source_fact_keys: [], notes: [] }] } as unknown as OperatingGuidance;
+  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, {
+   value: { expenses: [{ id: "rent-row", label: "Office rent", category: "rent", current_amount: 1000, cadence: "monthly", source_group_key: "tax:rent" }] },
+   guidance, stepIndex: 1, onChange: () => writes++,
+   unitControls: createElement("div", { "aria-label": "Revenue model controls" }, "Current units and selling price"),
+  }));
+  const model = html.match(/<section\b[^>]*aria-label="Revenue model"[\s\S]*?<\/section>/)?.[0];
+  expect(writes).toBe(0);
+  expect(model).toContain("Current units and selling price");
+  expect(model).not.toContain("<details");
+  expect(html).toContain('aria-label="Itemize current costs"');
+  expect(html).toContain('aria-label="Current expense rent-row name"');
+  expect(html).toContain("Review source costs");
+  expect(html).not.toContain('aria-label="Source cost comparison"');
+ });
+
 });

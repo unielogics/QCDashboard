@@ -1,0 +1,75 @@
+.layout {
+  container-type: inline-size;
+  container-name: file-financials;
+  display: grid;
+  align-content: start;
+  gap: 14px;
+  min-width: 0;
+}
+.layout:global(.fin-cockpit) { gap: 14px; }
+.layout > :global(.fc-head) { align-items: center; padding: 0 2px; }
+.layout :global(.fc-head h3) { font-size: 14px; margin: 0 0 4px; }
+.layout :global(.fc-head .sub) { font-size: 11px; }
+.layout :global(.fc-card) {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--line, #e4e6ec);
+  border-radius: 12px;
+  background: var(--surface, #fff);
+  box-shadow: none;
+  gap: 10px;
+}
+.layout :global(.fc-card-h) { align-items: flex-start; gap: 8px; }
+.layout :global(.fc-card h4) { font-size: 14px; line-height: 1.35; letter-spacing: -.015em; }
+.layout :global(.fc-card .sub) { font-size: 11px; line-height: 1.5; }
+.layout :global(.fc-table) { font-size: 12px; }
+.layout :global(.fc-table th), .layout :global(.fc-table td) { padding: 9px 8px; }
+.layout > :global(.fc-grid) { gap: 14px; align-items: start; }
+.sourceMetrics {
+  min-width: 0;
+  border: 1px solid var(--line, #e4e6ec);
+  background: var(--surface, #fff);
+  border-radius: 10px;
+}
+.sourceMetrics > summary {
+  cursor: pointer;
+  padding: 11px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink, #17202b);
+}
+.sourceMetrics > summary span {
+  margin-left: 12px;
+  color: var(--muted, #6c7280);
+  font-size: 11px;
+  font-weight: 400;
+}
+.sourceMetrics > div { padding: 0 12px 12px; }
+.sourceMetrics :global(.kpi) { min-height: 0; padding: 8px 10px; gap: 2px; }
+.sourceMetrics :global(.kpi .knum) { font-size: 20px; }
+.sourceMetrics :global(.kpi .sub) { font-size: 10px; }
+.evidenceColumns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+}
+.evidenceColumns > div { display: grid; align-content: start; gap: 14px; min-width: 0; }
+.evidenceColumns :global(.fc-wide) { grid-column: auto; }
+.evidenceColumns :global(table) { width: 100%; }
+.evidenceColumns :global(th), .evidenceColumns :global(td) { font-size: 11px; padding: 8px 6px; }
+.bankDetails > summary { display: flex; gap: 8px; justify-content: space-between; align-items: baseline; }
+.bankDetails > summary span { color: var(--muted, #6c7280); font-size: 10px; font-weight: 400; }
+.bankCards { display: grid; gap: 12px; min-width: 0; }
+.bankCards :global(.fc-card) { padding: 0; border: 0; border-radius: 0; }
+.bankCards > :global(.fc-card) + :global(.fc-card) { padding-top: 12px; border-top: 1px solid var(--line, #e4e6ec); }
+@container file-financials (max-width: 1050px) {
+  .evidenceColumns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .evidenceColumns > div:last-child { grid-column: 1 / -1; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; }
+}
+@container file-financials (max-width: 650px) {
+  .evidenceColumns, .evidenceColumns > div:last-child { grid-template-columns: minmax(0, 1fr); }
+  .sourceMetrics > summary span { display: block; margin: 4px 0 0 14px; }
+  .layout :global(.fc-card) { padding: 13px; }
+}

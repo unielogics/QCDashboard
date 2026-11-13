@@ -25,3 +25,17 @@
 :global(.financial-workspace-body) .planShell:global(.fw-shell.fw-plan-shell){grid-template-columns:minmax(0,1fr)}.planShell :global(.fw-form.fw-operating-planner){overflow:visible;padding-top:12px}.planShell :global(.fw-plan-tools){grid-column:1/-1;border-bottom:1px solid var(--line,#dce1e8);padding:8px 16px}.planShell :global(.fw-plan-tools>summary){cursor:pointer;font-size:12px;color:var(--mut,#647084)}.planShell :global(.fw-plan-tools .fw-sidebar){display:flex;flex-direction:row;flex-wrap:wrap;border:0;overflow:visible}.planShell :global(.fw-plan-tools .fw-sidebar>button){flex:0 1 180px}.planShell :global(.fw-plan-view-tools){padding:4px 16px}.planShell :global(.fw-plan-view-tools button){font-size:12px;padding:6px 10px}
 
 .planShell>:global(.fw-main){grid-column:1/-1;min-width:0}
+
+.planShell{background:var(--ground,#f6f7fb);gap:0!important;grid-auto-rows:max-content;align-content:start}
+.planShell :global(.fw-plan-header-tools){display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;min-width:0;padding:8px 0}
+.planShell :global(.fw-plan-tools){padding:0;border:0}
+.planShell :global(.fw-plan-tools[open]){flex-basis:100%}
+.planShell :global(.fw-plan-view-tools){padding:4px 0;border-top:1px solid var(--line,#e5e7eb)}
+.planShell :global(.fw-main){display:flex;flex-direction:column;min-height:0;gap:0}
+.planShell :global(.fw-form.fw-operating-planner){padding:10px 0 0;max-width:none}
+@media(max-width:650px){.planShell :global(.fw-plan-header-tools){align-items:flex-start}.planShell :global(.fw-plan-header-tools>.row){flex-wrap:wrap}}
+
+.planShell :global(.fw-plan-view-menu){align-self:flex-end;border:0;padding:0;margin:0;font-size:11px}
+.planShell :global(.fw-plan-view-menu>summary){cursor:pointer;color:var(--mut,#647084)}
+.planShell :global(.fw-plan-view-menu[open]){align-self:stretch;padding-block:5px}
+.viewMenu:global(.fw-view-menu)>summary{display:none}
