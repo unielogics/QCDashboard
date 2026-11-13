@@ -38,4 +38,4 @@
 .planShell :global(.fw-plan-view-menu){align-self:flex-end;border:0;padding:0;margin:0;font-size:11px}
 .planShell :global(.fw-plan-view-menu>summary){cursor:pointer;color:var(--mut,#647084)}
 .planShell :global(.fw-plan-view-menu[open]){align-self:stretch;padding-block:5px}
-:global(.fw-view-menu>summary){display:none}
+.viewMenu:global(.fw-view-menu)>summary{display:none}
