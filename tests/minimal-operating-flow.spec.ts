@@ -197,11 +197,11 @@ test('public X correction is explicit, cancellable and preserves the imported fa
 test('Change immediately requests Why, exact repairs clear red containers and undated math updates before blur',async({page},info)=>{
  const f=await fixture(page,{caseName:'no_changes'});await stage(page,'Plan changes').click();
  f.setReply('change_unconfigured');await changeCard(page).getByRole('button',{name:'Change',exact:true}).click();
- await expect(why(page)).toBeVisible();await expect(why(page)).toHaveAttribute('aria-invalid','true');await expect.poll(()=>redContainerOf(why(page))).toBe(true);
+ await expect(why(page)).toBeVisible();await expect(why(page)).toHaveAttribute('aria-invalid','true');await expect(why(page).locator('xpath=..').getByText('Required',{exact:true})).toBeVisible();await expect.poll(()=>redContainerOf(why(page))).toBe(true);
  await expect(config(page).getByLabel(/Effective date|Responsible|Owner name/)).toHaveCount(0);
  const whyBox=(await why(page).boundingBox())!;expect(whyBox.height).toBeGreaterThanOrEqual(70);expect(whyBox.width).toBeGreaterThanOrEqual(Math.min(280,(await config(page).boundingBox())!.width-80));
  await closeDialog(page);const required=await requiredItems(page);const issue=required.getByRole('button',{name:/explain.*why|why.*work|explain the change/i}).first();await expect(issue).toBeVisible();await issue.click();await expect(why(page)).toBeFocused();
- await why(page).fill('Renegotiate the premises contract');await expect(why(page)).not.toHaveAttribute('aria-invalid','true');
+ await why(page).fill('Renegotiate the premises contract');await expect(why(page)).not.toHaveAttribute('aria-invalid','true');await expect(why(page).locator('xpath=..').getByText('Required',{exact:true})).toHaveCount(0);
  f.setReply('change_why');const amount=config(page).getByRole('textbox',{name:'Command value '+rentId(),exact:true});expect((await amount.boundingBox())!.height).toBeGreaterThanOrEqual(32);await amount.fill('');await amount.pressSequentially('100',{delay:55});await expect(amount).toBeFocused();await expect(amount).toHaveValue('100');
  f.setReply('change_ready');await config(page).getByRole('textbox',{name:/^Setup or transition cost /}).fill('0');
  await expect.poll(()=>redContainerOf(why(page))).toBe(false);await screenshot(page,info.project.name+'-why-complete.png');await closeDialog(page);
