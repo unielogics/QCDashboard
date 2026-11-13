@@ -1,0 +1,907 @@
+<main data-screen-label="Earnings plan workspace v2" style="max-width:1480px;margin:0 auto;padding:20px 24px 64px;display:flex;flex-direction:column;gap:16px">
+<header style="display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:12px 24px">
+<div style="display:flex;flex-direction:column;gap:8px;min-width:0">
+<div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+<a class="btn btn-secondary btn-sm" href="File.dc.html">Back to file</a>
+<span style="color:var(--color-text-muted);font-size:var(--text-sm)">Harbor Auto Detail LLC</span>
+<span class="tag tag-neutral">{{ viewerChip }}</span>
+</div>
+<h1 style="font-family:var(--font-heading);font-size:var(--text-h3);line-height:1.2;margin:0;letter-spacing:-0.01em">Operating expenses and earnings plan</h1>
+</div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span class="num" style="font-size:var(--text-xs);color:var(--color-text-muted);white-space:nowrap">{{ saveText }}</span>
+<button class="btn btn-secondary btn-sm" type="button">Request client plan</button>
+<button class="btn btn-primary btn-sm" type="button" sc-camel-on-click="{{ savePlan }}">{{ saveLabel }}</button>
+</div>
+</header>
+<nav aria-label="Plan steps" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:8px">
+<sc-for list="{{ steps }}" as="stp" hint-placeholder-count="4">
+<button type="button" sc-camel-on-click="{{ stp.go }}" style="display:flex;gap:12px;align-items:flex-start;text-align:left;padding:12px 14px;border-radius:var(--radius-md);border:1px solid {{ stp.border }};background:{{ stp.bg }};cursor:pointer;font-family:inherit;color:var(--color-text);box-shadow:var(--shadow-sm)">
+<span class="num" style="flex:none;width:24px;height:24px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:600;background:{{ stp.dot }};color:{{ stp.dotInk }}">{{ stp.n }}</span>
+<span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1">
+<b style="font-family:var(--font-heading);font-size:15px">{{ stp.title }}</b>
+<small class="num" style="font-size:12px;color:var(--color-text-muted)">{{ stp.sub }}</small>
+</span>
+<sc-if value="{{ stp.hasBadge }}" hint-placeholder-val="{{ false }}">
+<span class="tag tag-warning num">{{ stp.badge }}</span>
+</sc-if>
+</button>
+</sc-for>
+</nav>
+<div style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start">
+<div style="flex:3 1 480px;min-width:0;display:flex;flex-direction:column;gap:16px">
+<sc-if value="{{ isS0 }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1 1 320px;min-width:0">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Selected reporting source</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:66ch">Source figures stay read-only. The IRS return is primary. The latest P&amp;L is shown beside it and only fills lines the return does not print.</p>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn btn-secondary btn-sm" type="button">View IRS return</button>
+<button class="btn btn-ghost btn-sm" type="button">View P&amp;L</button>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px">
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Primary source</div>
+<b>IRS 1120-S · 2025</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Reporting period</div>
+<b class="num">Jan 1 – Dec 31, 2025</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Currency and basis</div>
+<b>USD · Accrual</b>
+</div>
+<div style="display:flex;flex-direction:column;gap:4px">
+<div style="font-size:12px;color:var(--color-text-muted)">Annual NOI goal · set by staff</div>
+<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+<sc-if value="{{ goalEditing }}" hint-placeholder-val="{{ false }}">
+<input class="input num" type="number" value="{{ goalVal }}" sc-camel-on-change="{{ setGoal }}" aria-label="Annual NOI goal" style="min-height:34px;padding:4px 8px;width:130px">
+</sc-if>
+<sc-if value="{{ goalShow }}" hint-placeholder-val="{{ true }}">
+<b class="num">{{ goalText }}</b>
+</sc-if>
+<sc-if value="{{ staff }}" hint-placeholder-val="{{ true }}">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ toggleGoalEdit }}">{{ goalEditLabel }}</button>
+</sc-if>
+</div>
+</div>
+</div>
+</section>
+<section class="card" style="padding:20px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1 1 320px;min-width:0">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Do these annual costs match the return?</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:66ch">Confirm each group or record a correction. A correction is kept for preparer review. It never changes the source or raises verified income.</p>
+</div>
+<span class="tag tag-neutral num">{{ confirmedText }}</span>
+</div>
+<div style="overflow-x:auto;margin-top:12px">
+<sc-raw-table class="table" style="width:100%;min-width:640px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Group</sc-raw-th>
+<sc-raw-th class="align-end">IRS 2025</sc-raw-th>
+<sc-raw-th class="align-end">P&amp;L annualized</sc-raw-th>
+<sc-raw-th class="align-end">Variance</sc-raw-th>
+<sc-raw-th>Status</sc-raw-th>
+<sc-raw-th class="align-end">
+</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-for list="{{ groups }}" as="grp" hint-placeholder-count="10">
+<sc-raw-tr>
+<sc-raw-td style="font-weight:600">{{ grp.label }}</sc-raw-td>
+<sc-raw-td class="align-end">{{ grp.irs }}</sc-raw-td>
+<sc-raw-td class="align-end" style="color:var(--color-text-muted)">{{ grp.pl }}</sc-raw-td>
+<sc-raw-td class="align-end" style="color:var(--color-text-muted)">{{ grp.varc }}</sc-raw-td>
+<sc-raw-td>
+<span class="{{ grp.tag }}">{{ grp.tagText }}</span>
+</sc-raw-td>
+<sc-raw-td class="align-end">
+<div style="display:inline-flex;gap:6px">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ grp.confirm }}" disabled="{{ grp.confirmDisabled }}">Confirm</button>
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ grp.correct }}">Correct</button>
+</div>
+</sc-raw-td>
+</sc-raw-tr>
+</sc-for>
+</sc-raw-tbody>
+</sc-raw-table>
+</div>
+<sc-if value="{{ correcting }}" hint-placeholder-val="{{ false }}">
+<div style="margin-top:12px;padding:16px;background:var(--color-surface-sunken);border-radius:var(--radius-md);display:flex;flex-direction:column;gap:10px">
+<b class="num">{{ corrTitle }}</b>
+<div style="display:flex;gap:12px;flex-wrap:wrap">
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted)">Corrected annual amount<input class="input num" type="number" value="{{ corrAmt }}" sc-camel-on-change="{{ setCorrAmt }}" style="min-height:34px;padding:4px 8px;width:150px">
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted);flex:1 1 280px">What needs correcting?<textarea class="input" value="{{ corrReason }}" sc-camel-on-change="{{ setCorrReason }}" placeholder="Wrong amount, wrong category, or already included elsewhere" style="min-height:60px">
+</textarea>
+</label>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<button class="btn btn-primary btn-sm" type="button" sc-camel-on-click="{{ saveCorr }}" disabled="{{ saveCorrDisabled }}">Save correction for review</button>
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ cancelCorr }}">Cancel</button>
+<sc-if value="{{ canRestore }}" hint-placeholder-val="{{ false }}">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ restoreCorr }}">Restore original source amount</button>
+</sc-if>
+</div>
+<p class="fineprint" style="margin:0">The original source stays unchanged. This difference is recorded for review and does not increase verified income.</p>
+</div>
+</sc-if>
+<div class="num" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-top:14px;padding-top:14px;border-top:1px solid var(--color-divider)">
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Revenue</div>
+<b>$1,236,000</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">NOI</div>
+<b style="color:var(--color-danger)">−$30,777</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">EBITDA</div>
+<b style="color:var(--color-danger)">−$22,377</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Annual debt service</div>
+<b>$777,600</b>
+</div>
+</div>
+<p class="fineprint" style="margin:10px 0 0">EBITDA includes $8,400 of non-operating income that NOI excludes. DSCR is EBITDA over annual debt service.</p>
+</section>
+<section class="card" style="padding:20px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1 1 320px;min-width:0">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Loan terms on file</h2>
+<p class="num" style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted)">Client terms v3 · $1,156,000 · 9.25% · 120 months · pays off 4 advances and 1 equipment note</p>
+</div>
+<label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm);cursor:pointer">
+<input type="checkbox" checked="{{ loan }}" sc-camel-on-change="{{ toggleLoan }}" style="width:16px;height:16px;accent-color:var(--color-accent)">Apply to plan</label>
+</div>
+<div class="num" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:16px;margin-top:14px">
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Current payments</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600">$64,800 / mo</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">New payment</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600">$14,800 / mo</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Cash released</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600;color:var(--color-success)">{{ released }}</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">DSCR from terms alone</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600">{{ dscrLoanOnly }}</div>
+</div>
+</div>
+<p class="fineprint" style="margin:12px 0 0">Lower payments release cash but do not change EBITDA or NOI. Earnings still have to turn positive for coverage to follow. Released cash is assigned in step 3.</p>
+</section>
+<section class="card" style="padding:20px">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Suggestions from supporting documents</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:66ch">Bank payments can be transfers, financing or operating costs. A suggestion is not a confirmed expense, and adding one does not replace current NOI.</p>
+<div style="display:flex;flex-direction:column;margin-top:10px">
+<sc-for list="{{ cands }}" as="cd" hint-placeholder-count="3">
+<div style="display:flex;gap:8px 16px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--color-divider)">
+<div style="flex:1 1 260px;min-width:0">
+<div style="font-weight:600;font-size:var(--text-sm)">{{ cd.label }}</div>
+<div style="font-size:12px;color:var(--color-text-muted)">{{ cd.note }}</div>
+</div>
+<span class="num" style="font-size:var(--text-sm)">{{ cd.amt }}</span>
+<sc-if value="{{ cd.fin }}" hint-placeholder-val="{{ false }}">
+<span class="tag tag-outline">Financing · excluded</span>
+</sc-if>
+<sc-if value="{{ cd.canAdd }}" hint-placeholder-val="{{ true }}">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ cd.add }}" disabled="{{ cd.added }}">{{ cd.addLabel }}</button>
+</sc-if>
+</div>
+</sc-for>
+</div>
+</section>
+</div>
+</sc-if>
+<sc-if value="{{ isS1 }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:1 1 320px;min-width:0">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Revenue model</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:66ch">Returns print one revenue total. Describe each stream with the metrics that produce it, whether units sold, billable hours, engagements, contracts, occupancy or processed volume. Every metric can be changed in the plan, and costs linked to the stream follow.</p>
+</div>
+<span class="{{ reconTag }}">{{ reconText }}</span>
+</div>
+<sc-for list="{{ streams }}" as="st" hint-placeholder-count="3">
+<div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:14px 16px;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+<input class="input" value="{{ st.name }}" sc-camel-on-change="{{ st.setName }}" aria-label="Revenue stream name" style="min-height:34px;padding:4px 8px;font-weight:600;flex:1 1 220px;max-width:340px">
+<span class="tag tag-outline">{{ st.typeLabel }}</span>
+<span class="num" style="margin-left:auto;font-size:var(--text-sm)">
+<b>{{ st.annual }}</b> / yr</span>
+<sc-if value="{{ st.removable }}" hint-placeholder-val="{{ false }}">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ st.remove }}">Remove</button>
+</sc-if>
+</div>
+<div class="num" style="display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end">
+<sc-for list="{{ st.facs }}" as="fac" hint-placeholder-count="2">
+<div style="display:flex;align-items:flex-end;gap:8px">
+<sc-if value="{{ fac.sep }}" hint-placeholder-val="{{ false }}">
+<span style="padding-bottom:8px;color:var(--color-text-muted)">×</span>
+</sc-if>
+<div style="display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--color-text-muted)">
+<sc-if value="{{ fac.custom }}" hint-placeholder-val="{{ false }}">
+<input class="input" value="{{ fac.label }}" sc-camel-on-change="{{ fac.setLabel }}" aria-label="Metric name" style="min-height:26px;padding:2px 6px;font-size:12px;width:130px">
+</sc-if>
+<sc-if value="{{ fac.fixedLabel }}" hint-placeholder-val="{{ true }}">
+<span>{{ fac.label }}</span>
+</sc-if>
+<span style="display:flex;align-items:center;gap:6px;color:var(--color-text)">{{ fac.pre }}<input class="input num" type="number" value="{{ fac.val }}" sc-camel-on-change="{{ fac.setVal }}" aria-label="{{ fac.label }}" style="min-height:34px;padding:4px 8px;width:96px">{{ fac.unit }}</span>
+</div>
+</div>
+</sc-for>
+<span style="padding-bottom:8px">=</span>
+<b style="padding-bottom:8px">{{ st.monthly }}</b>
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ st.addMetric }}">Add metric</button>
+</div>
+<div class="num" style="font-size:12px;color:var(--color-text-muted)">{{ st.volText }}</div>
+</div>
+</sc-for>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<sc-raw-select class="input" value="{{ newType }}" sc-camel-on-change="{{ setNewType }}" aria-label="Revenue stream type" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ types }}" as="ty" hint-placeholder-count="7">
+<option value="{{ ty.v }}">{{ ty.l }}</option>
+</sc-for>
+</sc-raw-select>
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ addStream }}">Add revenue stream</button>
+<span class="num" style="font-size:12px;color:var(--color-text-muted)">{{ modelText }}</span>
+</div>
+</section>
+<section class="card" style="padding:20px">
+<div style="flex:1 1 320px;min-width:0">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Cost relationships</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:66ch">Each cost from the return is fixed, a cost per business unit of a stream, or a percent of revenue. Rates are derived so the baseline still equals the return. In the plan, linked costs move with their stream on their own.</p>
+</div>
+<div style="overflow-x:auto;margin-top:12px">
+<sc-raw-table class="table" style="width:100%;min-width:700px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Cost</sc-raw-th>
+<sc-raw-th>Behaves as</sc-raw-th>
+<sc-raw-th>Linked to</sc-raw-th>
+<sc-raw-th>Rate</sc-raw-th>
+<sc-raw-th class="align-end">Baseline / yr</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-for list="{{ lines2 }}" as="ln" hint-placeholder-count="14">
+<sc-raw-tr>
+<sc-raw-td>
+<div style="font-weight:600">{{ ln.label }}</div>
+<div style="font-size:12px;color:var(--color-text-muted)">{{ ln.group }}</div>
+</sc-raw-td>
+<sc-raw-td>
+<sc-raw-select class="input" value="{{ ln.beh }}" sc-camel-on-change="{{ ln.setBeh }}" aria-label="Cost behavior" style="min-height:34px;padding:4px 8px;width:auto">
+<option value="fixed">Fixed</option>
+<option value="unit">Per business unit</option>
+<option value="pct">% of revenue</option>
+</sc-raw-select>
+</sc-raw-td>
+<sc-raw-td>
+<sc-raw-select class="input" value="{{ ln.link }}" sc-camel-on-change="{{ ln.setLink }}" disabled="{{ ln.fixed }}" aria-label="Linked stream" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ linkOpts }}" as="lo" hint-placeholder-count="4">
+<option value="{{ lo.v }}">{{ lo.l }}</option>
+</sc-for>
+</sc-raw-select>
+</sc-raw-td>
+<sc-raw-td class="num" style="font-size:var(--text-sm)">{{ ln.rate }}</sc-raw-td>
+<sc-raw-td class="align-end">{{ ln.base }}</sc-raw-td>
+</sc-raw-tr>
+</sc-for>
+</sc-raw-tbody>
+</sc-raw-table>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:12px">
+<sc-for list="{{ itemz }}" as="it" hint-placeholder-count="2">
+<div class="num" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:var(--text-sm)">
+<span class="{{ it.tag }}">{{ it.tagText }}</span>
+<span>{{ it.text }}</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section class="card" style="padding:20px">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Categories the return does not show</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted)">Answer each one so the plan does not miss a cost.</p>
+<div style="display:flex;flex-direction:column;margin-top:8px">
+<sc-for list="{{ cats }}" as="ct" hint-placeholder-count="2">
+<div style="display:flex;gap:10px 16px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--color-divider)">
+<b style="flex:1 1 160px;font-size:var(--text-sm)">{{ ct.label }}</b>
+<span class="{{ ct.tag }}">{{ ct.state }}</span>
+<div class="seg">
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ ct.name }}" checked="{{ ct.isConf }}" sc-camel-on-change="{{ ct.conf }}" style="position:absolute;opacity:0;width:1px;height:1px">Included in another line</label>
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ ct.name }}" checked="{{ ct.isNa }}" sc-camel-on-change="{{ ct.na }}" style="position:absolute;opacity:0;width:1px;height:1px">Not applicable</label>
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ ct.name }}" checked="{{ ct.isHelp }}" sc-camel-on-change="{{ ct.help }}" style="position:absolute;opacity:0;width:1px;height:1px">Needs help</label>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+</div>
+</sc-if>
+<sc-if value="{{ isS2 }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+<section class="card" style="padding:14px 20px;display:flex;flex-direction:row;gap:10px 20px;flex-wrap:wrap;align-items:center">
+<label style="display:flex;align-items:center;gap:8px;font-size:var(--text-sm)">Plan starts<sc-raw-select class="input" value="{{ planStart }}" sc-camel-on-change="{{ setPlanStart }}" aria-label="Plan start" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ planStartOpts }}" as="ps" hint-placeholder-count="5">
+<option value="{{ ps.v }}">{{ ps.l }}</option>
+</sc-for>
+</sc-raw-select>
+</label>
+<p class="fineprint" style="margin:0;flex:1 1 320px">Increase or decrease any line by an amount or a percent. Run-rate results assume every included change is in effect. First-year results follow each start month and one-time setup costs.</p>
+<sc-if value="{{ removedMsg }}" hint-placeholder-val="{{ false }}">
+<span style="display:flex;gap:8px;align-items:center;font-size:var(--text-sm)">Planned change removed.<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ undo }}">Undo</button>
+</span>
+</sc-if>
+</section>
+<sc-for list="{{ secs }}" as="sec" hint-placeholder-count="5">
+<section class="card" style="padding:16px 20px">
+<div style="display:flex;justify-content:space-between;gap:8px 12px;flex-wrap:wrap;align-items:center">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0;flex:1 1 200px">{{ sec.title }}</h2>
+<span class="{{ sec.tag }}">{{ sec.total }}</span>
+<sc-if value="{{ sec.canAdd }}" hint-placeholder-val="{{ false }}">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ sec.add }}">{{ sec.addLabel }}</button>
+</sc-if>
+</div>
+<p style="margin:4px 0 4px;font-size:var(--text-sm);color:var(--color-text-muted);max-width:70ch">{{ sec.sub }}</p>
+<sc-for list="{{ sec.rows }}" as="row" hint-placeholder-count="4">
+<div style="border-top:1px solid var(--color-divider);border-left:3px solid {{ row.border }};padding:12px 0 12px 10px;margin-left:-13px;display:flex;flex-direction:column;gap:10px;opacity:{{ row.opacity }}">
+<div style="display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center">
+<div style="flex:1 1 200px;min-width:0">
+<sc-if value="{{ row.named }}" hint-placeholder-val="{{ false }}">
+<input class="input" value="{{ row.label }}" sc-camel-on-change="{{ row.setName }}" aria-label="Activity name" style="min-height:34px;padding:4px 8px;font-weight:600;max-width:340px">
+</sc-if>
+<sc-if value="{{ row.fixedName }}" hint-placeholder-val="{{ true }}">
+<div style="font-weight:600;font-size:var(--text-sm)">{{ row.label }}</div>
+</sc-if>
+<div class="num" style="font-size:12px;color:var(--color-text-muted)">{{ row.sub }}</div>
+</div>
+<div class="num" style="display:flex;flex-direction:column;align-items:flex-end;font-size:var(--text-sm)">
+<span style="color:var(--color-text-muted)">{{ row.curText }}</span>
+<span style="font-weight:600;color:{{ row.planInk }}">{{ row.planText }}</span>
+</div>
+<sc-if value="{{ row.none }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:6px">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ row.change }}">Change</button>
+<sc-if value="{{ row.ai }}" hint-placeholder-val="{{ false }}">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ row.askAi }}">AI suggestion</button>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{ row.has }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;gap:8px;align-items:center">
+<span class="{{ row.tag }}">{{ row.chip }}</span>
+<span style="display:flex;align-items:flex-end;gap:2px;height:16px">
+<sc-for list="{{ row.spark }}" as="bar" hint-placeholder-count="12">
+<i style="display:block;width:4px;border-radius:1px;height:{{ bar.h }};background:{{ bar.c }}">
+</i>
+</sc-for>
+</span>
+</div>
+</sc-if>
+</div>
+<sc-if value="{{ row.showAi }}" hint-placeholder-val="{{ false }}">
+<div class="notice" style="align-items:center;flex-wrap:wrap">
+<span style="flex:1 1 240px">{{ row.aiText }}</span>
+<sc-if value="{{ row.canApplyAi }}" hint-placeholder-val="{{ true }}">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ row.applyAi }}">Apply proposal</button>
+</sc-if>
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ row.closeAi }}">Dismiss</button>
+</div>
+</sc-if>
+<sc-if value="{{ row.has }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div class="num" style="display:flex;flex-wrap:wrap;gap:8px 12px;align-items:center;font-size:var(--text-sm)">
+<label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+<input type="checkbox" checked="{{ row.on }}" sc-camel-on-change="{{ row.toggle }}" style="width:16px;height:16px;accent-color:var(--color-accent)">Include</label>
+<sc-if value="{{ row.isCmd }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+<div class="seg">
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ row.rn }}-d" checked="{{ row.isUp }}" sc-camel-on-change="{{ row.setUp }}" style="position:absolute;opacity:0;width:1px;height:1px">Increase +</label>
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ row.rn }}-d" checked="{{ row.isDown }}" sc-camel-on-change="{{ row.setDown }}" style="position:absolute;opacity:0;width:1px;height:1px">Decrease −</label>
+</div>
+<input class="input num" type="number" value="{{ row.val }}" sc-camel-on-change="{{ row.setVal }}" aria-label="Change amount" placeholder="0" style="min-height:34px;padding:4px 8px;width:110px">
+<div class="seg">
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ row.rn }}-m" checked="{{ row.isAbs }}" sc-camel-on-change="{{ row.setAbs }}" style="position:absolute;opacity:0;width:1px;height:1px">{{ row.absL }}</label>
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ row.rn }}-m" checked="{{ row.isPct }}" sc-camel-on-change="{{ row.setPct }}" style="position:absolute;opacity:0;width:1px;height:1px">%</label>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ row.isGrowth }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+<span style="display:flex;align-items:center;gap:6px">Spend $<input class="input num" type="number" value="{{ row.spend }}" sc-camel-on-change="{{ row.setSpend }}" aria-label="Monthly spend" style="min-height:34px;padding:4px 8px;width:96px">/ mo adds</span>
+<input class="input num" type="number" value="{{ row.add }}" sc-camel-on-change="{{ row.setAdd }}" aria-label="Added volume per month" style="min-height:34px;padding:4px 8px;width:80px">
+<sc-raw-select class="input" value="{{ row.factor }}" sc-camel-on-change="{{ row.setFactor }}" aria-label="Metric" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ row.facOpts }}" as="fo" hint-placeholder-count="1">
+<option value="{{ fo.v }}">{{ fo.l }}</option>
+</sc-for>
+</sc-raw-select>
+<span>in</span>
+<sc-raw-select class="input" value="{{ row.stream }}" sc-camel-on-change="{{ row.setStream }}" aria-label="Revenue stream" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ streamOpts }}" as="so" hint-placeholder-count="3">
+<option value="{{ so.v }}">{{ so.l }}</option>
+</sc-for>
+</sc-raw-select>
+</div>
+</sc-if>
+<sc-if value="{{ row.isAct }}" hint-placeholder-val="{{ false }}">
+<span style="display:flex;align-items:center;gap:6px">Cost $<input class="input num" type="number" value="{{ row.amt }}" sc-camel-on-change="{{ row.setAmt }}" aria-label="Monthly cost" style="min-height:34px;padding:4px 8px;width:96px">/ month</span>
+</sc-if>
+<label style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted)">Starts<sc-raw-select class="input" value="{{ row.start }}" sc-camel-on-change="{{ row.setStart }}" aria-label="Start month" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ monthOpts }}" as="mo" hint-placeholder-count="12">
+<option value="{{ mo.v }}">{{ mo.l }}</option>
+</sc-for>
+</sc-raw-select>
+</label>
+<span style="margin-left:auto;display:flex;gap:6px">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ row.toggleOpen }}">{{ row.openLabel }}</button>
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ row.remove }}">Remove</button>
+</span>
+</div>
+<div class="num" style="display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--color-text-muted);align-items:center">
+<span>{{ row.dscr }}</span>
+<span>{{ row.fy }}</span>
+<span>{{ row.moves }}</span>
+<span class="{{ row.statusTag }}">{{ row.statusText }}</span>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ row.open }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;padding:14px;background:var(--color-surface-sunken);border-radius:var(--radius-md)">
+<div style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted)">Setup or implementation cost<span style="display:flex;gap:8px;align-items:center">
+<input class="input num" type="number" value="{{ row.setup }}" sc-camel-on-change="{{ row.setSetup }}" aria-label="Setup cost" placeholder="0" style="min-height:34px;padding:4px 8px;width:110px">
+<span class="seg">
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ row.rn }}-s" checked="{{ row.setupOne }}" sc-camel-on-change="{{ row.setOne }}" style="position:absolute;opacity:0;width:1px;height:1px">One time</label>
+<label class="seg-opt" style="position:relative;padding:5px 10px;font-size:12px">
+<input type="radio" name="{{ row.rn }}-s" checked="{{ row.setupMo }}" sc-camel-on-change="{{ row.setMo }}" style="position:absolute;opacity:0;width:1px;height:1px">Monthly</label>
+</span>
+</span>
+</div>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted)">Owner<input class="input" value="{{ row.owner }}" sc-camel-on-change="{{ row.setOwner }}" placeholder="Who carries this out" style="min-height:34px;padding:4px 8px">
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted);grid-column:1/-1">Why this will work<textarea class="input" value="{{ row.note }}" sc-camel-on-change="{{ row.setNote }}" placeholder="Operational reason, timing and what supports it" style="min-height:64px;border-color:{{ row.noteBorder }}">
+</textarea>
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted);grid-column:1/-1">Evidence and notes (optional)<input class="input" value="{{ row.evid }}" sc-camel-on-change="{{ row.setEvid }}" placeholder="Quote, contract, statement or other support" style="min-height:34px;padding:4px 8px">
+</label>
+</div>
+</sc-if>
+</div>
+</sc-for>
+</section>
+</sc-for>
+<section class="card" style="padding:16px 20px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Card processing · current statement and proposed quote</h2>
+<span class="tag tag-outline">Merchant statement · Oct 2026</span>
+</div>
+<div style="overflow-x:auto;margin-top:10px">
+<sc-raw-table class="table" style="width:100%;min-width:560px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Processor</sc-raw-th>
+<sc-raw-th class="align-end">Card volume / mo</sc-raw-th>
+<sc-raw-th class="align-end">Fees / mo</sc-raw-th>
+<sc-raw-th class="align-end">Effective rate</sc-raw-th>
+<sc-raw-th class="align-end">
+</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Current · Coastline Merchant</sc-raw-td>
+<sc-raw-td class="align-end">$103,000</sc-raw-td>
+<sc-raw-td class="align-end">$2,060</sc-raw-td>
+<sc-raw-td class="align-end">2.00% · all-in</sc-raw-td>
+<sc-raw-td>
+</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Quote · Harbor Payments</sc-raw-td>
+<sc-raw-td class="align-end">$103,000</sc-raw-td>
+<sc-raw-td class="align-end">$1,648</sc-raw-td>
+<sc-raw-td class="align-end">1.60% · all-in</sc-raw-td>
+<sc-raw-td class="align-end">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ draftProc }}" disabled="{{ procExists }}">{{ procLabel }}</button>
+</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+</div>
+<p class="fineprint" style="margin:10px 0 0">A quote is a proposal. All-in rates and processor markup cannot be compared directly. The $495 early termination fee is carried as a one-time setup cost.</p>
+</section>
+<section class="card" style="padding:16px 20px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0;flex:1 1 220px">Released cash and reinvestment</h2>
+<span class="{{ allocTag }}">{{ allocText }}</span>
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ addAlloc }}">Add allocation</button>
+</div>
+<p class="num" style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:70ch">{{ capText }}</p>
+<div style="display:flex;flex-direction:column;margin-top:8px">
+<sc-for list="{{ allocRows }}" as="al" hint-placeholder-count="2">
+<div class="num" style="display:flex;gap:8px 12px;align-items:center;flex-wrap:wrap;padding:10px 0;border-top:1px solid var(--color-divider);font-size:var(--text-sm)">
+<input class="input" value="{{ al.label }}" sc-camel-on-change="{{ al.setLabel }}" aria-label="Allocation" style="min-height:34px;padding:4px 8px;flex:1 1 200px;max-width:320px">
+<sc-raw-select class="input" value="{{ al.purpose }}" sc-camel-on-change="{{ al.setPurpose }}" aria-label="Purpose" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ purpOpts }}" as="po" hint-placeholder-count="4">
+<option value="{{ po.v }}">{{ po.l }}</option>
+</sc-for>
+</sc-raw-select>
+<span style="display:flex;align-items:center;gap:6px">$<input class="input num" type="number" value="{{ al.amt }}" sc-camel-on-change="{{ al.setAmt }}" aria-label="Monthly amount" style="min-height:34px;padding:4px 8px;width:110px">/ month</span>
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ al.remove }}">Remove</button>
+</div>
+</sc-for>
+</div>
+<p class="fineprint" style="margin:10px 0 0">Assignments do not change NOI. They show where released cash goes; unused funding stays as cash and reinvesting is optional.</p>
+</section>
+</div>
+</sc-if>
+<sc-if value="{{ isS3 }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:16px">
+<section class="card" style="padding:20px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0;flex:1 1 auto">Before and after</h2>
+<span style="font-size:12px;color:var(--color-text-muted)">Reviewed uses approved changes only</span>
+</div>
+<div style="overflow-x:auto;margin-top:10px">
+<sc-raw-table class="table" style="width:100%;min-width:620px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Metric</sc-raw-th>
+<sc-raw-th class="align-end">Current</sc-raw-th>
+<sc-raw-th class="align-end">Working plan</sc-raw-th>
+<sc-raw-th class="align-end">Reviewed</sc-raw-th>
+<sc-raw-th class="align-end">Change</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-for list="{{ compareRows }}" as="cr" hint-placeholder-count="8">
+<sc-raw-tr>
+<sc-raw-td>{{ cr.label }}</sc-raw-td>
+<sc-raw-td class="align-end" style="color:var(--color-text-muted)">{{ cr.cur }}</sc-raw-td>
+<sc-raw-td class="align-end" style="font-weight:600">{{ cr.plan }}</sc-raw-td>
+<sc-raw-td class="align-end">{{ cr.rev }}</sc-raw-td>
+<sc-raw-td class="align-end" style="color:{{ cr.ink }}">{{ cr.delta }}</sc-raw-td>
+</sc-raw-tr>
+</sc-for>
+</sc-raw-tbody>
+</sc-raw-table>
+</div>
+<p class="fineprint" style="margin:10px 0 0">Cash after debt uses earnings and loan payments; it is not a bank balance. A projection is not a profit guarantee or financing approval. Below 1.00x means illustrated earnings do not cover stated debt service.</p>
+</section>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;align-items:start">
+<section class="card" style="padding:20px">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Baseline against plan</h2>
+<div style="display:flex;flex-direction:column;gap:14px;margin-top:14px">
+<sc-for list="{{ compare }}" as="cm" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:110px minmax(0,1fr);gap:4px 12px;align-items:center;font-size:var(--text-sm)">
+<span style="grid-row:span 2;font-weight:600">{{ cm.label }}</span>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="flex:1;height:8px;background:var(--color-neutral-100);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:{{ cm.bw }};background:{{ cm.bc }}">
+</i>
+</span>
+<span class="num" style="width:88px;text-align:right;color:var(--color-text-muted)">{{ cm.before }}</span>
+</div>
+<div style="display:flex;align-items:center;gap:8px">
+<span style="flex:1;height:8px;background:var(--color-neutral-100);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:{{ cm.aw }};background:{{ cm.ac }}">
+</i>
+</span>
+<span class="num" style="width:88px;text-align:right;font-weight:600">{{ cm.after }}</span>
+</div>
+</div>
+</sc-for>
+</div>
+<p class="fineprint" style="margin:14px 0 0">Top bar is the baseline, bottom bar is the plan. Red marks a negative value.</p>
+</section>
+<section class="card" style="padding:20px">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">EBITDA bridge</h2>
+<div style="display:flex;flex-direction:column;gap:10px;margin-top:14px">
+<sc-for list="{{ waterfall }}" as="wf" hint-placeholder-count="8">
+<div style="display:grid;grid-template-columns:118px minmax(0,1fr) 84px;gap:10px;align-items:center;font-size:var(--text-sm)">
+<span style="font-weight:{{ wf.weight }}">{{ wf.label }}</span>
+<span style="position:relative;height:18px;background:var(--color-neutral-100);border-radius:2px">
+<i style="position:absolute;top:0;bottom:0;left:{{ wf.zero }};width:1px;background:var(--color-neutral-400)">
+</i>
+<i style="position:absolute;top:3px;bottom:3px;border-radius:2px;left:{{ wf.left }};width:{{ wf.width }};background:{{ wf.color }}">
+</i>
+</span>
+<span class="num" style="text-align:right;font-weight:{{ wf.weight }}">{{ wf.value }}</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section class="card" style="padding:20px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">12-month ramp</h2>
+<span class="num" style="font-size:12px;color:var(--color-text-muted)">{{ rampText }}</span>
+</div>
+<div style="position:relative;height:150px;margin-top:16px">
+<div style="position:absolute;left:0;right:0;top:{{ payLine }};border-top:1.5px dashed var(--color-warning)">
+</div>
+<span class="num" style="position:absolute;right:0;top:{{ payLabel }};font-size:11px;color:var(--color-warning);background:var(--color-surface);padding-left:4px">{{ payText }}</span>
+<div style="position:absolute;left:0;right:0;top:120px;border-top:1px solid var(--color-neutral-400)">
+</div>
+<div style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:5px;height:100%">
+<sc-for list="{{ ramp }}" as="rp" hint-placeholder-count="12">
+<div style="display:flex;flex-direction:column">
+<div style="height:120px;display:flex;align-items:flex-end">
+<i style="display:block;width:100%;border-radius:2px 2px 0 0;height:{{ rp.up }};background:var(--color-accent)">
+</i>
+</div>
+<div style="height:30px">
+<i style="display:block;width:100%;border-radius:0 0 2px 2px;height:{{ rp.down }};background:var(--color-danger)">
+</i>
+</div>
+</div>
+</sc-for>
+</div>
+</div>
+<div class="num" style="display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:5px;font-size:10px;color:var(--color-text-muted);text-align:center;margin-top:4px">
+<sc-for list="{{ ramp }}" as="rl" hint-placeholder-count="12">
+<span>{{ rl.l }}</span>
+</sc-for>
+</div>
+<p class="fineprint" style="margin:12px 0 0">Monthly EBITDA as each change takes effect, after one-time setup costs. Bars above the dashed line cover the monthly debt payment.</p>
+</section>
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:center">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Plan report</h2>
+<sc-raw-select class="input" value="{{ ver }}" sc-camel-on-change="{{ setVer }}" aria-label="Report version" style="min-height:34px;padding:4px 8px;width:auto">
+<sc-for list="{{ verOpts }}" as="vo" hint-placeholder-count="1">
+<option value="{{ vo.v }}">{{ vo.l }}</option>
+</sc-for>
+</sc-raw-select>
+</div>
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+<div style="flex:0 0 170px;aspect-ratio:8.5/11;background:#fff;border:1px solid var(--color-divider);box-shadow:var(--shadow-md);padding:12px;display:flex;flex-direction:column;gap:5px;font-size:7.5px;line-height:1.35;color:#0f1720">
+<div style="font-family:var(--font-heading);font-weight:600;color:var(--color-accent)">Qualified Commercial</div>
+<div style="font-family:var(--font-heading);font-weight:600;font-size:10px;line-height:1.2">Operating Expenses and Earnings Plan</div>
+<div style="color:#5a6675">{{ pdfSub }}</div>
+<div style="border-top:1px solid #d2d8e0;margin-top:2px;padding-top:5px;display:flex;flex-direction:column;gap:3px">
+<sc-for list="{{ compare }}" as="pm" hint-placeholder-count="6">
+<div class="num" style="display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:6px">
+<span>{{ pm.label }}</span>
+<span style="color:#5a6675">{{ pm.before }}</span>
+<b>{{ pm.after }}</b>
+</div>
+</sc-for>
+</div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:3px">
+<sc-for list="{{ waterfall }}" as="pw" hint-placeholder-count="8">
+<span style="position:relative;height:4px;background:#f4f6f8">
+<i style="position:absolute;top:0;bottom:0;left:{{ pw.left }};width:{{ pw.width }};background:{{ pw.color }}">
+</i>
+</span>
+</sc-for>
+</div>
+</div>
+<div style="flex:1 1 160px;display:flex;flex-direction:column;gap:10px;font-size:var(--text-sm)">
+<p style="margin:0;color:var(--color-text-muted)">Each saved version produces a dated PDF: source baseline, revenue model, every change with its logic, before and after, the bridge and the ramp.</p>
+<button class="btn btn-secondary btn-sm" type="button" style="align-self:flex-start">{{ downloadLabel }}</button>
+<sc-if value="{{ dirty }}" hint-placeholder-val="{{ true }}">
+<p class="fineprint" style="margin:0">Draft changes are not in this PDF. Save a version to include them.</p>
+</sc-if>
+</div>
+</div>
+</section>
+</div>
+<sc-if value="{{ staff }}" hint-placeholder-val="{{ true }}">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+<div>
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Staff review and reconciliation</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:70ch">Only approved changes enter the reviewed projection and coverage. Editing an approved change returns it to proposed.</p>
+</div>
+<div style="overflow-x:auto">
+<sc-raw-table class="table" style="width:100%;min-width:520px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th style="width:28px">
+</sc-raw-th>
+<sc-raw-th>Change</sc-raw-th>
+<sc-raw-th>Status</sc-raw-th>
+<sc-raw-th class="align-end">EBITDA / yr</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-for list="{{ reviewRows }}" as="rr" hint-placeholder-count="6">
+<sc-raw-tr>
+<sc-raw-td>
+<input type="checkbox" checked="{{ rr.checked }}" sc-camel-on-change="{{ rr.toggle }}" aria-label="Select change" style="width:16px;height:16px;accent-color:var(--color-accent)">
+</sc-raw-td>
+<sc-raw-td>{{ rr.label }}</sc-raw-td>
+<sc-raw-td>
+<span class="{{ rr.tag }}">{{ rr.status }}</span>
+</sc-raw-td>
+<sc-raw-td class="align-end">{{ rr.chip }}</sc-raw-td>
+</sc-raw-tr>
+</sc-for>
+</sc-raw-tbody>
+</sc-raw-table>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px">
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted)">Relation to earnings baseline<sc-raw-select class="input" value="{{ treat }}" sc-camel-on-change="{{ setTreat }}" style="min-height:36px;padding:4px 8px">
+<option value="unreconciled">Not yet reconciled</option>
+<option value="included">Current cost or revenue included in baseline</option>
+<option value="incremental">Incremental to baseline</option>
+<option value="outside">Outside operating earnings</option>
+</sc-raw-select>
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted)">Reconciliation to source and period<textarea class="input" value="{{ recon }}" sc-camel-on-change="{{ setRecon }}" placeholder="Identify the source and period; explain differences from the baseline" style="min-height:60px">
+</textarea>
+</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted);grid-column:1/-1">Review reason<textarea class="input" value="{{ reason }}" sc-camel-on-change="{{ setReason }}" placeholder="Evidence, feasibility and any conditions" style="min-height:60px">
+</textarea>
+</label>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ reject }}" disabled="{{ rejectDisabled }}">Reject selected</button>
+<button class="btn btn-primary btn-sm" type="button" sc-camel-on-click="{{ approve }}" disabled="{{ approveDisabled }}">Approve selected</button>
+<span style="font-size:12px;color:var(--color-text-muted)">{{ reviewMsg }}</span>
+</div>
+</section>
+</sc-if>
+<sc-if value="{{ clientView }}" hint-placeholder-val="{{ false }}">
+<div class="notice">Underwriting reviews proposed changes before they can enter a reviewed projection.</div>
+</sc-if>
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+<label style="display:flex;align-items:center;gap:10px;font-size:var(--text-sm);cursor:pointer">
+<input type="checkbox" checked="{{ attest }}" sc-camel-on-change="{{ toggleAttest }}" style="width:16px;height:16px;accent-color:var(--color-accent)">I confirm these disclosures and proposals</label>
+<label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--color-text-muted)">Plan and handoff notes<textarea class="input" value="{{ notes }}" sc-camel-on-change="{{ setNotes }}" style="min-height:64px">
+</textarea>
+</label>
+<div style="border-top:1px solid var(--color-divider);padding-top:12px">
+<b style="font-size:var(--text-sm)">Tax preparer handoff</b>
+<p class="fineprint" style="margin:4px 0 8px">Historical source corrections stay separate from future plans. Share the saved PDF with the tax preparer for review. This does not file or amend a return.</p>
+<sc-for list="{{ corrections }}" as="co" hint-placeholder-count="1">
+<div class="num" style="font-size:var(--text-sm);padding:6px 0">
+<b>{{ co.label }}</b> · {{ co.reason }}</div>
+</sc-for>
+<sc-if value="{{ noCorr }}" hint-placeholder-val="{{ true }}">
+<span style="font-size:12px;color:var(--color-text-muted)">No historical differences recorded.</span>
+</sc-if>
+</div>
+</section>
+</div>
+</sc-if>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ prev }}" disabled="{{ atFirst }}">Back</button>
+<span class="num" style="font-size:12px;color:var(--color-text-muted)">{{ stepOf }}</span>
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ next }}">{{ nextLabel }}</button>
+</div>
+</div>
+<aside aria-label="Live metrics" style="flex:1 1 264px;min-width:0;position:sticky;top:16px;display:flex;flex-direction:column;gap:12px">
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+<span class="kicker">Live impact</span>
+<div class="seg">
+<label class="seg-opt" style="position:relative;padding:4px 9px;font-size:12px">
+<input type="radio" name="view" checked="{{ viewP }}" sc-camel-on-change="{{ setViewP }}" style="position:absolute;opacity:0;width:1px;height:1px">Proposed</label>
+<label class="seg-opt" style="position:relative;padding:4px 9px;font-size:12px">
+<input type="radio" name="view" checked="{{ viewR }}" sc-camel-on-change="{{ setViewR }}" style="position:absolute;opacity:0;width:1px;height:1px">Reviewed</label>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;margin-top:8px">
+<sc-for list="{{ metrics }}" as="mt" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 10px;padding:9px 0;border-top:1px solid var(--color-divider);align-items:center">
+<span style="font-size:12px;color:var(--color-text-muted)">{{ mt.label }}</span>
+<span class="{{ mt.tag }}" style="grid-row:span 2">{{ mt.delta }}</span>
+<span class="num" style="display:flex;gap:6px;align-items:baseline;flex-wrap:wrap">
+<span style="font-size:13px;color:var(--color-text-muted)">{{ mt.before }}</span>
+<span style="color:var(--color-text-muted)">→</span>
+<b style="font-family:var(--font-heading);font-size:18px;color:{{ mt.ink }}">{{ mt.after }}</b>
+</span>
+</div>
+</sc-for>
+</div>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+<span class="kicker">DSCR · lender threshold</span>
+<span class="{{ dscrTag }}">{{ dscrState }}</span>
+</div>
+<div style="position:relative;height:44px;margin-top:22px">
+<div style="position:absolute;left:0;right:0;top:18px;height:8px;border-radius:2px;background:var(--color-neutral-200)">
+</div>
+<div style="position:absolute;top:18px;height:8px;border-radius:2px;left:{{ scale.fillLeft }};width:{{ scale.fillWidth }};background:{{ scale.fillColor }}">
+</div>
+<div style="position:absolute;top:10px;height:24px;width:1px;background:var(--color-neutral-500);left:{{ scale.one }}">
+</div>
+<div style="position:absolute;top:6px;height:32px;border-left:1.5px dashed var(--color-warning);left:{{ scale.target }}">
+</div>
+<div style="position:absolute;top:13px;width:10px;height:18px;margin-left:-5px;border-radius:2px;background:var(--color-neutral-500);left:{{ scale.before }}">
+</div>
+<div style="position:absolute;top:11px;width:12px;height:22px;margin-left:-6px;border-radius:2px;background:var(--color-accent);border:2px solid var(--color-surface);left:{{ scale.after }}">
+</div>
+<span class="num" style="position:absolute;top:-14px;font-size:11px;color:var(--color-warning);transform:translateX(-50%);left:{{ scale.target }}">{{ targetLabel }}</span>
+<span class="num" style="position:absolute;top:38px;font-size:11px;color:var(--color-text-muted);transform:translateX(-50%);left:{{ scale.one }}">1.00x</span>
+</div>
+<div class="num" style="display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--color-text-muted);margin-top:14px">
+<span>Baseline {{ dscrBase }}</span>
+<span>Plan {{ dscrAfter }}</span>
+<span>{{ dscrNeed }}</span>
+</div>
+</section>
+<section class="card" style="padding:18px">
+<span class="kicker">Annual NOI goal</span>
+<div class="num" style="display:flex;align-items:baseline;gap:8px;margin-top:6px;flex-wrap:wrap">
+<b style="font-family:var(--font-heading);font-size:24px">{{ goalv.pct }}</b>
+<span style="font-size:var(--text-sm);color:var(--color-text-muted)">{{ goalv.of }}</span>
+</div>
+<div style="position:relative;height:40px;margin-top:8px">
+<div style="position:absolute;left:0;right:0;top:18px;height:4px;background:var(--color-neutral-200);border-radius:2px">
+</div>
+<div style="position:absolute;top:12px;height:16px;width:1px;background:var(--color-neutral-500);left:{{ goalv.zero }}">
+</div>
+<div style="position:absolute;top:4px;height:32px;border-left:1.5px dashed var(--color-warning);left:{{ goalv.goal }}">
+</div>
+<div style="position:absolute;top:14px;width:10px;height:12px;margin-left:-5px;border-radius:2px;background:var(--color-neutral-500);left:{{ goalv.cur }}">
+</div>
+<div style="position:absolute;top:14px;width:10px;height:12px;margin-left:-5px;border-radius:2px;background:var(--color-accent-300);left:{{ goalv.rev }}">
+</div>
+<div style="position:absolute;top:12px;width:12px;height:16px;margin-left:-6px;border-radius:2px;background:var(--color-accent);border:2px solid var(--color-surface);left:{{ goalv.prop }}">
+</div>
+</div>
+<div class="num" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:var(--text-sm);margin-top:6px">
+<span style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted)">
+<i style="width:8px;height:8px;border-radius:2px;background:var(--color-neutral-500)">
+</i>Current NOI</span>
+<span style="text-align:right">{{ goalv.curText }}</span>
+<span style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted)">
+<i style="width:8px;height:8px;border-radius:2px;background:var(--color-accent)">
+</i>Proposed</span>
+<span style="text-align:right">{{ goalv.propText }}</span>
+<span style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted)">
+<i style="width:8px;height:8px;border-radius:2px;background:var(--color-accent-300)">
+</i>Reviewed</span>
+<span style="text-align:right">{{ goalv.revText }}</span>
+<span style="display:flex;align-items:center;gap:6px;color:var(--color-text-muted)">
+<i style="width:8px;height:2px;background:var(--color-warning)">
+</i>Goal</span>
+<span style="text-align:right">{{ goalv.goalText }}</span>
+<span style="font-weight:600">{{ goalv.gapLabel }}</span>
+<span style="text-align:right;font-weight:600;color:{{ goalv.gapInk }}">{{ goalv.gapText }}</span>
+</div>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px">
+<span class="kicker">To finish</span>
+<span class="{{ issueTag }}">{{ issueCount }}</span>
+</div>
+<div style="display:flex;flex-direction:column;gap:2px;margin-top:8px">
+<sc-for list="{{ issues }}" as="is" hint-placeholder-count="5">
+<button type="button" sc-camel-on-click="{{ is.go }}" style="text-align:left;background:none;border:0;padding:6px 0;font-family:inherit;font-size:var(--text-sm);color:var(--color-accent-700);cursor:pointer">{{ is.label }}</button>
+</sc-for>
+<sc-if value="{{ hasMoreIssues }}" hint-placeholder-val="{{ false }}">
+<button class="btn btn-ghost btn-sm" type="button" sc-camel-on-click="{{ toggleIssues }}" style="align-self:flex-start">{{ moreLabel }}</button>
+</sc-if>
+<sc-if value="{{ noIssues }}" hint-placeholder-val="{{ false }}">
+<span style="font-size:var(--text-sm);color:var(--color-success)">Required items complete</span>
+</sc-if>
+</div>
+</section>
+</aside>
+</div>
+</main>

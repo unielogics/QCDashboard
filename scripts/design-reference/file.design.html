@@ -1,0 +1,885 @@
+<main data-screen-label="File" style="max-width:1480px;margin:0 auto;padding:16px 24px 64px;display:flex;flex-direction:column;gap:14px">
+<header style="display:flex;flex-direction:column;gap:10px">
+<a href="#" style="font-size:var(--text-sm);text-decoration:none">‹ All files</a>
+<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-end;gap:12px 24px">
+<div style="display:flex;flex-direction:column;gap:6px;min-width:0">
+<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+<h1 style="font-family:var(--font-heading);font-size:var(--text-h3);line-height:1.2;margin:0;letter-spacing:-0.01em">Harbor Auto Detail LLC</h1>
+<span class="tag tag-accent">Underwriting</span>
+<span class="tag tag-warning">Coverage below 1.10x</span>
+</div>
+<div class="num" style="font-size:var(--text-sm);color:var(--color-text-muted)">Requested $1,150,000 · Refinance of 4 advances and 1 equipment note · Client terms v3</div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn btn-secondary btn-sm" type="button">Refresh</button>
+<button class="btn btn-secondary btn-sm" type="button">Export PDF</button>
+</div>
+</div>
+<nav aria-label="File sections" style="display:flex;gap:4px;overflow-x:auto;border-bottom:1px solid var(--color-divider)">
+<sc-for list="{{ tabs }}" as="t" hint-placeholder-count="7">
+<button type="button" sc-camel-on-click="{{ t.go }}" style="flex:none;padding:10px 14px;border:0;background:none;cursor:pointer;font-family:inherit;font-size:var(--text-sm);font-weight:{{ t.weight }};color:{{ t.ink }};border-bottom:2px solid {{ t.line }};margin-bottom:-1px">{{ t.label }}</button>
+</sc-for>
+</nav>
+</header>
+<sc-if value="{{ isFinancials }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;flex-direction:column;gap:14px">
+<section aria-label="Debt coverage and financial review" class="card" style="padding:0;display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));overflow:hidden">
+<div style="padding:14px 18px;border-right:1px solid var(--color-divider)">
+<div style="font-size:12px;color:var(--color-text-muted)">EBITDA</div>
+<div class="num" style="font-family:var(--font-heading);font-size:22px;font-weight:600;color:var(--color-danger)">−$22,377</div>
+<div class="num" style="font-size:12px;color:var(--color-success)">$182,897 with plan</div>
+</div>
+<div style="padding:14px 18px;border-right:1px solid var(--color-divider)">
+<div style="font-size:12px;color:var(--color-text-muted)">NOI</div>
+<div class="num" style="font-family:var(--font-heading);font-size:22px;font-weight:600;color:var(--color-danger)">−$30,777</div>
+<div class="num" style="font-size:12px;color:var(--color-success)">$174,497 with plan</div>
+</div>
+<div style="padding:14px 18px;border-right:1px solid var(--color-divider)">
+<div style="font-size:12px;color:var(--color-text-muted)">DSCR</div>
+<div class="num" style="font-family:var(--font-heading);font-size:22px;font-weight:600;color:var(--color-danger)">−0.03x</div>
+<div class="num" style="font-size:12px;color:var(--color-success)">1.03x with plan and terms</div>
+</div>
+<div style="padding:14px 18px;border-right:1px solid var(--color-divider)">
+<div style="font-size:12px;color:var(--color-text-muted)">Free cash flow</div>
+<div class="num" style="font-family:var(--font-heading);font-size:22px;font-weight:600;color:var(--color-danger)">−$799,977</div>
+<div class="num" style="font-size:12px;color:var(--color-success)">$5,297 with plan and terms</div>
+</div>
+<div style="padding:14px 18px;border-right:1px solid var(--color-divider)">
+<div style="font-size:12px;color:var(--color-text-muted)">Operating margin</div>
+<div class="num" style="font-family:var(--font-heading);font-size:22px;font-weight:600;color:var(--color-danger)">−2.5%</div>
+<div class="num" style="font-size:12px;color:var(--color-success)">11.6% with plan</div>
+</div>
+<div style="padding:14px 18px">
+<div style="font-size:12px;color:var(--color-text-muted)">Debt service</div>
+<div class="num" style="font-family:var(--font-heading);font-size:22px;font-weight:600">$777,600</div>
+<div class="num" style="font-size:12px;color:var(--color-success)">$177,600 with terms</div>
+</div>
+</section>
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:16px;border-color:var(--color-accent-300)">
+<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:flex-start;gap:12px">
+<div>
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h4);margin:0">Operating expenses and earnings plan</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted)">Current costs, proposed changes and their effect on earnings and coverage.</p>
+</div>
+<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+<span class="{{ plan.tag }}">{{ plan.chip }}</span>
+<button class="btn btn-secondary btn-sm" type="button">Request client plan</button>
+<a class="btn btn-primary btn-sm" href="Earnings Plan v2.dc.html">Open earnings plan</a>
+</div>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:24px;align-items:stretch">
+<a href="Earnings Plan v2.dc.html" aria-label="Latest plan PDF" style="flex:0 0 200px;text-decoration:none;display:flex;flex-direction:column;gap:8px">
+<div style="aspect-ratio:8.5/11;background:#fff;border:1px solid var(--color-divider);box-shadow:var(--shadow-md);padding:14px;display:flex;flex-direction:column;gap:5px;font-size:8px;line-height:1.35;color:#0f1720">
+<div style="font-family:var(--font-heading);font-weight:600;color:var(--color-accent)">Qualified Commercial</div>
+<div style="font-family:var(--font-heading);font-weight:600;font-size:11px;line-height:1.2">Operating Expenses and Earnings Plan</div>
+<div style="color:#5a6675">Harbor Auto Detail LLC · v1</div>
+<div class="num" style="border-top:1px solid #d2d8e0;margin-top:2px;padding-top:5px;display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 6px">
+<span>EBITDA</span>
+<span style="color:#5a6675">−$22,377</span>
+<b>$182,897</b>
+<span>NOI</span>
+<span style="color:#5a6675">−$30,777</span>
+<b>$174,497</b>
+<span>DSCR</span>
+<span style="color:#5a6675">−0.03x</span>
+<b>1.03x</b>
+<span>Free cash flow</span>
+<span style="color:#5a6675">−$799,977</span>
+<b>$5,297</b>
+<span>Margin</span>
+<span style="color:#5a6675">−2.5%</span>
+<b>11.6%</b>
+</div>
+<div style="margin-top:auto;display:flex;flex-direction:column;gap:3px">
+<span style="height:5px;background:#f4f6f8;position:relative">
+<i style="position:absolute;inset:0 88% 0 0;background:var(--color-danger)">
+</i>
+</span>
+<span style="height:5px;background:#f4f6f8;position:relative">
+<i style="position:absolute;inset:0 62% 0 12%;background:var(--color-success)">
+</i>
+</span>
+<span style="height:5px;background:#f4f6f8;position:relative">
+<i style="position:absolute;inset:0 48% 0 38%;background:var(--color-success)">
+</i>
+</span>
+<span style="height:5px;background:#f4f6f8;position:relative">
+<i style="position:absolute;inset:0 34% 0 52%;background:var(--color-success)">
+</i>
+</span>
+<span style="height:5px;background:#f4f6f8;position:relative">
+<i style="position:absolute;inset:0 0 0 66%;background:var(--color-success)">
+</i>
+</span>
+<span style="height:5px;background:#f4f6f8;position:relative">
+<i style="position:absolute;inset:0 0 0 12%;background:var(--color-accent)">
+</i>
+</span>
+</div>
+</div>
+<span class="num" style="font-size:12px;color:var(--color-text-muted)">Latest PDF · v1 · Nov 11, 2026 · 6 pages</span>
+</a>
+<div style="flex:2 1 320px;min-width:0;display:flex;flex-direction:column;gap:14px">
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">EBITDA · baseline → plan</div>
+<div class="num" style="font-family:var(--font-heading);font-size:20px;font-weight:600">−$22,377 → $182,897</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">DSCR · baseline → plan</div>
+<div class="num" style="font-family:var(--font-heading);font-size:20px;font-weight:600">−0.03x → 1.03x</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Still to find for 1.25x</div>
+<div class="num" style="font-family:var(--font-heading);font-size:20px;font-weight:600;color:var(--color-warning)">$39,103 / year</div>
+</div>
+</div>
+<sc-raw-table class="table" style="width:100%">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Change in the plan</sc-raw-th>
+<sc-raw-th class="align-end">EBITDA / yr</sc-raw-th>
+<sc-raw-th class="align-end">DSCR</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Loan terms v3 · payments $64,800 → $14,800 / month</sc-raw-td>
+<sc-raw-td class="align-end" style="color:var(--color-text-muted)">no change</sc-raw-td>
+<sc-raw-td class="align-end">−0.03x → −0.13x</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Revenue drivers · price $262, 4 fleet contracts, 20% more billable hours</sc-raw-td>
+<sc-raw-td class="align-end">+$89,616</sc-raw-td>
+<sc-raw-td class="align-end">+0.50x</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Growth · Google Ads $3,000 / month → 40 added units</sc-raw-td>
+<sc-raw-td class="align-end">+$36,845</sc-raw-td>
+<sc-raw-td class="align-end">+0.21x</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Cost of goods sold · detail supplies −5%</sc-raw-td>
+<sc-raw-td class="align-end">+$21,420</sc-raw-td>
+<sc-raw-td class="align-end">+0.12x</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Operating expenses · 4 reductions and card processing quote</sc-raw-td>
+<sc-raw-td class="align-end">+$71,793</sc-raw-td>
+<sc-raw-td class="align-end">+0.40x</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>New activities · weekend detailer</sc-raw-td>
+<sc-raw-td class="align-end">−$14,400</sc-raw-td>
+<sc-raw-td class="align-end">−0.08x</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<div style="display:flex;gap:8px 16px;flex-wrap:wrap;align-items:center;font-size:12px;color:var(--color-text-muted)">
+<span>3 revenue streams · 14 cost lines · 11 changes · 3 reviewed</span>
+<span>8 items to finish</span>
+<span>{{ plan.note }}</span>
+</div>
+</div>
+<div style="flex:1 1 240px;min-width:0;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:12px;color:var(--color-text-muted)">Largest disclosed annual costs</div>
+<div class="num" style="display:grid;grid-template-columns:auto minmax(40px,1fr) auto;gap:8px 10px;align-items:center;font-size:var(--text-sm)">
+<span>COGS</span>
+<span style="height:6px;background:var(--color-neutral-200);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:100%;background:var(--color-accent-500)">
+</i>
+</span>
+<b>$601,886</b>
+<span>Salaries</span>
+<span style="height:6px;background:var(--color-neutral-200);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:58%;background:var(--color-accent-500)">
+</i>
+</span>
+<b>$348,194</b>
+<span>Rent</span>
+<span style="height:6px;background:var(--color-neutral-200);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:33%;background:var(--color-accent-500)">
+</i>
+</span>
+<b>$196,805</b>
+<span>Other</span>
+<span style="height:6px;background:var(--color-neutral-200);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:5%;background:var(--color-accent-500)">
+</i>
+</span>
+<b>$27,092</b>
+</div>
+<div class="num" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:var(--text-sm);margin-top:auto;padding-top:10px;border-top:1px solid var(--color-divider)">
+<span style="color:var(--color-text-muted)">Known operating cash costs</span>
+<span>$98,872 / mo</span>
+<span style="color:var(--color-text-muted)">Known COGS</span>
+<span>$50,157 / mo</span>
+<span style="color:var(--color-text-muted)">Reviewed earnings change</span>
+<span>$0 / yr</span>
+</div>
+</div>
+</div>
+</section>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div>
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Debt service coverage and the plan</h3>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted)">The new loan against today's obligations.</p>
+</div>
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ goUnderwriting }}">Open loan terms</button>
+</div>
+<div class="num" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:14px">
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Today</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600">$64,800</div>
+<div style="font-size:12px;color:var(--color-text-muted)">/ month · 5 obligations</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">With the plan</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600">$14,800</div>
+<div style="font-size:12px;color:var(--color-text-muted)">/ month · 1 loan</div>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Cash released</div>
+<div style="font-family:var(--font-heading);font-size:20px;font-weight:600;color:var(--color-success)">$50,000</div>
+<div style="font-size:12px;color:var(--color-text-muted)">/ month</div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:6px;margin-top:14px;font-size:var(--text-sm)" class="num">
+<div style="display:grid;grid-template-columns:70px minmax(0,1fr) 70px;gap:10px;align-items:center">
+<span>Today</span>
+<span style="height:10px;background:var(--color-neutral-500);border-radius:2px">
+</span>
+<span style="text-align:right">$777,600</span>
+</div>
+<div style="display:grid;grid-template-columns:70px minmax(0,1fr) 70px;gap:10px;align-items:center">
+<span>Plan</span>
+<span style="height:10px;background:var(--color-neutral-200);border-radius:2px;overflow:hidden">
+<i style="display:block;height:100%;width:23%;background:var(--color-accent)">
+</i>
+</span>
+<span style="text-align:right">$177,600</span>
+</div>
+</div>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div>
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Debt schedule and debt service</h3>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted)">Rows a person entered or confirmed win.</p>
+</div>
+<span class="tag tag-neutral">5 rows · all paid off by plan</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:10px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Lender</sc-raw-th>
+<sc-raw-th>Type</sc-raw-th>
+<sc-raw-th class="align-end">Balance</sc-raw-th>
+<sc-raw-th class="align-end">Monthly</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Northline Capital</sc-raw-td>
+<sc-raw-td>Advance</sc-raw-td>
+<sc-raw-td class="align-end">$286,000</sc-raw-td>
+<sc-raw-td class="align-end">$19,400</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Kestrel Funding</sc-raw-td>
+<sc-raw-td>Advance</sc-raw-td>
+<sc-raw-td class="align-end">$241,500</sc-raw-td>
+<sc-raw-td class="align-end">$16,900</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Bluewater Advance</sc-raw-td>
+<sc-raw-td>Advance</sc-raw-td>
+<sc-raw-td class="align-end">$198,000</sc-raw-td>
+<sc-raw-td class="align-end">$13,200</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Summit Merchant</sc-raw-td>
+<sc-raw-td>Advance</sc-raw-td>
+<sc-raw-td class="align-end">$142,300</sc-raw-td>
+<sc-raw-td class="align-end">$10,500</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>First Coast Equipment</sc-raw-td>
+<sc-raw-td>Equipment note</sc-raw-td>
+<sc-raw-td class="align-end">$212,400</sc-raw-td>
+<sc-raw-td class="align-end">$4,800</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+</section>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Tax returns</h3>
+<span class="tag tag-accent">Primary source</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>1120-S</sc-raw-th>
+<sc-raw-th class="align-end">2024</sc-raw-th>
+<sc-raw-th class="align-end">2025</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Gross receipts</sc-raw-td>
+<sc-raw-td class="align-end">$1,301,050</sc-raw-td>
+<sc-raw-td class="align-end">$1,236,000</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Cost of goods sold</sc-raw-td>
+<sc-raw-td class="align-end">$618,200</sc-raw-td>
+<sc-raw-td class="align-end">$601,886</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Total deductions</sc-raw-td>
+<sc-raw-td class="align-end">$641,300</sc-raw-td>
+<sc-raw-td class="align-end">$664,891</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Ordinary income</sc-raw-td>
+<sc-raw-td class="align-end">$41,550</sc-raw-td>
+<sc-raw-td class="align-end">−$30,777</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Revenue 2024 → 2025 · down · −5%</p>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Profit and loss</h3>
+<span class="tag tag-outline">Jan–Sep 2026</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Line</sc-raw-th>
+<sc-raw-th class="align-end">Period</sc-raw-th>
+<sc-raw-th class="align-end">Annualized</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Revenue</sc-raw-td>
+<sc-raw-td class="align-end">$878,400</sc-raw-td>
+<sc-raw-td class="align-end">$1,171,200</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Cost of goods sold</sc-raw-td>
+<sc-raw-td class="align-end">$441,300</sc-raw-td>
+<sc-raw-td class="align-end">$588,400</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Operating expenses</sc-raw-td>
+<sc-raw-td class="align-end">$502,725</sc-raw-td>
+<sc-raw-td class="align-end">$670,300</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Operating income</sc-raw-td>
+<sc-raw-td class="align-end">−$65,625</sc-raw-td>
+<sc-raw-td class="align-end">−$87,500</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Labelled fallback where the return does not print a line.</p>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Balance sheet</h3>
+<span class="tag tag-outline">As of Sep 30, 2026</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Line</sc-raw-th>
+<sc-raw-th class="align-end">Amount</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Cash</sc-raw-td>
+<sc-raw-td class="align-end">$38,420</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Total assets</sc-raw-td>
+<sc-raw-td class="align-end">$612,900</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Total liabilities</sc-raw-td>
+<sc-raw-td class="align-end">$1,124,600</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Equity</sc-raw-td>
+<sc-raw-td class="align-end">−$511,700</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Accrual basis.</p>
+</section>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">DSCR and earnings potential</h3>
+<span class="tag tag-danger num">−1.8% baseline margin</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Coverage goal</sc-raw-th>
+<sc-raw-th class="align-end">Current debt</sc-raw-th>
+<sc-raw-th class="align-end">Saved loan plan</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>1.00x</sc-raw-td>
+<sc-raw-td class="align-end">+$799,977</sc-raw-td>
+<sc-raw-td class="align-end">+$199,977</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>1.10x</sc-raw-td>
+<sc-raw-td class="align-end">+$877,737</sc-raw-td>
+<sc-raw-td class="align-end">+$217,737</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>1.25x</sc-raw-td>
+<sc-raw-td class="align-end">+$994,377</sc-raw-td>
+<sc-raw-td class="align-end">+$244,377</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Annual earnings improvement needed at the latest revenue baseline. A target is not a forecast or an accepted add-back.</p>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Revenue trend and outlook</h3>
+<span class="tag tag-warning num">2024 → 2025 · −5.0%</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;align-items:end;height:84px;margin-top:14px;border-bottom:1px solid var(--color-neutral-400)">
+<div style="display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+<i style="display:block;height:100%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+<div style="display:flex;flex-direction:column;justify-content:flex-end;height:100%">
+<i style="display:block;height:95%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+</div>
+</div>
+<div class="num" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;font-size:12px;color:var(--color-text-muted);text-align:center;margin-top:4px">
+<span>2024 · $1,301,050</span>
+<span>2025 · $1,236,000</span>
+</div>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">2026 P&amp;L run-rate illustration: $1,171,200. Historical growth is not repeated automatically; the earnings plan carries explicit assumptions.</p>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Net profit and EBITDA sources</h3>
+<span class="tag tag-accent">IRS 2025 selected</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Source</sc-raw-th>
+<sc-raw-th class="align-end">Net profit</sc-raw-th>
+<sc-raw-th class="align-end">EBITDA</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr style="font-weight:600">
+<sc-raw-td>Filed return 2025</sc-raw-td>
+<sc-raw-td class="align-end">−$30,777</sc-raw-td>
+<sc-raw-td class="align-end">−$22,377</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>P&amp;L Jan–Sep 2026 · annualized</sc-raw-td>
+<sc-raw-td class="align-end">−$87,500</sc-raw-td>
+<sc-raw-td class="align-end">−$79,100</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Bank cash retained · proxy</sc-raw-td>
+<sc-raw-td class="align-end">−$198,000</sc-raw-td>
+<sc-raw-td class="align-end">—</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">A filed return comes first, the P&amp;L is the labelled fallback, bank cash is a proxy. No add-backs applied.</p>
+</section>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px">
+<section class="card" style="padding:18px">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Expenses we can track</h3>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Line</sc-raw-th>
+<sc-raw-th>Source</sc-raw-th>
+<sc-raw-th class="align-end">Annual</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Salaries</sc-raw-td>
+<sc-raw-td>IRS 2025</sc-raw-td>
+<sc-raw-td class="align-end">$348,194</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Rent</sc-raw-td>
+<sc-raw-td>IRS 2025</sc-raw-td>
+<sc-raw-td class="align-end">$196,805</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Card processing</sc-raw-td>
+<sc-raw-td>Merchant · Oct 2026</sc-raw-td>
+<sc-raw-td class="align-end">$24,720</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Insurance</sc-raw-td>
+<sc-raw-td>IRS 2025</sc-raw-td>
+<sc-raw-td class="align-end">$22,600</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Bank outflows $117,900 / month and debt service $64,800 / month sit beside these for scale.</p>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Overdrafts and negative balances</h3>
+<span class="tag tag-danger num">14 negative days</span>
+</div>
+<div class="num" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin-top:12px">
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">NSF / overdraft fees</div>
+<b>3</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Lowest balance</div>
+<b style="color:var(--color-danger)">−$6,840</b>
+</div>
+<div>
+<div style="font-size:12px;color:var(--color-text-muted)">Months affected</div>
+<b>4 of 6</b>
+</div>
+</div>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Statement events are dated and linked to their source pages.</p>
+</section>
+<section class="card" style="padding:18px">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Movement between accounts</h3>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Between</sc-raw-th>
+<sc-raw-th class="align-end">6 months</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Operating ↔ payroll account</sc-raw-td>
+<sc-raw-td class="align-end">$184,000</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Owner draws</sc-raw-td>
+<sc-raw-td class="align-end">$21,600</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Transfers and owner draws are not operating spend and are excluded from deposits and withdrawals.</p>
+</section>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Program criteria and use of funds</h3>
+<span class="tag tag-outline">Auto · refinance term loan</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Minimum DSCR</sc-raw-td>
+<sc-raw-td class="align-end">1.25x · not met</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Time in business</sc-raw-td>
+<sc-raw-td class="align-end">6 years · met</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Use of funds</sc-raw-td>
+<sc-raw-td class="align-end">Refinance 5 obligations · working capital</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Investor package and capital partners</h3>
+<span class="tag tag-neutral">Not published</span>
+</div>
+<p style="margin:8px 0 12px;font-size:var(--text-sm);color:var(--color-text-muted)">Executive summary, lender packet and investor presentation are generated together from saved file data.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn btn-secondary btn-sm" type="button">Prepare investor package</button>
+<button class="btn btn-ghost btn-sm" type="button">Review and publish offer</button>
+</div>
+</section>
+</div>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px">
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Bank trends and cash flow</h3>
+<span style="font-size:12px;color:var(--color-text-muted)">6 statement months · deposits and withdrawals</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;align-items:end;height:120px;margin-top:16px;border-bottom:1px solid var(--color-neutral-400)">
+<div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+<i style="flex:1;height:82%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+<i style="flex:1;height:96%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+<div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+<i style="flex:1;height:78%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+<i style="flex:1;height:91%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+<div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+<i style="flex:1;height:88%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+<i style="flex:1;height:94%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+<div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+<i style="flex:1;height:74%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+<i style="flex:1;height:89%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+<div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+<i style="flex:1;height:80%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+<i style="flex:1;height:100%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+<div style="display:flex;gap:3px;align-items:flex-end;height:100%">
+<i style="flex:1;height:85%;background:var(--color-accent);border-radius:2px 2px 0 0">
+</i>
+<i style="flex:1;height:93%;background:var(--color-neutral-400);border-radius:2px 2px 0 0">
+</i>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:14px;font-size:11px;color:var(--color-text-muted);text-align:center;margin-top:4px">
+<span>May</span>
+<span>Jun</span>
+<span>Jul</span>
+<span>Aug</span>
+<span>Sep</span>
+<span>Oct</span>
+</div>
+<div class="num" style="display:flex;gap:8px 20px;flex-wrap:wrap;font-size:var(--text-sm);margin-top:12px">
+<span>Avg deposits <b>$101,400</b>
+</span>
+<span>Avg withdrawals <b>$117,900</b>
+</span>
+<span>Net <b style="color:var(--color-danger)">−$16,500 / mo</b>
+</span>
+<span>Negative days <b>14</b>
+</span>
+</div>
+</section>
+<section class="card" style="padding:18px">
+<div style="display:flex;justify-content:space-between;gap:8px;align-items:baseline;flex-wrap:wrap">
+<h3 style="font-family:var(--font-heading);font-size:var(--text-h5);margin:0">Statement payments and advances</h3>
+<span class="tag tag-warning">4 active advances</span>
+</div>
+<sc-raw-table class="table" style="width:100%;margin-top:8px">
+<sc-raw-thead>
+<sc-raw-tr>
+<sc-raw-th>Observed payee</sc-raw-th>
+<sc-raw-th>Cadence</sc-raw-th>
+<sc-raw-th class="align-end">Per debit</sc-raw-th>
+<sc-raw-th class="align-end">Monthly</sc-raw-th>
+</sc-raw-tr>
+</sc-raw-thead>
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Northline Capital</sc-raw-td>
+<sc-raw-td>Daily</sc-raw-td>
+<sc-raw-td class="align-end">$924</sc-raw-td>
+<sc-raw-td class="align-end">$19,400</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Kestrel Funding</sc-raw-td>
+<sc-raw-td>Daily</sc-raw-td>
+<sc-raw-td class="align-end">$805</sc-raw-td>
+<sc-raw-td class="align-end">$16,900</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Bluewater Advance</sc-raw-td>
+<sc-raw-td>Weekly</sc-raw-td>
+<sc-raw-td class="align-end">$3,046</sc-raw-td>
+<sc-raw-td class="align-end">$13,200</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Summit Merchant</sc-raw-td>
+<sc-raw-td>Weekly</sc-raw-td>
+<sc-raw-td class="align-end">$2,423</sc-raw-td>
+<sc-raw-td class="align-end">$10,500</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<p style="margin:10px 0 0;font-size:12px;color:var(--color-text-muted)">Observed activity stays separate from the debt schedule. 3 overdraft fees in the period.</p>
+</section>
+</div>
+</div>
+</sc-if>
+<sc-if value="{{ isUnderwriting }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+<span style="font-size:var(--text-sm);color:var(--color-text-muted)">One shared loan · Financials and Underwriting</span>
+<span class="tag tag-neutral">In underwriting</span>
+</div>
+<div role="tablist" aria-label="Underwriting steps" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px">
+<sc-for list="{{ uwSteps }}" as="s" hint-placeholder-count="4">
+<button type="button" role="tab" sc-camel-on-click="{{ s.go }}" style="display:flex;gap:12px;align-items:flex-start;text-align:left;padding:12px 14px;border-radius:var(--radius-md);border:1px solid {{ s.border }};background:{{ s.bg }};cursor:pointer;font-family:inherit;color:var(--color-text);box-shadow:var(--shadow-sm)">
+<span class="num" style="flex:none;width:24px;height:24px;border-radius:999px;display:grid;place-items:center;font-size:12px;font-weight:600;background:{{ s.dot }};color:{{ s.dotInk }}">{{ s.n }}</span>
+<span style="display:flex;flex-direction:column;gap:2px;min-width:0">
+<b style="font-family:var(--font-heading);font-size:15px">{{ s.title }}</b>
+<small class="num" style="font-size:12px;color:var(--color-text-muted)">{{ s.sub }}</small>
+</span>
+</button>
+</sc-for>
+</div>
+<sc-if value="{{ uwTerms }}" hint-placeholder-val="{{ true }}">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:16px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:flex-start">
+<div>
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h4);margin:0">Client terms</h2>
+<p style="margin:4px 0 0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:64ch">Preview the current loan, then open the full editor to adjust terms, collateral and closing costs.</p>
+</div>
+<span class="tag tag-success">Saved v3</span>
+</div>
+<div style="display:flex;flex-wrap:wrap;gap:20px;align-items:stretch">
+<div style="flex:3 1 360px;min-width:0;display:flex;flex-direction:column;gap:14px">
+<sc-raw-table class="table" style="width:100%">
+<sc-raw-tbody>
+<sc-raw-tr>
+<sc-raw-td>Requested by client</sc-raw-td>
+<sc-raw-td class="align-end">$1,150,000</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Payoff of 5 obligations</sc-raw-td>
+<sc-raw-td class="align-end">$1,080,200</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Closing costs and fees</sc-raw-td>
+<sc-raw-td class="align-end">$46,240</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr>
+<sc-raw-td>Working capital to client</sc-raw-td>
+<sc-raw-td class="align-end">$29,560</sc-raw-td>
+</sc-raw-tr>
+<sc-raw-tr style="font-weight:600;background:var(--color-neutral-100)">
+<sc-raw-td>Loan amount</sc-raw-td>
+<sc-raw-td class="align-end">$1,156,000</sc-raw-td>
+</sc-raw-tr>
+</sc-raw-tbody>
+</sc-raw-table>
+<div style="display:flex;gap:8px 12px;flex-wrap:wrap;align-items:center">
+<button class="btn btn-primary btn-sm" type="button">Open full terms</button>
+<button class="btn btn-secondary btn-sm" type="button">Program criteria and use of funds</button>
+<span style="font-size:12px;color:var(--color-text-muted)">Loan terms · Amortization &amp; risk · Collateral · Investment &amp; costs</span>
+</div>
+<div class="notice" style="font-size:var(--text-sm)">Coverage after these terms is −0.13x on documented earnings and 1.03x with the earnings plan. <a href="Earnings Plan v2.dc.html">Open earnings plan</a>
+</div>
+</div>
+<div style="flex:2 1 280px;min-width:0;border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:18px;display:flex;flex-direction:column;gap:10px;background:var(--color-surface)">
+<div style="display:flex;align-items:center;gap:10px">
+<span style="width:28px;height:28px;border-radius:var(--radius-sm);background:var(--color-accent);color:var(--color-on-accent);display:grid;place-items:center;font-family:var(--font-heading);font-weight:600;font-size:12px">QC</span>
+<span style="display:flex;flex-direction:column">
+<b style="font-size:var(--text-sm)">Qualified Commercial</b>
+<small style="font-size:12px;color:var(--color-text-muted)">Financing terms</small>
+</span>
+</div>
+<small style="font-size:12px;color:var(--color-text-muted)">Saved terms v3</small>
+<strong class="num" style="font-family:var(--font-heading);font-size:32px;line-height:1.1;letter-spacing:-0.02em">$1,156,000</strong>
+<span style="font-size:var(--text-sm)">Term loan · refinance of existing obligations</span>
+<div class="num" style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;padding:12px 0;border-top:1px solid var(--color-divider);border-bottom:1px solid var(--color-divider)">
+<div>
+<small style="font-size:12px;color:var(--color-text-muted);display:block">Rate</small>
+<b>9.25%</b>
+</div>
+<div>
+<small style="font-size:12px;color:var(--color-text-muted);display:block">Maturity</small>
+<b>120 months</b>
+</div>
+<div>
+<small style="font-size:12px;color:var(--color-text-muted);display:block">Monthly payment</small>
+<b>$14,800.00</b>
+</div>
+<div>
+<small style="font-size:12px;color:var(--color-text-muted);display:block">Coverage after</small>
+<b>1.03x with plan</b>
+</div>
+</div>
+<small style="font-size:12px;color:var(--color-text-muted)">Fully amortizing · Nov 6, 2026</small>
+</div>
+</div>
+</section>
+</sc-if>
+<sc-if value="{{ uwOffer }}" hint-placeholder-val="{{ false }}">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h4);margin:0">Offer published</h2>
+<span class="tag tag-neutral">Not published</span>
+</div>
+<p style="margin:0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:64ch">Prepare the investor package, review its marketplace listing, then publish and share it with members. Client delivery and acceptance are managed in Client response.</p>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<button class="btn btn-primary btn-sm" type="button">Review and publish offer</button>
+<button class="btn btn-secondary btn-sm" type="button" sc-camel-on-click="{{ toResponse }}">Client delivery &amp; response</button>
+</div>
+</section>
+</sc-if>
+<sc-if value="{{ uwAccepted }}" hint-placeholder-val="{{ false }}">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h4);margin:0">Client response</h2>
+<span class="tag tag-neutral">Not delivered</span>
+</div>
+<p style="margin:0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:64ch">Deliver the exact terms version and record the client's acceptance or decline.</p>
+<label style="display:flex;gap:10px;align-items:flex-start;padding:12px;border:1px solid var(--color-divider);border-radius:var(--radius-md);font-size:var(--text-sm)">
+<input type="checkbox" sc-camel-default-checked="{{ true }}" style="width:16px;height:16px;accent-color:var(--color-accent)">
+<span>
+<b>Client terms v3</b>
+<br>
+<span class="num" style="color:var(--color-text-muted)">$1,156,000 · 9.25% · 120 months</span>
+</span>
+</label>
+<div>
+<button class="btn btn-primary btn-sm" type="button">Prepare client delivery</button>
+</div>
+<p class="fineprint" style="margin:0">Acceptance and decline apply to the version shown in the delivery history. Record a response only after the client has communicated it.</p>
+</section>
+</sc-if>
+<sc-if value="{{ uwClose }}" hint-placeholder-val="{{ false }}">
+<section class="card" style="padding:20px;display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+<h2 style="font-family:var(--font-heading);font-size:var(--text-h4);margin:0">Closing</h2>
+<span class="tag tag-neutral">Awaiting acceptance</span>
+</div>
+<p style="margin:0;font-size:var(--text-sm);color:var(--color-text-muted);max-width:64ch">Review conditions, fee collection and the funding file before recording the closing outcome.</p>
+<div class="notice" style="font-size:var(--text-sm)">Confirm acceptance of the current terms in Client response before closing.</div>
+</section>
+</sc-if>
+</div>
+</sc-if>
+<sc-if value="{{ isOther }}" hint-placeholder-val="{{ false }}">
+<section class="card" style="padding:24px;font-size:var(--text-sm);color:var(--color-text-muted)">{{ otherLabel }} is unchanged in this round. Financials and Underwriting carry the redesign.</section>
+</sc-if>
+</main>
