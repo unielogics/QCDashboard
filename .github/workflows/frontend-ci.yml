@@ -73,6 +73,9 @@ jobs:
           src/lib/__tests__/recognizablePlan.test.ts
           src/lib/__tests__/operatingGoal.test.ts
           src/lib/__tests__/operatingDraftFeedback.test.ts
+          src/lib/__tests__/operatingPlannerIssues.test.ts
+          src/lib/__tests__/operatingReinvestment.test.ts
+          src/components/application/__tests__/ReleasedCashFlowAllocation.test.ts
           src/components/application/__tests__/OperatingDraftFeedback.test.ts
           src/components/application/__tests__/OperatingGoalSummary.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
@@ -196,6 +199,9 @@ jobs:
           src/lib/__tests__/recognizablePlan.test.ts
           src/lib/__tests__/operatingGoal.test.ts
           src/lib/__tests__/operatingDraftFeedback.test.ts
+          src/lib/__tests__/operatingPlannerIssues.test.ts
+          src/lib/__tests__/operatingReinvestment.test.ts
+          src/components/application/__tests__/ReleasedCashFlowAllocation.test.ts
           src/components/application/__tests__/OperatingDraftFeedback.test.ts
           src/components/application/__tests__/OperatingGoalSummary.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
@@ -237,6 +243,10 @@ jobs:
           src/components/application/OperatingPlanStatus.tsx
           tests/live-plan-feedback.spec.ts
           tests/fixtures/livePlanFeedback.ts
+          src/lib/operatingPlannerIssues.ts
+          src/lib/operatingReinvestment.ts
+          tests/refinance-reinvestment.spec.ts
+          tests/fixtures/refinanceReinvestment.ts
 
       - name: Build production frontend
         run: pnpm build

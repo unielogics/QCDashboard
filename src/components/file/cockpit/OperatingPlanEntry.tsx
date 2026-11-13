@@ -1,4 +1,5 @@
 "use client";
+import { metricAmountLabel } from "@/lib/financialMetrics";
 
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -40,7 +41,7 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
   return <>
     <section className="fc-card fc-wide"><div className="fc-card-h"><div><h4>Operating expenses and earnings plan</h4><div className="sub">Current costs, proposed changes and their effect on earnings and coverage.</div></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{summary.data?.has_plan ? <CellChip tone="mut">{summary.data.state === "published" ? `Published v${summary.data.version_number ?? version ?? "—"}` : summary.data.state === "client_submitted" ? "Client submitted · review needed" : "Working draft"}</CellChip> : summary.data ? <CellChip tone="mut">No plan yet</CellChip> : version ? <CellChip tone="mut">v{version}</CellChip> : null}{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">Open earnings plan</FileWorkspaceLink> : <Btn size="sm" onClick={() => setOpen(true)}><Icon name="pencil" size={14} aria-hidden="true" />Open earnings plan</Btn>}{canEdit ? operatingGoalReady(summary.data?.goal) ? <Btn size="sm" onClick={() => setRequest(crypto.randomUUID())}>Request client plan</Btn> : fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">Set annual NOI goal</FileWorkspaceLink> : <Btn size="sm" disabled={summary.isLoading} onClick={() => setOpen(true)}>Set annual NOI goal</Btn> : null}</div></div>
       {release?.required ? <div className={styles.releaseRequirement} role="status">
-        <div><strong>{release.complete ? "Released cash flow allocated" : "Required: allocate released cash flow"}</strong><p>The saved coverage plan releases {operatingMoney(release.amount_monthly, release.currency)} per month. {release.complete ? "The operating plan allocates this recurring amount." : "Review and allocate the full recurring amount in the operating plan."}</p></div>
+        <div><strong>{release.complete ? "Released cash flow allocated" : "Required: allocate released cash flow"}</strong><p>The saved coverage plan releases {metricAmountLabel(release.amount_monthly, release.currency)} per month. {release.complete ? "The operating plan allocates this recurring amount." : "Review and allocate the full recurring amount in the operating plan."}</p></div>
         {fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">{canEdit ? "Allocate released cash flow" : "View cash flow allocation"}</FileWorkspaceLink> : <Btn size="sm" onClick={() => setOpen(true)}>{canEdit ? "Allocate released cash flow" : "View cash flow allocation"}</Btn>}
       </div> : null}
       <div className={styles.summary}>
