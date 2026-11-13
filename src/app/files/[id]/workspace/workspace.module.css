@@ -10,3 +10,5 @@
 .planTools>.tools{position:absolute;right:0;z-index:20;display:grid;grid-template-columns:minmax(0,1fr);width:min(310px,calc(100vw - 48px));padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--surface,#fff);box-shadow:0 8px 24px #00000016}
 .planTools>.tools>a{white-space:normal;max-width:100%}
 @media(max-width:650px){.operatingPlan{padding:12px}.root>.planHeader{gap:8px 12px}.planHeader h1{font-size:20px}.planContext{align-items:flex-start}.planTools>summary{font-size:12px}}
+
+.operatingPlan{padding:24px;gap:10px;align-content:start}.operatingPlan :global(.fw-shell){min-height:0;grid-auto-rows:max-content;align-content:start}.operatingPlan :global(.financial-workspace-body){background:transparent}@media(max-width:650px){.operatingPlan{padding:12px}}

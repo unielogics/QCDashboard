@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Drawer } from "@/components/ds/Drawer";
 import { metricAmountLabel } from "@/lib/financialMetrics";
 import type { OperatingGuidance, OperatingExpenseGroup } from "@/lib/operatingGuidance";
-import { operatingNumber, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { operatingExpenseTotal, operatingNumber, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { decideOperatingSourceGroup, restoreOperatingSourceGroup, type OperatingSourceReview } from "@/lib/operatingSourceReview";
 import type { OperatingPlannerIssue } from "@/lib/operatingPlannerIssues";
 import { OperatingAmountInput } from "./OperatingAmountInput";
@@ -27,21 +27,40 @@ export function OperatingPlanSourceReview({ value, onChange, guidance, review, d
     return saved ?? (!review?.stale ? review?.groups.find(row => row.key === key)?.decision : undefined);
   };
   return <section ref={section} className={styles.review} aria-label="Source cost confirmations">
-    <header className={styles.heading}><h4>Confirm source costs</h4>
-      <small>{groups.filter(group => decisionFor(group.key) === "confirmed").length} of {groups.length} confirmed</small>
-    </header><p>Do these annual costs match your selected tax return or P&amp;L?</p>
-    {groups.map(group => {
-      const decision = decisionFor(group.key);
-      const historical = value.historical_corrections?.find(row => row.source_group_key === group.key);
-      const invalid = decision === "needs_correction" || issues.some(issue => issue.step === 1 && issue.sourceGroupKey === group.key);
-      return <div key={group.key} className={`${styles.row} ${invalid ? styles.attention : ""}`} data-operating-source-group={group.key} data-operating-category={group.category} tabIndex={-1}>
-        <div className={styles.name}><strong>{group.label}</strong><small>{group.year || "Reporting year unconfirmed"}{decision === "needs_correction" ? " · Difference noted for review" : decision === "confirmed" ? " · Confirmed" : ""}</small></div>
-        <span className={styles.amount}>{metricAmountLabel(group.baseline_annual_amount, group.currency)} / year</span>
-        <button type="button" aria-label={`Confirm ${group.label}`} aria-pressed={decision === "confirmed"} disabled={disabled || !review?.source_fingerprint || group.baseline_annual_amount == null || Boolean(historical)} onClick={() => decide(group, "confirmed")}>✓ <span>Confirm</span></button>
-        <button type="button" aria-label={`Correct ${group.label}`} title="This source amount needs correction" disabled={disabled || !review?.source_fingerprint} onClick={() => setCorrection(correctionDraft(group))}>×</button>
-        {group.source_file_ids[0] && onPreviewSource ? <button className={styles.source} type="button" onClick={() => onPreviewSource(group.source_file_ids[0])}>View source ↗</button> : null}
-      </div>;
-    })}
+    <header className={styles.heading}>
+      <div><h4>Confirm source costs</h4><p>Review the selected source and confirm each cost group.</p></div>
+      <span className={styles.count}>{groups.filter(group => decisionFor(group.key) === "confirmed").length} of {groups.length} confirmed</span>
+    </header>
+    {groups.length ? <div className={styles.tableScroll}><table className={styles.table} aria-label="Source cost comparison">
+      <thead><tr><th scope="col">Cost group</th><th scope="col">Selected source / year</th><th scope="col">Disclosed / year</th><th scope="col">Variance</th><th scope="col">Status</th><th scope="col"><span className={styles.srOnly}>Source decisions</span></th></tr></thead>
+      <tbody>{groups.map(group => {
+        const decision = decisionFor(group.key);
+        const historical = value.historical_corrections?.find(row => row.source_group_key === group.key);
+        const invalid = decision === "needs_correction" || issues.some(issue => issue.step === 1 && issue.sourceGroupKey === group.key);
+        const currentRows = (value.expenses || []).filter(row => !row.excluded && !row.duplicate_of);
+        const disclosedRows = currentRows.filter(row => row.source_group_key === group.key && !currentRows.some(child => child.itemization_parent_id === row.id));
+        const disclosed = operatingExpenseTotal(disclosedRows);
+        const disclosedAmount = disclosedRows.length && !disclosed.missing && !disclosedRows.some(row => row.cadence === "one_time") ? disclosed.annual : null;
+        const disclosedCurrency = value.currency || group.currency;
+        const variance = group.baseline_annual_amount != null && disclosedAmount != null && group.currency && disclosedCurrency === group.currency ? disclosedAmount - group.baseline_annual_amount : null;
+        const status = decision === "needs_correction" ? "Needs correction" : review?.stale ? "Source changed" : decision === "confirmed" ? "Confirmed" : "Needs review";
+        return <tr key={group.key} className={invalid ? styles.attention : undefined} data-operating-source-group={group.key} data-operating-category={group.category} tabIndex={-1}>
+          <th scope="row" className={styles.name}>
+            <strong>{group.label}</strong><small>{group.source_label || (group.year ? `Reporting year ${group.year}` : "Reporting year unconfirmed")}</small>
+            {group.source_fact_keys?.length ? <small className={styles.facts}>{group.source_fact_keys.map(key => key.replaceAll("_", " ")).join(" · ")}</small> : null}
+          </th>
+          <td className={styles.amount}>{group.baseline_annual_amount == null ? "—" : `${metricAmountLabel(group.baseline_annual_amount, group.currency)} / year`}
+            {group.source_file_ids[0] && onPreviewSource ? <button className={styles.source} type="button" aria-label={`View source for ${group.label}`} onClick={() => onPreviewSource(group.source_file_ids[0])}>View source</button> : null}
+          </td>
+          <td className={styles.amount}>{disclosedAmount == null ? "—" : metricAmountLabel(disclosedAmount, disclosedCurrency)}</td>
+          <td className={`${styles.amount} ${variance != null && variance !== 0 ? styles.variance : ""}`}>{variance == null ? "—" : `${variance > 0 ? "+" : ""}${metricAmountLabel(variance, group.currency)}`}</td>
+          <td><span className={`${styles.status} ${decision === "confirmed" && !review?.stale ? styles.confirmed : styles.pending}`}>{status}</span></td>
+          <td className={styles.actions}>
+            <button type="button" aria-label={`Confirm ${group.label}`} aria-pressed={decision === "confirmed"} disabled={disabled || !review?.source_fingerprint || group.baseline_annual_amount == null || Boolean(historical)} onClick={() => decide(group, "confirmed")}>Confirm</button>
+            <button type="button" aria-label={`Correct ${group.label}`} disabled={disabled || !review?.source_fingerprint} onClick={() => setCorrection(correctionDraft(group))}>Correct</button>
+          </td>
+        </tr>;
+      })}</tbody></table></div> : null}
     {!groups.length ? <p>No imported cost groups are selected. <button type="button" onClick={onReviewLegacy}>Review retained current costs in Plan changes</button></p> : null}
     {review?.stale && value.source_group_confirmation_stamp !== review.source_fingerprint ? <small className={styles.warning}>The selected source changed. Confirm these amounts again.</small> : null}
     {value.historical_corrections?.some(row => row.reason.trim().length >= 3) && onHandoff ? <small>Historical differences await review. <button type="button" onClick={onHandoff}>Save for preparer review</button></small> : null}

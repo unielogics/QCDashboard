@@ -29,22 +29,33 @@ export function StaffOperatingSources({ evidence, files, value, loading, error, 
   const ready = !loading && !error;
   const knownGroups = groups.filter(group => group.baseline_annual_amount != null && Number.isFinite(group.baseline_annual_amount) && group.baseline_annual_amount >= 0).length;
   const activeRows = (value.expenses ?? []).filter(row => !row.excluded && !row.duplicate_of);
+  const needsSourceDraft = groups.some(group => group.baseline_annual_amount != null && !activeRows.some(row => row.source_group_key === group.key));
+  const showDraft = !embedded || needsSourceDraft || !guidance;
   return <section className={styles.panel} aria-label="Source costs and statement suggestions">
-    {!embedded ? <header className={styles.header}><div><span className={styles.eyebrow}>Start from the file’s evidence</span><h3>Source costs and statement suggestions</h3><p>Draft known tax/P&amp;L costs explicitly, then confirm current amounts. Statement payments remain unconfirmed suggestions until you choose to add them.</p></div><div className={styles.actions}><button type="button" className={styles.primary} disabled={disabled || !ready || !sourceId || !guidance} onClick={onDraft}>Draft from tax/P&amp;L</button><button type="button" aria-expanded={showStatements} disabled={loading} onClick={() => setShowStatements(open => !open)}>Review statement suggestions</button></div></header> : <button type="button" aria-expanded={showStatements} disabled={loading} onClick={() => setShowStatements(open => !open)}>Supporting statement suggestions</button>}
+    <header className={styles.header}>
+      <div><h4>Selected reporting source</h4><p>Review the reporting period and source before confirming its annual costs.</p></div>
+      <div className={styles.actions}>
+        {sourceId ? <button type="button" disabled={disabled || loading} onClick={() => onPreviewSource(sourceId)}>View selected source</button> : null}
+        {showDraft ? <button type="button" className={styles.primary} disabled={disabled || !ready || !sourceId || !guidance} onClick={onDraft}>Draft from tax/P&amp;L</button> : null}
+      </div>
+    </header>
     {loading ? <p role="status">Loading source costs and statement suggestions…</p> : null}
     {error ? <div className={styles.error} role="alert"><strong>Source suggestions could not be refreshed.</strong><p>{error}</p><p>The financial preview is separate. Retry source suggestions before drafting from these documents.</p><button type="button" disabled={disabled || loading} onClick={onRetry}>Retry source suggestions</button></div> : null}
     {!loading && !error && !guidance ? <div className={styles.notice}><strong>No source guidance is available yet.</strong><p>Retry the source list or enter current costs manually. Existing entries remain in this working plan.</p><button type="button" disabled={disabled} onClick={onRetry}>Retry source suggestions</button></div> : null}
     {guidance ? <div className={styles.overview}>
-      <div><span>Selected tax/P&amp;L source</span><strong>{sourceFile?.file_name || reporting?.source_label || "No selected tax/P&L source"}</strong>{reporting?.source_label && reporting.source_label !== sourceFile?.file_name ? <small>{reporting.source_label}</small> : null}{sourceId ? <button type="button" className={styles.link} disabled={disabled || loading} onClick={() => onPreviewSource(sourceId)}>View selected source</button> : null}</div>
+      <div><span>Primary source</span><strong>{reporting?.source_label || sourceFile?.file_name || "Source unconfirmed"}</strong>{sourceFile?.file_name && sourceFile.file_name !== reporting?.source_label ? <small title={sourceFile.file_name}>{sourceFile.file_name}</small> : null}</div>
       <div><span>Reporting year and period</span><strong>{year ?? "Year unconfirmed"}</strong><small>{reporting?.period_start || "Start unconfirmed"} – {reporting?.period_end || "End unconfirmed"}</small></div>
       <div><span>Currency and basis</span><strong>{reporting?.currency || "Currency unconfirmed"}</strong><small>{reporting?.basis || "Basis unconfirmed"}</small></div>
       <div><span>Tax/P&amp;L expense groups</span><strong>{groups.length}</strong><small>{knownGroups} with known annual amounts</small></div>
-      <div><span>Unconfirmed statement payments</span><strong>{ready ? bankCount : "Unavailable"}</strong><small>{ready ? `${processingCount} card-processing statement${processingCount === 1 ? "" : "s"}` : "Retry suggestions to confirm the list"}</small></div>
     </div> : null}
     {ready && guidance && !sourceId ? <p className={styles.notice}>No selected tax/P&amp;L document is available. Review statement suggestions below or disclose costs manually.</p> : null}
     {ready && sourceId && !groups.length ? <p className={styles.notice}>The source is available, but no expense groups were identified. Review the document and enter current costs manually.</p> : null}
     {result ? <div className={result.blocked_reason ? styles.error : styles.notice} role={result.blocked_reason ? "alert" : "status"}>{result.blocked_reason ? <strong>{result.blocked_reason}</strong> : <strong>{result.added} source cost row{result.added === 1 ? "" : "s"} drafted · {result.linked} existing row{result.linked === 1 ? "" : "s"} linked · {result.skipped} group{result.skipped === 1 ? "" : "s"} left unchanged</strong>}{result.filled_fields.length ? <p>Filled missing reporting details: {result.filled_fields.map(field => FIELD_LABELS[field] || field).join(", ")}.</p> : null}{result.reasons.length ? <ul>{result.reasons.map((reason, index) => <li key={`${index}:${reason}`}>{reason}</li>)}</ul> : null}<p>Review these draft costs and current amounts before saving a version. Historical financial results and staff approval remain separate.</p></div> : null}
     {(guidance?.warnings ?? []).map((note, index) => <p className={styles.warning} key={`guidance:${index}`}>{note}</p>)}
+    <div className={styles.suggestionBar}>
+      <span>Unconfirmed statement payments <strong>{ready ? bankCount : "Unavailable"}</strong>{ready && processingCount ? <small> · {processingCount} card-processing statement{processingCount === 1 ? "" : "s"}</small> : null}</span>
+      <button type="button" className={styles.link} aria-expanded={showStatements} disabled={loading} onClick={() => setShowStatements(open => !open)}>{embedded ? "Supporting statement suggestions" : "Review statement suggestions"}<span aria-hidden="true">{showStatements ? " −" : " +"}</span></button>
+    </div>
     {showStatements ? <section className={styles.statements} aria-label="Unconfirmed statement suggestions"><h4>Review statement suggestions</h4><p>Transfers, loan payments and operating costs can look similar in bank data. Review each source and category; these payments are not booked automatically.</p>{ready && !bankCount && !processingCount ? <p>No statement suggestions are available. You can disclose current costs manually.</p> : null}<div className={styles.candidates}>{candidates.map((candidate, index) => {
       const key = operatingCandidateKey(candidate);
       const exists = key && activeRows.some(row => row.source_candidate_key === key || candidate.bank_vendor_key && row.bank_vendor_key === candidate.bank_vendor_key);
