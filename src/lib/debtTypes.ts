@@ -12,6 +12,7 @@
 // remittance because sales fell has changed what the schedule is reporting, so
 // the form asks about it, and only on a row that says it is an advance.
 
+import { decimalInput } from "./decimalInput";
 export type DebtTypeOption = { value: string; label: string };
 
 export const DEBT_TYPES: readonly DebtTypeOption[] = [
@@ -68,13 +69,7 @@ export function isAdvanceType(value: string | undefined | null): boolean {
  *  "TBD" is not nought: the backend reads it as unknown too, and a 0 written
  *  into a monthly payment would tell the DSCR the obligation costs nothing. */
 export function parseFigure(value: string | undefined | null): number | null {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const negative = /^\(.*\)$/.test(raw) || raw.startsWith("-");
-  const cleaned = raw.replace(/^[-(]|\)$/g, "").replace(/[,$%\s]/g, "");
-  if (!/^\d*\.?\d+$/.test(cleaned)) return null;
-  const parsed = Number.parseFloat(cleaned);
-  return negative ? -parsed : parsed;
+  return decimalInput(value, true);
 }
 
 /** The input id the form gives a field on a card, so a failed submit can
@@ -111,6 +106,7 @@ export type DebtRowFields = {
   original_amount?: string;
   balance?: string;
   rate?: string;
+  factor_rate?: string;
   monthly_payment?: string;
   originated_on?: string;
   maturity_on?: string;
@@ -163,7 +159,7 @@ export type DebtRowProblem = { index: number; lender: string | null; missing: Re
 
 const ANSWER_FIELDS: readonly (keyof DebtRowFields)[] = [
   "lender", "debt_type", "original_amount", "balance", "rate", "monthly_payment", "originated_on",
-  "maturity_on", "secured", "payment_status", "collateral", "mca_modified", "mca_modification_note", "notes",
+  "maturity_on", "secured", "payment_status", "collateral", "mca_modified", "mca_modification_note", "notes", "factor_rate",
 ];
 
 /** A row with nothing on it is someone tabbing through an empty line, not an
@@ -196,7 +192,9 @@ export function debtRowProblems(rows: readonly DebtRowFields[] | undefined, sche
   (rows ?? []).forEach((row, at) => {
     if (row.editable === false || isBlankDebtRow(row)) return;
     const required: readonly RequiredDebtField[] = scheduleCompletion ? ["lender", "balance", "monthly_payment"] : REQUIRED_DEBT_FIELDS;
-    const missing = required.filter((field) => unanswered(field, row[field]));
+    const factor = parseFigure(row.factor_rate);
+    const factorPricedAdvance = isAdvanceType(row.debt_type) && factor != null && factor >= 1 && factor <= 5;
+    const missing = required.filter((field) => !(field === "rate" && factorPricedAdvance) && unanswered(field, row[field]));
     if (!scheduleCompletion && isAdvanceType(row.debt_type) && unanswered("mca_modified", row.mca_modified)) missing.push("mca_modified");
     if (missing.length) {
       const lender = String(row.lender ?? "").trim();

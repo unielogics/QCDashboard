@@ -1,3 +1,5 @@
+import type { OperatingSourceReview } from "./operatingSourceReview";
+import { decimalInput } from "./decimalInput";
 import type { OperatingDraftFeedback } from "./operatingPlanFeedback";
 import type { OperatingGoalProgress, OperatingCashBridge } from "./operatingGoal";
 import type { FileRequestItem } from "./fileRequestsApi";
@@ -50,6 +52,7 @@ export type OperatingPlanBody = Record<string, unknown> & {
   projection_start?: string | null;
   expenses?: OperatingExpense[]; adjustments?: OperatingAction[];
   released_cash_flow?: { source_fingerprint: string | null; allocations: ReleasedCashFlowAllocation[] };
+  source_group_confirmations?: Record<string, "confirmed" | "needs_correction">; source_group_confirmation_stamp?: string | null;
   category_confirmations?: Record<string, "confirmed" | "not_applicable" | "needs_help">;
   client_attestation?: boolean; historical_corrections?: Array<{ source_group_key: string; reason: string; source_file_ids?: string[]; evidence_note?: string }>;
   unit_label?: string; historical_units_annual?: PlanAmount; historical_revenue_annual?: PlanAmount;
@@ -92,6 +95,7 @@ export type OperatingExpenseChanges = {
   gross_projection: { scope: "linked_expense_changes_only"; status: string; noi: number | null; earnings: number | null; dscr_current: number | null; dscr_with_refinance: number | null };
 };
 export type OperatingEvaluation = {
+  source_review?: OperatingSourceReview;
   draft_feedback?: OperatingDraftFeedback;
   goal_progress?: OperatingGoalProgress; cash_bridge?: OperatingCashBridge;
   commands?: Array<{ action_id: string; expense_row_id: string | null; expense_category: string | null; source_group_key: string; target: string; status: string; current_annual_revenue?: number | null; proposed_annual_revenue?: number | null; included_in_proposed_projection?: boolean; included_in_approved_projection?: boolean; projection_issues?: string[]; current_value: number | null; proposed_value: number | null; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null; participant_expense_row_ids: string[]; allocations: Array<{ expense_row_id: string; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null }>; issues: string[]; assumptions: string[]; command: OperatingAction["command"] }>;
@@ -115,9 +119,7 @@ export const OPERATING_CATEGORIES = ["rent", "salaries", "payroll_taxes", "insur
 export const OPERATING_ACTIONS: Array<[OperatingActionKind, string]> = [["unit_volume", "Annual business unit change"], ["marketing_investment", "Marketing investment / return assumptions"], ["price_change", "Customer price change"], ["product_cost_change", "Product cost change"], ["revenue_change", "Revenue / volume change"], ["expense_reduction", "Expense reduction"], ["expense_increase", "Expense increase"], ["processing_cost_change", "Card processing cost change"], ["one_time_adjustment", "One-time adjustment"]];
 export const operatingLabel = (value: string) => value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 export const operatingNumber = (value: unknown): number | null => {
-  if (value == null || String(value).trim() === "") return null;
-  const result = Number(String(value).replaceAll(",", "").replaceAll("$", ""));
-  return Number.isFinite(result) ? result : null;
+  return decimalInput(value);
 };
 export const OPERATING_NUMERIC_FIELDS: ReadonlySet<string> = new Set(["unit_change_value", "revenue_return_multiple", "current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
 /** Normalize known numeric fields individually. A bad cell must never erase its rows. */

@@ -83,6 +83,9 @@ jobs:
           src/components/application/__tests__/OperatingPlanForm.test.ts
           src/components/application/__tests__/StaffOperatingSources.test.ts
           src/components/file/cockpit/__tests__/OperatingPlanEntry.test.ts
+          src/lib/__tests__/operatingActionFields.test.ts
+          src/lib/__tests__/operatingSourceReview.test.ts
+          src/lib/__tests__/debtTypes.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -247,6 +250,20 @@ jobs:
           src/lib/operatingReinvestment.ts
           tests/refinance-reinvestment.spec.ts
           tests/fixtures/refinanceReinvestment.ts
+          src/lib/operatingFundingState.ts
+          src/lib/operatingActionFields.ts
+          src/lib/operatingSourceReview.ts
+          src/lib/operatingChangeConfiguration.ts
+          src/lib/decimalInput.ts
+          src/lib/debtTypes.ts
+          src/lib/__tests__/operatingActionFields.test.ts
+          src/lib/__tests__/operatingSourceReview.test.ts
+          src/lib/__tests__/debtTypes.test.ts
+          src/components/application/OperatingChangeConfiguration.tsx
+          src/components/application/OperatingPlanIssueRail.tsx
+          src/components/application/OperatingPlanSourceReview.tsx
+          tests/minimal-operating-flow.spec.ts
+          tests/fixtures/minimalOperatingFlow.ts
 
       - name: Build production frontend
         run: pnpm build

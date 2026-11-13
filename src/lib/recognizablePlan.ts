@@ -26,7 +26,7 @@ export function itemizePlannerExpense(body: OperatingPlanBody, parentId: string,
   const child: OperatingExpense = { id, itemization_parent_id: parent.id, category: parent.category, source_group_key: parent.source_group_key, label: "", cadence: parent.cadence || "annual", cost_basis: "total", current_amount: null, source_file_ids: [], notes: "User-entered itemization; the original total is retained as a read-only reference." };
   return { ...next, no_operating_expenses_confirmed: false, category_confirmations: confirmations, expenses: [...next.expenses ?? [], child] };
 }
-export const documentedHistoricalCorrection = (body: OperatingPlanBody, key: string) => body.historical_corrections?.some(row => row.source_group_key === key && row.reason.trim().length >= 3 && (Boolean(row.evidence_note?.trim()) || Boolean(row.source_file_ids?.length))) ?? false;
+export const documentedHistoricalCorrection = (body: OperatingPlanBody, key: string) => body.historical_corrections?.some(row => row.source_group_key === key && row.reason.trim().length >= 3) ?? false;
 
 export type CommandScope = { expense?: OperatingExpense; category: string; sourceGroupKey: string; annualPricing?: boolean; sourceFileIds?: string[] };
 /** Store intent only. Resolved prices, percentages and allocations come from the evaluator. */
@@ -44,7 +44,6 @@ export function plannerSaveIssues(body: OperatingPlanBody, evaluation?: Operatin
   const issues: string[] = [];
   for (const correction of body.historical_corrections ?? []) {
     if (correction.reason.trim().length < 3) issues.push(`historical_corrections.${correction.source_group_key}.reason`);
-    if (!correction.evidence_note?.trim() && !correction.source_file_ids?.length) issues.push(`historical_corrections.${correction.source_group_key}.evidence`);
   }
   for (const ledger of evaluation?.itemization ?? []) {
     if (ledger.status !== "balanced" && !documentedHistoricalCorrection(body, ledger.source_group_key)) issues.push(`expenses.${ledger.parent_expense_row_id}.itemization.${ledger.status}`);

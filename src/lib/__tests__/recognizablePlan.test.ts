@@ -250,7 +250,7 @@ describe("scoped reversible removal", () => {
 });
 
 describe("historical correction and canonical save gates", () => {
-  it.each([{ reason: "", evidence_note: "" }, { reason: "R", evidence_note: "Ledger" }, { reason: "Valid reason", evidence_note: " " }])("does not treat incomplete %j as a documented exception", partial => {
+  it.each([{ reason: "", evidence_note: "" }, { reason: "R", evidence_note: "Ledger" }])("does not treat incomplete %j as a documented exception", partial => {
     const value = body(); value.historical_corrections = [{ source_group_key: "irs:rent", source_file_ids: [], ...partial }];
     expect(documentedHistoricalCorrection(value, "irs:rent")).toBe(false);
     expect(plannerSaveIssues(value, evaluation("unknown"))).toContain("expenses.parent.itemization.unknown");
@@ -265,7 +265,7 @@ describe("historical correction and canonical save gates", () => {
     expect(plannerSaveIssues(body(), evaluation("unallocated", []))).toContain("expenses.parent.itemization.unallocated");
   });
 
-  it.each([{ reason: "Reconcile classification", source_file_ids: ["source"], evidence_note: "" }, { reason: "Reconcile the allocation", source_file_ids: [], evidence_note: "Signed ledger" }])("allows only the explicitly documented matching exception %j", correction => {
+  it.each([{ reason: "Correct the source category", source_file_ids: [], evidence_note: "" }, { reason: "Reconcile classification", source_file_ids: ["source"], evidence_note: "" }, { reason: "Reconcile the allocation", source_file_ids: [], evidence_note: "Signed ledger" }])("allows only the explicitly documented matching exception %j", correction => {
     const value = body(); value.historical_corrections = [{ source_group_key: "irs:rent", ...correction }];
     const before = structuredClone(value);
     expect(documentedHistoricalCorrection(value, "irs:rent")).toBe(true);
@@ -278,7 +278,7 @@ describe("historical correction and canonical save gates", () => {
 
   it("returns exact correction field paths and permits X-removal of an unfinished optional record", () => {
     const value = body(); value.historical_corrections = [{ source_group_key: "irs:rent", reason: "R", source_file_ids: [], evidence_note: "" }];
-    expect(plannerSaveIssues(value, evaluation("balanced"))).toEqual(expect.arrayContaining(["historical_corrections.irs:rent.reason", "historical_corrections.irs:rent.evidence"]));
+    expect(plannerSaveIssues(value, evaluation("balanced"))).toEqual(expect.arrayContaining(["historical_corrections.irs:rent.reason"]));
     expect(plannerSaveIssues({ ...value, historical_corrections: [] }, evaluation("balanced"))).toEqual([]);
   });
 });
