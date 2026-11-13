@@ -28,6 +28,8 @@ import { DOC_KINDS, FREQ_LABEL, LIEN_LABEL, LISTING_TONE, SERVICER_TONE, SUB_TON
 import { SourceSnapshotCard } from "@/components/marketplace/SourceSnapshotCard";
 import { MarketplacePublishStrip } from "@/components/marketplace/MarketplacePublishStrip";
 import { MarketplaceOfferLink } from "@/components/marketplace/MarketplaceOfferLink";
+import { MarketplaceRefresh } from "@/components/marketplace/MarketplaceRefresh";
+import { marketplaceLinkedTerms } from "@/lib/marketplaceRefresh";
 import { DealBudgetSection } from "@/components/file/DealBudgetSection";
 import { useDealBudget } from "@/hooks/useDealBudget";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
@@ -241,7 +243,7 @@ function Editor() {
           </div>
         }
       />
-      <MarketplaceOfferLink listing={listing} />
+      <MarketplaceOfferLink listing={listing} refreshAction={<MarketplaceRefresh listing={listing} onReview={() => requestNavigation({ key: "saved-update-review", message: "Saved figures and document drafts changed.", instruction: "Review the current offering documents before approval or publication.", target: { kind: "ppm" } })} />} />
       <Panel title="Listing cockpit" sub="Saved financing, document readiness and controlled source-document access."><div className="grid cols-auto"><div><span className="sub">Capital to raise</span><strong style={{ display: "block" }}>{money(listing.offered_amount)}</strong></div><div><span className="sub">Offering PDFs ready</span><strong style={{ display: "block" }}>{listing.documents.filter(document => document.status === "ready").length}</strong></div><div><span className="sub">Publication readiness</span><strong style={{ display: "block" }}>{listing.publish_blockers.length ? `${listing.publish_blockers.length} items need review` : "No current publication blockers"}</strong></div><div><span className="sub">File snapshot</span><strong style={{ display: "block" }}>{listing.sync?.up_to_date ? "Up to date" : listing.profile_id ? "Review / refresh saved file" : "Standalone listing"}</strong></div></div><div className="row mt"><Btn size="sm" onClick={() => setTab("documents")}>Review offering documents</Btn></div></Panel>
       {listing.profile_id ? <MarketplaceFileInventory key={listing.id} listingId={listing.id} /> : null}
       {msg ? <StatusLine tone={msg.tone}>{msg.text}</StatusLine> : null}
@@ -308,6 +310,7 @@ function TermsForm({ listing, companyFeesRequest, onMessage, onError, issues, on
   const patch = useCpPatchListing();
   const set = <K extends keyof Draft>(k: K, v: Draft[K]) => { dirtyRef.current = true; setD((p) => ({ ...p, [k]: v })); };
   const readOnly = listing.status === "repaid" || listing.status === "withdrawn";
+  const currentTerms = marketplaceLinkedTerms(d, listing);
   const num = (v: string) => (v.trim() === "" ? null : v.trim());
 
   const save = async () => {
@@ -315,8 +318,8 @@ function TermsForm({ listing, companyFeesRequest, onMessage, onError, issues, on
     const body: CpListingPatch = {
       vertical: d.vertical as CpListingPatch["vertical"], program_label: d.program_label, name: d.name, summary: d.summary || null, city: d.city || null,
       state: d.state ? d.state.toUpperCase() : null, collateral_type: d.collateral_type || null, lien_position: d.lien_position as CpListingPatch["lien_position"],
-      note_rate_pct: num(d.note_rate_pct), term_months: d.term_months ? Number(d.term_months) : null, ltv_pct: num(d.ltv_pct), ltv_kind: d.ltv_kind as CpListingPatch["ltv_kind"],
-      loan_amount: num(d.loan_amount), offered_amount: num(d.offered_amount), minimum_investment: num(d.minimum_investment),
+      note_rate_pct: num(currentTerms.note_rate_pct), term_months: currentTerms.term_months ? Number(currentTerms.term_months) : null, ltv_pct: num(d.ltv_pct), ltv_kind: d.ltv_kind as CpListingPatch["ltv_kind"],
+      loan_amount: num(currentTerms.loan_amount), offered_amount: num(currentTerms.offered_amount), minimum_investment: num(currentTerms.minimum_investment),
       payment_frequency: d.payment_frequency as CpListingPatch["payment_frequency"], personal_guarantee: d.personal_guarantee, guarantee_text: d.guarantee_text || null,
       borrower_track_record: d.borrower_track_record || null, exit_plan: d.exit_plan || null, valuation_amount: num(d.valuation_amount), valuation_source: d.valuation_source || null,
       title_status: d.title_status || null, servicer_label: d.servicer_label || null, ...(!listing.profile_id ? (() => { const dates = resolveLoanDates({ expected_funding_date: d.expected_funding_date, maturity_date: d.maturity_date, maturity_date_mode: d.maturity_date_mode as "automatic" | "manual" }, d.term_months ? Number(d.term_months) : null); return { ...dates, expected_funding_date: dates.expected_funding_date || null, maturity_date: dates.maturity_date || null }; })() : {}), closes_at: d.closes_at ? new Date(d.closes_at).toISOString() : null,
@@ -335,7 +338,7 @@ function TermsForm({ listing, companyFeesRequest, onMessage, onError, issues, on
   for (const issue of issues) if (issue.target?.kind === "field") fieldIssues[issue.target.field] = issue;
   const binding = (field: MarketplaceField) => ({ id: marketplaceFieldId(field), "aria-invalid": fieldIssues[field] ? true as const : undefined, "aria-describedby": fieldIssues[field] ? `${marketplaceFieldId(field)}-error` : undefined });
   const inlineError = (field: MarketplaceField) => fieldIssues[field] ? <span id={`${marketplaceFieldId(field)}-error`}>{fieldIssues[field]!.message} {fieldIssues[field]!.instruction}</span> : undefined;
-  const fieldProps = { draft: d, onChange: set, readOnly, linkedProfile: Boolean(listing.profile_id), issues: fieldIssues };
+  const fieldProps = { draft: currentTerms, onChange: set, readOnly, linkedProfile: Boolean(listing.profile_id), issues: fieldIssues };
 
   return (
     <div className="grid">

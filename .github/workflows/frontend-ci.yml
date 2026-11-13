@@ -52,6 +52,9 @@ jobs:
           src/lib/__tests__/marketplaceIssues.test.ts
           src/lib/__tests__/marketplacePreparation.test.ts
           src/lib/__tests__/marketplacePublication.test.ts
+          src/lib/__tests__/marketplaceRefresh.test.ts
+          src/lib/__tests__/marketplaceOperatingProjection.test.ts
+          src/components/marketplace/__tests__/MarketplaceLiveProjections.test.ts
           src/lib/__tests__/investorEconomics.test.ts
           src/lib/__tests__/loanDates.test.ts
           src/lib/__tests__/loanTermsSync.test.ts
@@ -270,6 +273,19 @@ jobs:
           tests/fixtures/minimalOperatingFlow.ts
           tests/marketing-activity-linking.spec.ts
           tests/fixtures/marketingActivityLinking.ts
+          src/lib/marketplaceRefresh.ts
+          src/lib/marketplaceOperatingProjection.ts
+          src/hooks/useMarketplaceRefresh.ts
+          src/components/marketplace/MarketplaceRefresh.tsx
+          src/components/marketplace/MarketplaceOperatingProjection.tsx
+          src/components/marketplace/MarketplaceOfferLink.tsx
+          src/components/marketplace/SourceSnapshotCard.tsx
+          src/lib/__tests__/marketplaceRefresh.test.ts
+          src/lib/__tests__/marketplaceOperatingProjection.test.ts
+          src/lib/__tests__/fixtures/marketplaceOperatingProjection.ts
+          src/components/marketplace/__tests__/MarketplaceLiveProjections.test.ts
+          tests/marketplace-live-projections.spec.ts
+          tests/fixtures/marketplaceLiveProjections.ts
 
       - name: Build production frontend
         run: pnpm build

@@ -1,0 +1,1 @@
+.comparison{grid-column:1/-1;min-width:0;max-width:100%}.projection{display:grid;gap:6px;min-width:0;max-width:100%}.projection p{margin:0}.scroll{min-width:0;max-width:100%;overflow-x:auto}.scroll table{min-width:680px;width:100%}.positive{color:var(--success,var(--ok))}.negative{color:var(--danger)}

@@ -7,6 +7,9 @@
 
 import { CellChip, Lbl, Panel, type ChipTone } from "@/components/ds";
 import { dscrLabel, dscrTone, money, multiple, signedPct, sourceLabel, type DscrStatus } from "@/lib/financialCockpit";
+import { marketplaceOperatingProjection } from "@/lib/marketplaceOperatingProjection";
+import { MarketplaceOperatingProjection } from "./MarketplaceOperatingProjection";
+import styles from "./MarketplaceOperatingProjection.module.css";
 
 type Snapshot = Record<string, unknown>;
 
@@ -28,9 +31,9 @@ function pair(value: unknown): { before: number | null; after: number | null; ch
 }
 const signed = (value: number | null, render: (v: number) => string): string => (value == null ? "—" : `${value > 0 ? "+" : value < 0 ? "−" : ""}${render(Math.abs(value))}`);
 
-function Item({ label, children }: { label: string; children: React.ReactNode }) {
+function Item({ label, children, wide }: { label: string; children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="fc-listing-item">
+    <div className={`fc-listing-item ${wide ? styles.comparison : ""}`}>
       <Lbl>{label}</Lbl>
       <div>{children}</div>
     </div>
@@ -51,8 +54,9 @@ export function SourceSnapshotCard({ snapshot }: { snapshot: Snapshot | null | u
   const dscr = num(financials?.dscr);
   const dscrStatus = (text(financials?.dscr_status) ?? "unavailable") as DscrStatus;
   const netProfit = num(financials?.net_profit);
+  const operating = marketplaceOperatingProjection(financials?.operating_projection);
   return (
-    <Panel title="Where the draft came from" sub="Read from the file when the draft was cut; the numbers above are what members see, these are for the desk.">
+    <Panel title="Saved financial figures" sub="From the saved file snapshot. Historical source figures and proposed scenarios stay separate.">
       <div className="fc-listing-grid">
         <Item label="File">
           <strong>{text(snapshot.unified_title) ?? "—"}</strong>
@@ -95,11 +99,11 @@ export function SourceSnapshotCard({ snapshot }: { snapshot: Snapshot | null | u
             ["Months dipping below zero", pair(impact.months_negative), (v) => String(v)],
           ];
           return (
-            <Item label="The desk's plan: original, modification, impact">
+            <Item label="Refinance effect" wide>
               {mods.length ? <ul className="fc-notes">{mods.map((m, i) => <li key={i}><strong>{text(m.label)}</strong>{text(m.detail) ? ` — ${text(m.detail)}` : ""}</li>)}</ul> : null}
               <div className="tbl-wrap">
                 <table className="tbl fc-impact">
-                  <thead><tr><th>Figure</th><th className="r">Original</th><th className="r">With the plan</th><th className="r">Change</th></tr></thead>
+                  <thead><tr><th>Figure</th><th className="r">Original</th><th className="r">Refinance only</th><th className="r">Change</th></tr></thead>
                   <tbody>
                     <tr><td>Debt service coverage ({sourceLabel(text(impact && (impact as Record<string, unknown>).dscr && ((impact as Record<string, unknown>).dscr as Record<string, unknown>).basis))})</td><td className="r num">{multiple(dscrPair.before)}</td><td className="r num">{multiple(dscrPair.after)}</td><td className="r num">{signed(dscrPair.change, (v) => `${v.toFixed(2)}x`)}</td></tr>
                     {rows.map(([label, p, render]) => <tr key={label}><td>{label}</td><td className="r num">{p.before == null ? "—" : render(p.before)}</td><td className="r num">{p.after == null ? "—" : render(p.after)}</td><td className="r num">{signed(p.change, render)}</td></tr>)}
@@ -110,6 +114,7 @@ export function SourceSnapshotCard({ snapshot }: { snapshot: Snapshot | null | u
             </Item>
           );
         })() : null}
+        {operating ? <Item label="Proposed operating changes" wide><MarketplaceOperatingProjection projection={operating} /></Item> : null}
         {sheet ? (
           <Item label="Recorded loan terms">
             <strong>{money(num(sheet.approved_amount))}</strong> at {num(sheet.rate_pct) ?? "—"}% for {num(sheet.term_months) ?? "—"} months

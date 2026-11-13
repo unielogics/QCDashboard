@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Btn, BtnLink, CellChip } from "@/components/ds";
 import { marketplacePublicationLabel, marketplacePublicationState, type MarketplaceOfferReference } from "@/lib/marketplacePublication";
 
 /** Authenticated member URL only. Copying a link does not publish or deliver an offer. */
-export function MarketplaceOfferLink({ listing, compact = false, showStatus = true }: {
+export function MarketplaceOfferLink({ listing, compact = false, showStatus = true, refreshAction }: {
   listing: MarketplaceOfferReference;
   compact?: boolean;
   showStatus?: boolean;
+  refreshAction?: ReactNode;
 }) {
   const publication = marketplacePublicationState(listing);
   const [copyState, setCopyState] = useState<"idle" | "copying" | "copied" | "failed">("idle");
@@ -30,6 +31,7 @@ export function MarketplaceOfferLink({ listing, compact = false, showStatus = tr
     <div className="grid g4" data-testid="marketplace-offer-link">
       <div className="row" style={{ gap: 6, flexWrap: "wrap", alignItems: "center" }}>
         {showStatus ? <CellChip tone={publication.isPublished ? "ok" : "mut"}>{marketplacePublicationLabel(listing.status)}</CellChip> : null}
+        {refreshAction}
         <Btn size="sm" disabled={!publication.memberUrl || copyState === "copying"} title={publication.memberUrl ? "Investor sign-in, approval and waiting-period access still apply." : unavailable} onClick={() => void copy()}>
           {copyState === "copied" ? "Investor link copied" : copyState === "copying" ? "Copying…" : "Copy investor link"}
         </Btn>
