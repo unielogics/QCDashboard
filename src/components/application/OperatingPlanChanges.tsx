@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { operatingFeedbackLabel } from "@/lib/operatingPlanFeedback";
 import { metricAmountLabel } from "@/lib/financialMetrics";
 import { operatingRecurringSubtotal, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
 import { clearOperatingReview, OPERATING_ACTIONS, OPERATING_CADENCES, operatingExpenseAmount, operatingLabel, operatingNumber, type OperatingAction, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
@@ -12,19 +13,20 @@ import styles from "./OperatingPlanChanges.module.css";
 
 const uid = () => crypto.randomUUID();
 const tone = (amount: number | null | undefined) => amount == null || amount === 0 ? undefined : amount > 0 ? styles.positive : styles.negative;
-type Common = { value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void; evaluation?: OperatingEvaluation | null; evaluating?: boolean; disabled?: boolean; evidence?: OperatingGuidanceEvidence | null; onPreviewSource?: (id: string) => void; onAdvancedAction?: (id: string) => void };
+type Common = { onFixFeedback?: (id?: string, field?: string) => void; value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void; evaluation?: OperatingEvaluation | null; evaluating?: boolean; disabled?: boolean; evidence?: OperatingGuidanceEvidence | null; onPreviewSource?: (id: string) => void; onAdvancedAction?: (id: string) => void };
 
 function Amount({ label, fieldId, value, disabled, invalid, onChange }: { label: string; fieldId?: string; value: unknown; disabled?: boolean; invalid?: boolean; onChange: (value: string) => void }) {
   return <label>{label}<OperatingAmountInput label={fieldId ? `${label} ${fieldId}` : label} value={value} disabled={disabled} invalid={invalid} onCommit={onChange} /></label>;
 }
 
-export function OperatingActivityDetails({ action, value, onChange, evaluation, evaluating, disabled, evidence, onPreviewSource, onEditUnits, onAdvancedAction, paired = false, onFixName }: Common & { action: OperatingAction; onEditUnits: () => void; paired?: boolean; onFixName?: () => void }) {
+export function OperatingActivityDetails({ action, value, onChange, evaluation, evaluating, disabled, evidence, onPreviewSource, onEditUnits, onAdvancedAction, paired = false, onFixName, onFixFeedback }: Common & { action: OperatingAction; onEditUnits: () => void; paired?: boolean; onFixName?: () => void }) {
   const edit = (patch: Partial<OperatingAction>) => onChange({ ...value, adjustments: value.adjustments?.map(row => row.id === action.id ? clearOperatingReview(normalizeOperatingUnitAction({ ...row, ...patch })) : row) });
   const result = !evaluating ? evaluation?.actions.find(row => row.id === action.id) : null;
   const rowPreview = !evaluating ? evaluation?.expense_changes?.rows.find(row => row.action_ids.includes(action.id)) : null;
-  const fullValid = genericExpenseAction(action) && rowPreview ? rowPreview.included_in_proposed_projection : result?.proposed_math_valid === true;
+  const feedback = !evaluating ? evaluation?.draft_feedback?.actions.find(row => row.action_id === action.id) : null;
+  const fullValid = (!feedback || !feedback.source_issues.length && feedback.math_status === "calculated") && (genericExpenseAction(action) && rowPreview ? rowPreview.included_in_proposed_projection : result?.proposed_math_valid === true);
   const completion = rowPreview?.completion_missing ?? [];
-  const missing = [...new Set([...completion, ...(result?.issues ?? []).flatMap(issue => ({ "Missing effective date": ["effective_date"], "Missing explanation": ["explanation"], "Missing source note": ["source_note"], "Missing implementation cost": ["implementation_cost"], "Missing label": ["label"], "Missing driver key": ["driver_key"], "Missing product name": ["product_name"] }[issue] ?? []))])];
+  const missing = [...new Set([...completion, ...(feedback?.qualification_missing || []).map(field => field.split(".").at(-1)!), ...(result?.issues ?? []).flatMap(issue => ({ "Missing effective date": ["effective_date"], "Missing explanation": ["explanation"], "Missing source note": ["source_note"], "Missing implementation cost": ["implementation_cost"], "Missing label": ["label"], "Missing driver key": ["driver_key"], "Missing product name": ["product_name"] }[issue] ?? []))])];
   const [identityOpen, setIdentityOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false), [focusField, setFocusField] = useState<string | null>(null);
   const activityElement = useRef<HTMLDivElement>(null);
@@ -34,7 +36,8 @@ export function OperatingActivityDetails({ action, value, onChange, evaluation, 
   const product = action.kind === "price_change" || action.kind === "product_cost_change", marketing = action.kind === "marketing_investment";
   const money = (amount?: number | null) => evaluating ? "Updating…" : metricAmountLabel(amount, value.currency);
   const activeExpenses = value.expenses?.filter(row => !row.excluded && !row.duplicate_of) ?? [];
-  return <div ref={activityElement} className={styles.activity} aria-label={`Activity ${action.label || action.id}`}>
+  return <div data-operating-action={action.id} ref={activityElement} className={styles.activity} aria-label={`Activity ${action.label || action.id}`}>
+    {!paired ? <StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><p>Annual effect before setup: <strong className={tone(feedback?.gross_annual_delta)}>{evaluating ? "Calculating…" : metricAmountLabel(feedback?.gross_annual_delta, value.currency)}</strong></p>{[...(feedback?.source_issues || []), ...(feedback?.math_missing || [])].slice(0, 2).map(field => <button type="button" key={field} onClick={() => onFixFeedback?.(action.id, field)}>{operatingFeedbackLabel(field)}</button>)}</StableOperatingPreview> : null}
     {!paired ? <>
       <div className={styles.fields}><label>Activity name<input aria-label={`Activity name ${action.id}`}  value={action.label || ""} disabled={disabled} onChange={event => edit({ label: event.target.value })} /></label><label>Activity type<select aria-label={`Activity type ${action.id}`}  disabled={disabled || Boolean(action.expense_row_id)} value={action.kind || "expense_increase"} onChange={event => edit({ kind: event.target.value as OperatingAction["kind"], ...(!["expense_reduction", "expense_increase"].includes(event.target.value) ? { cost_basis: "total", expense_row_id: null } : {}) })}>{OPERATING_ACTIONS.map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></label></div>
       {genericExpenseAction(action) || marketing || action.kind === "processing_cost_change" ? <label>Link to a current cost<select aria-label={`Linked current cost ${action.id}`}  value={action.expense_row_id || ""} disabled={disabled} onChange={event => onChange(linkOperatingPlannedActivity(value, action.id, event.target.value || null))}><option value="">Choose a current cost</option>{activeExpenses.filter(row => !marketing || row.category === "marketing").map(row => <option value={row.id} key={row.id}>{row.label || "Unnamed current cost"}</option>)}</select></label> : null}

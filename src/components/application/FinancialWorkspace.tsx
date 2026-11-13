@@ -6,7 +6,7 @@ import { Btn, Callout, CellChip, Field, IconBtn, Input, Select } from "@/compone
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { PreparationProgress, type PreparationStep } from "@/components/design-system/PreparationProgress";
-import { useAuthedApi, useDevUser } from "@/hooks/useApi";
+import { useAuthedApi, useDevUser, useCurrentUser } from "@/hooks/useApi";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { apiBase } from "@/lib/api";
 import { assertPdfUploadUnlocked } from "@/lib/documentUpload";
@@ -19,6 +19,7 @@ import { BusinessStatementForm, type StatementBody, type StatementSchema } from 
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
 import { operatingGoalReady, type OperatingGoalRead } from "@/lib/operatingGoal";
 import { OperatingPlanEditor } from "./OperatingPlanEditor";
+import { operatingNumericProblems } from "@/lib/operatingPlanFeedback";
 import { normalizeOperatingPlanBody, operatingPlanRequest, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { RealEstateMortgageEvidence } from "./RealEstateMortgageEvidence";
 import { readRealEstateEvidence, realEstateImportFieldLabel, realEstateImportFieldValue, type RealEstateEvidenceLink } from "@/lib/realEstateEvidence";
@@ -65,6 +66,9 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const fileWorkspace = useFileWorkspace();
   const registerExit = fileWorkspace?.registerExit;
   const api = useAuthedApi();
+  const actor = useCurrentUser();
+  const writeScope = `${actor.authScope ?? actor.data?.id ?? "unresolved"}:${profileId}`;
+  const activeWriteScope = useRef(writeScope); activeWriteScope.current = writeScope;
   const queryClient = useQueryClient();
   const { getToken, isSignedIn } = useConsoleAuth();
   const devUser = useDevUser();
@@ -77,6 +81,8 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const busyRef = useRef(busy); busyRef.current = busy;
   const [publishPhase, setPublishPhase] = useState<"draft" | "pdf" | "refresh" | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [operatingDraftError, setOperatingDraftError] = useState("");
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [localDirty, setLocalDirty] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -135,7 +141,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     const sameFamily = current.current?.family_id === next.family_id;
     current.current = next; draftBody.current = next.body;
     changed.current = 0; persisted.current = 0;
-    setSnapshot(next); setBody(next.body); setLocalDirty(false); setConflict(false);
+    setSnapshot(next); setBody(next.body); setLocalDirty(false); setConflict(false); setOperatingDraftError(""); setDraftSavedAt(null);
     setSelectedDebt((selected) => financialDebtEntrySelection(next.body, entry?.resetSelection ? entry.rowId : sameFamily ? selected : null));
   }, []);
   const changeBody = useCallback((next: FinancialBody) => {
@@ -160,26 +166,30 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const flush = useCallback(async (): Promise<void> => {
     if (inFlight.current) await inFlight.current;
     if (!current.current || persisted.current === changed.current) return;
+    const sentScope = writeScope, family = current.current.family_id;
+    const belongs = () => mounted.current && activeWriteScope.current === sentScope && current.current?.family_id === family;
     const work = async () => {
       setSavingDraft(true);
       try {
-        while (persisted.current !== changed.current) {
+        while (belongs() && persisted.current !== changed.current) {
           const revision = changed.current;
+          if (current.current?.kind === "operating_plan" && operatingNumericProblems(draftBody.current).length) throw new Error("Finish the numeric entry before saving the draft. Your entry is retained.");
           const next = await saveFinancialDraft(api, profileId, current.current!, structuredClone(draftBody.current));
+          if (!belongs()) return;
           current.current = next; persisted.current = revision;
           if (mounted.current) {
-            setSnapshot(next); setLocalDirty(changed.current !== revision); setConflict(false);
+            setSnapshot(next); setLocalDirty(changed.current !== revision); setConflict(false); setOperatingDraftError(""); setDraftSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
             if (changed.current === revision) { draftBody.current = next.body; setBody(next.body); }
           }
         }
       } catch (reason) {
-        if (mounted.current) { setError(message(reason)); setConflict(isFinancialDraftConflict(reason)); }
+        if (belongs()) { if (current.current?.kind === "operating_plan" && !isFinancialDraftConflict(reason)) setOperatingDraftError(message(reason)); else setError(message(reason)); setConflict(isFinancialDraftConflict(reason)); }
         throw reason;
-      } finally { if (mounted.current) setSavingDraft(false); }
+      } finally { if (belongs()) setSavingDraft(false); }
     };
     const promise = work(); inFlight.current = promise;
     try { await promise; } finally { if (inFlight.current === promise) inFlight.current = null; }
-  }, [api, profileId]);
+  }, [api, profileId, writeScope]);
 
   useEffect(() => inline ? registerExit?.(async () => { if (busyRef.current) throw new Error("Wait for the current operation before leaving."); await flush(); }) : undefined, [inline, registerExit, flush]);
 
@@ -194,10 +204,10 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
     return () => { cancelled = true; };
   }, [accept, api, initialDebtId, initialKind, initialView, open, profileId]);
   useEffect(() => {
-    if (!localDirty || conflict) return;
+    if (!localDirty || conflict || snapshot?.kind === "operating_plan" && operatingNumericProblems(body).length) return;
     const timer = setTimeout(() => { void flush().catch(() => undefined); }, 700);
     return () => clearTimeout(timer);
-  }, [body, conflict, flush, localDirty]);
+  }, [body, conflict, flush, localDirty, snapshot?.kind]);
   useEffect(() => {
     const beforeUnload = (event: BeforeUnloadEvent) => { if (inline && busyRef.current || changed.current !== persisted.current || inFlight.current || newDebtRef.current && !isBlankFinancialDebt(newDebtRef.current)) { event.preventDefault(); event.returnValue = ""; } };
     window.addEventListener("beforeunload", beforeUnload);
@@ -452,7 +462,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
                 changeBody({ ...next, schedules });
               }} disabled={Boolean(busy)} />
                 : kind === "real_estate_schedule" ? <RealEstateScheduleForm schema={snapshot.schema as RealEstateSchema} value={body as RealEstateBody} onChange={(next) => changeBody(next as FinancialBody)} disabled={Boolean(busy)} initialSection={view === "pdf" && realEstateSourceMode === "mortgage" ? "Mortgages" : "Properties"} onImportSchedule={() => openRealEstateSource("schedule")} onMortgageEvidence={(mortgageId, propertyId) => openRealEstateSource("mortgage", mortgageId, propertyId)} mortgageEvidence={mortgageEvidence} />
-                : kind === "operating_plan" ? <OperatingPlanEditor onSaveVersion={() => publish()} saveVersionBusy={busy === "publish"} saveVersionDisabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion)} profileId={profileId} snapshot={snapshot} value={body as OperatingPlanBody} onChange={changeBody} disabled={Boolean(busy) || conflict} prepare={async () => { await flush(); return current.current; }} onReviewed={accept} onBusyChange={(reviewing) => setBusy(reviewing ? "operating-review" : "")} onPreviewSource={(fileId) => { setView("pdf"); setFileMode("sources"); previewSource(fileId); }} />
+                : kind === "operating_plan" ? <OperatingPlanEditor saveStatus={{ state: operatingDraftError || conflict ? "error" : savingDraft ? "saving" : localDirty ? "unsaved" : "saved", at: draftSavedAt, error: operatingDraftError || (conflict ? "The saved draft changed. Use Reload server draft to compare the latest saved plan; your current entries are retained." : ""), retry: conflict ? undefined : () => { void flush().catch(() => undefined); }, reload: conflict ? () => { if (window.confirm("Reload the saved draft and replace the entries in this window?")) void run("reload", async () => { accept(await readFinancialWorkspace(api, profileId, kind, snapshot?.family_id)); setError(""); }); } : undefined }} onSaveVersion={() => publish()} saveVersionBusy={busy === "publish"} saveVersionDisabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion)} profileId={profileId} snapshot={snapshot} value={body as OperatingPlanBody} onChange={changeBody} disabled={Boolean(busy) || conflict} prepare={async () => { await flush(); return current.current; }} onReviewed={accept} onBusyChange={(reviewing) => setBusy(reviewing ? "operating-review" : "")} onPreviewSource={(fileId) => { setView("pdf"); setFileMode("sources"); previewSource(fileId); }} />
                 : kind === "debt_schedule" ? <>
                   {selected ? <><DebtScheduleForm singleRow renderFieldSource={renderFieldSource} value={{ business_name: String(body.business_name ?? ""), debts: [{ ...selected, editable: true } as DebtRow] }} disabled={Boolean(busy) || excludedIds.has(selected.id)} onChange={(next) => {
                     if (!next.debts?.length) { debtAction({ op: "delete", row_id: selected.id }); return; }

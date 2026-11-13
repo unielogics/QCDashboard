@@ -5,7 +5,7 @@ import { OperatingPlanGuide, OperatingGuidedComparison } from "../OperatingPlanG
 import type { OperatingEvaluation } from "@/lib/operatingPlan";
 import type { OperatingGuidance } from "@/lib/operatingGuidance";
 
-const evaluation = { baseline: { noi: -40000, currency: "USD", dscr: -0.25 }, projection: { proposed: { noi: 10000, first_year_noi: -10000, first_year_dscr_current: 0.06, first_year_dscr_with_refinance: null, noi_status: "unreviewed_illustration" }, approved: { noi: -40000, first_year_noi: -40000, noi_status: "awaiting_review" } }, actions: [{ status: "proposed", included_in_approved_projection: false }], missing: [], risk_flags: [] } as unknown as OperatingEvaluation;
+const evaluation = { draft_feedback: { basis: "before_implementation_costs_and_timing", actions: [], summary: { status: "calculated", complete: true, source_comparable: true, current_noi: -40000, noi_currency: "USD", currency: "USD", known_gross_annual_subtotal: 50000, gross_annual_delta: 50000, gross_monthly_run_rate_delta: null, draft_noi: 10000, draft_noi_delta: 50000, draft_gap: null, qualified_noi_delta: 50000, qualified_first_year_noi_delta: 30000, dscr_current_debt_before: -0.25, dscr_current_debt_after: 0.08, dscr_current_debt_delta: 0.33, qualified_dscr_current_debt_after: 0.06, qualified_dscr_current_debt_delta: 0.31, missing: [] } }, baseline: { noi: -40000, currency: "USD", dscr: -0.25 }, projection: { proposed: { noi: 10000, first_year_noi: -10000, first_year_dscr_current: 0.06, first_year_dscr_with_refinance: null, noi_status: "unreviewed_illustration" }, approved: { noi: -40000, first_year_noi: -40000, noi_status: "awaiting_review" } }, actions: [{ status: "proposed", included_in_approved_projection: false }], missing: [], risk_flags: [] } as unknown as OperatingEvaluation;
 
 describe("guided operating plan presentation", () => {
   it("offers explicit source adoption and statement review without importing costs on render", () => {
@@ -32,12 +32,12 @@ describe("guided operating plan presentation", () => {
     const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation }));
     expect(html).toContain("$10,000.00");
     expect(html).toContain("-$10,000.00");
-    expect(html).toContain("crosses from a loss");
-    expect(html).toContain("loss is smaller");
-    expect(html).toContain("Improves by 0.31x");
-    expect(html).toContain("coverage remains below 1.00x");
-    expect(html).toContain("Awaiting review");
-    expect(html).toContain("Unknown");
+    expect(html).toContain("Change (Δ)");
+    expect(html).toContain("+$50,000.00");
+    expect(html).toContain("+$30,000.00");
+    expect(html).toContain("+0.31x");
+    expect(html).not.toContain("0.33x");
+    expect(html).toContain("Reviewed results, source and assumptions");
     expect(html).toContain("not a profit guarantee");
   });
   it("masks old proposed figures during refresh without erasing the current source loss", () => {
@@ -45,6 +45,6 @@ describe("guided operating plan presentation", () => {
     expect(html).toContain("-$40,000.00");
     expect(html).not.toContain("$10,000.00");
     expect(html).not.toContain("0.06x");
-    expect(html).toContain("earlier proposed figures are hidden");
+    expect(html).toContain("Calculating…");
   });
 });

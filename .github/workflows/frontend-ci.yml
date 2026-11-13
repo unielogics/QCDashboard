@@ -72,6 +72,8 @@ jobs:
           src/lib/__tests__/operatingStep3.test.ts
           src/lib/__tests__/recognizablePlan.test.ts
           src/lib/__tests__/operatingGoal.test.ts
+          src/lib/__tests__/operatingDraftFeedback.test.ts
+          src/components/application/__tests__/OperatingDraftFeedback.test.ts
           src/components/application/__tests__/OperatingGoalSummary.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
           src/components/application/__tests__/OperatingPlanGuide.test.ts
@@ -193,6 +195,8 @@ jobs:
           src/lib/__tests__/operatingStep3.test.ts
           src/lib/__tests__/recognizablePlan.test.ts
           src/lib/__tests__/operatingGoal.test.ts
+          src/lib/__tests__/operatingDraftFeedback.test.ts
+          src/components/application/__tests__/OperatingDraftFeedback.test.ts
           src/components/application/__tests__/OperatingGoalSummary.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
           src/components/application/__tests__/OperatingPlanGuide.test.ts
@@ -229,6 +233,10 @@ jobs:
           src/components/application/ReleasedCashFlowAllocation.tsx
           tests/plan-goals.spec.ts
           tests/fixtures/planGoals.ts
+          src/lib/operatingPlanFeedback.ts
+          src/components/application/OperatingPlanStatus.tsx
+          tests/live-plan-feedback.spec.ts
+          tests/fixtures/livePlanFeedback.ts
 
       - name: Build production frontend
         run: pnpm build
