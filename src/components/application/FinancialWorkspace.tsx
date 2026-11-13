@@ -17,6 +17,7 @@ import { Pfs413Form, type PfsBody, type PfsSchema } from "./Pfs413Form";
 import { DebtScheduleForm, type DebtRow } from "./DebtScheduleForm";
 import { BusinessStatementForm, type StatementBody, type StatementSchema } from "./BusinessStatementForm";
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
+import { operatingGoalReady, type OperatingGoalRead } from "@/lib/operatingGoal";
 import { OperatingPlanEditor } from "./OperatingPlanEditor";
 import { normalizeOperatingPlanBody, operatingPlanRequest, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { RealEstateMortgageEvidence } from "./RealEstateMortgageEvidence";
@@ -464,7 +465,7 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   const operatingInline = inline && kind === "operating_plan";
   const headerTools = (<>
       <span className="sub" aria-live="polite">{savingDraft ? "Saving draft…" : localDirty ? "Unsaved draft changes" : hasDraft ? "Draft saved" : currentVersion ? `Current v${currentVersion.version_number}` : "No saved version"}</span>
-      <Btn size="sm" disabled={Boolean(busy)} onClick={() => { void run("request", async () => { await flush(); setRequestOpen(true); }); }}><Icon name="mail" size={14} />{kind === "operating_plan" ? "Request client plan" : "Request files"}</Btn>
+      <Btn size="sm" disabled={Boolean(busy)} onClick={() => { void run("request", async () => { if (kind === "operating_plan") { const goal = await api<OperatingGoalRead>(`/application-profiles/${encodeURIComponent(profileId)}/operating-plan/goal`); if (!operatingGoalReady(goal)) { setView("form"); setNotice("Set the annual NOI goal before requesting a client plan."); requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-label="Annual NOI goal"]')?.focus()); return; } } await flush(); setRequestOpen(true); }); }}><Icon name="mail" size={14} />{kind === "operating_plan" ? "Request client plan" : "Request files"}</Btn>
       {!inline ? <Btn size="sm" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace size" : "Expand workspace"}><Icon name={expanded ? "layers" : "external"} size={14} />{expanded ? "Restore" : "Expand"}</Btn> : null}
       {kind !== "debt_schedule" && kind !== "operating_plan" ? <Btn size="sm" disabled={!snapshot || Boolean(busy) || conflict} onClick={() => publish(true)}>{busy === "file" ? "Filing…" : "File on checklist"}</Btn> : null}
       {kind !== "operating_plan" ? <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsCompletedDebtVersion} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn> : null}

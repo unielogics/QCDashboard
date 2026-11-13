@@ -3,3 +3,5 @@
 .totals strong.positive{color:var(--success,#24663e)}.totals strong.negative{color:var(--danger,#a5372b)}
 
 .panel [aria-invalid=true],.behavior [aria-invalid=true]{border-color:var(--danger,#a5372b)}
+
+.compact{font-size:12px!important;margin:0!important;color:var(--mut,#647084)}.compact strong{font-variant-numeric:tabular-nums;color:var(--ink,inherit)}

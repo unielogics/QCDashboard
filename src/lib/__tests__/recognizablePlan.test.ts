@@ -3,7 +3,7 @@ import { updateOperatingExpense } from "../operatingGuidance";
 import type { OperatingAction, OperatingEvaluation, OperatingPlanBody } from "../operatingPlan";
 import { operatingUnitsUsed } from "../operatingUnitPlanning";
 import { addOperatingCurrentItem } from "../operatingStep3";
-import { documentedHistoricalCorrection, itemizePlannerExpense, plannerSaveIssues, removePlannerItem, setPlannerCommand, switchPlannerUnitProposal, undoPlannerAction, undoPlannerRemoval } from "../recognizablePlan";
+import { addPlannerNamedActivity, addPlannerNamedItem, documentedHistoricalCorrection, itemizePlannerExpense, plannerSaveIssues, removePlannerItem, setPlannerCommand, switchPlannerUnitProposal, undoPlannerAction, undoPlannerRemoval } from "../recognizablePlan";
 
 type Command = NonNullable<OperatingAction["command"]>;
 const command = (patch: Partial<Command> = {}): Command => ({ target: "total_cost", mode: "percent", direction: "decrease", value: "10", allocation: "none", ...patch });
@@ -315,5 +315,28 @@ describe("annual pricing is independent of unrelated business unit counts", () =
     operatingUnitsUsed(value); documentedHistoricalCorrection(value, "irs:rent"); plannerSaveIssues(value, evaluation("balanced"));
     expect(value).toEqual(before);
     expect(value.adjustments).toEqual([]);
+  });
+});
+
+describe("name-first planner composers", () => {
+  const group = { key: "rent:irs:rent", category: "rent", sourceGroupKey: "irs:rent", label: "Rent", expenses: [], activities: [] };
+  it("does not persist an empty or cancelled current-item composer", () => {
+    const value = body(), before = structuredClone(value);
+    expect(addPlannerNamedItem(value, group, "  ", "new")).toBe(value);
+    expect(value).toEqual(before);
+  });
+  it("commits a named unknown child atomically without duplicating its parent total", () => {
+    const value = body(), next = addPlannerNamedItem(value, group, "Consulting room", "child", "parent");
+    expect(value.expenses![0].excluded).toBeUndefined();
+    expect(next.expenses!.find(row => row.id === "parent")?.excluded).toBe(true);
+    expect(next.expenses!.find(row => row.id === "child")).toMatchObject({ label: "Consulting room", itemization_parent_id: "parent", current_amount: null, source_group_key: "irs:rent", source_file_ids: [] });
+  });
+  it("allows real same-named items and explicit zero-cost planned activities, without setup or evidence defaults", () => {
+    const value = body(), next = addPlannerNamedActivity(value, group, "New visit capacity", "new-action", "new-cost");
+    expect(next.expenses!.find(row => row.id === "new-cost")).toMatchObject({ label: "New visit capacity", current_amount: 0 });
+    expect(next.adjustments!.find(row => row.id === "new-action")).toMatchObject({ label: "New visit capacity", source_note: "", source_file_ids: [], implementation_cost: null, expense_row_id: "new-cost" });
+    expect(addPlannerNamedActivity(value, group, "", "new-action", "new-cost")).toBe(value);
+    const twice = addPlannerNamedItem(addPlannerNamedItem(value, group, "Real item", "one"), group, "Real item", "two");
+    expect(twice.expenses!.filter(row => row.label === "Real item")).toHaveLength(2);
   });
 });
