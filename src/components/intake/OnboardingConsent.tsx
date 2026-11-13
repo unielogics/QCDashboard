@@ -1,23 +1,12 @@
 "use client";
 
-// The three checkmarks every AI application opens with: the terms and privacy
-// acceptance (required) and the two text-message consents (both optional, both
-// unticked). The desk used to record these for the client from a panel under
-// its composer; the strongest proof is the person ticking the box themselves,
-// at the moment they hand over their number.
-//
-// The wording of the two text consents is fetched from qcbackend, never typed
-// here: what is stored as proof is the server's copy, so what is on screen has
-// to be that same string. If it cannot be fetched the two boxes are left out
-// and the application still opens, because the texts are optional.
-
 import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { api } from "@/lib/api";
 import type { Lang } from "@/lib/businessProfile";
 import { onboardingCopy } from "@/lib/onboardingCopy";
 
-export type SmsChoices = { transactional: boolean; marketing: boolean };
-export const NO_SMS_CHOICES: SmsChoices = { transactional: false, marketing: false };
+export type SmsChoices = { email: boolean; transactional: boolean; marketing: boolean };
+export const NO_SMS_CHOICES: SmsChoices = { email: false, transactional: false, marketing: false };
 
 export type SmsDisclosure = {
   version: string;
@@ -45,7 +34,7 @@ export function loadSmsDisclosure(): Promise<SmsDisclosure> {
 
 /** The two consent fields as the start request carries them. */
 export function smsChoicesBody(choices: SmsChoices) {
-  return { sms_transactional_consent: choices.transactional, sms_marketing_consent: choices.marketing };
+  return { application_email_consent: choices.email, sms_transactional_consent: choices.transactional, sms_marketing_consent: choices.marketing };
 }
 
 export function useSmsDisclosure(): SmsDisclosure | null {
@@ -91,12 +80,13 @@ export function OnboardingConsent({
           <small>{legalLabel}</small>
         </span>
       </label>
+      <label className="onb-consent-row"><input type="checkbox" required checked={sms.email} onChange={e => onSmsChange({...sms, email: e.target.checked})} /><span>{language === "es" ? "Acepto recibir correos electrónicos de Qualified Commercial sobre mi solicitud." : "I agree to receive emails from Qualified Commercial about my application."}</span></label>
       {disclosure ? (
         <>
           <label className="onb-consent-row">
-            <input type="checkbox" checked={sms.transactional} onChange={(event) => onSmsChange({ ...sms, transactional: event.target.checked })} />
+            <input type="checkbox" required checked={sms.transactional} onChange={(event) => onSmsChange({ ...sms, transactional: event.target.checked })} />
             <span>
-              <b>{copy.consentAppTitle}<em>{copy.consentOptional}</em></b>
+              <b>{copy.consentAppTitle}<em>{copy.consentRequired}</em></b>
               <small>{disclosure.transactional}</small>
             </span>
           </label>
@@ -109,7 +99,7 @@ export function OnboardingConsent({
           </label>
           {copy.consentEnglishNote ? <p className="onb-consent-note">{copy.consentEnglishNote}</p> : null}
         </>
-      ) : null}
+      ) : <p role="status">{language === "es" ? "Recargue la página si no aparece el consentimiento por SMS." : "Reload the page if the text message consent does not appear."}</p>}
     </fieldset>
   );
 }

@@ -93,6 +93,8 @@ export function businessProfileBody(answers: { website: string; description: str
 }
 
 export interface NewBusinessProfile {
+  business_phone?: string;
+  employee_count?: string;
   business_street: string;
   business_city: string;
   business_state: string;
@@ -144,6 +146,8 @@ export function newBusinessProfileProblem(answers: NewBusinessProfile, language:
 
 export function newBusinessProfileBody(answers: NewBusinessProfile): NewBusinessProfile {
   return {
+    ...(answers.business_phone?.trim() ? {business_phone: answers.business_phone.trim()} : {}),
+    ...(answers.employee_count?.trim() ? {employee_count: answers.employee_count.trim()} : {}),
     business_street: squash(answers.business_street), business_city: squash(answers.business_city),
     business_state: squash(answers.business_state).toUpperCase(), business_zip: squash(answers.business_zip),
     industry: squash(answers.industry),

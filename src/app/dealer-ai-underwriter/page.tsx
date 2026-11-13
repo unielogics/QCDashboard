@@ -576,6 +576,10 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
     }
     const pinProblem = chosenRoomPinProblem(roomPin, roomPinConfirmation, language ?? "en");
     if (pinProblem) { setStatus(pinProblem); return; }
+    if (!sms.email || !sms.transactional || !/^\d+$/.test(contact.employee_count ?? "")) {
+      setStatus(language === "es" ? "Ingrese el número de empleados y acepte los mensajes y correos sobre su solicitud." : "Enter the employee count and agree to application texts and emails.");
+      return;
+    }
     if (!legalAccepted) {
       setStatus(c.errAcceptTerms);
       return;
