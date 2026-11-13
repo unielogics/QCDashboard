@@ -12,7 +12,7 @@ import styles from "./FundingPackageWorkspace.module.css";
 export type FundingPackageTab = "summary" | "marketplace" | "delivery" | "package";
 export type PackagePreparation = { title: string; description?: string; state: "loading" | "complete" | "error"; steps?: PreparationStep[] };
 
-export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, busy, generating = false, preparation, generated, current, error, onGenerate, packageContent, packageDetails, marketplaceContent, deliveryContent, historyContent }: {
+export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, busy, generating = false, preparation, generated, current, error, onGenerate, savedPackageStatus, onCheckSaved, checkingSaved = false, packageContent, packageDetails, marketplaceContent, deliveryContent, historyContent }: {
   profileId: string;
   cockpit: FinancialCockpit;
   activeTab: FundingPackageTab;
@@ -24,6 +24,9 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
   current: boolean;
   error?: string | null;
   onGenerate: (options: PackageGenerationOptions) => void;
+  savedPackageStatus?: ReactNode;
+  onCheckSaved?: () => void;
+  checkingSaved?: boolean;
   packageContent: ReactNode;
   packageDetails?: ReactNode;
   marketplaceContent: ReactNode;
@@ -45,7 +48,8 @@ export function FundingPackageWorkspace({ profileId, cockpit, activeTab, onTab, 
   const amount = impact?.loan?.amount ?? cockpit.requested_amount;
   const evidenceGaps = fundingPackageEvidenceGaps(cockpit);
   return <Panel id="package-readiness" className={`fc-wide ${styles.workspace}`} title="Investor package & capital partners" sub="Build a branded investor report in up to five pages, with linked evidence and supporting underwriting files."
-    actions={<Btn variant="pri" disabled={busy || generating} onClick={() => onGenerate({ include_operating_plan: includePlan, include_working_operating_plan: includePlan && includeWorkingPlan })}><Icon name="reports" size={14} />{generating ? "Building package…" : generated ? "Refresh package + preview" : "Generate package + preview"}</Btn>}>
+    actions={<>{onCheckSaved ? <Btn disabled={checkingSaved} onClick={onCheckSaved}><Icon name="refresh" size={14} />{checkingSaved ? "Checking saved package…" : "Check saved package"}</Btn> : null}<Btn variant="pri" disabled={busy || generating} onClick={() => onGenerate({ include_operating_plan: includePlan, include_working_operating_plan: includePlan && includeWorkingPlan })}><Icon name="reports" size={14} />{generating ? "Building package…" : generated ? "Refresh package + preview" : "Generate package + preview"}</Btn></>}>
+    {savedPackageStatus}
     <nav className={styles.tabs} role="tablist" aria-label="Investor package workflow">{tabs.map(([key, label], index) => <button key={key} type="button" role="tab" id={`funding-tab-${key}`} aria-selected={activeTab === key} aria-controls={`funding-panel-${key}`} className={activeTab === key ? styles.active : undefined} onClick={() => onTab(key)}><span>{index + 1}</span>{label}</button>)}</nav>
     {error && preparation?.state !== "error" ? <Callout tone="bad">{error} Your prior package remains available. Retry generation after correcting the issue.</Callout> : null}
     {preparation ? <PreparationProgress {...preparation} /> : null}

@@ -76,6 +76,7 @@ export function BucketFileReviewPanel({
   title = "File review",
   downloadUrl,
   onDownload,
+  onOpenOriginal,
   onDelete,
   deleteLabel = "Delete",
   deleteDisabled = false,
@@ -103,6 +104,8 @@ export function BucketFileReviewPanel({
   title?: string;
   downloadUrl?: string | null;
   onDownload?: () => void;
+  /** Reauthorize a retained document at click time instead of reusing its signed URL. */
+  onOpenOriginal?: () => void;
   onDelete?: () => void;
   deleteLabel?: string;
   deleteDisabled?: boolean;
@@ -467,7 +470,7 @@ export function BucketFileReviewPanel({
           ) : downloadUrl ? (
             <ActionIcon icon="download" tone="pri" label="Download this file" href={downloadUrl} target="_blank" />
           ) : null}
-          {review?.preview_url ? (
+          {onOpenOriginal ? <ActionIcon icon="external" label="Open in new tab" onClick={onOpenOriginal} /> : review?.preview_url ? (
             <ActionIcon icon="external" label="Open the original in a new tab" href={review.preview_url} target="_blank" />
           ) : null}
           {headerActions}
