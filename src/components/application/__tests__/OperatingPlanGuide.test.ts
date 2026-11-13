@@ -48,3 +48,9 @@ describe("guided operating plan presentation", () => {
     expect(html).toContain("Calculating…");
   });
 });
+
+describe("current debt ratio applicability", () => {
+ const debtCase = (debt: number | null): OperatingEvaluation => { const e = structuredClone(evaluation); e.baseline.annual_debt_service = debt; e.draft_feedback!.summary.working = { basis: "after_setup_before_timing", noi: 10000, noi_delta: 50000, goal_gap: null, earnings: null, earnings_delta: null, cash_delta_annual: null, cash_delta_monthly: null, dscr_current_debt_before: null, dscr_current_debt_after: null, dscr_current_debt_delta: null, dscr_with_refinance_after: 0.5, dscr_with_refinance_delta: null, first_year_noi: null, first_year_noi_delta: null, first_year_earnings: null, first_year_earnings_delta: null, first_year_cash_delta: null, first_year_dscr_current_debt_after: null, first_year_dscr_current_debt_delta: null, loan_cash_change_monthly: null, loan_cash_change_annual: null, combined_cash_change_monthly: null, combined_cash_change_annual: null }; return e; };
+ it("labels zero-current-debt applicability without inventing a ratio or hiding the saved refinance comparison", () => { const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation: debtCase(0) })); expect(html).toContain("DSCR · saved refinance"); expect(html).toContain("Not applicable · no current debt"); expect(html).toContain("0.5x"); expect(html).not.toContain("Unknown"); });
+ it("keeps truly missing debt inputs distinct from no debt", () => { const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation: debtCase(null) })); expect(html).toContain("Confirm current debt inputs with your team"); expect(html).not.toContain("Not applicable · no current debt"); });
+});

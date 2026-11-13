@@ -76,7 +76,7 @@ export type OperatingUnitEconomics = {
 export type ReleasedCashFlowAllocation = { id: string; label: string; amount_monthly: PlanAmount; expense_row_id?: string | null; action_id?: string | null; purpose?: "existing_cost" | "planned_increment" | "reserve" | "other" | null; notes: string };
 export type ReleasedCashFlowEvaluation = {
   required: boolean; available: boolean; status: string; source_fingerprint: string | null;
-  currency: string; amount_monthly: number | null; allocated_monthly: number; unallocated_monthly: number | null;
+  currency: string | null; amount_monthly: number | null; allocated_monthly: number; unallocated_monthly: number | null;
   complete: boolean; missing: string[];
   source: { updated_at: string | null; before_monthly: number | null; after_monthly: number | null; new_operating_expenses_monthly?: number | null; new_financing_fees_monthly?: number | null } | null;
   allocations?: ReleasedCashFlowAllocation[];

@@ -8,7 +8,7 @@ export function OperatingAmountInput({ label, value, disabled, invalid, onCommit
   const [text, setText] = useState(display);
   const focused = useRef(false);
   useEffect(() => { if (!focused.current) setText(display); }, [display]);
-  return <input aria-label={label} aria-invalid={invalid || undefined} inputMode="decimal" value={text} placeholder="Unknown" disabled={disabled}
+  return <input aria-label={label} aria-invalid={invalid || undefined} inputMode="decimal" value={text} placeholder="Enter value" disabled={disabled}
     onFocus={() => { focused.current = true; }} onBlur={() => { focused.current = false; setText(display); }}
     onChange={event => { setText(event.target.value); onCommit(event.target.value); }} />;
 }
