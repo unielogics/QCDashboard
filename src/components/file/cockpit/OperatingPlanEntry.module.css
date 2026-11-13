@@ -11,3 +11,5 @@
 .releaseRequirement{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 12px;border:1px solid #e9dcc1;background:var(--warn-bg,#fffaf0);border-radius:8px;font-size:12px}.releaseRequirement p{margin:4px 0 0;line-height:1.5}.releaseRequirement>div{min-width:0}
 @container(max-width:1050px){.summary{grid-template-columns:140px minmax(0,1fr)}.costColumn{grid-column:1/-1;grid-template-columns:1fr 1fr}.costTitle{grid-column:1/-1}.costFacts{margin:0;border-top:0;padding:0}.headlineMetrics strong{font-size:18px}}
 @container(max-width:650px){.summary{grid-template-columns:1fr;gap:16px}.reportColumn{display:none}.headlineMetrics{gap:9px}.headlineMetrics strong{font-size:16px}.costColumn{grid-template-columns:1fr}.costFacts{border-top:1px solid var(--line);padding-top:12px}.planCard{padding:14px!important}.header{flex-direction:column}.actions{justify-content:flex-start}}
+
+.headlineMetrics strong{overflow-wrap:anywhere}
