@@ -271,7 +271,7 @@ export function useCpListings(status?: string) {
 }
 export function useCpListing(id: string | null) {
   const api = useAuthedApi();
-  return useQuery({ enabled: !!id, queryKey: KEYS.listing(id ?? ""), queryFn: () => api<CpListing>(`/capital/admin/listings/${id}`) });
+  return useQuery({ enabled: !!id, queryKey: KEYS.listing(id ?? ""), queryFn: ({ signal }) => api<CpListing>(`/capital/admin/listings/${id}`, { signal }), refetchInterval: 30_000 });
 }
 export function useCpCreateListing() {
   const api = useAuthedApi();
