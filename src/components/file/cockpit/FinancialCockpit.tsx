@@ -853,7 +853,7 @@ export function FinancialCockpit(props: Props) {
         </div>
       ) : null}
       <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} coverageEvaluation={cockpit.plan?.evaluation} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
-      <details className={layoutStyles.sourceMetrics} open={!cockpit.operating_plan?.evaluation?.comparison}>
+      <details className={layoutStyles.sourceMetrics}>
         <summary>Review financial source metrics<span>Source evidence, corrections and bank indicators</span></summary>
         <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
