@@ -205,7 +205,7 @@ test('Change immediately requests Why, exact repairs clear red containers and un
  await expect.poll(()=>redContainerOf(why(page))).toBe(false);await screenshot(page,info.project.name+'-why-complete.png');await closeDialog(page);
  await settled(page);await stage(page,'Review and save').click();await expectMetric(page,'Annual NOI','$18,000.00','$19,200.00','+$1,200.00');
  await expect(comparison(page).getByRole('rowheader',{name:/First-year/})).toHaveCount(0);
- await expect.poll(()=>f.body().adjustments?.[0].explanation).toBe('Renegotiate the premises contract');
+ await expect.poll(()=>f.body().adjustments?.[0]?.explanation).toBe('Renegotiate the premises contract');
  expect(f.body().projection_start).toBeNull();expect(f.body().adjustments?.[0].effective_date).toBeNull();expect(f.body().adjustments?.[0].source_note).toBe('');
  await evidence(page,f,info.project.name+'-why-undated');
 });
@@ -232,8 +232,8 @@ test('freed cash is kept by default and optional reinvestment never charges its 
  const other=await page.context().newPage(),g=await fixture(other,{caseName:'growth_ready'}),before=structuredClone(g.body());await stage(other,'Plan changes').click();await expect(fundingPanel(other)).toContainText('$3,600.00');await fundingPanel(other).getByRole('button',{name:'Use some cash',exact:true}).click();
  const drawer=other.getByRole('dialog',{name:'Keep or use freed cash',exact:true});await drawer.getByRole('button',{name:'Fund a planned activity',exact:true}).click();await drawer.getByRole('textbox',{name:'New allocation purpose',exact:true}).fill('Fund proposed campaign');await drawer.getByRole('button',{name:'Add allocation',exact:true}).click();
  await drawer.getByRole('combobox',{name:'Allocation planned action 1',exact:true}).selectOption(g.body().adjustments!.find(row=>row.kind==='marketing_investment')!.id);g.setReply('growth_funded');await drawer.getByRole('textbox',{name:'Allocation monthly amount 1',exact:true}).fill('1000');
- const acknowledge=drawer.getByRole('button',{name:'Use current funding',exact:true});if(await acknowledge.isVisible())await acknowledge.click();
- await expect.poll(()=>g.body().released_cash_flow?.allocations[0]?.amount_monthly).toBe(1000);await drawer.getByRole('button',{name:'Done',exact:true}).click();await expect(fundingPanel(other)).toContainText('$2,600.00');await expect(fundingPanel(other)).toContainText('$1,000.00');await expect.poll(()=>redBorder(fundingPanel(other))).toBe(false);
+ await expect.poll(()=>g.body().released_cash_flow?.allocations[0]?.amount_monthly).toBe(1000);const acknowledge=drawer.getByRole('button',{name:'Use current funding',exact:true}),currentFingerprint=recognizableScenario('growth_funded').body.released_cash_flow?.source_fingerprint;if(g.body().released_cash_flow?.source_fingerprint!==currentFingerprint){await expect(acknowledge).toBeVisible();await acknowledge.click();await expect.poll(()=>g.body().released_cash_flow?.source_fingerprint).toBe(currentFingerprint);}
+ await drawer.getByRole('button',{name:'Done',exact:true}).click();await expect(fundingPanel(other)).toContainText('$2,600.00');await expect(fundingPanel(other)).toContainText('$1,000.00');await expect.poll(()=>redBorder(fundingPanel(other))).toBe(false);
  expect(g.body().expenses).toEqual(before.expenses);expect(g.body().adjustments).toEqual(before.adjustments);expect(g.body().released_cash_flow?.allocations).toHaveLength(1);expect(recognizableScenario('growth_funded').evaluation.draft_feedback?.summary.working?.cash_delta_monthly).toBe(600);
  await settled(other);await stage(other,'Review and save').click();await expectMetric(other,'Annual NOI','$18,000.00','$25,200.00','+$7,200.00');await stageScreenshot(other,'staff-optional-reinvest',4,info.project.name);await evidence(other,g,info.project.name+'-optional-reinvest');await other.close();
 });

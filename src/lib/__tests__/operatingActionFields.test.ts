@@ -5,9 +5,9 @@ import { operatingPlannerIssues } from "../operatingPlannerIssues";
 import type { OperatingAction, OperatingEvaluation, OperatingPlanBody } from "../operatingPlan";
 
 const action = (patch: Partial<OperatingAction> = {}): OperatingAction => ({ id: "a", label: "Existing activity", driver_key: "a", explanation: "A deliberate change", implementation_cost: 0, ...patch });
-const body = (a: OperatingAction): OperatingPlanBody => ({ currency: "USD", period_start: "2025-01-01", period_end: "2025-12-31", expenses: [{ id: "e", label: "Current expense", current_amount: 7364, category: "marketing" }], adjustments: [a] });
+const body = (a: OperatingAction): OperatingPlanBody => ({ currency: "USD", period_start: "2025-01-01", period_end: "2025-12-31", expenses: [{ id: "e", label: "Current expense", current_amount: 6800, category: "marketing" }], adjustments: [a] });
 describe("live operating field truth", () => {
- it("identifies only actual missing marketing spend and margin, preserving a filled name/current/return", () => { const a = action({ kind: "marketing_investment", expense_row_id: "e", product_name: "Current service", current_amount: "7364", proposed_amount: null, revenue_return_multiple: "2.5", contribution_margin_pct: null }); expect(operatingActionMissingFields(a, body(a))).toEqual(["proposed_amount", "contribution_margin_pct"]); });
+ it("identifies only actual missing marketing spend and margin, preserving a filled name/current/return", () => { const a = action({ kind: "marketing_investment", expense_row_id: "e", product_name: "Current service", current_amount: "6800", proposed_amount: null, revenue_return_multiple: "2.5", contribution_margin_pct: null }); expect(operatingActionMissingFields(a, body(a))).toEqual(["proposed_amount", "contribution_margin_pct"]); });
  it("accepts explicit zeros and does not require dates, owner, evidence or uploads", () => { const a = action({ kind: "marketing_investment", expense_row_id: "e", product_name: "Service", proposed_amount: "0", revenue_return_multiple: "0", contribution_margin_pct: "0", effective_date: null, owner_name: "", source_note: "", source_file_ids: [] }); expect(operatingActionMissingFields(a, body(a))).toEqual([]); });
  it.each([
   [{ kind: "price_change", units_per_period: 1, current_unit_price: 10, proposed_unit_price: null }, ["proposed_unit_price"]],
