@@ -1,3 +1,4 @@
+import type { OperatingDraftFeedback } from "./operatingPlanFeedback";
 import type { OperatingGoalProgress, OperatingCashBridge } from "./operatingGoal";
 import type { FileRequestItem } from "./fileRequestsApi";
 import type { FinancialWorkspaceSnapshot } from "./financialWorkspaceApi";
@@ -91,6 +92,7 @@ export type OperatingExpenseChanges = {
   gross_projection: { scope: "linked_expense_changes_only"; status: string; noi: number | null; earnings: number | null; dscr_current: number | null; dscr_with_refinance: number | null };
 };
 export type OperatingEvaluation = {
+  draft_feedback?: OperatingDraftFeedback;
   goal_progress?: OperatingGoalProgress; cash_bridge?: OperatingCashBridge;
   commands?: Array<{ action_id: string; expense_row_id: string | null; expense_category: string | null; source_group_key: string; target: string; status: string; current_annual_revenue?: number | null; proposed_annual_revenue?: number | null; included_in_proposed_projection?: boolean; included_in_approved_projection?: boolean; projection_issues?: string[]; current_value: number | null; proposed_value: number | null; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null; participant_expense_row_ids: string[]; allocations: Array<{ expense_row_id: string; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null }>; issues: string[]; assumptions: string[]; command: OperatingAction["command"] }>;
   itemization?: Array<{ parent_expense_row_id: string; expense_category: string; source_group_key: string; reference_annual_amount: number | null; recorded_parent_annual_amount?: number | null; reference_authority?: string; source_comparable?: boolean | null; year?: string | number | null; source_label?: string | null; source_fact_keys?: string[]; children_annual_amount: number | null; remainder_annual_amount: number | null; status: "unknown" | "balanced" | "unallocated" | "overallocated"; child_expense_row_ids: string[] }>;
@@ -117,7 +119,7 @@ export const operatingNumber = (value: unknown): number | null => {
   const result = Number(String(value).replaceAll(",", "").replaceAll("$", ""));
   return Number.isFinite(result) ? result : null;
 };
-const OPERATING_NUMERIC_FIELDS = new Set(["unit_change_value", "revenue_return_multiple", "current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
+export const OPERATING_NUMERIC_FIELDS: ReadonlySet<string> = new Set(["unit_change_value", "revenue_return_multiple", "current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
 /** Normalize known numeric fields individually. A bad cell must never erase its rows. */
 export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(body: T): T {
   const next = { ...body } as Record<string, unknown>;
@@ -160,6 +162,12 @@ export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(bo
           // Keep invalid text visible for correction instead of discarding the draft.
           if (parsed != null) row[key] = parsed;
         }
+      }
+      if (row.command && typeof row.command === "object" && !Array.isArray(row.command)) {
+        const command = { ...row.command } as Record<string, unknown>, input = command.value;
+        if (input == null || typeof input === "string" && !input.trim()) command.value = null;
+        else { const parsed = operatingNumber(input); if (parsed != null) command.value = parsed; }
+        row.command = command;
       }
       return row;
     });

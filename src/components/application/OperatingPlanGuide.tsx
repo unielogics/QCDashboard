@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
+import { OperatingPlanStatus } from "./OperatingPlanStatus";
+import { operatingWorkingFeedback, operatingFeedbackLabel, type OperatingDraftSaveStatus, type OperatingCalculationStatus } from "@/lib/operatingPlanFeedback";
 import { metricAmountLabel } from "@/lib/financialMetrics";
 import { addOperatingCandidate, addOperatingGroup, DEFAULT_OPERATING_ESSENTIALS, operatingCandidateKey, operatingChangeExplanation, operatingRatioChangeExplanation, operatingRecurringSubtotal, unansweredOperatingCategories, updateOperatingExpense, type OperatingGuidance, type OperatingGuidanceEvidence } from "@/lib/operatingGuidance";
 import { OPERATING_CADENCES, OPERATING_CATEGORIES, operatingLabel, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "@/lib/operatingPlan";
@@ -21,7 +24,8 @@ const STEPS = ["Confirm source", "Itemize current costs", "Plan changes", "Revie
 const active = <T extends { excluded?: boolean; duplicate_of?: string | null }>(rows: T[] = []) => rows.filter(row => !row.excluded && !row.duplicate_of);
 const uid = () => crypto.randomUUID();
 
-export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, stepRequest, onAdvancedAction, onEditUnits = () => {}, stepIndex, onStepChange, sourceAnnualRevenue, onReviewRevenue, unitProposal, onAddUnitPlan = () => {}, sourceTools, sourceMessage, unitControls, allocationControls, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version", goal, goalControls, suggestionClient, onReviewExpense }: {
+export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, stepRequest, onAdvancedAction, onEditUnits = () => {}, stepIndex, onStepChange, sourceAnnualRevenue, onReviewRevenue, unitProposal, onAddUnitPlan = () => {}, sourceTools, sourceMessage, unitControls, allocationControls, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version", goal, goalControls, suggestionClient, onReviewExpense, saveStatus, calculationStatus, onFixFeedback }: {
+  saveStatus?: OperatingDraftSaveStatus; calculationStatus?: OperatingCalculationStatus; onFixFeedback?: (id?: string, field?: string) => void;
   onReviewExpense?: (id: string) => void; suggestionClient?: OperatingSuggestionClient;
   goal?: OperatingGoalRead | null; goalControls?: ReactNode;
   value: OperatingPlanBody; onChange: (body: OperatingPlanBody) => void;
@@ -53,7 +57,8 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
   const unanswered = unansweredOperatingCategories(value, guidance);
   const categoryKeys = [...new Set([...essentials.map(row => row.category), ...expenses.map(row => row.category || "other")])];
   return <section ref={guideElement} className={styles.guide} aria-label="Guided operating expenses and earnings plan">
-    {goal ? <OperatingGoalSummary goal={goal} control={goalControls} progress={evaluation?.goal_progress} baseline={layoutEvaluation?.goal_progress} pending={evaluating} hasChanges={Boolean(value.adjustments?.some(row => !row.excluded && row.status !== "rejected"))} /> : null}
+    {goal ? <OperatingGoalSummary goal={goal} control={goalControls} feedback={evaluation} progress={evaluation?.goal_progress} baseline={layoutEvaluation?.goal_progress} pending={evaluating} hasChanges={Boolean(value.adjustments?.some(row => !row.excluded && row.status !== "rejected"))} /> : null}
+    <OperatingPlanStatus save={saveStatus} calculation={calculationStatus} feedback={evaluation?.draft_feedback} onReview={() => { const feedback = evaluation?.draft_feedback; const row = feedback?.actions.find(item => item.source_issues.length || item.math_missing.length || item.qualification_missing.length); const field = calculationStatus?.invalid?.[0] || row?.source_issues[0] || row?.math_missing[0] || row?.qualification_missing[0] || feedback?.summary.missing[0]; onFixFeedback?.(row?.action_id, field); }} />
     <nav className={styles.steps} aria-label="Guided operating plan steps">{STEPS.map((label, index) => <button key={label} type="button" aria-current={step === index ? "step" : undefined} onClick={() => go(index)}><span>{index + 1}</span>{label}</button>)}</nav>
     <h4 data-operating-step-heading tabIndex={-1}>Step {step + 1}: {STEPS[step]}</h4>
     {sourceMessage}
@@ -78,11 +83,12 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
     </> : step === 1 ? <>
       <OperatingPlanItemization value={value} onChange={onChange} guidance={guidance} evaluation={evaluation} evaluating={evaluating} disabled={disabled} unitControls={unitControls} onPreviewSource={onPreviewSource} />
     </> : step === 2 ? <>
-      <OperatingPlanCommands onReviewExpense={onReviewExpense} suggestionClient={suggestionClient} goalRevision={goal?.revision} hasGoal={Boolean(goal)} value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} onAdvancedAction={onAdvancedAction} onEditUnits={onEditUnits} baseline={evaluation?.baseline ?? layoutEvaluation?.baseline} sourceAnnualRevenue={sourceAnnualRevenue} onReviewRevenue={onReviewRevenue} unitProposal={unitProposal} onAddUnitPlan={onAddUnitPlan} />
+      <OperatingPlanCommands onFixFeedback={onFixFeedback} onReviewExpense={onReviewExpense} suggestionClient={suggestionClient} goalRevision={goal?.revision} hasGoal={Boolean(goal)} value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} onAdvancedAction={onAdvancedAction} onEditUnits={onEditUnits} baseline={evaluation?.baseline ?? layoutEvaluation?.baseline} sourceAnnualRevenue={sourceAnnualRevenue} onReviewRevenue={onReviewRevenue} unitProposal={unitProposal} onAddUnitPlan={onAddUnitPlan} />
 
+      {allocationControls}
     </> : <>
       {unanswered.length ? <div className={styles.notice} aria-label="Unanswered expense categories"><strong>Current expense answers still needed</strong><ul>{unanswered.map(question => <li key={question.category}>{question.label}: confirm current costs, choose not applicable, or request help.</li>)}</ul><button type="button" onClick={() => go(1)}>Return to current expense questions</button></div> : null}
-      <StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingGuidedComparison evaluation={evaluation} baselineEvaluation={layoutEvaluation} evaluating={evaluating} /></StableOperatingPreview>
+      <StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingGuidedComparison onFix={onFixFeedback} evaluation={evaluation} baselineEvaluation={layoutEvaluation} evaluating={evaluating} /></StableOperatingPreview>
       {detailedImpact ? <details><summary>Detailed calculation and review notes</summary>{detailedImpact}</details> : null}
       {allocationControls}
       <label className={styles.check}><input type="checkbox" disabled={disabled} checked={value.client_attestation === true} onChange={event => change({ client_attestation: event.target.checked })} />I confirm these disclosures and proposals</label>
@@ -94,19 +100,22 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
   </section>;
 }
 
-export function OperatingGuidedComparison({ evaluation, baselineEvaluation, evaluating }: { evaluation?: OperatingEvaluation | null; baselineEvaluation?: OperatingEvaluation | null; evaluating?: boolean }) {
-  const before = evaluation?.baseline ?? baselineEvaluation?.baseline;
-  if (!before) return <section aria-label="Guided before and after"><p role="status">{evaluating ? "Updating the financial preview…" : "Current source results are not available yet."}</p></section>;
-  const proposed = evaluation?.projection.proposed, reviewed = evaluation?.projection.approved;
+export function OperatingGuidedComparison({ evaluation, baselineEvaluation, evaluating, onFix }: { evaluation?: OperatingEvaluation | null; baselineEvaluation?: OperatingEvaluation | null; evaluating?: boolean; onFix?: (id?: string, field?: string) => void }) {
+  const fileWorkspace = useFileWorkspace();
+  const before = evaluation?.baseline ?? baselineEvaluation?.baseline, working = !evaluating ? operatingWorkingFeedback(evaluation) : null;
+  const baselineCurrency = before?.noi_governance ? before.noi_governance.currency : before && "noi_currency" in before ? before.noi_currency : before?.currency;
+  const currency = working?.currency === undefined ? baselineCurrency : working.currency;
+  const baselineSummary = baselineEvaluation?.draft_feedback?.summary;
+  const summary = evaluation?.draft_feedback?.summary, qualified = working?.basis === "qualified";
   const rows = [
-    { label: "Annual NOI", current: before.noi, proposed: proposed?.noi, reviewed: reviewed?.noi, currency: before.noi_governance ? before.noi_governance.currency : before.currency, ratio: false },
-    { label: "First-year NOI", current: before.noi, proposed: proposed?.first_year_noi, reviewed: reviewed?.first_year_noi, currency: before.noi_governance ? before.noi_governance.currency : before.currency, ratio: false },
-    { label: "First-year DSCR · current debt", current: before.dscr, proposed: proposed?.first_year_dscr_current, reviewed: reviewed?.first_year_dscr_current, ratio: true },
-    { label: "First-year DSCR · saved refinance", current: before.dscr, proposed: proposed?.first_year_dscr_with_refinance, reviewed: reviewed?.first_year_dscr_with_refinance, ratio: true },
+    { label: "Annual NOI", before: working ? working.current : before?.noi, after: working?.after, delta: working?.delta, ratio: false },
+    { label: "First-year NOI", before: working ? working.current : before?.noi, after: working?.sourceBlocked ? null : working?.firstYearDelta != null ? evaluation?.projection.proposed.first_year_noi : null, delta: working?.firstYearDelta, ratio: false },
+    { label: `DSCR · current debt${working?.dscrBasis === "draft" ? " · before setup/timing" : ""}`, before: working ? working.dscrBefore : baselineSummary?.dscr_current_debt_before, after: working?.dscrAfter, delta: working?.dscrDelta, ratio: true },
+    { label: "First-year DSCR · current debt", before: working ? working.dscrBefore : baselineSummary?.dscr_current_debt_before, after: working?.firstYearDscrAfter, delta: working?.firstYearDscrDelta, ratio: true },
   ];
-  const awaitingReview = reviewed?.noi_status === "awaiting_review" || Boolean(evaluation?.actions.some(action => action.status === "proposed") && !evaluation?.actions.some(action => action.included_in_approved_projection));
-  return <section aria-label="Guided before and after" className={styles.compactComparison}><div className={styles.tableScroll}><table><thead><tr><th>Before / after</th><th>Current</th><th>Planned</th><th>Staff reviewed</th></tr></thead><tbody>{rows.map(row => {
-    const format = (value: number | null | undefined) => row.ratio ? value == null ? "Unknown" : `${value.toFixed(2)}x` : metricAmountLabel(value, row.currency);
-    return <tr key={row.label}><th>{row.label}</th><td>{format(row.current)}</td><td className={row.proposed == null ? undefined : row.proposed < 0 ? styles.negative : styles.positive}>{evaluating ? "Updating…" : format(row.proposed)}</td><td>{evaluating ? "Updating…" : awaitingReview ? "Awaiting review" : format(row.reviewed)}</td></tr>;
-  })}</tbody></table></div><small>Proposed results are illustrations. Loan relief does not increase NOI.</small><details><summary>Source, assumptions and changes</summary>{before.noi_governance ? <NoiGovernanceSummary baseline={before.noi_governance} /> : null}{evaluating ? <p>Updating preview; earlier proposed figures are hidden.</p> : null}{rows.map(row => { const change = row.ratio ? operatingRatioChangeExplanation(row.current, evaluating ? null : row.proposed) : operatingChangeExplanation(row.current, evaluating ? null : row.proposed); return <p key={row.label} className={styles[change.tone]}>{row.label}: {change.text}</p>; })}<p>A projection is not a profit guarantee or financing approval. Below 1.00x means illustrated earnings do not cover stated debt service.</p>{[...(evaluation?.missing || []), ...(evaluation?.risk_flags || [])].map((note, index) => <p key={`${index}:${note}`}>{note}</p>)}</details></section>;
+  const format = (value: number | null | undefined, ratio: boolean) => value == null ? "Unknown" : ratio ? `${value.toFixed(4).replace(/0+$/, "").replace(/\.$/, "")}x` : metricAmountLabel(value, currency);
+  return <section aria-label="Guided before and after" className={styles.compactComparison}><small>{qualified ? "Working plan · inputs supplied; subject to review" : "Draft—before setup/timing"}. Loan cash assignments do not change NOI.</small>{working?.dscrBasis === "qualified" && !qualified ? <small>DSCR · current debt uses net run-rate after recurring setup costs.</small> : null}<div className={styles.tableScroll}><table><thead><tr><th>Metric</th><th>Current</th><th>Working plan</th><th>Change (Δ)</th></tr></thead><tbody>{rows.map(row => <tr key={row.label}><th>{row.label}</th><td>{format(row.before, row.ratio)}</td><td>{evaluating ? "Calculating…" : format(row.after, row.ratio)}</td><td className={row.delta == null ? undefined : row.delta < 0 ? styles.negative : row.delta > 0 ? styles.positive : undefined}>{evaluating ? "Calculating…" : `${row.delta != null && row.delta > 0 ? "+" : ""}${format(row.delta, row.ratio)}`}</td></tr>)}</tbody></table></div>
+    {!evaluating && working && !working.complete ? <small>Known annual subtotal (partial): {metricAmountLabel(working.knownSubtotal, working.mathCurrency)}. Whole-plan NOI is unknown until the remaining changes are comparable.</small> : null}
+    {!evaluating && (summary?.missing.length || summary?.source_issues?.length) ? <div>{(summary.source_issues?.length ? summary.source_issues : summary.missing).slice(0, 3).map(field => <span key={field}>{/annual_debt_service|debt_service_currency/.test(field) ? fileWorkspace ? <FileWorkspaceLink tool="coverage">Review saved debt payments ↗</FileWorkspaceLink> : <small>Debt coverage needs confirmed saved debt payments and currency. Ask your team to review the loan plan.</small> : <button type="button" onClick={() => onFix?.(evaluation?.draft_feedback?.actions.find(row => [...row.math_missing, ...row.qualification_missing, ...row.source_issues].includes(field))?.action_id, field)}>{operatingFeedbackLabel(field)}</button>}</span>)}</div> : null}
+    <details><summary>Reviewed results, source and assumptions</summary>{before?.noi_governance ? <NoiGovernanceSummary baseline={before.noi_governance} /> : null}<p>Staff-reviewed annual NOI: {metricAmountLabel(evaluation?.projection.approved.noi, baselineCurrency)}. Historical figures stay separate from future plans.</p><p>A projection is not a profit guarantee or financing approval. Below 1.00x means illustrated earnings do not cover stated debt service.</p>{summary?.notes?.map(note => <p key={note}>{note}</p>)}{evaluation?.draft_feedback?.actions.flatMap(row => row.qualification_missing.map(field => <button type="button" key={`${row.action_id}:${field}`} onClick={() => onFix?.(row.action_id, field)}>{operatingFeedbackLabel(field)}</button>))}</details></section>;
 }

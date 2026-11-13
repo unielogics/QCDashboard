@@ -30,9 +30,10 @@ import { debtRowProblems, describeDebtProblems, focusFirstProblem } from "@/lib/
 import { FormReview } from "@/components/application/FormReview";
 import { RealEstateScheduleForm } from "@/components/application/RealEstateScheduleForm";
 import { PublicFormVersionNotice } from "@/components/application/PublicFormVersionNotice";
-import { PublicFinancialFormWriter, publicFinancialBody, publicFinancialResponse, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
+import { PublicFinancialFormError, PublicFinancialFormWriter, publicFinancialBody, publicFinancialResponse, type PublicFinancialReply, type PublicFinancialVersion } from "@/lib/publicFinancialForms";
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
 import { useDocumentWindow } from "@/hooks/useDocumentWindow";
+import { operatingNumericProblems, operatingPlanContentKey } from "@/lib/operatingPlanFeedback";
 import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
 import type { OperatingSuggestionClient, OperatingSuggestionReply, OperatingSuggestionApplied } from "@/lib/operatingSuggestions";
 import type { OperatingGoalRead } from "@/lib/operatingGoal";
@@ -117,6 +118,10 @@ export default function FinancialFormPage() {
   const [loadRetry, setLoadRetry] = useState(0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const pendingDrafts = useRef(0);
+  const [draftError, setDraftError] = useState("");
+  const [draftConflict, setDraftConflict] = useState(false);
+  const [previewAt, setPreviewAt] = useState<string | null>(null);
   // Once a submit has been tried, the schedule outlines the required answers
   // still missing. Off while drafting: a half-typed row is not shouted at.
   const [showProblems, setShowProblems] = useState(false);
@@ -133,6 +138,7 @@ export default function FinancialFormPage() {
   const previewRequest = useRef(0);
   const previewBody = useRef("");
   const visiblePreviewBody = useRef("");
+  const contentKey = operatingPlanContentKey(body), contentKeyRef = useRef(contentKey); contentKeyRef.current = contentKey;
   const writer = useRef<PublicFinancialFormWriter | null>(null);
   const bodyRef = useRef(body);
   const loadedBody = useRef("");
@@ -160,7 +166,7 @@ export default function FinancialFormPage() {
     statusRef.current = "loading"; setStatus("loading"); setState(null); setGoalWaiting(false); writer.current = null;
     bodyRef.current = {}; setBody({}); loadedBody.current = ""; previewBody.current = ""; visiblePreviewBody.current = ""; setOperatingPreview(null); setOperatingPreviewError("");
     setSourcePreviewId(null); setOperatingSourceError(""); lastOperatingSource.current = null;
-    setOperatingGuided(true); setGuidedStepRequest(null);
+    setOperatingGuided(true); setGuidedStepRequest(null); setDraftError(""); setDraftConflict(false); setSavedAt(null); pendingDrafts.current = 0; setSaving(false); setPreviewAt(null);
     let cancelled = false;
     (async () => {
       try {
@@ -178,7 +184,7 @@ export default function FinancialFormPage() {
         bodyRef.current = next;
         setBody(next);
         loadedBody.current = JSON.stringify(next);
-        previewBody.current = data.operating_plan ? JSON.stringify(next) : "";
+        previewBody.current = data.operating_plan ? operatingPlanContentKey(next) : "";
         visiblePreviewBody.current = data.operating_plan?.evaluation ? `${base}:${previewBody.current}` : "";
         writer.current = new PublicFinancialFormWriter(base, data.workspace);
         setStatus(data.completed && !data.workspace?.dirty && data.can_edit !== false && data.permission !== "view" ? "done" : "ready");
@@ -194,9 +200,10 @@ export default function FinancialFormPage() {
   useEffect(() => {
     const sequence = ++previewRequest.current;
     if (state?.kind !== "operating_plan" || status !== "ready" || !canEdit) { setOperatingEvaluating(false); return; }
-    const sent = publicFinancialBody(body);
-    const fingerprint = JSON.stringify(sent);
-    if (!operatingPreviewRetry && fingerprint === previewBody.current && visiblePreviewBody.current === `${base}:${fingerprint}`) { setOperatingEvaluating(false); setOperatingPreviewError(""); return; }
+    const sent = publicFinancialBody(bodyRef.current);
+    const fingerprint = contentKey;
+    if (operatingNumericProblems(sent).length) { visiblePreviewBody.current = ""; setOperatingEvaluating(false); setOperatingPreviewError(""); return; }
+    if (fingerprint === previewBody.current && visiblePreviewBody.current === `${base}:${fingerprint}`) { setOperatingEvaluating(false); setOperatingPreviewError(""); return; }
     const controller = new AbortController();
     visiblePreviewBody.current = "";
     setOperatingEvaluating(true); setOperatingPreviewError("");
@@ -204,12 +211,12 @@ export default function FinancialFormPage() {
     const timer = window.setTimeout(() => {
       void fetch(`${base}/evaluate`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: sent }), signal: controller.signal })
         .then(response => publicFinancialResponse<OperatingGuidanceReply>(response))
-        .then(reply => { if (!controller.signal.aborted && sequence === previewRequest.current) { previewBody.current = fingerprint; visiblePreviewBody.current = reply.evaluation ? `${base}:${fingerprint}` : ""; setOperatingPreview(reply); } })
+        .then(reply => { if (!controller.signal.aborted && activeBase.current === base && contentKeyRef.current === fingerprint && sequence === previewRequest.current) { setPreviewAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })); previewBody.current = fingerprint; visiblePreviewBody.current = reply.evaluation ? `${base}:${fingerprint}` : ""; setOperatingPreview(reply); } })
         .catch(reason => { if (!controller.signal.aborted && sequence === previewRequest.current) setOperatingPreviewError(reason instanceof Error ? reason.message : "The preview could not be refreshed. Your entries are retained."); })
         .finally(() => { if (!controller.signal.aborted && sequence === previewRequest.current) setOperatingEvaluating(false); });
-    }, 500);
+    }, 180);
     return () => { controller.abort(); window.clearTimeout(timer); };
-  }, [base, body, canEdit, operatingPreviewRetry, state?.kind, status]);
+  }, [base, contentKey, canEdit, operatingPreviewRetry, state?.kind, status]);
 
   const loadOperatingSource = useCallback(async (): Promise<BucketFileReview> => {
     if (!sourcePreviewId) throw new Error("Choose a source document.");
@@ -223,7 +230,7 @@ export default function FinancialFormPage() {
     setState((current) => current ? { ...current, ...reply } as FormState : current);
     if (reply.operating_plan && bodyRef.current === sent) {
       setOperatingPreview(reply.operating_plan);
-      previewBody.current = JSON.stringify(reply.body ?? sent);
+      previewBody.current = operatingPlanContentKey(reply.body ?? sent);
       visiblePreviewBody.current = reply.operating_plan.evaluation ? `${base}:${previewBody.current}` : "";
     }
     loadedBody.current = JSON.stringify(sent);
@@ -238,26 +245,31 @@ export default function FinancialFormPage() {
   }, [base]);
 
   const saveDraft = useCallback(async (sent: FormBody = bodyRef.current) => {
-    if (!writer.current || !canEdit || JSON.stringify(sent) === loadedBody.current) return;
-    setSaving(true);
+    const activeWriter = writer.current;
+    if (!activeWriter || !canEdit || JSON.stringify(sent) === loadedBody.current) return;
+    pendingDrafts.current += 1; setSaving(true);
     try {
-      const reply = await writer.current.write("draft", sent);
+      if (state?.kind === "operating_plan" && operatingNumericProblems(sent).length) throw new Error("Finish the numeric entry before saving. Your entry is retained.");
+      const reply = await activeWriter.write("draft", sent);
+      if (activeBase.current !== base || writer.current !== activeWriter) return;
       acceptReply(reply, sent);
       setSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
-      setError(null);
+      if (state?.kind === "operating_plan") { setDraftError(""); setDraftConflict(false); } else setError(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "Your progress could not be saved. Please try again.");
+      if (activeBase.current !== base || writer.current !== activeWriter) return;
+      const message = reason instanceof Error ? reason.message : "Your progress could not be saved. Please try again.";
+      if (state?.kind === "operating_plan") { setDraftError(message); if (reason instanceof PublicFinancialFormError && reason.status === 409) setDraftConflict(true); } else setError(message);
       throw reason;
-    } finally { setSaving(false); }
-  }, [acceptReply, canEdit]);
+    } finally { if (activeBase.current === base && writer.current === activeWriter) { pendingDrafts.current = Math.max(0, pendingDrafts.current - 1); setSaving(pendingDrafts.current > 0); } }
+  }, [acceptReply, base, canEdit, state?.kind]);
 
   useEffect(() => {
-    if (status !== "ready" || !canEdit || JSON.stringify(body) === loadedBody.current) return;
+    if (status !== "ready" || !canEdit || draftConflict || JSON.stringify(body) === loadedBody.current || state?.kind === "operating_plan" && operatingNumericProblems(body).length) return;
     const timer = window.setTimeout(() => {
       if (statusRef.current === "ready") void saveDraft().catch(() => undefined);
-    }, 4000);
+    }, state?.kind === "operating_plan" ? 800 : 4000);
     return () => window.clearTimeout(timer);
-  }, [body, canEdit, saveDraft, status]);
+  }, [body, canEdit, draftConflict, saveDraft, state?.kind, status]);
 
   const review = async () => {
     if (!canEdit || !writer.current) return;
@@ -320,7 +332,7 @@ export default function FinancialFormPage() {
     setError(null);
     const activeWriter = writer.current;
     const sent = bodyRef.current;
-    const fingerprint = JSON.stringify(publicFinancialBody(sent));
+    const fingerprint = operatingPlanContentKey(sent);
     statusRef.current = "preparing"; setStatus("preparing");
     try {
       // Validate the exact body being saved; a pending preview belongs to an earlier edit.
@@ -562,7 +574,7 @@ export default function FinancialFormPage() {
           ) : state?.kind === "real_estate_schedule" ? (
             <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "operating_plan" ? (
-            <><OperatingPlanForm suggestionClient={suggestionClient} goal={operatingPreview?.goal ?? state.goal} sourceMessage={operatingSourceError ? <div role="alert"><p>{operatingSourceError}</p><button type="button" onClick={() => { if (lastOperatingSource.current) openOperatingSource(lastOperatingSource.current); }}>Retry source document</button></div> : null} onSaveVersion={saveOperatingPlanVersion} saveVersionBusy={status === "preparing" || status === "saving"} saveVersionDisabled={!canEdit || status === "preparing" || status === "saving"} saveVersionLabel="Save version for your team" key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={operatingPreview?.evaluation} evaluating={operatingEvaluating} onPreviewSource={openOperatingSource} />{operatingPreviewError ? <div role="alert"><p>{operatingPreviewError} Your entries are retained.</p><button type="button" onClick={() => setOperatingPreviewRetry(value => value + 1)}>Retry financial preview</button></div> : null}</>
+            <><OperatingPlanForm saveStatus={{ state: draftError ? "error" : saving ? "saving" : JSON.stringify(body) !== loadedBody.current ? "unsaved" : "saved", at: savedAt, error: draftError, retry: draftConflict ? undefined : () => { void saveDraft().catch(() => undefined); }, reload: draftConflict ? () => { if (window.confirm("Reload the saved draft and replace the entries in this window?")) setLoadRetry(value => value + 1); } : undefined }} calculationStatus={{ pending: operatingEvaluating || visiblePreviewBody.current !== `${base}:${contentKey}` && !operatingPreviewError && !operatingNumericProblems(body).length, at: previewAt, error: operatingPreviewError, retry: () => setOperatingPreviewRetry(value => value + 1), invalid: operatingNumericProblems(body) }} suggestionClient={suggestionClient} goal={operatingPreview?.goal ?? state.goal} sourceMessage={operatingSourceError ? <div role="alert"><p>{operatingSourceError}</p><button type="button" onClick={() => { if (lastOperatingSource.current) openOperatingSource(lastOperatingSource.current); }}>Retry source document</button></div> : null} onSaveVersion={saveOperatingPlanVersion} saveVersionBusy={status === "preparing" || status === "saving"} saveVersionDisabled={!canEdit || status === "preparing" || status === "saving"} saveVersionLabel="Save version for your team" key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={visiblePreviewBody.current === `${base}:${contentKey}` ? operatingPreview?.evaluation : null} evaluating={operatingEvaluating || visiblePreviewBody.current !== `${base}:${contentKey}` && !operatingPreviewError && !operatingNumericProblems(body).length} onPreviewSource={openOperatingSource} /></>
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}

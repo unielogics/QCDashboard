@@ -11,6 +11,7 @@ import { useDocumentWindow } from "@/hooks/useDocumentWindow";
 import { Role } from "@/lib/enums.generated";
 import type { FinancialWorkspaceSnapshot } from "@/lib/financialWorkspaceApi";
 import { clearOperatingReview, normalizeOperatingPlanBody, operatingMoney, operatingLabel, operatingNumber, operatingReviewedWorkspace, type OperatingAction, type OperatingEvaluation, type OperatingPlanBody } from "@/lib/operatingPlan";
+import { operatingNumericProblems, operatingPlanContentKey, type OperatingDraftSaveStatus } from "@/lib/operatingPlanFeedback";
 import { OperatingPlanForm } from "./OperatingPlanForm";
 import styles from "./OperatingPlanForm.module.css";
 import { addOperatingCandidate, draftOperatingSourceCosts, type OperatingGuidance, type OperatingExpenseCandidate } from "@/lib/operatingGuidance";
@@ -23,7 +24,8 @@ export type OperatingEvidence = { guidance?: OperatingGuidance; files?: Array<{ 
 type EvaluationReply = { evaluation: OperatingEvaluation; evidence?: OperatingEvidence; guidance?: OperatingGuidance; context_stamp: string };
 
 /** No second draft: previews read the workspace body; staff review flushes its revision first. */
-export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disabled, prepare, onReviewed, onPreviewSource, onBusyChange, onSaveVersion, saveVersionDisabled, saveVersionBusy }: {
+export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disabled, prepare, onReviewed, onPreviewSource, onBusyChange, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveStatus }: {
+  saveStatus?: OperatingDraftSaveStatus;
   profileId: string; snapshot: FinancialWorkspaceSnapshot; value: OperatingPlanBody; onChange: (value: OperatingPlanBody) => void;
   disabled?: boolean; prepare: () => Promise<FinancialWorkspaceSnapshot | null>; onReviewed: (snapshot: FinancialWorkspaceSnapshot) => void;
   onPreviewSource: (fileId: string) => void; onBusyChange: (busy: boolean) => void; onSaveVersion?: () => void; saveVersionDisabled?: boolean; saveVersionBusy?: boolean;
@@ -43,7 +45,7 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   const lastSourceDocument = useRef<string | null>(null);
   const openSourceDocument = (fileId: string) => { lastSourceDocument.current = fileId; setSourceDocumentError(""); void sourceWindow.open(async signal => (await api<{ url: string }>(`/application-profiles/${encodeURIComponent(profileId)}/evidence/files/${encodeURIComponent(fileId)}/url`, { signal })).url).catch(reason => { if (activeScope.current === scope) setSourceDocumentError(reason instanceof Error ? reason.message : "The source document could not be opened."); }); };
   const [source, setSource] = useState<{ scope: string; data: OperatingEvidence | null; loading: boolean; error: string }>({ scope, data: null, loading: true, error: "" });
-  const [preview, setPreview] = useState<{ scope: string; value: OperatingEvaluation | null; loading: boolean; error: string }>({ scope, value: null, loading: false, error: "" });
+  const [preview, setPreview] = useState<{ scope: string; key: string; at?: string; value: OperatingEvaluation | null; loading: boolean; error: string }>({ scope, key: "", value: null, loading: false, error: "" });
   const [evaluationRetry, setEvaluationRetry] = useState(0);
   const [error, setError] = useState(""); const [reviewing, setReviewing] = useState(false);
   const [selected, setSelected] = useState<string[]>([]); const [reason, setReason] = useState("");
@@ -60,9 +62,12 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   const evidence = source.scope === scope ? source.data : null;
   const sourceLoading = source.scope !== scope || source.loading;
   const sourceError = source.scope === scope ? source.error : "";
-  const evaluation = preview.scope === scope ? preview.value : null;
-  const evaluating = preview.scope === scope && preview.loading;
-  const evaluationError = preview.scope === scope ? preview.error : "";
+  const contentKey = operatingPlanContentKey(value), keyRef = useRef(contentKey); keyRef.current = contentKey;
+  const apiRef = useRef(api); apiRef.current = api;
+  const numericProblems = operatingNumericProblems(value);
+  const evaluation = preview.scope === scope && preview.key === contentKey ? preview.value : null;
+  const evaluating = !numericProblems.length && (preview.scope !== scope || preview.key !== contentKey || preview.loading);
+  const evaluationError = preview.scope === scope && preview.key === contentKey ? preview.error : "";
   const releasedCashFlow = evaluation?.released_cash_flow ?? snapshot.completion?.released_cash_flow;
   useEffect(() => { live.current = true; return () => { live.current = false; request.current += 1; sourceRequest.current += 1; }; }, []);
   const loadEvidence = useCallback(async () => {
@@ -70,7 +75,7 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
     const version = sourceVersion.current;
     setSource(current => ({ scope, data: current.scope === scope ? current.data : null, loading: true, error: "" }));
     try {
-      const reply = await api<OperatingEvidence>(`${root}/evidence`);
+      const reply = await apiRef.current<OperatingEvidence>(`${root}/evidence`);
       if (!live.current || activeScope.current !== scope || sequence !== sourceRequest.current || version !== sourceVersion.current) return;
       sourceVersion.current++;
       setSource({ scope, data: reply, loading: false, error: "" });
@@ -78,7 +83,7 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
       if (live.current && activeScope.current === scope && sequence === sourceRequest.current && version === sourceVersion.current)
         setSource(current => ({ scope, data: current.scope === scope ? current.data : null, loading: false, error: failure instanceof Error ? failure.message : "Evidence suggestions could not be loaded." }));
     }
-  }, [api, root, scope]);
+  }, [root, scope]);
   useEffect(() => {
     sourceVersion.current = 0;
     setSourceDocumentError(""); lastSourceDocument.current = null; setEditingGoal(false);
@@ -89,11 +94,13 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   }, [loadEvidence]);
   useEffect(() => {
     const sequence = ++request.current;
-    setPreview({ scope, value: null, loading: true, error: "" });
+    const sentKey = contentKey, controller = new AbortController(), sent = normalizeOperatingPlanBody(valueRef.current);
+    if (operatingNumericProblems(valueRef.current).length) { setPreview({ scope, key: sentKey, value: null, loading: false, error: "" }); return; }
+    setPreview({ scope, key: sentKey, value: null, loading: true, error: "" });
     const timer = setTimeout(() => {
-      void api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(value), family_id: snapshot.family_id }) }).then((reply) => {
-        if (!live.current || activeScope.current !== scope || sequence !== request.current) return;
-        setPreview({ scope, value: reply.evaluation, loading: false, error: "" });
+      void apiRef.current<EvaluationReply>(`${root}/evaluate`, { method: "POST", signal: controller.signal, body: JSON.stringify({ body: sent, family_id: snapshot.family_id }) }).then((reply) => {
+        if (controller.signal.aborted || !live.current || activeScope.current !== scope || sequence !== request.current || keyRef.current !== sentKey) return;
+        setPreview({ scope, key: sentKey, at: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), value: reply.evaluation, loading: false, error: "" });
         const guidance = reply.guidance ?? reply.evidence?.guidance;
         const fullSources = guidance && typeof guidance.policy_version === "string" && guidance.policy_version.trim() && guidance.reporting && Array.isArray(guidance.expense_groups) && Array.isArray(reply.evidence?.files) && Array.isArray(reply.evidence?.expense_candidates)
           && (guidance.reporting.source_file_id || guidance.expense_groups.length || reply.evidence.files.length || reply.evidence.expense_candidates.length || reply.evidence.merchant_sources?.length);
@@ -105,12 +112,12 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
           setSource(current => ({ ...current, scope, data: { ...(current.scope === scope ? current.data : null), guidance } }));
         }
       }).catch((failure) => {
-        if (live.current && activeScope.current === scope && sequence === request.current)
-          setPreview({ scope, value: null, loading: false, error: failure instanceof Error ? failure.message : "The working plan could not be evaluated." });
+        if (!controller.signal.aborted && live.current && activeScope.current === scope && sequence === request.current && keyRef.current === sentKey)
+          setPreview({ scope, key: sentKey, value: null, loading: false, error: failure instanceof Error ? failure.message : "The working plan could not be evaluated." });
       });
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [api, root, scope, snapshot.family_id, value, evaluationRetry]);
+    }, 180);
+    return () => { controller.abort(); clearTimeout(timer); };
+  }, [root, scope, snapshot.family_id, contentKey, evaluationRetry, goal.goal?.revision]);
   const review = async (decision: "approved" | "rejected") => {
     if (!canReview || reviewing || !selected.length || !reason.trim()) return;
     setReviewing(true); onBusyChange(true); setError("");
@@ -119,7 +126,7 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
       const context = await api<EvaluationReply>(`${root}/evaluate`, { method: "POST", body: JSON.stringify({ body: normalizeOperatingPlanBody(saved.body), family_id: saved.family_id }) });
       const reply = await api<Partial<FinancialWorkspaceSnapshot> & { workspace?: FinancialWorkspaceSnapshot; evaluation: OperatingEvaluation }>(`${root}/review`, { method: "POST", body: JSON.stringify({ family_id: saved.family_id, expected_revision: saved.draft.revision, action_ids: selected, decision, reason: reason.trim(), context_stamp: context.context_stamp, baseline_treatment: treatment, baseline_reconciliation_note: reconciliation.trim(), idempotency_key: crypto.randomUUID() }) });
       const next = operatingReviewedWorkspace(reply, saved.family_id);
-      if (live.current && activeScope.current === scope) { onReviewed(next); setPreview({ scope, value: reply.evaluation, loading: false, error: "" }); setSelected([]); setReason(""); }
+      if (live.current && activeScope.current === scope) { onReviewed(next); setPreview({ scope, key: operatingPlanContentKey(next.body), at: new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }), value: reply.evaluation, loading: false, error: "" }); setSelected([]); setReason(""); }
     } catch (failure) { if (live.current && activeScope.current === scope) setError(failure instanceof Error ? failure.message : "Review could not be saved. Your draft is preserved."); }
     finally { if (live.current && activeScope.current === scope) { setReviewing(false); onBusyChange(false); } }
   };
@@ -171,7 +178,6 @@ export function OperatingPlanEditor({ profileId, snapshot, value, onChange, disa
   return <div className={styles.plan}>
     {editingGoal ? goalSetup : null}
     {error ? <div role="alert">Staff review could not be saved: {error}</div> : null}
-    {evaluationError ? <div role="alert"><p>The financial preview could not be updated: {evaluationError}</p><button type="button" disabled={disabled || reviewing || evaluating} onClick={() => setEvaluationRetry(count => count + 1)}>Retry financial preview</button></div> : null}
-    <OperatingPlanForm suggestionClient={suggestionClient} goal={goal.goal} goalControls={goalControls} sourceMessage={sourceDocumentError ? <div role="alert"><p>{sourceDocumentError} Your current step and entries are retained.</p><button type="button" onClick={() => { if (lastSourceDocument.current) openSourceDocument(lastSourceDocument.current); }}>Retry source document</button></div> : null} sourceTools={sourceTools} onConfirmSource={draftSourceCosts} onSaveVersion={onSaveVersion} saveVersionDisabled={saveVersionDisabled} saveVersionBusy={saveVersionBusy} key={scope} guidedDefault onGuidedModeChange={setGuided} guidedStepRequest={draftResult?.scope === scope ? guidedStepRequest : null} sourceDraftRequest={draftResult?.scope === scope ? sourceDraftRequest : 0} onOpenSources={() => sourcePanelElement.current?.scrollIntoView({ block: "start", behavior: "smooth" })} guidance={evidence?.guidance} evidence={evidence} value={value} onChange={onChange} disabled={disabled || reviewing || goal.saving} staff sources={snapshot.evidence} onPreviewSource={openSourceDocument} evaluation={evaluation} releasedCashFlow={releasedCashFlow ?? snapshot.completion?.released_cash_flow} evaluating={evaluating} processingReferences={{ sources: (evidence?.merchant_sources ?? []).map((source) => ({ key: source.source_key, label: source.file_name })), offers: (evidence?.merchant_offers ?? []).map((offer) => ({ id: offer.id, label: offer.provider_name || "Processing quote" })) }} onProcessingReference={processingReference} reviewControls={canReview ? <section className={styles.details}><h4>Staff review</h4><div className={styles.fields}><label>Actions to review<select multiple aria-label="Actions to review" value={selected} disabled={disabled || reviewing} onChange={(event) => setSelected([...event.target.selectedOptions].map((option) => option.value))}>{actions.map((row) => <option key={row.id} value={row.id}>{row.label || "Unnamed action"} · {operatingLabel(row.status ?? "proposed")}</option>)}</select></label><label>Relation to earnings baseline<select value={treatment} disabled={disabled || reviewing} onChange={(event) => setTreatment(event.target.value)}><option value="unreconciled">Not yet reconciled</option><option value="included_in_baseline">Current cost / revenue included in baseline</option><option value="incremental_to_baseline">Incremental to baseline</option><option value="outside_operating_earnings">Outside operating earnings</option></select></label><label>Reconciliation to source / period<textarea value={reconciliation} disabled={disabled || reviewing} onChange={(event) => setReconciliation(event.target.value)} placeholder="Identify the current source and period; explain differences from the baseline" /></label><label className={styles.wide}>Review reason<textarea value={reason} disabled={disabled || reviewing} onChange={(event) => setReason(event.target.value)} placeholder="Document evidence, feasibility and any conditions" /></label></div><div className={styles.toolbar}><span className={styles.muted}>Reviewed proposals remain projections. Save version publishes the reviewed plan.</span><div className={styles.tools}><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim()} onClick={() => void review("rejected")}>Reject selected</button><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim() || treatment === "unreconciled" || !reconciliation.trim()} onClick={() => void review("approved")}>{reviewing ? "Saving review…" : "Approve selected"}</button></div></div></section> : <p className={styles.muted}>Underwriting reviews proposed adjustments before they can enter a reviewed projection.</p>} />
+    <OperatingPlanForm saveStatus={saveStatus} calculationStatus={{ pending: evaluating, at: preview.at, error: evaluationError, retry: () => setEvaluationRetry(count => count + 1), invalid: numericProblems }} suggestionClient={suggestionClient} goal={goal.goal} goalControls={goalControls} sourceMessage={sourceDocumentError ? <div role="alert"><p>{sourceDocumentError} Your current step and entries are retained.</p><button type="button" onClick={() => { if (lastSourceDocument.current) openSourceDocument(lastSourceDocument.current); }}>Retry source document</button></div> : null} sourceTools={sourceTools} onConfirmSource={draftSourceCosts} onSaveVersion={onSaveVersion} saveVersionDisabled={saveVersionDisabled} saveVersionBusy={saveVersionBusy} key={scope} guidedDefault onGuidedModeChange={setGuided} guidedStepRequest={draftResult?.scope === scope ? guidedStepRequest : null} sourceDraftRequest={draftResult?.scope === scope ? sourceDraftRequest : 0} onOpenSources={() => sourcePanelElement.current?.scrollIntoView({ block: "start", behavior: "smooth" })} guidance={evidence?.guidance} evidence={evidence} value={value} onChange={onChange} disabled={disabled || reviewing || goal.saving} staff sources={snapshot.evidence} onPreviewSource={openSourceDocument} evaluation={evaluation} releasedCashFlow={releasedCashFlow ?? snapshot.completion?.released_cash_flow} evaluating={evaluating} processingReferences={{ sources: (evidence?.merchant_sources ?? []).map((source) => ({ key: source.source_key, label: source.file_name })), offers: (evidence?.merchant_offers ?? []).map((offer) => ({ id: offer.id, label: offer.provider_name || "Processing quote" })) }} onProcessingReference={processingReference} reviewControls={canReview ? <section className={styles.details}><h4>Staff review</h4><div className={styles.fields}><label>Actions to review<select multiple aria-label="Actions to review" value={selected} disabled={disabled || reviewing} onChange={(event) => setSelected([...event.target.selectedOptions].map((option) => option.value))}>{actions.map((row) => <option key={row.id} value={row.id}>{row.label || "Unnamed action"} · {operatingLabel(row.status ?? "proposed")}</option>)}</select></label><label>Relation to earnings baseline<select value={treatment} disabled={disabled || reviewing} onChange={(event) => setTreatment(event.target.value)}><option value="unreconciled">Not yet reconciled</option><option value="included_in_baseline">Current cost / revenue included in baseline</option><option value="incremental_to_baseline">Incremental to baseline</option><option value="outside_operating_earnings">Outside operating earnings</option></select></label><label>Reconciliation to source / period<textarea value={reconciliation} disabled={disabled || reviewing} onChange={(event) => setReconciliation(event.target.value)} placeholder="Identify the current source and period; explain differences from the baseline" /></label><label className={styles.wide}>Review reason<textarea value={reason} disabled={disabled || reviewing} onChange={(event) => setReason(event.target.value)} placeholder="Document evidence, feasibility and any conditions" /></label></div><div className={styles.toolbar}><span className={styles.muted}>Reviewed proposals remain projections. Save version publishes the reviewed plan.</span><div className={styles.tools}><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim()} onClick={() => void review("rejected")}>Reject selected</button><button type="button" disabled={disabled || reviewing || !selected.length || !reason.trim() || treatment === "unreconciled" || !reconciliation.trim()} onClick={() => void review("approved")}>{reviewing ? "Saving review…" : "Approve selected"}</button></div></div></section> : <p className={styles.muted}>Underwriting reviews proposed adjustments before they can enter a reviewed projection.</p>} />
   </div>;
 }
