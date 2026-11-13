@@ -11,6 +11,7 @@ export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
   id: string; version_number: number; created_at: string; actor_name: string | null;
   source: string; source_file_id: string | null; pdf_file_id: string | null; status: string; source_content_type?: string | null;
+  report_schema?: string | null;
 };
 export type FinancialEvidence = import("./documentVersions").DocumentVersionMetadata & { file_id: string; file_name: string; classification?: string | null; content_type?: string | null };
 export type FinancialWorkspaceSnapshot = {

@@ -30,7 +30,8 @@ const STEPS = ["Confirm source", "Confirm current costs", "Plan changes", "Revie
 const active = <T extends { excluded?: boolean; duplicate_of?: string | null }>(rows: T[] = []) => rows.filter(row => !row.excluded && !row.duplicate_of);
 const uid = () => crypto.randomUUID();
 
-export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, stepRequest, onAdvancedAction, onEditUnits = () => {}, stepIndex, onStepChange, sourceAnnualRevenue, onReviewRevenue, unitProposal, onAddUnitPlan = () => {}, sourceTools, sourceMessage, unitControls, allocationControls, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version", goal, goalControls, suggestionClient, onReviewExpense, saveStatus, calculationStatus, onFixFeedback, growthRequest, fundingSummary, configurationRequest }: {
+export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, reportControls, stepRequest, onAdvancedAction, onEditUnits = () => {}, stepIndex, onStepChange, sourceAnnualRevenue, onReviewRevenue, unitProposal, onAddUnitPlan = () => {}, sourceTools, sourceMessage, unitControls, allocationControls, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version", goal, goalControls, suggestionClient, onReviewExpense, saveStatus, calculationStatus, onFixFeedback, growthRequest, fundingSummary, configurationRequest }: {
+  reportControls?: ReactNode;
   fundingSummary?: ReactNode; configurationRequest?: OperatingConfigurationRequest;
   growthRequest?: number; saveStatus?: OperatingDraftSaveStatus; calculationStatus?: OperatingCalculationStatus; onFixFeedback?: (id?: string, field?: string) => void;
   onReviewExpense?: (id: string) => void; suggestionClient?: OperatingSuggestionClient;
@@ -124,6 +125,7 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
     </> : <>
 
       {handoffMode ? <section className={styles.requiredItems}><strong>Historical difference awaiting preparer review</strong><small>This version records the disclosed items and supporting explanation. It does not confirm changed historical income or approve the plan.</small></section> : <StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingGuidedComparison onFix={onFixFeedback} evaluation={evaluation} baselineEvaluation={layoutEvaluation} evaluating={evaluating} /></StableOperatingPreview>}
+      {reportControls}
       {detailedImpact ? <details><summary>Detailed calculation and review notes</summary>{detailedImpact}</details> : null}
       <label className={styles.check}><input type="checkbox" disabled={disabled} checked={value.client_attestation === true} onChange={event => change({ client_attestation: event.target.checked })} />I confirm these disclosures and proposals</label>
       <label className={styles.shortNotes}>Plan and handoff notes<textarea value={value.notes || ""} disabled={disabled} onChange={event => change({ notes: event.target.value })} /></label>

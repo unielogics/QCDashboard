@@ -53,6 +53,10 @@ jobs:
           src/lib/__tests__/marketplacePreparation.test.ts
           src/lib/__tests__/marketplacePublication.test.ts
           src/lib/__tests__/marketplaceRefresh.test.ts
+          src/lib/__tests__/packageArtifacts.test.ts
+          src/lib/__tests__/operatingReport.test.ts
+          src/components/application/__tests__/OperatingPlanReportControls.test.ts
+          src/components/file/__tests__/PackageDocumentActions.test.ts
           src/lib/__tests__/marketplaceOperatingProjection.test.ts
           src/components/marketplace/__tests__/MarketplaceLiveProjections.test.ts
           src/lib/__tests__/investorEconomics.test.ts
@@ -105,6 +109,20 @@ jobs:
           src/lib/marketplaceGuidanceFocus.ts
           src/hooks/useCapitalPartners.ts
           src/components/file/LeadDetailPanel.tsx
+          src/components/file/PackageDocumentActions.tsx
+          src/components/file/FundingPackageWorkspace.tsx
+          src/components/buckets/BucketFileReviewPanel.tsx
+          src/hooks/usePackageArtifacts.ts
+          src/lib/packageArtifacts.ts
+          src/lib/__tests__/packageArtifacts.test.ts
+          src/lib/operatingReport.ts
+          src/lib/__tests__/operatingReport.test.ts
+          src/components/application/OperatingPlanReportControls.tsx
+          src/components/application/__tests__/OperatingPlanReportControls.test.ts
+          src/lib/financialWorkspaceApi.ts
+          src/components/file/__tests__/PackageDocumentActions.test.ts
+          tests/package-preview-sync.spec.ts
+          tests/fixtures/packagePreviewSync.ts
           src/components/file/cockpit/FinancialCockpit.tsx
           src/components/file/cockpit/CoverageCard.tsx
           src/components/application/ApplicationProgramReadiness.tsx

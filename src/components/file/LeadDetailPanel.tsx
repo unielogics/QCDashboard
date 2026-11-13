@@ -12,7 +12,6 @@ import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { Icon } from "@/components/design-system/Icon";
 import { PreparationProgress } from "@/components/design-system/PreparationProgress";
-import { writePreparationPreview } from "@/lib/preparationPreview";
 import { FileTeamStrip } from "@/components/file/FileTeamStrip";
 import { FileTimeline } from "@/components/file/FileTimeline";
 import { MerchantOfferStrip } from "@/components/admin/MerchantOfferStrip";
@@ -53,6 +52,9 @@ import { creditStepProgress } from "@/lib/creditStepSync";
 import { calculateDealEarnings } from "@/lib/dealEconomics";
 import { useFileWorkspace, FileWorkspaceLink } from "@/components/file/FileWorkspaceContext";
 import { useConsoleAuth } from "@/lib/consoleAuth";
+import { usePackageArtifacts } from "@/hooks/usePackageArtifacts";
+import { mergeSavedPackageArtifacts, packageVerificationMatches, selectPackageArtifacts, sortedPackageArtifacts } from "@/lib/packageArtifacts";
+import { PackageDocumentActions } from "./PackageDocumentActions";
 import { Artifact, BucketAccessMode, DriveIngestResult, LeadContactUpdate, LeadDetail, LeadDetailView, PRODUCTION_CADENCE_LABELS, PRODUCTION_REPAYMENT_LABELS, PackageReadinessGeneration, PackageGenerationOptions, RoomRequestResult, UnderwritingDraft, VendorEmailPreview, VendorEmailSendPayload, VendorEmailSendResult, apiErrorMessage, arrayOfRecords, arrayOfStrings, artifactBucketFileId, artifactList, artifactSha, artifactVersion, asRecord, emptyUnderwritingDraft, formatDateTime, formatMoney, formatSize, intakeStatusPresentation, isSourceEvidenceFile, numberOrNull, probabilityTone, productionTermLabel, programVerticalForVariant, underwritingDraftFromState, variantLabel } from "./leadFile";
 
 // Load section editors only when their existing conditional mount opens them.
@@ -196,22 +198,20 @@ export function CompactList({ rows, empty }: { rows: Array<{ title: string; body
 // horizontal overflow when the sidebar is expanded / on smaller screens (a
 // fixed floor here clipped the name column).
 
-export function PackageArtifactCard({ artifact, label, description, version, current, bucketSynced }: { artifact: Artifact; label: string; description: string; version: number; current: boolean; bucketSynced: boolean }) {
+export function PackageArtifactCard({ artifact, label, description, version, current, bucketSynced, previewRequest }: { artifact: Artifact; label: string; description: string; version: number; current: boolean; bucketSynced: boolean; previewRequest?: { key: number; artifactId: string } | null }) {
   const sha = artifactSha(artifact);
-  const previewUrl = artifact.preview_url || artifact.download_url;
   return <article className="package-document-card">
     <div className="package-document-icon"><Icon name="docCheck" size={20} /></div>
-    <div className="package-document-copy"><div><span className="lbl">{label}</span><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip></div><strong>{artifact.title}</strong><p>{description}</p><small>v{version} · {formatDateTime(artifact.created_at)} · {bucketSynced ? "Synced to room" : "Legacy artifact"}{sha ? ` · ${sha.slice(0, 10)}…` : ""}</small></div>
-    <div className="package-document-actions">{previewUrl ? <><a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm"><Icon name="eye" size={14} />Preview</a>{artifact.download_url ? <a href={artifact.download_url} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Download ${label}`} aria-label={`Download ${label}`}><Icon name="download" size={14} /></a> : null}</> : <CellChip tone="warn">PDF unavailable</CellChip>}</div>
+    <div className="package-document-copy"><div><span className="lbl">{label}</span><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Latest saved"}</CellChip></div><strong>{artifact.title}</strong><p>{description}</p><small>v{version} · {formatDateTime(artifact.created_at)} · {bucketSynced ? "Synced to room" : "Legacy artifact"}{sha ? ` · ${sha.slice(0, 10)}…` : ""}</small></div>
+    <div className="package-document-actions"><PackageDocumentActions artifact={artifact} label={label} previewRequest={previewRequest} /></div>
   </article>;
 }
 
-export function PackageVersionList({ label, artifacts, renderReferences }: { label: string; artifacts: Artifact[]; renderReferences?: (artifact: Artifact) => ReactNode }) {
+export function PackageVersionList({ label, artifacts, currentId, renderReferences }: { label: string; artifacts: Artifact[]; currentId?: string; renderReferences?: (artifact: Artifact) => ReactNode }) {
   return <section className="package-version-list"><header><span className="lbl">{label}</span><strong>{artifacts.length ? `${artifacts.length} version${artifacts.length === 1 ? "" : "s"}` : "Not generated"}</strong></header>{artifacts.length ? artifacts.map((artifact, index) => {
     const version = artifactVersion(artifact, artifacts.length - index);
-    const previewUrl = artifact.preview_url || artifact.download_url;
-    const current = index === 0 && artifact.status !== "superseded";
-    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current ? "ok" : "mut"}>{current ? "Current" : "Superseded"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Room PDF" : " · Legacy artifact"}</small></span></div><div>{renderReferences?.(artifact)}{previewUrl ? <a href={previewUrl} target="_blank" rel="noreferrer" className="btn sm iconbtn" title={`Preview ${label} version ${version}`} aria-label={`Preview ${label} version ${version}`}><Icon name="eye" size={14} /></a> : null}</div></div>;
+    const current = artifact.id === currentId;
+    return <div className="package-version-row" key={artifact.id}><div><CellChip tone={current && artifact.is_fresh === true ? "ok" : "mut"}>{current ? artifact.is_fresh === true ? "Current" : "Latest saved" : "History"}</CellChip><span><strong>Version {version}</strong><small>{formatDateTime(artifact.created_at)}{artifactBucketFileId(artifact) ? " · Room PDF" : " · Legacy artifact"}</small></span></div><div>{renderReferences?.(artifact)}<PackageDocumentActions artifact={artifact} label={label} /></div></div>;
   }) : <div className="empty">No PDF versions yet.</div>}</section>;
 }
 
@@ -725,6 +725,8 @@ export function LeadDetailPanel({
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<FundingPackageTab>("summary");
   const [packageError, setPackageError] = useState<string | null>(null);
+  const [packagePreviewRequest, setPackagePreviewRequest] = useState<{ key: number; artifactId: string } | null>(null);
+  const [generatedPackageProof, setGeneratedPackageProof] = useState<Artifact[]>([]);
   const [packagePreparation, setPackagePreparation] = useState<PackagePreparation | null>(null);
   const [artifactPreparation, setArtifactPreparation] = useState<PackagePreparation | null>(null);
   const [artifactOperation, setArtifactOperation] = useState<string | null>(null);
@@ -733,7 +735,7 @@ export function LeadDetailPanel({
   useEffect(() => {
     packageRequestRef.current += 1;
     artifactRequestRef.current += 1;
-    setPackagePreparation(null); setArtifactPreparation(null); setArtifactOperation(null); setPackageError(null);
+    setPackagePreparation(null); setArtifactPreparation(null); setArtifactOperation(null); setPackageError(null); setPackagePreviewRequest(null); setGeneratedPackageProof([]);
     setZipBusy(false); setBusy("");
   }, [detail?.intake.id]);
   const headerUploadRef = useRef<HTMLInputElement>(null);
@@ -858,30 +860,21 @@ export function LeadDetailPanel({
   const strengths = arrayOfStrings(result?.strengths);
   const risks = arrayOfStrings(result?.risks);
 
-  const artifacts = useMemo(
-    () => [...(detail?.artifacts || [])].sort((left, right) => new Date(right.created_at).getTime() - new Date(left.created_at).getTime()),
-    [detail?.artifacts],
-  );
+  const packageSourceRevision = JSON.stringify(detail?.artifacts?.map(row => [row.id, row.updated_at, row.status]));
+  const savedPackage = usePackageArtifacts(detail?.intake.id, canUnderwrite && (needsUnderwriting || workspaceSub === "package"), packageSourceRevision);
+  const artifacts = useMemo(() => sortedPackageArtifacts(savedPackage.denied ? [] : savedPackage.snapshot ? mergeSavedPackageArtifacts(detail?.artifacts ?? [], savedPackage.snapshot.artifacts) : detail?.artifacts ?? []), [savedPackage.denied, savedPackage.snapshot, detail?.artifacts]);
+  const selectedPackage = selectPackageArtifacts(artifacts, savedPackage.snapshot?.latest_package);
   const summaryHistory = artifacts.filter((artifact) => artifact.artifact_type === "executive_summary");
   const packetHistory = artifacts.filter((artifact) => artifact.artifact_type === "lender_packet");
-  const summary = summaryHistory[0];
+  const summary = selectedPackage.summary;
   const presentationHistory = artifacts.filter((artifact) => artifact.artifact_type === "investor_presentation");
-  const presentation = presentationHistory[0];
+  const presentation = selectedPackage.presentation;
   const investorReportFormat = asRecord(presentation?.body_json?.investor_report_format);
   const condensedInvestorReport = investorReportFormat?.max_pages === 5 && Number(investorReportFormat.page_count) > 0 && Number(investorReportFormat.page_count) <= 5;
-  const packet = packetHistory[0];
-  const packageInSync = Boolean(
-    summary?.generation_id
-    && summary.generation_id === packet?.generation_id
-    && summary.status === "current"
-    && packet?.status === "current"
-    && summary.is_fresh === true
-    && packet.is_fresh === true
-    && presentation?.generation_id === packet.generation_id
-    && presentation.status === "current"
-    && presentation.is_fresh === true
-  );
-  const packageNeedsRefresh = Boolean(summary && packet && !detail?.derived_pending && !packageInSync);
+  const packet = selectedPackage.packet;
+  const selectedPackageRows = [summary, presentation, packet].filter((row): row is Artifact => Boolean(row));
+  const packageInSync = !savedPackage.error && packageVerificationMatches(selectedPackageRows, [...(detail?.artifacts ?? []), ...generatedPackageProof], savedPackage.snapshot?.refresh);
+  const packageNeedsRefresh = Boolean(summary && packet && artifacts.some(row => row.generation_id === summary.generation_id && row.is_fresh === false));
   const evidenceFiles = detail?.files.filter(isSourceEvidenceFile) ?? [];
   const evidenceFileCount = evidenceFiles.length;
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
@@ -893,31 +886,19 @@ export function LeadDetailPanel({
 
   async function refreshFullPackage(openPreview = true, options?: PackageGenerationOptions) {
     const requestId = ++packageRequestRef.current;
-    const previewWindow = openPreview ? window.open("", "_blank") : null;
-    if (previewWindow) {
-      try {
-        previewWindow.opener = null;
-        writePreparationPreview(previewWindow, { title: "Preparing investor presentation", description: "Building the presentation and supporting PDFs from this file’s current financial figures and evidence." });
-      } catch { /* A blocked or closed preview must not prevent generation. */ }
-    }
     setBusy("package-all");
     setPackageError(null);
     setPackagePreparation({ state: "loading", title: "Preparing investor package", description: "Creating the presentation, executive summary and lender package. The current versions remain available while this runs.", steps: [{ label: "Create and save PDFs", status: "active" }, { label: "Open preview", status: "pending" }] });
     try {
       const generated = await onGeneratePackage(options);
       if (requestId !== packageRequestRef.current) return;
+      setGeneratedPackageProof([generated.executive_summary, generated.lender_packet, ...(generated.investor_presentation ? [generated.investor_presentation] : [])]);
       setPackageTab("summary");
-      const previewUrl = generated.investor_presentation?.preview_url || generated.investor_presentation?.download_url || generated.lender_packet.preview_url || generated.lender_packet.download_url || generated.executive_summary.preview_url || generated.executive_summary.download_url;
-      let previewOpened = false;
-      if (previewWindow && previewUrl) {
-        try {
-          if (!previewWindow.closed) { previewWindow.location.replace(previewUrl); previewOpened = true; }
-        } catch { /* Saved PDFs remain successful even if preview navigation fails. */ }
-      }
-      if (previewWindow && !previewOpened) {
-        try { writePreparationPreview(previewWindow, { state: "complete", title: "Investor package ready", description: "The versioned PDFs have been saved. Return to the file to open the presentation or download the package." }); } catch { /* Best-effort preview only. */ }
-      }
-      setPackagePreparation({ state: "complete", title: "Investor package ready", description: previewOpened ? "The versioned PDFs are saved and the presentation preview has opened." : "The versioned PDFs are saved. Open the presentation or supporting documents below to preview them.", steps: [{ label: "Create and save PDFs", status: "complete" }, ...(openPreview ? [{ label: previewOpened ? "Preview opened" : "Preview available below", status: previewOpened ? "complete" as const : "pending" as const }] : [])] });
+      await savedPackage.check();
+      if (requestId !== packageRequestRef.current) return;
+      const previewArtifact = generated.investor_presentation ?? generated.lender_packet;
+      if (openPreview) setPackagePreviewRequest({ key: requestId, artifactId: previewArtifact.id });
+      setPackagePreparation({ state: "complete", title: "Investor package ready", description: "The versioned PDFs are saved. Review the in-app preview or open a supporting document below.", steps: [{ label: "Create and save PDFs", status: "complete" }] });
       toast.show(generated.superseded_bucket_file_ids.length
         ? "Package refreshed. The previous room PDFs were superseded."
         : "Investor presentation, executive summary and lender package are ready in the room.");
@@ -926,9 +907,6 @@ export function LeadDetailPanel({
       const message = apiErrorMessage(reason, "The investor package could not be generated.");
       setPackageError(message);
       setPackagePreparation({ state: "error", title: "Package preparation needs attention", description: `${message} Your prior package remains available. Retry generation after correcting the issue.`, steps: [{ label: "Create and save PDFs", status: "pending" }, { label: "Open preview", status: "pending" }] });
-      if (previewWindow) {
-        try { writePreparationPreview(previewWindow, { state: "error", title: "Package preparation needs attention", description: message }); } catch { /* The error remains visible in the file. */ }
-      }
       toast.show(message);
     } finally {
       if (requestId === packageRequestRef.current) setBusy("");
@@ -1859,28 +1837,33 @@ export function LeadDetailPanel({
   ];
 
   const renderFundingPackage = (marketplace: ReactNode, cockpit: FinancialCockpitData) => profileId ? <FundingPackageWorkspace key={profileId} profileId={profileId} cockpit={cockpit} activeTab={packageTab} onTab={(tab) => { setPackageTab(tab); if (tab === "marketplace") setCockpitFocus("marketplace"); }} busy={busy !== "" || zipBusy} generating={busy === "package-all"} preparation={packagePreparation} generated={Boolean(summary && packet)} current={packageInSync} error={packageError} onGenerate={(options) => void refreshFullPackage(true, options)}
+    onCheckSaved={() => void savedPackage.check()} checkingSaved={savedPackage.checking}
+    savedPackageStatus={<div role="status" aria-label="Saved package updates" className="sub" style={{ marginBottom: 12 }}>
+      {savedPackage.error ? <span className="c-bad">Saved package check failed. {apiErrorMessage(savedPackage.error, "Try Check saved package again.")}</span> : savedPackage.snapshot?.refresh?.status === "queued" || savedPackage.snapshot?.refresh?.status === "running" ? "Updating saved package… The latest complete PDFs remain available." : savedPackage.snapshot?.refresh?.status === "failed" || savedPackage.snapshot?.refresh?.status === "blocked" ? <span className="c-bad">Package update needs attention. {savedPackage.snapshot.refresh.message || "Use Refresh package + preview to retry after reviewing its inputs."}</span> : packageInSync ? "Saved package matches its last validated source snapshot. Delivery checks current sources again." : "Latest saved PDFs · source freshness has not been checked."}
+      {savedPackage.checkedAt ? ` Last checked ${formatDateTime(new Date(savedPackage.checkedAt).toISOString())}.` : ""}
+    </div>}
     packageDetails={<InvestorPackageDetails profileId={profileId} intakeId={detail!.intake.id} report={presentation ?? null} disabled={busy !== "" || zipBusy} onSaved={onFundingRequestSaved} onOpenEvidence={openEvidenceFiles} />}
     packageContent={summary && packet ? <div className="package-readiness-overview">
                     {packageNeedsRefresh ? <Callout tone="warn">The evidence, review, or selected program changed after this package was generated. Refresh once to rebuild the presentation and supporting PDFs from the current Package Readiness snapshot.</Callout> : null}
                     <div className="package-readiness-status">
-                      <div><span className="lbl">Current package</span><strong>Version {Math.max(artifactVersion(summary, summaryHistory.length), artifactVersion(packet, packetHistory.length))}</strong><small>Generated {formatDateTime(packet.created_at)}</small></div>
+                      <div><span className="lbl">Latest saved package</span><strong>Version {Math.max(artifactVersion(summary, summaryHistory.length), artifactVersion(packet, packetHistory.length))}</strong><small>Generated {formatDateTime(packet.created_at)}</small></div>
                       <div><span className="lbl">Programs in scope</span><strong>{programReadiness?.selections.length || 0}</strong><small>{programReadiness?.selections.map((item) => item.program_name).join(" · ") || "Select a program before delivery"}</small></div>
                       <div><span className="lbl">Evidence</span><strong>{evidenceFileCount} files</strong><small>{programReadiness?.can_advance ? "Program requirements complete" : `${canonicalMissingDocuments.length} open requirement${canonicalMissingDocuments.length === 1 ? "" : "s"}`}</small></div>
                     </div>
                     <div className="package-document-grid">
-                      <PackageArtifactCard artifact={summary} label="Executive summary" description="Concise credit brief with decision metrics, strengths, risks, and next action." version={artifactVersion(summary, summaryHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(summary))} />
-                      {presentation ? <PackageArtifactCard artifact={presentation} label={condensedInvestorReport ? "Investor report · up to 5 pages" : "Investor report · legacy layout"} description={condensedInvestorReport ? "Confidential branded report: financing, monthly statements, earnings impact, credit overview, collateral and source references." : "Refresh the package to create the condensed five-page report with charts and a full source register."} version={artifactVersion(presentation, presentationHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(presentation))} /> : null}
-                      <PackageArtifactCard artifact={packet} label="Detailed underwriting packet" description="Supporting underwriting schedules and evidence detail. The condensed investor report is available separately." version={artifactVersion(packet, packetHistory.length)} current bucketSynced={Boolean(artifactBucketFileId(packet))} />
+                      <PackageArtifactCard artifact={summary} label="Executive summary" description="Concise credit brief with decision metrics, strengths, risks, and next action." version={artifactVersion(summary, summaryHistory.length)} current={packageInSync} bucketSynced={Boolean(artifactBucketFileId(summary))} previewRequest={packagePreviewRequest} />
+                      {presentation ? <PackageArtifactCard artifact={presentation} label={condensedInvestorReport ? "Investor report · up to 5 pages" : "Investor report · legacy layout"} description={condensedInvestorReport ? "Confidential branded report: financing, monthly statements, earnings impact, credit overview, collateral and source references." : "Refresh the package to create the condensed five-page report with charts and a full source register."} version={artifactVersion(presentation, presentationHistory.length)} current={packageInSync} bucketSynced={Boolean(artifactBucketFileId(presentation))} previewRequest={packagePreviewRequest} /> : null}
+                      <PackageArtifactCard artifact={packet} label="Detailed underwriting packet" description="Supporting underwriting schedules and evidence detail. The condensed investor report is available separately." version={artifactVersion(packet, packetHistory.length)} current={packageInSync} bucketSynced={Boolean(artifactBucketFileId(packet))} previewRequest={packagePreviewRequest} />
                     </div>
                     <UnderwriterDigest artifact={summary} />
-                  </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>No package has been generated</strong><p>Generate the investor presentation, executive summary and lender package from one evidence snapshot. Each PDF is versioned and saved in this file&apos;s room.</p></div>}
+                  </div> : <div className="package-readiness-empty"><Icon name="reports" size={28} /><strong>{selectedPackage.hasArtifacts ? "A complete saved package is not available yet" : "No package has been generated"}</strong><p>{selectedPackage.hasArtifacts ? "Check saved package for the completed update. Prior immutable PDFs remain in Version history." : "Generate the investor presentation, executive summary and lender package from one evidence snapshot. Each PDF is versioned and saved in this file’s room."}</p></div>}
     marketplaceContent={<><MarketplacePublishStrip profileId={profileId} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onStartListing={() => { setPackageTab("marketplace"); setCockpitFocus("marketplace"); }} />{!fileWorkspace ? marketplace : null}</>}
     historyContent={<div className="package-version-workspace">
-                    <Callout tone="acc">The current generation is the active package in the room. Refreshing creates a new immutable version and marks the previous PDFs as superseded.</Callout>
+                    <Callout tone="acc">The latest complete generation is shown in Package &amp; presentation. Earlier PDFs remain unchanged in this history.</Callout>
                     <div className="package-version-columns">
-                      <PackageVersionList label="Investor report" artifacts={presentationHistory} renderReferences={artifact => <InvestorReportReferenceButton intakeId={detail!.intake.id} artifact={artifact} compact onOpenEvidence={openEvidenceFiles} />} />
-                      <PackageVersionList label="Executive summary" artifacts={summaryHistory} />
-                      <PackageVersionList label="Lender package" artifacts={packetHistory} />
+                      <PackageVersionList label="Investor report" artifacts={presentationHistory} currentId={presentation?.id} renderReferences={artifact => <InvestorReportReferenceButton intakeId={detail!.intake.id} artifact={artifact} compact onOpenEvidence={openEvidenceFiles} />} />
+                      <PackageVersionList label="Executive summary" artifacts={summaryHistory} currentId={summary?.id} />
+                      <PackageVersionList label="Lender package" artifacts={packetHistory} currentId={packet?.id} />
                     </div>
                   </div>}
     deliveryContent={<div className="package-delivery"><Callout tone={packageInSync ? "acc" : "warn"}>{packageInSync && packet ? `Synchronized package version ${artifactVersion(packet, packetHistory.length)} is ready to send.` : "Refresh required: rebuild the presentation and supporting PDFs from the latest evidence and program conditions before delivery."}</Callout><p className="sub">{condensedInvestorReport ? "The condensed investor report is the primary delivery PDF. The detailed underwriting packet and full ZIP remain available as supporting files." : "The current lender packet is the primary delivery PDF. Refresh the package to create the condensed investor report."}</p><div className="fldgrid two"><Field label="To"><Input value={toEmails} onChange={(event) => setToEmails(event.target.value)} placeholder="lender@bank.com" /></Field><Field label="Cc"><Input value={ccEmails} onChange={(event) => setCcEmails(event.target.value)} placeholder="optional" /></Field></div><Field label="Subject"><Input value={subject} onChange={(event) => setSubject(event.target.value)} placeholder="Prepare a lender submission" /></Field><Field label="Message"><Textarea value={body} onChange={(event) => setBody(event.target.value)} rows={7} placeholder="Draft the reviewed submission message" /></Field><Row><Btn onClick={previewEmail} disabled={!packageInSync || busy !== ""}><Icon name="spark" size={14} />{busy === "preview" ? "Drafting..." : "Draft with Elara"}</Btn><Btn variant="pri" disabled={!toEmails.trim() || !subject.trim() || !body.trim() || !packageInSync || busy !== ""} onClick={() => setSendReviewOpen(true)}><Icon name="send" size={14} />Review and send</Btn><Btn onClick={downloadZip} disabled={zipBusy || !packageInSync || busy !== ""}>{zipBusy ? "Building..." : "Download package"}</Btn></Row>{artifactOperation === "zip" && artifactPreparation ? <PreparationProgress {...artifactPreparation} compact /> : null}</div>}
