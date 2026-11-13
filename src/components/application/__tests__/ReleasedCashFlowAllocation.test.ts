@@ -18,4 +18,11 @@ describe("floating plan funding", () => {
  it("shows an explicit known zero pool before any cost savings are planned", () => { const html = render({ available: false, required: false, funding_available: true, funding_required: false, funding_capacity_monthly: 0, funding_capacity_annual: 0, funding_unallocated_monthly: 0, funding_unallocated_annual: 0, funding_retained_monthly: 0, funding_retained_annual: 0, loan_status: "not_saved", operating_savings_monthly: 0, operating_known_savings_monthly: 0, allocations: [] }, {}); expect(html).toContain("$0.00"); expect(html).toContain("Cash kept"); expect(html).not.toContain("attention"); });
  it("keeps positive cash by default without rows, acknowledgement or allocation errors", () => { const html = render({ funding_required: false, funding_complete: true, allocations: [], funding_allocated_monthly: 0, funding_unallocated_monthly: 120 }, {}); expect(html).toContain("Cash kept"); expect(html).toContain("$120.00"); expect(html).toContain("Use some cash"); expect(html).not.toContain("attention"); expect(html).not.toContain("To allocate"); });
  it("does not invent a pool when no saved loan or cash savings exist", () => { const html = render({ available: false, required: false, funding_available: false, funding_required: false, loan_status: "not_saved", operating_savings_monthly: 0, operating_known_savings_monthly: 0 }, {}); expect(html).toBe(""); });
+ it("itemizes net loan relief and operating savings beside the funding pool", () => {
+ const html = render({net_loan_cash_change_monthly: 100, operating_savings_monthly: 20});
+ expect(html).toContain("Net loan cash relief / month");
+ expect(html).toContain("Operating cost savings");
+ expect(html).toContain("$100.00");
+ expect(html).toContain("$20.00");
+ });
 });

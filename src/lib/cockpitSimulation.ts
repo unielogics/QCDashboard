@@ -146,6 +146,8 @@ export type LocalPlanEvaluation = {
   serviceBeforeNewPayment: number | null;
   serviceAfter: number | null;
   serviceAfterAnnual: number | null;
+  newLoanAnnualDebtService: number | null;
+  newLoanAnnualDebtServiceBasis: "canonical_schedule" | "annualized_recorded_payment" | "annualized_monthly_payment" | "unavailable";
   candidates: PlanCandidate[];
   headlineAfter: number | null;
   noDebtLeft: boolean;
@@ -233,7 +235,10 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const newInterestOnlyPayment = newLoanPaymentUnknown || manualOrdinary ? null : schedule?.payment_io_monthly ?? null;
   const retainedAnnual = plan.terms_ref?.retained_annual_debt_service;
   const recordedRetained = source === "recorded_terms" && plan.terms_ref?.treatment === "refinance" && retainedAnnual != null && (plan.overrides?.debt_service_note ?? "").startsWith("Refinance per ") && serviceOverride != null && Math.abs(serviceOverride - roundEbitdaMoney(retainedAnnual / 12)) < 0.005;
-  const exactRetained = schedule?.repayment_config && recordedRetained;
+  const legacyRecordedSchedule = source === "recorded_terms" && Boolean(schedule) && !schedule?.repayment_config
+    && (schedule?.term_months ?? 0) >= 12;
+  const legacyRecordedPayment = legacyRecordedSchedule && plan.new_payment_monthly != null;
+  const exactRetained = Boolean(schedule) && recordedRetained && !legacyRecordedSchedule;
   const serviceBefore = serviceOverride ?? cockpit.debt.service.monthly ?? null;
   const retirementUnknown = retiredPaymentUnknown && !recordedRetained;
   const coverageUnavailableReason = retirementUnknown ? "A selected payoff has unknown monthly debt service. Review its payment before calculating coverage." : serviceBefore == null ? DSCR_SERVICE_MISSING : newLoanPaymentUnknown ? DSCR_NEW_PAYMENT_MISSING : null;
@@ -245,9 +250,12 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
   const serviceAfterInterestOnly = serviceBeforeNewPayment == null || newInterestOnlyPayment == null ? null : r2(Math.max(0, serviceBeforeNewPayment + newInterestOnlyPayment));
   const netRegularMonthlyChange = serviceBefore == null || serviceAfterRegular == null ? null : r2(serviceAfterRegular - serviceBefore);
   const netInterestOnlyMonthlyChange = serviceBefore == null || serviceAfterInterestOnly == null ? null : r2(serviceAfterInterestOnly - serviceBefore);
-  const newAnnualService = schedule?.repayment_config && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005 ? schedule.coverage_annual_debt_service : (newPayment ?? 0) * 12;
+  const canonicalPayment = schedule != null && Math.abs((newPayment ?? 0) - schedule.coverage_payment_monthly) < 0.005;
+  const useCanonicalAnnual = canonicalPayment && !legacyRecordedPayment;
+  const newLoanAnnualDebtService = useCanonicalAnnual ? schedule.coverage_annual_debt_service : newPayment == null ? null : newPayment * 12;
+  const newLoanAnnualDebtServiceBasis = useCanonicalAnnual ? "canonical_schedule" : legacyRecordedPayment ? "annualized_recorded_payment" : newPayment == null ? "unavailable" : "annualized_monthly_payment";
   const existingAnnualService = exactRetained ? retainedAnnual : serviceBeforeNewPayment == null ? null : serviceBeforeNewPayment * 12;
-  const serviceAfterAnnual = existingAnnualService == null || newLoanPaymentUnknown ? null : r2(Math.max(0, existingAnnualService + newAnnualService));
+  const serviceAfterAnnual = existingAnnualService == null || newLoanPaymentUnknown ? null : r2(Math.max(0, existingAnnualService + (newLoanAnnualDebtService ?? 0)));
   const candidates: PlanCandidate[] = cockpit.dscr.candidates
     .filter((c) => c.numerator != null)
     .map((c) => {
@@ -320,6 +328,8 @@ export function evaluatePlanLocally(cockpit: FinancialCockpit, plan: FinancialPl
     serviceBeforeNewPayment,
     serviceAfter,
     serviceAfterAnnual,
+    newLoanAnnualDebtService,
+    newLoanAnnualDebtServiceBasis,
     candidates,
     headlineAfter: headline?.value_after ?? null,
     noDebtLeft: !!headline?.no_debt_left,

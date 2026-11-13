@@ -69,8 +69,7 @@
 .composer button { min-height: 32px; padding: 5px 10px; border: 1px solid var(--line, #e0e3e9); border-radius: 6px; background: var(--surface, #fff); font-size: 12px; }
 .planner .addAction { min-height: 32px; padding: 4px 10px; border: 1px solid var(--line, #dfe2e9); border-radius: 7px; background: var(--surface, #fff); color: var(--brand, #3d4f9b); font-weight: 550; white-space: nowrap; flex: none; }
 .planner .addAction:hover:not(:disabled), .rowMain > .link:hover:not(:disabled) { background: var(--sunken2, #f5f6fa); }
-.attention { border: 1px solid var(--danger, #a3433a); border-radius: 7px; padding: 12px; }
-.items > .attention:first-child { padding: 12px; border-top: 1px solid var(--danger, #a3433a); }
+.attention { outline: 1px solid var(--danger, #a3433a); outline-offset: -1px; border-radius: 7px; }
 .srOnly { position: absolute; width: 1px; height: 1px; margin: -1px; clip: rect(0, 0, 0, 0); overflow: hidden; white-space: nowrap; }
 @media (max-width: 600px) {
   .planner { gap: 10px; }
@@ -86,3 +85,6 @@
   .planner .addAction { min-height: 32px; padding: 4px 8px; }
   .change { padding-block: 12px; }
 }
+.change > .command { align-items: center; padding-block: 5px; }
+.change > .command label:has(select[aria-label^="Command direction"]) { flex-basis: 126px; }
+.change > .command label:has(select[aria-label^="Command mode"]) { flex-basis: 126px; }

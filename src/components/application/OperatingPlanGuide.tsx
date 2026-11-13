@@ -31,8 +31,8 @@ const STEPS = ["Confirm source", "Confirm current costs", "Plan changes", "Revie
 const active = <T extends { excluded?: boolean; duplicate_of?: string | null }>(rows: T[] = []) => rows.filter(row => !row.excluded && !row.duplicate_of);
 const uid = () => crypto.randomUUID();
 
-export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, reportControls, stepRequest, onAdvancedAction, onEditUnits = () => {}, stepIndex, onStepChange, sourceAnnualRevenue, onReviewRevenue, unitProposal, onAddUnitPlan = () => {}, sourceTools, sourceMessage, unitControls, allocationControls, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version", goal, goalControls, suggestionClient, onReviewExpense, saveStatus, calculationStatus, onFixFeedback, growthRequest, fundingSummary, configurationRequest }: {
-  reportControls?: ReactNode;
+export function OperatingPlanGuide({ value, onChange, guidance, evidence, evaluation, layoutEvaluation, evaluating, disabled = false, onPreviewSource, detailedImpact, reviewControls, reportControls, stepRequest, onAdvancedAction, onEditUnits = () => {}, stepIndex, onStepChange, sourceAnnualRevenue, onReviewRevenue, unitProposal, onAddUnitPlan = () => {}, sourceTools, sourceMessage, unitControls, allocationControls, onConfirmSource, onSaveVersion, saveVersionDisabled, saveVersionBusy, saveVersionLabel = "Save version", goal, goalControls, suggestionClient, onReviewExpense, saveStatus, calculationStatus, onFixFeedback, growthRequest, fundingSummary, configurationRequest, comparisonContent }: {
+  reportControls?: ReactNode; comparisonContent?: ReactNode;
   fundingSummary?: ReactNode; configurationRequest?: OperatingConfigurationRequest;
   growthRequest?: number; saveStatus?: OperatingDraftSaveStatus; calculationStatus?: OperatingCalculationStatus; onFixFeedback?: (id?: string, field?: string) => void;
   onReviewExpense?: (id: string) => void; suggestionClient?: OperatingSuggestionClient;
@@ -69,10 +69,13 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
     });
   };
   const go = (next: number) => {
-    if (next > 0 && step === 0 && (evaluation?.baseline.noi == null || evaluation?.baseline.noi_governance?.status === "stale" || evaluation?.baseline.noi_governance?.status === "unavailable")) { const sourceIssue = prerequisiteIssues.find(issue => issue.step === 0); if (sourceIssue) { reveal(sourceIssue); return; } }
-    if (next >= 2 && prerequisiteIssues.length) { reveal(prerequisiteIssues[0]); return; }
-    if (next >= 2 && evaluating) { setNavigationNotice("Checking your current answers before continuing…"); return; }
-    setNavigationNotice(""); setHandoffMode(false); setStep(next); cancelAnimationFrame(navigationFrame.current); navigationFrame.current = requestAnimationFrame(() => { guideElement.current?.querySelector<HTMLElement>("[data-operating-step-heading]")?.focus({ preventScroll: true }); guideElement.current?.scrollIntoView({ block: "start", behavior: "auto" }); }); };
+    setNavigationNotice(""); setHandoffMode(false); setStep(next);
+    cancelAnimationFrame(navigationFrame.current);
+    navigationFrame.current = requestAnimationFrame(() => {
+      guideElement.current?.querySelector<HTMLElement>("[data-operating-step-heading]")?.focus({ preventScroll: true });
+      guideElement.current?.scrollIntoView({ block: "start", behavior: "auto" });
+    });
+  };
   useEffect(() => { if (stepRequest) setStep(stepRequest.index); }, [stepRequest, setStep]);
   const expenses = active(value.expenses);
   const unitsUsed = operatingUnitsUsed(value);
@@ -89,8 +92,20 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
   const unanswered = unansweredOperatingCategories(value, guidance);
   const handoffEligible = Boolean(value.historical_corrections?.some(row => documentedHistoricalCorrection(value, row.source_group_key)));
   const categoryKeys = [...new Set([...essentials.map(row => row.category), ...expenses.map(row => row.category || "other")])];
-  const sourceReview = operatingSourceReviewInUse(value, evaluation?.source_review ?? layoutEvaluation?.source_review, guidance) ? <OperatingPlanSourceReview onHandoff={() => { setHandoffMode(true); setStep(3); }} request={sourceReviewRequest} issues={issues} value={value} onChange={onChange} guidance={guidance} review={evaluation?.source_review ?? layoutEvaluation?.source_review} disabled={disabled} onPreviewSource={onPreviewSource} onReviewLegacy={() => { setStep(2); }} /> : null;
-  const displaySteps = ["Confirm source", "Revenue model and current costs", "Plan changes", "Review and save"];
+  const sourceReview = operatingSourceReviewInUse(value, evaluation?.source_review ?? layoutEvaluation?.source_review, guidance) ? <OperatingPlanSourceReview onHandoff={() => { setHandoffMode(true); setStep(3); }} request={sourceReviewRequest} issues={issues} value={value} onChange={onChange} guidance={guidance} review={evaluation?.source_review ?? layoutEvaluation?.source_review} disabled={disabled} onPreviewSource={onPreviewSource} onReviewLegacy={() => { setStep(1); }} /> : null;
+  const displaySteps = ["Today / source", "Current drivers", "Assumptions", "Outcome"];
+  const baseline = evaluation?.baseline ?? layoutEvaluation?.baseline;
+  const sourceId = guidance?.reporting.source_file_id;
+  const baselineSource = guidance?.reporting.source_label || "Reporting source needs review";
+  const baselinePeriod = guidance?.reporting.period_start && guidance.reporting.period_end
+    ? `${guidance.reporting.period_start} to ${guidance.reporting.period_end}` : baseline?.period || "Period needs review";
+  const earningsLabel = baseline?.earnings_kind?.toLowerCase().includes("ebitda") ? "Annual EBITDA" : "Annual earnings";
+  const todayMetrics = [
+    { label: "Annual revenue", value: baseline?.revenue, currency: baseline?.currency },
+    { label: earningsLabel, value: baseline?.earnings, currency: baseline?.currency },
+    { label: "Annual operating income (NOI)", value: baseline?.noi, currency: baseline?.noi_governance?.currency ?? baseline?.noi_currency ?? baseline?.currency },
+    { label: "Current DSCR", value: baseline?.dscr, ratio: true },
+  ];
   const comparison = evaluation?.comparison;
   const proposedDelta = comparison?.proposed.earnings != null && comparison.baseline.earnings != null ? comparison.proposed.earnings - comparison.baseline.earnings : null;
   const activeChanges = (value.adjustments || []).filter(row => !row.excluded && row.status !== "rejected").length;
@@ -117,11 +132,26 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
       <OperatingPlanIssueRail issues={issues} onFix={reveal} />
     </aside>
     <div className={styles.stepContent}>
+    <section className={styles.today} aria-label="Today's financial baseline">
+      <header><div><h4>Today</h4><p>{baselineSource}<span aria-hidden="true"> / </span>{baselinePeriod}</p></div><div className={styles.todayActions}>
+        {sourceId && onPreviewSource ? <button type="button" onClick={() => onPreviewSource(sourceId)}>View source</button> : null}
+        {step !== 0 ? <button type="button" onClick={() => go(0)}>Review source</button> : null}
+      </div></header>
+      <dl>{todayMetrics.map(metric => <div key={metric.label}><dt>{metric.label}</dt><dd className={metric.value != null && metric.value < 0 ? styles.negative : undefined}>
+        {metric.value == null ? "Needs source inputs" : metric.ratio ? `${metric.value.toFixed(2)}x` : metricAmountLabel(metric.value, metric.currency, 0)}
+      </dd></div>)}</dl>
+      <p>Revenue comes from the current sales drivers. Direct costs and operating expenses reduce earnings. Loan payments affect cash and debt coverage.</p>
+      <div className={styles.todayDrivers}><span>{expenses.length} current cost {expenses.length === 1 ? "line" : "lines"}{value.unit_label ? ` / ${value.unit_label} model` : " / revenue and cost drivers"}</span><button type="button" onClick={() => go(1)}>View current drivers</button>{step !== 2 ? <button type="button" onClick={() => go(2)}>Adjust assumptions</button> : null}</div>
+    </section>
+    {comparisonContent ? step === 3
+      ? <div className={styles.mainComparison}>{comparisonContent}</div>
+      : <details className={styles.comparisonDisclosure}><summary>Original, with the plan, and the difference</summary>{comparisonContent}</details>
+      : null}
     <h4 className={styles.stepHeading} data-operating-step-heading tabIndex={-1}>Step {step + 1}: {displaySteps[step]}</h4>
     {sourceMessage}
     {navigationNotice ? <small role="status" className={styles.warning}>{navigationNotice}</small> : null}
     {step === 0 ? <>
-      {issues.some(issue => issue.step === 0) ? <section className={`${styles.requiredItems} ${styles.attention}`} data-operating-source-repair tabIndex={-1} aria-label="Current income source required"><strong>{issues.filter(issue => issue.step === 0).every(issue => issue.field === "loan_source") ? "Confirm the saved loan inputs" : "Confirm current source inputs first"}</strong>{issues.filter(issue => issue.step === 0).map(issue => <small key={issue.id}>{issue.label}</small>)}<small>Source figures stay read-only. Planning starts after the current annual operating income, reporting period and currency are confirmed.</small>{fileWorkspace ? <>{issues.some(issue => issue.step === 0 && issue.field !== "loan_source") ? <a href={`/files/${encodeURIComponent(fileWorkspace.intakeId)}?section=financials`} target="_blank" rel="noopener noreferrer">Review current income source ↗</a> : null}{issues.some(issue => issue.field === "loan_source") ? <FileWorkspaceLink tool="coverage">Review saved loan plan ↗</FileWorkspaceLink> : null}</> : <small>Ask your team to confirm these saved source inputs, then check this plan again.</small>}</section> : null}
+      {issues.some(issue => issue.step === 0) ? <section className={`${styles.requiredItems} ${styles.attention}`} data-operating-source-repair tabIndex={-1} aria-label="Current income source required"><strong>{issues.filter(issue => issue.step === 0).every(issue => issue.field === "loan_source") ? "Confirm the saved loan inputs" : "Confirm current source inputs first"}</strong>{issues.filter(issue => issue.step === 0).map(issue => <small key={issue.id}>{issue.label}</small>)}<small>Source figures stay read-only. You can record assumptions now. Confirm current operating income, the reporting period and currency to calculate a complete outcome.</small>{fileWorkspace ? <>{issues.some(issue => issue.step === 0 && issue.field !== "loan_source") ? <a href={`/files/${encodeURIComponent(fileWorkspace.intakeId)}?section=financials`} target="_blank" rel="noopener noreferrer">Review current income source ↗</a> : null}{issues.some(issue => issue.field === "loan_source") ? <FileWorkspaceLink tool="coverage">Review saved loan plan ↗</FileWorkspaceLink> : null}</> : <small>Ask your team to confirm these saved source inputs, then check this plan again.</small>}</section> : null}
       {sourceTools ? <div>{sourceTools}</div> : <section className={styles.card} aria-label="Selected reporting source"><h4>Selected tax / P&amp;L source</h4><strong>{evidence?.files?.find(file => file.file_id === guidance?.reporting.source_file_id)?.file_name || guidance?.reporting.source_label || "No reporting source selected"}</strong><p>{guidance?.reporting.period_start || "Start unconfirmed"} to {guidance?.reporting.period_end || "End unconfirmed"} · {guidance?.reporting.currency || "Currency unconfirmed"} · {guidance?.reporting.basis || "Basis unconfirmed"}</p><p>Source figures are read-only. Confirm the source to draft its known current cost groups; unknown amounts stay blank.</p>{guidance?.reporting.source_file_id ? <button type="button" onClick={() => onPreviewSource?.(guidance.reporting.source_file_id!)}>View source (new tab)</button> : <p>You can enter current costs manually, or ask your team to add a reporting source.</p>}</section>}
       {sourceReview}
       {evaluation?.released_cash_flow?.source?.updated_at ? <section className={styles.card} aria-label="Loan terms on file">
@@ -154,10 +184,10 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
       {sourceReview ? <section className={styles.sourceReturn}><span>Source costs are confirmed in the first step.</span><button type="button" onClick={() => go(0)}>Review source costs</button></section> : null}
       <OperatingPlanItemization value={value} onChange={onChange} guidance={guidance} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} />
     </> : step === 2 ? <>
-      {prerequisiteIssues.length ? <section className={styles.requiredItems}><strong>Finish current answers before comparing the plan</strong><button type="button" onClick={() => reveal(prerequisiteIssues[0])}>{prerequisiteIssues[0].label}</button></section> : null}
+      {prerequisiteIssues.length ? <section className={styles.requiredItems}><strong>Source review is still needed</strong><small>You can enter assumptions while the remaining source items are reviewed.</small><button type="button" onClick={() => reveal(prerequisiteIssues[0])}>{prerequisiteIssues[0].label}</button></section> : null}
       <OperatingPlanCommands configurationRequest={configurationRequest} growthRequest={growthRequest} issues={issues} onFixFeedback={onFixFeedback} onReviewExpense={onReviewExpense} suggestionClient={suggestionClient} goalRevision={goal?.revision} hasGoal={Boolean(goal)} value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} onAdvancedAction={onAdvancedAction} onEditUnits={onEditUnits} baseline={evaluation?.baseline ?? layoutEvaluation?.baseline} sourceAnnualRevenue={sourceAnnualRevenue} onReviewRevenue={onReviewRevenue} unitProposal={unitProposal} onAddUnitPlan={onAddUnitPlan} />
 
-      <details data-operating-current-details><summary>Current item details and business units</summary><OperatingPlanItemization value={value} onChange={onChange} guidance={guidance} evaluation={evaluation} evaluating={evaluating} disabled={disabled} unitControls={unitControls} onPreviewSource={onPreviewSource} /></details>
+      <section className={styles.sourceReturn} data-operating-current-details><span>Current costs and business drivers are in Current drivers.</span><button type="button" onClick={() => go(1)}>Edit current drivers</button></section>
     </> : <>
 
       {handoffMode ? <section className={styles.requiredItems}><strong>Historical difference awaiting preparer review</strong><small>This version records the disclosed items and supporting explanation. It does not confirm changed historical income or approve the plan.</small></section> : <StableOperatingPreview pending={Boolean(evaluating || !evaluation)}><OperatingGuidedComparison onFix={onFixFeedback} evaluation={evaluation} baselineEvaluation={layoutEvaluation} evaluating={evaluating} /></StableOperatingPreview>}
@@ -167,7 +197,7 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
       <label className={styles.check}><input type="checkbox" disabled={disabled} checked={value.client_attestation === true} onChange={event => change({ client_attestation: event.target.checked })} />I confirm these disclosures and proposals</label>
       <label className={styles.shortNotes}>Plan and handoff notes<textarea value={value.notes || ""} disabled={disabled} onChange={event => change({ notes: event.target.value })} /></label>
       <details aria-label="Tax preparer handoff"><summary>Tax preparer handoff{value.historical_corrections?.length ? ` · ${value.historical_corrections.length} historical difference(s)` : ""}</summary><p>Keep historical source corrections separate from future plans. Save this version and share its PDF with your tax preparer for review. This does not file or amend a tax return.</p>{value.historical_corrections?.map(correction => <article key={correction.source_group_key}><strong>{guidance?.expense_groups?.find(group => group.key === correction.source_group_key)?.label || "Historical source difference"} · unresolved preparer review</strong><p>{correction.reason || "Reason still needed"}</p><p>{correction.evidence_note || (correction.source_file_ids?.length ? "Supporting documents linked for review." : "Evidence or reference still needed")}</p><button type="button" onClick={() => go(1)}>Review historical correction</button></article>)}{evaluation?.expense_changes?.source_reconciliation_issues?.map(issue => <p className={styles.warning} key={issue}>{issue}</p>)}</details>
-      {reviewControls ? <details><summary>Staff review and reconciliation</summary>{reviewControls}</details> : null}
+      {reviewControls ? <details aria-label="Staff review controls"><summary>Staff review and reconciliation</summary>{reviewControls}</details> : null}
     </>}
     <footer className={styles.navigation}><button type="button" disabled={step === 0} onClick={() => go(step - 1)}>Back</button><span>Step {step + 1} of {STEPS.length}</span>{step < STEPS.length - 1 ? <button type="button" onClick={() => { if (step === 0 && !disabled && evaluation?.baseline.noi != null && !["stale", "unavailable"].includes(evaluation?.baseline.noi_governance?.status || "")) onConfirmSource?.(); go(step + 1); }}>Continue to {displaySteps[step + 1].toLowerCase()}</button> : <button type="button" disabled={disabled || saveVersionDisabled || !onSaveVersion} onClick={() => { if (!handoffMode && issues.length) { reveal(issues[0]); return; } void onSaveVersion?.(); }}>{saveVersionBusy ? "Saving version…" : handoffMode ? "Save for preparer review" : issues.length ? "Complete required items" : saveVersionLabel}</button>}</footer>
     </div>

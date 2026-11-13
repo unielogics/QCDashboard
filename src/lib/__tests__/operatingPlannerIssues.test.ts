@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { operatingPlannerIssues, operatingPrerequisiteIssues } from "../operatingPlannerIssues";
+import { operatingGroupConflictPairs, operatingPlannerIssueLabel, operatingPlannerIssues, operatingPrerequisiteIssues } from "../operatingPlannerIssues";
 import type { OperatingEvaluation, OperatingPlanBody } from "../operatingPlan";
 const body = (): OperatingPlanBody => ({ period_start: "2025-01-01", period_end: "2025-12-31", currency: "USD", expenses: [{ id: "rent", label: "Rent", category: "rent", current_amount: 0 }], adjustments: [], category_confirmations: Object.fromEntries(["rent", "salaries", "marketing", "utilities", "insurance", "cogs"].map(key => [key, key === "rent" ? "confirmed" : "not_applicable"])) });
 const evaluation = (patch: Record<string, unknown> = {}) => ({ baseline: { noi: 0, noi_currency: "USD", currency: "CAD", noi_staff_reviewed: true, noi_governance: { status: "reviewed", currency: "USD" } }, draft_feedback: { actions: [], summary: { baseline_ready: true, complete: true, metric_issues: { noi: [], earnings: [], cash: [] } } }, ...patch }) as unknown as OperatingEvaluation;
@@ -31,3 +31,48 @@ it("keeps allocation input requirements live during a pending canonical request"
 
 it("keeps positive enhanced funding as cash without forcing rows or acknowledgement", () => { const b = body(); const e = evaluation({ cash_bridge: { available: true, required: true, stale: true, source_fingerprint: "legacy", unallocated_monthly: 3500, loan_status: "calculated", funding_available: true, funding_required: false, funding_complete: true, funding_stale: false, funding_source_fingerprint: "pool", funding_unallocated_monthly: 3600, funding_missing: [], allocations: [], missing: [] } }); expect(operatingPlannerIssues(b, e)).toEqual([]); expect(b.released_cash_flow).toBeUndefined(); });
 it("retains a negative enhanced overassignment as a real repair requirement", () => { const b = body(); const e = evaluation({ cash_bridge: { funding_available: true, funding_required: true, funding_complete: false, funding_source_fingerprint: "pool", funding_unallocated_monthly: -100, funding_missing: ["released_cash_flow.allocations.full_release"], allocations: [], missing: [] } }); const rows = operatingPlannerIssues(b, e); expect(rows).toHaveLength(1); expect(rows[0].field).toBe("released_cash_flow.allocations.overallocated"); });
+
+it("names overlapping category and marketing changes while retaining each canonical repair path", () => {
+  const groupId = "c6e0c430-415e-434a-a854-6c4800f3d818", marketingId = "42e24f04-3561-4b92-96bd-c08bd0cf6824";
+  const b = body();
+  b.expenses = [{ id: "campaign", label: "Google Ads", category: "marketing", current_amount: 1000, cadence: "monthly" }];
+  b.category_confirmations = { ...b.category_confirmations, rent: "not_applicable", marketing: "confirmed" };
+  b.adjustments = [
+    { id: groupId, kind: "expense_group_change", label: "Marketing budget reduction", expense_category: "marketing", implementation_cost: 0, explanation: "Reduce the category budget", command: { target: "total_cost", mode: "percent", direction: "decrease", value: 10, allocation: "proportional" } },
+    { id: marketingId, kind: "marketing_investment", label: "Google Ads growth", product_name: "Detail package", expense_row_id: "campaign", current_amount: 1000, proposed_amount: 1200, revenue_return_multiple: 3, contribution_margin_pct: 50, implementation_cost: 0, explanation: "Run an additional campaign" },
+  ];
+  const pair = `Group command ${groupId} overlaps action ${marketingId}; keep one group or item treatment before modeling the same costs.`;
+  const aggregate = `Group command overlaps item/group actions: ${marketingId}`;
+  const e = evaluation();
+  e.draft_feedback!.actions = [
+    { action_id: groupId, math_missing: [pair, aggregate], qualification_missing: [], source_issues: [] } as never,
+    { action_id: marketingId, math_missing: [pair], qualification_missing: [], source_issues: [] } as never,
+  ];
+  const before = JSON.stringify(b);
+  const conflicts = operatingPlannerIssues(b, e).filter(row => row.label.includes("overlaps"));
+  expect(conflicts).toHaveLength(3);
+  expect(conflicts[0]).toMatchObject({
+    actionId: groupId, step: 2, field: `adjustments.${groupId}.${pair}`,
+    label: "Marketing budget reduction overlaps Google Ads growth. Keep either the category change or the individual change.",
+    diagnostic: `Marketing budget reduction: ${pair}`,
+  });
+  expect(conflicts.every(row => row.label.includes("Marketing budget reduction") && row.label.includes("Google Ads growth"))).toBe(true);
+  expect(conflicts.every(row => !row.label.includes(groupId) && !row.label.includes(marketingId))).toBe(true);
+  expect(conflicts[2].actionId).toBe(marketingId);
+  expect(operatingGroupConflictPairs(b, e, groupId)).toEqual([{
+    groupId, individualId: marketingId, groupLabel: "Marketing budget reduction", individualLabel: "Google Ads growth",
+  }]);
+  expect(operatingGroupConflictPairs(b, e, marketingId)).toEqual(operatingGroupConflictPairs(b, e, groupId));
+  expect(operatingGroupConflictPairs(b, evaluation(), groupId)).toEqual([]);
+  const removed = { ...b, adjustments: b.adjustments.map(row => row.id === marketingId ? { ...row, excluded: true } : row) };
+  expect(operatingGroupConflictPairs(removed, e, groupId)).toEqual([]);
+  expect(JSON.stringify(b)).toBe(before);
+});
+
+it("uses linked cost names and readable fallbacks when conflict references lack an action label", () => {
+  const b = body();
+  b.adjustments = [{ id: "group", kind: "expense_group_change", expense_category: "marketing" }, { id: "item", expense_row_id: "rent" }];
+  expect(operatingPlannerIssueLabel("Group command group overlaps action item; keep one treatment", b)).toBe("Marketing category change overlaps Rent. Keep either the category change or the individual change.");
+  const missing = "39f3c1ea-faf6-4873-84f9-8d3f9a154dd0";
+  expect(operatingPlannerIssueLabel(`Action ${missing} also models this cost.`, b)).toBe("Action another planned change also models this cost.");
+});

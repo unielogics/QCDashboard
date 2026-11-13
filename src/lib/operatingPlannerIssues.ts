@@ -2,15 +2,59 @@ import { operatingActionIssuePath } from "./operatingActionIssuePath";
 import { operatingSourceReviewInUse } from "./operatingSourceReview";
 import { operatingFundingState } from "./operatingFundingState";
 import { operatingActionMissingFields, operatingActionFieldLabel } from "./operatingActionFields";
-import { operatingExpenseAmount, operatingNumber, type OperatingEvaluation, type OperatingPlanBody } from "./operatingPlan";
+import { operatingExpenseAmount, operatingLabel, operatingNumber, type OperatingEvaluation, type OperatingPlanBody } from "./operatingPlan";
 import { unansweredOperatingCategories, type OperatingGuidance } from "./operatingGuidance";
 import { operatingFeedbackLabel } from "./operatingPlanFeedback";
 import { documentedHistoricalCorrection, plannerSaveIssues } from "./recognizablePlan";
-export type OperatingPlannerIssue = { id: string; step: 0 | 1 | 2; field: string; label: string; expenseId?: string; actionId?: string; category?: string; sourceGroupKey?: string };
+export type OperatingPlannerIssue = { id: string; step: 0 | 1 | 2; field: string; label: string; diagnostic?: string; expenseId?: string; actionId?: string; category?: string; sourceGroupKey?: string };
+
+/** Display source conflicts by their plan names while keeping canonical paths for repair. */
+export function operatingPlannerIssueLabel(message: string, body?: OperatingPlanBody, actionId?: string): string {
+  const name = (id: string | undefined, fallback = "another planned change") => {
+    const action = body?.adjustments?.find(row => row.id === id);
+    const expense = body?.expenses?.find(row => row.id === (action?.expense_row_id || id));
+    return action?.label?.trim() || expense?.label?.trim() || (action?.kind === "expense_group_change" && action.expense_category ? `${operatingLabel(action.expense_category)} category change` : fallback);
+  };
+  const pair = message.match(/Group command (\S+) overlaps action (\S+);/);
+  if (pair) return `${name(pair[1], "The category change")} overlaps ${name(pair[2], "an individual change")}. Keep either the category change or the individual change.`;
+  const group = message.match(/Group command overlaps item\/group actions:\s*(.+)/);
+  if (group) {
+    const names = [...new Set(group[1].split(",").map(id => name(id.trim())))];
+    return `${name(actionId, "The category change")} overlaps ${names.join(" and ")}. Keep either the category change or the individual changes.`;
+  }
+  const pricing = message.match(/Annual pricing action (\S+) overlaps revenue or price action (\S+);/);
+  if (pricing) return `${name(pricing[1], "The pricing change")} overlaps ${name(pricing[2], "another sales change")}. Keep one pricing or revenue treatment for these sales.`;
+  return message.replace(/\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi, id => name(id));
+}
+
+/** Resolve only conflicts identified by the current canonical evaluator. */
+export function operatingGroupConflictPairs(body: OperatingPlanBody, evaluation: OperatingEvaluation | null | undefined, actionId: string) {
+  const active = body.adjustments?.filter(row => !row.excluded && !row.duplicate_of && row.status !== "rejected") || [];
+  const feedback = evaluation?.draft_feedback?.actions.find(row => row.action_id === actionId);
+  const messages = [...(feedback?.math_missing || []), ...(evaluation?.commands?.find(row => row.action_id === actionId)?.issues || [])];
+  const pairs = new Map<string, { groupId: string; individualId: string; groupLabel: string; individualLabel: string }>();
+  const add = (groupId: string, individualId: string) => {
+    const group = active.find(row => row.id === groupId && row.kind === "expense_group_change");
+    const individual = active.find(row => row.id === individualId && row.kind !== "expense_group_change");
+    if (!group || !individual) return;
+    pairs.set(`${groupId}:${individualId}`, {
+      groupId, individualId,
+      groupLabel: group.label?.trim() || `${operatingLabel(group.expense_category || "Current cost")} category change`,
+      individualLabel: individual.label?.trim() || body.expenses?.find(row => row.id === individual.expense_row_id)?.label || "Individual change",
+    });
+  };
+  for (const message of messages) {
+    const pair = message.match(/Group command (\S+) overlaps action (\S+);/);
+    if (pair) add(pair[1], pair[2]);
+    const group = message.match(/Group command overlaps item\/group actions:\s*(.+)/);
+    if (group) for (const id of group[1].split(",")) add(actionId, id.trim());
+  }
+  return [...pairs.values()];
+}
 /** Required answers and canonical evaluator issues only. No projected amounts are calculated here. */
 export function operatingPlannerIssues(body: OperatingPlanBody, evaluation?: OperatingEvaluation | null, guidance?: OperatingGuidance | null, options: { serverCurrent?: boolean } = {}): OperatingPlannerIssue[] {
   const issues: OperatingPlannerIssue[] = [], seen = new Set<string>();
-  const add = (row: Omit<OperatingPlannerIssue, "id">) => { const id = `${row.step}:${row.actionId || row.expenseId || row.category || ""}:${row.field}`; if (!seen.has(id)) { seen.add(id); issues.push({ ...row, id }); } };
+  const add = (row: Omit<OperatingPlannerIssue, "id">) => { const id = `${row.step}:${row.actionId || row.expenseId || row.category || ""}:${row.field}`; if (!seen.has(id)) { const label = operatingPlannerIssueLabel(row.label, body, row.actionId); seen.add(id); issues.push({ ...row, id, label, ...(label !== row.label ? { diagnostic: row.label } : {}) }); } };
   const baseline = evaluation?.baseline, feedback = evaluation?.draft_feedback;
   const currency = baseline?.noi_governance ? baseline.noi_governance.currency : baseline && "noi_currency" in baseline ? baseline.noi_currency : baseline?.currency;
   if (feedback?.summary.baseline_ready === false || !baseline || baseline.noi == null || !currency || baseline.noi_governance?.status === "stale" || baseline.noi_governance?.status === "unavailable") add({ step: 0, field: "baseline.noi", label: "Confirm the current annual operating income and its source" });

@@ -14,7 +14,18 @@ describe("required business profile fields", () => {
     expect(html).not.toContain('value="other" selected=""');
     expect(html).toContain("Select industry");
     expect(html).toContain("NAICS classification");
-    expect(html.match(/required=""/g)).toHaveLength(7);
+    const phone = html.match(/<label[^>]*>Business phone \*<input[^>]+>/)?.[0];
+    expect(phone).toContain('type="tel"');
+    expect(phone).toContain('required=""');
+    expect(phone).toContain('autoComplete="section-business tel"');
+    expect(phone).toContain('value=""');
+    const employees = html.match(/<label[^>]*>Number of employees \*<input[^>]+>/)?.[0];
+    expect(employees).toContain('type="number"');
+    expect(employees).toContain('required=""');
+    expect(employees).toContain('min="0"');
+    expect(employees).toContain('step="1"');
+    expect(employees).toContain('value=""');
+    expect(html.match(/required=""/g)).toHaveLength(9);
     expect(html).toContain('maxLength="1000"');
   });
 
@@ -28,9 +39,11 @@ describe("required business profile fields", () => {
     expect(html).toContain('value="N/A"');
   });
 
-  it("adds only the missing address and industry controls to existing public forms", () => {
+  it("keeps phone, employees, address and industry required when website and description are omitted", () => {
     const html = renderToStaticMarkup(createElement(BusinessProfileFields, { value: emptyBusinessProfile(), includeWebsiteDescription: false, onChange: () => {} }));
-    expect(html.match(/required=""/g)).toHaveLength(5);
+    expect(html.match(/required=""/g)).toHaveLength(7);
+    expect(html).toMatch(/Business phone \*<input[^>]*type="tel"[^>]*required=""/);
+    expect(html).toMatch(/Number of employees \*<input[^>]*type="number"[^>]*required=""/);
     expect(html).not.toContain("<textarea");
     expect(html).not.toContain('autoComplete="section-business url"');
   });

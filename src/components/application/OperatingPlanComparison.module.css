@@ -1,0 +1,20 @@
+.comparison { display: grid; gap: 14px; min-width: 0; padding: 20px; border: 1px solid var(--line, #e5e7eb); border-radius: 12px; background: var(--surface, #fff); }
+.comparison header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.comparison h4 { margin: 0; font-size: 14px; font-weight: 650; line-height: 21px; }
+.comparison header p { margin: 4px 0 0; color: var(--mut, #6b7280); font-size: 11px; line-height: 16px; }
+.scroll { overflow-x: auto; min-width: 0; max-width: 100%; }
+.comparison table { width: 100%; min-width: 650px; border-collapse: collapse; font-size: 12px; }
+.comparison thead th { padding: 10px 12px; background: var(--sunken, #f7f8fb); border-bottom: 1px solid var(--line, #e5e7eb); color: var(--mut, #737b89); font-size: 10px; font-weight: 600; text-align: right; white-space: nowrap; }
+.comparison thead th:first-child { text-align: left; border-top-left-radius: 6px; }
+.comparison thead th:last-child { border-top-right-radius: 6px; }
+.comparison tbody th, .comparison td { padding: 11px 12px; border-bottom: 1px solid var(--line, #edf0f4); vertical-align: middle; line-height: 18px; }
+.comparison tbody th { width: 43%; text-align: left; font-weight: 500; color: var(--ink, #263244); }
+.comparison td { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--mut, #6b7280); }
+.comparison td.planned { color: var(--ink, #263244); font-weight: 600; }
+.comparison small { display: block; margin-top: 3px; font-size: 10px; font-weight: 400; line-height: 15px; color: var(--mut, #7b8290); }
+.comparison td.improved { color: var(--success, #27835d); }
+.comparison td.worse { color: var(--danger, #ba5147); }
+.comparison .scope th { padding-top: 18px; color: var(--mut, #6b7280); font-size: 11px; font-weight: 600; }
+.comparison tbody:last-child tr:last-child th, .comparison tbody:last-child tr:last-child td { border-bottom: 0; }
+.note { margin: 0; font-size: 11px; line-height: 17px; color: var(--mut, #6b7280); }
+@media (max-width: 600px) { .comparison { padding: 14px; gap: 12px; } .comparison h4 { font-size: 13px; } .comparison table { min-width: 610px; } .comparison tbody th, .comparison td { padding-inline: 9px; } }

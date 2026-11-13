@@ -13,6 +13,8 @@ export function withSavedEarningsEvaluation(local: LocalPlanEvaluation, server: 
     headlineAfter: server.headline_after === undefined ? local.headlineAfter : server.headline_after,
     serviceAfter: server.debt_service_after_monthly === undefined ? local.serviceAfter : server.debt_service_after_monthly,
     serviceAfterAnnual: server.debt_service_after_annual === undefined ? local.serviceAfterAnnual : server.debt_service_after_annual,
+    newLoanAnnualDebtService: server.new_loan_annual_debt_service === undefined ? local.newLoanAnnualDebtService : server.new_loan_annual_debt_service,
+    newLoanAnnualDebtServiceBasis: server.new_loan_annual_debt_service_basis ?? local.newLoanAnnualDebtServiceBasis,
     candidates: server.candidates ?? local.candidates,
     noDebtLeft: server.no_debt_left === undefined ? local.noDebtLeft : server.no_debt_left,
     coverageUnavailableReason: server.coverage_unavailable_reason === undefined ? local.coverageUnavailableReason : server.coverage_unavailable_reason,
@@ -21,13 +23,15 @@ export function withSavedEarningsEvaluation(local: LocalPlanEvaluation, server: 
 
 /** Keep the current statement scope, but use the server's cost-aware scenario. */
 export function withBudgetEvaluation(local: LocalPlanEvaluation, server: PlanEvaluation | null | undefined, pending = false): LocalPlanEvaluation {
-  if (pending) return { ...local, ebitda: local.ebitda ? { ...local.ebitda, after: null, annual_after: null, adjusted_annual: { ...local.ebitda.adjusted_annual, after: null } } : undefined, headlineAfter: null, incomeAfter: null, serviceAfter: null, serviceAfterAnnual: null, newPayment: null, newRegularPayment: null, newInterestOnlyPayment: null, netAfterAverage: null, endingAfterLast: null, monthsDippingNegativeAfter: null, noDebtLeft: false, rows: [], coverageUnavailableReason: "Calculating the current loan and financing costs." };
+  if (pending) return { ...local, ebitda: local.ebitda ? { ...local.ebitda, after: null, annual_after: null, adjusted_annual: { ...local.ebitda.adjusted_annual, after: null } } : undefined, headlineAfter: null, incomeAfter: null, serviceAfter: null, serviceAfterAnnual: null, newLoanAnnualDebtService: null, newLoanAnnualDebtServiceBasis: "unavailable", newPayment: null, newRegularPayment: null, newInterestOnlyPayment: null, netAfterAverage: null, endingAfterLast: null, monthsDippingNegativeAfter: null, noDebtLeft: false, rows: [], coverageUnavailableReason: "Calculating the current loan and financing costs." };
   if (!server) return local;
   const loan = server.loan_terms;
   const schedule = loan ? repaymentPreview(loan.amount, loan.rate_pct, loan.term_months, { structure: loan.structure, interestOnlyMonths: loan.interest_only_months, periodsPerYear: loan.payments_per_year ?? 12, repaymentConfig: loan.repayment_config }).schedule : local.schedule;
   return { ...local, schedule, loanTerms: loan ?? local.loanTerms, ebitda: server.ebitda ?? local.ebitda, operatingPlan: server.operating_plan ?? null,
     headlineAfter: server.headline_after, incomeBefore: server.income_before_annual ?? local.incomeBefore, incomeAfter: server.income_after_annual ?? null,
     serviceAfter: server.debt_service_after_monthly, serviceAfterAnnual: server.debt_service_after_annual,
+    newLoanAnnualDebtService: server.new_loan_annual_debt_service === undefined ? local.newLoanAnnualDebtService : server.new_loan_annual_debt_service,
+    newLoanAnnualDebtServiceBasis: server.new_loan_annual_debt_service_basis ?? local.newLoanAnnualDebtServiceBasis,
     newPayment: server.new_payment_monthly, newRegularPayment: server.new_regular_payment_monthly ?? null, newInterestOnlyPayment: server.new_interest_only_payment_monthly ?? null,
     serviceAfterRegular: server.debt_service_after_regular_monthly ?? null, serviceAfterInterestOnly: server.debt_service_after_interest_only_monthly ?? null,
     netAfterAverage: server.net_after_avg, endingAfterLast: server.ending_after_last, monthsDippingNegativeAfter: server.months_dipping_negative_after, cashKept: server.cash_kept,

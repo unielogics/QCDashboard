@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft, type BusinessContactValues } from "@/components/file/BusinessContactDetails";
 
 const values: BusinessContactValues = {
+  business_phone: "2025550123", employee_count: 12,
   business_street: "123 Main Street, Suite 4", business_city: "Miami", business_state: "FL", business_zip: "33101-1234",
   industry: "professional_practice", business_website: "https://example.com", business_description: "We provide physical therapy services to children.",
 };
@@ -21,15 +22,26 @@ describe("business details in the Contact card", () => {
     expect(html).toContain("<details>");
     expect(html).not.toContain("<details open");
     expect(html).toContain("We provide physical therapy services to children.");
+    expect(html).toContain("2025550123");
+    expect(html).toMatch(/Number of employees<\/span><b[^>]*>12<\/b>/);
     expect(html).not.toContain("confirmed NAICS");
   });
 
   it("keeps missing legacy answers distinct from an explicit no-website answer", () => {
     const empty = renderToStaticMarkup(createElement(BusinessContactDetails, { values: {} }));
-    expect(empty.match(/Not provided/g)).toHaveLength(3);
+    expect(empty.match(/Not provided/g)).toHaveLength(5);
+    expect(empty).toMatch(/Business phone<\/span><b[^>]*>Not provided<\/b>/);
+    expect(empty).toMatch(/Number of employees<\/span><b[^>]*>Not provided<\/b>/);
     const none = renderToStaticMarkup(createElement(BusinessContactDetails, { values: { business_website_none: true } }));
     expect(none).toContain("None (N/A)");
     expect(none).not.toContain("href=");
+  });
+
+  it("keeps an explicit zero employee count distinct from an unanswered count", () => {
+    const html = renderToStaticMarkup(createElement(BusinessContactDetails, { values: { employee_count: 0 } }));
+    expect(html).toMatch(/Number of employees<\/span><b[^>]*>0<\/b>/);
+    expect(html).not.toMatch(/Number of employees<\/span><b[^>]*>Not provided<\/b>/);
+    expect(html).toMatch(/Business phone<\/span><b[^>]*>Not provided<\/b>/);
   });
 
   it("does not turn an unsafe historical website into an executable link", () => {

@@ -15,7 +15,15 @@ export function OperatingPlanImpact({ evaluation, baselineEvaluation, pending, s
 }) {
   const [scenario, setScenario] = useState<"proposed" | "approved">("proposed");
   const comparison = evaluation?.comparison;
+  const payments = comparison?.payment_breakdown;
   const baseline = evaluation?.baseline ?? baselineEvaluation?.baseline;
+  const currentMetrics = comparison?.baseline ?? baselineEvaluation?.comparison?.baseline;
+  const sourceValue = (key: keyof OperatingMetricValues) => {
+    if (currentMetrics && key in currentMetrics) return currentMetrics[key];
+    if (key === "earnings" || key === "noi" || key === "dscr") return baseline?.[key];
+    if (key === "debt_service") return baseline?.annual_debt_service;
+    return null;
+  };
   const noReviews = scenario === "approved" && evaluation?.totals?.approved?.count === 0;
   const loanLabel = comparison?.loan_basis === "saved_terms" ? "Saved loan terms" : comparison?.loan_basis === "incomplete_terms" ? "Loan terms need inputs" : "Current debt";
   const currency = (key: keyof OperatingMetricValues) => key === "noi" ? baseline?.noi_currency ?? baseline?.noi_governance?.currency : key === "debt_service" ? "USD" : baseline?.currency;
@@ -23,9 +31,9 @@ export function OperatingPlanImpact({ evaluation, baselineEvaluation, pending, s
     if (value == null) return "—";
     if (key === "dscr") return `${value.toFixed(2)}x`;
     if (key === "operating_margin") return `${value.toFixed(1)}%`;
-    return metricAmountLabel(value, currency(key), 0);
+    return metricAmountLabel(value, currency(key), key === "debt_service" ? 2 : 0);
   };
-  const currentRatio = (comparison?.baseline ?? baselineEvaluation?.comparison?.baseline)?.dscr;
+  const currentRatio = sourceValue("dscr");
   const planRatio = pending ? null : comparison?.[scenario].dscr;
   const scale = Math.max(1.5, currentRatio ?? 0, planRatio ?? 0);
   const gap = pending ? null : comparison?.target_gap?.[scenario];
@@ -38,14 +46,14 @@ export function OperatingPlanImpact({ evaluation, baselineEvaluation, pending, s
         </div>
       </header>
       <dl>{metrics.map(([key, title]) => {
-        const label = key === "earnings" && baseline?.earnings_kind?.includes("ebitda") ? "Annual EBITDA" : title;
-        const current = (comparison?.baseline ?? baselineEvaluation?.comparison?.baseline)?.[key];
-        const planned = pending ? null : comparison?.[scenario][key];
+        const label = key === "debt_service" ? payments ? "Annualized recurring payments" : "Annual debt used for DSCR" : key === "earnings" && baseline?.earnings_kind?.includes("ebitda") ? "Annual EBITDA" : title;
+        const current = key === "debt_service" && payments ? payments.regular_before_annual : sourceValue(key);
+        const planned = pending ? null : key === "debt_service" && payments ? payments.regular_after_annual : comparison?.[scenario][key];
         const delta = current != null && planned != null ? planned - current : null;
         const improvement = delta == null ? null : key === "debt_service" ? -delta : delta;
         const deltaText = delta == null ? "" : `${delta > 0 ? "+" : ""}${key === "operating_margin" ? `${delta.toFixed(1)} pts` : format(key, delta)}`;
         return <div key={key} className={styles.metric}>
-          <div className={styles.metricNumbers}><dt>{label}</dt><dd>
+          <div className={styles.metricNumbers}><dt>{label}{key === "debt_service" && payments ? <span className={styles.basisLabel}>Regular payments, annualized</span> : null}</dt><dd>
             <span className={`${styles.before} ${current != null && current < 0 ? styles.loss : ""}`} aria-label={`Current ${label}`}>{format(key, current)}</span>
             <span className={styles.arrow} aria-hidden="true">→</span>
             <b className={styles.after} aria-label={`${scenario === "approved" ? "Reviewed" : "Proposed"} ${label}`}>{pending ? "Updating…" : format(key, planned)}</b>
@@ -56,6 +64,23 @@ export function OperatingPlanImpact({ evaluation, baselineEvaluation, pending, s
       <small className={styles.note}>{pending ? "Recalculating the plan." : !comparison ? "Awaiting financial inputs" : noReviews ? "Awaiting reviewed operating changes" :
         `Current → ${scenario === "approved" ? "reviewed" : "proposed"} · ${loanLabel}${scenario === "proposed" && comparison.proposed_basis === "before_implementation_costs_and_timing" ? " · Before setup costs" : ""}`}</small>
     </section>
+    {!strip && !pending && payments && comparison?.loan_basis !== "current_debt" ? <details className={styles.paymentBasis} aria-label="Loan payment calculation">
+      <summary>How loan payments reconcile</summary>
+      {payments.term_months != null || payments.payments_per_year != null ? <p>{payments.term_months != null ? `${payments.term_months}-month term` : "Term needs review"}{payments.amortization_months != null ? ` · ${payments.amortization_months}-month amortization` : ""}{payments.payments_per_year != null ? ` · ${payments.payments_per_year} payments per year` : ""}</p> : null}
+      <dl>{[
+        ["Current debt / month", payments.regular_before_monthly],
+        ["New loan payment equivalent / month", payments.new_loan_regular_monthly],
+        ["Loans kept / month", payments.retained_debt_monthly],
+        ["Financing fees / month", payments.financing_fees_monthly],
+        ["Total with saved terms / month", payments.regular_after_monthly],
+        ["Regular payments × 12", payments.regular_after_annual],
+        ["Annual debt used for DSCR", payments.coverage_after_annual],
+        ["Remaining principal due at maturity", payments.maturity_balance],
+      ].filter(([, amount]) => amount != null).map(([label, amount]) => <div key={String(label)}><dt>{label}</dt><dd>{metricAmountLabel(typeof amount === "number" ? amount : null, "USD", 2)}</dd></div>)}</dl>
+      <p>{payments.coverage_basis === "peak_rolling_12_month_actual_cash_due" ? "DSCR uses the highest scheduled 12-month payment total, including any balloon due in that period." : payments.coverage_basis === "annualized_recorded_payment" ? "DSCR uses the accepted recorded payment basis, plus retained debt and applicable financing fees." : "DSCR uses the saved loan coverage basis. Regular payments are shown as an annualized run-rate."}</p>
+      {payments.maturity_balance != null && payments.maturity_balance > 0 ? <p>The maturity balance is due in addition to recurring installments. Review the term and amortization in Loan terms.</p> : null}
+      {payments.maturity_balance != null && payments.maturity_balance > 0 && payments.coverage_basis !== "peak_rolling_12_month_actual_cash_due" ? <p>The maturity balance is outside this recurring-payment coverage basis.</p> : null}
+    </details> : null}
     {!strip ? <section className={styles.coverage} aria-label="DSCR lender threshold" aria-busy={Boolean(pending)}>
       <div className={styles.coverageHeading}><strong>DSCR · Lender threshold</strong>{planRatio != null ? <span className={`${styles.delta} ${planRatio >= 1.25 ? styles.positive : styles.neutral}`}>{planRatio >= 1.25 ? "Target met" : planRatio >= 1 ? "Covers debt" : "Below 1.00x"}</span> : null}</div>
       <div className={styles.coverageScale}><span>0x</span><span>1.25x target</span></div>
