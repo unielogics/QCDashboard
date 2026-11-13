@@ -17,3 +17,5 @@
 @media(min-width:1200px){.issueSpace{padding-right:206px}}
 
 .attention{border:1px solid var(--danger,#b03932)!important;border-radius:5px}
+
+@media(max-width:1199px){.issueSpace{padding-right:40px}}
