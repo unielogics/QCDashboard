@@ -3,7 +3,7 @@ import { clearOperatingReview, operatingNumber, type OperatingPlanBody } from ".
 import type { OperatingChangeGroup } from "./operatingStep3";
 /** The explicit Add button confirms current zero. Funding or opening the composer never creates this record. */
 export function addOperatingGrowthActivity(body: OperatingPlanBody, group: OperatingChangeGroup, name: string, actionId: string, expenseId: string): OperatingPlanBody {
-  const next = addPlannerNamedActivity(body, group, name, actionId, expenseId);
+  const next = addPlannerNamedActivity(body, { ...group, category: "marketing", sourceGroupKey: "", key: "marketing:unscoped" }, name, actionId, expenseId);
   if (next === body) return body;
   return { ...next, adjustments: next.adjustments?.map(row => row.id === actionId ? clearOperatingReview({ ...row, kind: "marketing_investment", revenue_return_multiple: null, contribution_margin_pct: null, product_name: "" }) : row) };
 }

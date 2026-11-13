@@ -37,9 +37,9 @@ import { operatingNumericProblems, operatingPlanContentKey } from "@/lib/operati
 import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
 import type { OperatingSuggestionClient, OperatingSuggestionReply, OperatingSuggestionApplied } from "@/lib/operatingSuggestions";
 import type { OperatingGoalRead } from "@/lib/operatingGoal";
-import { plannerSaveIssues } from "@/lib/recognizablePlan";
+import { operatingPlanSubmissionIssues } from "@/lib/operatingPlannerIssues";
 import type { OperatingPlanBody, OperatingPlanSchema } from "@/lib/operatingPlan";
-import { unansweredOperatingCategories, type OperatingGuidanceReply } from "@/lib/operatingGuidance";
+import { type OperatingGuidanceReply } from "@/lib/operatingGuidance";
 import { BucketFileReviewPanel, type BucketFileReview } from "@/components/buckets/BucketFileReviewPanel";
 import {
   BusinessStatementForm,
@@ -275,10 +275,10 @@ export default function FinancialFormPage() {
     if (!canEdit || !writer.current) return;
     setError(null);
     if (state?.kind === "operating_plan" && operatingGuided) {
-      const unanswered = unansweredOperatingCategories(bodyRef.current, operatingPreview?.guidance);
-      if (unanswered.length) {
-        setError(`Confirm the current expense categories before reviewing: ${unanswered.map(question => question.label).join(", ")}. Choose current costs, not applicable, or I need help for each category.`);
-        setGuidedStepRequest(current => ({ index: 1, key: (current?.key ?? 0) + 1 }));
+      const required = operatingPlanSubmissionIssues(bodyRef.current, operatingPreview?.evaluation, operatingPreview?.guidance, { serverCurrent: visiblePreviewBody.current === `${base}:${operatingPlanContentKey(bodyRef.current)}` });
+      if (required.length) {
+        setError(required[0].label);
+        setGuidedStepRequest(current => ({ index: required[0].step, key: (current?.key ?? 0) + 1 }));
         requestAnimationFrame(() => document.querySelector<HTMLElement>('[aria-label="Guided operating expenses and earnings plan"] h4')?.scrollIntoView({ block: "start", behavior: "smooth" }));
         return;
       }
@@ -345,11 +345,10 @@ export default function FinancialFormPage() {
         visiblePreviewBody.current = currentPreview.evaluation ? `${base}:${fingerprint}` : "";
       }
       if (!currentPreview?.evaluation) throw new Error("The current preview is unavailable. Retry the financial preview before saving.");
-      const unanswered = unansweredOperatingCategories(sent, currentPreview.guidance);
-      const issues = plannerSaveIssues(sent, currentPreview.evaluation);
-      if (unanswered.length || issues.length) {
-        setGuidedStepRequest(current => ({ index: 1, key: (current?.key ?? 0) + 1 }));
-        throw new Error(unanswered.length ? `Confirm the current expense categories before saving: ${unanswered.map(row => row.label).join(", ")}.` : issues.some(path => path.startsWith("historical_corrections.")) ? "Finish the historical correction reason and evidence, or remove the optional correction. Return to Itemize current costs." : "Complete the itemization or document its historical correction for tax preparer review. Return to Itemize current costs.");
+      const required = operatingPlanSubmissionIssues(sent, currentPreview.evaluation, currentPreview.guidance);
+      if (required.length) {
+        setGuidedStepRequest(current => ({ index: required[0].step, key: (current?.key ?? 0) + 1 }));
+        throw new Error(required[0].label);
       }
       await saveDraft(sent);
       // An earlier failed submit remains the writer tail; retry the same intent after the current draft is saved.

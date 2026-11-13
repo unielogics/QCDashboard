@@ -2,6 +2,7 @@ import { operatingNumber, type OperatingAction, type OperatingPlanBody } from ".
 
 const blank = (value: unknown) => value == null || String(value).trim() === "";
 const validAmount = (value: unknown) => operatingNumber(value) != null && operatingNumber(value)! >= 0;
+export const operatingCommandSupported = (action: OperatingAction) => ["expense_reduction", "expense_increase", "expense_group_change", "price_change"].includes(action.kind || "");
 /** Required input truth only. All financial results remain canonical server outputs. */
 export function operatingActionMissingFields(action: OperatingAction, body: OperatingPlanBody): string[] {
   const missing: string[] = [];
@@ -9,7 +10,8 @@ export function operatingActionMissingFields(action: OperatingAction, body: Oper
   const number = (key: keyof OperatingAction, value: unknown = action[key]) => { if (!validAmount(value)) missing.push(key); };
   text("label"); text("driver_key"); text("explanation"); number("implementation_cost");
   const expense = body.expenses?.find(row => row.id === action.expense_row_id && !row.excluded && !row.duplicate_of);
-  if (action.command) { if (!validAmount(action.command.value)) missing.push("command.value"); if (action.kind === "price_change" && action.price_basis === "annual_revenue" && !validAmount(body.historical_revenue_annual)) missing.push("historical_revenue_annual"); return missing; }
+  if (action.command && operatingCommandSupported(action)) { if (!validAmount(action.command.value)) missing.push("command.value"); if (action.kind === "price_change" && action.price_basis === "annual_revenue" && !validAmount(body.historical_revenue_annual)) missing.push("historical_revenue_annual"); return missing; }
+  if (action.command && !operatingCommandSupported(action)) missing.push("command");
   switch (action.kind) {
     case "expense_reduction": case "expense_increase":
       if (!expense) missing.push("expense_row_id");
@@ -48,9 +50,14 @@ export function operatingActionMissingFields(action: OperatingAction, body: Oper
 }
 
 export function operatingActionFieldLabel(field: string, action?: OperatingAction): string {
+  const prefix = action ? `adjustments.${action.id}.` : "";
+  const suffix = prefix && field.startsWith(prefix) ? field.slice(prefix.length) : field;
+  if (/\s/.test(suffix)) return suffix;
   const key = field.split(".").at(-1) || field;
   const labels: Record<string, string> = { label: "Name the activity", driver_key: "Confirm activity identity", explanation: "Explain why this will work", implementation_cost: "Enter setup cost", expense_row_id: "Choose the linked current cost", product_name: "Name the product or service", current_amount: "Confirm current cost", proposed_amount: action?.kind === "revenue_change" ? "Enter proposed revenue" : "Enter proposed cost", unit_label: "Name the unit", current_units_per_period: "Confirm current quantity", proposed_units_per_period: "Enter proposed quantity", current_unit_cost: "Confirm current unit cost", proposed_unit_cost: "Enter proposed unit cost", current_fixed_amount: "Confirm current fixed cost", proposed_fixed_amount: "Enter proposed fixed cost", units_per_period: "Enter units per period", current_unit_price: "Confirm current unit price", proposed_unit_price: "Enter proposed unit price", contribution_margin_pct: "Enter contribution margin", revenue_return_multiple: "Enter revenue per marketing dollar", processing_volume: "Enter card volume", processing_transaction_count: "Enter transaction count", unit_change_value: "Enter the unit-volume change" };
-  if (field.includes("command")) return "Enter the change amount";
+  if (field.endsWith(".command") || field === "command") return action && !operatingCommandSupported(action) ? "Remove the incompatible cost command" : action?.command && validAmount(action.command.value) ? "Review the command target and scope" : "Enter the change amount";
+  if (field.endsWith("command.value")) return "Enter the change amount";
+  if (field.includes("command.")) return "Review the command target and scope";
   if (field.includes("historical_revenue_annual")) return "Confirm annual revenue";
   if (/processing_rate_basis/.test(key)) return `Confirm ${key.startsWith("current") ? "current" : "proposed"} processing rate basis`;
   if (/processing_rate_pct/.test(key)) return `Enter ${key.startsWith("current") ? "current" : "proposed"} processing rate`;

@@ -8,6 +8,11 @@ export type OperatingSourceReview = {
   groups: Array<{ key: string; category: string; label: string; source_amount: number | null; baseline_annual_amount: number | null; decision: "confirmed" | "needs_correction" | null; status: "confirmed" | "needs_correction" | "unreviewed" | "stale" }>;
 };
 
+/** An empty optional evaluator sidecar does not turn a legacy manual plan into source review. */
+export function operatingSourceReviewInUse(body: OperatingPlanBody, review?: OperatingSourceReview | null, guidance?: { expense_groups?: unknown[] } | null) {
+  return Boolean(review?.active || review?.groups.length || guidance?.expense_groups?.length || body.source_group_confirmation_stamp || Object.keys(body.source_group_confirmations || {}).length);
+}
+
 /** Explicit source decisions never overwrite a tax/P&L fact or a retained disclosure. */
 export function decideOperatingSourceGroup(body: OperatingPlanBody, group: OperatingExpenseGroup, fingerprint: string, decision: "confirmed" | "needs_correction", createId: () => string, reason?: string, correctedAmount?: PlanAmount): OperatingPlanBody {
   if (!fingerprint || decision === "needs_correction" && (reason?.trim().length || 0) < 3) return body;
