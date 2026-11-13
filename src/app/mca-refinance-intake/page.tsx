@@ -1025,6 +1025,10 @@ export default function McaRefinanceIntakePage() {
     }
     const pinProblem = chosenRoomPinProblem(roomPin, roomPinConfirmation, language ?? "en");
     if (pinProblem) { setStartError(pinProblem); return; }
+    if (!sms.email || !sms.transactional || !/^\d+$/.test(startForm.employee_count ?? "")) {
+      setStartError(language === "es" ? "Ingrese el número de empleados y acepte los mensajes y correos sobre su solicitud." : "Enter the employee count and agree to application texts and emails.");
+      return;
+    }
     if (!legalAccepted) {
       setStartError(c.errTermsCheckbox);
       return;

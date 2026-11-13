@@ -23,6 +23,7 @@ export type OperatingExpense = OperatingUnitCost & {
   volume_behavior?: OperatingVolumeBehavior;
 };
 export type OperatingAction = OperatingUnitCost & {
+  supporting_action_ids?: string[];
   id: string; expense_category?: string | null; source_group_key?: string; kind?: OperatingActionKind; label?: string; driver_key?: string; expense_row_id?: string | null;
   current_amount?: PlanAmount; proposed_amount?: PlanAmount; cadence?: OperatingCadence;
   units_per_period?: PlanAmount; current_unit_price?: PlanAmount; proposed_unit_price?: PlanAmount;

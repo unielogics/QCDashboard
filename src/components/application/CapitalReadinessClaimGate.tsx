@@ -56,7 +56,7 @@ export function CapitalReadinessClaimGate({ user }: { user: User }) {
   const es = pending.locale === "es";
   const normalizedPhone = normalizePhone(phone);
   const profileProblem = newBusinessProfileProblem(businessProfile, pending.locale);
-  const canSubmit = businessName.trim().length > 1 && normalizedPhone !== null && profileProblem === null && chosenRoomPinProblem(roomPin, roomPinConfirmation, pending.locale) === null && consented && !busy;
+  const canSubmit = businessName.trim().length > 1 && normalizedPhone !== null && profileProblem === null && chosenRoomPinProblem(roomPin, roomPinConfirmation, pending.locale) === null && consented && sms.email && sms.transactional && /^\d+$/.test(businessProfile.employee_count ?? "") && !busy;
 
   async function claim() {
     if (!pending || !canSubmit) return;

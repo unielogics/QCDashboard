@@ -22,6 +22,8 @@ export function BusinessProfileFields({ value, onChange, language = "en", includ
   const hint: CSSProperties = { margin: 0, fontSize: 12, lineHeight: 1.5, fontWeight: 400, color: "var(--muted, #64748b)" };
   return <fieldset disabled={disabled} style={{ border: 0, margin: 0, padding: 0, display: "grid", gap: 14, minWidth: 0 }}>
     <legend style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>{es ? "Perfil del negocio" : "Business profile"}</legend>
+    <label style={label}>{es ? "Teléfono del negocio" : "Business phone"} *<input style={input} type="tel" required autoComplete="section-business tel" value={value.business_phone ?? ""} onChange={e => onChange({business_phone: e.target.value})} /></label>
+    <label style={label}>{es ? "Número de empleados" : "Number of employees"} *<input style={input} type="number" required min={0} max={2147483647} step={1} value={value.employee_count ?? ""} onChange={event => onChange({employee_count: event.target.value})} /></label>
     <label style={label}>{es ? "Dirección del negocio" : "Business street address"} *
       <input style={input} required value={value.business_street} maxLength={255} autoComplete="section-business address-line1" onChange={(e) => onChange({ business_street: e.target.value })} />
     </label>

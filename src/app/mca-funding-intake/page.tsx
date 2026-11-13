@@ -9,6 +9,9 @@ import { validPhone } from "@/lib/formCoerce";
 import { clientApiErrorDetail } from "@/lib/clientRoomDocuments";
 import { emitPublicIntakeConversion } from "@/lib/publicIntakeConversion";
 import { emptyMcaIntakeAnswers, mcaDeclarationDoesNotFit, mcaIntakeRequest, mcaPriorTaxYear, MCA_ROOM_STORAGE_KEY, safeMcaRoomUrl, type McaIntakeAnswers, type McaIntakeLocale } from "@/lib/mcaFundingIntake";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
+import { OnboardingConsent, NO_SMS_CHOICES, smsChoicesBody } from "@/components/intake/OnboardingConsent";
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
 import styles from "./page.module.css";
 
 const ranges = ["under_25k", "25k_50k", "50k_100k", "100k_250k", "250k_plus"];
@@ -43,6 +46,8 @@ export default function McaFundingIntakePage() {
   const [roomLink, setRoomLink] = useState("");
   const [resumeEmail, setResumeEmail] = useState(""); const [notice, setNotice] = useState("");
   const [pin, setPin] = useState(""); const [confirmPin, setConfirmPin] = useState("");
+  const [profile, setProfile] = useState(emptyBusinessProfile);
+  const [sms, setSms] = useState(NO_SMS_CHOICES);
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const attempt = useRef(""); const submitting = useRef(false); const startTracked = useRef(false);
@@ -64,14 +69,14 @@ export default function McaFundingIntakePage() {
     if (mcaDeclarationDoesNotFit(answers)) { setError(c.notFit); return; }
     if (step === 1) { setStep(2); return; }
     if (submitting.current) return;
-    if (!Object.values(answers).every((value) => value.trim()) || !validPhone(answers.phone) || !consent) { setError(c.invalid); return; }
+    if (!Object.values(answers).every((value) => value.trim()) || !validPhone(answers.phone) || !consent || !sms.email || !sms.transactional || !profile.employee_count || newBusinessProfileProblem(profile, locale)) { setError(c.invalid); return; }
     const pinProblem = chosenRoomPinProblem(pin, confirmPin, locale);
     if (pinProblem) { setError(pinProblem); return; }
     submitting.current = true; setBusy(true);
     try {
       attempt.current ||= crypto.randomUUID();
       const body = mcaIntakeRequest(answers, pin, locale, attempt.current, window.location.search);
-      const response = await fetch(`${apiBase}/api/v1/public/mca/intake/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const response = await fetch(`${apiBase}/api/v1/public/mca/intake/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({...body, ...newBusinessProfileBody(profile), ...smsChoicesBody(sms)}) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(clientApiErrorDetail(data, c.error).message);
       if (safeMcaRoomUrl(data?.room_url, window.location.origin) && !startTracked.current) {
@@ -105,7 +110,8 @@ export default function McaFundingIntakePage() {
             <div className={styles.grid}>{([["full_name", c.name, "text"], ["business_name", c.business, "text"], ["email", c.email, "email"], ["phone", c.phone, "tel"]] as const).map(([key, label, type]) => <label key={key} className={styles.field}><span>{label}</span><input type={type} value={answers[key]} onChange={(event) => change(key, event.target.value)} required disabled={busy} maxLength={key === "email" ? 320 : key === "phone" ? 32 : 180} autoComplete="off" /></label>)}</div>
             {select("requested_amount", c.amount, [...ranges.map((value, index): [string, string] => [value, rangeLabels[index]]), ["not_sure", c.unsure]])}{select("monthly_revenue", c.revenue, [...ranges.map((value, index): [string, string] => [value, rangeLabels[index]]), ["unknown", c.unsure]])}{select("time_in_business", c.years, [...["under_6_months", "6_12_months", "1_2_years", "2_plus_years"].map((value, index): [string, string] => [value, c.times[index]]), ["unknown", c.unsure]])}
             <div className={styles.grid}><label className={styles.field}><span>{c.pin}</span><input type="password" inputMode="numeric" maxLength={6} value={pin} onChange={(event) => setPin(event.target.value.replace(/\D/g, "").slice(0, 6))} autoComplete="new-password" required disabled={busy} /></label><label className={styles.field}><span>{c.confirmPin}</span><input type="password" inputMode="numeric" maxLength={6} value={confirmPin} onChange={(event) => setConfirmPin(event.target.value.replace(/\D/g, "").slice(0, 6))} autoComplete="new-password" required disabled={busy} /></label></div><p className={styles.note}>{c.pinHelp}</p>
-            <label className={styles.consent}><input type="checkbox" checked={consent} onChange={(event) => setConsent(event.target.checked)} required disabled={busy} /><span>{c.consent} <a href="/terms" target="_blank" rel="noreferrer">{c.terms}</a> {c.and} <a href="/privacy" target="_blank" rel="noreferrer">{c.privacy}</a>.</span></label>
+            <BusinessProfileFields value={profile} language={locale} onChange={patch => setProfile(current => ({...current, ...patch}))} />
+            <OnboardingConsent language={locale} legalAccepted={consent} onLegalChange={setConsent} legalLabel={<> {c.consent} <a href="/terms" target="_blank" rel="noreferrer">{c.terms}</a> {c.and} <a href="/privacy" target="_blank" rel="noreferrer">{c.privacy}</a>. </>} sms={sms} onSmsChange={setSms} />
           </>}
           {error ? <div className={styles.error} role="alert">{error}</div> : null}<div className={styles.actions}>{step === 2 ? <button type="button" className={styles.secondary} onClick={() => { setStep(1); setError(""); }} disabled={busy}>{c.back}</button> : null}<button className={styles.primary} type="submit" disabled={busy}>{busy ? c.opening : step === 1 ? c.next : c.open}</button></div><button className={styles.link} type="button" onClick={() => { setResume(true); setError(""); }} disabled={busy}>{c.resume}</button>
         </form>}{resume && error ? <div className={styles.error} role="alert">{error}</div> : null}

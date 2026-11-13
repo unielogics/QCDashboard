@@ -6,6 +6,8 @@ import { businessProfileFieldProblem, readWebsite } from "@/lib/businessProfile"
 import { MAIN_STREET_INDUSTRIES } from "@/lib/intakeIndustries";
 
 export type BusinessContactValues = {
+  business_phone?: string | null;
+  employee_count?: number | null;
   business_street?: string | null;
   business_city?: string | null;
   business_state?: string | null;
@@ -73,6 +75,8 @@ export function BusinessContactDetails({ values }: { values: BusinessContactValu
   const website = readWebsite(values.business_website || "");
   const industry = MAIN_STREET_INDUSTRIES.find((option) => option.slug === values.industry)?.label || clean(values.industry);
   return <>
+    <Detail label="Business phone">{values.business_phone || "Not provided"}</Detail>
+    <Detail label="Number of employees">{values.employee_count ?? "Not provided"}</Detail>
     <Detail label="Business address">{address || "Not provided"}</Detail>
     <Detail label="Declared industry">{industry || "Not provided"}</Detail>
     <Detail label="Website">{website.kind === "site"
