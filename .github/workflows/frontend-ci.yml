@@ -75,6 +75,7 @@ jobs:
           src/lib/__tests__/operatingDraftFeedback.test.ts
           src/lib/__tests__/operatingPlannerIssues.test.ts
           src/lib/__tests__/operatingReinvestment.test.ts
+          src/lib/__tests__/operatingMarketingActivity.test.ts
           src/components/application/__tests__/ReleasedCashFlowAllocation.test.ts
           src/components/application/__tests__/OperatingDraftFeedback.test.ts
           src/components/application/__tests__/OperatingGoalSummary.test.ts
@@ -204,6 +205,7 @@ jobs:
           src/lib/__tests__/operatingDraftFeedback.test.ts
           src/lib/__tests__/operatingPlannerIssues.test.ts
           src/lib/__tests__/operatingReinvestment.test.ts
+          src/lib/__tests__/operatingMarketingActivity.test.ts
           src/components/application/__tests__/ReleasedCashFlowAllocation.test.ts
           src/components/application/__tests__/OperatingDraftFeedback.test.ts
           src/components/application/__tests__/OperatingGoalSummary.test.ts
@@ -248,6 +250,8 @@ jobs:
           tests/fixtures/livePlanFeedback.ts
           src/lib/operatingPlannerIssues.ts
           src/lib/operatingReinvestment.ts
+          src/lib/operatingMarketingActivity.ts
+          src/lib/operatingActionIssuePath.ts
           tests/refinance-reinvestment.spec.ts
           tests/fixtures/refinanceReinvestment.ts
           src/lib/operatingFundingState.ts
@@ -264,6 +268,8 @@ jobs:
           src/components/application/OperatingPlanSourceReview.tsx
           tests/minimal-operating-flow.spec.ts
           tests/fixtures/minimalOperatingFlow.ts
+          tests/marketing-activity-linking.spec.ts
+          tests/fixtures/marketingActivityLinking.ts
 
       - name: Build production frontend
         run: pnpm build

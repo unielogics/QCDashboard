@@ -1,9 +1,11 @@
+import { operatingActionIssuePath } from "./operatingActionIssuePath";
+import { operatingSourceReviewInUse } from "./operatingSourceReview";
 import { operatingFundingState } from "./operatingFundingState";
 import { operatingActionMissingFields, operatingActionFieldLabel } from "./operatingActionFields";
 import { operatingExpenseAmount, operatingNumber, type OperatingEvaluation, type OperatingPlanBody } from "./operatingPlan";
 import { unansweredOperatingCategories, type OperatingGuidance } from "./operatingGuidance";
 import { operatingFeedbackLabel } from "./operatingPlanFeedback";
-import { plannerSaveIssues } from "./recognizablePlan";
+import { documentedHistoricalCorrection, plannerSaveIssues } from "./recognizablePlan";
 export type OperatingPlannerIssue = { id: string; step: 0 | 1 | 2; field: string; label: string; expenseId?: string; actionId?: string; category?: string; sourceGroupKey?: string };
 /** Required answers and canonical evaluator issues only. No projected amounts are calculated here. */
 export function operatingPlannerIssues(body: OperatingPlanBody, evaluation?: OperatingEvaluation | null, guidance?: OperatingGuidance | null, options: { serverCurrent?: boolean } = {}): OperatingPlannerIssue[] {
@@ -16,7 +18,12 @@ export function operatingPlannerIssues(body: OperatingPlanBody, evaluation?: Ope
   if (!body.currency || currency && body.currency !== currency) add({ step: 0, field: "currency", label: "Confirm the source and plan currency" });
   const sourceReview = evaluation?.source_review;
   const sourceGroups = guidance?.expense_groups || sourceReview?.groups || [];
-  const sourceFlow = Boolean(sourceReview || sourceGroups.length || body.source_group_confirmation_stamp);
+  const sourceFlow = operatingSourceReviewInUse(body, sourceReview, guidance);
+  if (sourceFlow && sourceReview && options.serverCurrent !== false) for (const field of sourceReview.missing || []) {
+    const group = sourceReview.groups.find(row => field === `source_group_confirmations.${row.key}` || field === `historical_corrections.${row.key}.reason`);
+    if (["period_start", "period_end", "currency", "basis"].includes(field)) add({ step: 0, field, label: `Confirm the selected source's ${field === "basis" ? "accounting basis" : field === "currency" ? "currency" : "reporting period"}` });
+    else add({ step: 1, field, sourceGroupKey: group?.key, category: group?.category, label: field.endsWith(".reason") ? `${group?.label || "Historical correction"}: explain the correction` : group ? `Confirm ${group.label}` : "Review the selected current source" });
+  }
   if (sourceGroups.length) {
     for (const group of sourceGroups) {
       const stampMatches = Boolean(sourceReview?.source_fingerprint && body.source_group_confirmation_stamp === sourceReview.source_fingerprint);
@@ -50,11 +57,10 @@ export function operatingPlannerIssues(body: OperatingPlanBody, evaluation?: Ope
     const action = body.adjustments?.find(item => item.id === row.action_id && !item.excluded && item.status !== "rejected"); if (!action) continue;
     const liveMissing = operatingActionMissingFields(action, body);
     for (const path of [...row.math_missing, ...row.qualification_missing].filter(field => !/effective_date|projection_start|source_note|source_file_ids|owner_name/.test(field))) {
-      const suffix = path.replace(new RegExp(`^adjustments\\.${action.id}\\.`), "");
-      if (["current_proposed_math", "marketing_return_assumptions", "proposed_cost", "current_cost"].includes(suffix) && liveMissing.length) continue;
-      if (["label", "driver_key", "explanation", "implementation_cost", "effective_date", "source_note", "source_file_ids", "owner_name", "command.value", "proposed_amount", "current_amount", "product_name", "revenue_return_multiple", "contribution_margin_pct", "units_per_period", "current_unit_cost", "proposed_unit_cost", "current_unit_price", "proposed_unit_price", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount"].includes(suffix) && !liveMissing.includes(suffix)) continue;
-      const field = path.startsWith("adjustments.") ? path : `adjustments.${action.id}.${suffix}`;
-      add({ step: 2, actionId: action.id, field, label: `${action.label || "Planned change"}: ${operatingActionFieldLabel(field, action).toLowerCase()}` });
+      const field = operatingActionIssuePath(path, action, body);
+      if (!field) continue;
+      const suffix = field.slice(`adjustments.${action.id}.`.length);
+      add({ step: 2, actionId: action.id, field, label: `${action.label || "Planned change"}: ${/\s/.test(suffix) ? suffix : operatingActionFieldLabel(field, action).toLowerCase()}` });
     }
     if (row.metric_issues?.noi.length && !issues.some(issue => issue.step === 0 && issue.field === "baseline.noi")) add({ step: 0, actionId: action.id, field: "baseline.noi", label: `${action.label || "Planned change"}: confirm the source's treatment of depreciation` });
     if (row.source_issues.length) add({ step: sourceFlow ? 2 : 1, expenseId: action.expense_row_id || undefined, sourceGroupKey: action.source_group_key || undefined, category: action.expense_category || undefined, actionId: action.id, field: action.expense_row_id ? `expenses.${action.expense_row_id}.source_group_key` : "current_cost_source", label: `${action.label || "Planned change"}: reconcile its current cost source` });
@@ -70,7 +76,7 @@ export function operatingPlannerIssues(body: OperatingPlanBody, evaluation?: Ope
       if (/source_fingerprint|source_changed|acknowledge|stale/.test(path)) { if (!funds.complete && (!funds.enhanced || funding?.allocations.length)) add({ step: 2, field: "released_cash_flow.source_fingerprint", label: "Confirm how plan funding will be used" }); continue; }
       if (/full_release|unallocated|unassigned|overalloc/.test(path)) { if (funds.unallocated != null && (funds.enhanced ? funds.unallocated < 0 : funds.unallocated !== 0)) add({ step: 2, field: funds.unallocated < 0 ? "released_cash_flow.allocations.overallocated" : "released_cash_flow.allocations.unallocated", label: funds.unallocated < 0 ? "Reduce overassigned funding" : "Retain or assign remaining funding" }); continue; }
       if (funding?.allocations.some(row => path.includes(row.id))) continue;
-      if (path.startsWith("adjustments.")) { const action = body.adjustments?.find(row => path.includes(row.id) && !row.excluded && row.status !== "rejected"); if (action) add({ step: 2, actionId: action.id, field: path, label: `${action.label || "Planned change"}: ${operatingActionFieldLabel(path, action).toLowerCase()}` }); continue; }
+      if (path.startsWith("adjustments.")) { const action = body.adjustments?.find(row => path.includes(row.id) && !row.excluded && row.status !== "rejected"); if (action) { const field = operatingActionIssuePath(path, action, body); if (field) add({ step: 2, actionId: action.id, field, label: `${action.label || "Planned change"}: ${operatingActionFieldLabel(field, action).toLowerCase()}` }); } continue; }
       if (path.startsWith("released_cash_flow.") && !funds.complete) add({ step: 2, field: path, label: "Review the funding assignment" });
     }
     for (const row of funding?.allocations || []) {
@@ -100,3 +106,16 @@ export function operatingPlannerFieldLabel(field: string) {
   return operatingFeedbackLabel(field);
 }
 export function operatingPrerequisiteIssues(issues: OperatingPlannerIssue[]) { return issues.filter(row => row.step < 2); }
+
+/** Final source/input gate, preserving the existing explicit unresolved preparer handoff. */
+export function operatingPlanSubmissionIssues(body: OperatingPlanBody, evaluation?: OperatingEvaluation | null, guidance?: OperatingGuidance | null, options: { serverCurrent?: boolean } = {}) {
+  return operatingPlannerIssues(body, evaluation, guidance, options).filter(issue => {
+    const expense = body.expenses?.find(row => row.id === issue.expenseId);
+    const key = issue.field.split(".").at(-1) || "";
+    const correction = expense?.source_group_key || issue.sourceGroupKey;
+    if (!correction || !documentedHistoricalCorrection(body, correction)) return true;
+    if (issue.actionId && key === "source_group_key") return false;
+    if (!issue.actionId && expense?.label?.trim() && expense.itemization_parent_id && ["current_amount", "current_units_per_period", "current_unit_cost", "current_fixed_amount"].includes(key) && operatingNumber(expense[key as keyof typeof expense]) == null) return false;
+    return true;
+  });
+}

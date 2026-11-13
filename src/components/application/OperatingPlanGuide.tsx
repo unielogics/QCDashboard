@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { OperatingPlanStatus } from "./OperatingPlanStatus";
 import { operatingWorkingFeedback, operatingFeedbackLabel, type OperatingDraftSaveStatus, type OperatingCalculationStatus } from "@/lib/operatingPlanFeedback";
+import { operatingSourceReviewInUse } from "@/lib/operatingSourceReview";
 import { documentedHistoricalCorrection } from "@/lib/recognizablePlan";
 import { operatingPlannerIssues, operatingPrerequisiteIssues, type OperatingPlannerIssue } from "@/lib/operatingPlannerIssues";
 import { metricAmountLabel } from "@/lib/financialMetrics";
@@ -114,7 +115,7 @@ export function OperatingPlanGuide({ value, onChange, guidance, evidence, evalua
       </details>
     </> : step === 1 ? <>
       {handoffEligible ? <button type="button" className={styles.handoffAction} disabled={disabled || evaluating} onClick={() => { setHandoffMode(true); setStep(3); }}>Save for preparer review</button> : null}
-      <OperatingPlanSourceReview onHandoff={() => { setHandoffMode(true); setStep(3); }} request={sourceReviewRequest} issues={issues} value={value} onChange={onChange} guidance={guidance} review={evaluation?.source_review ?? layoutEvaluation?.source_review} disabled={disabled} onPreviewSource={onPreviewSource} onReviewLegacy={() => { setStep(2); }} />
+      {operatingSourceReviewInUse(value, evaluation?.source_review ?? layoutEvaluation?.source_review, guidance) ? <OperatingPlanSourceReview onHandoff={() => { setHandoffMode(true); setStep(3); }} request={sourceReviewRequest} issues={issues} value={value} onChange={onChange} guidance={guidance} review={evaluation?.source_review ?? layoutEvaluation?.source_review} disabled={disabled} onPreviewSource={onPreviewSource} onReviewLegacy={() => { setStep(2); }} /> : <OperatingPlanItemization value={value} onChange={onChange} guidance={guidance} evaluation={evaluation} evaluating={evaluating} disabled={disabled} unitControls={unitControls} onPreviewSource={onPreviewSource} />}
     </> : step === 2 ? <>
       {prerequisiteIssues.length ? <section className={styles.requiredItems}><strong>Finish current answers before comparing the plan</strong><button type="button" onClick={() => reveal(prerequisiteIssues[0])}>{prerequisiteIssues[0].label}</button></section> : null}
       <OperatingPlanCommands configurationRequest={configurationRequest} growthRequest={growthRequest} issues={issues} onFixFeedback={onFixFeedback} onReviewExpense={onReviewExpense} suggestionClient={suggestionClient} goalRevision={goal?.revision} hasGoal={Boolean(goal)} value={value} onChange={onChange} guidance={guidance} evidence={evidence} evaluation={evaluation} evaluating={evaluating} disabled={disabled} onPreviewSource={onPreviewSource} onAdvancedAction={onAdvancedAction} onEditUnits={onEditUnits} baseline={evaluation?.baseline ?? layoutEvaluation?.baseline} sourceAnnualRevenue={sourceAnnualRevenue} onReviewRevenue={onReviewRevenue} unitProposal={unitProposal} onAddUnitPlan={onAddUnitPlan} />
