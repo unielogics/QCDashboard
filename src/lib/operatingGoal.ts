@@ -1,0 +1,14 @@
+export type OperatingGoalRead = { status: "awaiting_staff" | "set"; metric: "annual_noi"; amount: number | null; currency: string | null; revision: number; updated_at: string | null };
+export type OperatingGoalProgress = { metric: "annual_noi"; status: "awaiting_staff" | "source_unavailable" | "currency_mismatch" | "calculated"; goal_revision: number; currency: string | null; current_noi: number | null; zero: 0; proposed_noi: number | null; reviewed_noi: number | null; target: number | null; current_gap: number | null; proposed_gap: number | null; reviewed_gap: number | null; current_year: string | number | null; draft_noi_before_implementation?: number | null; draft_gap?: number | null; draft_basis?: "before_implementation_costs_and_timing" | null; notes: string[] };
+export type OperatingCashBridge = { status: string; available: boolean; stale: boolean; source_fingerprint: string | null; currency: string | null; before_debt_service_monthly: number | null; after_debt_service_monthly: number | null; new_operating_charges_monthly: number | null; new_financing_fees_monthly: number | null; gross_loan_relief_monthly: number | null; net_loan_cash_change_monthly: number | null; recurring_cash_released_monthly: number | null; modeled_operations_monthly: number | null; combined_incremental_monthly: number | null; allocated_monthly: number | null; unallocated_monthly: number | null; required?: boolean; complete?: boolean; allocations: Array<{ id: string; purpose: string | null; expense_row_id: string | null; action_id: string | null; amount_monthly: number | null; capacity_monthly: number | null; status: "assigned" | "incomplete"; issues: string[] }>; missing: string[]; notes: string[] };
+export const operatingGoalReady = (goal?: OperatingGoalRead | null) => goal?.status === "set" && goal.metric === "annual_noi" && goal.amount != null && goal.amount > 0 && Boolean(goal.currency);
+/** Geometry only. No financial projection or percentage is calculated in the browser. */
+export function operatingGoalAxis(values: Array<number | null | undefined>) {
+  const finite = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+  const lower = Math.min(0, ...finite), upper = Math.max(1, ...finite), span = upper - lower;
+  return { lower, upper, position: (value: number) => 8 + (value - lower) / span * 84 };
+}
+export function operatingGoalError(error: unknown) {
+  const detail = error && typeof error === "object" ? (error as { body?: { detail?: unknown } }).body?.detail : null;
+  return detail && typeof detail === "object" && (detail as { code?: string }).code === "operating_goal_required";
+}

@@ -34,6 +34,8 @@ import { PublicFinancialFormWriter, publicFinancialBody, publicFinancialResponse
 import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule";
 import { useDocumentWindow } from "@/hooks/useDocumentWindow";
 import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
+import type { OperatingSuggestionClient, OperatingSuggestionReply, OperatingSuggestionApplied } from "@/lib/operatingSuggestions";
+import type { OperatingGoalRead } from "@/lib/operatingGoal";
 import { plannerSaveIssues } from "@/lib/recognizablePlan";
 import type { OperatingPlanBody, OperatingPlanSchema } from "@/lib/operatingPlan";
 import { unansweredOperatingCategories, type OperatingGuidanceReply } from "@/lib/operatingGuidance";
@@ -61,6 +63,7 @@ type FormState = PublicFinancialReply & {
   business_name: string | null;
   prefill?: Prefill;
   body: FormBody;
+  goal?: OperatingGoalRead;
 } & (
   | { kind: "pfs" | "debt_schedule"; schema: PfsSchema }
   | { kind: "p_and_l" | "balance_sheet"; schema: StatementSchema }
@@ -107,9 +110,11 @@ export default function FinancialFormPage() {
   // "review" sits between typing and sending: the borrower reads back what
   // they entered before it becomes the answer we hand a lender.
   const [status, setStatus] = useState<
-    "loading" | "ready" | "preparing" | "review" | "saving" | "done" | "gone"
+    "loading" | "ready" | "preparing" | "review" | "saving" | "done" | "gone" | "goal_waiting"
   >("loading");
   const [error, setError] = useState<string | null>(null);
+  const [goalWaiting, setGoalWaiting] = useState(false);
+  const [loadRetry, setLoadRetry] = useState(0);
   const [savedAt, setSavedAt] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // Once a submit has been tried, the schedule outlines the required answers
@@ -133,7 +138,7 @@ export default function FinancialFormPage() {
   const loadedBody = useRef("");
   const statusRef = useRef(status);
   statusRef.current = status;
-  const canEdit = state?.can_edit !== false && state?.permission !== "view";
+  const canEdit = !goalWaiting && state?.can_edit !== false && state?.permission !== "view";
   const changeBody = useCallback((next: FormBody) => {
     const stable = publicFinancialBody(next);
     bodyRef.current = stable;
@@ -145,11 +150,15 @@ export default function FinancialFormPage() {
   // hand-written fetch in this app has to add it too. This one did not, so every
   // link minted for a borrower 404'd on load while the token behind it was fine.
   const base = `${apiBase}/api/v1/application-profiles/public/financial-forms/${encodeURIComponent(token)}`;
+  const activeBase = useRef(base); activeBase.current = base;
   const sourceWindow = useDocumentWindow(base);
+  const suggestionClient = useMemo<OperatingSuggestionClient>(() => ({ scope: base, suggest: async (body, expenseId, signal) => publicFinancialResponse<OperatingSuggestionReply>(await fetch(`${base}/suggestions`, { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ body: publicFinancialBody(body), expense_row_id: expenseId }) })), apply: async (body, expenseId, suggestionId, contextStamp, signal) => publicFinancialResponse<OperatingSuggestionApplied>(await fetch(`${base}/suggestions/apply`, { method: "POST", headers: { "Content-Type": "application/json" }, signal, body: JSON.stringify({ body: publicFinancialBody(body), expense_row_id: expenseId, suggestion_id: suggestionId, context_stamp: contextStamp }) })) }), [base]);
   const openOperatingSource = (fileId: string) => { lastOperatingSource.current = fileId; setOperatingSourceError(""); void sourceWindow.open(async signal => { const reply = await publicFinancialResponse<Omit<BucketFileReview, "annotations">>(await fetch(`${base}/evidence/${encodeURIComponent(fileId)}`, { signal })); if (reply.file.id !== fileId || !reply.preview_url) throw new Error("This source document is not available. Refresh the source list or ask your team for help."); return reply.preview_url; }).catch(reason => setOperatingSourceError(reason instanceof Error ? reason.message : "The source document could not be opened.")); };
 
   useEffect(() => {
     if (!token) return;
+    statusRef.current = "loading"; setStatus("loading"); setState(null); setGoalWaiting(false); writer.current = null;
+    bodyRef.current = {}; setBody({}); loadedBody.current = ""; previewBody.current = ""; visiblePreviewBody.current = ""; setOperatingPreview(null); setOperatingPreviewError("");
     setSourcePreviewId(null); setOperatingSourceError(""); lastOperatingSource.current = null;
     setOperatingGuided(true); setGuidedStepRequest(null);
     let cancelled = false;
@@ -157,6 +166,7 @@ export default function FinancialFormPage() {
       try {
         const response = await fetch(base);
         if (!response.ok) {
+          if (response.status === 409) { const failure = await response.json().catch(() => null); if (!cancelled && failure?.detail?.code === "operating_goal_required") { setGoalWaiting(true); setStatus("goal_waiting"); return; } }
           if (!cancelled) setStatus("gone");
           return;
         }
@@ -179,7 +189,7 @@ export default function FinancialFormPage() {
     return () => {
       cancelled = true;
     };
-  }, [base, token]);
+  }, [base, token, loadRetry]);
 
   useEffect(() => {
     const sequence = ++previewRequest.current;
@@ -209,6 +219,7 @@ export default function FinancialFormPage() {
   }, [base, sourcePreviewId]);
 
   const acceptReply = useCallback((reply: PublicFinancialReply, sent: FormBody) => {
+    if (activeBase.current !== base) return;
     setState((current) => current ? { ...current, ...reply } as FormState : current);
     if (reply.operating_plan && bodyRef.current === sent) {
       setOperatingPreview(reply.operating_plan);
@@ -290,13 +301,15 @@ export default function FinancialFormPage() {
     if (!canEdit || !writer.current) return;
     setStatus("saving");
     setError(null);
-    const sent = bodyRef.current;
+    const sent = bodyRef.current, activeWriter = writer.current;
     try {
-      const reply = await writer.current.write("submit", sent);
+      const reply = await activeWriter.write("submit", sent);
+      if (activeBase.current !== base || writer.current !== activeWriter) return;
       acceptReply(reply, sent);
       setStatus("done");
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (reason) {
+      if (activeBase.current !== base || writer.current !== activeWriter) return;
       setError(reason instanceof Error ? reason.message : "We could not save this version. Your answers are still here.");
       setStatus(state?.kind === "operating_plan" ? "ready" : "review");
     }
@@ -374,6 +387,7 @@ export default function FinancialFormPage() {
     );
   }
 
+  if (status === "goal_waiting") return <div className="fp"><header className="fp-header"><div className="fp-header-inner"><span className="fp-mark">Qualified Commercial</span></div></header><main className="fp-main fp-centered"><section className="fp-card"><h1>Your team is setting the annual NOI goal</h1><p>The goal needs to be saved before your operating plan can be opened. Your team will confirm it with you.</p><button type="button" onClick={() => setLoadRetry(count => count + 1)}>Check again</button></section></main></div>;
   if (status === "gone") {
     return (
       <div className="fp">
@@ -548,7 +562,7 @@ export default function FinancialFormPage() {
           ) : state?.kind === "real_estate_schedule" ? (
             <RealEstateScheduleForm schema={state.schema} value={body} onChange={(next) => changeBody(next as FormBody)} disabled={!canEdit || status === "saving" || status === "preparing"} />
           ) : state?.kind === "operating_plan" ? (
-            <><OperatingPlanForm sourceMessage={operatingSourceError ? <div role="alert"><p>{operatingSourceError}</p><button type="button" onClick={() => { if (lastOperatingSource.current) openOperatingSource(lastOperatingSource.current); }}>Retry source document</button></div> : null} onSaveVersion={saveOperatingPlanVersion} saveVersionBusy={status === "preparing" || status === "saving"} saveVersionDisabled={!canEdit || status === "preparing" || status === "saving"} saveVersionLabel="Save version for your team" key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={operatingPreview?.evaluation} evaluating={operatingEvaluating} onPreviewSource={openOperatingSource} />{operatingPreviewError ? <div role="alert"><p>{operatingPreviewError} Your entries are retained.</p><button type="button" onClick={() => setOperatingPreviewRetry(value => value + 1)}>Retry financial preview</button></div> : null}</>
+            <><OperatingPlanForm suggestionClient={suggestionClient} goal={operatingPreview?.goal ?? state.goal} sourceMessage={operatingSourceError ? <div role="alert"><p>{operatingSourceError}</p><button type="button" onClick={() => { if (lastOperatingSource.current) openOperatingSource(lastOperatingSource.current); }}>Retry source document</button></div> : null} onSaveVersion={saveOperatingPlanVersion} saveVersionBusy={status === "preparing" || status === "saving"} saveVersionDisabled={!canEdit || status === "preparing" || status === "saving"} saveVersionLabel="Save version for your team" key={token} value={body} releasedCashFlow={state.released_cash_flow ?? state.completion?.released_cash_flow} onChange={changeBody} disabled={!canEdit || status === "saving" || status === "preparing"} guidedDefault onGuidedModeChange={setOperatingGuided} guidedStepRequest={guidedStepRequest} guidance={operatingPreview?.guidance} evidence={operatingPreview?.evidence} sources={operatingPreview?.evidence.files} evaluation={operatingPreview?.evaluation} evaluating={operatingEvaluating} onPreviewSource={openOperatingSource} />{operatingPreviewError ? <div role="alert"><p>{operatingPreviewError} Your entries are retained.</p><button type="button" onClick={() => setOperatingPreviewRetry(value => value + 1)}>Retry financial preview</button></div> : null}</>
           ) : state?.kind === "pfs" ? (
             <Pfs413Form
               schema={state.schema}

@@ -1,0 +1,9 @@
+import { describe, expect, it } from "vitest";
+import { operatingGoalAxis, operatingGoalReady, operatingGoalError, type OperatingGoalRead } from "../operatingGoal";
+const goal = (amount: number | null, currency: string | null = "USD"): OperatingGoalRead => ({ status: amount == null ? "awaiting_staff" : "set", metric: "annual_noi", amount, currency, revision: 1, updated_at: null });
+describe("annual NOI goal display boundaries", () => {
+  it("has no invented target and requires a positive saved annual NOI goal", () => { expect(operatingGoalReady()).toBe(false); expect(operatingGoalReady(goal(null))).toBe(false); expect(operatingGoalReady(goal(0))).toBe(false); expect(operatingGoalReady(goal(-1))).toBe(false); expect(operatingGoalReady(goal(18000, null))).toBe(false); expect(operatingGoalReady(goal(18000))).toBe(true); });
+  it("places negative current, zero and positive target in signed order without financial arithmetic", () => { const axis = operatingGoalAxis([-15000, 0, 10000, 18000]); expect(axis.position(-15000)).toBeLessThan(axis.position(0)); expect(axis.position(0)).toBeLessThan(axis.position(10000)); expect(axis.position(18000)).toBe(92); expect(axis.position(-15000)).toBe(8); });
+  it("does not clamp a projection above target and remains finite for empty data", () => { const axis = operatingGoalAxis([-1, 10, 20]); expect(axis.position(20)).toBeGreaterThan(axis.position(10)); expect(Number.isFinite(operatingGoalAxis([]).position(0))).toBe(true); });
+  it("recognizes only the authoritative staff-goal prerequisite error", () => { expect(operatingGoalError({ body: { detail: { code: "operating_goal_required" } } })).toBe(true); expect(operatingGoalError({ body: { detail: { code: "other" } } })).toBeFalsy(); expect(operatingGoalError(new Error("operating_goal_required"))).toBeFalsy(); });
+});

@@ -1,3 +1,4 @@
+import type { OperatingGoalProgress, OperatingCashBridge } from "./operatingGoal";
 import type { FileRequestItem } from "./fileRequestsApi";
 import type { FinancialWorkspaceSnapshot } from "./financialWorkspaceApi";
 import type { NoiBaselineGovernance } from "./noiGovernance";
@@ -71,7 +72,7 @@ export type OperatingUnitEconomics = {
   expense_groups: Array<OperatingUnitCostRead & { key: string; label: string; expense_row_ids: string[] }>;
   missing: string[]; notes: string[];
 };
-export type ReleasedCashFlowAllocation = { id: string; label: string; amount_monthly: PlanAmount; expense_row_id?: string | null; notes: string };
+export type ReleasedCashFlowAllocation = { id: string; label: string; amount_monthly: PlanAmount; expense_row_id?: string | null; action_id?: string | null; purpose?: "existing_cost" | "planned_increment" | "reserve" | "other" | null; notes: string };
 export type ReleasedCashFlowEvaluation = {
   required: boolean; available: boolean; status: string; source_fingerprint: string | null;
   currency: string; amount_monthly: number | null; allocated_monthly: number; unallocated_monthly: number | null;
@@ -90,6 +91,7 @@ export type OperatingExpenseChanges = {
   gross_projection: { scope: "linked_expense_changes_only"; status: string; noi: number | null; earnings: number | null; dscr_current: number | null; dscr_with_refinance: number | null };
 };
 export type OperatingEvaluation = {
+  goal_progress?: OperatingGoalProgress; cash_bridge?: OperatingCashBridge;
   commands?: Array<{ action_id: string; expense_row_id: string | null; expense_category: string | null; source_group_key: string; target: string; status: string; current_annual_revenue?: number | null; proposed_annual_revenue?: number | null; included_in_proposed_projection?: boolean; included_in_approved_projection?: boolean; projection_issues?: string[]; current_value: number | null; proposed_value: number | null; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null; participant_expense_row_ids: string[]; allocations: Array<{ expense_row_id: string; current_annual_cost: number | null; proposed_annual_cost: number | null; gross_annual_effect: number | null }>; issues: string[]; assumptions: string[]; command: OperatingAction["command"] }>;
   itemization?: Array<{ parent_expense_row_id: string; expense_category: string; source_group_key: string; reference_annual_amount: number | null; recorded_parent_annual_amount?: number | null; reference_authority?: string; source_comparable?: boolean | null; year?: string | number | null; source_label?: string | null; source_fact_keys?: string[]; children_annual_amount: number | null; remainder_annual_amount: number | null; status: "unknown" | "balanced" | "unallocated" | "overallocated"; child_expense_row_ids: string[] }>;
 

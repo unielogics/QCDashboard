@@ -71,6 +71,8 @@ jobs:
           src/lib/__tests__/operatingUnitPlanning.test.ts
           src/lib/__tests__/operatingStep3.test.ts
           src/lib/__tests__/recognizablePlan.test.ts
+          src/lib/__tests__/operatingGoal.test.ts
+          src/components/application/__tests__/OperatingGoalSummary.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
           src/components/application/__tests__/OperatingPlanGuide.test.ts
           src/components/application/__tests__/OperatingPlanForm.test.ts
@@ -190,6 +192,8 @@ jobs:
           src/lib/__tests__/operatingUnitPlanning.test.ts
           src/lib/__tests__/operatingStep3.test.ts
           src/lib/__tests__/recognizablePlan.test.ts
+          src/lib/__tests__/operatingGoal.test.ts
+          src/components/application/__tests__/OperatingGoalSummary.test.ts
           src/components/application/__tests__/OperatingPlanChanges.test.ts
           src/components/application/__tests__/OperatingPlanGuide.test.ts
           src/components/application/__tests__/OperatingPlanForm.test.ts
@@ -217,6 +221,14 @@ jobs:
           src/components/application/OperatingPlanCommands.tsx
           tests/recognizable-plan.spec.ts
           tests/fixtures/recognizablePlan.ts
+          src/lib/operatingGoal.ts
+          src/lib/operatingSuggestions.ts
+          src/hooks/useOperatingPlanGoal.ts
+          src/components/application/OperatingGoalSummary.tsx
+          src/components/application/OperatingLineSuggestion.tsx
+          src/components/application/ReleasedCashFlowAllocation.tsx
+          tests/plan-goals.spec.ts
+          tests/fixtures/planGoals.ts
 
       - name: Build production frontend
         run: pnpm build

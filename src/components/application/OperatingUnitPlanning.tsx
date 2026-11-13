@@ -36,8 +36,9 @@ export function OperatingUnitHeader({ value, onChange, disabled, evaluation, eva
   </section>;
 }
 
-export function OperatingUnitReadout({ value, unitLabel, currency, pending, label }: { value?: OperatingUnitCostRead; unitLabel?: string; currency?: string | null; pending?: boolean; label: string }) {
+export function OperatingUnitReadout({ value, unitLabel, currency, pending, label, compact = false }: { compact?: boolean; value?: OperatingUnitCostRead; unitLabel?: string; currency?: string | null; pending?: boolean; label: string }) {
   const text = (amount?: number | null, perUnit = false) => pending ? "Updating…" : perUnit ? ratio(amount, currency) : metricAmountLabel(amount, currency);
+  if (compact) return <StableOperatingPreview pending={Boolean(pending)}><p className={styles.compact} aria-label={`${label} per business unit`}>Cost / {unitLabel || "business unit"}: <strong>{text(value?.current_average_cost_per_unit, true)}</strong>{value?.proposed_average_cost_per_unit != null || pending ? <> → <strong>{text(value?.proposed_average_cost_per_unit, true)}</strong> proposed</> : null}{value?.recurring === false ? " · one-time cost, outside recurring unit costs" : ""}</p></StableOperatingPreview>;
   return <StableOperatingPreview pending={Boolean(pending)}><div className={styles.readout} aria-label={`${label} per business unit`} aria-busy={pending}><span>Current annual cost<strong>{text(value?.current_annual_amount)}</strong></span><span>Current cost / {unitLabel || "business unit"}<strong>{text(value?.current_average_cost_per_unit, true)}</strong></span><span>Proposed annual cost<strong>{text(value?.proposed_annual_amount)}</strong></span><span>Proposed cost / {unitLabel || "business unit"}<strong>{text(value?.proposed_average_cost_per_unit, true)}</strong></span>{value?.recurring === false ? <p className={styles.note}>{value.scope_note || "One-time costs are disclosed separately and do not enter recurring annual unit costs."}</p> : null}</div></StableOperatingPreview>;
 }
 

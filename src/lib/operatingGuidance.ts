@@ -1,3 +1,4 @@
+import type { OperatingGoalRead } from "./operatingGoal";
 import { OPERATING_CATEGORIES, cadenceFactor, clearOperatingReview, operatingExpenseAmount, operatingExpenseTotal, operatingNumber, type OperatingAction, type OperatingCadence, type OperatingEvaluation, type OperatingExpense, type OperatingPlanBody } from "./operatingPlan";
 
 export type OperatingExpenseGroup = {
@@ -22,7 +23,7 @@ export type OperatingExpenseCandidate = {
   year?: number | string | null; currency?: string | null; basis?: string | null;
 };
 export type OperatingGuidanceEvidence = { files?: Array<{ file_id: string; file_name: string }>; expense_candidates?: OperatingExpenseCandidate[]; warnings?: string[] };
-export type OperatingGuidanceReply = { guidance: OperatingGuidance; evidence: OperatingGuidanceEvidence; evaluation: OperatingEvaluation | null };
+export type OperatingGuidanceReply = { goal?: OperatingGoalRead; guidance: OperatingGuidance; evidence: OperatingGuidanceEvidence; evaluation: OperatingEvaluation | null };
 export const DEFAULT_OPERATING_ESSENTIALS = ["rent", "salaries", "marketing", "utilities", "insurance", "cogs"].map(category => ({ category, label: category === "salaries" ? "Payroll" : category.replaceAll("_", " ").replace(/^./, letter => letter.toUpperCase()), prompt: `Confirm current ${category.replaceAll("_", " ")} costs, or tell your team this category does not apply.` }));
 export function unansweredOperatingCategories(body: OperatingPlanBody, guidance?: OperatingGuidance | null) {
   return (guidance?.essentials?.length ? guidance.essentials : DEFAULT_OPERATING_ESSENTIALS).filter(question => !body.category_confirmations?.[question.category]);

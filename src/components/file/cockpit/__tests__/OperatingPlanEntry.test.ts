@@ -23,7 +23,14 @@ describe("operating plan entry actions", () => {
     expect(open).toMatch(/<svg[^>]*aria-hidden="true"/);
     expect(open).toContain("<path d=");
     expect(buttons.every(button => button.replace(/<[^>]+>/g, "").trim())).toBe(true);
-    expect(html.includes("Request client plan")).toBe(canEdit);
+    expect(html.includes("Request client plan")).toBe(false);
+    expect(html.includes("Set annual NOI goal")).toBe(canEdit);
     client.clear();
   });
+});
+
+it("makes requesting a client plan available after a saved staff goal", () => {
+  const client = new QueryClient(); client.setQueryData(["operating-plan-summary", "configured-profile"], { has_plan: false, expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: 0, cost_mix: [], goal: { status: "set", metric: "annual_noi", amount: 18000, currency: "USD", revision: 1, updated_at: null } });
+  const html = renderToStaticMarkup(createElement(QueryClientProvider, { client }, createElement(OperatingPlanEntry, { profileId: "configured-profile", businessName: "Synthetic business", canEdit: true, onRefresh: vi.fn(), onRequested: vi.fn() })));
+  expect(html).toContain("Request client plan"); expect(html).not.toContain("Set annual NOI goal"); client.clear();
 });

@@ -1,5 +1,5 @@
 import { clearOperatingReview, type OperatingAction, type OperatingExpense, type OperatingEvaluation, type OperatingPlanBody } from "./operatingPlan";
-import { removeOperatingCurrentItem } from "./operatingStep3";
+import { addOperatingCurrentItem, addOperatingPlannedActivity, confirmOperatingNewActivity, removeOperatingCurrentItem, type OperatingChangeGroup } from "./operatingStep3";
 
 const active = (row: { excluded?: boolean; duplicate_of?: string | null; status?: string }) => !row.excluded && !row.duplicate_of && row.status !== "rejected";
 export type RemovalUndo = { expenseId: string; actionIds: string[] };
@@ -65,4 +65,18 @@ export function switchPlannerUnitProposal(body: OperatingPlanBody, expenseId: st
     if (old.command.target === "unit_quantity") proposal.proposed_units_per_period = resolved.proposed_value;
   }
   return { ...body, adjustments: old ? body.adjustments?.map(row => row.id === old.id ? proposal : row) : [...body.adjustments ?? [], proposal] };
+}
+
+/** A local Add composer commits only a named item, so cancelled placeholders never enter the draft. */
+export function addPlannerNamedItem(body: OperatingPlanBody, group: OperatingChangeGroup, name: string, id: string, parentId?: string | null): OperatingPlanBody {
+  if (!name.trim() || body.expenses?.some(row => row.id === id)) return body;
+  const next = parentId ? itemizePlannerExpense(body, parentId, id) : addOperatingCurrentItem(body, group, id);
+  if (next === body) return body;
+  return { ...next, expenses: next.expenses?.map(row => row.id === id ? { ...row, label: name.trim() } : row) };
+}
+/** The explicit new-activity choice confirms current zero, never a setup cost or future evidence. */
+export function addPlannerNamedActivity(body: OperatingPlanBody, group: OperatingChangeGroup, name: string, actionId: string, expenseId: string): OperatingPlanBody {
+  if (!name.trim() || body.adjustments?.some(row => row.id === actionId) || body.expenses?.some(row => row.id === expenseId)) return body;
+  const next = addOperatingPlannedActivity(body, group, actionId);
+  return confirmOperatingNewActivity({ ...next, adjustments: next.adjustments?.map(row => row.id === actionId ? { ...row, label: name.trim() } : row) }, actionId, () => expenseId);
 }

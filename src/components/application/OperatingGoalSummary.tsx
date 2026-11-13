@@ -1,0 +1,32 @@
+"use client";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { metricAmountLabel } from "@/lib/financialMetrics";
+import { operatingNumber } from "@/lib/operatingPlan";
+import { operatingGoalAxis, operatingGoalReady, type OperatingGoalRead, type OperatingGoalProgress } from "@/lib/operatingGoal";
+import { OperatingAmountInput } from "./OperatingAmountInput";
+import styles from "./OperatingGoalSummary.module.css";
+export function StaffOperatingGoal({ goal, currencySuggestion, disabled, saving, error, onSave, onCancel, onReload }: { onReload?: () => void; goal: OperatingGoalRead; currencySuggestion?: string | null; disabled?: boolean; saving?: boolean; error?: string; onSave: (amount: number, currency: string) => Promise<unknown>; onCancel?: () => void }) {
+  const [amount, setAmount] = useState<string | number | null>(goal.amount), [currency, setCurrency] = useState(goal.currency || currencySuggestion || "");
+  const seededCurrency = useRef(Boolean(goal.currency || currencySuggestion));
+  useEffect(() => { if (!seededCurrency.current && currencySuggestion && !currency) { seededCurrency.current = true; setCurrency(currencySuggestion); } }, [currencySuggestion, currency]);
+  const parsed = operatingNumber(amount), valid = parsed != null && parsed > 0 && /^[A-Z]{3}$/.test(currency);
+  const dirty = String(amount ?? "") !== String(goal.amount ?? "") || currency !== (goal.currency || currencySuggestion || "");
+  useEffect(() => { const guard = (event: BeforeUnloadEvent) => { if (dirty || saving) { event.preventDefault(); event.returnValue = ""; } }; window.addEventListener("beforeunload", guard); return () => window.removeEventListener("beforeunload", guard); }, [dirty, saving]);
+  return <section className={styles.setup} aria-label="Staff annual NOI goal setup"><div><strong>{operatingGoalReady(goal) ? "Edit annual NOI goal" : "Set the annual NOI goal first"}</strong><small>Annual operating-plan NOI, before additional loan operating charges.</small></div><label>Annual NOI goal<OperatingAmountInput label="Annual NOI goal" value={amount} disabled={disabled || saving} onCommit={setAmount} invalid={amount != null && amount !== "" && (parsed == null || parsed <= 0)} /></label><label>Currency<input aria-label="Goal currency" maxLength={3} value={currency} disabled={disabled || saving} onChange={event => { seededCurrency.current = true; setCurrency(event.target.value.toUpperCase()); }} /></label><button type="button" disabled={disabled || saving || !valid} onClick={() => { if (valid) void onSave(parsed!, currency); }}>{saving ? "Saving goal…" : "Save annual NOI goal"}</button>{onCancel ? <button type="button" disabled={saving} onClick={onCancel}>Cancel</button> : null}{error ? <p className={styles.error} role="alert">{error} Your entry is retained. {onReload ? <button type="button" onClick={onReload}>Reload saved goal</button> : null}</p> : null}</section>;
+}
+export function OperatingGoalSummary({ goal, progress, baseline, pending, control, hasChanges = true }: { hasChanges?: boolean; goal?: OperatingGoalRead | null; progress?: OperatingGoalProgress | null; baseline?: OperatingGoalProgress | null; pending?: boolean; control?: ReactNode }) {
+  if (!goal) return null;
+  const mismatch = Boolean(progress && progress.goal_revision !== goal.revision);
+  const source = mismatch ? null : progress || (baseline?.goal_revision === goal.revision ? baseline : null);
+  const beforeSetup = !mismatch && progress?.proposed_noi == null && progress?.draft_noi_before_implementation != null;
+  const current = source?.current_noi ?? null, projected = pending || mismatch ? null : progress?.proposed_noi ?? progress?.draft_noi_before_implementation ?? null;
+  const ready = operatingGoalReady(goal), axis = operatingGoalAxis([current, projected, goal.amount]);
+  const currency = source?.currency || goal.currency, money = (value?: number | null) => metricAmountLabel(value, currency);
+  const chartable = ready && source?.status === "calculated" && source.currency === goal.currency;
+  const gap = mismatch ? null : hasChanges ? pending ? null : progress?.proposed_gap ?? (beforeSetup ? progress?.draft_gap : null) ?? null : source?.current_gap ?? null;
+  return <section className={styles.summary} aria-label="Annual NOI goal progress" aria-busy={pending}>
+    <div className={styles.figures}><span>Current <strong className={current != null && current < 0 ? styles.negative : undefined}>{chartable ? money(current) : "Unknown"}</strong></span><span>{beforeSetup ? "Before setup" : "Planned"} <strong className={projected == null ? undefined : projected < 0 ? styles.negative : styles.positive}>{!hasChanges ? "No changes" : pending ? "Updating…" : chartable ? money(projected) : "Unknown"}</strong></span><span>Goal / year <strong>{mismatch ? "Changed — refresh" : metricAmountLabel(goal.amount, goal.currency)}</strong>{control}</span><span>{hasChanges ? "Gap" : "Current gap"} <strong className={gap == null ? undefined : gap > 0 ? styles.negative : styles.positive}>{pending && hasChanges ? "Updating…" : chartable ? money(gap) : "Unknown"}</strong></span></div>
+    {chartable && goal.amount != null ? <svg className={styles.axis} viewBox="0 0 100 10" preserveAspectRatio="none" role="img" aria-label={`Annual NOI: current ${money(current)}, zero, planned ${money(projected)}, goal ${money(goal.amount)}`}><line x1="8" y1="5" x2="92" y2="5" className={styles.track} /><text x={axis.position(0)} y="2" fontSize="2.4" textAnchor="middle">0</text><line x1={axis.position(0)} y1="3" x2={axis.position(0)} y2="9" className={styles.zero} />{current != null ? <circle cx={axis.position(current)} cy="5" r="1.3" className={current < 0 ? styles.badDot : styles.currentDot} /> : null}{projected != null ? <circle cx={axis.position(projected)} cy="5" r="1.5" className={projected < 0 ? styles.badDot : styles.goodDot} /> : null}<line x1={axis.position(goal.amount)} x2={axis.position(goal.amount)} y1="1" y2="9" className={styles.target} /></svg> : null}
+    <div className={styles.legend}><span>{mismatch ? "The staff goal changed. Refresh the saved goal." : chartable ? `Annual NOI · source ${source?.current_year || "year unconfirmed"} · zero line shown` : source?.status === "currency_mismatch" ? "Source and goal currencies differ; no conversion is applied." : "Confirm source to compare."}</span><span>{beforeSetup ? "Before setup costs and timing · " : ""}Operating-plan NOI before additional loan operating charges; see cash bridge.</span></div>
+  </section>;
+}

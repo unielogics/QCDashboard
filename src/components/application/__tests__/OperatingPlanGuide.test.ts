@@ -25,7 +25,7 @@ describe("guided operating plan presentation", () => {
     expect(html).toContain("No changes planned");
     expect(html).not.toContain("Annual effect before setup costs");
     expect(html).toContain('aria-label="New activity category"');
-    expect(html).toContain("Add new activity (current cost 0)");
+    expect(html).not.toContain("New planned activity name");
     expect(html).not.toContain('aria-label="Planned category');
   });
   it("keeps independent NOI visible while missing DSCR stays unknown and pending reviews stay distinct", () => {
