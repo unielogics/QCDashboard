@@ -3,3 +3,5 @@
 .done{background:var(--brand,#3157b7);color:#fff;border:1px solid var(--brand,#3157b7);border-radius:5px;min-height:34px;padding:5px 14px;font-size:12px}
 
 .kept{color:var(--mut,#647084);font-size:10px}
+
+.fundingParts{display:grid;gap:7px;margin:10px 0 0;padding-top:10px;border-top:1px solid var(--line,#e5e7eb)}.fundingParts>div{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-size:11px}.fundingParts dt{color:var(--mut,#6b7280)}.fundingParts dd{margin:0;font-variant-numeric:tabular-nums;white-space:nowrap}.fundingParts .fundingNote{color:var(--mut,#6b7280);font-size:10px;line-height:1.5}

@@ -98,9 +98,28 @@ export type OperatingExpenseChanges = {
   gross_projection: { scope: "linked_expense_changes_only"; status: string; noi: number | null; earnings: number | null; dscr_current: number | null; dscr_with_refinance: number | null };
 };
 export type OperatingMetricValues = Record<"earnings" | "noi" | "dscr" | "cash_after_debt" | "operating_margin" | "debt_service", number | null>;
+export type OperatingBankReplayValues = {
+  net_monthly: number | null; ending_balance: number | null; negative_months: number | null;
+  net_months_observed: number; ending_months_observed: number; low_balance_months_observed: number;
+};
+export type OperatingBankReplay = {
+  scope: "saved_financing_plan_only"; replay_available: boolean;
+  replay_reason: "not_saved" | "no_bank_months" | "financing_inputs_incomplete" | "currency_unconfirmed" | null;
+  month_count: number; currency: "USD" | null; complete: boolean;
+  before: OperatingBankReplayValues; after: OperatingBankReplayValues;
+};
 export type OperatingComparison = {
+  bank_replay?: OperatingBankReplay;
   loan_basis: "current_debt" | "saved_terms" | "incomplete_terms";
   loan_cash_monthly?: number | null;
+  payment_breakdown?: {
+    regular_before_monthly: number | null; regular_after_monthly: number | null;
+    regular_before_annual: number | null; regular_after_annual: number | null;
+    coverage_before_annual: number | null; coverage_after_annual: number | null;
+    new_loan_regular_monthly: number | null; retained_debt_monthly: number | null;
+    financing_fees_monthly: number | null; maturity_balance: number | null; coverage_basis: string | null;
+    term_months?: number | null; amortization_months?: number | null; payments_per_year?: number | null;
+  };
   target_gap?: Record<"proposed" | "approved", number | null>;
   proposed_basis: string;
   baseline: OperatingMetricValues; proposed: OperatingMetricValues; approved: OperatingMetricValues;

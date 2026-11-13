@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { evaluatePlanLocally } from "../cockpitSimulation";
-import type { FinancialCockpit, FinancialPlanWrite, PlanAddBack } from "../financialCockpit";
+import { withBudgetEvaluation, withSavedEarningsEvaluation } from "../budgetPlanEvaluation";
+import type { FinancialCockpit, FinancialPlanWrite, PlanAddBack, PlanEvaluation } from "../financialCockpit";
 import fixtures from "./fixtures/ebitdaRefinance.json";
 
 const plan = { retire: [], exclude: [], add_backs: [], overrides: null, new_payment_monthly: null, new_payment_source: null, new_loan_amount: null, new_loan_rate_pct: null, new_loan_term_months: null, new_loan_interest_only: false, new_loan_structure: null, new_loan_interest_only_months: null, note: null } as FinancialPlanWrite;
@@ -137,5 +138,95 @@ describe("financial plan earnings and missing debt service", () => {
     const source = cockpit(1000);
     source.debt.obligations = [{ id: "outside", monthly: null, payoff: 10000, in_debt_service: false }] as FinancialCockpit["debt"]["obligations"];
     expect(evaluatePlanLocally(source, { ...plan, retire: ["outside"] }, []).serviceBeforeNewPayment).toBe(1000);
+  });
+});
+
+
+describe("annual coverage follows contractual payment periods", () => {
+  const shortLoan = { ...plan, new_loan_amount: 12000, new_loan_rate_pct: 0, new_loan_term_months: 6,
+    new_loan_structure: "amortizing", new_payment_source: "manual_terms" } as FinancialPlanWrite;
+
+  it("counts six contractual payments once while preserving the regular monthly amount", () => {
+    const result = evaluatePlanLocally(cockpit(), shortLoan, []);
+    expect(result.newRegularPayment).toBe(2000);
+    expect(result.newLoanAnnualDebtService).toBe(12000);
+    expect(result.newLoanAnnualDebtServiceBasis).toBe("canonical_schedule");
+    expect(result.serviceAfterRegular).toBe(3000);
+    expect(result.serviceAfterAnnual).toBe(24000);
+    expect(result.headlineAfter).toBe(2.17);
+  });
+
+  it("uses the actual shorter contract when an adopted recorded quote matches it", () => {
+    const result = evaluatePlanLocally(cockpit(), { ...shortLoan, new_payment_source: "recorded_terms",
+      new_payment_monthly: 2000 }, []);
+    expect(result.newLoanAnnualDebtService).toBe(12000);
+    expect(result.newLoanAnnualDebtServiceBasis).toBe("canonical_schedule");
+    expect(result.serviceAfterAnnual).toBe(24000);
+  });
+
+  it("preserves a separately reviewed scalar that differs from the priced schedule", () => {
+    const result = evaluatePlanLocally(cockpit(), { ...shortLoan, new_payment_source: "manual",
+      new_payment_monthly: 2500 }, []);
+    expect(result.newLoanAnnualDebtService).toBe(30000);
+    expect(result.newLoanAnnualDebtServiceBasis).toBe("annualized_monthly_payment");
+    expect(result.serviceAfterAnnual).toBe(42000);
+  });
+
+  it("preserves an accepted legacy recorded payment on contracts of at least twelve months", () => {
+    const result = evaluatePlanLocally(cockpit(), { ...shortLoan, new_payment_source: "recorded_terms",
+      new_payment_monthly: 550, new_loan_term_months: 24 }, []);
+    expect(result.newRegularPayment).toBe(550);
+    expect(result.newLoanAnnualDebtService).toBe(6600);
+    expect(result.newLoanAnnualDebtServiceBasis).toBe("annualized_recorded_payment");
+    expect(result.serviceAfterAnnual).toBe(18600);
+  });
+
+  it("preserves accepted retained monthly rounding for a legacy recorded schedule without a stored payment", () => {
+    const result = evaluatePlanLocally(cockpit(), { ...shortLoan, new_payment_source: "recorded_terms",
+      new_loan_term_months: 24, new_payment_monthly: null,
+      terms_ref: { kind: "client_terms", id: "synthetic-terms", version: 1, label: "Synthetic terms",
+        treatment: "refinance", retained_annual_debt_service: 12345.67 },
+      overrides: { income_annual: null, income_note: null, debt_service_monthly: 1028.81,
+        debt_service_note: "Refinance per synthetic accepted terms" } }, []);
+    expect(result.serviceBeforeNewPayment).toBe(1028.81);
+    expect(result.newLoanAnnualDebtService).toBe(6000);
+    expect(result.newLoanAnnualDebtServiceBasis).toBe("canonical_schedule");
+    expect(result.serviceAfterAnnual).toBe(18345.72);
+  });
+
+  it("keeps periodic payments and maturity principal distinct in a fictional configured quote", () => {
+    // Independent cent-rounded ledger for 120000 at 12.5%, 48 periods/year,
+    // 144 amortization periods and 72 contractual periods.
+    const result = evaluatePlanLocally(cockpit(), { ...plan, new_loan_amount: 120000,
+      new_loan_rate_pct: 12.5, new_loan_term_months: 18, new_loan_structure: "amortizing",
+      new_loan_interest_only_months: 0, new_loan_payments_per_year: 48,
+      new_loan_repayment_config: { amortization_months: 36, after_balloon: "keep_payment", balloons: [] },
+      new_payment_source: "manual_terms" }, []);
+    expect(result.schedule?.payment_after).toBe(1000.40);
+    expect(result.newRegularPayment).toBe(4001.60);
+    expect(result.schedule?.maturity_balloon).toBe(65601.14);
+    expect(result.newLoanAnnualDebtService).toBe(113620.34);
+    expect(result.newLoanAnnualDebtServiceBasis).toBe("canonical_schedule");
+    expect(result.serviceAfterAnnual).toBe(125620.34);
+  });
+
+  it("adopts the cost-aware server annual calculation without annualizing its monthly payment again", () => {
+    const local = evaluatePlanLocally(cockpit(), shortLoan, []);
+    const server = { debt_service_after_annual: 25200, debt_service_after_monthly: 2100,
+      new_payment_monthly: 2000, new_loan_annual_debt_service: 12000,
+      new_loan_annual_debt_service_basis: "canonical_schedule", headline_after: 2.06,
+      income_after_annual: 52000, no_debt_left: false, replay: [] } as unknown as PlanEvaluation;
+    const saved = withSavedEarningsEvaluation(local, server);
+    const budget = withBudgetEvaluation(local, server);
+    for (const result of [saved, budget]) {
+      expect(result.newLoanAnnualDebtService).toBe(12000);
+      expect(result.newLoanAnnualDebtServiceBasis).toBe("canonical_schedule");
+      expect(result.serviceAfterAnnual).toBe(25200);
+      expect(result.headlineAfter).toBe(2.06);
+    }
+    const pending = withBudgetEvaluation(budget, null, true);
+    expect(pending.newLoanAnnualDebtService).toBeNull();
+    expect(pending.newLoanAnnualDebtServiceBasis).toBe("unavailable");
+    expect(pending.serviceAfterAnnual).toBeNull();
   });
 });

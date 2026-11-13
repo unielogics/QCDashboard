@@ -530,6 +530,7 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
   const loanTerms = plan.new_loan_amount ? `${money(plan.new_loan_amount)} at ${plan.new_loan_rate_pct ?? 0}%${plan.new_loan_interest_only ? " interest-only" : ` over ${plan.new_loan_term_months ?? "—"} mo`}` : null;
   const savedModifications = cockpit.plan?.modifications ?? [];
 
+  const coverageWorkspace = workspaceTool === "coverage";
   const planContent = (
     <section className="fc-card fc-wide fc-coverage">
       <div className="fc-card-h">
@@ -544,7 +545,7 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
       {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
       {saved && !dirty ? <StatusLine tone="ok">{saved}</StatusLine> : null}
       {dirty ? <StatusLine tone="acc">Unsaved plan: the figures below already reflect it; save to make the debt service, the offer and the advances follow.</StatusLine> : null}
-      {onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
+      {!coverageWorkspace && onRequestStatement ? <div className={styles.summaryActions}>{profitAndLossIsEmpty(cockpit.profit_and_loss) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("profit_and_loss"); }}>Request P&amp;L</Btn> : null}{balanceSheetIsEmpty(cockpit.balance_sheet) ? <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("balance_sheet"); }}>Request balance sheet</Btn> : null}</div> : null}
 
       <NoiGovernanceSummary value={cockpit.noi} showAmount />
       <CoverageFundingGap value={fundingReview} basis={`${coverageBasis?.label ?? "Selected earnings"}${coverageBasis?.period ? ` · ${coverageBasis.period}` : ""}`} />
@@ -584,22 +585,27 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
             )}
           </div>
           {local.incomeAfter == null || local.incomeAfter > 0 ? <Meter value={local.noDebtLeft ? thresholds.very_strong * 2 : (local.headlineAfter ?? null)} tone={meterTone(afterStatus)} marks={marks} label="Debt service coverage with the plan" /> : null}
-          {local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the regular payment equivalent after interest-only, without matching commencement dates to historical statement months. DSCR separately retains the underwriting stress basis, including principal due.</p> : null}
+          {!coverageWorkspace && local.schedule?.repayment_config ? <p className="sub">Bank balance and negative-month projections use the regular payment equivalent after interest-only, without matching commencement dates to historical statement months. DSCR separately retains the underwriting stress basis, including principal due.</p> : null}
           <div className="fc-stat-list">
-            <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} />
+            {!coverageWorkspace ? <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} /> : null}
             <Stat label="Loan the plan needs">{local.loanAmountNeeded ? `${money(local.loanAmountNeeded)}${local.payoffTotal ? ` (payoffs ${money(local.payoffTotal)}${local.payoffUnknown ? `, ${local.payoffUnknown} unknown` : ""})` : ""}` : "—"}</Stat>
+            {!coverageWorkspace ? <>
             <Stat label="Net cash flow per month, today → plan">{money(summary.avg_net)} → {money(local.netAfterAverage)}</Stat>
             <Stat label="Ending balance, last month, today → plan">{money(summary.ending_balance)} → {money(local.endingAfterLast)}</Stat>
             <Stat label="Months dipping below zero, today → plan">{local.rows.filter((r) => r.lowest != null && r.lowest < 0).length} → {local.monthsDippingNegativeAfter ?? "—"}</Stat>
+            </> : null}
           </div>
         </div>
       </div>
 
+      {!coverageWorkspace ? <>
       <details className={styles.ebitdaDetails}>
         <summary>EBITDA sources and plan adjustments</summary>
         <EbitdaRefinanceComparison value={local.ebitda} scenarioActive={Boolean(cockpit.plan.evaluation.active)} unsaved={dirty} onPreviewSource={onPreviewSource ? previewSource : undefined} onRequestEvidence={onRequestStatement ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onRequestStatement("profit_and_loss"); } : undefined} />
         <RevenueTrendPanel value={cockpit.ebitda?.revenue_trend} potential={cockpit.ebitda?.potential} planIsCurrent={!dirty} onPreviewSource={onPreviewSource ? (source) => { if (source.file_id) previewSource(source.file_id, source.pages?.[0]); } : undefined} />
       </details>
+
+      </> : null}
 
       <div className="fc-grid">
         <div className="grid g8">
@@ -614,7 +620,7 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
                     <th scope="col" className={styles.payoffSelectionCell} title="Select loans to pay off"><span aria-hidden="true">✓</span><span className="sr-only">Select loans to pay off</span></th>
                     <th>Lender</th>
                     <th>Origination date</th>
-                    <th className="r">Per month</th>
+                    <th className="r">Monthly equivalent</th>
                     <th className="r">Balance / payoff</th>
                     <th className="r">Paid down</th>
                     <th>In debt service</th>
@@ -622,7 +628,7 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
                 </thead>
                 <tbody>
                   {obligations.map((o) => (
-                    <ObligationPlanRow key={o.id} o={o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} />
+                    <ObligationPlanRow key={o.id} o={o.cadence ? { ...o, cadence: `${cadenceLabel(o.cadence)} collections` } : o} canEdit={canEdit} on={plan.retire.includes(o.id)} onToggleRetire={() => toggleRetire(o.id)} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} />
                   ))}
                 </tbody>
               </table>
@@ -644,7 +650,7 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
 
         </div>
         <div className="grid g8">
-          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}>{fileWorkspace ? <><FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Expand full loan terms</FileWorkspaceLink><FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Open loan terms and amortization</FileWorkspaceLink></> : <><IconBtn disabled={termsPending || save.isPending} aria-label="Expand full loan terms" title="Expand full loan terms" onClick={() => openClientTerms("terms")}><Icon name="maximize" size={16} /></IconBtn><IconBtn disabled={termsPending || save.isPending} aria-label="Expand amortization schedule" title="Expand amortization schedule" onClick={() => openClientTerms("schedule")}><Icon name="calc" size={16} /></IconBtn></>}</div> : null}</div>
+          <div className={loanStyles.loanHeader} aria-label="New loan controls"><Lbl>The new loan</Lbl>{termsKind === "client" ? <div className={loanStyles.loanHeaderActions}>{fileWorkspace ? coverageWorkspace ? <FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Edit loan terms and payment schedule</FileWorkspaceLink> : <><FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Expand full loan terms</FileWorkspaceLink><FileWorkspaceLink tool="terms" disabled={termsPending || save.isPending}>Open loan terms and amortization</FileWorkspaceLink></> : <><IconBtn disabled={termsPending || save.isPending} aria-label="Expand full loan terms" title="Expand full loan terms" onClick={() => openClientTerms("terms")}><Icon name="maximize" size={16} /></IconBtn><IconBtn disabled={termsPending || save.isPending} aria-label="Expand amortization schedule" title="Expand amortization schedule" onClick={() => openClientTerms("schedule")}><Icon name="calc" size={16} /></IconBtn></>}</div> : null}</div>
           <div className="fc-loan-terms">
             <label className="grid g2"><span className="sub">{targetNetMode ? "Net to client, $" : "Total loan amount, $"}</span><Input aria-label={targetNetMode ? "Net to client" : "New loan amount"} type="number" inputMode="decimal" min={0} step="any" value={numberValue(targetNetMode ? budgetPreview.value?.target_net_amount : plan.new_loan_amount)} disabled={!canEdit} onChange={(e) => targetNetMode ? budgetPreview.updateBudget({ target_net_amount: num(e.target.value) }) : setLoan("amount", e.target.value)} />{targetNetMode ? <small>Total loan including fees: {budgetPending ? "Calculating…" : money(plan.new_loan_amount, 2)}</small> : null}</label>
             <label className="grid g2"><span className="sub">Rate, %</span><Input aria-label="New loan rate percent" type="number" inputMode="decimal" min={0} max={100} step="any" value={numberValue(plan.new_loan_rate_pct)} disabled={!canEdit} onChange={(e) => setLoan("rate", e.target.value)} /></label>
@@ -660,13 +666,13 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
               <label className="grid g2"><span className="sub">Interest-only months first</span><Input aria-label="Interest-only months at the start of the term" type="number" inputMode="numeric" min={0} max={plan.new_loan_term_months ?? 600} step={1} placeholder="0" value={numberValue(plan.new_loan_interest_only_months)} disabled={!canEdit} onChange={(e) => setLoan("io_months", e.target.value)} /></label>
             ) : null}
             <label className="grid g2"><span className="sub">Amortization after interest-only, months</span><Input aria-label="Amortization after interest-only (months)" type="number" inputMode="numeric" min={1} max={1200} placeholder="Use remaining loan term" value={numberValue(plan.new_loan_repayment_config?.amortization_months)} disabled={!canEdit || structureNow === "interest_only"} onChange={(event) => setAmortization(event.target.value)} /><small className="sub">Independent of maturity; this period begins after any interest-only months.</small>{structureNow === "interest_only" && plan.new_loan_repayment_config?.amortization_months != null ? <Btn size="sm" disabled={!canEdit} onClick={() => setAmortization("")}>Remove amortization; keep principal payments</Btn> : null}</label>
-            <div className="grid g2"><span className="sub">Residual balloon at maturity</span><strong className="num">{local.schedule ? money(local.schedule.balloon, 2) : "Enter loan details to calculate"}</strong><small className="sub">Unpaid principal is due at maturity{plan.new_loan_term_months != null ? ` in month ${plan.new_loan_term_months}` : ""}; additional principal payments are set below.</small></div>
+            <div className="grid g2"><span className="sub">Residual balloon at maturity</span><strong className="num">{local.schedule ? money(local.schedule.balloon, 2) : "Enter loan details to calculate"}</strong><small className="sub">Unpaid principal is due at maturity{plan.new_loan_term_months != null ? ` in month ${plan.new_loan_term_months}` : ""}{coverageWorkspace ? ". Edit additional principal payments in Loan terms." : "; additional principal payments are set below."}</small></div>
           </div>
           {local.schedule ? <LoanPaymentPhases schedule={local.schedule} /> : null}
           <LoanDateFields value={{ expected_funding_date: plan.new_loan_expected_funding_date ?? "", maturity_date: plan.new_loan_maturity_date ?? "", maturity_date_mode: plan.new_loan_maturity_mode ?? "automatic" }} termMonths={plan.new_loan_term_months} disabled={!canEdit} onChange={dates => { setSaved(null); setLoanDraftTouched(true); setPlan(current => ({ ...current, new_loan_expected_funding_date: dates.expected_funding_date || null, new_loan_maturity_date: dates.maturity_date || null, new_loan_maturity_mode: dates.maturity_date_mode })); }} />
-          <FileCollateralSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} />
-          <DealBudgetSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!canEdit} financialPlan={plan} onPending={setTermsPending} onGrossAmountChange={amount => setLoan("amount", amount == null ? "" : String(amount))} onApplySolvedPrincipal={amount => setLoan("amount", String(amount))} onFinancingSaved={financingSaved} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} />
-          <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} />
+          {!coverageWorkspace ? <FileCollateralSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!canEdit} compact title="Collateral for this loan" onSaved={refresh} /> : null}
+          {!coverageWorkspace ? <DealBudgetSection inline={Boolean(fileWorkspace?.pageMode)} profileId={profileId} disabled={!canEdit} financialPlan={plan} onPending={setTermsPending} onGrossAmountChange={amount => setLoan("amount", amount == null ? "" : String(amount))} onApplySolvedPrincipal={amount => setLoan("amount", String(amount))} onFinancingSaved={financingSaved} onSaved={() => { onEconomicsSaved?.(); return refresh(); }} loan={workingLoan ? { amount: workingLoan.amount, rate_pct: workingLoan.ratePct, term_months: workingLoan.termMonths, structure: workingLoan.structure, interest_only_months: workingLoan.interestOnlyMonths, repayment_config: workingLoan.repaymentConfig, payments_per_year: workingLoan.paymentsPerYear } : null} /> : null}
+          {!coverageWorkspace ? <AdvancedRepaymentEditor amortizationAlreadyVisible value={plan.new_loan_repayment_config} onChange={(config) => { setSaved(null); setPaymentText(""); setLoanDraftTouched(true); setPlan((current) => ({ ...current, overrides: releaseAutomaticRefinance(current), new_loan_repayment_config: config, new_payment_monthly: null, new_payment_source: current.new_loan_amount != null ? "manual_terms" : null, terms_ref: null })); }} amount={plan.new_loan_amount} ratePct={plan.new_loan_rate_pct} termMonths={plan.new_loan_term_months} structure={structureNow} interestOnlyMonths={plan.new_loan_interest_only_months} periodsPerYear={plan.new_loan_payments_per_year ?? 12} disabled={!canEdit} /> : null}
           <span className="sub">Under three years the house default is simple interest (interest on the original principal, principal spread evenly after the interest-only months); from three years, amortizing. Pick the other when the lender prices it that way.</span>
           <span className="sub">
             {local.schedule ? "Scheduled installments, maturity principal and the underwriting stress basis are shown separately above." : plan.new_payment_monthly != null ? `Payment typed by the desk: ${money(plan.new_payment_monthly)} a month.` : termsAdopted ? `In the plan: the recorded loan terms, ${money(local.newPayment)} a month for coverage.` : cockpit.dscr.proposed ? `Recorded loan terms on file: ${money(cockpit.dscr.proposed.monthly_payment)} a month for coverage${cockpit.dscr.proposed.label ? ` (${cockpit.dscr.proposed.label})` : ""}. Not in the plan until you add them.` : "No loan terms yet: enter them, type a payment, or apply a lever."}
@@ -685,7 +691,7 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
               {fileWorkspace ? <FileWorkspaceLink tool="terms">Record these terms</FileWorkspaceLink> : <Btn size="sm" onClick={() => { if (setupBudgetSaving) return; setReviewOpen(false); onRecordTerms(); }}>Record these terms</Btn>}
             </div>
           ) : null}
-          {termsKind === "client" ? (
+          {!coverageWorkspace && termsKind === "client" ? (
             <ClientTermsStrip
               profileId={profileId}
               loan={workingLoan}
@@ -884,8 +890,8 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
         </div>
       ) : null}
 
-      {months.length ? <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} /> : null}
-      {months.length ? (
+      {!coverageWorkspace && months.length ? <BankReplayNotice reason={local.replayUnavailableReason} onReviewEvidence={onOpenEvidence ? () => { if (setupBudgetSaving) return; setReviewOpen(false); onOpenEvidence(); } : undefined} /> : null}
+      {!coverageWorkspace && months.length ? (
         <ChartCard
           plain
           title="Ending balance, today against the plan"
@@ -919,8 +925,15 @@ export function CoverageCard({ workspaceTool, cockpit, months, summary, accountL
     </div>
   </details> : null;
   const planActions = canEdit ? <><Btn size="sm" onClick={clearPlan} disabled={!dirty && !plan.retire.length && !plan.exclude.length && !plan.new_payment_monthly && !plan.new_loan_amount}>Clear plan</Btn><Btn size="sm" variant="pri" disabled={!dirty && !legacySelectionsReviewed || save.isPending || unresolvedPayoffs || !!repaymentIssue} onClick={() => void submit()}>{save.isPending ? "Saving…" : "Save plan"}</Btn></> : null;
-  const planReview = <>{programSelection}{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
-  if (workspaceTool) return <>{workspaceTool === "terms" ? <ClientTermsDrawer inline open={workspaceTool === "terms" || clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} /> : <><div className="row">{planActions}</div>{planReview}</>}</>;
+  const planReview = <>{!coverageWorkspace ? programSelection : null}{unresolvedPayoffs ? <StatusLine tone="warn">Earlier payoff selections are not confirmed schedule obligations. Review their statement evidence before using this scenario. <Btn size="sm" disabled={!canEdit} onClick={() => { setPlan((current) => ({ ...current, retire: current.retire.filter((id) => obligations.some((obligation) => obligation.id === id)) })); setLegacySelectionsReviewed(true); }}>Remove unconfirmed payoff selections</Btn></StatusLine> : null}{planContent}</>;
+  if (workspaceTool) return <>
+    {coverageWorkspace && fileWorkspace ? <nav aria-label="Related financial workspaces" className="row" style={{ gap: 12, flexWrap: "wrap" }}>
+      <FileWorkspaceLink tool="forms" kind="debt_schedule" view="form">Debt schedule</FileWorkspaceLink>
+      <FileWorkspaceLink tool="terms">Loan terms, collateral and financing costs</FileWorkspaceLink>
+      <FileWorkspaceLink tool="use-of-funds">Programs and use of funds</FileWorkspaceLink>
+      <FileWorkspaceLink tool="operating-plan">Expenses and earnings plan</FileWorkspaceLink>
+    </nav> : null}
+    {workspaceTool === "terms" ? <ClientTermsDrawer inline open={workspaceTool === "terms" || clientTermsOpen} onClose={() => { setClientTermsOpen(false); if (returnToReview.current) setReviewOpen(true); returnToReview.current = false; }} profileId={profileId} onSaved={termsSaved} prefillLoan={workingLoan} financialPlanDraft={plan} refinanceContext={refinanceContext} workingDraft={clientTermsDraft} onWorkingDraftChange={setClientTermsDraft} onApplyLoan={applyTermsLoan} onUpdateLoan={updateTermsLoan} onFinancingSaved={financingSaved} previewScenario={previewScenario} canEdit={requestedCanEdit && !save.isPending} onPending={setTermsPending} scenarioPaymentOnly={scenarioPaymentOnly} initialView={clientTermsView} /> : <><div className="row">{planActions}</div>{planReview}</>}</>;
   return <>
     <section className={`fc-card ${styles.summaryCard}`} aria-label="Debt coverage and financial review">
       <div className={styles.summaryHead}><div><h4>Debt coverage and financial review</h4><p className={styles.note}>Saved financial figures, the working debt schedule, and observed statement payments stay distinct.</p></div><div className={styles.summaryActions}>

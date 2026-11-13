@@ -68,6 +68,11 @@ export function ReleasedCashFlowAllocation({ value, onChange, source, bridge, wo
       {working?.cash_after_debt_after_annual != null && !evaluating ? <span><small>Cash after debt / year · illustration</small><strong className={tone(working.cash_after_debt_after_annual)}>{money(working.cash_after_debt_after_annual)}</strong></span> : null}
       <button type="button" className={styles.allocate} onClick={() => setOpen(true)}>{attention ? "Review cash" : "Use some cash"}</button>
     </div>
+    {bridge && !evaluating ? <dl className={styles.fundingParts} aria-label="Plan funding contributions">
+      {bridge.loan_status && bridge.loan_status !== "not_saved" ? <div><dt>Net loan cash relief / month</dt><dd>{money(bridge.net_loan_cash_change_monthly)}</dd></div> : null}
+      {enhanced ? <div><dt>{bridge.operating_savings_monthly == null ? "Known operating cost savings" : "Operating cost savings"} / month</dt><dd>{money(bridge.operating_savings_monthly ?? bridge.operating_known_savings_monthly)}</dd></div> : null}
+      {!fundingReady ? <div className={styles.fundingNote}>This subtotal awaits the remaining plan inputs.</div> : null}
+    </dl> : null}
     <Drawer open={isOpen} onClose={() => setOpen(false)} title="Keep or use freed cash" sub="Cash is kept by default. Reinvesting it is optional." width="lg" footer={<button type="button" className={styles.done} onClick={() => setOpen(false)}>Done</button>}>
       <div ref={focusEditor} className={styles.editor} aria-label="Funding allocation editor">
         {!fundingReady ? <div className={styles.sourceWarning} role="status"><strong>Finish the funding inputs</strong><small>{missing.find(item => !item.startsWith("released_cash_flow.")) || bridge?.loan_missing?.[0] || "Review the highlighted savings or saved loan inputs before assigning the full pool."}</small>{actions.length ? <button type="button" onClick={reviewOperating}>Review the linked change</button> : null}{fileWorkspace && hasSavedLoan ? <FileWorkspaceLink tool="coverage">Review saved loan plan ↗</FileWorkspaceLink> : hasSavedLoan ? <small>Ask your team to review the saved loan inputs.</small> : null}</div> : null}

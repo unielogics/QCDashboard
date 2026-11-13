@@ -603,6 +603,8 @@ export type PlanEvaluation = {
   noi_scenario?: import("./financialMetrics").FinancialNoi["scenario"];
   headline_after_before_financing_fees?: number | null;
   debt_service_after_annual_before_financing_fees?: number | null;
+  new_loan_annual_debt_service?: number | null;
+  new_loan_annual_debt_service_basis?: "canonical_schedule" | "annualized_recorded_payment" | "annualized_monthly_payment" | "unavailable";
   retirement_replay_unknown?: boolean;
   replay_review_required_ids?: string[];
   replay_unavailable_reason?: string | null;

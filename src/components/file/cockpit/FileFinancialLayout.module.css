@@ -73,3 +73,9 @@
   .sourceMetrics > summary span { display: block; margin: 4px 0 0 14px; }
   .layout :global(.fc-card) { padding: 13px; }
 }
+
+.coverageWorkspace { display: grid; align-content: start; gap: 12px; min-width: 0; }
+.coverageWorkspace > :global(.row) { align-items: center; }
+.coverageWorkspace :global(.fc-card) { border-radius: 12px; }
+.coverageWorkspace :global(.fc-grid) { align-items: start; }
+.coverageWorkspace :global(.fc-stat-list) { gap: 6px; }

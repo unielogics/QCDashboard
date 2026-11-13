@@ -50,3 +50,12 @@
 @media(max-width:600px) { .impact,.coverage { padding: 15px; } .metric { padding: 11px 0; } .strip { padding: 0; } .strip .metric { padding: 12px; } .strip .before { font-size: 18px; } }
 
 .strip .before.loss { color: #a43f32; }
+
+.basisLabel{display:block;margin-top:3px;font-size:10px;text-transform:none;letter-spacing:0;color:var(--mut,#6b7280)}
+.paymentBasis{padding:16px 18px;background:var(--surface,#fff);border:1px solid var(--line,#e5e7eb);border-radius:12px;min-width:0}
+.paymentBasis h4{font-size:13px;margin:0 0 12px}.paymentBasis dl{margin:0;display:grid;gap:8px}
+.paymentBasis dl>div{display:flex;align-items:baseline;justify-content:space-between;gap:10px;font-size:11px}
+.paymentBasis dt{color:var(--mut,#697280)}.paymentBasis dd{margin:0;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+.paymentBasis p{font-size:11px;color:var(--mut,#6b7280);line-height:1.6;margin:12px 0 0}
+.paymentBasis summary{cursor:pointer;font-size:12px;font-weight:600;padding:0}
+.paymentBasis[open] summary{margin-bottom:12px}

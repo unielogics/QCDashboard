@@ -812,7 +812,7 @@ export function FinancialCockpit(props: Props) {
             />
           </details> : null}
           onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />);
-  if (props.workspaceTool) return <div className="fin-cockpit">{coverageView}{props.workspaceTool === "marketplace" ? <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} /> : null}{auxiliaryContent}</div>;
+  if (props.workspaceTool) return <div className={cx("fin-cockpit", props.workspaceTool === "coverage" && layoutStyles.coverageWorkspace)} aria-label={props.workspaceTool === "coverage" ? "Debt coverage workspace" : undefined}>{coverageView}{props.workspaceTool === "marketplace" ? <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} /> : null}{auxiliaryContent}</div>;
   return (
     <div className={cx("fin-cockpit", layoutStyles.layout, query.isFetching && "is-refreshing")}>
       <div className="fc-head">

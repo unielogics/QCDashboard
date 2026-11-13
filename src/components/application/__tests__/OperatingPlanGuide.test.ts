@@ -2,6 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { OperatingPlanGuide, OperatingGuidedComparison } from "../OperatingPlanGuide";
+import { OperatingPlanComparison } from "../OperatingPlanComparison";
 import type { OperatingEvaluation } from "@/lib/operatingPlan";
 import type { OperatingGuidance } from "@/lib/operatingGuidance";
 
@@ -106,4 +107,52 @@ describe("source review and revenue step placement", () => {
   expect(html).not.toContain('aria-label="Source cost comparison"');
  });
 
+});
+
+
+describe("persistent planning canvas", () => {
+  it("keeps today's source figures and the supplied outcome beside every planning stage without writing", () => {
+    let writes = 0;
+    for (const stepIndex of [0, 1, 2, 3]) {
+      const html = renderToStaticMarkup(createElement(OperatingPlanGuide, {
+        value: {}, onChange: () => { writes++; }, evaluation, stepIndex,
+        comparisonContent: createElement("div", null, "Persistent financial outcome"),
+      }));
+      expect(html).toContain("Today&#x27;s financial baseline");
+      expect(html).toContain("Persistent financial outcome");
+      expect(html).toContain("Current drivers");
+      expect(html).toContain("Assumptions");
+      expect(html).toContain("Outcome");
+    }
+    expect(writes).toBe(0);
+  });
+  it("labels financing bank observations separately from working operating assumptions", () => {
+    const e = structuredClone(evaluation);
+    const values = { earnings: null, noi: null, dscr: null, cash_after_debt: null, operating_margin: null, debt_service: null };
+    e.comparison = {
+      loan_basis: "saved_terms", proposed_basis: "after_setup_before_timing",
+      baseline: values, proposed: values, approved: values,
+      bank_replay: { scope: "saved_financing_plan_only", replay_available: true, replay_reason: null,
+        month_count: 3, currency: "USD", complete: false,
+        before: { net_monthly: 2400, ending_balance: 8500, negative_months: 1,
+          net_months_observed: 2, ending_months_observed: 3, low_balance_months_observed: 2 },
+        after: { net_monthly: 2600, ending_balance: 9100, negative_months: 0,
+          net_months_observed: 2, ending_months_observed: 3, low_balance_months_observed: 2 } },
+    };
+    const html = renderToStaticMarkup(createElement(OperatingPlanComparison, { evaluation: e }));
+    expect(html).toContain("Saved financing plan · bank replay");
+    expect(html).toContain("partial observations");
+    expect(html).toContain("original 2 of 3, with financing 2 of 3");
+    expect(html).toContain("$8,500.00");
+    expect(html).toContain("$9,100.00");
+    expect(html).toContain("operating changes appear in the comparison above");
+    e.comparison.bank_replay!.before.low_balance_months_observed = 0;
+    e.comparison.bank_replay!.before.negative_months = null;
+    e.comparison.bank_replay!.replay_available = false;
+    e.comparison.bank_replay!.replay_reason = "financing_inputs_incomplete";
+    const incomplete = renderToStaticMarkup(createElement(OperatingPlanComparison, { evaluation: e }));
+    expect(incomplete).not.toContain("$9,100.00");
+    expect(incomplete).toContain("Complete the financing inputs");
+    expect(incomplete).toContain("original 0 of 3");
+  });
 });

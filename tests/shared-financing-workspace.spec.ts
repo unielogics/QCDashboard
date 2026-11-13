@@ -34,7 +34,7 @@ test.beforeAll(async () => {
     const dealerClient={mode:'operator',termSheet:async()=>({current:null,history:[],can_edit:true,defaults:{funding_party_name:'Synthetic Capital',approved_amount:100000,min_activation_amount:100000,rate_pct:15,term_months:24},defaults_source:{},facility_types:[],funding_party_kinds:[],lenders:[]})};
     function DealerProbe(){const[open,setOpen]=useState(false);return <><button onClick={()=>setOpen(true)}>Open dealer terms</button><div hidden data-testid='dealer-production-host'>{open?<TermSheetDrawer open onClose={()=>setOpen(false)} profileId='synthetic-a' client={dealerClient}/>:null}</div></>}
     const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
-    function App(){const[view,setView]=useState('financials'),[profile,setProfile]=useState('synthetic-a'),[data,setData]=useState(cockpit),[value,setValue]=useState(null),[termsRequest,setTermsRequest]=useState(0),[reviewRequest,setReviewRequest]=useState(0);return <QueryClientProvider client={client}><main className='app' style={{padding:16}}><DealerProbe/><nav><button onClick={()=>setView('financials')}>Financials tab</button><button onClick={()=>setView('underwriting')}>Underwriting tab</button><button onClick={()=>{setProfile('synthetic-b');setValue(null);setTermsRequest(0);setReviewRequest(0)}}>Another file</button></nav><div hidden={view!=='financials'} data-testid='financials-host'><CoverageCard key={profile} profileId={profile} cockpit={data} months={[]} summary={{months:0}} accountLabel='All accounts' canEdit canReviewDebt canRecordTerms={false} onRecordTerms={()=>{}} termsKind='client' onRefresh={()=>setData(cockpit())} termsRequest={termsRequest} reviewRequest={reviewRequest} onWorkingPlanChange={setValue}/></div>{view==='underwriting'?<FinancingProposalSummary value={value} requestedAmount={200000} onEdit={()=>setTermsRequest(n=>n+1)} onCoverage={()=>setReviewRequest(n=>n+1)}/>:null}</main></QueryClientProvider>};createRoot(document.getElementById('root')).render(<App/>);
+    function App(){const[view,setView]=useState('financials'),[profile,setProfile]=useState('synthetic-a'),[data,setData]=useState(cockpit),[value,setValue]=useState(null),[termsRequest,setTermsRequest]=useState(0),[reviewRequest,setReviewRequest]=useState(0);return <QueryClientProvider client={client}><main className='app' style={{padding:16}}><DealerProbe/><nav><button onClick={()=>setView('financials')}>Financials tab</button><button onClick={()=>setView('underwriting')}>Underwriting tab</button><button onClick={()=>{setProfile('synthetic-b');setValue(null);setTermsRequest(0);setReviewRequest(0)}}>Another file</button></nav><div hidden={view!=='financials'} data-testid='financials-host'><CoverageCard workspaceTool={new URLSearchParams(location.search).get('workspace')==='coverage'?'coverage':undefined} programSelection={<section aria-label='Program setup fixture'>Programs and use of funds setup</section>} key={profile} profileId={profile} cockpit={data} months={[]} summary={{months:0}} accountLabel='All accounts' canEdit canReviewDebt canRecordTerms={false} onRecordTerms={()=>{}} termsKind='client' onRefresh={()=>setData(cockpit())} termsRequest={termsRequest} reviewRequest={reviewRequest} onWorkingPlanChange={setValue}/></div>{view==='underwriting'?<FinancingProposalSummary value={value} requestedAmount={200000} onEdit={()=>setTermsRequest(n=>n+1)} onCoverage={()=>setReviewRequest(n=>n+1)}/>:null}</main></QueryClientProvider>};createRoot(document.getElementById('root')).render(<App/>);
   ` }, outfile: path.join(directory, "app.js"), bundle: true, format: "iife", platform: "browser", jsx: "automatic", nodePaths: [path.join(root, "node_modules")], alias: { "@": path.join(root, "src") }, define: { "process.env": "{}", "process.env.NODE_ENV": '"development"' }, loader: { ".module.css": "local-css" }, plugins: [{ name: "synthetic-services", setup(build: { onResolve: (filter: { filter: RegExp }, callback: (args: { path: string }) => unknown) => void; onLoad: (filter: { filter: RegExp; namespace: string }, callback: (args: { path: string }) => unknown) => void }) { build.onResolve({ filter: /.*/ }, args => args.path in mocks ? { path: args.path, namespace: "fixture" } : undefined); build.onLoad({ filter: /.*/, namespace: "fixture" }, args => ({ contents: mocks[args.path], loader: "tsx", resolveDir: root })); } }] });
   [script, css] = await Promise.all([readFile(path.join(directory, "app.js")), readFile(path.join(directory, "app.css"))]);
 });
@@ -116,5 +116,26 @@ test("dealer terms and their collateral portal out of a hidden production tab an
   await dialog.getByRole("button", { name: "Close", exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(opener).toBeFocused();
+  expect(errors).toEqual([]);
+});
+
+
+test("the coverage workspace keeps debt planning and omits the collateral and financing cost editors", async ({ page }) => {
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.goto("http://financing.test/?workspace=coverage");
+  await expect(page.getByRole("heading", { name: "Debt service coverage and the plan", exact: true })).toBeVisible();
+  await expect(page.getByLabel("New loan rate percent", { exact: true })).toHaveValue("29.99");
+  await expect(page.getByLabel("New loan term in months", { exact: true })).toHaveValue("24");
+  await expect(page.getByText("Saved and documented obligations (All accounts)", { exact: true })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Save plan", exact: true })).toBeVisible();
+  await expect(page.getByRole("table").filter({ has: page.getByRole("columnheader", { name: "Figure", exact: true }) })).toBeVisible();
+  await expect(page.getByLabel("Program setup fixture", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Collateral for this loan", { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel("Client terms", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("EBITDA sources and plan adjustments", { exact: true })).toHaveCount(0);
+  await expect(page.getByText("Ending balance, today against the plan", { exact: true })).toHaveCount(0);
+  await page.getByLabel("New loan rate percent", { exact: true }).fill("20");
+  await expect(page.getByLabel("New loan rate percent", { exact: true })).toHaveValue("20");
   expect(errors).toEqual([]);
 });
