@@ -1,0 +1,18 @@
+.impact { min-width: 0; background: var(--surface, #fff); border: 1px solid var(--line, #dce1e8); border-radius: 9px; }
+.impact header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px; padding: 10px 12px; }
+.impact header strong { color: var(--ink, #192334); font-size: 13px; }
+.switcher { display: inline-flex; padding: 2px; border-radius: 6px; background: var(--sunken2, #f1f3f6); }
+.switcher button { font: inherit; font-size: 11px; color: var(--muted, #536072); min-height: 28px; padding: 3px 8px; background: transparent; border: 1px solid transparent; border-radius: 4px; cursor: pointer; }
+.switcher button[aria-pressed=true] { background: var(--surface, #fff); border-color: var(--line, #dce1e8); color: var(--ink, #192334); font-weight: 650; }
+.impact dl { margin: 0; }
+.impact dl > div { padding: 7px 12px; border-top: 1px solid var(--line, #dce1e8); min-width: 0; }
+.impact dt, .impact small { color: var(--muted, #586574); font-size: 11px; }
+.impact dd { display: flex; align-items: baseline; flex-wrap: wrap; gap: 3px 6px; margin: 3px 0 0; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--muted, #586574); }
+.impact dd b { color: var(--ink, #192334); font-size: 15px; }
+.impact small { display: block; padding: 6px 12px; border-top: 1px solid var(--line, #dce1e8); }
+.impact .target { margin: 0; padding: 7px 12px; font-size: 12px; font-weight: 600; border-top: 1px solid var(--line, #dce1e8); }
+.strip { container-type: inline-size; }
+.strip dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.strip dl > div { border-inline-end: 1px solid var(--line, #dce1e8); }
+@container (min-width: 560px) { .strip dl { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@container (min-width: 940px) { .strip dl { grid-template-columns: repeat(6, minmax(0, 1fr)); } }

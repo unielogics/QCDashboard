@@ -1,4 +1,5 @@
 "use client";
+import { OperatingPlanImpact } from "@/components/application/OperatingPlanImpact";
 import { operatingFundingState } from "@/lib/operatingFundingState";
 import { metricAmountLabel } from "@/lib/financialMetrics";
 
@@ -16,7 +17,7 @@ import type { PlanEvaluation } from "@/lib/financialCockpit";
 import { OperatingCoverageSummary } from "./OperatingCoverageSummary";
 import styles from "./OperatingPlanEntry.module.css";
 
-type PlanSummary = { goal?: OperatingGoalRead; has_plan: boolean; state?: string; expense_count: number; action_count: number; reviewed_action_count: number; missing_count: number; version_number?: number | null; updated_at?: string | null; cost_mix: Array<{ category: string; annual_amount: number | null; missing_count: number; count: number }>; evaluation?: OperatingEvaluation | null };
+type PlanSummary = { goal?: OperatingGoalRead; has_plan: boolean; state?: string; expense_count: number; action_count: number; reviewed_action_count: number; missing_count: number; version_number?: number | null; updated_at?: string | null; pdf_file_id?: string | null; cost_mix: Array<{ category: string; annual_amount: number | null; missing_count: number; count: number }>; evaluation?: OperatingEvaluation | null };
 
 /** Compact entry beside coverage; editing stays in the shared financial workspace. */
 export function OperatingPlanEntry({ profileId, businessName, evaluation: suppliedEvaluation, version, currentDscr, coverageEvaluation, canEdit, onRefresh, onRequested }: {
@@ -26,6 +27,7 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
   canEdit?: boolean; onRefresh: () => void | Promise<unknown>; onRequested: () => void;
 }) {
   const fileWorkspace = useFileWorkspace();
+  const [view, setView] = useState<"form" | "pdf">("form");
   const [open, setOpen] = useState(false); const [request, setRequest] = useState<string | null>(null);
   const api = useAuthedApi(); const queryClient = useQueryClient();
   const summary = useQuery({ queryKey: ["operating-plan-summary", profileId], queryFn: () => api<PlanSummary>(`/application-profiles/${encodeURIComponent(profileId)}/operating-plan/summary`), staleTime: 15_000, retry: false });
@@ -41,7 +43,8 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
   const money = (value: number | null | undefined) => currency ? operatingMoney(value, currency) : value == null ? "—" : new Intl.NumberFormat(undefined, { maximumFractionDigits: 2 }).format(value);
   const refresh = async () => { await queryClient.invalidateQueries({ queryKey: ["operating-plan-summary", profileId] }); await onRefresh(); };
   return <>
-    <section className="fc-card fc-wide"><div className="fc-card-h"><div><h4>Operating expenses and earnings plan</h4><div className="sub">Current costs, proposed changes and their effect on earnings and coverage.</div></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{summary.data?.has_plan ? <CellChip tone="mut">{summary.data.state === "published" ? `Published v${summary.data.version_number ?? version ?? "—"}` : summary.data.state === "client_submitted" ? "Client submitted · review needed" : "Working draft"}</CellChip> : summary.data ? <CellChip tone="mut">No plan yet</CellChip> : version ? <CellChip tone="mut">v{version}</CellChip> : null}{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">Open earnings plan</FileWorkspaceLink> : <Btn size="sm" onClick={() => setOpen(true)}><Icon name="pencil" size={14} aria-hidden="true" />Open earnings plan</Btn>}{canEdit ? operatingGoalReady(summary.data?.goal) ? <Btn size="sm" onClick={() => setRequest(crypto.randomUUID())}>Request client plan</Btn> : fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">Set annual NOI goal</FileWorkspaceLink> : <Btn size="sm" disabled={summary.isLoading} onClick={() => setOpen(true)}>Set annual NOI goal</Btn> : null}</div></div>
+    {evaluation?.comparison ? <OperatingPlanImpact evaluation={evaluation} strip /> : null}
+    <section className="fc-card fc-wide"><div className="fc-card-h"><div><h4>Operating expenses and earnings plan</h4><div className="sub">Current costs, proposed changes and their effect on earnings and coverage.</div></div><div className="row" style={{ gap: 8, flexWrap: "wrap" }}>{summary.data?.has_plan ? <CellChip tone="mut">{summary.data.state === "published" ? `Published v${summary.data.version_number ?? version ?? "—"}` : summary.data.state === "client_submitted" ? "Client submitted · review needed" : "Working draft"}</CellChip> : summary.data ? <CellChip tone="mut">No plan yet</CellChip> : version ? <CellChip tone="mut">v{version}</CellChip> : null}{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">Open earnings plan</FileWorkspaceLink> : <Btn size="sm" onClick={() => setOpen(true)}><Icon name="pencil" size={14} aria-hidden="true" />Open earnings plan</Btn>}{summary.data?.pdf_file_id ? <Btn size="sm" onClick={() => { setView("pdf"); setOpen(true); }}>Latest plan PDF</Btn> : null}{canEdit ? operatingGoalReady(summary.data?.goal) ? <Btn size="sm" onClick={() => setRequest(crypto.randomUUID())}>Request client plan</Btn> : fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">Set annual NOI goal</FileWorkspaceLink> : <Btn size="sm" disabled={summary.isLoading} onClick={() => setOpen(true)}>Set annual NOI goal</Btn> : null}</div></div>
       {funding.required ? <div className={styles.releaseRequirement} role="status">
         <div><strong>{funding.complete ? "Plan funding allocated" : "Review the funding choices"}</strong><p>The current plan has {metricAmountLabel(funding.capacity, funding.currency)} per month in funding. {funding.complete ? "Unused funding stays as cash; reinvesting is optional." : "Review the saved funding choices in the operating plan."}</p></div>
         {fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="operating-plan">{canEdit ? "Review cash choices" : "View cash choices"}</FileWorkspaceLink> : <Btn size="sm" onClick={() => setOpen(true)}>{canEdit ? "Review cash choices" : "View cash choices"}</Btn>}
@@ -50,10 +53,17 @@ export function OperatingPlanEntry({ profileId, businessName, evaluation: suppli
         <div className={styles.figures}><span>Known operating cash costs<strong>{money(evaluation?.disclosure.operating_cash_monthly)}<small>/ month</small></strong></span><span>Known COGS<strong>{money(evaluation?.disclosure.cogs_monthly)}<small>/ month</small></strong></span><span>Proposed earnings change<strong>{money(evaluation?.totals.proposed.annual_impact)}<small>/ year</small></strong></span><span>Reviewed earnings change<strong>{money(reviewed?.annual_impact)}<small>/ year</small></strong></span></div>
         {mix.length ? <div className={styles.mix} aria-label="Largest disclosed annual costs">{mix.map((row) => <div key={row.category}><span>{operatingLabel(row.category)}{row.missing_count ? " · known" : ""}</span><span className={styles.track}><i style={{ width: `${row.annual_amount! / largest * 100}%` }} /></span><strong>{money(row.annual_amount)}</strong></div>)}</div> : <p className="sub">{summary.isLoading ? "Reading the saved plan…" : summary.error ? "Plan summary could not be refreshed. Open the plan to review its saved rows." : "Add current costs and proposed changes to build the earnings comparison."}</p>}
       </div>
+      {evaluation?.actions.some(row => row.review_state !== "excluded" && row.review_state !== "rejected") ? <details className={styles.changes}>
+        <summary>Changes in the plan</summary>
+        <table><thead><tr><th>Change</th><th>Annual earnings effect</th><th>First year</th><th>Review</th></tr></thead>
+          <tbody>{evaluation.actions.filter(row => row.review_state !== "excluded" && row.review_state !== "rejected").map(row =>
+            <tr key={row.id}><th>{row.label || operatingLabel(row.kind)}</th><td>{money(row.proposed_math_valid ? row.net_annual_impact : null)}</td>
+              <td>{money(row.proposed_math_valid ? row.first_year_impact : null)}</td><td>{operatingLabel(row.review_state || row.status)}</td></tr>)}</tbody></table>
+      </details> : null}
       {coverageEvaluation?.operating_plan && coverageEvaluation.operating_plan.status !== "none" ? <div style={{ marginTop: 12 }}><OperatingCoverageSummary coverage={coverageEvaluation.operating_plan} currentDscr={currentDscr} projectedDscr={coverageEvaluation.headline_after} currency={currency} onReview={() => setOpen(true)} /></div> : null}
       <div className={styles.status}>{evaluation && !currency ? <span>Currency unconfirmed</span> : null}<span>{summary.data?.expense_count ?? evaluation?.disclosure.active_count ?? 0} expense rows · {summary.data?.action_count ?? evaluation?.actions.length ?? 0} earnings actions · {summary.data?.reviewed_action_count ?? evaluation?.actions.filter((row) => row.included_in_approved_projection).length ?? 0} reviewed</span>{summary.data?.missing_count ? <span>{summary.data.missing_count} inputs still needed</span> : null}{suggested ? <CellChip tone="warn">Recommended · coverage below 1.10x or negative earnings</CellChip> : null}</div>
     </section>
-    {open ? <FinancialWorkspace open profileId={profileId} initialKind="operating_plan" initialView="form" onClose={() => { setOpen(false); void refresh(); }} onPublished={refresh} /> : null}
+    {open ? <FinancialWorkspace open profileId={profileId} initialKind="operating_plan" initialView={view} onClose={() => { setOpen(false); setView("form"); void refresh(); }} onPublished={refresh} /> : null}
     {request ? <RequestFilesDialog open profileId={profileId} prefill={operatingPlanRequest(businessName)} prefillKey={request} onClose={() => setRequest(null)} onRequested={() => { onRequested(); void refresh(); }} /> : null}
   </>;
 }

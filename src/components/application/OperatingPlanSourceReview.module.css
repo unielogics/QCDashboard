@@ -2,3 +2,9 @@
 .attention{border:1px solid var(--danger,#b03932)!important;border-radius:5px;padding:8px}.correction.attention{padding:10px}
 
 .correction input,.correction textarea{box-sizing:border-box;width:100%;min-height:34px;padding:7px 8px;border:1px solid var(--line,#ccd4df);border-radius:4px;font:inherit;background:var(--surface,#fff);color:var(--ink,#172235)}.correction [aria-invalid=true]{border-color:var(--danger,#b03932)}
+
+.review { padding: 10px 12px; border: 1px solid var(--line, #dce1e8); border-radius: 8px; background: var(--surface, white); gap: 3px; }
+.heading { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; }
+.heading h4 { margin: 0; }
+.heading small { color: var(--muted); font-size: 11px; }
+.review .row { min-height: 38px; padding-block: 4px; }

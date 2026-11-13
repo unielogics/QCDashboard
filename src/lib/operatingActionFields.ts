@@ -23,7 +23,9 @@ export function operatingActionMissingFields(action: OperatingAction, body: Oper
       break;
     case "marketing_investment":
       text("product_name"); if (!expense) missing.push("expense_row_id");
-      number("current_amount", expense ? expense.current_amount : action.current_amount); number("proposed_amount"); number("revenue_return_multiple"); number("contribution_margin_pct");
+      number("current_amount", expense ? expense.current_amount : action.current_amount); number("proposed_amount"); number("contribution_margin_pct");
+      if (action.marketing_return_basis === "added_units") { number("added_units_per_period"); number("proposed_unit_price"); }
+      else number("revenue_return_multiple");
       if (operatingNumber(action.contribution_margin_pct)! > 100) missing.push("contribution_margin_pct");
       break;
     case "price_change":

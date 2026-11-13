@@ -851,6 +851,7 @@ export function FinancialCockpit(props: Props) {
           <span className="sub">Choose which accounts count on Evidence &amp; banking → Banking.</span>
         </div>
       ) : null}
+      <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} coverageEvaluation={cockpit.plan?.evaluation} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
           const tone = entry.key === "dscr" ? cockpit.dscr.no_debt ? "ok" : dscrTone(headline?.status) : entry.key === "nsf_overdrafts" ? risks.fees.value ? "bad" : nsfIncomplete ? "mut" : "ok" : entry.key === "noi" && noiGovernancePresentation(cockpit.noi).tone === "warn" ? "warn" : entry.key === "ebitda" && ebitdaTile.provisional ? "warn" : ["cash_flow", "net_profit", "ebitda", "noi", "average_balance"].includes(entry.key) ? toneForSign(entry.currentValue) : "mut";
@@ -869,7 +870,6 @@ export function FinancialCockpit(props: Props) {
 
       <div className="fc-grid">
         {coverageView}
-        <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} coverageEvaluation={cockpit.plan.evaluation} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
       </div>
 
       <details className={`fc-card ${financialReviewStyles.mainDetails}`}>
@@ -877,16 +877,18 @@ export function FinancialCockpit(props: Props) {
         <div className="fc-grid fc-grid-charts"><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
       </details>
 
-      <div className="fc-grid fc-grid-charts">
-        <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
-        <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
-        <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
+      <div className="fc-evidence-columns">
+        <div>
+          <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
+          <NetProfitCard cockpit={cockpit} />
+        </div>
+        <div>
+          <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
+          <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
+          <ExpensesCard cockpit={cockpit} />
+        </div>
       </div>
 
-      <div className="fc-grid">
-        <NetProfitCard cockpit={cockpit} />
-        <ExpensesCard cockpit={cockpit} />
-      </div>
       <div className="fc-grid">
         {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} />}
       </div>

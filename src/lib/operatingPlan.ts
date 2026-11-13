@@ -24,6 +24,8 @@ export type OperatingExpense = OperatingUnitCost & {
 };
 export type OperatingAction = OperatingUnitCost & {
   supporting_action_ids?: string[];
+  marketing_return_basis?: "spend_multiple" | "added_units";
+  added_units_per_period?: PlanAmount;
   id: string; expense_category?: string | null; source_group_key?: string; kind?: OperatingActionKind; label?: string; driver_key?: string; expense_row_id?: string | null;
   current_amount?: PlanAmount; proposed_amount?: PlanAmount; cadence?: OperatingCadence;
   units_per_period?: PlanAmount; current_unit_price?: PlanAmount; proposed_unit_price?: PlanAmount;
@@ -95,7 +97,16 @@ export type OperatingExpenseChanges = {
   summary: { changed_count: number; complete: boolean; gross_annual_effect: number | null; known_gross_annual_subtotal: number | null; excluded_action_ids: string[] };
   gross_projection: { scope: "linked_expense_changes_only"; status: string; noi: number | null; earnings: number | null; dscr_current: number | null; dscr_with_refinance: number | null };
 };
+export type OperatingMetricValues = Record<"earnings" | "noi" | "dscr" | "cash_after_debt" | "operating_margin" | "debt_service", number | null>;
+export type OperatingComparison = {
+  loan_basis: "current_debt" | "saved_terms" | "incomplete_terms";
+  loan_cash_monthly?: number | null;
+  target_gap?: Record<"proposed" | "approved", number | null>;
+  proposed_basis: string;
+  baseline: OperatingMetricValues; proposed: OperatingMetricValues; approved: OperatingMetricValues;
+};
 export type OperatingEvaluation = {
+  comparison?: OperatingComparison;
   source_review?: OperatingSourceReview;
   draft_feedback?: OperatingDraftFeedback;
   goal_progress?: OperatingGoalProgress; cash_bridge?: OperatingCashBridge;
@@ -107,7 +118,7 @@ export type OperatingEvaluation = {
   expense_groups?: Array<{ key: string; category: string; label: string; baseline_annual_amount: number | null; disclosed_annual_amount: number | null; difference_annual: number | null; status: "no_detail" | "incomplete" | "matches_source" | "differs_from_source" | "source_changed"; notes: string[] }>;
   released_cash_flow?: ReleasedCashFlowEvaluation;
   context_stamp?: string; disclosure: { operating_monthly: number | null; cogs_monthly: number | null; operating_cash_monthly: number | null; non_operating_monthly: number | null; one_time_total: number | null; active_count: number; excluded_count: number; missing_inputs: string[]; complete: boolean };
-  actions: Array<{ product_name?: string; calculation?: { product_name?: string; revenue_return_multiple?: number | null; incremental_spend?: number | null; incremental_revenue?: number | null; incremental_contribution?: number | null; formula?: string }; id: string; label: string; kind: string; status: string; review_state: string; gross_annual_impact: number | null; implementation_recurring_annual: number | null; implementation_one_time: number | null; net_annual_impact: number | null; first_year_impact: number | null; monthly_impact: number | null; included_in_approved_projection: boolean; proposed_math_valid?: boolean; included_in_proposed_projection?: boolean; issues: string[]; risk_flags: string[]; source_file_ids: string[] }>;
+  actions: Array<{ product_name?: string; calculation?: { product_name?: string; revenue_return_multiple?: number | null; incremental_spend?: number | null; incremental_revenue?: number | null; incremental_contribution?: number | null; with_support_annual_impact?: number | null; formula?: string }; id: string; label: string; kind: string; status: string; review_state: string; gross_annual_impact: number | null; implementation_recurring_annual: number | null; implementation_one_time: number | null; net_annual_impact: number | null; first_year_impact: number | null; monthly_impact: number | null; included_in_approved_projection: boolean; proposed_math_valid?: boolean; included_in_proposed_projection?: boolean; issues: string[]; risk_flags: string[]; source_file_ids: string[] }>;
   totals: Record<"proposed" | "approved", { annual_impact: number | null; monthly_impact: number | null; first_year_impact: number | null; one_time_cost: number | null; complete: boolean; count: number; expected_count?: number; known_annual_subtotal?: number; known_first_year_subtotal?: number }>;
   baseline: { noi_governance?: NoiBaselineGovernance; noi_kind?: string | null; noi_currency?: string | null; noi_label?: string | null; noi_year?: string | number | null; noi_basis?: string | null; noi_staff_reviewed?: boolean; noi_provisional?: boolean; period: string | null; currency: string | null; basis: string | null; revenue: number | null; earnings: number | null; earnings_kind: string | null; noi: number | null; dscr: number | null; annual_debt_service: number | null; provisional: boolean };
   projection: Record<"proposed" | "approved", OperatingProjection>;
@@ -122,7 +133,7 @@ export const operatingLabel = (value: string) => value.replaceAll("_", " ").repl
 export const operatingNumber = (value: unknown): number | null => {
   return decimalInput(value);
 };
-export const OPERATING_NUMERIC_FIELDS: ReadonlySet<string> = new Set(["unit_change_value", "revenue_return_multiple", "current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
+export const OPERATING_NUMERIC_FIELDS: ReadonlySet<string> = new Set(["added_units_per_period", "unit_change_value", "revenue_return_multiple", "current_amount", "proposed_amount", "units_per_period", "current_units_per_period", "proposed_units_per_period", "current_fixed_amount", "proposed_fixed_amount", "current_unit_price", "proposed_unit_price", "current_unit_cost", "proposed_unit_cost", "contribution_margin_pct", "implementation_cost", "processing_volume", "processing_transaction_count", "current_processing_rate_pct", "proposed_processing_rate_pct", "current_processing_fixed_fee", "proposed_processing_fixed_fee", "current_processing_per_transaction_fee", "proposed_processing_per_transaction_fee"]);
 /** Normalize known numeric fields individually. A bad cell must never erase its rows. */
 export function normalizeOperatingPlanBody<T extends Record<string, unknown>>(body: T): T {
   const next = { ...body } as Record<string, unknown>;

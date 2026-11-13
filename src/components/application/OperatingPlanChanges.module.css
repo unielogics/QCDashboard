@@ -7,3 +7,7 @@
 .globalSourceStatus{display:grid;grid-template-columns:minmax(0,1fr);gap:8px;align-content:start}.globalSourceStatus>p{min-height:3em}
 .quickActions{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;min-width:0}.quickActions button{border:0!important;background:transparent!important;color:var(--brand,#3157b7);padding:2px 0;min-height:25px;font-size:11px}.quickActions small{font-size:10px;color:var(--mut,#647084)}
 .configuration{padding:0;border:0;background:transparent;border-radius:0;gap:10px}.configuration .requirements,.configuration .fields{grid-template-columns:repeat(2,minmax(0,1fr))}@media(max-width:600px){.configuration .requirements,.configuration .fields{grid-template-columns:1fr}}
+
+.campaignReadout { display: flex; flex-wrap: wrap; gap: 5px 16px; padding-block: 6px; border-block: 1px solid var(--line); font-size: 12px; }
+.campaignReadout span { display: grid; gap: 2px; }
+.campaignReadout b { font-variant-numeric: tabular-nums; }

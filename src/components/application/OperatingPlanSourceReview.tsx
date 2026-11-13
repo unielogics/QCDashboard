@@ -22,12 +22,16 @@ export function OperatingPlanSourceReview({ value, onChange, guidance, review, d
   useEffect(() => { const { groups, request, correctionDraft } = latest.current; if (!request) return; const group = groups.find(row => row.key === request.sourceGroupKey); if (!group) return; if (request.field.startsWith("historical_corrections.")) { setCorrection(correctionDraft(group)); return; } const row = [...(section.current?.querySelectorAll<HTMLElement>("[data-operating-source-group]") || [])].find(node => node.dataset.operatingSourceGroup === group.key); const target = row?.querySelector<HTMLButtonElement>("button"); target?.focus({ preventScroll: true }); row?.scrollIntoView({ block: "center", behavior: "smooth" }); }, [request?.key]);
   const retained = value.expenses?.filter(row => !row.excluded && !row.duplicate_of && (!row.source_group_key || !groups.some(group => group.key === row.source_group_key))) || [];
   const decide = (group: OperatingExpenseGroup, decision: "confirmed" | "needs_correction", reason?: string, amount?: string) => { if (!review?.source_fingerprint) return; onChange(decideOperatingSourceGroup(value, group, review.source_fingerprint, decision, () => crypto.randomUUID(), reason, amount)); };
+  const decisionFor = (key: string) => {
+    const saved = value.source_group_confirmation_stamp === review?.source_fingerprint ? value.source_group_confirmations?.[key] : undefined;
+    return saved ?? (!review?.stale ? review?.groups.find(row => row.key === key)?.decision : undefined);
+  };
   return <section ref={section} className={styles.review} aria-label="Source cost confirmations">
-    <p>Do these annual costs match your selected tax return or P&amp;L?</p>
+    <header className={styles.heading}><h4>Confirm source costs</h4>
+      <small>{groups.filter(group => decisionFor(group.key) === "confirmed").length} of {groups.length} confirmed</small>
+    </header><p>Do these annual costs match your selected tax return or P&amp;L?</p>
     {groups.map(group => {
-      const saved = value.source_group_confirmation_stamp === review?.source_fingerprint ? value.source_group_confirmations?.[group.key] : undefined;
-      const read = review?.groups.find(row => row.key === group.key);
-      const decision = saved || (!review?.stale ? read?.decision : undefined);
+      const decision = decisionFor(group.key);
       const historical = value.historical_corrections?.find(row => row.source_group_key === group.key);
       const invalid = decision === "needs_correction" || issues.some(issue => issue.step === 1 && issue.sourceGroupKey === group.key);
       return <div key={group.key} className={`${styles.row} ${invalid ? styles.attention : ""}`} data-operating-source-group={group.key} data-operating-category={group.category} tabIndex={-1}>

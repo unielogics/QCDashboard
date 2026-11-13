@@ -314,7 +314,6 @@ export default function AdminAIUnderwriterLeadsPage() {
       tabIndex={-1}
       aria-label="File list"
       className="ai-intake-list-shell"
-      style={{ width: "100%", display: "flex", flexDirection: "column", gap: 12, minHeight: "calc(100dvh - 95px - var(--pad-y))" }}
     >
       <div className="ckhead" style={{ flexShrink: 0 }}>
         <div className="ckrow">

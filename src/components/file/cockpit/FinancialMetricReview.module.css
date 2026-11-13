@@ -1,7 +1,7 @@
 .metricSection { container-type: inline-size; container-name: financial-kpis; min-width: 0; }
-.metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: stretch; }
+.metricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; align-items: stretch; }
 .metricGrid > button.metricCard { background: var(--surface); border-color: var(--line); box-shadow: none; }
-.metricCard { width: 100%; min-width: 0; font: inherit; text-align: left; color: inherit; display: flex; flex-direction: column; gap: 5px; cursor: pointer; padding: 12px 14px; }
+.metricCard { width: 100%; min-width: 0; font: inherit; text-align: left; color: inherit; display: flex; flex-direction: column; gap: 3px; cursor: pointer; padding: 8px 10px; }
 .metricCard > span { display: block; }
 .metricCard .metricValue { max-width: 100%; font-size: 24px; line-height: 1.2; white-space: normal; overflow-wrap: anywhere; }
 .metricCard .metricProse { font-size: 16px; letter-spacing: 0; }

@@ -7389,3 +7389,21 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .sg-operating-plan .sg-row[data-block] .sg-cell { white-space: normal; align-items: flex-start; }
 .sg-operating-plan .sg-row[data-block] .sg-text { white-space: pre-wrap; overflow-wrap: anywhere; overflow: visible; text-overflow: clip; }
 .sg-operating-plan .sg-editor-wrap { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; resize: vertical; overflow: hidden; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* Pack each file section at its intrinsic height, including short or empty files. */
+.ai-intake-list-shell { display: flex; flex-direction: column; width: 100%; min-width: 0; gap: 6px; }
+.ai-intake-list-shell .ai-intake-stats { gap: 4px; }
+.ai-intake-list-shell .ai-intake-stats > .kpi { padding: 8px 10px; }
+.ai-intake-list-shell .file-list-table :is(td, th) { padding-block: 6px; }
+.file-page { align-content: start; grid-auto-rows: max-content; gap: 4px; }
+.intake-file .intake-file-head { padding-block: 8px; }
+.intake-file .intake-tabs { gap: 14px; }
+.intake-file .intake-tabs button { padding-block: 8px 7px; }
+.intake-file .intake-file-body { gap: 6px; align-content: start; padding-inline: 8px; }
+.intake-file :is(.intake-file-primary, .intake-file-context, .intake-file-context-collapsed) { padding-top: 6px; align-content: start; gap: 6px; }
+.intake-file-primary > [hidden] { display: none; }
+.fin-cockpit { gap: 6px; align-content: start; }
+.fin-cockpit .fc-grid { gap: 6px; }
+.fin-cockpit .fc-card { gap: 7px; padding: 10px 12px; box-shadow: none; }
+.fc-evidence-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; gap: 6px; }
+.fc-evidence-columns > div { display: grid; gap: 6px; min-width: 0; }
