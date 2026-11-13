@@ -79,3 +79,8 @@ describe("operating plan draft", () => {
     expect(linkOperatingActionExpense(body, "processor", "fees").adjustments![0].cost_basis).toBe("total");
   });
 });
+
+describe("operating decimal input boundaries", () => {
+ it.each(["$", ",,", "0x10", "Infinity", "1e999", "."])("keeps invalid %s unknown instead of inventing zero or a hexadecimal amount", value => expect(operatingNumber(value)).toBeNull());
+ it.each([["0", 0], [".50", .5], ["$1,250.50", 1250.5], ["1000.", 1000], ["+1000", 1000], ["1e3", 1000]])("preserves valid decimal %s", (value, expected) => expect(operatingNumber(value)).toBe(expected));
+});

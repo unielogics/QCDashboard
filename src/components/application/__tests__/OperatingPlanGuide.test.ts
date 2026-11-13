@@ -13,7 +13,7 @@ describe("guided operating plan presentation", () => {
     const guidance = { business: { name: "Synthetic studio", industry: "Services" }, reporting: { source_label: "2025 business return", currency: "USD" }, expense_groups: [{ key: "rent", label: "Office rent", category: "rent", baseline_annual_amount: 24000, currency: "USD", year: 2025, source_file_ids: ["tax"], notes: [], source_fact_keys: [] }], essentials: [], action_templates: [], warnings: [] } as unknown as OperatingGuidance;
     const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: {}, onChange: () => { changes++; }, guidance, evidence: { expense_candidates: [{ source_candidate_key: "bank:rent", label: "Bank rent", current_amount: 2000, cadence: "monthly", source_file_ids: ["bank"] }] } }));
     expect(changes).toBe(0);
-    for (const text of ["Confirm source", "Itemize current costs", "Plan changes", "Review and save", "Add Office rent for review", "Add statement suggestion", "Suggestions from supporting documents"]) expect(html).toContain(text);
+    for (const text of ["Confirm source", "Confirm current costs", "Plan changes", "Review and save", "Add Office rent for review", "Add statement suggestion", "Suggestions from supporting documents"]) expect(html).toContain(text);
   });
   it("keeps empty categories available through a compact explicit activity chooser without creating rows", () => {
     let changes = 0;
@@ -53,4 +53,19 @@ describe("current debt ratio applicability", () => {
  const debtCase = (debt: number | null): OperatingEvaluation => { const e = structuredClone(evaluation); e.baseline.annual_debt_service = debt; e.draft_feedback!.summary.working = { basis: "after_setup_before_timing", noi: 10000, noi_delta: 50000, goal_gap: null, earnings: null, earnings_delta: null, cash_delta_annual: null, cash_delta_monthly: null, dscr_current_debt_before: null, dscr_current_debt_after: null, dscr_current_debt_delta: null, dscr_with_refinance_after: 0.5, dscr_with_refinance_delta: null, first_year_noi: null, first_year_noi_delta: null, first_year_earnings: null, first_year_earnings_delta: null, first_year_cash_delta: null, first_year_dscr_current_debt_after: null, first_year_dscr_current_debt_delta: null, loan_cash_change_monthly: null, loan_cash_change_annual: null, combined_cash_change_monthly: null, combined_cash_change_annual: null }; return e; };
  it("labels zero-current-debt applicability without inventing a ratio or hiding the saved refinance comparison", () => { const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation: debtCase(0) })); expect(html).toContain("DSCR · saved refinance"); expect(html).toContain("Not applicable · no current debt"); expect(html).toContain("0.5x"); expect(html).not.toContain("Unknown"); });
  it("keeps truly missing debt inputs distinct from no debt", () => { const html = renderToStaticMarkup(createElement(OperatingGuidedComparison, { evaluation: debtCase(null) })); expect(html).toContain("Confirm current debt inputs with your team"); expect(html).not.toContain("Not applicable · no current debt"); });
+});
+
+describe("source-only current cost review", () => {
+ it("shows only imported source groups with read-only amounts and explicit decisions", () => {
+  const guidance = { business: {}, reporting: {}, expense_groups: [{ key: "tax:rent", label: "Imported rent", category: "rent", baseline_annual_amount: 12000, currency: "USD", year: 2025, source_file_ids: [], notes: [], source_fact_keys: [] }], essentials: [{ category: "cogs", label: "Cost of goods", prompt: "Old question" }] } as unknown as OperatingGuidance;
+  let writes = 0;
+  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: { expenses: [{ id: "legacy", label: "Manual cost", current_amount: 0 }] }, guidance, stepIndex: 1, onChange: () => writes++ }));
+  expect(writes).toBe(0); expect(html).toContain("Imported rent"); expect(html).toContain("$12,000.00 / year"); expect(html).toContain('aria-label="Confirm Imported rent"'); expect(html).toContain('aria-label="Correct Imported rent"'); expect(html).toContain("retained item");
+  expect(html).not.toContain("Add item"); expect(html).not.toContain("AI suggestion"); expect(html).not.toContain("Other categories"); expect(html).not.toContain("Business units and consultations"); expect(html).not.toContain('<select');
+ });
+ it("keeps the source confirmation requirement reachable in the persistent right repair list", () => {
+  const guidance = { reporting: {}, expense_groups: [{ key: "tax:rent", label: "Imported rent", category: "rent", baseline_annual_amount: 12000, currency: "USD", source_file_ids: [] }] } as unknown as OperatingGuidance;
+  const html = renderToStaticMarkup(createElement(OperatingPlanGuide, { value: {}, guidance, stepIndex: 1, onChange: () => undefined }));
+  expect(html).toContain('aria-label="To finish"'); expect(html).toContain("Confirm Imported rent"); expect(html).toContain('aria-label="To finish:');
+ });
 });

@@ -130,3 +130,14 @@ describe("the completeness check", () => {
     ).toEqual([]);
   });
 });
+
+describe("shared debt decimal parity", () => {
+ it.each([["1000.", 1000], ["+1000", 1000], ["1e3", 1000], [".50", .5], ["0", 0]])("accepts backend-valid decimal %s", (value, expected) => expect(parseFigure(value)).toBe(expected));
+ it.each(["0x10", "1e999", "$", ",,", "Infinity"])("rejects non-finite or non-decimal %s", value => expect(parseFigure(value)).toBeNull());
+});
+
+describe("advance factor-price completeness", () => {
+ it.each(["mca", "revenue_based"])("accepts a known factor without asking %s for an APR", debt_type => { expect(debtRowProblems([{ ...complete, debt_type, rate: "", factor_rate: "1.25", mca_modified: "no" }])).toEqual([]); });
+ it.each(["", "0", "0.9", "5.1", "not known"])("keeps a missing or invalid factor %s unresolved when APR is blank", factor_rate => { expect(debtRowProblems([{ ...complete, debt_type: "mca", rate: "", factor_rate, mca_modified: "no" }])[0].missing).toContain("rate"); });
+ it("still requires an APR for ordinary debt, while explicit zero APR remains valid", () => { expect(debtRowProblems([{ ...complete, rate: "", factor_rate: "1.25" }])[0].missing).toContain("rate"); expect(debtRowProblems([{ ...complete, rate: "0" }])).toEqual([]); });
+});
