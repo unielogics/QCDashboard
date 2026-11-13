@@ -1095,8 +1095,7 @@ export function LeadDetailPanel({
       setUnderwritingDraft(emptyUnderwritingDraft());
       return;
     }
-    if (knownProfileId && !needsUnderwriting) { setUnderwritingLoading(false); return; }
-    setUnderwritingLoading(needsUnderwriting);
+    setUnderwritingLoading(true);
     setUnderwritingError(null);
     try {
       const authToken = await getToken();
@@ -1111,13 +1110,14 @@ export function LeadDetailPanel({
       // a failure there does not hide the team.
       if (!current()) return;
       setProfileId(profile.id);
-      if (!needsUnderwriting) return;
+      // The factual detail DTO has no lifecycle status. Load the lightweight
+      // canonical state for its header even while financial workspaces stay lazy.
       // EvidenceWorkspace owns its own readiness read. Other views load theirs
       // independently; a slow checklist must not withhold lifecycle controls.
       if (needsProgramReadiness) void api<ApplicationProgramReadiness>(`/application-profiles/${profile.id}/program-readiness`, { authToken: authToken ?? undefined })
         .then((readiness) => { if (current()) setProgramReadiness(readiness); })
         .catch((reason) => { if (current()) setUnderwritingError(apiErrorMessage(reason, "Evidence readiness could not be loaded.")); });
-      if (isDealerFile) void loadTermSheet(profile.id, authToken);
+      if (needsUnderwriting && isDealerFile) void loadTermSheet(profile.id, authToken);
       const state = await api<ApplicationUnderwritingState>(`/application-profiles/${profile.id}/underwriting?include_financing=false`, { authToken: authToken ?? undefined });
       if (!current()) return;
       setUnderwriting(state);
@@ -1917,11 +1917,12 @@ export function LeadDetailPanel({
         {detail && canUnderwrite ? <ActionIcon icon="bell" label="Choose who is notified about this file" onClick={() => setNotificationRoutingOpen(true)} /> : null}
         {detail && canUnderwrite ? (
           <Select
-            value={underwriting || underwritingSaving ? underwritingDraft.underwriting_status : detail.intake.underwriting_status ?? underwritingDraft.underwriting_status}
-            disabled={underwritingLoading || underwritingSaving}
+            value={underwriting ? underwritingDraft.underwriting_status : ""}
+            disabled={underwritingLoading || underwritingSaving || !underwriting}
             onChange={(event) => changeUnderwritingStatus(event.target.value as UnderwritingLifecycleStatus)}
             aria-label="Underwriting lifecycle status"
           >
+            {!underwriting ? <option value="" disabled>{underwritingError ? "Status unavailable" : "Loading status..."}</option> : null}
             {PIPELINE_LIFECYCLE.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}
           </Select>
         ) : detail ? (
