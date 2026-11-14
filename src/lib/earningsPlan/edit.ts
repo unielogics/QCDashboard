@@ -13,6 +13,7 @@
  *   carry one change.
  */
 import { decimalInput } from "@/lib/decimalInput";
+import { perWord } from "./format";
 import { ALL, changeKey, number } from "./math";
 import type {
   Amount, CategoryAnswer, EarningsPlanBody, ItemBlock, LineBehavior, PlanActivity, PlanAllocation, PlanBaseline, PlanChange, PlanFactor,
@@ -58,7 +59,12 @@ export function toWire(body: EarningsPlanBody): EarningsPlanBody {
       ...body.source,
       corrections: Object.fromEntries(Object.entries(body.source?.corrections ?? {}).map(([key, row]) => [key, { amount: amount(row.amount) ?? 0, reason: row.reason }])),
     },
-    streams: body.streams.map(stream => ({ ...stream, factors: stream.factors.map(factor => ({ ...factor, value: amount(factor.value) })) })),
+    streams: body.streams.map(stream => ({
+      ...stream,
+      // The stream that holds the rest states nothing; a stated stream sends its figure; a stream described as units times price sends neither.
+      ...(stream.remainder ? { monthly_revenue: null } : stream.monthly_revenue === undefined ? {} : { monthly_revenue: amount(stream.monthly_revenue) }),
+      factors: stream.factors.map(factor => ({ ...factor, value: amount(factor.value) })),
+    })),
     lines: body.lines.map(line => ({ ...line, base: amount(line.base) ?? 0 })),
     changes: body.changes.map(row => ({ ...words(row), value: amount(row.value) })),
     growth: body.growth.map(row => ({ ...words(row), monthly_spend: amount(row.monthly_spend), added_per_month: amount(row.added_per_month) })),
@@ -81,8 +87,11 @@ const PROPOSAL_FIELDS: Record<ItemBlock, readonly string[]> = {
 /** The revenue model and cost lines every change rests on (names and notes are not part of it). */
 export function modelKey(body: EarningsPlanBody): string {
   return JSON.stringify([
-    body.streams.map(stream => [stream.id, stream.factors.map(factor => [factor.id, amount(factor.value), factor.unit, Boolean(factor.volume)])]),
-    body.lines.map(line => [line.id, line.group, amount(line.base) ?? 0, line.behavior, line.link]),
+    body.streams.map(stream => [
+      stream.id, Boolean(stream.remainder), stream.remainder ? null : amount(stream.monthly_revenue),
+      stream.factors.map(factor => [factor.id, amount(factor.value), factor.unit, Boolean(factor.volume), Boolean(factor.alongside)]),
+    ]),
+    body.lines.map(line => [line.id, line.group, amount(line.base) ?? 0, line.behavior, line.link, line.measure ?? null]),
   ]);
 }
 
@@ -193,66 +202,45 @@ export function renameStream(body: EarningsPlanBody, streamId: string, name: str
 /** True when a patch would leave the row exactly as it is: a keystroke that changes nothing is not an edit. */
 const unchanged = (row: object | undefined, patch: object) => row !== undefined && Object.entries(patch).every(([key, value]) => (row as Record<string, unknown>)[key] === value);
 
-export function setFactor(body: EarningsPlanBody, streamId: string, factorId: string, patch: Partial<Pick<PlanFactor, "label" | "value">>): EarningsPlanBody {
-  if (unchanged(body.streams.find(stream => stream.id === streamId)?.factors.find(factor => factor.id === factorId), patch)) return body;
-  return mapStream(body, streamId, stream => ({ ...stream, factors: stream.factors.map(factor => (factor.id === factorId ? { ...factor, ...patch } : factor)) }));
+/** What a measure is usually counted in. "other" is named by the business, and its unit follows the name. */
+export const MEASURE_PRESETS = [
+  { key: "units", label: "Units sold", unit: "units / mo" },
+  { key: "hours", label: "Hours", unit: "hrs / mo" },
+  { key: "jobs", label: "Jobs", unit: "jobs / mo" },
+  { key: "customers", label: "Customers", unit: "customers / mo" },
+  { key: "orders", label: "Orders", unit: "orders / mo" },
+  { key: "other", label: "", unit: "per mo" },
+] as const;
+export type MeasureKind = (typeof MEASURE_PRESETS)[number]["key"];
+
+const isVolume = (factor: PlanFactor) => Boolean(factor.volume) && !factor.alongside;
+const isPrice = (factor: PlanFactor) => !factor.volume && !factor.alongside;
+/** The unit a measure named by the business is counted in: "Tons hauled" is "tons hauled / mo". */
+const unitFromName = (label: string) => (label.trim() ? `${label.trim().toLowerCase().slice(0, 34)} / mo` : "per mo");
+
+/**
+ * The price of a stream described freely is named after what the stream is counted in: revenue per unit, per hour,
+ * or per month while nothing is counted. A price a stream kind names itself ("Hourly rate") is left alone.
+ */
+function namePrice(stream: PlanStream): PlanStream {
+  const first = stream.factors.find(isVolume);
+  const label = first ? `Revenue per ${perWord(first.unit)}` : "Revenue per month";
+  const last = stream.factors.filter(isPrice).at(-1);
+  if (!last || last.label === label || !/^Revenue per /.test(last.label)) return stream;
+  return { ...stream, factors: stream.factors.map(factor => (factor === last ? { ...factor, label } : factor)) };
 }
 
-/** One more multiplier on a stream, for whatever the template does not name (a seasonality share, a show-up rate). */
-export function addFactor(body: EarningsPlanBody, streamId: string): EarningsPlanBody {
-  return mapStream(body, streamId, stream => (stream.factors.length >= 12 ? stream : {
-    ...stream, factors: [...stream.factors, { id: `f-${hex()}`, label: "New metric", value: 1, unit: "multiplier", volume: true, custom: true }],
-  }));
-}
-
-/** Only an added multiplier can go, and with it the change that targets it and any growth activity it fed. */
-export function removeFactor(body: EarningsPlanBody, streamId: string, factorId: string): EarningsPlanBody {
-  const stream = body.streams.find(row => row.id === streamId);
-  const factor = stream?.factors.find(row => row.id === factorId);
-  if (!stream || !factor?.custom || stream.factors.length <= 1) return body;
-  return {
-    ...mapStream(body, streamId, row => ({ ...row, factors: row.factors.filter(item => item.id !== factorId) })),
-    changes: body.changes.filter(change => changeKey(change) !== `f:${streamId}:${factorId}`),
-    growth: body.growth.filter(row => !(row.stream_id === streamId && row.factor_id === factorId)),
-  };
-}
-
-export function addStream(body: EarningsPlanBody, type: StreamType, templates: Record<string, StreamTemplate>): EarningsPlanBody {
-  const template = templates[type] ?? templates.custom;
-  if (!template || body.streams.length >= 40) return body;
-  const taken = new Set(body.streams.map(stream => stream.id));
-  let id = `s-${hex()}`;
-  while (taken.has(id)) id = `s-${hex()}`;
-  const stream: PlanStream = {
-    id, name: template.label, type, added: true,
-    // A share that scales volume starts at the whole of it; everything else is for the business to say.
-    factors: template.factors.map(([label, unit, volume], index) => ({ id: `f${index}`, label, value: unit === "%" && volume ? 100 : "", unit, volume, custom: false })),
-  };
-  return { ...body, streams: [...body.streams, stream] };
-}
-
-/** Removing a stream takes its metric changes and growth activities with it; costs that followed it become fixed. */
-export function removeStream(body: EarningsPlanBody, streamId: string): EarningsPlanBody {
-  return {
-    ...body,
-    streams: body.streams.filter(stream => stream.id !== streamId),
-    growth: body.growth.filter(row => row.stream_id !== streamId),
-    lines: body.lines.map(line => (line.link === streamId ? { ...line, behavior: "fixed" as const, link: ALL } : line)),
-    changes: body.changes.filter(change => !(change.target?.kind === "factor" && change.target.stream_id === streamId)),
-  };
-}
-
-/** The seeded stream counts as the remainder only while it still looks like one: untouched names, one sale a month. */
+/** The seeded stream counts as the remainder only while it still looks like one: untouched names, nothing counted. */
 const REMAINDER_NAMES = new Set(["All revenue", "Other revenue"]);
-const isRemainderStream = (stream: PlanStream) =>
-  (stream.id === OTHER_REVENUE_STREAM || (stream.id === SEED_STREAM && REMAINDER_NAMES.has(stream.name.trim()) && number(stream.factors[0]?.value) === 1))
-  && stream.factors.length === 2 && stream.factors[0].volume && stream.factors[1].unit === "$" && !stream.factors[1].volume;
+/** Units that count nothing: the one sale a month a plan used to be seeded with, and a multiplier left at one. */
+const PLACEHOLDER_UNITS = new Set(["count", "multiplier"]);
 
-/** Annual revenue of a stream as described today, with nothing proposed. */
-function streamRevenue(stream: PlanStream): number {
+/** Annual revenue of a stream described as its metrics multiplied together, with nothing proposed. */
+function productRevenue(stream: PlanStream): number {
   let units = 1;
   let price = 1;
   for (const factor of stream.factors) {
+    if (factor.alongside) continue;
     const value = factor.unit === "%" ? number(factor.value) / 100 : number(factor.value);
     if (factor.volume) units *= value;
     else price *= value;
@@ -260,32 +248,158 @@ function streamRevenue(stream: PlanStream): number {
   return units * price * 12;
 }
 
+/**
+ * The plan with every stream stating what it brings in a month.
+ *
+ * Plans were first described as units times a typed price. Revenue is the known figure, so the screens now hold it
+ * the other way round: a stream states its revenue (or holds what the others leave) and its price is worked out by
+ * division. A stream described the earlier way keeps exactly the revenue it had; its typed price is dropped because
+ * it is now derived, and a metric that only stood in for one (one sale a month, a multiplier of one) goes unless a
+ * change or a growth activity points at it. Returns `body` itself when every stream already states its revenue.
+ */
+export function modernize(body: EarningsPlanBody): EarningsPlanBody {
+  let rest = body.streams.some(stream => stream.remainder);
+  let moved = false;
+  const pointedAt = (streamId: string, factorId: string) => body.changes.some(change => changeKey(change) === `f:${streamId}:${factorId}`)
+    || body.growth.some(row => row.stream_id === streamId && row.factor_id === factorId);
+  const streams = body.streams.map(stream => {
+    if (stream.remainder || stream.monthly_revenue != null) return stream;
+    moved = true;
+    const revenue = productRevenue(stream) / 12;
+    const kept = stream.factors.filter(factor => !(isVolume(factor) && PLACEHOLDER_UNITS.has(factor.unit) && number(factor.value) === 1 && !pointedAt(stream.id, factor.id)));
+    const last = kept.filter(isPrice).at(-1);
+    // The price is worked out from here on, so the one that was typed is not kept beside it.
+    const factors = kept.map(factor => (factor === last ? { ...factor, value: null } : factor));
+    const holdsTheRest = !rest && (stream.id === SEED_STREAM || stream.id === OTHER_REVENUE_STREAM) && REMAINDER_NAMES.has(stream.name.trim())
+      && !factors.some(isVolume) && factors.filter(isPrice).length === 1 && last?.unit === "$";
+    if (holdsTheRest) {
+      rest = true;
+      // Once other streams are named, what is left is no longer "all" revenue.
+      const name = body.streams.length > 1 && stream.name.trim() === "All revenue" ? "Other revenue" : stream.name;
+      return namePrice({ ...stream, name, remainder: true, monthly_revenue: null, factors });
+    }
+    return { ...stream, remainder: false, monthly_revenue: round(revenue, 2), factors };
+  });
+  return moved ? { ...body, streams } : body;
+}
+
 /** The stream that holds whatever the named streams do not explain, when the plan has one. */
 export function remainderStream(body: EarningsPlanBody): PlanStream | null {
-  return body.streams.find(isRemainderStream) ?? null;
+  return modernize(body).streams.find(stream => stream.remainder) ?? null;
+}
+
+/** What a stream brings in an average month, as typed. The stream that holds the rest has nothing to type. */
+export function setStreamRevenue(body: EarningsPlanBody, streamId: string, value: string): EarningsPlanBody {
+  const modern = modernize(body);
+  const stream = modern.streams.find(row => row.id === streamId);
+  if (!stream || stream.remainder || stream.monthly_revenue === value) return modern === body ? body : modern;
+  return mapStream(modern, streamId, row => ({ ...row, monthly_revenue: value }));
 }
 
 /**
- * Make the revenue model add up to the source: whatever the named streams do
- * not explain goes into one "other revenue" stream. Named streams that already
- * exceed the source cannot be balanced this way; the remainder is then zero.
+ * A metric's quantity or name. The price is never set here: it is the stream's revenue divided by its volume.
+ * A measure the business named itself is counted in its own name ("Tons hauled" in tons hauled a month).
  */
-export function balanceRevenue(body: EarningsPlanBody, baseline: PlanBaseline): EarningsPlanBody {
-  const existing = remainderStream(body);
-  const named = body.streams.filter(stream => stream !== existing).reduce((sum, stream) => sum + streamRevenue(stream), 0);
-  const monthly = round(Math.max(0, number(baseline.revenue) - named) / 12, 4);
-  if (existing) {
-    const [units, price] = existing.factors;
-    // Once other streams are named, what is left is no longer "all" revenue.
-    const name = body.streams.length > 1 && existing.name.trim() === "All revenue" ? "Other revenue" : existing.name;
-    return mapStream(body, existing.id, stream => ({ ...stream, name, factors: [{ ...units, value: 1 }, { ...price, value: monthly }] }));
-  }
-  if (monthly <= 0 || body.streams.length >= 40) return body;
+export function setFactor(body: EarningsPlanBody, streamId: string, factorId: string, patch: Partial<Pick<PlanFactor, "label" | "value">>): EarningsPlanBody {
+  const modern = modernize(body);
+  const factor = modern.streams.find(stream => stream.id === streamId)?.factors.find(row => row.id === factorId);
+  if (!factor || isPrice(factor) && "value" in patch) return modern;
+  if (unchanged(factor, patch)) return modern;
+  const named = patch.label !== undefined && factor.custom && factor.unit === unitFromName(factor.label) ? { unit: unitFromName(patch.label) } : {};
+  return mapStream(modern, streamId, stream => namePrice({ ...stream, factors: stream.factors.map(row => (row.id === factorId ? { ...row, ...patch, ...named } : row)) }));
+}
+
+/**
+ * One more way to count a stream's month. The first is what revenue follows; the rest sit alongside it, as divisors
+ * (revenue and cost per hour) and as something a cost can follow. They move with the volume unless the plan changes them.
+ */
+export function addMeasure(body: EarningsPlanBody, streamId: string, kind: MeasureKind): EarningsPlanBody {
+  const modern = modernize(body);
+  const stream = modern.streams.find(row => row.id === streamId);
+  const preset = MEASURE_PRESETS.find(row => row.key === kind) ?? MEASURE_PRESETS[0];
+  if (!stream || stream.factors.length >= 12) return modern;
+  const first = !stream.factors.some(isVolume);
+  const taken = new Set(stream.factors.map(factor => factor.id));
+  let id = `f-${hex()}`;
+  while (taken.has(id)) id = `f-${hex()}`;
+  const measure: PlanFactor = { id, label: preset.label, value: "", unit: preset.unit, volume: first, alongside: !first, custom: true };
+  // The volume stands before the price it is divided into; a measure alongside comes after everything.
+  return mapStream(modern, streamId, row => namePrice({ ...row, factors: first ? [measure, ...row.factors] : [...row.factors, measure] }));
+}
+
+/**
+ * Only a metric the business added can go, and with it the change that targets it and any growth activity it fed.
+ * When the stream's only volume goes, the first measure alongside becomes what revenue follows, so the stream stays
+ * measured. A cost that followed the removed quantity becomes fixed.
+ */
+export function removeFactor(body: EarningsPlanBody, streamId: string, factorId: string): EarningsPlanBody {
+  const modern = modernize(body);
+  const stream = modern.streams.find(row => row.id === streamId);
+  const factor = stream?.factors.find(row => row.id === factorId);
+  if (!stream || !factor?.custom || stream.factors.length <= 1) return modern;
+  let factors = stream.factors.filter(item => item.id !== factorId);
+  const lastVolume = isVolume(factor) && !factors.some(isVolume);
+  const promoted = lastVolume ? factors.find(item => item.alongside) : undefined;
+  if (promoted) factors = [{ ...promoted, alongside: false, volume: true }, ...factors.filter(item => item !== promoted)];
+  const fixed = (line: PlanLine): PlanLine => ({ ...line, behavior: "fixed", link: ALL, measure: null });
   return {
-    ...body,
-    streams: [...body.streams, {
-      id: OTHER_REVENUE_STREAM, name: "Other revenue", type: "custom", added: true,
-      factors: [{ id: "f0", label: "Sales", value: 1, unit: "count", volume: true, custom: false }, { id: "f1", label: "Revenue per month", value: monthly, unit: "$", volume: false, custom: false }],
+    ...mapStream(modern, streamId, row => namePrice({ ...row, factors })),
+    lines: modern.lines.map(line => {
+      if (line.link !== streamId || line.behavior !== "unit") return line;
+      if (line.measure === factorId || (lastVolume && !line.measure)) return fixed(line);
+      return promoted && line.measure === promoted.id ? { ...line, measure: null } : line;
+    }),
+    changes: modern.changes.filter(change => changeKey(change) !== `f:${streamId}:${factorId}`),
+    growth: modern.growth.filter(row => !(row.stream_id === streamId && row.factor_id === factorId)),
+  };
+}
+
+/** A new stream states its own revenue; the stream that was all revenue becomes what the others leave. */
+export function addStream(body: EarningsPlanBody, type: StreamType, templates: Record<string, StreamTemplate>): EarningsPlanBody {
+  const modern = modernize(body);
+  const template = templates[type] ?? templates.custom;
+  if (!template || modern.streams.length >= 40) return modern;
+  const taken = new Set(modern.streams.map(stream => stream.id));
+  let id = `s-${hex()}`;
+  while (taken.has(id)) id = `s-${hex()}`;
+  const stream: PlanStream = {
+    id, name: template.label, type, added: true, remainder: false, monthly_revenue: "",
+    // A share that scales volume starts at the whole of it; quantities are for the business to say; the price is worked out.
+    factors: template.factors.map(([label, unit, volume], index) => ({ id: `f${index}`, label, value: volume ? (unit === "%" ? 100 : "") : null, unit, volume, custom: false })),
+  };
+  return {
+    ...modern,
+    streams: [...modern.streams.map(row => (row.remainder && row.name.trim() === "All revenue" ? { ...row, name: "Other revenue" } : row)), stream],
+  };
+}
+
+/** Removing a stream takes its metric changes and growth activities with it; costs that followed it become fixed. */
+export function removeStream(body: EarningsPlanBody, streamId: string): EarningsPlanBody {
+  const modern = modernize(body);
+  return {
+    ...modern,
+    streams: modern.streams.filter(stream => stream.id !== streamId),
+    growth: modern.growth.filter(row => row.stream_id !== streamId),
+    lines: modern.lines.map(line => (line.link === streamId ? { ...line, behavior: "fixed" as const, link: ALL, measure: null } : line)),
+    changes: modern.changes.filter(change => !(change.target?.kind === "factor" && change.target.stream_id === streamId)),
+  };
+}
+
+/**
+ * Make the revenue model add up to the source: one stream that holds whatever the named streams do not explain.
+ * A plan that already has one adds up by itself; streams that state more than the source cannot be balanced this way.
+ */
+export function balanceRevenue(body: EarningsPlanBody): EarningsPlanBody {
+  const modern = modernize(body);
+  if (modern.streams.some(stream => stream.remainder) || modern.streams.length >= 40) return modern;
+  const taken = new Set(modern.streams.map(stream => stream.id));
+  let id: string = OTHER_REVENUE_STREAM;
+  while (taken.has(id)) id = `s-${hex()}`;
+  return {
+    ...modern,
+    streams: [...modern.streams, {
+      id, name: "Other revenue", type: "custom", added: true, remainder: true, monthly_revenue: null,
+      factors: [{ id: "f1", label: "Revenue per month", value: null, unit: "$", volume: false, custom: false }],
     }],
   };
 }
@@ -312,15 +426,29 @@ export function setLineBehavior(body: EarningsPlanBody, lineId: string, behavior
   return {
     ...body,
     lines: body.lines.map(line => (line.id === lineId
-      ? { ...line, behavior, link: behavior === "fixed" ? ALL : behavior === "unit" && line.link === ALL ? body.streams[0]?.id ?? ALL : line.link }
+      ? {
+        ...line, behavior, link: behavior === "fixed" ? ALL : behavior === "unit" && line.link === ALL ? body.streams[0]?.id ?? ALL : line.link,
+        // Only a cost per unit follows a measure; it starts on the stream's own volume.
+        measure: behavior === "unit" && line.behavior === "unit" ? line.measure ?? null : null,
+      }
       : line)),
     changes: changes.some((change, index) => change !== body.changes[index]) ? changes : body.changes,
   };
 }
 
-/** A cost cannot be "per unit of all revenue": against all revenue it is a percent. */
-export function setLineLink(body: EarningsPlanBody, lineId: string, link: string): EarningsPlanBody {
-  return { ...body, lines: body.lines.map(line => (line.id === lineId ? { ...line, link, behavior: link === ALL && line.behavior === "unit" ? "pct" : line.behavior } : line)) };
+/**
+ * A cost cannot be "per unit of all revenue": against all revenue it is a percent. A cost per unit follows its
+ * stream's own volume, or one of the measures alongside it (`measure`): wages per labor hour.
+ */
+export function setLineLink(body: EarningsPlanBody, lineId: string, link: string, measure: string | null = null): EarningsPlanBody {
+  return {
+    ...body,
+    lines: body.lines.map(line => {
+      if (line.id !== lineId) return line;
+      const behavior = link === ALL && line.behavior === "unit" ? "pct" : line.behavior;
+      return { ...line, link, behavior, measure: behavior === "unit" && link !== ALL ? measure : null };
+    }),
+  };
 }
 
 /** The line a source group was seeded with: it holds what the group's own items do not account for. */

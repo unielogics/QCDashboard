@@ -17,9 +17,25 @@ export type BaselineTreatment = "unreconciled" | "included_in_baseline" | "incre
 export type CategoryAnswer = "included" | "not_applicable" | "help";
 export type ItemBlock = "changes" | "growth" | "activities";
 
-export type PlanFactor = { id: string; label: string; value: Amount; unit: string; volume: boolean; custom?: boolean };
-export type PlanStream = { id: string; name: string; type: StreamType; added?: boolean; factors: PlanFactor[] };
-export type PlanLine = { id: string; group: string; label: string; base: Amount; behavior: LineBehavior; link: string; added?: boolean };
+/**
+ * One metric of a revenue stream. Volume metrics multiply into what the stream sells in a month and the others into
+ * the price of one unit. A measure `alongside` counts the same month another way (the labor hours behind the units
+ * sold): revenue does not follow it, it moves with the stream's volume unless the plan changes it, and a cost can.
+ */
+export type PlanFactor = { id: string; label: string; value: Amount; unit: string; volume: boolean; alongside?: boolean; custom?: boolean };
+/**
+ * Revenue is the known figure, so a stream states what it brings in an average month (`monthly_revenue`), or is the
+ * one stream that holds what the others do not explain (`remainder`), and its price is never typed: it is that
+ * revenue divided by the stream's volume. A stream with neither is its metrics multiplied together, which is how
+ * plans were described before revenue was stated; `modernize` in ./edit turns those into stated streams.
+ */
+export type PlanStream = {
+  id: string; name: string; type: StreamType; added?: boolean;
+  monthly_revenue?: Amount; remainder?: boolean;
+  factors: PlanFactor[];
+};
+/** `measure` is the measure alongside the linked stream's volume that a per-unit cost follows; none follows the volume itself. */
+export type PlanLine = { id: string; group: string; label: string; base: Amount; behavior: LineBehavior; link: string; measure?: string | null; added?: boolean };
 export type PlanTarget = {
   kind: "pricing" | "factor" | "line" | "group";
   stream_id?: string | null; factor_id?: string | null; line_id?: string | null; group?: string | null;
@@ -132,8 +148,14 @@ export type PlanScenario = {
   lines: Record<string, number>;
   stream_revenue: Record<string, number>;
   stream_volume: Record<string, number>;
+  /** A year's quantity of every measure alongside a stream's volume, keyed "stream:metric". */
+  measures: Record<string, number>;
   factors: Record<string, number[]>;
 };
+/** What one unit brings in and costs: a year's quantity, and dollars per one of it. */
+export type PlanPerUnit = { quantity: number; revenue: number; cost: number; noi: number };
+/** `factor_id` null is the stream's own volume; otherwise a measure alongside it. A side is null when there is nothing to divide by. */
+export type PlanPerUnitRow = { stream_id: string; factor_id: string | null; today: PlanPerUnit; proposed: PlanPerUnit | null; reviewed: PlanPerUnit | null };
 export type PlanSixMetrics = {
   ebitda: number; noi: number;
   dscr: number | null; free_cash_flow: number | null; operating_margin: number | null; debt_service: number | null;
@@ -158,7 +180,13 @@ export type ToFinishCode = "no_source" | "confirm_source" | "reconcile_revenue" 
 export type ToFinishItem = { code: ToFinishCode; step: 0 | 1 | 2 | 3; label: string; key?: string; item_id?: string };
 
 export type PlanResult = {
-  model: { volume: Record<string, number>; revenue: Record<string, number>; total: number; difference: number; reconciles: boolean };
+  model: {
+    volume: Record<string, number>; revenue: Record<string, number>; total: number; difference: number; reconciles: boolean;
+    /** Today's value of every metric (a stated stream's price is worked out, not typed) and of every measure alongside. */
+    factors: Record<string, number[]>; measures: Record<string, number>;
+  };
+  /** One row for each stream volume and each measure alongside that has something to divide by. */
+  per_unit: PlanPerUnitRow[];
   rates: Record<string, number>;
   behaviors: Record<string, LineBehavior>;
   items: PlanItemSummary[];

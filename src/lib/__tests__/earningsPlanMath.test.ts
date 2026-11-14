@@ -6,7 +6,7 @@
 import { describe, expect, it } from "vitest";
 import { Plan, changeKey, evaluate, number, startMonth } from "@/lib/earningsPlan/math";
 import type { PlanChange } from "@/lib/earningsPlan/types";
-import { QUESTIONS, REFERENCE, referenceBaseline, referenceBody } from "./fixtures/earningsPlanReferencePlan";
+import { QUESTIONS, REFERENCE, measuredBody, referenceBaseline, referenceBody } from "./fixtures/earningsPlanReferencePlan";
 
 const EXPECTED = REFERENCE.expected;
 const KINDS: Record<string, string> = { chg: "change", gr: "growth", na: "activity" };
@@ -254,3 +254,130 @@ describe("earnings plan engine: behaviour around the edges", () => {
     expect(evaluate(body, baseline, { questions: [] }).to_finish.map(row => row.code)).toEqual(["no_source"]);
   });
 });
+
+// Revenue is the known figure: a stream states it, and the price of one unit comes from dividing.
+// The same figures as the backend's test_earnings_plan_reference.py.
+describe("earnings plan engine: revenue stated, price by division", () => {
+  const words = { start_month: 1, setup_cost: null, setup_cadence: "one_time" as const, evidence_note: "", owner: "", included: true, status: "proposed" as const, note: "Agreed with the owner." };
+  const metric = (factorId: string, direction: "up" | "down", value: number, mode: PlanChange["mode"] = "percent", streamId = "s1"): PlanChange =>
+    ({ ...words, id: `f:${streamId}:${factorId}`, target: { kind: "factor", stream_id: streamId, factor_id: factorId }, direction, mode, value });
+  const nearUnit = (got: { quantity: number; revenue: number; cost: number; noi: number } | null, expected: [number, number, number, number]) => {
+    near(got?.quantity, expected[0]);
+    near(got?.revenue, expected[1]);
+    near(got?.cost, expected[2]);
+    near(got?.noi, expected[3]);
+  };
+
+  it("divides a stream that is all revenue by its volume", () => {
+    const measured = evaluate(measuredBody(), referenceBaseline());
+    // $1,236,000 a year is $103,000 a month: 400 units a month is $257.50 a unit, 1,200 hours a month $85.83 an hour.
+    expect([measured.model.total, measured.model.reconciles, measured.model.difference]).toEqual([1_236_000, true, 0]);
+    expect(measured.model.revenue).toEqual({ s1: 1_236_000 });
+    expect(measured.model.volume).toEqual({ s1: 4_800 });
+    expect(measured.model.measures).toEqual({ "s1:f2": 14_400 });
+    expect(measured.model.factors).toEqual({ s1: [400, 257.5, 1_200] });
+    // Supplies are a cost per unit, wages a cost per labor hour, card processing a share of revenue.
+    near(measured.rates.c1, 78.75);
+    near(measured.rates.sal, 348_194 / 14_400);
+    near(measured.rates.o1, 0.02);
+    expect(measured.behaviors.sal).toBe("unit");
+    // With nothing proposed the plan is the source, to the dollar.
+    near(measured.proposed.noi, -30_777);
+    near(measured.proposed.revenue, 1_236_000);
+    const [volume, hours] = measured.per_unit;
+    expect([volume.stream_id, volume.factor_id, hours.factor_id]).toEqual(["s1", null, "f2"]);
+    // Every cost on the source ($601,886 + $664,891) over the same units: one unit costs more than it brings in.
+    nearUnit(volume.today, [4_800, 257.5, 263.911875, -6.411875]);
+    nearUnit(hours.today, [14_400, 85.8333333333, 87.970625, -2.1372916667]);
+    nearUnit(volume.proposed, [4_800, 257.5, 263.911875, -6.411875]);
+    nearUnit(hours.reviewed, [14_400, 85.8333333333, 87.970625, -2.1372916667]);
+  });
+
+  it("lets volume, price and a measure alongside each move what follows them", () => {
+    const body = { ...measuredBody(), changes: [metric("f0", "up", 10), metric("f2", "down", 5), metric("f1", "up", 5, "amount")] };
+    const moved = evaluate(body, referenceBaseline());
+    const plan = moved.proposed;
+    // 440 units at $262.50; hours follow the units and are then cut 5% (1,200 x 1.1 x 0.95 a month).
+    [440, 262.5, 1_140].forEach((value, index) => near(plan.factors.s1[index], value));
+    near(plan.stream_volume.s1, 5_280);
+    near(plan.measures["s1:f2"], 15_048);
+    near(plan.revenue, 1_386_000);
+    near(plan.lines.c1, 415_800);
+    near(plan.lines.sal, 363_862.73);
+    near(plan.lines.o1, 27_720);
+    near(plan.noi, 62_754.27);
+    const [volume, hours] = moved.per_unit;
+    nearUnit(volume.proposed, [5_280, 262.5, 250.6147215909, 11.8852784091]);
+    nearUnit(hours.proposed, [15_048, 92.1052631579, 87.9349900319, 4.170273126]);
+    // Nothing here is reviewed, so the reviewed figures stay where the source is.
+    nearUnit(volume.reviewed, [4_800, 257.5, 263.911875, -6.411875]);
+    // Cutting hours alone moves the wages that follow them and nothing else.
+    const alone = evaluate({ ...body, changes: [metric("f2", "down", 5)] }, referenceBaseline()).proposed;
+    near(alone.revenue, 1_236_000);
+    near(alone.lines.sal, 348_194 * 0.95);
+    near(alone.lines.c1, 378_000);
+    near(alone.noi, -30_777 + 348_194 * 0.05);
+  });
+
+  it("keeps the streams adding up to the source while one holds the rest", () => {
+    const base = referenceBaseline();
+    const body = measuredBody();
+    const streams = (monthly: number | string | null, units: number | string | null = 300): typeof body.streams => [
+      { id: "s1", name: "Other revenue", type: "custom", remainder: true, factors: [{ id: "f1", label: "Revenue per month", value: null, unit: "$", volume: false }] },
+      { id: "s2", name: "Detail packages", type: "units", monthly_revenue: monthly, factors: [
+        { id: "f0", label: "Units sold", value: units, unit: "units / mo", volume: true }, { id: "f1", label: "Price per unit", value: null, unit: "$", volume: false }] },
+    ];
+    const plan = { ...body, streams: streams(75_000), lines: body.lines.map(line => ({ ...line, behavior: "fixed" as const, link: "all", measure: null })) };
+    const model = evaluate(plan, base).model;
+    // $75,000 a month over 300 units is $250 a unit; the other stream is what is left of $103,000 a month.
+    expect(model.revenue).toEqual({ s1: 336_000, s2: 900_000 });
+    expect([model.total, model.reconciles]).toEqual([1_236_000, true]);
+    expect(model.factors).toEqual({ s1: [28_000], s2: [300, 250] });
+    expect(model.volume).toEqual({ s1: 0, s2: 3_600 });
+    // A stream with nothing to divide by has no per-unit figures; the measured one carries its share of the costs.
+    const rows = evaluate(plan, base).per_unit;
+    expect(rows.map(row => [row.stream_id, row.factor_id])).toEqual([["s2", null]]);
+    nearUnit(rows[0].today, [3_600, 250, 256.2251213592, -6.2251213592]);
+    // The source changes: the stated stream keeps what it states and the rest follows.
+    const moved = evaluate(plan, { ...base, revenue: 1_300_000 }).model;
+    expect([moved.revenue, moved.reconciles]).toEqual([{ s1: 400_000, s2: 900_000 }, true]);
+    // A stream with no volume typed yet still brings its revenue, and a change to that volume has nothing to move.
+    const unmeasured = evaluate({ ...plan, streams: streams("75000", ""), changes: [metric("f0", "up", 10, "percent", "s2")] }, base);
+    expect([unmeasured.model.revenue.s2, unmeasured.model.volume.s2, unmeasured.model.factors.s2]).toEqual([900_000, 0, [0, 75_000]]);
+    near(unmeasured.proposed.revenue, 1_236_000);
+    expect(unmeasured.per_unit).toEqual([]);
+    // A price change on the stream that holds the rest moves that stream alone.
+    const priced = evaluate({ ...plan, changes: [metric("f1", "up", 10)] }, base).proposed.stream_revenue;
+    near(priced.s1, 369_600);
+    near(priced.s2, 900_000);
+    // Streams that state more than the source leave nothing for the rest, and the model says by how much it is over.
+    const over = evaluate({ ...plan, streams: streams(110_000) }, base);
+    expect([over.model.revenue, over.model.difference, over.model.reconciles]).toEqual([{ s1: 0, s2: 1_320_000 }, 84_000, false]);
+    expect(over.to_finish.filter(item => item.step === 1).map(item => item.code)).toEqual(["reconcile_revenue"]);
+    // An empty revenue box is nothing stated yet, exactly as the API reads the saved plan: the stream counts for nothing.
+    const empty = evaluate({ ...plan, streams: streams("") }, base).model;
+    expect([empty.revenue, empty.reconciles]).toEqual([{ s1: 1_236_000, s2: 0 }, true]);
+  });
+
+  it("gives a plan described as units times price its per-unit figures too", () => {
+    // The design's three streams: $250 a unit, $1,500 a contract, $100 an hour, each carrying its share of every cost.
+    const rows = Object.fromEntries(result.per_unit.map(row => [row.stream_id, row]));
+    expect(result.per_unit.map(row => row.factor_id)).toEqual([null, null, null]);
+    nearUnit(rows.s1.today, [3_600, 250, 256.2251213592, -6.2251213592]);
+    near(rows.s2.today.revenue, 1_500);
+    near(rows.s3.today.revenue, 100);
+    nearUnit(rows.s1.proposed, [4_080, 262, 231.5407474683, 30.4592525317]);
+    // Shared by revenue, the streams' costs add back up to every cost on the source.
+    near(result.per_unit.reduce((sum, row) => sum + row.today.cost * row.today.quantity, 0), 601_886 + 664_891);
+    // One sale a month, as plans were once seeded, counts nothing: there is no per-unit figure to print.
+    const reference = referenceBody();
+    const seeded = {
+      ...reference, changes: [], growth: [], activities: [], lines: reference.lines.map(line => ({ ...line, behavior: "fixed" as const, link: "all" })),
+      streams: [{ id: "s1", name: "All revenue", type: "custom" as const, factors: [
+        { id: "f0", label: "Sales", value: 1, unit: "count", volume: true }, { id: "f1", label: "Revenue per month", value: 103_000, unit: "$", volume: false }] }],
+    };
+    const old = evaluate(seeded, referenceBaseline());
+    expect([old.model.total, old.per_unit]).toEqual([1_236_000, []]);
+  });
+});
+

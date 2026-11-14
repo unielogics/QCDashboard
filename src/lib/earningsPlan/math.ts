@@ -13,6 +13,14 @@
  * - A revenue stream is a set of factors. Volume factors multiply into the
  *   business units sold in a month; the others multiply into the price of one
  *   unit. Annual revenue is units x price x 12.
+ * - Revenue is the known figure, so a stream normally states what it brings
+ *   in an average month, or is the one stream that holds what the others do
+ *   not explain (so the model always adds up to the source). Its price is then
+ *   never typed: it is that revenue divided by the stream's volume. A stream
+ *   with no volume yet still brings its revenue.
+ * - A measure alongside counts the same month another way, such as the labor
+ *   hours behind the units sold. Revenue does not follow it; it moves with the
+ *   stream's volume unless the plan changes it, and a cost can follow it.
  * - A cost line is fixed, a dollar amount per unit of one stream, or a percent
  *   of a stream's (or all) revenue. Its rate is read off today's figures, so
  *   with no changes the model reproduces the source exactly.
@@ -31,7 +39,8 @@
 import { decimalInput } from "@/lib/decimalInput";
 import type {
   EarningsPlanBody, LineBehavior, PlanActivity, PlanBaseline, PlanBridgeStep, PlanChange, PlanEffect, PlanGrowth, PlanItemKind,
-  PlanItemRow, PlanLine, PlanMonth, PlanQuestion, PlanResult, PlanScenario, PlanSixMetrics, PlanStream, PlanTarget, PlanView, ToFinishItem,
+  PlanItemRow, PlanLine, PlanMonth, PlanPerUnit, PlanPerUnitRow, PlanQuestion, PlanResult, PlanScenario, PlanSixMetrics, PlanStream, PlanTarget, PlanView,
+  ToFinishItem,
 } from "./types";
 
 export const AREAS = ["Pricing", "Revenue drivers", "Growth", "Cost of goods sold", "Operating expenses", "New activities"] as const;
@@ -49,7 +58,9 @@ export const RECONCILE_TOLERANCE = 1;
 
 export type Predicate = (itemId: string) => boolean;
 export type PlanItem = { id: string; kind: PlanItemKind; key: string; row: PlanItemRow; area: number };
-type RevenueModel = { volume: Record<string, number>; revenue: Record<string, number>; total: number; factors: Record<string, number[]> };
+type RevenueModel = {
+  volume: Record<string, number>; revenue: Record<string, number>; total: number; factors: Record<string, number[]>; measures: Record<string, number>;
+};
 type Command = Pick<PlanChange, "direction" | "mode" | "value">;
 
 /** A figure as the model counts it: a saved number, or the text being typed. Anything unreadable is zero. */
@@ -75,6 +86,39 @@ function apply(base: number, change: Command): number {
  */
 function rescale(rate: number, base: number, change: Command): number {
   return base ? rate * (1 + (sign(change) * number(change.value)) / base) : rate;
+}
+
+/**
+ * A stream's volume in a month, the price of one unit of it, and whether it names a volume at all. Volume metrics
+ * multiply into the units and the others into the price; a measure alongside is in neither.
+ */
+function made(stream: PlanStream, values: readonly number[], skip = -1): { units: number; price: number; counted: boolean } {
+  let units = 1;
+  let price = 1;
+  let counted = false;
+  (stream.factors ?? []).forEach((factor, index) => {
+    if (index === skip || factor.alongside) return;
+    const scaled = factor.unit === "%" ? values[index] / 100 : values[index];
+    if (factor.volume) {
+      units *= scaled;
+      counted = true;
+    } else price *= scaled;
+  });
+  return { units, price, counted };
+}
+
+/** Where a measure alongside a stream's volume is kept in the model. */
+export const measureKey = (streamId: unknown, factorId: unknown): string => `${streamId}:${factorId}`;
+
+/**
+ * Whether a stream states what it brings in a month. The text being typed counts once it is a figure; an empty box
+ * is not zero revenue but nothing stated yet, exactly as the API reads the saved plan.
+ */
+export function statesRevenue(stream: Pick<PlanStream, "monthly_revenue" | "remainder">): boolean {
+  if (stream.remainder) return false;
+  const value = stream.monthly_revenue;
+  if (typeof value === "number") return Number.isFinite(value);
+  return typeof value === "string" && decimalInput(value) != null;
 }
 
 /** Where a change lands: one change per place. */
@@ -105,6 +149,13 @@ export class Plan {
   readonly changeAt = new Map<string, PlanChange>();
   readonly items: PlanItem[] = [];
   readonly itemById = new Map<string, PlanItem>();
+  /** A year's revenue of each stream that states it, and of the one stream that takes what the others leave of the source's. */
+  readonly stated: Record<string, number> = {};
+  /** Today's value of every metric; a stated stream's price is worked out here by division. */
+  readonly today: Record<string, number[]> = {};
+  /** Whether a stream has a volume to divide by and to grow. */
+  readonly measured: Record<string, boolean> = {};
+  private readonly base: Record<string, { units: number; price: number }> = {};
   readonly model: RevenueModel;
   readonly rates: Record<string, number> = {};
 
@@ -125,12 +176,56 @@ export class Plan {
     for (const row of this.growth) this.items.push({ id: String(row.id), kind: "growth", key: `gr:${row.id}`, row, area: 2 });
     for (const row of this.activities) this.items.push({ id: String(row.id), kind: "activity", key: `na:${row.id}`, row, area: 5 });
     for (const item of this.items) this.itemById.set(item.id, item);
+    this.readToday();
     this.model = this.revenue(() => false, 0);
     for (const line of this.lines) {
-      const driver = line.behavior === "unit" ? this.model.volume[line.link]
+      const driver = line.behavior === "unit" ? (line.measure ? this.model.measures[measureKey(line.link, line.measure)] : this.model.volume[line.link])
         : line.behavior === "pct" ? (line.link === ALL ? this.model.total : this.model.revenue[line.link])
         : 0;
       this.rates[line.id] = driver ? number(line.base) / driver : 0;
+    }
+  }
+
+  // ------------------------------------------------------------------ today
+  /** Every stream as it stands today: its metrics, what it brings in a year when it says so, and its volume. */
+  private readToday(): void {
+    let described = 0;
+    let rest: PlanStream | null = null;
+    for (const stream of this.streams) {
+      const typed = (stream.factors ?? []).map(factor => number(factor.value));
+      this.today[stream.id] = typed;
+      if (stream.remainder && rest === null) rest = stream;
+      else if (statesRevenue(stream)) this.stated[stream.id] = number(stream.monthly_revenue) * 12;
+      else {
+        const { units, price } = made(stream, typed);
+        described += units * price * 12;
+      }
+    }
+    if (rest !== null) {
+      const others = Object.values(this.stated).reduce((sum, value) => sum + value, 0);
+      this.stated[rest.id] = Math.max(0, number(this.baseline.revenue) - described - others);
+    }
+    for (const stream of this.streams) {
+      const rows = stream.factors ?? [];
+      const typed = this.today[stream.id];
+      const first = made(stream, typed);
+      const measured = first.counted && first.units > 0;
+      let price = first.price;
+      if (stream.id in this.stated) {
+        const prices = rows.flatMap((factor, index) => (!factor.volume && !factor.alongside ? [index] : []));
+        if (prices.length) {
+          // The price is never typed: one unit brings the stream's revenue divided by its volume. With no volume yet,
+          // the whole month stands in for one unit.
+          const last = prices[prices.length - 1];
+          const others = made(stream, typed, last).price;
+          const one = this.stated[stream.id] / 12 / (measured ? first.units : 1);
+          const worked = others > 0 ? one / others : one;
+          typed[last] = rows[last].unit === "%" ? worked * 100 : worked;
+          price = made(stream, typed).price;
+        }
+      }
+      this.measured[stream.id] = measured;
+      this.base[stream.id] = { units: first.units, price };
     }
   }
 
@@ -175,12 +270,13 @@ export class Plan {
     const volume: Record<string, number> = {};
     const revenue: Record<string, number> = {};
     const factors: Record<string, number[]> = {};
+    const measures: Record<string, number> = {};
     let total = 0;
     for (const stream of this.streams) {
       const rows = stream.factors ?? [];
-      const values = rows.map(factor => {
+      const values = rows.map((factor, index) => {
         const change = this.changeAt.get(`f:${stream.id}:${factor.id}`);
-        const current = number(factor.value);
+        const current = this.today[stream.id][index];
         return change && on(String(change.id)) ? Math.max(0, apply(current, change)) : current;
       });
       for (const activity of this.growth) {
@@ -188,15 +284,22 @@ export class Plan {
         const at = rows.findIndex(factor => factor.id === activity.factor_id);
         if (at >= 0) values[at] += number(activity.added_per_month);
       }
-      let units = 1;
-      let price = 1;
+      const { units, price } = made(stream, values);
+      const base = this.base[stream.id];
+      const measured = this.measured[stream.id];
+      // How far the plan moves the stream's volume; measures alongside move with it.
+      const grown = measured ? units / base.units : 1;
+      if (stream.id in this.stated) {
+        // The stream brings what it states, moved by what the plan does to its volume and to its price.
+        volume[stream.id] = measured ? units * 12 : 0;
+        revenue[stream.id] = this.stated[stream.id] * grown * (base.price > 0 ? price / base.price : 1);
+      } else {
+        volume[stream.id] = units * 12;
+        revenue[stream.id] = units * price * 12;
+      }
       rows.forEach((factor, index) => {
-        const scaled = factor.unit === "%" ? values[index] / 100 : values[index];
-        if (factor.volume) units *= scaled;
-        else price *= scaled;
+        if (factor.alongside) measures[measureKey(stream.id, factor.id)] = values[index] * grown * 12;
       });
-      volume[stream.id] = units * 12;
-      revenue[stream.id] = units * price * 12;
       factors[stream.id] = values;
       total += revenue[stream.id];
     }
@@ -206,7 +309,7 @@ export class Plan {
       for (const key of Object.keys(revenue)) revenue[key] *= lift;
       total *= lift;
     }
-    return { volume, revenue, total, factors };
+    return { volume, revenue, total, factors, measures };
   }
 
   /** A line whose driver is zero today is held fixed. */
@@ -231,7 +334,7 @@ export class Plan {
       else if (behavior === "unit") {
         // A per-unit line moves by dollars a unit, a percent of itself, or dollars a year at the source's volume.
         const unit = !active ? rate : change!.mode === "annual" ? rescale(rate, base, change!) : apply(rate, change!);
-        value = unit * (model.volume[link] || 0);
+        value = unit * ((line.measure ? model.measures[measureKey(link, line.measure)] : model.volume[link]) || 0);
       } else {
         // A percent-of-revenue line moves by points of revenue, a percent of itself, or dollars a year at the source's revenue.
         let share = rate;
@@ -281,6 +384,7 @@ export class Plan {
       lines: amounts,
       stream_revenue: model.revenue,
       stream_volume: model.volume,
+      measures: model.measures,
       factors: model.factors,
     };
   }
@@ -365,6 +469,46 @@ export function metrics(baseline: PlanBaseline, scenario: PlanScenario | null, a
   };
 }
 
+/** Units that count nothing: the one sale a month a plan used to be seeded with, and a multiplier left at one. */
+const PLACEHOLDER_UNITS = new Set(["count", "multiplier"]);
+
+/** False for a volume that only stands in for one: one sale a month, a multiplier of one. */
+function countsSomething(stream: PlanStream, today: readonly number[]): boolean {
+  return (stream.factors ?? []).some((factor, index) => factor.volume && !factor.alongside && !(PLACEHOLDER_UNITS.has(factor.unit) && today[index] === 1));
+}
+
+/**
+ * What one unit of a stream's volume, and of each measure alongside it, brings in and costs.
+ *
+ * Revenue is the stream's own. The cost is every cost on the source (cost of goods sold and operating expenses)
+ * shared between the streams by revenue, so the per-unit figures of all the streams add back up to the business's
+ * NOI. A stream with nothing to divide by has no row; `factor_id` null is the stream's own volume.
+ */
+export function perUnit(plan: Plan, scenarios: Record<PlanView, PlanScenario>): PlanPerUnitRow[] {
+  const base = plan.baseline;
+  const one = (revenue: number, total: number, costs: number, quantity: number | undefined): PlanPerUnit | null => {
+    if (!quantity || quantity <= 0) return null;
+    const carried = total ? (costs * revenue) / total : 0;
+    return { quantity, revenue: revenue / quantity, cost: carried / quantity, noi: (revenue - carried) / quantity };
+  };
+  const sum = (values: Record<string, number>) => Object.values(values).reduce((total, value) => total + value, 0);
+  const rows: PlanPerUnitRow[] = [];
+  for (const stream of plan.streams) {
+    const places: Array<{ factorId: string | null; key: string | null }> = [];
+    if (plan.measured[stream.id] && countsSomething(stream, plan.today[stream.id])) places.push({ factorId: null, key: null });
+    for (const factor of stream.factors ?? []) if (factor.alongside) places.push({ factorId: factor.id, key: measureKey(stream.id, factor.id) });
+    for (const { factorId, key } of places) {
+      const today = one(plan.model.revenue[stream.id], plan.model.total, number(base.cogs) + number(base.operating_expenses),
+        key === null ? plan.model.volume[stream.id] : plan.model.measures[key]);
+      if (!today) continue;
+      const side = (scenario: PlanScenario) => one(scenario.stream_revenue[stream.id], sum(scenario.stream_revenue), scenario.cogs + scenario.opex,
+        key === null ? scenario.stream_volume[stream.id] : scenario.measures[key]);
+      rows.push({ stream_id: stream.id, factor_id: factorId, today, proposed: side(scenarios.proposed), reviewed: side(scenarios.reviewed) });
+    }
+  }
+  return rows;
+}
+
 /** What stands between this draft and a saved version, as one list, in the steps' order. */
 export function toFinish(plan: Plan, questions: readonly PlanQuestion[] = []): ToFinishItem[] {
   const { body, baseline } = plan;
@@ -438,7 +582,11 @@ export function evaluate(body: EarningsPlanBody, baseline: PlanBaseline, options
   const stillToFind = (scenario: PlanScenario) => (planDebt ? Math.max(0, targetDscr * planDebt - (scenario.ebitda - charges)) : null);
   const difference = plan.model.total - number(baseline.revenue);
   return {
-    model: { volume: plan.model.volume, revenue: plan.model.revenue, total: plan.model.total, difference, reconciles: Math.abs(difference) <= RECONCILE_TOLERANCE },
+    model: {
+      volume: plan.model.volume, revenue: plan.model.revenue, total: plan.model.total, difference, reconciles: Math.abs(difference) <= RECONCILE_TOLERANCE,
+      factors: plan.model.factors, measures: plan.model.measures,
+    },
+    per_unit: perUnit(plan, { proposed, reviewed }),
     rates: plan.rates,
     behaviors: Object.fromEntries(plan.lines.map(line => [line.id, plan.behavior(line)])),
     items: plan.items.map(item => ({

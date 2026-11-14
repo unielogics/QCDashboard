@@ -6,11 +6,10 @@
  */
 import { waterfall, type WaterfallBar } from "@/lib/financialsOverview";
 import { ALL, COGS_GROUP, Plan, loanOperating, number, startMonth } from "./math";
-import { remainderStream } from "./edit";
-import { count, factorAmountLabel, factorValue, periodLabel, plain, planMonthShort, points, ratioPercent, signedTimes, signedUsd, times, usd } from "./format";
+import { count, factorAmountLabel, factorValue, perWord, periodLabel, plain, planMonthShort, points, ratioPercent, signedTimes, signedUsd, times, usd } from "./format";
 import type {
-  Amount, CategoryAnswer, ChangeMode, EarningsPlanBody, LineBehavior, PlanActivity, PlanBaseline, PlanChange, PlanGrowth, PlanItemRow, PlanQuestion,
-  PlanResult, PlanSixMetrics, PlanStream, PlanTarget, PlanView, StreamTemplate,
+  Amount, CategoryAnswer, ChangeMode, EarningsPlanBody, LineBehavior, PlanActivity, PlanBaseline, PlanChange, PlanFactor, PlanGrowth, PlanItemRow,
+  PlanPerUnit, PlanQuestion, PlanResult, PlanSixMetrics, PlanStream, PlanTarget, PlanView, StreamTemplate,
 } from "./types";
 
 export type Tone = "ok" | "bad" | "warn" | "mut" | "acc";
@@ -138,6 +137,41 @@ export function beforeAfterTable(baseline: PlanBaseline, result: PlanResult, bas
     terms != null ? ratio("First-year DSCR · saved refinance", terms, e0 - costs, first.proposed.ebitda - costs, first.reviewed.ebitda - costs) : null,
   ];
   return rows.filter((row): row is BeforeAfterRow => row !== null);
+}
+
+/** A figure today and with the plan. `after` is null where the plan leaves it as it is, or leaves nothing to divide by. */
+export type FromTo = { before: string; after: string | null };
+/** What one unit, hour or job brings in and costs, today and with the plan. */
+export type PerUnitRow = {
+  key: string;
+  /** "Detail packages · per unit", "All revenue · per hour (Labor hours)". */
+  label: string;
+  quantity: FromTo;
+  revenue: FromTo; cost: FromTo; noi: FromTo;
+  noiTone: Tone;
+};
+
+/** Dollars for one of something: cents, or four places when one of it is worth less than a dollar (a dollar processed). */
+const each = (value: number) => usd(value, Math.abs(value) >= 1 || Math.abs(value) < 0.00005 ? 2 : 4);
+const fromTo = (before: string, after: string | null): FromTo => ({ before, after: after === before ? null : after });
+
+/** The review step's per-unit table: every stream volume and every measure alongside that has something to divide by. */
+export function perUnitTable(body: EarningsPlanBody, result: PlanResult, templates: Record<string, StreamTemplate>, view: PlanView): PerUnitRow[] {
+  return result.per_unit.map(row => {
+    const stream = body.streams.find(item => item.id === row.stream_id);
+    const measure = row.factor_id === null ? undefined : stream?.factors.find(factor => factor.id === row.factor_id);
+    const word = measure ? perWord(measure.unit) : unitWord(stream, templates);
+    const after = row[view];
+    return {
+      key: `${row.stream_id}:${row.factor_id ?? "volume"}`,
+      label: `${stream?.name || "Revenue stream"} · per ${word}${measure ? ` (${measure.label || "measure"})` : ""}`,
+      quantity: fromTo(`${plain(row.today.quantity / 12)} a month`, after ? `${plain(after.quantity / 12)} a month` : null),
+      revenue: fromTo(each(row.today.revenue), after ? each(after.revenue) : null),
+      cost: fromTo(each(row.today.cost), after ? each(after.cost) : null),
+      noi: fromTo(each(row.today.noi), after ? each(after.noi) : null),
+      noiTone: !after || Math.abs(after.noi - row.today.noi) < 0.005 ? "mut" : after.noi > row.today.noi ? "ok" : "bad",
+    };
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -321,26 +355,98 @@ export function sourceView(body: EarningsPlanBody, baseline: PlanBaseline, sourc
 // Step 2: revenue model and cost relationships
 // ---------------------------------------------------------------------------
 
+/** The one figure the revenue model starts from, in words: what the source prints, and what that is in an average month. */
+export function revenueLead(baseline: PlanBaseline): string {
+  if (!available(baseline)) return "The file has no earnings source yet, so there is no revenue to break down.";
+  const name = sourceShort(baseline);
+  const source = baseline.source ?? {};
+  return `${name === "Source" ? "The source" : name} ${source.annualized ? "annualizes to" : "prints"} ${usd(baseline.revenue)} of revenue, which is ${usd(number(baseline.revenue) / 12)} in an average month.`;
+}
+
+/** One typed quantity of a measure. `named` is a metric the business added, so it names it and can remove it. */
+export type MeasureInput = { id: string; label: string; named: boolean; value: Amount; unit: string };
+/**
+ * One way a stream's month is counted, with what one of it brings in and costs. The stream's own volume (what
+ * revenue follows) is one row, however many metrics multiply into it; each measure alongside is a row of its own.
+ */
+export type MeasureRow = {
+  /** The metric behind a measure alongside; null for the stream's own volume. */
+  factorId: string | null;
+  role: "volume" | "alongside";
+  inputs: MeasureInput[];
+  /** Several metrics multiplied into one volume: "= 100 a month". */
+  total: string | null;
+  /** One of it: "unit", "hour", "billable hour". */
+  word: string;
+  note: string;
+  revenue: string; cost: string; noi: string; noiTone: Tone;
+};
 export type StreamCard = {
-  id: string; name: string; typeLabel: string; annual: string; monthly: string; volumeText: string;
-  factors: Array<{ id: string; label: string; custom: boolean; value: Amount; prefix: string; unit: string }>;
-  canAddFactor: boolean;
+  id: string; name: string; typeLabel: string;
+  /** The text in the revenue box. Null for the stream that holds the rest: it has nothing to type. */
+  revenueInput: Amount | null;
+  monthly: string; annual: string;
+  /** How the stream sits in the average month. */
+  share: string;
+  measures: MeasureRow[];
+  /** Said while the stream has nothing to divide by. */
+  unmeasured: string | null;
+  canMeasure: boolean;
 };
 
-const unitWord = (stream: PlanStream | undefined, templates: Record<string, StreamTemplate>) => templates[stream?.type ?? "custom"]?.unit_word ?? "unit";
+const isVolume = (factor: PlanFactor) => Boolean(factor.volume) && !factor.alongside;
 
-export function streamCards(body: EarningsPlanBody, result: PlanResult, templates: Record<string, StreamTemplate>): StreamCard[] {
+/** One of what a stream sells: its kind's own word, or for a stream described freely the unit its volume is counted in. */
+export function unitWord(stream: PlanStream | undefined, templates: Record<string, StreamTemplate>): string {
+  if (stream && stream.type !== "custom" && templates[stream.type]) return templates[stream.type].unit_word;
+  const first = stream?.factors.find(isVolume);
+  return first ? perWord(first.unit) : templates.custom?.unit_word ?? "unit";
+}
+
+const perUnitCells = (figures: PlanPerUnit | null | undefined): Pick<MeasureRow, "revenue" | "cost" | "noi" | "noiTone"> => (figures
+  ? { revenue: each(figures.revenue), cost: each(figures.cost), noi: each(figures.noi), noiTone: Math.abs(figures.noi) < 0.005 ? "mut" : figures.noi > 0 ? "ok" : "bad" }
+  : { revenue: DASH, cost: DASH, noi: DASH, noiTone: "mut" });
+
+export function streamCards(body: EarningsPlanBody, baseline: PlanBaseline, result: PlanResult, templates: Record<string, StreamTemplate>): StreamCard[] {
+  const source = available(baseline) ? number(baseline.revenue) : 0;
   return body.streams.map(stream => {
     const revenue = result.model.revenue[stream.id] ?? 0, volume = result.model.volume[stream.id] ?? 0;
-    const word = unitWord(stream, templates);
+    const figures = (factorId: string | null) => result.per_unit.find(row => row.stream_id === stream.id && row.factor_id === factorId)?.today;
+    const input = (factor: PlanFactor): MeasureInput => ({ id: factor.id, label: factor.label, named: Boolean(factor.custom), value: factor.value, unit: factor.unit });
+    const chain = stream.factors.filter(isVolume);
+    const measures: MeasureRow[] = [];
+    if (chain.length) {
+      measures.push({
+        factorId: null, role: "volume", inputs: chain.map(input), total: chain.length > 1 ? `= ${plain(volume / 12)} a month` : null,
+        word: unitWord(stream, templates), note: "Revenue follows this", ...perUnitCells(figures(null)),
+      });
+    }
+    for (const factor of stream.factors) {
+      if (factor.alongside) measures.push({ factorId: factor.id, role: "alongside", inputs: [input(factor)], total: null, word: perWord(factor.unit), note: "Moves with the volume", ...perUnitCells(figures(factor.id)) });
+    }
+    // A stream described as units times price shows the revenue that made; typing in the box is what turns it into a stated one.
+    const revenueInput = stream.remainder ? null : stream.monthly_revenue != null ? stream.monthly_revenue : Math.round((revenue / 12) * 100) / 100;
     return {
-      id: stream.id, name: stream.name, typeLabel: templates[stream.type]?.label ?? "Custom metrics",
-      annual: usd(revenue), monthly: `${usd(revenue / 12)} / month`,
-      volumeText: `Business unit: ${word} · ${plain(volume, 0)} a year${volume ? ` · ${usd(revenue / volume, 2)} revenue per ${word}` : ""}`,
-      factors: stream.factors.map(factor => ({ id: factor.id, label: factor.label, custom: Boolean(factor.custom), value: factor.value, prefix: factor.unit === "$" ? "$" : "", unit: factor.unit === "$" ? "" : factor.unit })),
-      canAddFactor: stream.factors.length < 12,
+      id: stream.id, name: stream.name, typeLabel: templates[stream.type]?.label ?? "Custom metrics", revenueInput,
+      annual: usd(revenue), monthly: usd(revenue / 12),
+      share: stream.remainder ? (body.streams.length > 1 ? "what the other streams leave" : "the whole average month")
+        : source > 0 ? `${ratioPercent(revenue / source)} of the average month` : "",
+      measures,
+      unmeasured: chain.length ? null : "Not counted yet. Add what an average month has (units, hours, jobs) to see what one of them brings in and costs.",
+      canMeasure: stream.factors.length < 12,
     };
   });
+}
+
+/** What a per-unit cost can follow: each stream's own volume and each measure alongside it, then all revenue. */
+export function costLinks(body: EarningsPlanBody): Array<{ value: string; label: string }> {
+  return [
+    ...body.streams.flatMap(stream => [
+      { value: stream.id, label: stream.name || "Revenue stream" },
+      ...stream.factors.filter(factor => factor.alongside).map(factor => ({ value: `${stream.id}|${factor.id}`, label: `${stream.name || "Revenue stream"} · ${factor.label || "measure"}` })),
+    ]),
+    { value: ALL, label: "All revenue" },
+  ];
 }
 
 export type Reconciliation = { reconciles: boolean; tag: Tag; text: string; balance: string | null };
@@ -348,21 +454,26 @@ export type Reconciliation = { reconciles: boolean; tag: Tag; text: string; bala
 export function reconciliation(body: EarningsPlanBody, baseline: PlanBaseline, result: PlanResult): Reconciliation {
   // The same name the to-finish list uses ("Reconcile the revenue model to IRS revenue").
   const name = baseline.source_name || "source";
-  if (!available(baseline)) return { reconciles: false, tag: { label: "No source revenue to match yet", tone: "mut" }, text: `Model total ${usd(result.model.total)}`, balance: null };
+  if (!available(baseline)) return { reconciles: false, tag: { label: "No source revenue to match yet", tone: "mut" }, text: `Streams total ${usd(result.model.total / 12)} a month`, balance: null };
   const { difference, reconciles } = result.model;
-  const remainder = remainderStream(body);
-  // Below the source, the rest can go into one stream; above it, only lowering a named stream helps unless a remainder stream is there to shrink.
-  const canBalance = !reconciles && (difference < 0 || (remainder !== null && number(remainder.factors[1]?.value) > 0));
+  // A stream that holds the rest keeps the model equal to the source by itself. Without one, what is missing can go into one;
+  // streams that state more than the source can only be lowered.
+  const holdsTheRest = body.streams.some(stream => stream.remainder);
+  const average = usd(number(baseline.revenue) / 12);
   return {
     reconciles,
     tag: reconciles ? { label: `Reconciles to ${name} revenue`, tone: "ok" } : { label: `Differs from ${name} revenue by ${signedUsd(difference)}`, tone: "warn" },
-    text: `Model total ${usd(result.model.total)} against ${name} revenue ${usd(baseline.revenue)}`,
-    balance: canBalance ? `Put the difference in ${remainder ? `“${remainder.name || "Other revenue"}”` : "“Other revenue”"}` : null,
+    text: reconciles ? `Streams add up to ${average} a month, the average of ${name} revenue ${usd(baseline.revenue)} a year`
+      : difference > 0 ? `Streams state ${usd(result.model.total / 12)} a month against an average of ${average}: ${usd(difference / 12)} a month too much. Lower one of them.`
+      : `Streams state ${usd(result.model.total / 12)} a month against an average of ${average}: ${usd(-difference / 12)} a month is not explained.`,
+    balance: !reconciles && difference < 0 && !holdsTheRest ? "Put the rest in “Other revenue”" : null,
   };
 }
 
 export type CostRow = {
-  id: string; label: string; group: string; groupLabel: string; behavior: LineBehavior; link: string; fixed: boolean;
+  id: string; label: string; group: string; groupLabel: string; behavior: LineBehavior;
+  /** What the cost follows, as `costLinks` names it: a stream, "stream|measure", or all revenue. */
+  link: string; fixed: boolean;
   rate: string; base: string; baseValue: Amount; added: boolean;
 };
 
@@ -371,11 +482,13 @@ export function costRows(body: EarningsPlanBody, baseline: PlanBaseline, result:
   const streams = new Map(body.streams.map(stream => [stream.id, stream]));
   return body.lines.map(line => {
     const effective = result.behaviors[line.id] ?? "fixed", rate = result.rates[line.id] ?? 0;
+    const stream = streams.get(line.link);
+    const measure = line.behavior === "unit" && line.measure ? stream?.factors.find(factor => factor.id === line.measure && factor.alongside) : undefined;
     return {
       id: line.id, label: line.label, group: line.group, groupLabel: labels.get(line.group) ?? line.group,
-      behavior: line.behavior, link: line.link, fixed: line.behavior === "fixed", added: Boolean(line.added),
-      rate: effective === "fixed" ? (line.behavior === "fixed" ? "Fixed amount" : "Driver is zero · held fixed")
-        : effective === "unit" ? `$${rate.toFixed(2)} per ${unitWord(streams.get(line.link), templates)}` : `${(rate * 100).toFixed(2)}% of revenue`,
+      behavior: line.behavior, link: measure ? `${line.link}|${measure.id}` : line.link, fixed: line.behavior === "fixed", added: Boolean(line.added),
+      rate: effective === "fixed" ? (line.behavior === "fixed" ? "Fixed amount" : "Nothing counted to follow yet · held fixed")
+        : effective === "unit" ? `$${rate.toFixed(2)} per ${measure ? perWord(measure.unit) : unitWord(stream, templates)}` : `${(rate * 100).toFixed(2)}% of revenue`,
       base: usd(number(line.base)), baseValue: line.base,
     };
   });
@@ -480,10 +593,12 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
   for (const stream of body.streams) {
     stream.factors.forEach((factor, index) => {
       const key = `f:${stream.id}:${factor.id}`;
-      const now = number(factor.value), then = proposed.factors[stream.id]?.[index] ?? now;
+      // Today's value as the engine reads it: a stream that states its revenue never types its price.
+      const now = plan.model.factors[stream.id]?.[index] ?? number(factor.value), then = proposed.factors[stream.id]?.[index] ?? now;
       revenueRows.push({
         rowKey: key, kind: "command", target: { kind: "factor", stream_id: stream.id, factor_id: factor.id }, direction: "up", ...withChange(key),
-        label: factor.label || "Metric", sub: stream.name || "Revenue stream", current: `Current ${factorValue(factor, now)}`,
+        label: factor.label || "Metric", sub: `${stream.name || "Revenue stream"}${factor.alongside ? " · counted alongside; costs that follow it move, revenue does not" : ""}`,
+        current: `Current ${factorValue(factor, now)}`,
         plan: Math.abs(then - now) > 1e-9 ? `Plan ${factorValue(factor, then)}` : "", planTone: null, units: sizes(factorAmountLabel(factor)),
       });
     });
@@ -507,10 +622,11 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
     const key = `l:${line.id}`;
     const effective = result.behaviors[line.id] ?? "fixed", rate = result.rates[line.id] ?? 0;
     const stream = body.streams.find(item => item.id === line.link);
+    const measure = line.measure ? stream?.factors.find(factor => factor.id === line.measure && factor.alongside) : undefined;
     const base = number(line.base), then = proposed.lines[line.id] ?? base;
     const moved = Math.abs(then - base) >= 1;
     const follows = effective === "fixed" ? "fixed"
-      : effective === "unit" ? `$${rate.toFixed(2)} per ${unitWord(stream, templates)} of ${stream?.name || "its stream"}`
+      : effective === "unit" ? `$${rate.toFixed(2)} per ${measure ? perWord(measure.unit) : unitWord(stream, templates)} of ${stream?.name || "its stream"}`
       : `${(rate * 100).toFixed(1)}% of ${line.link === ALL ? "all revenue" : `${stream?.name || "its stream"} revenue`}`;
     const change = withChange(key);
     return {
@@ -558,7 +674,7 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
     add: section.key === "growth" ? "growth" : section.key === "activities" ? "activity" : null,
     addLabel: section.key === "growth" ? "Add growth activity" : section.key === "activities" ? "Add new activity" : "",
     canAdd: section.key === "growth" ? canGrow : section.key === "activities",
-    empty: (rows[section.key] ?? []).length ? null : section.key === "growth" && !canGrow ? "Add a revenue stream with a volume metric in step 2 to plan growth." : SECTION_COPY[section.key]?.empty ?? null,
+    empty: (rows[section.key] ?? []).length ? null : section.key === "growth" && !canGrow ? "Count a revenue stream in step 2 (its units, hours or jobs) to plan growth: growth adds to what is counted." : SECTION_COPY[section.key]?.empty ?? null,
   }));
 }
 

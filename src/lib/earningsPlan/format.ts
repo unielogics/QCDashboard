@@ -33,6 +33,18 @@ export function factorValue(factor: Pick<PlanFactor, "unit">, value: number): st
   return `${plain(value)} ${factor.unit}`.trim();
 }
 
+const SINGULAR: Record<string, string> = {
+  units: "unit", hrs: "hour", hours: "hour", jobs: "job", customers: "customer", orders: "order", people: "person", clients: "client", dollars: "dollar",
+  visits: "visit", miles: "mile",
+};
+
+/** One of what a measure counts, from the unit it is counted in: "units / mo" is a unit, "hrs / mo" an hour. */
+export function perWord(unit: string | null | undefined): string {
+  const word = (unit ?? "").trim().toLowerCase().split(/[\s/]+/)[0] ?? "";
+  if (!word || word === "per" || word === "count" || word === "multiplier") return "unit";
+  return SINGULAR[word] ?? (word.length > 3 && word.endsWith("s") && !word.endsWith("ss") ? word.slice(0, -1) : word);
+}
+
 /** What "by an amount" means for a metric: dollars, points, or its own unit ("units"). */
 export function factorAmountLabel(factor: Pick<PlanFactor, "unit">): string {
   if (factor.unit === "$") return "$";

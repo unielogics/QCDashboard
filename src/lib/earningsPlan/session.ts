@@ -17,7 +17,7 @@
  * components/earnings-plan/useEarningsPlan), and tests drive one directly.
  */
 import { isPlanConflict, isPlanIncomplete, PlanError, type DraftFacts, type PlanTransport, type ReviewInput, type VersionReply } from "./api";
-import { adoptReviews, newId, settleReviews, toWire, withoutStaleReviews } from "./edit";
+import { adoptReviews, modernize, newId, settleReviews, toWire, withoutStaleReviews } from "./edit";
 import { PLAN_MODEL } from "./types";
 import type { EarningsPlanBody, PlanBaseline, PlanGoal, PlanQuestion, PlanServerEvaluation, PlanVersion, PlanWorkspace, StreamTemplate } from "./types";
 
@@ -161,7 +161,8 @@ export class PlanSession {
     this.changed = 0; this.persisted = 0; this.conflict = false; this.publishKey = null; this.retries = 0;
     this.clearTimers();
     this.set({
-      status: "ready", loadError: null, facts, body: withoutStaleReviews(workspace.body, facts.staleReviews),
+      // A plan saved as units times a typed price opens with each stream stating its revenue; nothing is written until it is edited.
+      status: "ready", loadError: null, facts, body: modernize(withoutStaleReviews(workspace.body, facts.staleReviews)),
       save: { state: workspace.draft && workspace.origin === "saved" ? "saved" : "idle", at: null, error: "" },
     });
   }
@@ -345,7 +346,7 @@ export class PlanSession {
         this.changed += 1; this.publishKey = null;
         this.set({
           facts: { ...this.facts, ...serverFacts(reply.evaluation), contextStamp: reply.context_stamp },
-          body: withoutStaleReviews(reply.body, reply.evaluation.plan.stale_reviews ?? []),
+          body: modernize(withoutStaleReviews(reply.body, reply.evaluation.plan.stale_reviews ?? [])),
           save: { ...this.state.save, state: "unsaved", error: "" },
         });
       } finally {

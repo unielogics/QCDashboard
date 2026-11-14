@@ -85,6 +85,32 @@ export function referenceBody(): EarningsPlanBody {
   };
 }
 
+/**
+ * The design's file described the way revenue is known: one stream that is all of it, measured in units and in hours.
+ *
+ * The stream states no price: 400 units a month against $103,000 a month is $257.50 a unit. Supplies follow the
+ * units, wages follow the labor hours alongside them, card processing follows revenue. Nothing is proposed. The
+ * backend builds the same body in app/tests/earnings_plan_fixture.py (`measured_body`).
+ */
+export function measuredBody(): EarningsPlanBody {
+  const body = referenceBody();
+  const follows: Record<string, Pick<EarningsPlanBody["lines"][number], "behavior" | "link" | "measure">> = {
+    c1: { behavior: "unit", link: "s1" }, sal: { behavior: "unit", link: "s1", measure: "f2" }, o1: { behavior: "pct", link: "all" },
+  };
+  return {
+    ...body, changes: [], growth: [], activities: [],
+    streams: [{
+      id: "s1", name: "All revenue", type: "custom", added: false, remainder: true, monthly_revenue: null,
+      factors: [
+        { id: "f0", label: "Units sold", value: "400", unit: "units / mo", volume: true, custom: true },
+        { id: "f1", label: "Revenue per unit", value: null, unit: "$", volume: false, custom: false },
+        { id: "f2", label: "Labor hours", value: "1200", unit: "hrs / mo", volume: false, alongside: true, custom: true },
+      ],
+    }],
+    lines: body.lines.map(line => ({ ...line, ...(follows[line.id] ?? { behavior: "fixed" as const, link: "all" }) })),
+  };
+}
+
 export const REFERENCE_GOAL: PlanGoal = { status: "set", metric: "annual_noi", amount: REFERENCE.plan.noi_goal, currency: "USD", revision: 1, updated_at: "2026-11-10T15:00:00+00:00" };
 
 export const STREAM_TEMPLATES: PlanWorkspace["stream_templates"] = {

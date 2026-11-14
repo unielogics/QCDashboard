@@ -3,11 +3,12 @@ import { describe, expect, it } from "vitest";
 import { evaluate } from "@/lib/earningsPlan/math";
 import { itemization, planNotices, saveLabel, stepCounts } from "@/lib/earningsPlan/issues";
 import {
-  beforeAfterTable, bridgeRows, categoryRows, changeSections, compareBars, costRows, coverageScale, debtBasis, goalView, handoffRows, liveMetrics,
-  loanCostsNote, ramp, reconciliation, releasedView, reviewRows, sourceView, stepSubtitles, streamCards,
+  beforeAfterTable, bridgeRows, categoryRows, changeSections, compareBars, costLinks, costRows, coverageScale, debtBasis, goalView, handoffRows, liveMetrics,
+  loanCostsNote, perUnitTable, ramp, reconciliation, releasedView, revenueLead, reviewRows, sourceView, stepSubtitles, streamCards, unitWord,
 } from "@/lib/earningsPlan/view";
-import { planMonth, planStartOptions, stamp } from "@/lib/earningsPlan/format";
-import { QUESTIONS, REFERENCE, STREAM_TEMPLATES, referenceBaseline, referenceBody } from "./fixtures/earningsPlanReferencePlan";
+import { addStream, balanceRevenue, setStreamRevenue } from "@/lib/earningsPlan/edit";
+import { perWord, planMonth, planStartOptions, stamp } from "@/lib/earningsPlan/format";
+import { QUESTIONS, REFERENCE, STREAM_TEMPLATES, measuredBody, referenceBaseline, referenceBody } from "./fixtures/earningsPlanReferencePlan";
 
 const body = referenceBody();
 const baseline = referenceBaseline();
@@ -99,11 +100,24 @@ describe("earnings plan screens: the design's file", () => {
   });
 
   it("describes the revenue model and each cost's relationship to it", () => {
-    const streams = streamCards(body, result, STREAM_TEMPLATES);
-    expect(streams[0]).toMatchObject({ name: "Detail packages", typeLabel: "Units sold", annual: "$900,000", monthly: "$75,000 / month", volumeText: "Business unit: unit · 3,600 a year · $250.00 revenue per unit" });
-    expect(streams[2].volumeText).toBe("Business unit: billable hour · 1,200 a year · $100.00 revenue per billable hour");
-    expect(streams[1].volumeText).toBe("Business unit: contract-month · 144 a year · $1,500.00 revenue per contract-month");
-    expect(reconciliation(body, baseline, result)).toEqual({ reconciles: true, tag: { label: "Reconciles to IRS revenue", tone: "ok" }, text: "Model total $1,236,000 against IRS revenue $1,236,000", balance: null });
+    const streams = streamCards(body, baseline, result, STREAM_TEMPLATES);
+    // A plan described as units times price shows the revenue that makes, and what one unit brings in and costs.
+    expect(streams[0]).toEqual({
+      id: "s1", name: "Detail packages", typeLabel: "Units sold", revenueInput: 75_000, annual: "$900,000", monthly: "$75,000", share: "72.8% of the average month",
+      measures: [{
+        factorId: null, role: "volume", inputs: [{ id: "f0", label: "Units sold", named: false, value: "300", unit: "units / mo" }], total: null, word: "unit",
+        note: "Revenue follows this", revenue: "$250.00", cost: "$256.23", noi: "−$6.23", noiTone: "bad",
+      }],
+      unmeasured: null, canMeasure: true,
+    });
+    // Several metrics multiply into one volume: two technicians at fifty hours each are a hundred billable hours.
+    expect(streams[2].measures[0]).toMatchObject({ total: "= 100 a month", word: "billable hour", revenue: "$100.00", inputs: [{ label: "Technicians" }, { label: "Billable hours each" }] });
+    expect(streams[1].measures[0]).toMatchObject({ word: "contract-month", revenue: "$1,500.00" });
+    expect(reconciliation(body, baseline, result)).toEqual({
+      reconciles: true, tag: { label: "Reconciles to IRS revenue", tone: "ok" }, text: "Streams add up to $103,000 a month, the average of IRS revenue $1,236,000 a year", balance: null,
+    });
+    expect(revenueLead(baseline)).toBe("IRS 2025 prints $1,236,000 of revenue, which is $103,000 in an average month.");
+    expect(revenueLead({ ...baseline, source: { kind: "profit_and_loss", annualized: true } })).toBe("P&L annualizes to $1,236,000 of revenue, which is $103,000 in an average month.");
     const costs = new Map(costRows(body, baseline, result, STREAM_TEMPLATES).map(row => [row.id, row]));
     expect([costs.get("c1")!.rate, costs.get("c2")!.rate, costs.get("o1")!.rate, costs.get("rent")!.rate]).toEqual(["$105.00 per unit", "55.00% of revenue", "2.00% of revenue", "Fixed amount"]);
     expect(costs.get("c1")).toMatchObject({ groupLabel: "Cost of goods sold", base: "$378,000", fixed: false });
@@ -186,7 +200,7 @@ describe("earnings plan screens: other files", () => {
     expect(sourceView(bare, empty, false)).toMatchObject({ available: false, primary: "No earnings source in use", totals: [], footnote: null });
     expect(planNotices({ body: bare, baseline: empty, result: none, sourceChanged: false, staleReviews: [] }).map(row => row.code)).toEqual(["no_source"]);
     expect(changeSections(bare, empty, none, STREAM_TEMPLATES, basis).map(section => section.empty)).toEqual([
-      "Describe the revenue streams in step 2 to change them here.", "Add a revenue stream with a volume metric in step 2 to plan growth.",
+      "Describe the revenue streams in step 2 to change them here.", "Count a revenue stream in step 2 (its units, hours or jobs) to plan growth: growth adds to what is counted.",
       "The source prints no cost of goods sold.", "The source prints no operating expenses.", null,
     ]);
   });
@@ -205,10 +219,19 @@ describe("earnings plan screens: other files", () => {
     const short = referenceBody();
     short.streams[0].factors[0].value = "280";
     const low = evaluate(short, baseline);
-    expect(reconciliation(short, baseline, low)).toMatchObject({ reconciles: false, tag: { label: "Differs from IRS revenue by −$60,000", tone: "warn" }, balance: "Put the difference in “Other revenue”" });
+    expect(reconciliation(short, baseline, low)).toEqual({
+      reconciles: false, tag: { label: "Differs from IRS revenue by −$60,000", tone: "warn" },
+      text: "Streams state $98,000 a month against an average of $103,000: $5,000 a month is not explained.", balance: "Put the rest in “Other revenue”",
+    });
+    // With a stream that holds the rest the model equals the source by itself, and there is nothing more to offer.
+    const held = balanceRevenue(short);
+    expect(reconciliation(held, baseline, evaluate(held, baseline))).toMatchObject({ reconciles: true, balance: null });
     const high = referenceBody();
     high.streams[0].factors[0].value = "320";
-    expect(reconciliation(high, baseline, evaluate(high, baseline))).toMatchObject({ tag: { label: "Differs from IRS revenue by +$60,000", tone: "warn" }, balance: null });
+    expect(reconciliation(high, baseline, evaluate(high, baseline))).toEqual({
+      reconciles: false, tag: { label: "Differs from IRS revenue by +$60,000", tone: "warn" },
+      text: "Streams state $108,000 a month against an average of $103,000: $5,000 a month too much. Lower one of them.", balance: null,
+    });
     const split = referenceBody();
     split.lines.find(line => line.id === "c4")!.base = 60_000;
     expect(itemization(split, baseline, evaluate(split, baseline).behaviors)[0]).toMatchObject({ state: "unallocated", tag: "Unallocated $9,086" });
@@ -243,5 +266,99 @@ describe("earnings plan screens: other files", () => {
     expect(options.slice(1, 4).map(row => row.value)).toEqual(["2026-10", "2026-11", "2026-12"]);
     expect(options).toHaveLength(15);
     expect(stamp("not a date")).toBe("");
+  });
+});
+
+describe("earnings plan screens: revenue stated, counted in units and in hours", () => {
+  const measured = measuredBody();
+  const figures = evaluate(measured, baseline);
+
+  it("shows what one unit and one hour bring in and cost, by dividing", () => {
+    const [card] = streamCards(measured, baseline, figures, STREAM_TEMPLATES);
+    // The stream is all of the source's revenue: there is no revenue box to type in and no price anywhere.
+    expect(card).toMatchObject({ name: "All revenue", typeLabel: "Custom metrics", revenueInput: null, monthly: "$103,000", annual: "$1,236,000", share: "the whole average month", unmeasured: null });
+    expect(card.measures).toEqual([
+      { factorId: null, role: "volume", inputs: [{ id: "f0", label: "Units sold", named: true, value: "400", unit: "units / mo" }], total: null, word: "unit",
+        note: "Revenue follows this", revenue: "$257.50", cost: "$263.91", noi: "−$6.41", noiTone: "bad" },
+      { factorId: "f2", role: "alongside", inputs: [{ id: "f2", label: "Labor hours", named: true, value: "1200", unit: "hrs / mo" }], total: null, word: "hour",
+        note: "Moves with the volume", revenue: "$85.83", cost: "$87.97", noi: "−$2.14", noiTone: "bad" },
+    ]);
+    // Before anything is counted the stream says so, and still brings all its revenue.
+    const seeded = { ...measured, streams: [{ ...measured.streams[0], factors: [measured.streams[0].factors[1]] }], lines: measured.lines.map(line => ({ ...line, behavior: "fixed" as const, link: "all", measure: null })) };
+    const [bare] = streamCards(seeded, baseline, evaluate(seeded, baseline), STREAM_TEMPLATES);
+    expect(bare).toMatchObject({ monthly: "$103,000", measures: [], unmeasured: "Not counted yet. Add what an average month has (units, hours, jobs) to see what one of them brings in and costs." });
+    // A quantity that is not typed yet leaves the row there to type in, with nothing to divide by.
+    const blank = { ...measured, streams: [{ ...measured.streams[0], factors: measured.streams[0].factors.map(factor => (factor.id === "f0" ? { ...factor, value: "" } : factor)) }] };
+    expect(streamCards(blank, baseline, evaluate(blank, baseline), STREAM_TEMPLATES)[0].measures[0]).toMatchObject({ revenue: "—", cost: "—", noi: "—", noiTone: "mut" });
+  });
+
+  it("sits a stated stream beside the one that holds the rest", () => {
+    const added = addStream(measured, "units", STREAM_TEMPLATES);
+    const two = setStreamRevenue(added, added.streams[1].id, "60000");
+    const cards = streamCards(two, baseline, evaluate(two, baseline), STREAM_TEMPLATES);
+    expect(cards.map(card => [card.name, card.revenueInput, card.monthly, card.share])).toEqual([
+      ["Other revenue", null, "$43,000", "what the other streams leave"], ["Units sold", "60000", "$60,000", "58.3% of the average month"],
+    ]);
+    expect(reconciliation(two, baseline, evaluate(two, baseline)).reconciles).toBe(true);
+    // Stating more than the source leaves nothing for the rest and says how much is too much.
+    const over = setStreamRevenue(two, added.streams[1].id, "110000");
+    expect(reconciliation(over, baseline, evaluate(over, baseline))).toMatchObject({
+      reconciles: false, text: "Streams state $110,000 a month against an average of $103,000: $7,000 a month too much. Lower one of them.", balance: null,
+    });
+  });
+
+  it("names what each cost follows, and lets a cost per unit follow the hours", () => {
+    expect(costLinks(measured)).toEqual([{ value: "s1", label: "All revenue" }, { value: "s1|f2", label: "All revenue · Labor hours" }, { value: "all", label: "All revenue" }]);
+    const costs = new Map(costRows(measured, baseline, figures, STREAM_TEMPLATES).map(row => [row.id, row]));
+    expect([costs.get("c1")!.link, costs.get("c1")!.rate]).toEqual(["s1", "$78.75 per unit"]);
+    expect([costs.get("sal")!.link, costs.get("sal")!.rate]).toEqual(["s1|f2", "$24.18 per hour"]);
+    expect(costs.get("o1")!.rate).toBe("2.00% of revenue");
+    // A cost set to follow a volume nobody has counted yet is held where it is.
+    const blank = { ...measured, streams: [{ ...measured.streams[0], factors: measured.streams[0].factors.map(factor => (factor.id === "f0" ? { ...factor, value: "" } : factor)) }] };
+    expect(costRows(blank, baseline, evaluate(blank, baseline), STREAM_TEMPLATES).find(row => row.id === "c1")!.rate).toBe("Nothing counted to follow yet · held fixed");
+    expect([unitWord(measured.streams[0], STREAM_TEMPLATES), unitWord(body.streams[2], STREAM_TEMPLATES), unitWord(undefined, STREAM_TEMPLATES)]).toEqual(["unit", "billable hour", "unit"]);
+    expect(["units / mo", "hrs / mo", "jobs / mo", "tons hauled / mo", "people", "per mo", "count", "glass / mo", ""].map(perWord)).toEqual(["unit", "hour", "job", "ton", "person", "unit", "unit", "glass", "unit"]);
+  });
+
+  it("offers each metric to the plan with today's value, the price worked out", () => {
+    const rows = changeSections(measured, baseline, figures, STREAM_TEMPLATES, basis)[0].rows;
+    expect(rows.map(row => [row.rowKey, row.label, row.sub, row.current, row.units.map(unit => unit.label)])).toEqual([
+      ["pricing", "Overall pricing", "All revenue streams · price only, volume unchanged", "Current $1,236,000 / yr", ["$ / yr", "%"]],
+      ["f:s1:f0", "Units sold", "All revenue", "Current 400 units / mo", ["units", "%"]],
+      ["f:s1:f1", "Revenue per unit", "All revenue", "Current $257.50", ["$", "%"]],
+      ["f:s1:f2", "Labor hours", "All revenue · counted alongside; costs that follow it move, revenue does not", "Current 1,200 hrs / mo", ["hrs", "%"]],
+    ]);
+    const wages = changeSections(measured, baseline, figures, STREAM_TEMPLATES, basis).flatMap(section => section.rows).find(row => row.rowKey === "l:sal")!;
+    expect(wages.sub).toBe("Salaries · $24.18 per hour of All revenue");
+  });
+});
+
+describe("earnings plan screens: per unit, before and after", () => {
+  const words = { start_month: 1, setup_cost: null, setup_cadence: "one_time" as const, evidence_note: "", owner: "", included: true, status: "proposed" as const, note: "Agreed with the owner." };
+  const metric = (factorId: string, direction: "up" | "down", value: number, mode: "percent" | "amount" = "percent") =>
+    ({ ...words, id: `f:s1:${factorId}`, target: { kind: "factor" as const, stream_id: "s1", factor_id: factorId }, direction, mode, value });
+
+  it("shows what one unit and one hour bring in and cost, today and with the plan", () => {
+    const planned = { ...measuredBody(), changes: [metric("f0", "up", 10), metric("f2", "down", 5), metric("f1", "up", 5, "amount")] };
+    const figures = evaluate(planned, baseline);
+    const pair = (before: string, after: string | null = null) => ({ before, after });
+    expect(perUnitTable(planned, figures, STREAM_TEMPLATES, "proposed")).toEqual([
+      { key: "s1:volume", label: "All revenue · per unit", quantity: pair("400 a month", "440 a month"), revenue: pair("$257.50", "$262.50"), cost: pair("$263.91", "$250.61"),
+        noi: pair("−$6.41", "$11.89"), noiTone: "ok" },
+      { key: "s1:f2", label: "All revenue · per hour (Labor hours)", quantity: pair("1,200 a month", "1,254 a month"), revenue: pair("$85.83", "$92.11"), cost: pair("$87.97", "$87.93"),
+        noi: pair("−$2.14", "$4.17"), noiTone: "ok" },
+    ]);
+    // Nothing is reviewed yet, so the reviewed side is today: one figure, nothing under it.
+    expect(perUnitTable(planned, figures, STREAM_TEMPLATES, "reviewed")[0]).toEqual(
+      { key: "s1:volume", label: "All revenue · per unit", quantity: pair("400 a month"), revenue: pair("$257.50"), cost: pair("$263.91"), noi: pair("−$6.41"), noiTone: "mut" });
+    // The design's plan, described as units times price, gets the same table. A price the plan does not touch stays one figure.
+    expect(perUnitTable(body, result, STREAM_TEMPLATES, "proposed").map(row => [row.label, row.quantity, row.revenue, row.noi])).toEqual([
+      ["Detail packages · per unit", pair("300 a month", "340 a month"), pair("$250.00", "$262.00"), pair("−$6.23", "$30.46")],
+      ["Fleet maintenance contracts · per contract-month", pair("12 a month", "16 a month"), pair("$1,500.00"), pair("−$37.35", "$174.39")],
+      ["Paint correction labor · per billable hour", pair("100 a month", "120 a month"), pair("$100.00"), pair("−$2.49", "$11.63")],
+    ]);
+    // A plan with nothing counted has no table at all.
+    const bare = { ...measuredBody(), streams: [{ ...measuredBody().streams[0], factors: [measuredBody().streams[0].factors[1]] }], lines: measuredBody().lines.map(line => ({ ...line, behavior: "fixed" as const, link: "all", measure: null })) };
+    expect(perUnitTable(bare, evaluate(bare, baseline), STREAM_TEMPLATES, "proposed")).toEqual([]);
   });
 });

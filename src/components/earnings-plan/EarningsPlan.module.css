@@ -175,6 +175,17 @@ textarea.input { min-height: 64px; padding: 8px; line-height: 1.45; resize: vert
 .factorName { min-height: 26px; padding: 2px 6px; font-size: 12px; width: 130px; }
 .formula > .result { padding-bottom: 8px; font-weight: 650; }
 .formula > .equals { padding-bottom: 8px; }
+/* What the stream brings in an average month: typed, or worked out for the stream that holds the rest. */
+.streamRevenue { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px; font-size: 13px; }
+.streamRevenue > b { font-size: 15px; font-weight: 650; }
+/* One way the month is counted: the quantity typed on the left, what one of it brings in and costs on the right. */
+.measures { display: flex; flex-direction: column; }
+.measure { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 10px 20px; padding: 10px 0; border-top: 1px solid var(--line, rgba(15, 23, 32, 0.09)); }
+.measure > div:first-child { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.perUnit { display: flex; flex-wrap: wrap; gap: 6px 22px; }
+.perUnit > span { display: flex; flex-direction: column; gap: 1px; min-width: 92px; }
+.perUnit b { font-size: 14px; font-weight: 650; }
+.perUnit small { font-size: 11.5px; color: var(--muted, #5a6675); }
 .small { font-size: 12px; color: var(--muted, #5a6675); }
 
 /* ---------- step 3: change rows ---------- */

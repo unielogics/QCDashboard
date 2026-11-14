@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { ReviewInput } from "@/lib/earningsPlan/api";
 import { setAttestation, setNotes } from "@/lib/earningsPlan/edit";
 import { count, stamp } from "@/lib/earningsPlan/format";
-import { beforeAfterTable, bridgeRows, compareBars, handoffRows, liveMetrics, loanCostsNote, ramp, reviewRows, type DebtBasis } from "@/lib/earningsPlan/view";
+import { beforeAfterTable, bridgeRows, compareBars, handoffRows, liveMetrics, loanCostsNote, perUnitTable, ramp, reviewRows, type DebtBasis } from "@/lib/earningsPlan/view";
 import type { BaselineTreatment, PlanResult, PlanVersion, PlanView } from "@/lib/earningsPlan/types";
 import type { PlanBusy } from "./useEarningsPlan";
 import type { StepCommon } from "./StepSource";
@@ -30,6 +30,7 @@ export function StepReview({ body, facts, disabled, staff, edit, result, view, b
   const { baseline } = facts;
   const metrics = liveMetrics(baseline, result, view, basis);
   const table = beforeAfterTable(baseline, result, basis);
+  const units = perUnitTable(body, result, facts.templates, view);
   const bars = compareBars(metrics);
   const bridge = bridgeRows(baseline, result, view);
   const months = ramp(baseline, result, view, basis, body.plan_start);
@@ -70,6 +71,39 @@ export function StepReview({ body, facts, disabled, staff, edit, result, view, b
           {loanCostsNote(baseline, basis) ? ` ${loanCostsNote(baseline, basis)}` : ""}
         </p>
       </Card>
+
+      {units.length ? (
+        <Card label="Per unit, today and with the plan">
+          <div className={cx(styles.cardHead, styles.base)}>
+            <h2 style={{ flex: "1 1 auto" }}>Per unit, today and with the plan</h2>
+            <span className={styles.small}>Today above, {view === "reviewed" ? "reviewed changes only" : "the working plan"} below</span>
+          </div>
+          <div className={styles.tableWrap}>
+            <table className={cx(styles.table, styles.min520)}>
+              <thead><tr><th>One of</th><th className={styles.end}>Counted</th><th className={styles.end}>Revenue</th><th className={styles.end}>Cost</th><th className={styles.end}>NOI</th></tr></thead>
+              <tbody>
+                {units.map(row => (
+                  <tr key={row.key} data-per-unit={row.key}>
+                    <td>{row.label}</td>
+                    {([["quantity", styles.muted], ["revenue", undefined], ["cost", undefined]] as const).map(([field, tone]) => (
+                      <td key={field} className={cx(styles.end, tone)}>
+                        {row[field].after ? <><span className={styles.sub}>{row[field].before}</span>{row[field].after}</> : row[field].before}
+                      </td>
+                    ))}
+                    <td className={cx(styles.end, row.noiTone === "ok" ? styles.pos : row.noiTone === "bad" ? styles.neg : undefined)} style={{ fontWeight: 600 }}>
+                      {row.noi.after ? <><span className={styles.sub}>{row.noi.before}</span>{row.noi.after}</> : row.noi.before}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className={styles.fine}>
+            What one unit, hour or job brings in and costs. Revenue is the stream&rsquo;s own, divided by what it counts in a month. Cost is the stream&rsquo;s share,
+            by revenue, of every cost on the source and in the plan. A single figure means the plan leaves it where it is.
+          </p>
+        </Card>
+      ) : null}
 
       <div className={styles.three}>
         <Card label="Baseline against plan">

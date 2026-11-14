@@ -6,7 +6,7 @@ import { evaluate } from "@/lib/earningsPlan/math";
 import type { PlanFacts } from "@/lib/earningsPlan/session";
 import { debtBasis } from "@/lib/earningsPlan/view";
 import { clientPlanTransport } from "@/lib/earningsPlan/api";
-import { QUESTIONS, referenceWorkspace } from "@/lib/__tests__/fixtures/earningsPlanReferencePlan";
+import { QUESTIONS, measuredBody, referenceWorkspace } from "@/lib/__tests__/fixtures/earningsPlanReferencePlan";
 import { EarningsPlanWorkspace } from "../EarningsPlanWorkspace";
 import { PlanAside } from "../PlanAside";
 import { StepChanges } from "../StepChanges";
@@ -68,12 +68,26 @@ describe("step 1: the source", () => {
 describe("step 2: revenue model and costs", () => {
   it("prints each stream's arithmetic, each cost's rate and whether split groups add up", () => {
     const page = html(createElement(StepModel, { ...common, result }));
-    for (const text of ["Reconciles to IRS revenue", "$900,000", "$75,000 / month", "Business unit: unit · 3,600 a year · $250.00 revenue per unit", "Recurring contracts",
-      "Model total $1,236,000 against IRS revenue $1,236,000", "$105.00 per unit", "55.00% of revenue", "2.00% of revenue", "Fixed amount", "$378,000",
-      "Cost of goods sold · 4 items total $601,886 against $601,886 on the source · 3 linked to revenue", "Payroll taxes", "Transportation", "Not answered"]) expect(page).toContain(text);
+    for (const text of ["Reconciles to IRS revenue", "IRS 2025 prints $1,236,000 of revenue, which is $103,000 in an average month.", "$900,000 / yr · 72.8% of the average month",
+      "value=\"75000\"", "revenue per unit", "$250.00", "cost per unit", "$256.23", "NOI per unit", "= 100 a month", "revenue per billable hour", "Revenue follows this", "Add measure",
+      "Recurring contracts", "Streams add up to $103,000 a month, the average of IRS revenue $1,236,000 a year", "$105.00 per unit", "55.00% of revenue", "2.00% of revenue",
+      "Fixed amount", "$378,000", "Cost of goods sold · 4 items total $601,886 against $601,886 on the source · 3 linked to revenue", "Payroll taxes", "Transportation",
+      "Not answered"]) expect(page).toContain(text);
     expect(count(page, "data-stream=")).toBe(3);
+    expect(count(page, "data-measure=")).toBe(3);
     expect(count(page, "data-line=")).toBe(14);
-    expect(page).not.toContain("Put the difference in");
+    // Nothing is unexplained, and a price is never a box to type in.
+    for (const text of ["Put the rest in", "Price per unit", "Hourly rate", "Not counted yet"]) expect(page).not.toContain(text);
+  });
+
+  it("prints a stream that is all revenue, counted in units and in hours, with what one of each brings in and costs", () => {
+    const measured = measuredBody();
+    const page = html(createElement(StepModel, { ...common, body: measured, result: evaluate(measured, facts.baseline, { questions: QUESTIONS }) }));
+    for (const text of ["the whole average month", "$103,000", "value=\"400\"", "value=\"1200\"", "$257.50", "revenue per unit", "$263.91", "cost per unit", "$85.83", "revenue per hour",
+      "Moves with the volume", "value=\"Labor hours\"", "All revenue · Labor hours", "$24.18 per hour", "$78.75 per unit"]) expect(page).toContain(text);
+    // The stream that holds the rest has no revenue box: only what is counted is typed.
+    expect(page).not.toContain("revenue in an average month");
+    expect(count(page, "data-measure=")).toBe(2);
   });
 });
 
@@ -108,6 +122,10 @@ describe("step 4: review and save", () => {
       "Tax preparer handoff", "No historical differences recorded."]) expect(page).toContain(text);
     expect(count(page, "data-review=")).toBe(11);
     expect(page).not.toContain("Underwriting reviews proposed changes");
+    // What one unit of each stream brings in and costs, today above the plan.
+    for (const text of ["Per unit, today and with the plan", "Detail packages · per unit", "300 a month", "340 a month", "$262.00", "$231.54", "$30.46",
+      "Paint correction labor · per billable hour"]) expect(page).toContain(text);
+    expect(count(page, "data-per-unit=")).toBe(3);
   });
 
   it("shows the business its plan without the review controls", () => {

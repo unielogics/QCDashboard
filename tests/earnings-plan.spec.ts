@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { mkdtemp, readFile } from "node:fs/promises";
@@ -137,7 +137,11 @@ body.full #shell{height:auto}body.full #scroller{overflow:visible}
 @media(max-width:900px){#shell{grid-template-columns:minmax(0,1fr)}#rail{display:none}}</style>
 <script src="/app.js"></script></body></html>`;
 
-type Body = { changes: Array<{ id: string; value: number | null; note: string; mode?: string }>; notes: string };
+type Body = {
+  changes: Array<{ id: string; value: number | null; note: string; mode?: string }>; notes: string;
+  streams: Array<{ id: string; monthly_revenue?: number | null; remainder?: boolean; factors: Array<{ id: string; label: string; value: number | null; volume: boolean; alongside?: boolean }> }>;
+  lines: Array<{ id: string; behavior: string; link: string; measure?: string | null }>;
+};
 type LinkWorkspace = Record<string, unknown> & {
   body: Body & { attestation: boolean }; family_id: string | null; origin: string; completed?: boolean; current_version_id: string | null;
   draft: { revision: number; base_version_id: string | null; dirty: boolean }; versions: Array<Record<string, unknown>>;
@@ -476,27 +480,98 @@ test("every step is open, and the save button leads through what is left to a sa
   expect(errors).toEqual([]);
 });
 
-test("the revenue model reconciles to the source, and a split cost keeps adding up", async ({ page }) => {
+test("revenue is stated and divided by what is counted, and a split cost keeps adding up", async ({ page }, info) => {
   const errors = await open(page);
   await goTo(page, 1);
   const model = page.getByRole("region", { name: "Revenue model" });
+  await expect(model).toContainText("IRS 2025 prints $1,236,000 of revenue, which is $103,000 in an average month.");
   await expect(model).toContainText("Reconciles to IRS revenue");
+  await expect(model).toContainText("Streams add up to $103,000 a month, the average of IRS revenue $1,236,000 a year");
   await expect(model.locator("[data-stream]")).toHaveCount(3);
-  await expect(model.locator('[data-stream="s1"]')).toContainText("$75,000 / month");
-  await expect(model.locator('[data-stream="s1"]')).toContainText("Business unit: unit · 3,600 a year · $250.00 revenue per unit");
+  const detail = model.locator('[data-stream="s1"]');
+  const perUnit = (stream: Locator, measure = "volume") => stream.locator(`[data-measure="${measure}"]`);
+  // The stream states what it brings in a month; one unit brings that divided by the units, and carries its share of every cost.
+  await expect(detail.getByLabel("Detail packages: revenue in an average month")).toHaveValue("75000");
+  await expect(detail).toContainText("$900,000 / yr · 72.8% of the average month");
+  await expect(perUnit(detail)).toContainText("$250.00revenue per unit");
+  await expect(perUnit(detail)).toContainText("$256.23cost per unit");
+  await expect(perUnit(detail)).toContainText("−$6.23NOI per unit");
+  // No price is typed anywhere: the only boxes are the stream's revenue and what is counted.
+  await expect(model.getByLabel("Detail packages: Price per unit")).toHaveCount(0);
+  // The review step carries the same figures through the plan: what one unit brings in and costs, before and after.
+  await goTo(page, 3);
+  const units = page.getByRole("region", { name: "Per unit, today and with the plan" });
+  await expect(units.locator('[data-per-unit="s1:volume"]')).toHaveText("Detail packages · per unit300 a month340 a month$250.00$262.00$256.23$231.54−$6.23$30.46");
+  await expect(units.locator("[data-per-unit]")).toHaveCount(3);
+  await units.screenshot({ path: info.outputPath("per-unit.png") });
+  await goTo(page, 1);
 
-  // Fewer units than the return's revenue implies: the model says by how much, and offers a place for the rest.
+  // Counting fewer units does not lower revenue: it raises what one unit brings in. The model still equals the source.
   await model.getByLabel("Detail packages: Units sold").fill("280");
+  await expect(perUnit(detail)).toContainText("$267.86revenue per unit");
+  await expect(detail.getByLabel("Detail packages: revenue in an average month")).toHaveValue("75000");
+  await expect(model).toContainText("Reconciles to IRS revenue");
+
+  // Stating less than the source leaves revenue unexplained: the model says how much a month, and offers a place for the rest.
+  await detail.getByLabel("Detail packages: revenue in an average month").fill("70000");
   await expect(model).toContainText("Differs from IRS revenue by −$60,000");
+  await expect(model).toContainText("Streams state $98,000 a month against an average of $103,000: $5,000 a month is not explained.");
   await expect(steps(page).nth(1).locator("[aria-label$='to finish']")).toHaveText("3");
   await expect(toFinish(page).getByRole("button", { name: "Reconcile the revenue model to IRS revenue" })).toBeVisible();
-  await model.getByRole("button", { name: "Put the difference in “Other revenue”" }).click();
+  await model.getByRole("button", { name: "Put the rest in “Other revenue”" }).click();
   await expect(model.locator("[data-stream]")).toHaveCount(4);
-  await expect(model.locator('[data-stream="other-revenue"]')).toContainText("$5,000 / month");
+  const other = model.locator('[data-stream="other-revenue"]');
+  await expect(other).toContainText("$5,000/ month");
+  await expect(other).toContainText("what the other streams leave");
+  await expect(other).toContainText("Not counted yet.");
   await expect(model).toContainText("Reconciles to IRS revenue");
+  // From here the model equals the source by itself: restating a stream resizes the rest, with nothing to press.
+  await detail.getByLabel("Detail packages: revenue in an average month").fill("72000");
+  await expect(other).toContainText("$3,000/ month");
+  await expect(model).toContainText("Reconciles to IRS revenue");
+  await expect(model.getByRole("button", { name: "Put the rest in “Other revenue”" })).toHaveCount(0);
+  // Stating more than the source says how much is too much.
+  await detail.getByLabel("Detail packages: revenue in an average month").fill("90000");
+  await expect(model).toContainText("Streams state $118,000 a month against an average of $103,000: $15,000 a month too much. Lower one of them.");
+  await detail.getByLabel("Detail packages: revenue in an average month").fill("72000");
 
-  // A cost that follows a stream shows its rate; a fixed one says so.
+  // The same month counted another way: hours alongside the units give revenue and cost per hour.
+  await detail.getByLabel("Detail packages: what to count").selectOption("hours");
+  await detail.getByRole("button", { name: "Add measure" }).click();
+  await detail.getByLabel("Measure name").fill("Labor hours");
+  await detail.getByLabel("Detail packages: Labor hours").fill("900");
+  const hours = detail.locator("[data-measure]").nth(1);
+  await expect(hours).toContainText("$80.00revenue per hour");
+  await expect(hours).toContainText("Moves with the volume");
+  await expect(perUnit(detail)).toContainText("Revenue follows this");
+  // The stream that holds the rest can be counted too: the first measure is what its revenue follows.
+  await other.getByLabel("Other revenue: what to count").selectOption("jobs");
+  await other.getByRole("button", { name: "Add measure" }).click();
+  await other.getByLabel("Other revenue: Jobs").fill("20");
+  await expect(perUnit(other)).toContainText("$150.00revenue per job");
+  await expect(other).not.toContainText("Not counted yet.");
+  await detail.screenshot({ path: info.outputPath("revenue-stream.png") });
+  await other.screenshot({ path: info.outputPath("revenue-rest.png") });
+  await model.getByRole("heading", { name: "Revenue model" }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("revenue-model.png") });
+
+  // A cost that follows a stream shows its rate; a fixed one says so. A cost per unit can follow the hours counted alongside.
   const costs = page.getByRole("region", { name: "Cost relationships" });
+  await costs.getByLabel("Salaries: behaves as").selectOption("unit");
+  await costs.getByLabel("Salaries: linked to").selectOption({ label: "Detail packages · Labor hours" });
+  await expect(costs.locator('[data-line="sal"]')).toContainText("$32.24 per hour");
+  await expect(costs.locator('[data-line="c1"]')).toContainText("$112.50 per unit");
+  await settled(page);
+  const saved = (await server(page, (stand) => stand.__saved()))!;
+  const streams = saved.body.streams;
+  expect(streams.find((stream) => stream.id === "s1")).toMatchObject({ monthly_revenue: 72000, remainder: false });
+  expect(streams.find((stream) => stream.id === "s1")!.factors.map((factor) => [factor.label, factor.value, factor.volume, Boolean(factor.alongside)])).toEqual([
+    ["Units sold", 280, true, false], ["Price per unit", null, false, false], ["Labor hours", 900, false, true],
+  ]);
+  expect(streams.find((stream) => stream.id === "other-revenue")).toMatchObject({ monthly_revenue: null, remainder: true, factors: [{ label: "Jobs", value: 20, volume: true }, { label: "Revenue per job", value: null }] });
+  const wages = saved.body.lines.find((line) => line.id === "sal")!;
+  expect(wages).toMatchObject({ behavior: "unit", link: "s1", measure: streams.find((stream) => stream.id === "s1")!.factors[2].id });
+  await costs.getByLabel("Salaries: behaves as").selectOption("fixed");
   await expect(costs.locator('[data-line="c2"]')).toContainText("55.00% of revenue");
   await expect(costs.locator('[data-line="rent"]')).toContainText("Fixed amount");
   await costs.getByLabel("Rent: behaves as").selectOption("pct");
@@ -511,6 +586,7 @@ test("the revenue model reconciles to the source, and a split cost keeps adding 
   await expect(costs.locator('[data-line="rent"]')).toContainText("$120,000");
   await expect(costs).toContainText("Rent · 2 items total $196,805 against $196,805 on the source");
   await settled(page);
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
 });
 
