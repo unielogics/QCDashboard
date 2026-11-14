@@ -20,6 +20,17 @@ the TypeScript plan engines must reproduce those numbers.
 node scripts/design-reference/generate.mjs
 ```
 
+## Where each design is built
+
+| Design | Code | Checks |
+|---|---|---|
+| File page, Financials tab | `src/components/file/financials/` (cards), `src/lib/financialsOverview.ts` (every figure) | `src/lib/__tests__/financialsOverview.test.ts`, `tests/financials-overview.spec.ts` |
+| File page, Underwriting tab | `src/components/file/UnderwritingFlow.tsx` (the four steps; the coverage sentence comes from the Financials tab) | |
+
+The tests use the fictional file the design draws
+(`src/lib/__tests__/fixtures/financialsOverviewFixture.ts`), so a figure that
+drifts from the design fails a test.
+
 Two readings worth knowing before changing the engines:
 
 - The EBITDA bridge is cumulative in a fixed order (pricing, revenue drivers,

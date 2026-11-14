@@ -32,6 +32,7 @@ import { FundingRequestControl } from "@/components/application/FundingRequestCo
 import type { TermsOnFile } from "@/components/file/UnderwritingFlow";
 import { FinancingProposalSummary } from "@/components/file/FinancingProposalSummary";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
+import type { CoverageNoticeValue } from "@/components/file/financials/CoverageNotice";
 import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
 import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
@@ -724,6 +725,11 @@ export function LeadDetailPanel({
   const [cockpitFocus, setCockpitFocus] = useState<"marketplace" | null>(null);
   const [contextRailOpen, setContextRailOpen] = useState(false);
   const [packageTab, setPackageTab] = useState<FundingPackageTab>("summary");
+  // The package workspace folds away under the Financials grid; this asks the cockpit to unfold it and bring it into view.
+  const [packageRequest, setPackageRequest] = useState(0);
+  const openPackageWorkspace = () => { setPackageTab("summary"); setPrototypeView("financials"); setPackageRequest((value) => value + 1); };
+  // Coverage after the terms as the Financials tab works it out, shown beside the terms on Underwriting.
+  const [coverageNotice, setCoverageNotice] = useState<(CoverageNoticeValue & { profileId: string }) | null>(null);
   const [packageError, setPackageError] = useState<string | null>(null);
   const [packagePreviewRequest, setPackagePreviewRequest] = useState<{ key: number; artifactId: string } | null>(null);
   const [generatedPackageProof, setGeneratedPackageProof] = useState<Artifact[]>([]);
@@ -2102,7 +2108,10 @@ export function LeadDetailPanel({
                     onEconomicsSaved={() => { void refreshUnderwritingInPlace(); void refreshProgramReadiness(); setFinancingRefreshRevision(value => value + 1); }}
                     termsKind={isDealerFile ? "production" : "client"}
                     onOpenEvidence={() => { setPrototypeView("workspace"); setSubmissionStep(2); }}
-                    onOpenPackage={() => { setPackageTab("summary"); setPrototypeView("financials"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}
+                    onOpenPackage={openPackageWorkspace}
+                    packageRequest={packageRequest}
+                    onCoverageNotice={setCoverageNotice}
+                    onOpenUnderwriting={() => setPrototypeView("underwriting")}
                   />
                 ) : <div className="empty">{underwritingLoading ? "Resolving the application profile..." : "The application profile could not be resolved."}</div>}
                 </div>
@@ -2137,6 +2146,8 @@ export function LeadDetailPanel({
                       financing={currentFinancing}
                       requestedAmount={detail.intake.requested_loan_amount}
                       onCoveragePlan={requestSharedCoverage}
+                      coverageNotice={coverageNotice?.profileId === underwriting.profile_id ? coverageNotice : null}
+                      onOpenEarningsPlan={() => setPrototypeView("financials")}
                       programSelection={programReadiness ? <FundingProgramSetup
                         section="programs" profileId={underwriting.profile_id} files={[]}
                         value={programReadiness} onValueChange={setProgramReadiness}
@@ -2162,7 +2173,7 @@ export function LeadDetailPanel({
                       } : undefined}
                       marketplace={<div className="grid g12">
                         <MarketplacePublishStrip profileId={underwriting.profile_id} packageInSync={packageInSync} canPublish={currentUser?.role === Role.SUPER_ADMIN} onPublicationState={setMarketplacePublication} onStartListing={() => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }} />
-                        <Row><Btn onClick={() => { setPrototypeView("financials"); setPackageTab("summary"); window.setTimeout(() => document.getElementById("package-readiness")?.scrollIntoView({ behavior: "smooth", block: "start" }), 120); }}><Icon name="file" size={14} />{packageInSync ? "Review investor package" : "Prepare investor package"}</Btn></Row>
+                        <Row><Btn onClick={openPackageWorkspace}><Icon name="file" size={14} />{packageInSync ? "Review investor package" : "Prepare investor package"}</Btn></Row>
                       </div>}
                       underwriting={underwriting}
                       statusLabel={underwritingStatusLabel(underwriting?.underwriting_status ?? underwritingDraft.underwriting_status)}

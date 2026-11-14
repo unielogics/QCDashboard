@@ -15,6 +15,7 @@ import type { UnderwritingDraft } from "./leadFile";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import { currentTermsDelivery, termsReferenceMatches, type OfferDelivery } from "@/lib/offerDeliveryState";
 import { FinancingProposalSummary } from "./FinancingProposalSummary";
+import { CoverageNotice, type CoverageNoticeValue } from "@/components/file/financials/CoverageNotice";
 import { liveFinancingPreview } from "@/lib/liveFinancingPreview";
 import { SavedTermsDownload } from "@/components/application/SavedTermsDownload";
 
@@ -39,9 +40,13 @@ function Step({ n, title, state, chip, sub, children, step, active }: { n: numbe
   </section>;
 }
 
-export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, programSelection, onEditTerms, financing, requestedAmount, onCoveragePlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onResponseRecorded, forecastEarnings, feeInfo, offer, marketplace, publication, loanId, onCreateFundingFile, canUnderwrite }: {
+export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions, programSelection, onEditTerms, financing, requestedAmount, onCoveragePlan, coverageNotice, onOpenEarningsPlan, underwriting, statusLabel, draft, onDraftChange, saving, error, onRecordAcceptance, onStatusChange, onResponseRecorded, forecastEarnings, feeInfo, offer, marketplace, publication, loanId, onCreateFundingFile, canUnderwrite }: {
   profileId: string; terms: TermsOnFile | null; termsLoading: boolean; termsActions?: ReactNode; programSelection?: ReactNode; onEditTerms: () => void;
   financing?: WorkingFinancing | null; requestedAmount?: number | null; onCoveragePlan?: () => void;
+  /** Coverage after these terms, worked out on the Financials tab from the same figures as its strip. */
+  coverageNotice?: CoverageNoticeValue | null;
+  /** Where "Open earnings plan" goes when the tools do not open in their own tabs. */
+  onOpenEarningsPlan?: () => void;
   underwriting: ApplicationUnderwritingState | null; statusLabel: string; draft: UnderwritingDraft;
   onDraftChange: (patch: Partial<UnderwritingDraft>) => void; saving: boolean; error: string | null;
   onRecordAcceptance: (patch: ApplicationUnderwritingPatch) => void; onStatusChange: (status: UnderwritingLifecycleStatus) => void;
@@ -109,6 +114,7 @@ export function UnderwritingFlow({ profileId, terms, termsLoading, termsActions,
       <div className="uw-terms-layout">
         <div className="grid g12">
           <FinancingProposalSummary value={financing ?? null} saved={underwriting?.financing} terms={terms} requestedAmount={requestedAmount} onEdit={onEditTerms} onCoverage={onCoveragePlan} />
+          {!financing?.dirty ? <CoverageNotice notice={coverageNotice} onOpenPlan={onOpenEarningsPlan} /> : null}
           <div className="uw-actions">{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="terms" disabled={termsLoading || saving}>Open full terms</FileWorkspaceLink> : <Btn variant="pri" onClick={onEditTerms} disabled={termsLoading || saving}><Icon name="maximize" size={14} />Open full terms</Btn>}<span className="sub">Loan terms · Amortization & risk · Collateral · Investment & costs</span></div>
           <SavedTermsDownload profileId={profileId} kind={terms?.kind ?? "application_term_sheet"} version={terms?.version} disabled={termsLoading || saving} />
           {financing?.dirty ? <Callout tone="warn">The preview follows your working loan and fee calculations. Save a new terms version to record these changes.</Callout> : null}

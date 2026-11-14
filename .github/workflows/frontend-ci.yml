@@ -90,7 +90,9 @@ jobs:
           src/components/application/__tests__/OperatingPlanGuide.test.ts
           src/components/application/__tests__/OperatingPlanForm.test.ts
           src/components/application/__tests__/StaffOperatingSources.test.ts
-          src/components/file/cockpit/__tests__/OperatingPlanEntry.test.ts
+          src/components/file/financials/__tests__/EarningsPlanCard.test.ts
+          src/components/file/financials/__tests__/CoverageNotice.test.ts
+          src/lib/__tests__/financialsOverview.test.ts
           src/lib/__tests__/operatingActionFields.test.ts
           src/lib/__tests__/operatingSourceReview.test.ts
           src/lib/__tests__/debtTypes.test.ts
@@ -186,7 +188,10 @@ jobs:
           src/components/file/cockpit/ClientTermsStrip.tsx
           src/components/file/cockpit/DebtScheduleControls.tsx
           src/components/file/cockpit/OfferPanel.tsx
-          src/components/file/cockpit/OperatingPlanEntry.tsx
+          src/components/file/financials/EarningsPlanCard.tsx
+          src/components/file/financials/CoverageNotice.tsx
+          src/components/file/financials/FinancialsOverview.tsx
+          src/lib/financialsOverview.ts
           src/lib/__tests__/fileWorkspace.test.ts
           src/lib/fileWorkspace.ts
           src/production-package/client.ts
@@ -234,7 +239,11 @@ jobs:
           src/components/application/__tests__/OperatingPlanGuide.test.ts
           src/components/application/__tests__/OperatingPlanForm.test.ts
           src/components/application/__tests__/StaffOperatingSources.test.ts
-          src/components/file/cockpit/__tests__/OperatingPlanEntry.test.ts
+          src/components/file/financials/__tests__/EarningsPlanCard.test.ts
+          src/components/file/financials/__tests__/CoverageNotice.test.ts
+          src/lib/__tests__/financialsOverview.test.ts
+          src/lib/__tests__/fixtures/financialsOverviewFixture.ts
+          tests/financials-overview.spec.ts
           src/lib/operatingUnitPlanning.ts
           src/lib/operatingPlan.ts
           src/components/application/OperatingPlanForm.tsx

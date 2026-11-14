@@ -12,15 +12,23 @@
 //
 // Everything numeric comes from GET /application-profiles/{id}/financial-cockpit
 // (app/services/financial_cockpit.py); this component only arranges it.
+//
+// The tab opens on the overview grid (components/file/financials): six metrics
+// before and after, the earnings plan, then read-only cards. The editors stay
+// where they were: the coverage card is mounted for its drawers, and the
+// source metrics, the statement detail and the package workspace fold away
+// under the grid.
 
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Btn, Callout, CellChip, KpiRow, Lbl, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
+import { Btn, Callout, CellChip, KpiRow, Loading, Seg, StatusLine, cx, type ChipTone } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { errorMessage } from "@/components/marketplace/shared";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
-import { OperatingPlanEntry } from "./OperatingPlanEntry";
+import { FinancialsOverview, type OverviewReviewTab } from "@/components/file/financials/FinancialsOverview";
+import overviewStyles from "@/components/file/financials/FinancialsOverview.module.css";
+import type { CoverageNoticeValue } from "@/components/file/financials/CoverageNotice";
 import { RequestFilesDialog } from "@/components/application/RequestFilesDialog";
 import { balanceSheetIsEmpty, financialStatementRequest, profitAndLossIsEmpty, type FinancialStatementRequestKind } from "@/lib/financialStatementRequests";
 import { BucketFileReviewPanel, type BucketFileReview, type BucketReviewFile } from "@/components/buckets/BucketFileReviewPanel";
@@ -28,20 +36,17 @@ import { loadFinancialSourcePreview, restoreFinancialSourceFocus } from "@/lib/f
 import { validPdfSourcePage } from "@/lib/pdfSourceNavigation";
 import { balanceRiskMonths, riskCountLabel, riskTotals } from "@/lib/balanceRisk";
 import { ebitdaIsStaffCorrected, ebitdaKpi, metricAmountLabel, metricCurrency } from "@/lib/financialMetrics";
-import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import { ApplicationProgramReadiness } from "@/components/application/ApplicationProgramReadiness";
 import type { BudgetEditorControls } from "@/components/application/UseOfFundsBudgetEditor";
 import { createUseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
 import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { noiGovernancePresentation } from "@/lib/noiGovernance";
-import { useAuthedApi, useFinancialCockpit, useRestoreDebtSchedule, useVoidDebtSchedule } from "@/hooks/useApi";
+import { useAuthedApi, useFinancialCockpit } from "@/hooks/useApi";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import type { FundingProgramVertical } from "@/lib/fundingPrograms";
 import {
   compactMoney,
-  confidenceLabel,
-  confidenceTone,
   count,
   dscrLabel,
   dscrTone,
@@ -50,18 +55,13 @@ import {
   multiple,
   ratioPct,
   signedPct,
-  sourceLabel,
   trendDirection,
   type CockpitDscrCandidate,
   type CockpitBankSummary,
   type CockpitMonth,
-  type CockpitProfitCandidate,
   type FinancialCockpit as Cockpit,
-  EMPTY_SCHEDULE,
-  declaredBy,
   scheduleStatusShort,
   scheduleStatusTone,
-  type CockpitDebtRow,
 } from "@/lib/financialCockpit";
 import { OfferPanel } from "./OfferPanel";
 import type { MarketplacePlanControls } from "@/lib/marketplacePreparation";
@@ -102,6 +102,12 @@ type Props = {
   onRecordTerms: () => void;
   onOpenEvidence: () => void;
   onOpenPackage: () => void;
+  /** Go to the Underwriting tab, where the client terms are the first step. */
+  onOpenUnderwriting?: () => void;
+  /** Bumped by the file page to unfold the package workspace and bring it into view. */
+  packageRequest?: number;
+  /** Coverage after the terms, in one sentence, for the Underwriting tab (the same figures as the strip here). */
+  onCoverageNotice?: (notice: (CoverageNoticeValue & { profileId: string }) | null) => void;
   renderFundingPackage?: (marketplace: ReactNode, cockpit: Cockpit) => ReactNode;
   /** The fees were saved on the coverage card; the file page re-reads the underwriting state. */
   onEconomicsSaved?: () => void;
@@ -384,254 +390,14 @@ function BalanceSheetCard({ cockpit, onRequest }: { cockpit: Cockpit; onRequest?
   );
 }
 
-function ExpensesCard({ cockpit }: { cockpit: Cockpit }) {
-  const { lines, outflow_ratio, opex_ratio, cogs_ratio, debt_service_to_deposits } = cockpit.expenses;
-  const table: ChartTable | null = lines.length
-    ? {
-        caption: "Expense lines",
-        cols: ["Line", "Amount", "Period", "Annualized", "Of revenue", "Source"],
-        rows: lines.map((line) => ({ key: line.key, cells: [line.label, money(line.amount), line.period ?? "—", money(line.annualized), ratioPct(line.ratio_to_revenue), sourceLabel(line.source)] })),
-      }
-    : null;
-  return (
-    <Card title="Expenses we can track" sub="Lines the documents print, each with its period and source; bank outflows and debt service sit beside them for scale.">
-      <div className="fc-stat-list">
-        <Stat label="Outflows as a share of deposits">{ratioPct(outflow_ratio)}</Stat>
-        <Stat label="Operating expenses as a share of revenue">{ratioPct(opex_ratio)}</Stat>
-        <Stat label="Cost of goods sold as a share of revenue">{ratioPct(cogs_ratio)}</Stat>
-        <Stat label="Debt service as a share of monthly deposits">{ratioPct(debt_service_to_deposits)}</Stat>
-      </div>
-      {table ? (
-        <ChartCard plain title="Lines" table={table} chart={<HBarList rows={lines.filter((l) => l.amount != null).slice(0, 10).map((l) => ({ key: l.key, label: l.label, value: l.annualized ?? l.amount, sub: `${sourceLabel(l.source)}${l.period ? ` · ${l.period}` : ""}${l.annualized != null && l.annualized !== l.amount ? " · annualized" : ""}` }))} />} />
-      ) : (
-        <Empty>No expense lines yet: a profit-and-loss statement or a tax return fills this in.</Empty>
-      )}
-    </Card>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Debt, DSCR, net profit
-// ---------------------------------------------------------------------------
-
-/** The type as the schedule PDF prints it — the label when the file knows one,
- *  the slug's words otherwise — with the advance answer beside an advance. */
-function debtTypeCell(r: CockpitDebtRow): string {
-  const label = r.category_label || (r.is_mca ? "Advance" : r.category.replace(/_/g, " "));
-  if (r.mca_modified === true) return `${label} · modified for lower sales${r.mca_modification_note ? `: ${r.mca_modification_note}` : ""}`;
-  if (r.mca_modified === false) return `${label} · not modified`;
-  return label;
-}
-
-function statusCell(r: CockpitDebtRow): string {
-  if (!r.payment_status) return "—";
-  return r.payment_status.charAt(0).toUpperCase() + r.payment_status.slice(1);
-}
-
-/** An ISO date the way a US lender reads one. */
-function usDate(value: string | null | undefined): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(value ?? ""));
-  return match ? `${match[2]}/${match[3]}/${match[1]}` : value ?? "—";
-}
-
-function DebtCard({ cockpit, profileId, canEdit, onRefresh, onOpenEvidence }: { cockpit: Cockpit; profileId: string; canEdit: boolean; onRefresh: () => void; onOpenEvidence?: () => void }) {
-  const { rows, documented, document, service } = cockpit.debt;
-  const schedule = cockpit.debt.schedule ?? EMPTY_SCHEDULE;
-  const voided = schedule.voided;
-  const api = useAuthedApi();
-  const voidIt = useVoidDebtSchedule(profileId);
-  const restore = useRestoreDebtSchedule(profileId);
-  const confirmAction = useConfirmAction();
-  const [editing, setEditing] = useState(false);
-  const [busy, setBusy] = useState<"" | "open" | "save" | "request">("");
-  const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  useEffect(() => {
-    const handler = () => { void openForm(); };
-    window.addEventListener(OPEN_DEBT_SCHEDULE_EVENT, handler);
-    return () => window.removeEventListener(OPEN_DEBT_SCHEDULE_EVENT, handler);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId]);
-  const openForm = async () => { setEditing(true); };
-  const requestIt = async () => {
-    setError(null);
-    setBusy("request");
-    try {
-      const result = await api<{ requested: boolean; already: boolean }>(`/application-profiles/${profileId}/financial-forms/debt_schedule/request`, { method: "POST" });
-      setNotice(result.already ? "The borrower was already asked for the debt schedule." : "The debt schedule is on the borrower's checklist now.");
-      onRefresh();
-    } catch (e) {
-      setError(errorMessage(e, "The request could not be sent."));
-    } finally {
-      setBusy("");
-    }
-  };
-  const declareNoDebt = async () => {
-    const confirmed = await confirmAction({
-      title: "Void the debt schedule?",
-      body: "This records that the business carries no debt. The schedule stops being asked for, the debt service becomes zero and the coverage reads the proposed payment alone. Your name and the date go on the file. It can be undone.",
-      confirmLabel: "No debt on the business",
-      tone: "danger",
-      reversible: true,
-    });
-    if (!confirmed) return;
-    setError(null);
-    try {
-      await voidIt.mutateAsync({ reason: "No debt on the business" });
-      setNotice("Voided: the business carries no debt.");
-    } catch (e) {
-      setError(errorMessage(e, "The schedule could not be voided."));
-    }
-  };
-  const restoreIt = async () => {
-    setError(null);
-    try {
-      await restore.mutateAsync();
-      setNotice("The debt schedule is required again.");
-    } catch (e) {
-      setError(errorMessage(e, "The schedule could not be restored."));
-    }
-  };
-
-  const scheduleTable: ChartTable | null = rows.length
-    ? {
-        caption: "Debt schedule rows on the file",
-        cols: ["Lender", "Type", "Balance", "Monthly", "Rate / factor", "Status", "Maturity", "In DSCR"],
-        rows: rows.map((r) => ({
-          key: r.id || r.lender,
-          muted: !r.count_in_dscr,
-          cells: [
-            r.lender,
-            debtTypeCell(r),
-            money(r.balance),
-            money(r.monthly_payment),
-            r.factor_rate != null ? `${r.factor_rate.toFixed(2)} factor` : r.rate != null ? `${r.rate}%` : "—",
-            statusCell(r),
-            usDate(r.maturity_on),
-            yesNo(r.count_in_dscr),
-          ],
-        })),
-      }
-    : null;
-  const documentedTable: ChartTable | null = documented.length
-    ? {
-        caption: "Debts read off documents",
-        cols: ["Funder", "Balance", "Monthly", "Cadence", "Maturity"],
-        rows: documented.map((d, i) => ({ key: `${d.lender}-${i}`, cells: [d.lender, money(d.balance), money(d.monthly_payment), d.payment_frequency ? `${money(d.payment_amount)} ${d.payment_frequency}` : "monthly", d.maturity_on ?? "—"] })),
-      }
-    : null;
-  const uploadedLines = (document?.debts ?? []).filter((d) => d && d.lender);
-  const uploadedTable: ChartTable | null = uploadedLines.length && !rows.length
-    ? {
-        caption: "Lines read off the uploaded schedule",
-        cols: ["Lender", "Type", "Balance", "Monthly", "Rate", "Maturity", "Secured by"],
-        rows: uploadedLines.map((d, i) => ({ key: `${d.lender}-${i}`, cells: [String(d.lender), String(d.debt_type ?? "—"), money(d.current_balance ?? d.balance ?? null), money(d.monthly_payment ?? null), d.rate_pct != null ? `${d.rate_pct}%` : "—", usDate(d.maturity_date ?? null), String(d.secured_by ?? "—")] })),
-      }
-    : null;
-  const canRequest = !voided && !schedule.requested_at && !["rows", "document", "received"].includes(schedule.status);
-  const actions = canEdit ? (
-    <>
-      {voided ? <Btn size="sm" onClick={() => void restoreIt()} disabled={restore.isPending}>{restore.isPending ? "Restoring…" : "Undo: the business carries debt"}</Btn> : null}
-      {!voided ? <Btn size="sm" onClick={() => void openForm()} disabled={busy !== ""}>{busy === "open" ? "Opening…" : rows.length ? "Edit the schedule" : "Enter the schedule"}</Btn> : null}
-      {canRequest ? <Btn size="sm" onClick={() => void requestIt()} disabled={busy !== ""}>{busy === "request" ? "Requesting…" : "Request from the borrower"}</Btn> : null}
-      {schedule.can_void ? <Btn size="sm" onClick={() => void declareNoDebt()} disabled={voidIt.isPending}>{voidIt.isPending ? "Voiding…" : "No debt on the business"}</Btn> : null}
-    </>
-  ) : null;
-  const emptyText = voided
-    ? `No debt on the business, declared ${declaredBy(voided)}.`
-    : schedule.status === "document"
-      ? "The uploaded schedule printed no rows we could read; its totals are above."
-      : schedule.status === "requested" || schedule.status === "received"
-        ? "Waiting on the borrower's schedule. If they gave you the terms verbally, enter them here and the coverage reads them."
-        : "Nothing on the schedule yet. Enter it, ask the borrower for it, or void it if the business carries no debt.";
-  return (
-    <>
-      <Card title="Debt schedule and debt service" sub="Every file carries a debt schedule. Rows a person entered or confirmed win; then the total printed on an uploaded schedule; then the payments read off advance terms. Only the desk sets it aside, by declaring the business carries no debt." actions={actions}>
-        <div className="row" style={{ gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-          <CellChip tone={scheduleStatusTone(schedule.status)}>{schedule.label}</CellChip>
-          {voided ? (
-            <span className="sub">{declaredBy(voided)} · {voided.reason}</span>
-          ) : schedule.requested_at ? (
-            <span className="sub">Asked {declaredBy({ reason: "", by: null, by_user_id: null, at: schedule.requested_at }).replace("by the desk ", "")}</span>
-          ) : schedule.status === "missing" ? (
-            <span className="sub">Every file carries a debt schedule: ask the borrower for it here, or void it if the business carries no debt.</span>
-          ) : null}
-        </div>
-        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
-        {notice && !error ? <StatusLine tone="ok">{notice}</StatusLine> : null}
-        {service.declaration_conflict ? <StatusLine tone="warn">The statements still show {money(service.observed_monthly)} a month going to lenders or funders. The debt service keeps that figure until the schedule is restored or those payees are reclassified.</StatusLine> : null}
-        <div className="fc-stat-list">
-          <Stat label={<>Monthly debt service <CellChip tone={service.source === "none" ? "warn" : service.source === "declared_none" ? "ok" : "mut"}>{sourceLabel(service.source)}</CellChip></>}>{money(service.monthly)}</Stat>
-          <Stat label="Annual debt service">{money(service.annual)}</Stat>
-          {service.schedule_monthly != null ? <Stat label={`Schedule rows (${service.schedule_rows_counted} counted)`}>{`${money(service.schedule_monthly)} / mo · ${compactMoney(service.schedule_balance)} owed`}</Stat> : null}
-          {service.document_monthly != null || service.document_balance != null ? <Stat label="Uploaded schedule total">{`${money(service.document_monthly)} / mo · ${compactMoney(service.document_balance)} owed`}</Stat> : null}
-          {service.documented_monthly != null ? <Stat label="Advance terms read off documents">{`${money(service.documented_monthly)} / mo · ${compactMoney(service.documented_balance)} owed`}</Stat> : null}
-          <Stat label="Active advances (MCA)">{service.mca_count ? `${service.mca_count} · ${money(service.mca_monthly)} / mo · ${compactMoney(service.mca_balance)} owed` : "None on file"}</Stat>
-          {service.observed_monthly != null ? <Stat label="Lender and funder debits seen in the statements">{`${money(service.observed_monthly)} / mo${service.unexplained_observed_monthly ? ` · ${money(service.unexplained_observed_monthly)} not on any row` : ""}`}</Stat> : null}
-        </div>
-        {scheduleTable ? <ChartCard plain title="Schedule rows" table={scheduleTable} chart={<HBarList rows={rows.map((r) => ({ key: r.id || r.lender, label: r.lender, value: r.monthly_payment, muted: !r.count_in_dscr, sub: `${r.is_mca ? "Advance" : r.category.replace(/_/g, " ")}${r.balance != null ? ` · ${compactMoney(r.balance)} owed` : ""}${r.count_in_dscr ? "" : " · excluded from DSCR"}` }))} />} /> : null}
-        {uploadedTable ? <ChartCard plain title="Read off the uploaded schedule" sub="The AI read these lines; adopt them so the file carries them as its own rows, then edit from there." table={uploadedTable} chart={<HBarList rows={uploadedLines.map((d, i) => ({ key: `${d.lender}-${i}`, label: String(d.lender), value: d.monthly_payment ?? null, sub: `${d.debt_type ?? "Loan"}${d.current_balance != null ? ` · ${compactMoney(d.current_balance)} owed` : ""}` }))} />} /> : null}
-        {documentedTable ? <ChartCard plain title="Read off documents" table={documentedTable} chart={<HBarList rows={documented.map((d, i) => ({ key: `${d.lender}-${i}`, label: d.lender, value: d.monthly_payment, sub: `${d.is_mca ? "Advance" : "Loan"}${d.balance != null ? ` · ${compactMoney(d.balance)} owed` : ""}${d.payment_frequency ? ` · ${d.payment_frequency}` : ""}` }))} />} /> : null}
-        {!scheduleTable && !documentedTable && !uploadedTable ? <Empty>{emptyText}</Empty> : null}
-        {canEdit && (!rows.length || voided) ? <DebtScheduleControls cockpit={cockpit} profileId={profileId} canEdit={canEdit} onOpenEvidence={onOpenEvidence} /> : null}
-      </Card>
-      {editing ? <FinancialWorkspace open profileId={profileId} initialKind="debt_schedule" onClose={() => setEditing(false)} onPublished={onRefresh} /> : null}
-    </>
-  );
-}
-
-function ProfitRow({ candidate, lead }: { candidate: CockpitProfitCandidate; lead?: boolean }) {
-  return (
-    <div className="fc-stat">
-      <span>
-        {candidate.label}
-        {candidate.period && candidate.key !== "tax_return" ? ` · ${candidate.period}` : ""}
-        <br />
-        <small className="sub">{candidate.basis}{candidate.revenue != null ? ` · on ${compactMoney(candidate.revenue)}` : ""}{candidate.margin != null ? ` · ${ratioPct(candidate.margin)} margin` : ""}</small>
-      </span>
-      <strong className={cx(lead && "fc-lead")}>
-        {money(candidate.value)}
-        <CellChip tone={confidenceTone(candidate.confidence)}>{confidenceLabel(candidate.confidence)}</CellChip>
-      </strong>
-    </div>
-  );
-}
-
-function NetProfitCard({ cockpit }: { cockpit: Cockpit }) {
-  const { conclusion, candidates, note } = cockpit.net_profit;
-  return (
-    <Card title="Net profit" sub="The conclusion follows the AI review's precedence: a filed return first, a profit-and-loss statement as the labelled fallback, bank cash retained as a proxy.">
-      {conclusion ? (
-        <div className="grid g4">
-          <Lbl>Conclusion</Lbl>
-          <div className="fc-figure num">
-            {money(conclusion.value)} <CellChip tone={toneForSign(conclusion.value)}>{conclusion.value < 0 ? "Loss" : "Profit"}</CellChip>
-          </div>
-          <div className="sub">{conclusion.label}{conclusion.period ? ` · ${conclusion.period}` : ""}{conclusion.margin != null ? ` · ${ratioPct(conclusion.margin)} margin` : ""}</div>
-        </div>
-      ) : (
-        <Empty>No income figure yet. A tax return, a profit-and-loss statement or three months of bank statements gives one.</Empty>
-      )}
-      {note ? <StatusLine tone="warn">{note}</StatusLine> : null}
-      {candidates.length > 1 ? (
-        <div className="fc-stat-list">
-          {candidates.map((c) => (
-            <ProfitRow key={c.key} candidate={c} lead={c.key === conclusion?.key} />
-          ))}
-        </div>
-      ) : null}
-    </Card>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // The cockpit
 // ---------------------------------------------------------------------------
 
 export function FinancialCockpit(props: Props) {
   const fileWorkspace = useFileWorkspace();
-  const { profileId, onRefreshProgramReadiness, onWorkingFinancingChange } = props;
+  const { profileId, onRefreshProgramReadiness, onWorkingFinancingChange, onCoverageNotice } = props;
+  const coverageNoticeChanged = useCallback((notice: CoverageNoticeValue | null) => { onCoverageNotice?.(notice ? { ...notice, profileId } : null); }, [onCoverageNotice, profileId]);
   const budgetDraftStore = useMemo(() => createUseOfFundsDraftStore(profileId), [profileId]);
   const activeBudgetStore = useRef(budgetDraftStore);
   activeBudgetStore.current = budgetDraftStore;
@@ -664,6 +430,14 @@ export function FinancialCockpit(props: Props) {
   const [metricDebtOpen, setMetricDebtOpen] = useState(false);
   const [planReviewRequest, setPlanReviewRequest] = useState(0);
   const [termsOpenRequest, setTermsOpenRequest] = useState(0);
+  const [reviewTabWanted, setReviewTabWanted] = useState<OverviewReviewTab>("plan");
+  // On the file page the tools open in their own tabs, so the package workspace starts folded under the grid and a
+  // deep link (or its card) opens it. Where the cockpit is the only surface, it holds the working panel and starts open.
+  const [packageOpen, setPackageOpen] = useState(() => !fileWorkspace || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("workspace") === "package" || window.location.hash === "#package-readiness")));
+  const [packageShown, setPackageShown] = useState(0);
+  const packageRef = useRef<HTMLDetailsElement>(null);
+  const packageTarget = useRef<"package" | "marketplace" | null>(null);
+  const showPackage = useCallback((target: "package" | "marketplace" = "package") => { packageTarget.current = target; setPackageOpen(true); setPackageShown((value) => value + 1); }, []);
   const returnToMetric = useRef(false);
   const workingPlanChanged = useCallback((value: WorkingFinancing) => { setWorkingPlan(value); onWorkingFinancingChange?.(value); }, [onWorkingFinancingChange]);
   useEffect(() => { if (props.termsRequest) setTermsOpenRequest((value) => value + 1); }, [props.termsRequest]);
@@ -708,13 +482,27 @@ export function FinancialCockpit(props: Props) {
     const sourceButton = sourceFocusRef.current;
     requestAnimationFrame(() => restoreFinancialSourceFocus(sourceButton));
   }, []);
-  const { focus, onFocusHandled } = props;
+  const { focus, onFocusHandled, packageRequest } = props;
   useEffect(() => {
-    if (focus === "marketplace" && query.data && marketplaceRef.current) {
-      marketplaceRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (focus === "marketplace" && query.data) {
+      showPackage("marketplace");
       onFocusHandled();
     }
-  }, [focus, onFocusHandled, query.data]);
+  }, [focus, onFocusHandled, query.data, showPackage]);
+  useEffect(() => { if (packageRequest) showPackage(); }, [packageRequest, showPackage]);
+  useEffect(() => {
+    const target = packageTarget.current;
+    if (!target || !packageOpen) return;
+    const node = (target === "marketplace" ? marketplaceRef.current : null) ?? packageRef.current;
+    if (!node) return;
+    packageTarget.current = null;
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [packageOpen, packageShown, query.data]);
+  useEffect(() => {
+    const open = () => setMetricDebtOpen(true);
+    window.addEventListener(OPEN_DEBT_SCHEDULE_EVENT, open);
+    return () => window.removeEventListener(OPEN_DEBT_SCHEDULE_EVENT, open);
+  }, []);
 
   const cockpit = query.data?.profile_id === props.profileId ? query.data : undefined;
   if (query.isLoading && !cockpit) {
@@ -780,7 +568,7 @@ export function FinancialCockpit(props: Props) {
       {statementRequest?.profileId === props.profileId ? <RequestFilesDialog key={props.profileId} open={statementRequest.open} profileId={props.profileId}
         prefill={financialStatementRequest(statementRequest.kind, props.businessName)} prefillKey={statementRequest.key}
         onClose={() => setStatementRequest((current) => current ? { ...current, open: false } : null)} onRequested={refreshFileRequests} /> : null}</>;
-  const coverageView = (<CoverageCard workspaceTool={props.workspaceTool} key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} termsRequest={termsOpenRequest}
+  const coverageView = (<CoverageCard workspaceTool={props.workspaceTool} key={props.profileId} businessName={props.businessName} cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} accountKey={resolvedAccountChoice} canEdit={props.canUnderwrite || props.canRecordTerms || props.canPublish} canReviewDebt={props.canUnderwrite} canCorrectMetrics={props.canUnderwrite} profileId={props.profileId} canRecordTerms={props.canRecordTerms} onRecordTerms={props.onRecordTerms} onEconomicsSaved={props.onEconomicsSaved} termsKind={props.termsKind} onOpenEvidence={props.onOpenEvidence} onRefresh={refreshFinancialFacts} onPreviewSource={openSourcePreview} onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined} onWorkingPlanChange={workingPlanChanged} reviewRequest={planReviewRequest} reviewTab={reviewTabWanted} showSummary={false} termsRequest={termsOpenRequest}
           onMarketplaceSaveControlsChange={marketplaceControlsChanged}
           setupBudgetSaving={budgetSaving}
           initialFinancialAction={props.initialFinancialAction}
@@ -813,22 +601,25 @@ export function FinancialCockpit(props: Props) {
           </details> : null}
           onReviewClose={() => { if (returnToMetric.current) { returnToMetric.current = false; setMetricReview((current) => current ? { ...current, open: true } : null); } }} />);
   if (props.workspaceTool) return <div className="fin-cockpit">{coverageView}{props.workspaceTool === "marketplace" ? <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} /> : null}{auxiliaryContent}</div>;
+  const openReview = (tab: OverviewReviewTab) => { setReviewTabWanted(tab); setPlanReviewRequest((value) => value + 1); };
+  const openTerms = props.termsKind !== "production" && props.onOpenUnderwriting ? props.onOpenUnderwriting : structureLoan;
+  const packageStatus = !props.packageState.generated ? "Not generated yet" : props.packageState.inSync ? "Saved package is current" : "Saved package needs a refresh";
   return (
-    <div className={cx("fin-cockpit", layoutStyles.layout, query.isFetching && "is-refreshing")}>
-      <div className="fc-head">
-        <div>
-          <h3>Financial cockpit</h3>
-          <div className="sub">
-            {props.businessName} · read from {coverage.files_analyzed} analyzed file{coverage.files_analyzed === 1 ? "" : "s"} ({coverage.files_accepted} accepted) · {Number.isNaN(generated.getTime()) ? "" : generated.toLocaleString()}
-          </div>
-          <div className="fc-coverage" style={{ marginTop: 6 }}>
+    <div className={cx("fin-cockpit", layoutStyles.layout)}>
+      <div className="fc-head" style={{ flexWrap: "nowrap" }}>
+        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
+          <h3 className="sr-only">Financial cockpit</h3>
+          <div className="fc-coverage">
             <CellChip tone={coverage.bank_months_accepted >= coverage.bank_months_required ? "ok" : "warn"}>Statements {coverage.bank_months_accepted}/{coverage.bank_months_required}</CellChip>
             <CellChip tone={coverage.tax_years.length ? "ok" : "mut"}>Tax returns {coverage.tax_years.length ? coverage.tax_years.join(", ") : "none"}</CellChip>
             <CellChip tone={coverage.has_profit_and_loss ? "ok" : "mut"}>P&amp;L {yesNo(coverage.has_profit_and_loss)}</CellChip>
             <CellChip tone={scheduleStatusTone(coverage.debt_schedule_status ?? "missing")}>Debt schedule · {scheduleStatusShort(coverage.debt_schedule_status ?? "missing", coverage.debt_rows)}</CellChip>
+            <span className="sub">
+              {props.businessName} · read from {coverage.files_analyzed} analyzed file{coverage.files_analyzed === 1 ? "" : "s"} ({coverage.files_accepted} accepted){Number.isNaN(generated.getTime()) ? "" : ` · ${generated.toLocaleString()}`}
+            </span>
           </div>
         </div>
-        <div className="row" style={{ gap: 8 }}>
+        <div className="row" style={{ gap: 8, flex: "none", flexWrap: "nowrap" }}>
           <ActionIcon icon="vault" label="Open the evidence room" onClick={props.onOpenEvidence} />
           <ActionIcon icon="refresh" label={query.isFetching ? "Refreshing the figures..." : "Refresh the figures"} busy={query.isFetching} disabled={query.isFetching} onClick={() => void query.refetch()} />
         </div>
@@ -852,8 +643,34 @@ export function FinancialCockpit(props: Props) {
           <span className="sub">Choose which accounts count on Evidence &amp; banking → Banking.</span>
         </div>
       ) : null}
-      <OperatingPlanEntry key={profileId} profileId={profileId} businessName={props.businessName} evaluation={cockpit.operating_plan?.evaluation} version={cockpit.operating_plan?.version_number} currentDscr={cockpit.dscr.headline?.value ?? null} coverageEvaluation={cockpit.plan?.evaluation} canEdit={props.canUnderwrite} onRefresh={refreshFinancialFacts} onRequested={refreshFileRequests} />
-      <details className={layoutStyles.sourceMetrics}>
+
+      <FinancialsOverview
+        key={`overview:${profileId}`}
+        cockpit={cockpit}
+        profileId={profileId}
+        businessName={props.businessName}
+        months={selection.months}
+        summary={selection.summary}
+        accountLabel={cockpit.bank.accounts.length > 1 ? selection.label : null}
+        canUnderwrite={props.canUnderwrite}
+        unsavedScenario={workingPlan?.profileId === props.profileId && workingPlan.dirty}
+        debtControls={cockpit.debt?.schedule ? <DebtScheduleControls cockpit={cockpit} profileId={profileId} canEdit={props.canUnderwrite} onOpenEvidence={props.onOpenEvidence} compact /> : undefined}
+        programReadiness={props.programReadiness}
+        packageState={props.packageState}
+        onOpenTerms={openTerms}
+        onOpenReview={openReview}
+        onOpenDebtSchedule={() => setMetricDebtOpen(true)}
+        onOpenMetric={openMetricReview}
+        onOpenEvidence={props.onOpenEvidence}
+        onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined}
+        onOpenPackage={() => showPackage()}
+        onOpenMarketplace={() => showPackage("marketplace")}
+        onRefresh={refreshFinancialFacts}
+        onRequested={refreshFileRequests}
+        onCoverageNotice={coverageNoticeChanged}
+      />
+
+      <details className={cx(overviewStyles.fold, layoutStyles.sourceMetrics)}>
         <summary>Review financial source metrics<span>Source evidence, corrections and bank indicators</span></summary>
         <div className={metricStyles.metricSection}><KpiRow className={metricStyles.metricGrid}>
         {metricCards.map((entry) => {
@@ -872,31 +689,37 @@ export function FinancialCockpit(props: Props) {
       </KpiRow></div>
       </details>
 
-      <div className="fc-grid">
-        {coverageView}
-      </div>
+      <details className={overviewStyles.fold}>
+        <summary>Statement detail<span>Every tax line, the profit-and-loss ladder, the balance sheet and the bank months</span></summary>
+        <div className={overviewStyles.foldBody}>
+          <div className={layoutStyles.evidenceColumns}>
+            <div>
+              <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
+            </div>
+            <div>
+              <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
+              <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
+            </div>
+            <div>
+              <details className={`fc-card ${financialReviewStyles.mainDetails} ${layoutStyles.bankDetails}`} open>
+                <summary>Bank trends and cash flow<span>{summary.months} statement months</span></summary>
+                <div className={layoutStyles.bankCards}><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
+              </details>
+            </div>
+          </div>
+        </div>
+      </details>
 
-      <div className={layoutStyles.evidenceColumns}>
-        <div>
-          <TaxCard cockpit={cockpit} onOpenEvidence={props.onOpenEvidence} />
-          <NetProfitCard cockpit={cockpit} />
+      <details className={overviewStyles.fold} id="financials-package" ref={packageRef} open={packageOpen} onToggle={(event) => setPackageOpen(event.currentTarget.open)}>
+        <summary>Investor package and capital partners<span>{packageStatus}</span></summary>
+        <div className={overviewStyles.foldBody}>
+          <div className="fc-grid">
+            {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} />}
+          </div>
         </div>
-        <div>
-          <ProfitAndLossCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("profit_and_loss") : undefined} />
-          <ExpensesCard cockpit={cockpit} />
-        </div>
-        <div>
-          <BalanceSheetCard cockpit={cockpit} onRequest={props.canUnderwrite ? () => requestFinancialStatement("balance_sheet") : undefined} />
-          <details className={`fc-card ${financialReviewStyles.mainDetails} ${layoutStyles.bankDetails}`} open>
-            <summary>Bank trends and cash flow<span>{summary.months} statement months</span></summary>
-            <div className={layoutStyles.bankCards}><BankCards cockpit={cockpit} months={selection.months} summary={selection.summary} accountLabel={selection.label} onOpenEvidence={props.onOpenEvidence} /></div>
-          </details>
-        </div>
-      </div>
+      </details>
 
-      <div className="fc-grid">
-        {props.renderFundingPackage ? props.renderFundingPackage(<OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} embedded />, cockpit) : <OfferPanel cockpit={cockpit} props={{ ...props, onStructureLoan: structureLoan }} workingFinancing={workingPlan} planSaveControls={marketplacePlanControls} innerRef={marketplaceRef} />}
-      </div>
+      {coverageView}
       {auxiliaryContent}
     </div>
   );

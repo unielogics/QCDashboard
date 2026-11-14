@@ -1,0 +1,207 @@
+/* The Financials tab as the File design draws it: a strip of six metrics, the
+   earnings plan, then rows of two and three read-only cards. Sizes follow
+   scripts/design-reference/file.design.html; colours are the dashboard's own
+   tokens so the cards follow the theme. */
+
+.overview {
+  --ov-n200: color-mix(in srgb, var(--ink, #0f1720) 10%, var(--surface, #fff));
+  --ov-n400: color-mix(in srgb, var(--ink, #0f1720) 30%, var(--surface, #fff));
+  --ov-n500: var(--faint, #8b97a6);
+  --ov-a300: color-mix(in srgb, var(--accent, #1b4b9e) 34%, var(--surface, #fff));
+  --ov-a500: color-mix(in srgb, var(--accent, #1b4b9e) 78%, var(--surface, #fff));
+  container-type: inline-size;
+  container-name: financials-overview;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+
+/* ---------- cards ---------- */
+.card {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 18px;
+  background: var(--surface, #fff);
+  border: 1px solid var(--line, rgba(15, 23, 32, 0.09));
+  border-radius: 12px;
+}
+.cardHead { display: flex; justify-content: space-between; align-items: baseline; gap: 8px 12px; flex-wrap: wrap; }
+.cardHead.top { align-items: flex-start; }
+.cardHead h3 { font-family: var(--fh); font-size: 17px; line-height: 1.25; font-weight: 650; letter-spacing: -0.015em; margin: 0; }
+.cardHead p { margin: 4px 0 0; font-size: 13px; line-height: 1.45; color: var(--muted); }
+.cardActions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.note { margin: 10px 0 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.empty { margin: 12px 0 0; padding: 14px; border: 1px dashed var(--line2, rgba(15, 23, 32, 0.16)); border-radius: 10px; font-size: 12.5px; line-height: 1.5; color: var(--muted); display: grid; gap: 10px; justify-items: start; }
+.cardFoot { display: flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; margin-top: 10px; }
+.cardFoot .note { margin: 0; flex: 1 1 200px; }
+.link { border: 0; background: none; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; text-decoration: none; white-space: nowrap; }
+.link:hover { text-decoration: underline; }
+
+/* ---------- tags ---------- */
+.tag { display: inline-flex; align-items: center; gap: 5px; max-width: 100%; font-size: 12px; font-weight: 600; letter-spacing: 0.01em; line-height: 1.3; padding: 4px 10px; border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.tag_acc { background: var(--accent-100, #eef3fb); color: var(--accent-700, #153c7e); }
+.tag_mut { background: var(--ov-n200); color: var(--ink2, #353e4a); }
+.tag_outline { border: 1px solid var(--line2, rgba(15, 23, 32, 0.16)); color: var(--muted); }
+.tag_ok { background: var(--ok-tint, #e6f4ec); color: var(--ok, #0f7b4f); }
+.tag_warn { background: var(--warn-tint, #fdf2e2); color: var(--warn, #a15c07); }
+.tag_bad { background: var(--danger-tint, #fdeceb); color: var(--danger, #b42318); }
+
+.tone_ok { color: var(--ok, #0f7b4f); }
+.tone_bad { color: var(--danger, #b42318); }
+.tone_warn { color: var(--warn, #a15c07); }
+.tone_mut { color: var(--muted); }
+.tone_acc { color: var(--accent); }
+
+/* ---------- metric strip ---------- */
+.strip { padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); overflow: hidden; background: var(--surface, #fff); border: 1px solid var(--line, rgba(15, 23, 32, 0.09)); border-radius: 12px; }
+.stripCell { display: block; min-width: 0; padding: 14px 18px; border: 0; border-right: 1px solid var(--line, rgba(15, 23, 32, 0.09)); border-bottom: 1px solid var(--line, rgba(15, 23, 32, 0.09)); margin: 0 -1px -1px 0; background: none; text-align: left; font: inherit; color: inherit; }
+button.stripCell { cursor: pointer; }
+button.stripCell:hover { background: var(--sunken2, #f8fafc); }
+button.stripCell:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.stripLabel { font-size: 12px; color: var(--muted); }
+.stripValue { font-family: var(--fh); font-size: 22px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; color: var(--ink); white-space: nowrap; }
+.stripValue.neg { color: var(--danger, #b42318); }
+.stripAfter { font-size: 12px; line-height: 1.4; }
+
+/* ---------- earnings plan ---------- */
+.plan { padding: 20px; gap: 16px; border-color: var(--ov-a300); }
+.planHead { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px 16px; flex-wrap: wrap; }
+.planHead h2 { font-family: var(--fh); font-size: 20px; line-height: 1.2; font-weight: 650; letter-spacing: -0.02em; margin: 0; }
+.planHead p { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+.planBody { display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch; }
+.thumb { flex: 0 0 200px; display: flex; flex-direction: column; gap: 8px; padding: 0; border: 0; background: none; text-align: left; font: inherit; color: inherit; cursor: pointer; }
+.page { aspect-ratio: 8.5 / 11; width: 100%; background: #fff; border: 1px solid rgba(15, 23, 32, 0.12); box-shadow: 0 4px 12px rgba(15, 23, 32, 0.08); padding: 14px; display: flex; flex-direction: column; gap: 5px; font-size: 8px; line-height: 1.35; color: #0f1720; }
+.thumb:hover .page { border-color: var(--ov-a300); }
+.thumb:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pageBrand { font-family: var(--fh); font-weight: 600; color: #1b4b9e; }
+.pageTitle { font-family: var(--fh); font-weight: 600; font-size: 11px; line-height: 1.2; }
+.pageSub { color: #5a6675; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pageMetrics { border-top: 1px solid #d2d8e0; margin-top: 2px; padding-top: 5px; display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 3px 6px; }
+.pageMetrics > span:nth-child(3n + 2) { color: #5a6675; text-align: right; }
+.pageMetrics > b { text-align: right; }
+.pageBars { margin-top: auto; display: flex; flex-direction: column; gap: 3px; }
+.pageBars > span { height: 5px; background: #f4f6f8; position: relative; }
+.pageBars > span > i { position: absolute; top: 0; bottom: 0; }
+.pageBars .bar_bad { background: #b42318; }
+.pageBars .bar_ok { background: #0f7b4f; }
+.pageBars .bar_acc { background: #1b4b9e; }
+.thumbCaption { font-size: 12px; color: var(--muted); }
+.planMain { flex: 2 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 14px; }
+/* Each headline keeps its own width so "before → after" stays on one line; they wrap as whole stats. */
+.planStats { display: flex; flex-wrap: wrap; gap: 12px 32px; }
+.planStats > div { min-width: 0; }
+.planStats > div > span { display: block; font-size: 12px; color: var(--muted); }
+.planStats > div > strong { display: block; font-family: var(--fh); font-size: 20px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; }
+.planStats .gap { color: var(--warn, #a15c07); }
+.planStats .met { color: var(--ok, #0f7b4f); }
+.planFoot { display: flex; gap: 8px 16px; flex-wrap: wrap; align-items: center; font-size: 12px; color: var(--muted); }
+.planSide { flex: 1 1 240px; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.planSide > span { font-size: 12px; color: var(--muted); }
+.costs { display: grid; grid-template-columns: auto minmax(40px, 1fr) auto; gap: 8px 10px; align-items: center; font-size: 13px; }
+.costs > span:nth-child(3n + 1) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 150px; }
+.costs > span:nth-child(3n + 2) { height: 6px; background: var(--ov-n200); border-radius: 2px; overflow: hidden; }
+.costs > span:nth-child(3n + 2) > i { display: block; height: 100%; background: var(--ov-a500); }
+.costs > b { font-weight: 600; text-align: right; }
+.facts { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px 10px; margin: 6px 0 0; padding-top: 10px; border-top: 1px solid var(--line, rgba(15, 23, 32, 0.09)); font-size: 12px; }
+.facts > span:nth-child(odd) { color: var(--muted); }
+.facts > span:nth-child(even) { text-align: right; white-space: nowrap; }
+.funding { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border: 1px solid color-mix(in srgb, var(--warn, #a15c07) 26%, transparent); background: var(--warn-tint, #fdf2e2); border-radius: 8px; font-size: 12px; }
+.funding p { margin: 4px 0 0; line-height: 1.5; }
+.funding > div { min-width: 0; }
+
+/* ---------- rows of cards ---------- */
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); gap: 14px; align-items: stretch; }
+.three { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 14px; align-items: stretch; }
+
+/* Where only two of a row's three cards fit, the third takes the full width instead of half a row. */
+@container financials-overview (max-width: 927px) {
+  .three > :last-child:nth-child(odd) { grid-column: 1 / -1; }
+}
+
+/* ---------- tables ---------- */
+.tableWrap { margin-top: 8px; min-width: 0; overflow-x: auto; }
+.table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.table th { text-align: left; font-size: 11px; font-weight: 600; letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted); padding: 9px 8px; border-bottom: 1px solid var(--line2, rgba(15, 23, 32, 0.16)); white-space: nowrap; background: none; }
+.table td { padding: 9px 8px; border-bottom: 1px solid var(--line, rgba(15, 23, 32, 0.09)); font-variant-numeric: tabular-nums; vertical-align: top; line-height: 1.4; }
+.table td:first-child { font-variant-numeric: normal; font-weight: 500; }
+.table th:first-child, .table td:first-child { padding-left: 0; }
+.table th:last-child, .table td:last-child { padding-right: 0; }
+.table .end { text-align: right; white-space: nowrap; }
+.table .tight { white-space: nowrap; }
+.table tbody tr:last-child td { border-bottom: 0; }
+.table tr.strong td { font-weight: 600; }
+.table tr.muted td { color: var(--muted); }
+.table tr.muted td:first-child { font-weight: 400; }
+
+/* ---------- stats and bars ---------- */
+/* Three stats as one grid, filled down each column (label, figure, note), so the figures share a line however the labels wrap. */
+.stats3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: auto auto auto; grid-auto-flow: column; column-gap: 12px; margin-top: 14px; }
+.stats3 > span { font-size: 12px; line-height: 1.4; color: var(--muted); min-width: 0; }
+.stats3 > span:nth-child(3n + 1) { align-self: end; }
+.stats3 > strong { font-family: var(--fh); font-size: 20px; line-height: 1.3; font-weight: 600; letter-spacing: -0.01em; min-width: 0; overflow-wrap: anywhere; }
+.pairBars { display: flex; flex-direction: column; gap: 6px; margin-top: 14px; font-size: 13px; }
+.pairBars > div { display: grid; grid-template-columns: 70px minmax(0, 1fr) 76px; gap: 10px; align-items: center; }
+.pairBars > div > span:nth-child(2) { height: 10px; background: var(--ov-n200); border-radius: 2px; overflow: hidden; }
+.pairBars > div > span:nth-child(2) > i { display: block; height: 100%; border-radius: 2px; }
+.pairBars .today > span:nth-child(2) > i { background: var(--ov-n500); }
+.pairBars .planned > span:nth-child(2) > i { background: var(--accent); }
+.pairBars > div > span:last-child { text-align: right; }
+
+.columns { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; align-items: end; height: 84px; margin-top: 14px; border-bottom: 1px solid var(--ov-n400); }
+.columns > div { display: flex; flex-direction: column; justify-content: flex-end; height: 100%; }
+.columns > div > i { display: block; background: var(--ov-n400); border-radius: 2px 2px 0 0; }
+.columns > div.latest > i { background: var(--accent); }
+.columnLabels { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 12px; font-size: 12px; color: var(--muted); text-align: center; margin-top: 4px; }
+
+.months { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; align-items: end; height: 120px; margin-top: 16px; border-bottom: 1px solid var(--ov-n400); }
+.months > div { display: flex; gap: 3px; align-items: flex-end; height: 100%; min-width: 0; }
+.months > div > i { flex: 1; border-radius: 2px 2px 0 0; min-width: 2px; }
+.months > div > i:first-child { background: var(--accent); }
+.months > div > i:last-child { background: var(--ov-n400); }
+.months > div.pending > i { opacity: 0.45; }
+.monthLabels { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 14px; font-size: 11px; color: var(--muted); text-align: center; margin-top: 4px; }
+.legend { display: flex; gap: 14px; font-size: 11px; color: var(--muted); margin-top: 8px; }
+.legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: baseline; }
+.legend .dep { background: var(--accent); }
+.legend .wd { background: var(--ov-n400); }
+.inlineStats { display: flex; gap: 8px 20px; flex-wrap: wrap; font-size: 13px; margin-top: 12px; }
+.inlineStats b { font-weight: 600; }
+
+.rows { display: grid; gap: 0; margin-top: 8px; font-size: 13px; }
+.rows > div { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line, rgba(15, 23, 32, 0.09)); }
+.rows > div:last-child { border-bottom: 0; }
+.rows > div > span:first-child { font-weight: 500; min-width: 0; }
+.rows > div > span:last-child { text-align: right; color: var(--ink2, #353e4a); }
+
+/* ---------- drill-downs under the grid ---------- */
+.fold { min-width: 0; border: 1px solid var(--line, rgba(15, 23, 32, 0.09)); background: var(--surface, #fff); border-radius: 12px; }
+.fold > summary { cursor: pointer; padding: 12px 18px; font-size: 13px; font-weight: 600; color: var(--ink); display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; list-style: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::before { content: "▸"; color: var(--muted); font-size: 11px; }
+.fold[open] > summary::before { content: "▾"; }
+.fold > summary > span { color: var(--muted); font-size: 12px; font-weight: 400; }
+.foldBody { padding: 0 12px 12px; min-width: 0; }
+
+/* ---------- narrower containers ---------- */
+@container financials-overview (max-width: 1100px) {
+  .card { padding: 16px; }
+  .table { font-size: 12.5px; }
+  .table th, .table td { padding: 8px 6px; }
+  /* Three figures across a narrow card: the headings wrap, the figures never do. */
+  .table th { white-space: normal; vertical-align: bottom; line-height: 1.3; letter-spacing: 0.05em; }
+  .stripCell { padding: 12px 14px; }
+  .stripValue { font-size: 20px; }
+  .planStats > div > strong { font-size: 18px; }
+}
+@container financials-overview (max-width: 700px) {
+  .plan { padding: 16px; }
+  .thumb { display: none; }
+  .planStats > div > strong, .stats3 > strong { font-size: 18px; }
+  .stats3 { column-gap: 8px; }
+  .months { gap: 6px; }
+  .monthLabels { gap: 6px; font-size: 10px; }
+}

@@ -25,25 +25,8 @@
 .layout :global(.fc-table) { font-size: 12px; }
 .layout :global(.fc-table th), .layout :global(.fc-table td) { padding: 9px 8px; }
 .layout > :global(.fc-grid) { gap: 14px; align-items: start; }
-.sourceMetrics {
-  min-width: 0;
-  border: 1px solid var(--line, #e4e6ec);
-  background: var(--surface, #fff);
-  border-radius: 10px;
-}
-.sourceMetrics > summary {
-  cursor: pointer;
-  padding: 11px 16px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--ink, #17202b);
-}
-.sourceMetrics > summary span {
-  margin-left: 12px;
-  color: var(--muted, #6c7280);
-  font-size: 11px;
-  font-weight: 400;
-}
+/* The fold itself is drawn by the overview's .fold; these size what is inside it. */
+.sourceMetrics { min-width: 0; }
 .sourceMetrics > div { padding: 0 12px 12px; }
 .sourceMetrics :global(.kpi) { min-height: 0; padding: 8px 10px; gap: 2px; }
 .sourceMetrics :global(.kpi .knum) { font-size: 20px; }
@@ -70,6 +53,5 @@
 }
 @container file-financials (max-width: 650px) {
   .evidenceColumns, .evidenceColumns > div:last-child { grid-template-columns: minmax(0, 1fr); }
-  .sourceMetrics > summary span { display: block; margin: 4px 0 0 14px; }
   .layout :global(.fc-card) { padding: 13px; }
 }
