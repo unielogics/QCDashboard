@@ -42,6 +42,8 @@ import { createUseOfFundsDraftStore } from "@/lib/useOfFundsDraft";
 import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { noiGovernancePresentation } from "@/lib/noiGovernance";
 import { useAuthedApi, useFinancialCockpit } from "@/hooks/useApi";
+import { useCpSourceLookup } from "@/hooks/useCapitalPartners";
+import { marketplaceReviewHref } from "@/lib/marketplacePublication";
 import type { WorkingFinancing } from "@/lib/workingFinancing";
 import type { ApplicationProgramReadiness as ProgramReadiness, ApplicationTermSheetState } from "@/lib/applicationProfile";
 import type { FundingProgramVertical } from "@/lib/fundingPrograms";
@@ -433,10 +435,15 @@ export function FinancialCockpit(props: Props) {
   const [reviewTabWanted, setReviewTabWanted] = useState<OverviewReviewTab>("plan");
   // On the file page the tools open in their own tabs, so the package workspace starts folded under the grid and a
   // deep link (or its card) opens it. Where the cockpit is the only surface, it holds the working panel and starts open.
+  // (The file page itself brings the package panel into view for a link that asks for it; the fold only has to be open.)
   const [packageOpen, setPackageOpen] = useState(() => !fileWorkspace || (typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("workspace") === "package" || window.location.hash === "#package-readiness")));
   const [packageShown, setPackageShown] = useState(0);
   const packageRef = useRef<HTMLDetailsElement>(null);
   const packageTarget = useRef<"package" | "marketplace" | null>(null);
+  // A file that already has an offer links straight to it (the lookup the offer panel reads); otherwise the link opens
+  // the marketplace workspace, which creates the first one.
+  const savedOffer = useCpSourceLookup({ profile_id: props.profileId }, Boolean(props.canPublish && fileWorkspace && !fileWorkspace.pageMode));
+  const offerHref = savedOffer.data?.listing?.id ? marketplaceReviewHref(savedOffer.data.listing.id) : null;
   const showPackage = useCallback((target: "package" | "marketplace" = "package") => { packageTarget.current = target; setPackageOpen(true); setPackageShown((value) => value + 1); }, []);
   const returnToMetric = useRef(false);
   const workingPlanChanged = useCallback((value: WorkingFinancing) => { setWorkingPlan(value); onWorkingFinancingChange?.(value); }, [onWorkingFinancingChange]);
@@ -665,6 +672,7 @@ export function FinancialCockpit(props: Props) {
         onRequestStatement={props.canUnderwrite ? requestFinancialStatement : undefined}
         onOpenPackage={() => showPackage()}
         onOpenMarketplace={() => showPackage("marketplace")}
+        offerHref={offerHref}
         onRefresh={refreshFinancialFacts}
         onRequested={refreshFileRequests}
         onCoverageNotice={coverageNoticeChanged}

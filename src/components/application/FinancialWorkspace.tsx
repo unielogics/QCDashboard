@@ -18,8 +18,7 @@ import { DebtScheduleForm, type DebtRow } from "./DebtScheduleForm";
 import { BusinessStatementForm, type StatementBody, type StatementSchema } from "./BusinessStatementForm";
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
 import { operatingGoalReady, type OperatingGoalRead } from "@/lib/operatingGoal";
-import { OperatingPlanEditor } from "./OperatingPlanEditor";
-import { OperatingPlanReportControls } from "./OperatingPlanReportControls";
+import { StaffEarningsPlan } from "@/components/earnings-plan/StaffEarningsPlan";
 import { operatingReportNeedsUpgrade } from "@/lib/operatingReport";
 import { operatingNumericProblems } from "@/lib/operatingPlanFeedback";
 import { normalizeOperatingPlanBody, operatingPlanRequest, type OperatingPlanBody } from "@/lib/operatingPlan";
@@ -59,12 +58,28 @@ const when = (iso?: string | null) => iso ? new Date(iso).toLocaleString([], { d
 const newId = () => crypto.randomUUID();
 const rowsOf = (body: FinancialBody): FinancialDebtRow[] => (body.debts as FinancialDebtRow[] | undefined) ?? [];
 
-/** A draft has one body. Form fields, worksheet cells, and source review all edit that body. */
-export function FinancialWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, onPublished, onUploadFiles, inline = false }: {
+type WorkspaceProps = {
   open: boolean; onClose: () => void; profileId: string; initialKind?: SheetKind; initialView?: View; initialDebtId?: string;
   onPublished?: () => void | Promise<void>; onUploadFiles?: (files: File[]) => Promise<void>;
   inline?: boolean;
-}) {
+  /** Shown in the earnings plan's header. */
+  businessName?: string;
+};
+
+/**
+ * The file's financial forms. The earnings plan has its own four-step workspace
+ * (components/earnings-plan); every other form is edited in the forms workspace below.
+ */
+export function FinancialWorkspace(props: WorkspaceProps) {
+  const wantsPlan = props.initialKind === "operating_plan";
+  const [plan, setPlan] = useState(wantsPlan);
+  useEffect(() => { setPlan(wantsPlan); }, [wantsPlan, props.profileId]);
+  if (plan) return props.open ? <StaffEarningsPlan key={props.profileId} profileId={props.profileId} businessName={props.businessName} inline={props.inline} open onClose={props.onClose} onPublished={props.onPublished} onOpenForms={() => setPlan(false)} /> : null;
+  return <FinancialFormsWorkspace {...props} initialKind={wantsPlan ? "debt_schedule" : props.initialKind} onOpenPlan={() => setPlan(true)} />;
+}
+
+/** A draft has one body. Form fields, worksheet cells, and source review all edit that body. */
+function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, onPublished, onUploadFiles, inline = false, onOpenPlan }: WorkspaceProps & { onOpenPlan: () => void }) {
   const fileWorkspace = useFileWorkspace();
   const registerExit = fileWorkspace?.registerExit;
   const api = useAuthedApi();
@@ -227,7 +242,8 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
   };
   const close = () => { void run("close", async () => { await flush(); onClose(); }); };
   const switchForm = (kind: SheetKind, familyId?: string) => { void run("switch", async () => {
-    await flush(); pdfRequest.current += 1; setLoading(true); setSavedReceipt(null); setSavedCompletion(null); setSharedPdf(null); setProposal(null); setSourceUrl(null); setSourceFile(""); setPdfUrl(null); setPdfVersionId(null);
+    await flush();
+    if (kind === "operating_plan") { onOpenPlan(); return; } pdfRequest.current += 1; setLoading(true); setSavedReceipt(null); setSavedCompletion(null); setSharedPdf(null); setProposal(null); setSourceUrl(null); setSourceFile(""); setPdfUrl(null); setPdfVersionId(null);
     try { accept(await readFinancialWorkspace(api, profileId, kind, familyId), { resetSelection: true }); setView(financialWorkspaceEntryView(kind)); } finally { setLoading(false); }
   }); };
   const switchView = (next: View) => { setView(next); setNotice(""); if (next === "worksheet" && current.current?.kind === "debt_schedule" && selectedDebt) setGridFocus({ rowKey: selectedDebt, requestId: ++focusRequest.current }); };
@@ -465,7 +481,6 @@ export function FinancialWorkspace({ open, onClose, profileId, initialKind = "de
                 changeBody({ ...next, schedules });
               }} disabled={Boolean(busy)} />
                 : kind === "real_estate_schedule" ? <RealEstateScheduleForm schema={snapshot.schema as RealEstateSchema} value={body as RealEstateBody} onChange={(next) => changeBody(next as FinancialBody)} disabled={Boolean(busy)} initialSection={view === "pdf" && realEstateSourceMode === "mortgage" ? "Mortgages" : "Properties"} onImportSchedule={() => openRealEstateSource("schedule")} onMortgageEvidence={(mortgageId, propertyId) => openRealEstateSource("mortgage", mortgageId, propertyId)} mortgageEvidence={mortgageEvidence} />
-                : kind === "operating_plan" ? <OperatingPlanEditor reportControls={<OperatingPlanReportControls scope={`${writeScope}:${snapshot.family_id}`} versions={snapshot.versions} currentId={snapshot.current_version_id} hasDraft={Boolean(hasDraft)} busy={Boolean(busy)} onDownload={downloadPdf} />} saveStatus={{ state: operatingDraftError || conflict ? "error" : savingDraft ? "saving" : localDirty ? "unsaved" : "saved", at: draftSavedAt, error: operatingDraftError || (conflict ? "The saved draft changed. Use Reload server draft to compare the latest saved plan; your current entries are retained." : ""), retry: conflict ? undefined : () => { void flush().catch(() => undefined); }, reload: conflict ? () => { if (window.confirm("Reload the saved draft and replace the entries in this window?")) void run("reload", async () => { accept(await readFinancialWorkspace(api, profileId, kind, snapshot?.family_id)); setError(""); }); } : undefined }} onSaveVersion={() => publish()} saveVersionBusy={busy === "publish"} saveVersionDisabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsOperatingReportVersion} profileId={profileId} snapshot={snapshot} value={body as OperatingPlanBody} onChange={changeBody} disabled={Boolean(busy) || conflict} prepare={async () => { await flush(); return current.current; }} onReviewed={accept} onBusyChange={(reviewing) => setBusy(reviewing ? "operating-review" : "")} onPreviewSource={(fileId) => { setView("pdf"); setFileMode("sources"); previewSource(fileId); }} />
                 : kind === "debt_schedule" ? <>
                   {selected ? <><DebtScheduleForm singleRow renderFieldSource={renderFieldSource} value={{ business_name: String(body.business_name ?? ""), debts: [{ ...selected, editable: true } as DebtRow] }} disabled={Boolean(busy) || excludedIds.has(selected.id)} onChange={(next) => {
                     if (!next.debts?.length) { debtAction({ op: "delete", row_id: selected.id }); return; }

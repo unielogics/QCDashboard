@@ -222,7 +222,7 @@ export function harborPlanSummary(): PlanSummary {
     projection: {}, missing: [], risk_flags: [], notes: [], all_actions_reviewed: false,
   } as unknown as OperatingEvaluation;
   return {
-    has_plan: true, state: "published", expense_count: 14, action_count: 11, reviewed_action_count: 3, missing_count: 8, version_number: 1, updated_at: "2026-11-11T14:30:00Z", pdf_file_id: "plan-pdf-1",
+    has_plan: true, state: "published", expense_count: 14, action_count: 11, reviewed_action_count: 3, missing_count: 8, version_number: 1, version_id: "plan-version-1", updated_at: "2026-11-11T14:30:00Z", pdf_file_id: "plan-pdf-1",
     cost_mix: [
       { category: "cogs", annual_amount: 601_886, missing_count: 0, count: 1 },
       { category: "salaries", annual_amount: 348_194, missing_count: 0, count: 4 },

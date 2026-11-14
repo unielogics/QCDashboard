@@ -24,7 +24,10 @@ import {
   trackedExpenses,
   usd,
   waterfall,
+  type PlanSummary,
 } from "@/lib/financialsOverview";
+import { evaluate } from "@/lib/earningsPlan/math";
+import { referenceBaseline, referenceBody } from "./fixtures/earningsPlanReferencePlan";
 import { bareCockpit, emptyCockpit, harborBankSummary, harborCockpit, harborMonths, harborPlanSummary } from "./fixtures/financialsOverviewFixture";
 
 const texts = (rows: Array<{ cells: Array<{ text: string }> }>) => rows.map((row) => row.cells.map((cell) => cell.text));
@@ -189,6 +192,57 @@ describe("the earnings plan card", () => {
     expect(bars[0]).toMatchObject({ left: 0, right: 50 });
     expect(bars[4]).toMatchObject({ left: 50, right: 10 });
     expect(waterfall(null, [10], null)).toEqual([]);
+  });
+});
+
+describe("the earnings plan card, for a plan saved from the four-step Earnings Plan", () => {
+  // The same plan the Earnings Plan screens compute, in the shape the API returns for the current model.
+  const result = evaluate(referenceBody(), referenceBaseline());
+  const summary = (): PlanSummary => {
+    const saved = harborPlanSummary();
+    const evaluation = {
+      ...saved.evaluation,
+      schema_version: "earnings-plan-v2",
+      actions: result.items.map((item) => ({ id: item.id, kind: "expense_reduction", label: item.label, status: item.status, excluded: !item.on, net_annual_impact: result.effects[item.id].ebitda, proposed_math_valid: true })),
+      plan: { bridge: result.bridge, items: result.items },
+    } as unknown as PlanSummary["evaluation"];
+    return { ...saved, model: "operating-plan-v2", evaluation, cost_mix: [
+      { category: "cogs", annual_amount: 601_886, missing_count: 0, count: 4 }, { category: "salaries_and_wages", annual_amount: 348_194, missing_count: 0, count: 1 },
+      { category: "rent", annual_amount: 196_805, missing_count: 0, count: 1 }, { category: "other_deductions", annual_amount: 27_092, missing_count: 0, count: 2 },
+    ] };
+  };
+
+  it("lists the plan's own bridge, which adds up to the plan figure", () => {
+    const card = planCard(harborCockpit(), summary());
+    expect(card.rows.slice(1).map((row) => [row.label, row.ebitda, row.dscr])).toEqual([
+      ["Revenue drivers · Detail packages · Price per unit and 2 more", "+$89,616", "+0.50x"],
+      ["Growth · Google Ads for detail packages", "+$36,845", "+0.21x"],
+      ["Cost of goods sold · Detail supplies and chemicals", "+$21,420", "+0.12x"],
+      ["Operating expenses · Rent and 4 more", "+$71,793", "+0.40x"],
+      ["New activities · Weekend detailer, part time", "−$14,400", "−0.08x"],
+    ]);
+    expect(card.rows.find((row) => row.label.startsWith("New activities"))!.ebitdaTone).toBe("bad");
+    // Baseline, five steps, plan: the steps sum to the difference between the two ends.
+    expect(card.bars).toHaveLength(7);
+    const steps = result.bridge.proposed.reduce((sum, step) => sum + step.value, 0);
+    expect(-22_377 + steps).toBeCloseTo(182_896.64, 2);
+    expect([card.earnings, card.coverage, card.gap]).toEqual([{ before: "−$22,377", after: "$182,897" }, { before: "−0.03x", after: "1.03x" }, { value: "$39,103 / year", met: false }]);
+    expect(card.empty).toBeNull();
+  });
+
+  it("names the plan's costs as the source names them and keeps the six metrics", () => {
+    const card = planCard(harborCockpit(), summary());
+    expect(card.costs.map((row) => row.label)).toEqual(["COGS", harborCockpit().baseline!.groups!.rows.find((row) => row.key === "salaries_and_wages")?.label ?? "Salaries and wages", "Rent", "Other"]);
+    expect(metricStrip(harborCockpit(), summary().evaluation).map((cell) => [cell.label, cell.after])).toEqual(metricStrip(harborCockpit(), harborPlanSummary().evaluation).map((cell) => [cell.label, cell.after]));
+  });
+
+  it("skips a section whose changes are all switched off", () => {
+    const off = referenceBody();
+    off.activities[0].included = false;
+    const without = evaluate(off, referenceBaseline());
+    const saved = summary();
+    const evaluation = { ...saved.evaluation, plan: { bridge: without.bridge, items: without.items } } as unknown as PlanSummary["evaluation"];
+    expect(planCard(harborCockpit(), { ...saved, evaluation }).rows.some((row) => row.label.startsWith("New activities"))).toBe(false);
   });
 });
 

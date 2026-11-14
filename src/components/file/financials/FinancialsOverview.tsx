@@ -65,6 +65,8 @@ export type FinancialsOverviewProps = {
   onRequestStatement?: (kind: FinancialStatementRequestKind) => void;
   onOpenPackage: () => void;
   onOpenMarketplace: () => void;
+  /** The file's saved offer, when it has one: the link goes straight to it. */
+  offerHref?: string | null;
   onRefresh: () => void | Promise<unknown>;
   onRequested: () => void;
   /** Coverage after the terms as one sentence, for the Underwriting tab; told again whenever it changes. */
@@ -331,7 +333,11 @@ export function FinancialsOverview(props: FinancialsOverviewProps) {
           <p className={styles.note} style={{ fontSize: 13 }}>Executive summary, lender packet and investor presentation are generated together from saved file data.</p>
           <div className={styles.cardFoot}>
             <Btn size="sm" onClick={props.onOpenPackage}>{packageState.generated ? "Review investor package" : "Prepare investor package"}</Btn>
-            {linked ? <FileWorkspaceLink tool="marketplace" className={styles.link}>Review and publish offer</FileWorkspaceLink> : <button type="button" className={styles.link} onClick={props.onOpenMarketplace}>Review and publish offer</button>}
+            {linked
+              ? props.offerHref
+                ? <a className={styles.link} href={props.offerHref} target="_blank" rel="noopener noreferrer">Review and publish offer</a>
+                : <FileWorkspaceLink tool="marketplace" className={styles.link}>Review and publish offer</FileWorkspaceLink>
+              : <button type="button" className={styles.link} onClick={props.onOpenMarketplace}>Review and publish offer</button>}
           </div>
         </Card>
       </div>

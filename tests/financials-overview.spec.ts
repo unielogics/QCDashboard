@@ -32,6 +32,9 @@ test.beforeAll(async () => {
     "@/components/marketplace/shared": "export const errorMessage=(error,fallback)=>error&&error.message||fallback;",
     "@/components/application/FinancialWorkspace": "export function FinancialWorkspace(props){return <section role='dialog' aria-label={'Financial workspace: '+props.initialKind}><button type='button' onClick={props.onClose}>Close workspace</button></section>}",
     "@/components/application/RequestFilesDialog": "export function RequestFilesDialog(props){return props.open?<section role='dialog' aria-label='Request files'><button type='button' onClick={props.onClose}>Close request</button></section>:null}",
+    "@/components/earnings-plan/useStaffPlanTransport": "const transport={openPdf:async version=>{window.__planPdf=version.id}};export const useStaffPlanTransport=()=>transport;",
+    // No offer exists for this file, so the offer link opens the marketplace workspace.
+    "@/hooks/useCapitalPartners": "export const useCpSourceLookup=()=>({data:null});",
     "@/components/application/ApplicationProgramReadiness": "export const ApplicationProgramReadiness=()=>null;",
     "@/components/buckets/BucketFileReviewPanel": "export const BucketFileReviewPanel=()=>null;",
     "./CoverageCard": probe("CoverageCard", "useEffect(()=>{window.__coverage={reviewRequest:props.reviewRequest,reviewTab:props.reviewTab,showSummary:props.showSummary,termsRequest:props.termsRequest}});return null;"),
@@ -230,9 +233,10 @@ test("on the file page the tools open in their own tabs and the reviews open in 
   await page.locator('[data-metric="dscr"]').click();
   await expect(page.getByRole("dialog", { name: "Metric review: dscr" })).toBeVisible();
   await page.getByRole("button", { name: "Close review", exact: true }).click();
+  // The saved version's PDF opens by itself; the plan is not opened for it.
   await page.getByRole("button", { name: "Latest plan PDF", exact: true }).click();
-  await expect(page.getByRole("dialog", { name: "Financial workspace: operating_plan" })).toBeVisible();
-  await page.getByRole("button", { name: "Close workspace", exact: true }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { __planPdf?: string }).__planPdf)).toBe("plan-version-1");
+  await expect(page.getByRole("dialog", { name: "Financial workspace: operating_plan" })).toHaveCount(0);
 
   // The package workspace starts folded, unfolds from its card and comes into view.
   const fold = page.locator("#financials-package");

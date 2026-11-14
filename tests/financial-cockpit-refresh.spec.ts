@@ -27,6 +27,9 @@ test.beforeAll(async () => {
       ${hookNames.map((name) => name === "useFinancialCockpit" ? "export const useFinancialCockpit=()=>useSyncExternalStore(subscribe,()=>state);" : name === "useAuthedApi" ? "const call=async()=>{throw new Error('Unexpected API request')};export const useAuthedApi=()=>call;" : `export const ${name}=()=>({});`).join("\n")}`,
     "@/components/application/FinancialWorkspace": `import {useState,useEffect} from 'react';export function FinancialWorkspace(){const[text,setText]=useState('');useEffect(()=>{window.editorMounts=(window.editorMounts||0)+1;return()=>{window.editorUnmounts=(window.editorUnmounts||0)+1}},[]);return <section role="dialog" aria-label="Financial workspace probe"><label>Unsaved draft<textarea aria-label="Unsaved draft" value={text} onChange={e=>setText(e.target.value)}/></label></section>}`,
     "@/components/application/RequestFilesDialog": "export const RequestFilesDialog=()=>null;",
+    // The plan card opens the saved PDF through the signed-in transport; no sign-in exists here.
+    "@/components/earnings-plan/useStaffPlanTransport": "export const useStaffPlanTransport=()=>null;",
+    "@/hooks/useCapitalPartners": "export const useCpSourceLookup=()=>({data:null});",
     "@/components/application/ApplicationLenderSubmissions": "export const ApplicationLenderSubmissions=()=>null;",
     "@/components/application/ApplicationProgramReadiness": "export const ApplicationProgramReadiness=()=>null;",
     "@/components/buckets/BucketFileReviewPanel": "export const BucketFileReviewPanel=()=>null;",

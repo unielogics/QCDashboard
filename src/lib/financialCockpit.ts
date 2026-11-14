@@ -800,7 +800,11 @@ export type UploadedScheduleLine = { lender?: string | null; debt_type?: string 
 /** One row of the baseline ladder; amounts are signed so the column adds to each subtotal. */
 export type BaselineLadderRow = { key: "revenue" | "cogs" | "operating_expenses" | "noi" | "other_income" | "depreciation_amortization" | "ebitda"; label: string; amount: number | null; subtotal: boolean; note?: string };
 export type BaselineMetrics = { ebitda: number | null; noi: number | null; dscr: number | null; free_cash_flow: number | null; operating_margin: number | null; debt_service: number | null };
-export type BaselineGroupRow = { key: string; category: string; label: string; amount: number; fact_path: string | null; derived?: boolean; period_amount?: number };
+export type BaselineGroupRow = {
+  key: string; category: string; label: string; amount: number; fact_path: string | null; derived?: boolean; period_amount?: number;
+  /** What the latest P&L says for the same line, annualized. Shown beside the return for comparison; never used as a figure. */
+  statement_amount?: number | null;
+};
 /**
  * The selected earnings source as one ladder (revenue to NOI to EBITDA), its
  * expense groups and debt service. Mirrors app/services/financial_baseline.py:
@@ -828,6 +832,8 @@ export type FinancialBaseline = {
   groups: {
     rows: BaselineGroupRow[]; outside_plan: Array<{ key: string; label: string; amount: number }>;
     status: "reconciled" | "lines_exceed_total" | "total_not_read"; listed: number | null; total: number | null; remainder: number | null; reconciles: boolean | null;
+    /** The P&L whose figures are shown beside the return's lines, when one is long enough to annualize. */
+    statement?: { file_id: string; label: string; months_covered: number | null; annualized: boolean } | null;
   } | null;
   debt_service: {
     source?: string | null; currency?: string; current_annual?: number | null; current_monthly?: number | null; obligations?: number;

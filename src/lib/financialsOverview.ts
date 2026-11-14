@@ -29,6 +29,8 @@ export type OverviewTable = { head: string[]; rows: OverviewRow[] };
 
 /** GET /application-profiles/{id}/operating-plan/summary. */
 export type PlanSummary = {
+  /** "operating-plan-v2" once the plan has been saved from the four-step Earnings Plan. */
+  model?: string;
   goal?: OperatingGoalRead;
   has_plan: boolean;
   state?: string;
@@ -39,6 +41,8 @@ export type PlanSummary = {
   version_number?: number | null;
   updated_at?: string | null;
   pdf_file_id?: string | null;
+  /** The saved version the PDF belongs to. */
+  version_id?: string | null;
   cost_mix: Array<{ category: string; annual_amount: number | null; missing_count: number; count: number }>;
   evaluation?: OperatingEvaluation | null;
 };
@@ -255,6 +259,12 @@ export type PlanCardModel = {
   facts: Array<{ label: string; value: string }>;
 };
 
+/** What a plan in the current model (`operating-plan-v2`) adds to its evaluation: the engine's own result. */
+type EnginePlan = {
+  bridge?: { proposed?: Array<{ key: number; label: string; value: number }> };
+  items?: Array<{ id: string; area: number; label: string; included: boolean }>;
+};
+
 /** How the saved plan's changes are grouped on the file page, in the plan's own order. */
 const PLAN_SECTIONS: Array<{ key: string; label: string; kinds: string[] }> = [
   { key: "pricing", label: "Pricing", kinds: ["price_change"] },
@@ -316,7 +326,24 @@ export function planCard(cockpit: FinancialCockpit, summary: PlanSummary | null 
   }
   const changes = planChanges(evaluation);
   const deltas: number[] = [];
-  const sections = [...PLAN_SECTIONS, { key: "other", label: "Other changes", kinds: [] as string[] }];
+  const joined = (names: string[]) => (names.length === 1 ? names[0] : names.length === 2 ? names.join(", ") : `${names[0]} and ${names.length - 1} more`);
+  // A plan in the current model carries its own bridge: the sections applied in a fixed order, each on top of the ones
+  // above, so the rows add up exactly to the plan figure. (A change's own effect does not: changes interact.)
+  const engine = (evaluation as { plan?: EnginePlan } | null)?.plan;
+  const bridge = engine?.bridge?.proposed ?? null;
+  for (const step of bridge ?? []) {
+    const members = (engine?.items ?? []).filter((item) => item.included && item.area === step.key);
+    if (!members.length || !finite(step.value)) continue;
+    deltas.push(step.value);
+    rows.push({
+      key: `step-${step.key}`,
+      label: `${step.label} · ${joined(members.map((item) => item.label))}`,
+      ebitda: signedUsd(step.value),
+      dscr: debtAfter != null && debtAfter > 0 ? signedTimes(step.value / debtAfter) : DASH,
+      ebitdaTone: step.value < 0 ? "bad" : undefined,
+    });
+  }
+  const sections = bridge ? [] : [...PLAN_SECTIONS, { key: "other", label: "Other changes", kinds: [] as string[] }];
   const placed = new Set<string>();
   for (const section of sections) {
     const members = changes.filter((row) => (section.key === "other" ? !placed.has(row.id) : section.kinds.includes(row.kind)));
@@ -324,8 +351,7 @@ export function planCard(cockpit: FinancialCockpit, summary: PlanSummary | null 
     for (const row of members) placed.add(row.id);
     const counted = members.filter((row) => row.proposed_math_valid !== false && finite(row.net_annual_impact));
     const total = counted.reduce((sum, row) => sum + (row.net_annual_impact as number), 0);
-    const names = members.map((row) => row.label || operatingLabel(row.kind));
-    const detail = names.length === 1 ? names[0] : names.length === 2 ? names.join(", ") : `${names[0]} and ${names.length - 1} more`;
+    const detail = joined(members.map((row) => row.label || operatingLabel(row.kind)));
     const waiting = members.length - counted.length;
     if (counted.length) deltas.push(total);
     rows.push({
@@ -347,8 +373,10 @@ export function planCard(cockpit: FinancialCockpit, summary: PlanSummary | null 
   // Costs: what the plan discloses, else the lines of the earnings source.
   const disclosed = (summary?.cost_mix ?? []).filter((row) => finite(row.annual_amount) && row.annual_amount > 0).sort((a, b) => (b.annual_amount as number) - (a.annual_amount as number)).slice(0, 5);
   const groups = [...(cockpit.baseline?.groups?.rows ?? [])].filter((row) => finite(row.amount) && row.amount > 0).sort((a, b) => b.amount - a.amount).slice(0, 5);
+  // A plan in the current model lists its costs under the source's own group keys; name them as the source does.
+  const sourceLabels = new Map((cockpit.baseline?.groups?.rows ?? []).map((row) => [row.key, row.derived ? "Other" : row.label]));
   const costRows = disclosed.length
-    ? disclosed.map((row) => ({ key: row.category, label: `${row.category === "cogs" ? "COGS" : operatingLabel(row.category)}${row.missing_count ? " · known" : ""}`, value: row.annual_amount as number }))
+    ? disclosed.map((row) => ({ key: row.category, label: `${row.category === "cogs" ? "COGS" : sourceLabels.get(row.category) ?? operatingLabel(row.category)}${row.missing_count ? " · known" : ""}`, value: row.annual_amount as number }))
     : groups.map((row) => ({ key: row.key, label: row.derived ? "Other" : row.label, value: row.amount }));
   const largest = Math.max(1, ...costRows.map((row) => row.value));
 

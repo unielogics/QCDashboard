@@ -12,6 +12,7 @@ import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { FileWorkspaceLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { FinancialWorkspace } from "@/components/application/FinancialWorkspace";
+import { useStaffPlanTransport } from "@/components/earnings-plan/useStaffPlanTransport";
 import { RequestFilesDialog } from "@/components/application/RequestFilesDialog";
 import { OperatingCoverageSummary } from "@/components/file/cockpit/OperatingCoverageSummary";
 import { metricAmountLabel } from "@/lib/financialMetrics";
@@ -45,17 +46,25 @@ export function EarningsPlanCard({ cockpit, summary, profileId, businessName, ca
   const fileWorkspace = useFileWorkspace();
   const linked = Boolean(fileWorkspace && !fileWorkspace.pageMode);
   const queryClient = useQueryClient();
-  const [view, setView] = useState<"form" | "pdf">("form");
+  const transport = useStaffPlanTransport(profileId);
   const [open, setOpen] = useState(false);
   const [request, setRequest] = useState<string | null>(null);
+  const [pdfError, setPdfError] = useState("");
   const supplied = cockpit.operating_plan?.evaluation;
   const evaluation = summary.data?.evaluation ?? supplied;
   const model = planCard(cockpit, summary.data, supplied);
   const funding = operatingFundingState(evaluation?.cash_bridge, evaluation?.released_cash_flow);
   const coverage = cockpit.plan?.evaluation;
-  const hasPdf = Boolean(summary.data?.pdf_file_id);
-  const openPlan = () => { setView("form"); setOpen(true); };
-  const openPdf = () => { setView("pdf"); setOpen(true); };
+  const versionId = summary.data?.version_id ?? null;
+  const hasPdf = Boolean(summary.data?.pdf_file_id && versionId && transport);
+  const openPlan = () => setOpen(true);
+  // The saved version's own PDF, in a new tab; the plan is not opened for it.
+  const openPdf = () => {
+    if (!transport || !versionId) return;
+    setPdfError("");
+    transport.openPdf({ id: versionId, version_number: summary.data?.version_number ?? 0, created_at: summary.data?.updated_at ?? "" })
+      .catch((error: unknown) => setPdfError(error instanceof Error && error.message ? error.message : "The plan PDF could not be opened. Try again."));
+  };
   const refresh = async () => {
     await queryClient.invalidateQueries({ queryKey: ["operating-plan-summary", profileId] });
     await onRefresh();
@@ -143,6 +152,7 @@ export function EarningsPlanCard({ cockpit, summary, profileId, businessName, ca
               </div>
             ) : null}
             {empty ? <p className={styles.note} style={{ margin: 0 }}>{empty}</p> : null}
+            {pdfError ? <p className={cx(styles.note, styles.tone_bad)} style={{ margin: 0 }} role="alert">{pdfError}</p> : null}
             {model.footer.length ? <div className={styles.planFoot}>{model.footer.map((line) => <span key={line}>{line}</span>)}</div> : null}
           </div>
 
@@ -171,7 +181,7 @@ export function EarningsPlanCard({ cockpit, summary, profileId, businessName, ca
           <OperatingCoverageSummary coverage={coverage.operating_plan} currentDscr={cockpit.dscr?.headline?.value ?? null} projectedDscr={coverage.headline_after} currency={evaluation?.baseline?.currency} onReview={linked ? undefined : openPlan} />
         ) : null}
       </section>
-      {open ? <FinancialWorkspace open profileId={profileId} initialKind="operating_plan" initialView={view} onClose={() => { setOpen(false); setView("form"); void refresh(); }} onPublished={refresh} /> : null}
+      {open ? <FinancialWorkspace open profileId={profileId} businessName={businessName} initialKind="operating_plan" onClose={() => { setOpen(false); void refresh(); }} onPublished={refresh} /> : null}
       {request ? <RequestFilesDialog open profileId={profileId} prefill={operatingPlanRequest(businessName)} prefillKey={request} onClose={() => setRequest(null)} onRequested={() => { onRequested(); void refresh(); }} /> : null}
     </>
   );

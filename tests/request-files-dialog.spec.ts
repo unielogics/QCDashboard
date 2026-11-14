@@ -17,7 +17,7 @@ test.beforeAll(async () => {
   const esbuild = createRequire(createRequire(require.resolve("vitest/package.json")).resolve("vite/package.json"))("esbuild");
   const directory = await mkdtemp(path.join(os.tmpdir(), "qc-request-dialog-"));
   await esbuild.build({
-    stdin: { resolveDir: root, loader: "tsx", contents: `import React,{useState}from'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{OperatingPlanEntry}from'@/components/file/cockpit/OperatingPlanEntry';import'@/app/globals.css';import'@/app/app-extras.css';const client=new QueryClient({defaultOptions:{queries:{retry:false}}});function App(){const[count,setCount]=useState(0);return<QueryClientProvider client={client}><main style={{padding:20,maxWidth:1100,margin:'auto'}}><OperatingPlanEntry profileId='${REQUEST_PROFILE}' businessName='Example Studio' canEdit={!location.search.includes('view')} onRequested={()=>setCount(value=>value+1)} onRefresh={()=>{}}/><output aria-label='Request refresh count'>{count}</output></main></QueryClientProvider>}createRoot(document.getElementById('root')).render(<App/>);` },
+    stdin: { resolveDir: root, loader: "tsx", contents: `import React,{useState}from'react';import{createRoot}from'react-dom/client';import{QueryClient,QueryClientProvider}from'@tanstack/react-query';import{EarningsPlanCard,usePlanSummary}from'@/components/file/financials/EarningsPlanCard';import{emptyCockpit}from'@/lib/__tests__/fixtures/financialsOverviewFixture';import'@/app/globals.css';import'@/app/app-extras.css';const client=new QueryClient({defaultOptions:{queries:{retry:false}}});const cockpit=emptyCockpit();function Entry(props){const summary=usePlanSummary('${REQUEST_PROFILE}');return<EarningsPlanCard cockpit={cockpit} summary={summary} profileId='${REQUEST_PROFILE}' businessName='Example Studio' canEdit={!location.search.includes('view')} onRequested={props.onRequested} onRefresh={()=>{}}/>}function App(){const[count,setCount]=useState(0);return<QueryClientProvider client={client}><main style={{padding:20,maxWidth:1100,margin:'auto'}}><Entry onRequested={()=>setCount(value=>value+1)}/><output aria-label='Request refresh count'>{count}</output></main></QueryClientProvider>}createRoot(document.getElementById('root')).render(<App/>);` },
     outfile: path.join(directory, "app.js"), bundle: true, format: "iife", platform: "browser", jsx: "automatic", nodePaths: [path.join(root, "node_modules")], alias: { "@": path.join(root, "src") },
     define: { "process.env": "{}", "process.env.NODE_ENV": '"development"', "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(ORIGIN) }, external: ["node:module", "node:fs", "node:fs/promises", "node:url", "node:path", "@napi-rs/canvas"], loader: { ".module.css": "local-css" }, logLevel: "silent",
     plugins: [{ name: "staff-auth", setup(build: { onResolve: (options: { filter: RegExp }, callback: (args: { path: string }) => unknown) => void; onLoad: (options: { filter: RegExp; namespace: string }, callback: (args: { path: string }) => unknown) => void }) {
@@ -27,6 +27,17 @@ test.beforeAll(async () => {
   });
   [script, css] = await Promise.all([readFile(path.join(directory, "app.js")), readFile(path.join(directory, "app.css"))]);
 });
+
+const PLAN_GOAL = { status: "set", metric: "annual_noi", amount: 18_000, currency: "USD", revision: 1, updated_at: null };
+/** What the plan route returns for a file with nothing yet: no earnings source, no plan, nothing saved. */
+const EMPTY_PLAN = {
+  kind: "operating_plan", model: "operating-plan-v2", origin: "seeded", family_id: null,
+  body: { schema_version: "operating-plan-v2", business_name: "Example Studio", period_start: null, period_end: null, currency: "USD", plan_start: "2027-01", source: { stamp: null, confirmations: {}, corrections: {} },
+    streams: [], lines: [], category_answers: {}, changes: [], growth: [], activities: [], allocations: [], carried_over: [], attestation: false, notes: "" },
+  evaluation: { context_stamp: "a".repeat(64), plan: { baseline: { available: false, reason: "No filed business return or profit and loss statement is in use on this file yet.", revenue: null, cogs: null, operating_expenses: null, noi: null, ebitda: null,
+    debt_service_current: null, debt_service_with_terms: null, released_monthly: null, source_name: "source", source: {}, groups: [] }, questions: [], source_stamp: null, source_changed: false, stale_reviews: [], warnings: [] } },
+  goal: PLAN_GOAL, context_stamp: "a".repeat(64), stream_templates: {}, draft: null, current_version_id: null, versions: [],
+};
 
 type Create = { request_id: string; items: FileRequestItem[]; notify: boolean };
 async function fixture(page: Page, options: { viewOnlyEntry?: boolean; createFailure?: boolean; deliveryFailure?: boolean; holdCreate?: boolean } = {}) {
@@ -39,7 +50,9 @@ async function fixture(page: Page, options: { viewOnlyEntry?: boolean; createFai
     const request = route.request(), url = new URL(request.url()), pathname = url.pathname;
     if (pathname.startsWith(ROOT)) {
       requests.push(`${request.method()} ${pathname}`); expect(request.headers().authorization).toBe("Bearer synthetic-staff-token");
-      if (pathname === `${ROOT}/operating-plan/summary`) return route.fulfill({ json: { has_plan: false, expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: 0, cost_mix: [], evaluation: null } });
+      // The annual NOI goal is set, so the plan can be requested from the client.
+      if (pathname === `${ROOT}/operating-plan/summary`) return route.fulfill({ json: { has_plan: false, expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: 0, cost_mix: [], evaluation: null, goal: PLAN_GOAL } });
+      if (pathname === `${ROOT}/operating-plan/v2`) return route.fulfill({ json: EMPTY_PLAN });
       if (pathname === `${ROOT}/file-requests` && request.method() === "GET") return route.fulfill({ json: { requests: [...rows.values()] } });
       if (pathname === `${ROOT}/file-requests` && request.method() === "POST") {
         const payload = request.postDataJSON() as Create; creates.push(payload); await gate;
@@ -80,10 +93,13 @@ for (const viewOnlyEntry of [false, true]) test(`empty plan has a visible openin
   if (viewOnlyEntry) await expect(page.getByRole("button", { name: "Request client plan", exact: true })).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("empty-plan-action.png"), animations: "disabled" });
   await open.click();
-  const workspace = page.getByRole("dialog", { name: "Financial workspace", exact: true });
-  await expect(workspace.getByRole("button", { name: "Guided steps", exact: true })).toBeVisible();
-  await expect(workspace.getByRole("button", { name: "Draft from tax/P&L", exact: true })).toBeEnabled();
-  expect(state.requests.some(path => path.includes("/financial-workspace"))).toBe(true);
+  // The four-step plan opens over the file and reads the plan without creating or saving anything.
+  const workspace = page.getByRole("dialog", { name: "Earnings plan", exact: true });
+  await expect(workspace.getByRole("heading", { name: "Operating expenses and earnings plan", level: 1 })).toBeVisible();
+  await expect(workspace.getByRole("navigation", { name: "Plan steps" }).getByRole("button")).toHaveCount(4);
+  await expect(workspace.getByRole("heading", { name: "This file has no earnings source yet" })).toBeVisible();
+  expect(state.requests.filter(path => path.includes("/operating-plan/v2"))).toEqual([`GET ${ROOT}/operating-plan/v2`]);
+  expect(state.requests.some(path => path.includes("/financial-workspace"))).toBe(false);
   expect(state.creates).toEqual([]); expect(state.errors).toEqual([]);
 });
 

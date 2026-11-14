@@ -8,6 +8,7 @@ import { EarningsPlanCard, usePlanSummary } from "../EarningsPlanCard";
 
 vi.mock("@/hooks/useApi", () => ({ useAuthedApi: () => vi.fn(), useCurrentUser: () => ({}) }));
 vi.mock("@/components/application/FinancialWorkspace", () => ({ FinancialWorkspace: () => null }));
+vi.mock("@/components/earnings-plan/useStaffPlanTransport", () => ({ useStaffPlanTransport: () => ({ openPdf: vi.fn(async () => undefined) }) }));
 vi.mock("@/components/application/RequestFilesDialog", () => ({ RequestFilesDialog: () => null }));
 
 function Harness({ cockpit, profileId, canEdit }: { cockpit: FinancialCockpit; profileId: string; canEdit: boolean }) {

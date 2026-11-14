@@ -93,6 +93,12 @@ jobs:
           src/components/file/financials/__tests__/EarningsPlanCard.test.ts
           src/components/file/financials/__tests__/CoverageNotice.test.ts
           src/lib/__tests__/financialsOverview.test.ts
+          src/lib/__tests__/earningsPlanMath.test.ts
+          src/lib/__tests__/earningsPlanEdit.test.ts
+          src/lib/__tests__/earningsPlanView.test.ts
+          src/lib/__tests__/earningsPlanSession.test.ts
+          src/lib/__tests__/earningsPlanApi.test.ts
+          src/components/earnings-plan/__tests__/EarningsPlanScreens.test.ts
           src/lib/__tests__/operatingActionFields.test.ts
           src/lib/__tests__/operatingSourceReview.test.ts
           src/lib/__tests__/debtTypes.test.ts
@@ -244,6 +250,36 @@ jobs:
           src/lib/__tests__/financialsOverview.test.ts
           src/lib/__tests__/fixtures/financialsOverviewFixture.ts
           tests/financials-overview.spec.ts
+          src/lib/earningsPlan/types.ts
+          src/lib/earningsPlan/math.ts
+          src/lib/earningsPlan/edit.ts
+          src/lib/earningsPlan/issues.ts
+          src/lib/earningsPlan/format.ts
+          src/lib/earningsPlan/view.ts
+          src/lib/earningsPlan/api.ts
+          src/lib/earningsPlan/session.ts
+          src/components/earnings-plan/EarningsPlanWorkspace.tsx
+          src/components/earnings-plan/StaffEarningsPlan.tsx
+          src/components/earnings-plan/ClientEarningsPlan.tsx
+          src/components/earnings-plan/StepSource.tsx
+          src/components/earnings-plan/StepModel.tsx
+          src/components/earnings-plan/StepChanges.tsx
+          src/components/earnings-plan/StepReview.tsx
+          src/components/earnings-plan/PlanAside.tsx
+          src/components/earnings-plan/parts.tsx
+          src/components/earnings-plan/useEarningsPlan.ts
+          src/components/earnings-plan/useStaffPlanTransport.ts
+          tests/request-files-dialog.spec.ts
+          tests/financial-cockpit-refresh.spec.ts
+          src/components/earnings-plan/__tests__/EarningsPlanScreens.test.ts
+          src/lib/__tests__/earningsPlanMath.test.ts
+          src/lib/__tests__/earningsPlanEdit.test.ts
+          src/lib/__tests__/earningsPlanView.test.ts
+          src/lib/__tests__/earningsPlanSession.test.ts
+          src/lib/__tests__/earningsPlanApi.test.ts
+          src/lib/__tests__/fixtures/earningsPlanReferencePlan.ts
+          'src/app/forms/[kind]/[token]/page.tsx'
+          tests/earnings-plan.spec.ts
           src/lib/operatingUnitPlanning.ts
           src/lib/operatingPlan.ts
           src/components/application/OperatingPlanForm.tsx

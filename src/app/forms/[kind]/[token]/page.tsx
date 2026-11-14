@@ -35,6 +35,7 @@ import type { RealEstateBody, RealEstateSchema } from "@/lib/realEstateSchedule"
 import { useDocumentWindow } from "@/hooks/useDocumentWindow";
 import { operatingNumericProblems, operatingPlanContentKey } from "@/lib/operatingPlanFeedback";
 import { OperatingPlanForm } from "@/components/application/OperatingPlanForm";
+import { ClientEarningsPlan } from "@/components/earnings-plan/ClientEarningsPlan";
 import type { OperatingSuggestionClient, OperatingSuggestionReply, OperatingSuggestionApplied } from "@/lib/operatingSuggestions";
 import type { OperatingGoalRead } from "@/lib/operatingGoal";
 import { operatingPlanSubmissionIssues } from "@/lib/operatingPlannerIssues";
@@ -102,7 +103,16 @@ const RECEIVED = {
   operating_plan: "Your operating expenses and earnings plan has been saved as a dated version for your team's review.",
 } as const;
 
+/** An earnings plan link opens the four-step plan workspace; every other form keeps the page below. */
 export default function FinancialFormPage() {
+  const params = useParams<{ kind: string; token: string }>();
+  const [plan, setPlan] = useState(params?.kind === "operating_plan");
+  const openPlan = useCallback(() => setPlan(true), []);
+  if (plan) return <ClientEarningsPlan token={params?.token ?? ""} />;
+  return <OtherFinancialFormPage onEarningsPlan={openPlan} />;
+}
+
+function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void }) {
   const params = useParams<{ kind: string; token: string }>();
   const token = params?.token ?? "";
 
@@ -178,6 +188,8 @@ export default function FinancialFormPage() {
         }
         const data = (await response.json()) as FormState;
         if (cancelled) return;
+        // A plan link opened under another form's address still gets the plan workspace.
+        if (data.kind === "operating_plan") { onEarningsPlan(); return; }
         setState(data);
         setOperatingPreview(data.operating_plan ?? null);
         const next = publicFinancialBody(data.body ?? {});
@@ -195,7 +207,7 @@ export default function FinancialFormPage() {
     return () => {
       cancelled = true;
     };
-  }, [base, token, loadRetry]);
+  }, [base, token, loadRetry, onEarningsPlan]);
 
   useEffect(() => {
     const sequence = ++previewRequest.current;

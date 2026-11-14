@@ -12,3 +12,6 @@
 @media(max-width:650px){.operatingPlan{padding:12px}.root>.planHeader{gap:8px 12px}.planHeader h1{font-size:20px}.planContext{align-items:flex-start}.planTools>summary{font-size:12px}}
 
 .operatingPlan{padding:24px;gap:10px;align-content:start}.operatingPlan :global(.fw-shell){min-height:0;grid-auto-rows:max-content;align-content:start}.operatingPlan :global(.financial-workspace-body){background:transparent}@media(max-width:650px){.operatingPlan{padding:12px}}
+
+/* The earnings plan needs the page's whole width: the console's own content padding is its margin. */
+.root.operatingPlan{padding:0;gap:8px}
