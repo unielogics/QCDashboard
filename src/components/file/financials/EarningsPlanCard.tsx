@@ -18,7 +18,7 @@ import { OperatingCoverageSummary } from "@/components/file/cockpit/OperatingCov
 import { metricAmountLabel } from "@/lib/financialMetrics";
 import { operatingFundingState } from "@/lib/operatingFundingState";
 import { operatingGoalReady } from "@/lib/operatingGoal";
-import { operatingPlanRequest } from "@/lib/operatingPlan";
+import { earningsPlanRequest } from "@/lib/earningsPlan/request";
 import type { FinancialCockpit } from "@/lib/financialCockpit";
 import { planCard, type PlanSummary } from "@/lib/financialsOverview";
 import styles from "./FinancialsOverview.module.css";
@@ -182,7 +182,7 @@ export function EarningsPlanCard({ cockpit, summary, profileId, businessName, ca
         ) : null}
       </section>
       {open ? <FinancialWorkspace open profileId={profileId} businessName={businessName} initialKind="operating_plan" onClose={() => { setOpen(false); void refresh(); }} onPublished={refresh} /> : null}
-      {request ? <RequestFilesDialog open profileId={profileId} prefill={operatingPlanRequest(businessName)} prefillKey={request} onClose={() => setRequest(null)} onRequested={() => { onRequested(); void refresh(); }} /> : null}
+      {request ? <RequestFilesDialog open profileId={profileId} prefill={earningsPlanRequest(businessName)} prefillKey={request} onClose={() => setRequest(null)} onRequested={() => { onRequested(); void refresh(); }} /> : null}
     </>
   );
 }

@@ -1,6 +1,4 @@
 import { apiBase } from "@/lib/api";
-import { normalizeOperatingPlanBody, type ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
-import type { OperatingGuidanceReply } from "./operatingGuidance";
 
 export type PublicFinancialVersion = {
   id: string;
@@ -25,9 +23,7 @@ export type PublicFinancialReply = {
   can_edit?: boolean;
   permission?: "edit" | "view";
   completed?: boolean;
-  released_cash_flow?: ReleasedCashFlowEvaluation | null;
-  operating_plan?: OperatingGuidanceReply | null;
-  completion?: { complete: boolean; active_rows: number; no_debt: boolean; missing_fields: string[]; reason: string; released_cash_flow?: ReleasedCashFlowEvaluation } | null;
+  completion?: { complete: boolean; active_rows: number; no_debt: boolean; missing_fields: string[]; reason: string } | null;
 };
 
 export class PublicFinancialFormError extends Error {
@@ -61,11 +57,11 @@ export function publicFinancialBody<T extends Record<string, unknown>>(body: T):
   const rows = (value: unknown) => Array.isArray(value) ? value.map((row) => row && typeof row === "object" && !Array.isArray(row)
     ? { ...row, id: typeof row.id === "string" && row.id ? row.id : newId() } : row) : value;
   const next = { ...body } as Record<string, unknown>;
-  for (const key of ["debts", "properties", "mortgages", "expenses", "adjustments"]) if (Array.isArray(next[key])) next[key] = rows(next[key]);
+  for (const key of ["debts", "properties", "mortgages"]) if (Array.isArray(next[key])) next[key] = rows(next[key]);
   if (next.schedules && typeof next.schedules === "object" && !Array.isArray(next.schedules)) {
     next.schedules = Object.fromEntries(Object.entries(next.schedules).map(([key, value]) => [key, rows(value)]));
   }
-  return (next.schema_version === "operating-plan-v1" || Array.isArray(next.expenses) || Array.isArray(next.adjustments) ? normalizeOperatingPlanBody(next) : next) as T;
+  return next as T;
 }
 
 /** One tab's ordered writes. A late autosave never runs after a newer submit. */
@@ -83,7 +79,7 @@ export class PublicFinancialFormWriter {
   flush(): Promise<unknown> { return this.tail; }
 
   write(mode: "draft" | "submit", body: Record<string, unknown>): Promise<PublicFinancialReply> {
-    const serialized = JSON.stringify(body.schema_version === "operating-plan-v1" || Array.isArray(body.expenses) || Array.isArray(body.adjustments) ? normalizeOperatingPlanBody(body) : body);
+    const serialized = JSON.stringify(body);
     if (mode === "submit" && this.submitting?.body === serialized) return this.submitting.promise;
     const run = this.tail.catch(() => undefined).then(async () => {
       if (this.conflict) throw this.conflict;

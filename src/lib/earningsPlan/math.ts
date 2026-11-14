@@ -323,16 +323,27 @@ export class Plan {
   }
 }
 
-/** The six figures for one scenario against one debt service. `scenario` null is today. */
-export function metrics(baseline: PlanBaseline, scenario: PlanScenario | null, annualDebt: number | null | undefined): PlanSixMetrics {
+/** Operating costs a year the saved loan terms themselves add; nothing without saved terms. */
+export function loanOperating(baseline: PlanBaseline): number {
+  return baseline.debt_service_with_terms != null ? Math.max(0, number(baseline.loan_operating_annual)) : 0;
+}
+
+/**
+ * The six figures for one scenario against one debt service; no scenario is today.
+ *
+ * `charges` are operating costs the loan itself adds (see `loanOperating`). They are not the business's earnings
+ * history or its plan, so EBITDA, NOI and margin are left alone; they come off what covers the debt.
+ */
+export function metrics(baseline: PlanBaseline, scenario: PlanScenario | null, annualDebt: number | null | undefined, charges = 0): PlanSixMetrics {
   const ebitda = scenario ? scenario.ebitda : number(baseline.ebitda);
   const noi = scenario ? scenario.noi : number(baseline.noi);
   const revenue = scenario ? scenario.revenue : number(baseline.revenue);
+  const covering = ebitda - charges;
   return {
     ebitda,
     noi,
-    dscr: annualDebt ? ebitda / annualDebt : null,
-    free_cash_flow: annualDebt != null ? ebitda - annualDebt : null,
+    dscr: annualDebt ? covering / annualDebt : null,
+    free_cash_flow: annualDebt != null ? covering - annualDebt : null,
     operating_margin: revenue ? noi / revenue : null,
     debt_service: annualDebt ?? null,
   };
@@ -391,6 +402,7 @@ export function evaluate(body: EarningsPlanBody, baseline: PlanBaseline, options
   const currentDebt = baseline.debt_service_current ?? null;
   const termsDebt = baseline.debt_service_with_terms ?? null;
   const planDebt = termsDebt != null ? termsDebt : currentDebt;
+  const charges = loanOperating(baseline);
   const effects: Record<string, PlanEffect> = {};
   for (const item of plan.items) effects[item.id] = plan.effect(item.id, proposed);
   const sections = SECTIONS.map(section => {
@@ -402,12 +414,12 @@ export function evaluate(body: EarningsPlanBody, baseline: PlanBaseline, options
   });
   const views = (scenario: PlanScenario | null) => ({
     current_debt: metrics(baseline, scenario, currentDebt),
-    with_terms: termsDebt != null ? metrics(baseline, scenario, termsDebt) : null,
+    with_terms: termsDebt != null ? metrics(baseline, scenario, termsDebt, charges) : null,
   });
   const released = termsDebt != null ? number(baseline.released_monthly) : 0;
   const allocated = (body.allocations ?? []).reduce((sum, row) => sum + number(row.monthly_amount), 0);
   const goalAmount = options.goal ? number(options.goal) : null;
-  const stillToFind = (scenario: PlanScenario) => (planDebt ? Math.max(0, targetDscr * planDebt - scenario.ebitda) : null);
+  const stillToFind = (scenario: PlanScenario) => (planDebt ? Math.max(0, targetDscr * planDebt - (scenario.ebitda - charges)) : null);
   const difference = plan.model.total - number(baseline.revenue);
   return {
     model: { volume: plan.model.volume, revenue: plan.model.revenue, total: plan.model.total, difference, reconciles: Math.abs(difference) <= RECONCILE_TOLERANCE },
@@ -425,7 +437,7 @@ export function evaluate(body: EarningsPlanBody, baseline: PlanBaseline, options
     sections,
     bridge: { proposed: plan.bridge(plan.proposed), reviewed: plan.bridge(plan.reviewed) },
     metrics: { today: views(null), proposed: views(proposed), reviewed: views(reviewed) },
-    debt_service: { current: currentDebt, with_terms: termsDebt, plan: planDebt },
+    debt_service: { current: currentDebt, with_terms: termsDebt, plan: planDebt, loan_operating: charges },
     target: { ratio: targetDscr, proposed: stillToFind(proposed), reviewed: stillToFind(reviewed) },
     goal: {
       amount: goalAmount,

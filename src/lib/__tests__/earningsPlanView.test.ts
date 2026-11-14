@@ -4,7 +4,7 @@ import { evaluate } from "@/lib/earningsPlan/math";
 import { itemization, planNotices, saveLabel, stepCounts } from "@/lib/earningsPlan/issues";
 import {
   beforeAfterTable, bridgeRows, categoryRows, changeSections, compareBars, costRows, coverageScale, debtBasis, goalView, handoffRows, liveMetrics,
-  ramp, reconciliation, releasedView, reviewRows, sourceView, stepSubtitles, streamCards,
+  loanCostsNote, ramp, reconciliation, releasedView, reviewRows, sourceView, stepSubtitles, streamCards,
 } from "@/lib/earningsPlan/view";
 import { planMonth, planStartOptions, stamp } from "@/lib/earningsPlan/format";
 import { QUESTIONS, REFERENCE, STREAM_TEMPLATES, referenceBaseline, referenceBody } from "./fixtures/earningsPlanReferencePlan";
@@ -93,7 +93,7 @@ describe("earnings plan screens: the design's file", () => {
       ["Revenue", "$1,236,000", false], ["NOI", "−$30,777", true], ["EBITDA", "−$22,377", true], ["Annual debt service", "$777,600", false],
     ]);
     expect(view.footnote).toBe("EBITDA includes $8,400 of other income, depreciation and amortization that NOI excludes. DSCR is EBITDA over annual debt service.");
-    expect(view.terms).toEqual({ label: "Client terms v3", current: "$64,800 / mo", next: "$14,800 / mo", released: "$50,000 / mo", coverage: "−0.03x → −0.13x" });
+    expect(view.terms).toEqual({ label: "Client terms v3", current: "$64,800 / mo", next: "$14,800 / mo", released: "$50,000 / mo", coverage: "−0.03x → −0.13x", costs: null });
     // After the source figures change, earlier confirmations no longer count.
     expect(sourceView(body, baseline, true).confirmedText).toBe("0 of 10 confirmed");
   });
@@ -193,6 +193,28 @@ describe("earnings plan screens: other files", () => {
     const split = referenceBody();
     split.lines.find(line => line.id === "c4")!.base = 60_000;
     expect(itemization(split, baseline, evaluate(split, baseline).behaviors)[0]).toMatchObject({ state: "unallocated", tag: "Unallocated $9,086" });
+  });
+
+  it("counts operating costs the loan adds in coverage with the terms, says so, and leaves earnings alone", () => {
+    const costly = { ...referenceBaseline(), loan_operating_annual: 12_000 };
+    const figures = evaluate(body, costly, { goal: REFERENCE.plan.noi_goal, questions: QUESTIONS });
+    const live = Object.fromEntries(liveMetrics(costly, figures, "proposed", "with_terms").map(row => [row.key, `${row.before} → ${row.after}`]));
+    expect(live).toMatchObject({ ebitda: "−$22,377 → $182,897", noi: "−$30,777 → $174,497", dscr: "−0.03x → 0.96x", free_cash_flow: "−$799,977 → −$6,703", operating_margin: "−2.5% → 11.6%" });
+    const table = Object.fromEntries(beforeAfterTable(costly, figures, "with_terms").map(row => [row.label, [row.current, row.plan, row.reviewed]]));
+    expect(table["Annual EBITDA"]).toEqual(["−$22,377", "$182,897", "$52,164"]);
+    expect(table["Cash after debt / year"]).toEqual(["−$799,977", "−$6,703", "−$137,436"]);
+    expect(table["DSCR · saved refinance"]).toEqual(["−0.19x", "0.96x", "0.23x"]);
+    expect(table["DSCR · current debt"]).toEqual(["−0.03x", "0.24x", "0.07x"]);
+    expect(coverageScale(costly, figures, "proposed", "with_terms")).toMatchObject({ planText: "Plan 0.96x", needText: "Needs $51,103 more EBITDA", state: { label: "Below 1.00x" } });
+    expect(sourceView(body, costly, false).terms).toMatchObject({ costs: "$12,000 / yr", coverage: "−0.03x → −0.19x" });
+    expect(loanCostsNote(costly, "with_terms")).toContain("add $12,000 a year of operating costs");
+    // Measured against today's payments the loan is not there, and nothing is said or deducted.
+    expect(loanCostsNote(costly, "current_debt")).toBeNull();
+    expect(coverageScale(costly, figures, "proposed", "current_debt")).toMatchObject({ planText: "Plan 0.24x" });
+    expect(Object.fromEntries(beforeAfterTable(costly, figures, "current_debt").map(row => [row.label, row.plan]))["Cash after debt / year"]).toBe("−$594,703");
+    // The design's file has no such cost: no note, and a cost the budget has not confirmed is flagged, not guessed.
+    expect([loanCostsNote(baseline, "with_terms"), sourceView(body, baseline, false).terms?.costs]).toEqual([null, null]);
+    expect(loanCostsNote({ ...baseline, loan_operating_confirmed: false }, "with_terms")).toContain("not confirmed");
   });
 
   it("names plan months from the plan's start", () => {

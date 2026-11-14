@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { coverageScale, goalView, liveMetrics, type DebtBasis } from "@/lib/earningsPlan/view";
+import { coverageScale, goalView, liveMetrics, loanCostsNote, type DebtBasis } from "@/lib/earningsPlan/view";
 import type { PlanBaseline, PlanResult, PlanView, ToFinishItem } from "@/lib/earningsPlan/types";
 import { Card, Seg, cx } from "./parts";
 import styles from "./EarningsPlan.module.css";
@@ -57,6 +57,7 @@ export function PlanAside({ baseline, result, view, basis, staff, onView, onIssu
               <span className={cx(styles.scaleOneLabel, styles.num)} style={{ left: `${scale.one}%` }}>1.00x</span>
             </div>
             <div className={cx(styles.scaleText, styles.num)}><span>{scale.baselineText}</span><span>{scale.planText}</span><span>{scale.needText}</span></div>
+            {loanCostsNote(baseline, basis) ? <p className={styles.fine}>{loanCostsNote(baseline, basis)}</p> : null}
           </>
         ) : <p className={styles.fine}>{baseline.available === false ? "Coverage appears once the file has an earnings source." : "The file lists no debt payments, so there is no coverage to measure."}</p>}
       </Card>

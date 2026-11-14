@@ -838,6 +838,8 @@ export type FinancialBaseline = {
   debt_service: {
     source?: string | null; currency?: string; current_annual?: number | null; current_monthly?: number | null; obligations?: number;
     with_terms_annual?: number | null; with_terms_monthly?: number | null; released_monthly?: number | null; retired?: number | null;
+    /** Operating costs a year the saved terms add: off coverage with the terms, not off earnings. Zero until their amount is confirmed. */
+    new_operating_annual?: number | null; new_operating_confirmed?: boolean | null;
     terms?: { label?: string | null; source?: string | null; amount?: number | null; rate_pct?: number | null; term_months?: number | null; monthly_payment?: number | null } | null;
   };
   metrics: { current: Partial<BaselineMetrics>; with_terms: BaselineMetrics | null };

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { amount, confirmGroup, restoreSourceAmount, saveCorrection } from "@/lib/earningsPlan/edit";
 import { usd } from "@/lib/earningsPlan/format";
-import { sourceView, type DebtBasis } from "@/lib/earningsPlan/view";
+import { loanCostsNote, sourceView, type DebtBasis } from "@/lib/earningsPlan/view";
 import type { EarningsPlanBody } from "@/lib/earningsPlan/types";
 import type { PlanBusy, PlanFacts } from "./useEarningsPlan";
 import { Card, NumberField, TagChip, cx } from "./parts";
@@ -182,8 +182,12 @@ export function StepSource({ body, facts, disabled, staff, edit, basis, applyTer
             <div className={styles.fact}><span>New payment</span><strong>{view.terms.next}</strong></div>
             <div className={styles.fact}><span>Cash released</span><strong className={styles.pos}>{basis === "with_terms" ? view.terms.released : "$0 / mo"}</strong></div>
             <div className={styles.fact}><span>DSCR from terms alone</span><strong>{view.terms.coverage}</strong></div>
+            {view.terms.costs ? <div className={styles.fact}><span>Operating costs the loan adds</span><strong>{view.terms.costs}</strong></div> : null}
           </div>
-          <p className={styles.fine}>Lower payments release cash but do not change EBITDA or NOI. Earnings still have to turn positive for coverage to follow. Released cash is assigned in step 3.</p>
+          <p className={styles.fine}>
+            Lower payments release cash but do not change EBITDA or NOI. Earnings still have to turn positive for coverage to follow. Released cash is assigned in step 3.
+            {loanCostsNote(facts.baseline, "with_terms") ? ` ${loanCostsNote(facts.baseline, "with_terms")}` : ""}
+          </p>
         </Card>
       ) : null}
     </div>

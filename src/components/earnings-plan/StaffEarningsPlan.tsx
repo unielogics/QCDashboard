@@ -6,18 +6,13 @@ import { RequestFilesDialog } from "@/components/application/RequestFilesDialog"
 import { FileWorkspaceBackLink, useFileWorkspace } from "@/components/file/FileWorkspaceContext";
 import { FinancialEditorSurface } from "@/components/file/FinancialEditorSurface";
 import { isPlanConflict } from "@/lib/earningsPlan/api";
-import type { FileRequestItem } from "@/lib/fileRequestsApi";
+import { earningsPlanRequest } from "@/lib/earningsPlan/request";
 import { EarningsPlanWorkspace, type PlanTools } from "./EarningsPlanWorkspace";
 import { useStaffPlanTransport } from "./useStaffPlanTransport";
 import styles from "./EarningsPlan.module.css";
 
 /** What the file's other screens read from the plan; refreshed when a version is saved. */
 const PLAN_READERS = ["financial-workspace-summary", "operating-plan-summary", "financial-cockpit", "application-evidence-workspace", "application-collection-tasks", "form-answers"];
-
-const planRequest = (businessName: string): FileRequestItem => ({
-  document_type: "operating_plan", name: "Operating expenses and earnings plan", quantity: 1, unit: "files", subject: businessName.trim() || "business", period: "current",
-  instructions: "Confirm the costs on your return, describe how your revenue is made, and propose any price, volume or cost changes with amounts, timing and the reason each will work.",
-});
 
 /**
  * The Earnings Plan for staff: on its own page from the file (inline), or over
@@ -80,7 +75,7 @@ export function StaffEarningsPlan({ profileId, businessName, inline = false, ope
         </FinancialEditorSurface>
       )}
       {requestOpen ? (
-        <RequestFilesDialog profileId={profileId} open prefill={planRequest(requestOpen.name)} prefillKey={`operating-plan:${requestOpen.familyId ?? profileId}`}
+        <RequestFilesDialog profileId={profileId} open prefill={earningsPlanRequest(requestOpen.name)} prefillKey={`operating-plan:${requestOpen.familyId ?? profileId}`}
           onClose={() => setRequestOpen(null)} onRequested={() => { void onPublished?.(); }} />
       ) : null}
     </>

@@ -17,11 +17,7 @@ import { Pfs413Form, type PfsBody, type PfsSchema } from "./Pfs413Form";
 import { DebtScheduleForm, type DebtRow } from "./DebtScheduleForm";
 import { BusinessStatementForm, type StatementBody, type StatementSchema } from "./BusinessStatementForm";
 import { RealEstateScheduleForm } from "./RealEstateScheduleForm";
-import { operatingGoalReady, type OperatingGoalRead } from "@/lib/operatingGoal";
 import { StaffEarningsPlan } from "@/components/earnings-plan/StaffEarningsPlan";
-import { operatingReportNeedsUpgrade } from "@/lib/operatingReport";
-import { operatingNumericProblems } from "@/lib/operatingPlanFeedback";
-import { normalizeOperatingPlanBody, operatingPlanRequest, type OperatingPlanBody } from "@/lib/operatingPlan";
 import { RealEstateMortgageEvidence } from "./RealEstateMortgageEvidence";
 import { readRealEstateEvidence, realEstateImportFieldLabel, realEstateImportFieldValue, type RealEstateEvidenceLink } from "@/lib/realEstateEvidence";
 import workspaceStyles from "./FinancialWorkspaceExtras.module.css";
@@ -98,7 +94,6 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
   const busyRef = useRef(busy); busyRef.current = busy;
   const [publishPhase, setPublishPhase] = useState<"draft" | "pdf" | "refresh" | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
-  const [operatingDraftError, setOperatingDraftError] = useState("");
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   const [localDirty, setLocalDirty] = useState(false);
   const [error, setError] = useState("");
@@ -158,12 +153,11 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
     const sameFamily = current.current?.family_id === next.family_id;
     current.current = next; draftBody.current = next.body;
     changed.current = 0; persisted.current = 0;
-    setSnapshot(next); setBody(next.body); setLocalDirty(false); setConflict(false); setOperatingDraftError(""); setDraftSavedAt(null);
+    setSnapshot(next); setBody(next.body); setLocalDirty(false); setConflict(false); setDraftSavedAt(null);
     setSelectedDebt((selected) => financialDebtEntrySelection(next.body, entry?.resetSelection ? entry.rowId : sameFamily ? selected : null));
   }, []);
   const changeBody = useCallback((next: FinancialBody) => {
     if (current.current?.kind === "debt_schedule") next = clearEditedDebtSources(draftBody.current, next);
-    if (current.current?.kind === "operating_plan") next = normalizeOperatingPlanBody(next);
     draftBody.current = next; changed.current += 1; publishKey.current = null;
     setBody(next); setLocalDirty(true); setNotice("");
   }, []);
@@ -190,17 +184,16 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
       try {
         while (belongs() && persisted.current !== changed.current) {
           const revision = changed.current;
-          if (current.current?.kind === "operating_plan" && operatingNumericProblems(draftBody.current).length) throw new Error("Finish the numeric entry before saving the draft. Your entry is retained.");
           const next = await saveFinancialDraft(api, profileId, current.current!, structuredClone(draftBody.current));
           if (!belongs()) return;
           current.current = next; persisted.current = revision;
           if (mounted.current) {
-            setSnapshot(next); setLocalDirty(changed.current !== revision); setConflict(false); setOperatingDraftError(""); setDraftSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
+            setSnapshot(next); setLocalDirty(changed.current !== revision); setConflict(false); setDraftSavedAt(new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }));
             if (changed.current === revision) { draftBody.current = next.body; setBody(next.body); }
           }
         }
       } catch (reason) {
-        if (belongs()) { if (current.current?.kind === "operating_plan" && !isFinancialDraftConflict(reason)) setOperatingDraftError(message(reason)); else setError(message(reason)); setConflict(isFinancialDraftConflict(reason)); }
+        if (belongs()) { setError(message(reason)); setConflict(isFinancialDraftConflict(reason)); }
         throw reason;
       } finally { if (belongs()) setSavingDraft(false); }
     };
@@ -221,7 +214,7 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
     return () => { cancelled = true; };
   }, [accept, api, initialDebtId, initialKind, initialView, open, profileId]);
   useEffect(() => {
-    if (!localDirty || conflict || snapshot?.kind === "operating_plan" && operatingNumericProblems(body).length) return;
+    if (!localDirty || conflict) return;
     const timer = setTimeout(() => { void flush().catch(() => undefined); }, 700);
     return () => clearTimeout(timer);
   }, [body, conflict, flush, localDirty, snapshot?.kind]);
@@ -440,7 +433,6 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
     : currentVersion;
   const needsCompletedDebtVersion = kind === "debt_schedule" && snapshot?.completion?.complete && !snapshot.accepted_completion?.complete;
   const hasDraft = localDirty || snapshot?.draft.dirty;
-  const needsOperatingReportVersion = operatingReportNeedsUpgrade(kind, currentVersion);
   const receiptPublication = snapshot && savedReceipt ? financialVersionPublicationState(snapshot, savedReceipt.id) : null;
   const receiptSummary = kind !== "debt_schedule" ? "Dated PDF ready to download or share."
     : receiptPublication === "published" ? "Debt schedule complete — dated PDF filed on the checklist."
@@ -472,7 +464,6 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
       pdf: { title: "Opening the saved PDF", description: "Loading this immutable financial version." },
       download: { title: "Preparing the PDF download", description: "Loading the saved version for download." },
       restore: { title: "Restoring the selected version", description: "Preparing its financial values as a new working draft." },
-      "operating-review": { title: "Reviewing the earnings plan", description: "Checking the current costs, proposed adjustments and financial calculations." },
     } as Record<string, { title: string; description: string; steps?: PreparationStep[] }>)[busy];
 
   const renderFields = () => snapshot ? (<>
@@ -490,13 +481,12 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
                 </> : <BusinessStatementForm schema={snapshot.schema as StatementSchema} value={body as StatementBody} onChange={(next) => changeBody(next as FinancialBody)} disabled={Boolean(busy)} />}
   </>) : null;
 
-  const operatingInline = kind === "operating_plan";
   const headerTools = (<>
       <span className="sub" aria-live="polite">{savingDraft ? "Saving draft…" : localDirty ? "Unsaved draft changes" : hasDraft ? "Draft saved" : currentVersion ? `Current v${currentVersion.version_number}` : "No saved version"}</span>
-      <Btn size="sm" disabled={Boolean(busy)} onClick={() => { void run("request", async () => { if (kind === "operating_plan") { const goal = await api<OperatingGoalRead>(`/application-profiles/${encodeURIComponent(profileId)}/operating-plan/goal`); if (!operatingGoalReady(goal)) { setView("form"); setNotice("Set the annual NOI goal before requesting a client plan."); requestAnimationFrame(() => formRef.current?.querySelector<HTMLElement>('[aria-label="Annual NOI goal"]')?.focus()); return; } } await flush(); setRequestOpen(true); }); }}><Icon name="mail" size={14} />{kind === "operating_plan" ? "Request client plan" : "Request files"}</Btn>
+      <Btn size="sm" disabled={Boolean(busy)} onClick={() => { void run("request", async () => { await flush(); setRequestOpen(true); }); }}><Icon name="mail" size={14} />Request files</Btn>
       {!inline ? <Btn size="sm" onClick={() => setExpanded((value) => !value)} aria-label={expanded ? "Restore workspace size" : "Expand workspace"}><Icon name={expanded ? "layers" : "external"} size={14} />{expanded ? "Restore" : "Expand"}</Btn> : null}
-      {kind !== "debt_schedule" && kind !== "operating_plan" ? <Btn size="sm" disabled={!snapshot || Boolean(busy) || conflict} onClick={() => publish(true)}>{busy === "file" ? "Filing…" : "File on checklist"}</Btn> : null}
-      {kind !== "operating_plan" ? <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsCompletedDebtVersion} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn> : null}
+      {kind !== "debt_schedule" ? <Btn size="sm" disabled={!snapshot || Boolean(busy) || conflict} onClick={() => publish(true)}>{busy === "file" ? "Filing…" : "File on checklist"}</Btn> : null}
+      <Btn variant="pri" disabled={!snapshot || Boolean(busy) || conflict || !hasDraft && Boolean(currentVersion) && !needsCompletedDebtVersion} onClick={() => publish()}>{busy === "publish" ? "Saving version…" : "Save version"}</Btn>
     </>);
   const sidebar = (<aside className="fw-sidebar" aria-label="Financial forms and sections">
           <span className="lbl">Financial forms</span>
@@ -511,21 +501,21 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
           <div className="fw-publication"><Icon name="shieldChk" size={16} /><strong>{completedVersion ? `Published v${completedVersion.version_number}` : currentVersion ? `Saved PDF v${currentVersion.version_number}` : "Draft only"}</strong><small>{completedVersion ? when(completedVersion.created_at) : kind === "debt_schedule" ? "No completed schedule version has been filed. Save version publishes the completed draft and its dated PDF." : "Save the first version to publish these figures."}</small><small>{completedVersion ? "The financial interface and AI use this saved version." : "Uploaded and historical PDFs remain available in History."}</small></div>
         </aside>);
   return <>
-    <FinancialEditorSurface inline={inline} open={open} onClose={close} fullscreen={expanded} width="xl" closeOnBackdrop={false} title={operatingInline ? undefined : "Financial workspace"} sub={operatingInline ? undefined : snapshot?.label ?? FINANCIAL_LABELS[kind]} ariaLabel="Financial workspace" bodyClass="financial-workspace-body" headerActions={operatingInline ? undefined : headerTools}>
-      <LoanImagePreviewProvider profileId={profileId} contextKey={`${snapshot?.family_id}:${kind}:${view}:${fileMode}:${selectedDebt}`} onOpenSource={(fileId, hash) => previewSource(fileId, undefined, hash)}><div className={`fw-shell ${operatingInline ? `fw-plan-shell ${workspaceStyles.planShell}` : ""}`}>
-        {operatingInline ? <div className="fw-plan-header-tools"><div className="row">{headerTools}</div><details className="fw-plan-tools"><summary>Other forms and saved versions</summary>{sidebar}</details></div> : sidebar}
+    <FinancialEditorSurface inline={inline} open={open} onClose={close} fullscreen={expanded} width="xl" closeOnBackdrop={false} title="Financial workspace" sub={snapshot?.label ?? FINANCIAL_LABELS[kind]} ariaLabel="Financial workspace" bodyClass="financial-workspace-body" headerActions={headerTools}>
+      <LoanImagePreviewProvider profileId={profileId} contextKey={`${snapshot?.family_id}:${kind}:${view}:${fileMode}:${selectedDebt}`} onOpenSource={(fileId, hash) => previewSource(fileId, undefined, hash)}><div className="fw-shell">
+        {sidebar}
         <main className="fw-main">
-          <details className={`${operatingInline ? "fw-plan-view-menu" : "fw-view-menu"} ${workspaceStyles.viewMenu}`} open={operatingInline ? undefined : true}><summary>Editor views · {VIEWS.find(tab => tab.id === view)?.label}</summary><nav className={`fw-tabs ${operatingInline ? "fw-plan-view-tools" : ""}`} aria-label="Financial workspace views" role="tablist">{VIEWS.filter((tab) => kind !== "debt_schedule" || tab.id !== "form").map((tab) => <button type="button" role="tab" aria-selected={view === tab.id} key={tab.id} disabled={Boolean(busy)} onClick={() => switchView(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}</button>)}</nav></details>
+          <details className={`fw-view-menu ${workspaceStyles.viewMenu}`} open><summary>Editor views · {VIEWS.find(tab => tab.id === view)?.label}</summary><nav className="fw-tabs" aria-label="Financial workspace views" role="tablist">{VIEWS.filter((tab) => kind !== "debt_schedule" || tab.id !== "form").map((tab) => <button type="button" role="tab" aria-selected={view === tab.id} key={tab.id} disabled={Boolean(busy)} onClick={() => switchView(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}</button>)}</nav></details>
           {!loading && preparation ? <div className="fw-alert"><PreparationProgress compact title={preparation.title} description={preparation.description} steps={preparation.steps} /></div> : null}
           {error ? <div className="fw-alert"><Callout tone="bad">{error}{conflict ? <p>Your draft is kept in this window. Reload the server draft to resolve the conflict before saving.</p> : null}<div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("retry", async () => { await flush(); })}>Retry save</Btn>{conflict ? <Btn size="sm" onClick={() => void run("reload", async () => { accept(await readFinancialWorkspace(api, profileId, kind, snapshot?.family_id)); setError(""); })}>Reload server draft</Btn> : null}</div></Callout></div> : null}
           {notice ? <div className="fw-alert"><Callout tone="ok">{notice}</Callout></div> : null}
           {savedReceipt ? <div className="fw-save-receipt"><div><strong>Saved v{savedReceipt.version_number} · {when(savedReceipt.created_at)}</strong><span className="sub">{receiptSummary}</span></div><div className="row"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void run("pdf", async () => { await showPdf(savedReceipt.id); setFileMode("versions"); setView("pdf"); })}>Open saved PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => downloadPdf(savedReceipt.id)}>Download PDF</Btn><Btn size="sm" disabled={Boolean(busy)} onClick={() => copyPdfShare(savedReceipt.id)}>Copy PDF share link</Btn></div></div> : null}
           {sharedPdf ? <div className="fw-share-result"><label className="lbl" htmlFor="fw-pdf-share-link">Read-only PDF · v{snapshot?.versions.find((version) => version.id === sharedPdf.version_id)?.version_number ?? "saved"} · expires {when(sharedPdf.expires_at)}</label><input id="fw-pdf-share-link" readOnly value={sharedPdf.url} onFocus={(event) => event.currentTarget.select()} /></div> : null}
-          {hasDraft && view !== "history" && !operatingInline ? <div className="fw-draft-note"><Icon name="note" size={14} />Draft changes are saved here. Financial summaries and AI update when you save a version, which includes a dated PDF.</div> : null}
+          {hasDraft && view !== "history" ? <div className="fw-draft-note"><Icon name="note" size={14} />Draft changes are saved here. Financial summaries and AI update when you save a version, which includes a dated PDF.</div> : null}
           {loading ? <div className="fw-alert"><PreparationProgress title="Opening financial workspace" description="Loading the working draft, linked files and saved versions." /></div> : !snapshot ? <div className="empty">The financial workspace could not be opened.</div> : <>
             {kind === "debt_schedule" ? <div hidden={view !== "worksheet"}><DebtBatchImport key={`${profileId}:${snapshot.family_id}`} api={api} profileId={profileId} snapshot={{ ...snapshot, body }} disabled={Boolean(busy) && busy !== "debt-batch" || conflict} prepare={async () => { await flush(); if (!current.current) throw new Error("Open the working schedule before reviewing debt files."); return current.current; }} onSnapshot={accept} onBusyChange={(working) => setBusy((value) => working ? "debt-batch" : value === "debt-batch" ? "" : value)} onError={(reason) => { if (isFinancialDraftConflict(reason)) { setConflict(true); setError(message(reason)); } }} /></div> : null}
-            {view === "form" ? <div className={`fw-form ${operatingInline ? "fw-operating-planner" : ""}`} ref={formRef}>
-              {!operatingInline ? <h3>{FINANCIAL_LABELS[kind]}</h3> : null}
+            {view === "form" ? <div className="fw-form" ref={formRef}>
+              <h3>{FINANCIAL_LABELS[kind]}</h3>
               {kind === "debt_schedule" ? <div className="fw-debt-summary"><strong>{activeDebts.length} active obligations</strong><span>{computed.total_monthly_payment == null ? "Monthly payments incomplete" : `${computed.total_monthly_payment.toLocaleString(undefined, { style: "currency", currency: "USD" })} a month`}</span><span>{computed.total_balance == null ? "Balances incomplete" : `${computed.total_balance.toLocaleString(undefined, { style: "currency", currency: "USD" })} outstanding`}</span></div> : null}
               {kind === "debt_schedule" && !activeDebts.length ? <label className="checkline fw-no-debt"><input type="checkbox" checked={body.no_debt === true} disabled={Boolean(busy)} onChange={(event) => changeBody({ ...draftBody.current, no_debt: event.target.checked })} />I confirm this business has no outstanding debt.</label> : null}
 
@@ -610,7 +600,7 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
       </div></LoanImagePreviewProvider>
     </FinancialEditorSurface>
     {newDebt ? <Drawer open onClose={() => { if (!busy) setNewDebt(null); }} title="Add loan row" sub="Save adds this loan to the working draft. Save version publishes financial figures and a dated PDF." width="lg" closeOnBackdrop={false} bodyClass={workspaceStyles.newRowForm} footer={<><Btn disabled={Boolean(busy)} onClick={() => setNewDebt(null)}>Cancel</Btn><span className="sp" /><Btn disabled={Boolean(busy) || conflict || isBlankFinancialDebt(newDebt)} onClick={() => void saveNewDebt(true)}>Add another</Btn><Btn variant="pri" disabled={Boolean(busy) || conflict || isBlankFinancialDebt(newDebt)} onClick={() => void saveNewDebt(false)}>{busy === "add-debt" ? "Saving…" : "Save"}</Btn></>}><DebtScheduleForm key={newDebt.id} singleRow rowEntry scheduleCompletion value={{ business_name: String(body.business_name ?? ""), debts: [{ ...newDebt, editable: true } as DebtRow] }} disabled={Boolean(busy)} onChange={(next) => { const row = next.debts?.[0]; if (row) setNewDebt({ ...newDebt, ...row, id: newDebt.id }); }} />{newDebtError ? <Callout tone="bad">{newDebtError}{conflict ? <p>The shared draft changed. Close this popup and resolve the draft conflict before adding this loan.</p> : <p>Your entered details remain here. Retry Save or Add another.</p>}</Callout> : null}</Drawer> : null}
-    {requestOpen ? <RequestFilesDialog profileId={profileId} open prefill={kind === "operating_plan" ? operatingPlanRequest(String(body.business_name ?? "")) : undefined} prefillKey={kind === "operating_plan" ? `operating-plan:${snapshot?.family_id}` : undefined} onClose={() => setRequestOpen(false)} onRequested={() => { void onPublished?.(); }} /> : null}
+    {requestOpen ? <RequestFilesDialog profileId={profileId} open onClose={() => setRequestOpen(false)} onRequested={() => { void onPublished?.(); }} /> : null}
   </>;
 }
 

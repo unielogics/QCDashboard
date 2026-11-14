@@ -5,7 +5,6 @@ import { updateDebtPaymentTerms } from "@/lib/debtPaymentTerms";
 import { DEBT_TYPES, isAdvanceType } from "@/lib/debtTypes";
 import { loanPaidDownPct } from "@/lib/loanProgress";
 import { orderDebtScheduleColumns } from "@/lib/debtWorksheetLayout";
-import { clearOperatingReview, normalizeOperatingPlanBody, type OperatingAction, type OperatingExpense, type ReleasedCashFlowEvaluation } from "@/lib/operatingPlan";
 
 export type FinancialBody = Record<string, unknown>;
 export type FinancialVersion = {
@@ -23,7 +22,7 @@ export type FinancialWorkspaceSnapshot = {
   families: Array<{ id: string; kind: SheetKind; label: string; current_version_id: string | null }>;
   evidence: FinancialEvidence[];
   saved_version?: FinancialVersion;
-  completion?: { complete: boolean; missing_fields: string[]; reason: string; no_debt: boolean; active_rows: number; released_cash_flow?: ReleasedCashFlowEvaluation } | null;
+  completion?: { complete: boolean; missing_fields: string[]; reason: string; no_debt: boolean; active_rows: number } | null;
   accepted_completion?: FinancialWorkspaceSnapshot["completion"];
   saved_completion?: FinancialWorkspaceSnapshot["completion"];
 };
@@ -49,11 +48,10 @@ export const FINANCIAL_ORDER: SheetKind[] = ["debt_schedule", "pfs", "real_estat
 export async function readFinancialWorkspace(api: AuthedApi, profileId: string, kind: SheetKind, familyId?: string) {
   const query = new URLSearchParams({ kind });
   if (familyId) query.set("family_id", familyId);
-  const result = await api<FinancialWorkspaceSnapshot>(`${root(profileId)}?${query}`);
-  return result.kind === "operating_plan" ? { ...result, body: normalizeOperatingPlanBody(result.body) } : result;
+  return api<FinancialWorkspaceSnapshot>(`${root(profileId)}?${query}`);
 }
 export function saveFinancialDraft(api: AuthedApi, profileId: string, snapshot: FinancialWorkspaceSnapshot, body: FinancialBody) {
-  return api<FinancialWorkspaceSnapshot>(`${root(profileId)}/draft`, { method: "PUT", body: JSON.stringify({ kind: snapshot.kind, family_id: snapshot.family_id, body: snapshot.kind === "operating_plan" ? normalizeOperatingPlanBody(body) : body, expected_revision: snapshot.draft.revision }) });
+  return api<FinancialWorkspaceSnapshot>(`${root(profileId)}/draft`, { method: "PUT", body: JSON.stringify({ kind: snapshot.kind, family_id: snapshot.family_id, body, expected_revision: snapshot.draft.revision }) });
 }
 export function createFinancialFamily(api: AuthedApi, profileId: string, kind: SheetKind, label: string, identity: { subject?: string; period_start?: string; period_end?: string; as_of?: string }) {
   return api<FinancialWorkspaceSnapshot>(`${root(profileId)}/families`, { method: "POST", body: JSON.stringify({ kind, label, identity }) });
@@ -116,7 +114,7 @@ export function financialValues(body: FinancialBody, layout: SheetLayout): Sheet
 }
 /** Reconcile list identities immediately, including excluded debts omitted by the published layout. */
 export function financialLayout(body: FinancialBody, source: SheetLayout): SheetLayout {
-  if (source.kind !== "debt_schedule" && source.kind !== "pfs" && source.kind !== "real_estate_schedule" && source.kind !== "operating_plan") return source;
+  if (source.kind !== "debt_schedule" && source.kind !== "pfs" && source.kind !== "real_estate_schedule") return source;
   if (source.kind === "debt_schedule") {
     const fields = ["lender", "debt_type", "original_amount", "balance", "rate", "monthly_payment", "originated_on", "maturity_on", "secured", "payment_status", "collateral", "mca_modified", "mca_modification_note", "notes", "factor_rate", "payment_amount", "payment_frequency"];
     const old = source.rows.filter((row) => row.kind === "data" && row.block === "debts");
@@ -148,7 +146,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
     const after = source.rows.filter((row) => row.r >= first && row.kind !== "data").map((row, index) => ({ ...row, r: first + data.length + index }));
     return orderDebtScheduleColumns({ ...source, rows: [...before, ...data, ...after] });
   }
-  const schedules = (source.kind === "real_estate_schedule" || source.kind === "operating_plan" ? body : body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
+  const schedules = (source.kind === "real_estate_schedule" ? body : body.schedules ?? {}) as Record<string, Array<Record<string, unknown>>>;
   const next: SheetRow[] = [];
   const handled = new Set<string>();
   let offset = 0;
@@ -163,7 +161,7 @@ export function financialLayout(body: FinancialBody, source: SheetLayout): Sheet
       const id = String(entries[index]?.id ?? entries[index]?.row_id ?? `r${index + 1}`);
       next.push({ ...row, r: row.r + offset + index, row_key: id, ordinal: index + 1, cells: row.cells?.map((cell) => {
         if (!cell.path || !cell.key) return cell;
-        const path = [...cell.path]; path[source.kind === "real_estate_schedule" || source.kind === "operating_plan" ? 1 : 2] = id;
+        const path = [...cell.path]; path[source.kind === "real_estate_schedule" ? 1 : 2] = id;
         return { ...cell, key: `${row.block}.${id}.${path.at(-1)}`, path };
       }) });
     }
@@ -203,20 +201,7 @@ export function applyFinancialCells(body: FinancialBody, layout: SheetLayout, ed
       return Object.keys(changes).length ? updateDebtPaymentTerms(before, changes) : row;
     });
   }
-  if (layout.kind === "operating_plan") {
-    const previousExpenses = (body.expenses ?? []) as OperatingExpense[];
-    const previousActions = (body.adjustments ?? []) as OperatingAction[];
-    const currentExpenses = (next.expenses ?? []) as OperatingExpense[];
-    next.adjustments = ((next.adjustments ?? []) as OperatingAction[]).map((row) => {
-      const before = previousActions.find((item) => item.id === row.id);
-      const expense = currentExpenses.find((item) => item.id === row.expense_row_id);
-      const priorExpense = previousExpenses.find((item) => item.id === row.expense_row_id);
-      const expenseChanged = expense && JSON.stringify(expense) !== JSON.stringify(priorExpense);
-      const updated = expenseChanged ? { ...row, current_amount: expense.current_amount, cadence: expense.cadence } : row;
-      return expenseChanged || JSON.stringify(before) !== JSON.stringify(row) ? clearOperatingReview(updated) : updated;
-    });
-  }
-  return layout.kind === "operating_plan" ? normalizeOperatingPlanBody(next) : next;
+  return next;
 }
 /** A native correction must not retain an extracted-field badge for the replaced value. */
 export function clearEditedDebtSources(previous: FinancialBody, next: FinancialBody): FinancialBody {

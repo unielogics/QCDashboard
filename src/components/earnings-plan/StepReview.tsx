@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { ReviewInput } from "@/lib/earningsPlan/api";
 import { setAttestation, setNotes } from "@/lib/earningsPlan/edit";
 import { count, stamp } from "@/lib/earningsPlan/format";
-import { beforeAfterTable, bridgeRows, compareBars, handoffRows, liveMetrics, ramp, reviewRows, type DebtBasis } from "@/lib/earningsPlan/view";
+import { beforeAfterTable, bridgeRows, compareBars, handoffRows, liveMetrics, loanCostsNote, ramp, reviewRows, type DebtBasis } from "@/lib/earningsPlan/view";
 import type { BaselineTreatment, PlanResult, PlanVersion, PlanView } from "@/lib/earningsPlan/types";
 import type { PlanBusy } from "./useEarningsPlan";
 import type { StepCommon } from "./StepSource";
@@ -67,6 +67,7 @@ export function StepReview({ body, facts, disabled, staff, edit, result, view, b
         <p className={styles.fine}>
           Cash after debt uses earnings and loan payments; it is not a bank balance. A projection is not a profit guarantee or financing approval.
           Below 1.00x means illustrated earnings do not cover stated debt service.
+          {loanCostsNote(baseline, basis) ? ` ${loanCostsNote(baseline, basis)}` : ""}
         </p>
       </Card>
 

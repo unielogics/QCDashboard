@@ -104,6 +104,10 @@ export type PlanBaseline = {
   debt_service_current_monthly?: number | null;
   debt_service_with_terms_monthly?: number | null;
   released_monthly?: number | null;
+  /** Operating costs a year the saved loan terms themselves add. They come off coverage with the terms, not off earnings. */
+  loan_operating_annual?: number | null;
+  /** False while the budget lists such a cost without a confirmed amount: it is counted as zero until then. */
+  loan_operating_confirmed?: boolean;
   terms_label?: string | null;
   statement?: { file_id?: string; label?: string; months_covered?: number | null; annualized?: boolean } | null;
   source_name?: string;
@@ -159,7 +163,7 @@ export type PlanResult = {
   sections: PlanSection[];
   bridge: Record<PlanView, PlanBridgeStep[]>;
   metrics: { today: PlanDebtViews; proposed: PlanDebtViews; reviewed: PlanDebtViews };
-  debt_service: { current: number | null; with_terms: number | null; plan: number | null };
+  debt_service: { current: number | null; with_terms: number | null; plan: number | null; loan_operating: number };
   target: { ratio: number; proposed: number | null; reviewed: number | null };
   goal: { amount: number | null; proposed_gap: number | null; reviewed_gap: number | null };
   released: { available_monthly: number; allocated_monthly: number; over_allocated: boolean; unallocated_monthly: number };

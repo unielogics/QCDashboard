@@ -4,7 +4,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { SheetKind } from "../src/components/sheet/types";
-import { WORKSPACE_INTAKE as INTAKE, WORKSPACE_PROFILE as PROFILE, WORKSPACE_BUSINESS as BUSINESS, workspaceDetail, workspaceFinancial, workspaceForms, marketplaceBudget, marketplaceCockpit, marketplacePlan, staffOperatingEvidence, staffOperatingEvaluation } from "./fixtures/fileWorkspaceNavigation";
+import { WORKSPACE_INTAKE as INTAKE, WORKSPACE_PROFILE as PROFILE, WORKSPACE_BUSINESS as BUSINESS, workspaceDetail, workspaceFinancial, workspaceForms, marketplaceBudget, marketplaceCockpit, marketplacePlan } from "./fixtures/fileWorkspaceNavigation";
 import { marketplaceProduct, marketplaceListing } from "./fixtures/marketplacePanel";
 
 const ORIGIN = "https://file-workspaces.test";
@@ -81,7 +81,7 @@ async function fixture(page: Page, options: { role?: string; missingProfile?: bo
     if (p.endsWith("/financial-forms")) return json({ forms: workspaceForms, packets: [] });
     if (p.endsWith("/financial-cockpit")) return json(marketplaceCockpit(record));
     if (p.endsWith("/program-readiness")) return json({ profile_id: PROFILE, lending_applicable: true, selection_mode: "auto", selections: [], evidence_policies: [], candidates: [], programs: [], requirements: [], available_evidence_files: [], evidence_summary: {}, can_advance: false, automatic_stage_status: "not_ready", automation: {} });
-    if (p.endsWith("/operating-plan/summary")) return json({ has_plan: false, expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: 0, cost_mix: [], evaluation: staffOperatingEvaluation });
+    if (p.endsWith("/operating-plan/summary")) return json({ has_plan: false, expense_count: 0, action_count: 0, reviewed_action_count: 0, missing_count: 0, cost_mix: [], evaluation: null });
     // The earnings plan: read in the current model, drafts checked against the revision, a version cut from the stored draft.
     if (p.endsWith("/operating-plan/v2")) return json(plan);
     if (p.endsWith("/operating-plan/v2/draft")) {
@@ -95,8 +95,6 @@ async function fixture(page: Page, options: { role?: string; missingProfile?: bo
       plan = { ...plan, versions: [version], current_version_id: version.id, draft: { ...plan.draft, base_version_id: version.id, dirty: false } };
       return json({ kind: "operating_plan", family_id: plan.family_id, draft: plan.draft, versions: plan.versions, current_version_id: version.id, saved_version: version });
     }
-    if (p.endsWith("/operating-plan/evidence")) return json(staffOperatingEvidence);
-    if (p.endsWith("/operating-plan/evaluate")) return json({ evaluation: staffOperatingEvaluation });
     if (p.endsWith("/financial-workspace")) { current = workspaceFinancial((url.searchParams.get("kind") ?? "debt_schedule") as SheetKind, 4, false, options.linkedDebt); return json(current); }
     if (p.endsWith("/financial-workspace/draft")) {
       if (options.conflict) return json({ detail: { code: "financial_draft_conflict", message: "Financial draft changed; reload before saving" } }, 409);

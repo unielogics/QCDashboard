@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/lib/api";
 import { clientPlanTransport, isPlanConflict, isPlanIncomplete, PlanError, staffPlanTransport, type DraftFacts } from "@/lib/earningsPlan/api";
 import { toWire } from "@/lib/earningsPlan/edit";
+import { earningsPlanRequest } from "@/lib/earningsPlan/request";
 import { referenceBody, referenceWorkspace } from "./fixtures/earningsPlanReferencePlan";
 
 const FACTS: DraftFacts = { familyId: "family-1", revision: 7, baseVersionId: "version-1" };
@@ -152,5 +153,16 @@ describe("client link transport", () => {
     await expect(transport.openPdf({ id: "v", version_number: 1, created_at: "", pdf_url: "https://elsewhere.example/steal.pdf" })).rejects.toBeInstanceOf(PlanError);
     await expect(transport.openPdf({ id: "v", version_number: 1, created_at: "" })).rejects.toBeInstanceOf(PlanError);
     expect(opened).toHaveLength(1);
+  });
+});
+
+describe("requesting the plan from the business", () => {
+  it("asks in one set of words wherever it is requested, and names the business", () => {
+    const request = earningsPlanRequest("  Harbor Auto Detail LLC ");
+    expect(request).toMatchObject({ document_type: "operating_plan", name: "Operating expenses and earnings plan", quantity: 1, unit: "files", subject: "Harbor Auto Detail LLC", period: "current" });
+    // The instructions follow the plan's own steps: confirm the source, describe revenue, propose changes with their reasons.
+    expect(request.instructions).toContain("Confirm the costs on your return");
+    expect(request.instructions).toContain("the reason each will work");
+    expect(earningsPlanRequest("").subject).toBe("business");
   });
 });

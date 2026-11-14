@@ -41,15 +41,35 @@ tests, the type check, the lint list and the production build.
 lives in the page, and the client link page (`ClientEarningsPlan` with its own
 transport) with the API's replies supplied at the network. The link page's API
 address there is a name that resolves nowhere, so no running API is called.
+`tests/public-financial-form.spec.ts` does the same for the page a borrower
+opens for every other form (a debt schedule stands for them), and checks that
+an earnings plan link is handed to the plan workspace.
+
+The plan's saved document is drawn by the backend
+(`app/services/earnings_plan_pdf.py`) from the figures a version stored, in six
+parts that follow the screens: summary, source figures, revenue model and
+costs, plan changes, before and after, review and handoff. It prints figures by
+the same rules as `src/lib/financialsOverview.ts` (a true minus, halves rounded
+away from zero, never a signed zero), so the document and the screens agree.
+
+The earlier plan editor (`Operating*` components, most of `src/lib/operating*`)
+was removed once these screens replaced it. `src/lib/operatingPlan.ts` keeps
+only the evaluation types the File page, the coverage card and the marketplace
+still read.
 
 The tests use the fictional file the design draws
 (`src/lib/__tests__/fixtures/financialsOverviewFixture.ts`), so a figure that
 drifts from the design fails a test.
 
-Two readings worth knowing before changing the engines:
+Three readings worth knowing before changing the engines:
 
 - The EBITDA bridge is cumulative in a fixed order (pricing, revenue drivers,
   growth, cost of goods sold, operating expenses, new activities) and adds up
   exactly to the plan figure.
 - A section's own total is what the plan loses without that section. Changes
   interact, so section totals do not add up to the bridge.
+- Operating costs the saved loan terms themselves add (a budget row classed as
+  an operating expense) are the loan's, not the business's. They leave EBITDA,
+  NOI and margin alone and come off DSCR and free cash flow with the terms,
+  once, in both engines and in the file's baseline block; every reader of the
+  plan gets that same coverage (`app/tests/test_earnings_plan_consumers.py`).

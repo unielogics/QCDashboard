@@ -4,7 +4,6 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import type { FileRequestItem, FileRequestRead } from "../src/lib/fileRequestsApi";
-import { emptyStaffOperatingBody, staffOperatingEvidence, staffOperatingEvaluation, STAFF_FAMILY } from "./fixtures/staffOperatingSources";
 import { REQUEST_PROFILE, syntheticFileRequest, syntheticRequestDelivery } from "./fixtures/fileRequestReceipts";
 
 const ORIGIN = "https://request-files.test", ROOT = `/api/v1/application-profiles/${REQUEST_PROFILE}`;
@@ -66,9 +65,6 @@ async function fixture(page: Page, options: { viewOnlyEntry?: boolean; createFai
         const row = rows.get(pathname.split("/").at(-2)!); if (!row) throw Error("Retry did not target the saved request");
         row.deliveries.push(notification); return route.fulfill({ json: { notification } });
       }
-      if (pathname === `${ROOT}/financial-workspace`) return route.fulfill({ json: { kind: "operating_plan", family_id: STAFF_FAMILY, label: "Operating expenses and earnings plan", body: emptyStaffOperatingBody, schema: {}, worksheet: { layout: { kind: "operating_plan", title: "Operating plan", schema_version: "test", layout_version: "test", name_prefix: "test", columns: [], rows: [], freeze: [0, 0] }, values: {}, computed: {} }, draft: { revision: 1, base_version_id: null, updated_at: "2027-01-01T12:00:00Z", dirty: false }, current_version_id: null, versions: [], families: [], evidence: [] } });
-      if (pathname.endsWith("/operating-plan/evidence")) return route.fulfill({ json: staffOperatingEvidence });
-      if (pathname.endsWith("/operating-plan/evaluate")) return route.fulfill({ json: { evaluation: staffOperatingEvaluation, evidence: staffOperatingEvidence, guidance: staffOperatingEvidence.guidance, context_stamp: "a".repeat(64) } });
       throw Error(`Unexpected request ${request.method()} ${pathname}`);
     }
     if (pathname === "/app.js") return route.fulfill({ contentType: "text/javascript", body: script });

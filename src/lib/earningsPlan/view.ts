@@ -5,7 +5,7 @@
  * showing up on a screen.
  */
 import { waterfall, type WaterfallBar } from "@/lib/financialsOverview";
-import { ALL, COGS_GROUP, Plan, number, startMonth } from "./math";
+import { ALL, COGS_GROUP, Plan, loanOperating, number, startMonth } from "./math";
 import { remainderStream } from "./edit";
 import { count, factorAmountLabel, factorValue, periodLabel, plain, planMonthShort, points, ratioPercent, signedTimes, signedUsd, times, usd } from "./format";
 import type {
@@ -26,6 +26,18 @@ export function debtBasis(baseline: PlanBaseline, applyTerms: boolean): DebtBasi
 }
 
 const after = (result: PlanResult, view: PlanView, basis: DebtBasis): PlanSixMetrics => result.metrics[view][basis] ?? result.metrics[view].current_debt;
+
+/**
+ * Said wherever coverage with the saved terms is shown, when the loan brings operating costs of its own.
+ * Those costs come off DSCR and free cash flow with the terms; EBITDA and NOI stay as the plan produces them.
+ */
+export function loanCostsNote(baseline: PlanBaseline, basis: DebtBasis): string | null {
+  if (basis !== "with_terms") return null;
+  const costs = loanOperating(baseline);
+  if (costs > 0) return `The saved loan terms add ${usd(costs)} a year of operating costs. They come off DSCR and free cash flow with the terms, and leave EBITDA and NOI as the plan produces them.`;
+  if (baseline.loan_operating_confirmed === false) return "The saved loan terms list a recurring operating cost whose amount is not confirmed. It is counted as zero until the budget is confirmed.";
+  return null;
+}
 
 /** "IRS 2025", "P&L", or "Source" when the file has none. */
 export function sourceShort(baseline: PlanBaseline): string {
@@ -108,6 +120,8 @@ export function beforeAfterTable(baseline: PlanBaseline, result: PlanResult, bas
   const e0 = number(baseline.ebitda), noi0 = number(baseline.noi);
   const current = baseline.debt_service_current, terms = baseline.debt_service_with_terms;
   const planDebt = basis === "with_terms" ? terms : current;
+  // Operating costs the loan itself adds come off what covers the debt once the terms apply, and only there.
+  const costs = loanOperating(baseline), planCosts = basis === "with_terms" ? costs : 0;
   const { proposed, reviewed, first_year: first } = result;
   const money = (label: string, now: number, plan: number, rev: number): BeforeAfterRow =>
     ({ label, current: usd(now), plan: usd(plan), reviewed: usd(rev), delta: signedUsd(plan - now), tone: Math.abs(plan - now) < 0.5 ? "mut" : plan >= now ? "ok" : "bad" });
@@ -115,13 +129,13 @@ export function beforeAfterTable(baseline: PlanBaseline, result: PlanResult, bas
     (debt ? { label, current: times(now / debt), plan: times(plan / debt), reviewed: times(rev / debt), delta: signedTimes(plan / debt - now / debt), tone: Math.abs(plan - now) < 0.5 ? "mut" : plan >= now ? "ok" : "bad" } : null);
   const rows: Array<BeforeAfterRow | null> = [
     money("Annual NOI", noi0, proposed.noi, reviewed.noi),
-    current != null && planDebt != null ? money("Cash after debt / year", e0 - current, proposed.ebitda - planDebt, reviewed.ebitda - planDebt) : null,
+    current != null && planDebt != null ? money("Cash after debt / year", e0 - current, proposed.ebitda - planCosts - planDebt, reviewed.ebitda - planCosts - planDebt) : null,
     money("Annual EBITDA", e0, proposed.ebitda, reviewed.ebitda),
     money("First-year EBITDA", e0, first.proposed.ebitda, first.reviewed.ebitda),
     money("First-year NOI", noi0, first.proposed.noi, first.reviewed.noi),
     ratio("DSCR · current debt", current, e0, proposed.ebitda, reviewed.ebitda),
-    terms != null ? ratio("DSCR · saved refinance", terms, e0, proposed.ebitda, reviewed.ebitda) : ratio("First-year DSCR · current debt", current, e0, first.proposed.ebitda, first.reviewed.ebitda),
-    terms != null ? ratio("First-year DSCR · saved refinance", terms, e0, first.proposed.ebitda, first.reviewed.ebitda) : null,
+    terms != null ? ratio("DSCR · saved refinance", terms, e0 - costs, proposed.ebitda - costs, reviewed.ebitda - costs) : ratio("First-year DSCR · current debt", current, e0, first.proposed.ebitda, first.reviewed.ebitda),
+    terms != null ? ratio("First-year DSCR · saved refinance", terms, e0 - costs, first.proposed.ebitda - costs, first.reviewed.ebitda - costs) : null,
   ];
   return rows.filter((row): row is BeforeAfterRow => row !== null);
 }
@@ -195,7 +209,7 @@ export function coverageScale(baseline: PlanBaseline, result: PlanResult, view: 
   const low = Math.min(-0.25, today - 0.1, plan.dscr - 0.1);
   const high = Math.max(1.75, today + 0.25, plan.dscr + 0.25, target + 0.25);
   const at = (value: number) => Math.min(100, Math.max(0, ((value - low) / (high - low)) * 100));
-  const needed = target * plan.debt_service - plan.ebitda;
+  const needed = target * plan.debt_service - (plan.ebitda - (basis === "with_terms" ? loanOperating(baseline) : 0));
   return {
     state: plan.dscr >= target ? { label: "Meets goal", tone: "ok" } : plan.dscr >= 1 ? { label: "Covers debt", tone: "warn" } : plan.dscr > 0 ? { label: "Below 1.00x", tone: "bad" } : { label: "Negative", tone: "bad" },
     one: at(1), target: at(target), before: at(today), after: at(plan.dscr),
@@ -247,7 +261,8 @@ export type SourceView = {
   groups: SourceGroupRow[];
   totals: Array<{ label: string; value: string; negative: boolean }>;
   footnote: string | null;
-  terms: null | { label: string; current: string; next: string; released: string; coverage: string };
+  /** `costs` is what the loan itself adds to operating costs a year, when it adds any. */
+  terms: null | { label: string; current: string; next: string; released: string; coverage: string; costs: string | null };
 };
 
 export function sourceView(body: EarningsPlanBody, baseline: PlanBaseline, sourceChanged: boolean): SourceView {
@@ -296,7 +311,8 @@ export function sourceView(body: EarningsPlanBody, baseline: PlanBaseline, sourc
       current: `${usd(baseline.debt_service_current_monthly ?? current / 12)} / mo`,
       next: `${usd(baseline.debt_service_with_terms_monthly ?? terms / 12)} / mo`,
       released: `${usd(number(baseline.released_monthly))} / mo`,
-      coverage: ok && current && terms ? `${times(e0 / current)} → ${times(e0 / terms)}` : DASH,
+      coverage: ok && current && terms ? `${times(e0 / current)} → ${times((e0 - loanOperating(baseline)) / terms)}` : DASH,
+      costs: loanOperating(baseline) > 0 ? `${usd(loanOperating(baseline))} / yr` : null,
     } : null,
   };
 }

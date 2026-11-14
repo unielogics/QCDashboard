@@ -199,6 +199,29 @@ describe("earnings plan engine: behaviour around the edges", () => {
     near(bare.proposed.ebitda, result.proposed.ebitda);
   });
 
+  it("takes operating costs the loan itself adds off coverage with the terms, and off nothing else", () => {
+    // The same figures as the backend's test_earnings_plan_consumers.py: (182,896.64 - 12,000) / 177,600.
+    const costly = evaluate(referenceBody(), { ...referenceBaseline(), loan_operating_annual: 12_000 }, { goal: REFERENCE.plan.noi_goal, questions: QUESTIONS });
+    const withTerms = costly.metrics.proposed.with_terms!;
+    near(withTerms.ebitda, 182_896.64);
+    near(withTerms.noi, 174_496.64);
+    near(withTerms.dscr, 170_896.64 / 177_600);
+    near(withTerms.free_cash_flow, -6_703.36);
+    near(withTerms.operating_margin, result.metrics.proposed.with_terms!.operating_margin!);
+    near(costly.metrics.today.with_terms!.dscr, (-22_377 - 12_000) / 177_600);
+    near(costly.metrics.reviewed.with_terms!.free_cash_flow, 52_164 - 12_000 - 177_600);
+    near(costly.target.proposed, 51_103.36);
+    expect(costly.debt_service.loan_operating).toBe(12_000);
+    // Against today's debt the loan does not exist, so neither do its costs.
+    expect(costly.metrics.proposed.current_debt).toEqual(result.metrics.proposed.current_debt);
+    expect(costly.proposed).toEqual(result.proposed);
+    // Without saved terms there is no loan to bring them.
+    const none = evaluate(referenceBody(), { ...referenceBaseline(), debt_service_with_terms: null, loan_operating_annual: 12_000 }, { questions: QUESTIONS });
+    expect([none.debt_service.loan_operating, none.metrics.proposed.with_terms]).toEqual([0, null]);
+    near(none.target.proposed, 1.25 * 777_600 - 182_896.64);
+    expect(result.debt_service.loan_operating).toBe(0);
+  });
+
   it("asks for the earnings source first when the file has none", () => {
     const baseline = { ...referenceBaseline(), available: false, revenue: null, cogs: null, operating_expenses: null, noi: null, ebitda: null, groups: [] };
     const body = { ...referenceBody(), streams: [], lines: [], changes: [], growth: [], activities: [], attestation: true };
