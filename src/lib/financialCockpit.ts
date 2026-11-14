@@ -797,6 +797,50 @@ export type CockpitCoverage = {
 /** One line the AI read off an uploaded debt schedule (field names as the reader prints them). */
 export type UploadedScheduleLine = { lender?: string | null; debt_type?: string | null; current_balance?: number | null; balance?: number | null; monthly_payment?: number | null; rate_pct?: number | null; maturity_date?: string | null; original_amount?: number | null; secured_by?: string | null; current?: boolean | null; payment_frequency?: string | null } & Record<string, unknown>;
 
+/** One row of the baseline ladder; amounts are signed so the column adds to each subtotal. */
+export type BaselineLadderRow = { key: "revenue" | "cogs" | "operating_expenses" | "noi" | "other_income" | "depreciation_amortization" | "ebitda"; label: string; amount: number | null; subtotal: boolean; note?: string };
+export type BaselineMetrics = { ebitda: number | null; noi: number | null; dscr: number | null; free_cash_flow: number | null; operating_margin: number | null; debt_service: number | null };
+export type BaselineGroupRow = { key: string; category: string; label: string; amount: number; fact_path: string | null; derived?: boolean; period_amount?: number };
+/**
+ * The selected earnings source as one ladder (revenue to NOI to EBITDA), its
+ * expense groups and debt service. Mirrors app/services/financial_baseline.py:
+ * the filed return leads, a P&L is the labelled fallback, and every headline
+ * figure on the file reads this same source.
+ */
+export type FinancialBaseline = {
+  policy_version: string; unavailable?: boolean; reason: string | null;
+  source: {
+    kind: "tax_return" | "profit_and_loss" | null; label: string | null; file_id: string | null; selected_by: "rule" | "staff" | null;
+    file_name?: string | null; form?: string | null; year?: string | null; period_start?: string | null; period_end?: string | null;
+    /** The return prints only its tax year; it is read as that full year. */
+    period_assumed?: boolean; months_covered?: number | null; annualized?: boolean; currency?: string | null; basis?: string | null;
+    income_basis?: string | null; accepted?: boolean; fallback?: boolean;
+  };
+  ladder: BaselineLadderRow[];
+  figures: {
+    revenue: number | null; cogs: number | null; other_income: number | null; other_income_basis: string | null; total_deductions: number | null;
+    interest: number | null; depreciation_amortization: number | null; income: number | null; operating_expenses: number | null;
+    noi: number | null; ebitda: number | null; printed_operating_expenses: number | null; reconciliation_difference: number | null;
+    /** Add-backs the reader did not find: named, counted as zero. */
+    unread: string[];
+  } | null;
+  staff_adjustments: Array<{ key: string; label: string; amount: number }>;
+  groups: {
+    rows: BaselineGroupRow[]; outside_plan: Array<{ key: string; label: string; amount: number }>;
+    status: "reconciled" | "lines_exceed_total" | "total_not_read"; listed: number | null; total: number | null; remainder: number | null; reconciles: boolean | null;
+  } | null;
+  debt_service: {
+    source?: string | null; currency?: string; current_annual?: number | null; current_monthly?: number | null; obligations?: number;
+    with_terms_annual?: number | null; with_terms_monthly?: number | null; released_monthly?: number | null; retired?: number | null;
+    terms?: { label?: string | null; source?: string | null; amount?: number | null; rate_pct?: number | null; term_months?: number | null; monthly_payment?: number | null } | null;
+  };
+  metrics: { current: Partial<BaselineMetrics>; with_terms: BaselineMetrics | null };
+  /** Earnings still to find for each coverage goal; a target is not a forecast. */
+  targets: Array<{ ratio: number; current_debt: number | null; with_terms: number | null }>;
+  sources: Array<{ key: string; kind: "tax_return" | "profit_and_loss" | "bank_proxy"; label: string; net_profit: number | null; ebitda: number | null; selected: boolean }>;
+  notes: string[];
+};
+
 export type FinancialCockpit = {
   operating_plan?: { available: boolean; state?: string; version_number?: number; saved_at?: string; family_id?: string; version_id?: string; pdf_file_id?: string | null; evaluation?: import("./operatingPlan").OperatingEvaluation | null };
   profile_id: string;
@@ -845,6 +889,7 @@ export type FinancialCockpit = {
   dscr: CockpitDscr;
   ebitda?: FinancialEbitda;
   noi?: FinancialNoi;
+  baseline?: FinancialBaseline;
   metric_review?: FinancialMetricReview;
   net_profit: { candidates: CockpitProfitCandidate[]; conclusion: CockpitProfitCandidate | null; note: string | null };
   notes: string[];

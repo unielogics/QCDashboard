@@ -10,9 +10,10 @@ describe("canonical NOI presentation", () => {
     for (const status of ["reviewed", "source_supported"]) expect(noiGovernancePresentation({ status, review_needed: false }).tone).toBe("ok");
     expect(noiGovernancePresentation({ status: "future_status" }).label).toBe("NOI review status unavailable");
   });
-  it("distinguishes automatic tax estimates, reviewed tax and source-free manual NOI", () => {
+  it("distinguishes the filed return, reviewed tax and source-free manual NOI", () => {
     const value = { headline: { kind: "tax_derived_noi", staff_reviewed: false } } as FinancialNoi;
-    expect(noiBasisLabel(value)).toBe("Automatic business tax return estimate");
+    expect(noiBasisLabel(value)).toBe("Filed business return");
+    expect(noiGovernancePresentation({ status: "source_supported", review_needed: false }).label).toBe("Source supported");
     value.headline!.staff_reviewed = true;
     expect(noiBasisLabel(value)).toBe("Reviewed business tax return estimate");
     expect(noiBasisLabel({ headline: { kind: "staff_reviewed_noi", staff_reviewed: true }, review: { current: { mode: "manual" } } } as FinancialNoi)).toBe("Manual annual NOI review");

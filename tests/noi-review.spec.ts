@@ -289,7 +289,7 @@ for (const amount of [-41000, 0, 60000]) test(`automatic annual NOI ${amount} st
   const status = dialog.getByRole("region", { name: "Current NOI status", exact: true });
   await expect(status).toContainText("Provisional NOI");
   await expect(dialog.getByText("Current financial figure", { exact: true }).locator("..")).toContainText(money);
-  await expect(status).toContainText("Automatic business tax return estimate");
+  await expect(status).toContainText("Filed business return");
   await expect(status).toContainText("2025");
   await expect(status).toContainText("USD");
   await expect(status).toContainText("not verified P&L income or program eligibility");
@@ -342,7 +342,7 @@ test("reviewed first-year coverage remains separate from current NOI and stale s
   const monthly = 180000 * (0.15 / 12) / (1 - Math.pow(1 + 0.15 / 12, -24));
   await expect(effect).toContainText(`${(9000 / (36000 + monthly * 12)).toFixed(2)}x`);
   const current = coverage.getByRole("region", { name: "Current NOI status", exact: true });
-  await expect(current).toContainText("P&L source supported");
+  await expect(current).toContainText("Source supported");
   await expect(current).toContainText("Current annual NOI: $58,000.00");
   await expect(current).toContainText("2025-01-01 – 2025-12-31 · USD");
   await effect.scrollIntoViewIfNeeded();
@@ -574,7 +574,7 @@ for (const amount of [0, -25000]) test(`manual annual NOI ${amount} can be saved
 test("restoring automatic NOI returns the preserved P&L value and keeps both audit receipts", async ({ page }) => {
   const state = await fixture(page, { rawPnl: true });
   const { dialog, editor } = await openNoi(page);
-  await expect(dialog.getByRole("region", { name: "Current NOI status", exact: true })).toContainText("P&L source supported");
+  await expect(dialog.getByRole("region", { name: "Current NOI status", exact: true })).toContainText("Source supported");
   await editor.getByRole("combobox", { name: "NOI review method", exact: true }).selectOption("manual");
   await editor.getByRole("combobox", { name: "NOI source document", exact: true }).selectOption("");
   await editor.getByLabel("Reviewed annual NOI", { exact: true }).fill("63000");
@@ -585,7 +585,7 @@ test("restoring automatic NOI returns the preserved P&L value and keeps both aud
   await editor.getByLabel("NOI review reason", { exact: true }).fill("Restore the original current P&L calculation after reviewing the working estimate.");
   await editor.getByRole("button", { name: "Restore automatic NOI", exact: true }).click();
   await expect(editor).toContainText("Automatic NOI calculation restored.");
-  await expect(dialog.getByRole("region", { name: "Current NOI status", exact: true })).toContainText("P&L source supported");
+  await expect(dialog.getByRole("region", { name: "Current NOI status", exact: true })).toContainText("Source supported");
   await expect(dialog.getByText("Current financial figure", { exact: true }).locator("..")).toContainText("$58,000");
   expect(state.noiSaves[1]).toMatchObject({ mode: "automatic", annual_value: null, selected_file_id: null, year: null, currency: null, expected_revision: 1 });
   await dialog.getByRole("tab", { name: "Review history", exact: true }).click();

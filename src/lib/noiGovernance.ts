@@ -11,7 +11,7 @@ export type NoiBaselineGovernance = NoiGovernance & {
 };
 
 const LABELS: Record<NoiStatus, string> = {
-  source_supported: "P&L source supported", provisional: "Provisional NOI", reviewed: "Staff-reviewed NOI",
+  source_supported: "Source supported", provisional: "Provisional NOI", reviewed: "Staff-reviewed NOI",
   stale: "NOI needs re-review", unavailable: "NOI unavailable",
 };
 
@@ -30,7 +30,7 @@ export function noiBasisLabel(value: FinancialNoi | undefined): string {
   const headline = value?.headline;
   if (!headline) return "No current annual NOI basis";
   if (headline.kind === "tax_derived_noi" || headline.tax_derived_estimate)
-    return headline.staff_reviewed ? "Reviewed business tax return estimate" : "Automatic business tax return estimate";
+    return headline.staff_reviewed ? "Reviewed business tax return estimate" : "Filed business return";
   if (headline.staff_reviewed || headline.kind === "staff_reviewed_noi")
     return value?.review?.current?.mode === "manual" ? "Manual annual NOI review" : "Staff-reviewed annual NOI";
   return "Automatic P&L operating income";

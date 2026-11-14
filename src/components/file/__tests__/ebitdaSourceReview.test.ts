@@ -16,6 +16,12 @@ describe("EBITDA source review", () => {
     expect(ebitdaSourceStatus(selection.sources[2], selection)).toBe("Current EBITDA baseline");
     expect(ebitdaSourceStatus(selection.sources[0], { ...selection, excluded_file_ids: ["2024"] })).toBe("Historical comparison only · not in current baseline");
   });
+  it("labels a P&L behind the filed return as the fallback staff can select", () => {
+    const fallback = { file_id: "pl", file_name: "2026 P&L.pdf", kind: "profit_and_loss" as const, eligible: true, baseline_eligible: true, fallback_only: true, included: true, selected: false, period: "Jan–Jun 2026" };
+    const withFallback = { ...selection, baseline_policy: "filed_return_first" as const, sources: [...selection.sources, fallback] };
+    expect(ebitdaSourceStatus(fallback, withFallback)).toBe("Labelled fallback · the filed return leads");
+    expect(ebitdaSourceWrite("profile", withFallback, { ...draft(), selectedFileId: "pl", excludedFileIds: [] })).toMatchObject({ mode: "manual", selected_file_id: "pl" });
+  });
   it("selects one business period without deleting older source records or converting losses", () => {
     const payload = ebitdaSourceWrite("profile", selection, draft());
     expect(payload).toMatchObject({ mode: "manual", selected_file_id: "2025", excluded_file_ids: ["2024"], expected_revision: 7, source_stamp: "current-source", forecast_assumptions: null });

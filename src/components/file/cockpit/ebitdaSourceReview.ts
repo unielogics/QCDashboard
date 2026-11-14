@@ -18,6 +18,7 @@ export function ebitdaSourceStatus(source: EbitdaSource, selection?: EbitdaSourc
   if (source.comparative_only || selection && !ebitdaBaselineEligible(source, selection)) return "Historical comparison only · not in current baseline";
   if (selection?.excluded_file_ids.includes(source.file_id)) return "Excluded from EBITDA by staff";
   if (source.selected) return "Current EBITDA baseline";
+  if (source.fallback_only) return "Labelled fallback · the filed return leads";
   return "Available business source · not in current baseline";
 }
 export function ebitdaSourceDraftStale(draft: EbitdaSourceDraft, selection: EbitdaSourceSelection) {
