@@ -116,6 +116,7 @@ export function StepChanges({ body, facts, disabled, edit, result, basis, open, 
           <button type="button" className={styles.btn} disabled={disabled} onClick={() => edit(addAllocation)}>Add allocation</button>
         </div>
         <p className={cx(styles.lead, styles.num)}>{released.text}</p>
+        {released.effect ? <p className={cx(styles.fine, styles.num)} style={{ marginTop: 6 }}>{released.effect}</p> : null}
         <div className={styles.list} style={{ marginTop: 8 }}>
           {body.allocations.map(row => (
             <div className={cx(styles.listRow, styles.num)} key={row.id}>
@@ -133,7 +134,10 @@ export function StepChanges({ body, facts, disabled, edit, result, basis, open, 
             </div>
           ))}
         </div>
-        <p className={styles.fine}>Assignments do not change NOI. They show where released cash goes; unused funding stays as cash and reinvesting is optional.</p>
+        <p className={styles.fine}>
+          Assigning this cash changes no figure: it only shows where the money goes, and what is not assigned stays as cash.
+          A new cost paid from it counts in EBITDA and NOI only when it is also entered under New activities above.
+        </p>
       </Card>
     </div>
   );
@@ -178,8 +182,9 @@ function ChangeLine({ row, disabled, months, streams, open, onAdd, onPatch, onRe
               <>
                 <Seg label={`${row.label}: direction`} value={(item as PlanChange).direction} options={DIRECTIONS} disabled={disabled} onChange={direction => onPatch({ direction })} />
                 <NumberField label={`${row.label}: change amount`} className={styles.w110} value={(item as PlanChange).value} disabled={disabled} onChange={value => onPatch({ value })} />
-                <Seg label={`${row.label}: by amount or percent`} value={(item as PlanChange).mode} disabled={disabled} onChange={mode => onPatch({ mode })}
-                  options={[{ value: "amount" as const, label: row.amountLabel }, { value: "percent" as const, label: "%" }]} />
+                {/* Dollars a year and "amount" are the same thing on a cost that does not follow a driver: show whichever this row offers. */}
+                <Seg label={`${row.label}: by amount or percent`} disabled={disabled} onChange={mode => onPatch({ mode })} options={row.units}
+                  value={row.units.some(unit => unit.value === (item as PlanChange).mode) ? (item as PlanChange).mode : "amount"} />
               </>
             ) : null}
             {row.kind === "growth" ? (

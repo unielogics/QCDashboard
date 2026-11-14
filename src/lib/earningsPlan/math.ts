@@ -67,6 +67,16 @@ function apply(base: number, change: Command): number {
   return change.mode === "percent" ? base * (1 + (sign(change) * value) / 100) : base + sign(change) * value;
 }
 
+/**
+ * A rate moved so that the cost changes by the change's dollars a year at the source's volume.
+ *
+ * A cost that follows a stream or revenue is a rate times a driver. Saying "lower it by $20,000 a year" means its
+ * amount on the source's own volume; the rate that gives that amount then follows whatever the plan does to the driver.
+ */
+function rescale(rate: number, base: number, change: Command): number {
+  return base ? rate * (1 + (sign(change) * number(change.value)) / base) : rate;
+}
+
 /** Where a change lands: one change per place. */
 export function changeKey(change: { target?: PlanTarget | null }): string {
   const target = change.target;
@@ -218,11 +228,17 @@ export class Plan {
       const link = line.link;
       let value: number;
       if (behavior === "fixed") value = active ? apply(base, change!) : base;
-      else if (behavior === "unit") value = (active ? apply(rate, change!) : rate) * (model.volume[link] || 0);
-      else {
-        // A percent-of-revenue line moves by a percent of itself, or by points of revenue.
+      else if (behavior === "unit") {
+        // A per-unit line moves by dollars a unit, a percent of itself, or dollars a year at the source's volume.
+        const unit = !active ? rate : change!.mode === "annual" ? rescale(rate, base, change!) : apply(rate, change!);
+        value = unit * (model.volume[link] || 0);
+      } else {
+        // A percent-of-revenue line moves by points of revenue, a percent of itself, or dollars a year at the source's revenue.
         let share = rate;
-        if (active) share = change!.mode === "percent" ? apply(rate, change!) : rate + (sign(change!) * number(change!.value)) / 100;
+        if (active) {
+          share = change!.mode === "annual" ? rescale(rate, base, change!)
+            : change!.mode === "percent" ? apply(rate, change!) : rate + (sign(change!) * number(change!.value)) / 100;
+        }
         value = share * (link === ALL ? model.total : model.revenue[link] || 0);
       }
       amounts[line.id] = Math.max(0, value);

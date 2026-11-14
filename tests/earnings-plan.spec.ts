@@ -137,7 +137,7 @@ body.full #shell{height:auto}body.full #scroller{overflow:visible}
 @media(max-width:900px){#shell{grid-template-columns:minmax(0,1fr)}#rail{display:none}}</style>
 <script src="/app.js"></script></body></html>`;
 
-type Body = { changes: Array<{ id: string; value: number | null; note: string }>; notes: string };
+type Body = { changes: Array<{ id: string; value: number | null; note: string; mode?: string }>; notes: string };
 type LinkWorkspace = Record<string, unknown> & {
   body: Body & { attestation: boolean }; family_id: string | null; origin: string; completed?: boolean; current_version_id: string | null;
   draft: { revision: number; base_version_id: string | null; dirty: boolean }; versions: Array<Record<string, unknown>>;
@@ -554,6 +554,40 @@ test("a change is added, shows its own effect, and can be removed and restored",
   await cash.getByLabel("Operating reserve: monthly amount").fill("60000");
   await expect(cash).toContainText("Over-allocated by $14,200 / mo");
   await settled(page);
+  expect(errors).toEqual([]);
+});
+
+test("a cost that follows revenue is changed in dollars a year, and released cash says what it does to the figures", async ({ page }, info) => {
+  const errors = await open(page);
+  await goTo(page, 2);
+  // A fixed cost is sized in dollars a year or a percent.
+  await expect(row(page, "l:rent").getByRole("radiogroup", { name: "Rent: by amount or percent" }).getByRole("radio")).toHaveText(["$ / yr", "%"]);
+  // Card processing is 2.0% of all revenue: dollars a year come first, then points, then a percent.
+  const card = row(page, "l:o1");
+  const units = card.getByRole("radiogroup", { name: "Card processing: by amount or percent" });
+  await expect(units.getByRole("radio")).toHaveText(["$ / yr", "pts", "%"]);
+  await expect(units.getByRole("radio", { name: "pts" })).toBeChecked();
+  await units.getByRole("radio", { name: "$ / yr" }).click();
+  await card.getByLabel("Card processing: change amount").fill("4720");
+  // $4,720 a year less on the source's revenue is a 1.62% rate; the plan's revenue is higher, and the cost follows it.
+  await expect(card).toContainText("Plan $24,287 / yr");
+  await settled(page);
+  const saved = (await server(page, (stand) => stand.__saved()))!;
+  expect(saved.body.changes.find((change) => change.id === "l:o1")).toMatchObject({ mode: "annual", value: 4720 });
+
+  // Released cash: the refinance is in debt service, coverage and free cash flow, never in earnings.
+  const released = page.getByRole("region", { name: "Released cash and reinvestment" });
+  await expect(released).toContainText("annual debt service goes from $777,600 to $177,600, which adds $600,000 a year to free cash flow and moves DSCR with it");
+  await expect(released).toContainText("It does not change EBITDA or NOI");
+  await expect(released).toContainText("A new cost paid from it counts in EBITDA and NOI only when it is also entered under New activities above.");
+  await card.screenshot({ path: info.outputPath("change-in-dollars.png") });
+  await released.screenshot({ path: info.outputPath("released-cash.png") });
+  // Measured against today's payments there is no refinance to describe.
+  await goTo(page, 0);
+  await page.getByRole("region", { name: "Loan terms on file" }).getByLabel("Apply to plan").uncheck();
+  await goTo(page, 2);
+  await expect(released).not.toContainText("already counted in the figures");
+  expect(await overflow(page)).toBeLessThanOrEqual(0);
   expect(errors).toEqual([]);
 });
 

@@ -45,7 +45,14 @@ export type PlanItemFields = {
   baseline_treatment?: BaselineTreatment;
   baseline_reconciliation_note?: string;
 };
-export type PlanChange = PlanItemFields & { target: PlanTarget; direction: "up" | "down"; mode: "amount" | "percent"; value: Amount };
+/**
+ * How a change's `value` is read. "amount" is in the unit of what is changed: dollars a year for a fixed cost, a group
+ * or pricing, the metric's own unit for a revenue metric, dollars a unit for a per-unit cost, points of revenue for a
+ * percent-of-revenue cost. "annual" is dollars a year for a cost that follows a stream or revenue, measured at the
+ * source's volume. "percent" is a percent of the figure itself.
+ */
+export type ChangeMode = "amount" | "annual" | "percent";
+export type PlanChange = PlanItemFields & { target: PlanTarget; direction: "up" | "down"; mode: ChangeMode; value: Amount };
 export type PlanGrowth = PlanItemFields & { name: string; monthly_spend: Amount; stream_id: string; factor_id: string; added_per_month: Amount };
 export type PlanActivity = PlanItemFields & { name: string; monthly_amount: Amount };
 export type PlanItemRow = PlanChange | PlanGrowth | PlanActivity;

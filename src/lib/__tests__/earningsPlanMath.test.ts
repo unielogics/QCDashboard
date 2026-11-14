@@ -199,6 +199,32 @@ describe("earnings plan engine: behaviour around the edges", () => {
     near(bare.proposed.ebitda, result.proposed.ebitda);
   });
 
+  it("lets a cost that follows revenue be changed by dollars a year", () => {
+    // The same figures as the backend's test_earnings_plan_reference.py.
+    const body = { ...referenceBody(), growth: [], activities: [] };
+    const words = { start_month: 1, setup_cost: null, setup_cadence: "one_time" as const, evidence_note: "", owner: "", included: true, status: "proposed" as const, note: "Agreed with the owner." };
+    body.changes = [
+      { ...words, id: "pricing", target: { kind: "pricing" }, direction: "up", mode: "percent", value: 2 },
+      // Card processing is 2.0% of all revenue ($24,720 on the source): $4,720 a year less is $20,000 at the source's revenue.
+      { ...words, id: "l:o1", target: { kind: "line", line_id: "o1" }, direction: "down", mode: "annual", value: 4_720 },
+      // Detail supplies are $105 a unit on 3,600 units ($378,000): $18,000 a year less is $100 a unit.
+      { ...words, id: "l:c1", target: { kind: "line", line_id: "c1" }, direction: "down", mode: "annual", value: 18_000 },
+      // A fixed cost has no driver: dollars a year is simply the amount.
+      { ...words, id: "l:sal", target: { kind: "line", line_id: "sal" }, direction: "down", mode: "annual", value: 30_194 },
+    ] satisfies PlanChange[];
+    const lines = evaluate(body, referenceBaseline()).proposed.lines;
+    // The new rate follows the driver: revenue is 2% higher, so the percent-of-revenue cost is too; volume did not move.
+    near(lines.o1, 20_000 * 1.02);
+    near(lines.c1, 360_000);
+    near(lines.sal, 318_000);
+    // Without the pricing change the cost lands exactly on the dollars asked for.
+    const card = (patch: Partial<PlanChange>) => evaluate({ ...body, changes: [{ ...body.changes[1], ...patch }] }, referenceBaseline()).proposed.lines.o1;
+    near(card({}), 20_000);
+    // Raising works the same way, typed text reads like a number, and a cut larger than the cost stops at zero.
+    near(card({ direction: "up", value: "5280" }), 30_000);
+    expect(card({ value: 99_000 })).toBe(0);
+  });
+
   it("takes operating costs the loan itself adds off coverage with the terms, and off nothing else", () => {
     // The same figures as the backend's test_earnings_plan_consumers.py: (182,896.64 - 12,000) / 177,600.
     const costly = evaluate(referenceBody(), { ...referenceBaseline(), loan_operating_annual: 12_000 }, { goal: REFERENCE.plan.noi_goal, questions: QUESTIONS });

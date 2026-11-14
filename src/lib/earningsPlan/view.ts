@@ -9,7 +9,7 @@ import { ALL, COGS_GROUP, Plan, loanOperating, number, startMonth } from "./math
 import { remainderStream } from "./edit";
 import { count, factorAmountLabel, factorValue, periodLabel, plain, planMonthShort, points, ratioPercent, signedTimes, signedUsd, times, usd } from "./format";
 import type {
-  Amount, CategoryAnswer, EarningsPlanBody, LineBehavior, PlanActivity, PlanBaseline, PlanChange, PlanGrowth, PlanItemRow, PlanQuestion,
+  Amount, CategoryAnswer, ChangeMode, EarningsPlanBody, LineBehavior, PlanActivity, PlanBaseline, PlanChange, PlanGrowth, PlanItemRow, PlanQuestion,
   PlanResult, PlanSixMetrics, PlanStream, PlanTarget, PlanView, StreamTemplate,
 } from "./types";
 
@@ -414,8 +414,11 @@ export type ChangeRow = {
   /** How a new change here starts: prices and volumes go up, costs go down. */
   direction: "up" | "down";
   label: string; sub: string; current: string; plan: string; planTone: Tone | null;
-  /** What "by an amount" means here: "$ / yr", "$ / unit", "pts", "units". */
-  amountLabel: string;
+  /**
+   * The ways a change here can be sized, in the order they are offered. A cost that follows revenue or a stream takes
+   * dollars a year first (what it costs on the source's volume), then its own rate ("pts", "$ / unit"), then a percent.
+   */
+  units: Array<{ value: ChangeMode; label: string }>;
   effect: EffectView | null;
   /** Growth only: the volume metrics of the stream it feeds. */
   factorOptions?: Array<{ value: string; label: string }>;
@@ -431,6 +434,8 @@ const SECTION_COPY: Record<string, { sub: string; empty: string | null }> = {
 };
 
 const effectTone = (value: number): Tone => (Math.abs(value) < 1 ? "mut" : value > 0 ? "ok" : "bad");
+/** A change sized in the unit of what it changes, or as a percent of it. */
+const sizes = (amount: string): ChangeRow["units"] => [{ value: "amount", label: amount }, { value: "percent", label: "%" }];
 
 function effectView(result: PlanResult, item: PlanItemRow, planDebt: number | null): EffectView {
   const effect = result.effects[item.id];
@@ -470,7 +475,7 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
   const revenueRows: ChangeRow[] = body.streams.length ? [{
     rowKey: "pricing", kind: "command", target: { kind: "pricing" }, direction: "up", ...withChange("pricing"),
     label: "Overall pricing", sub: "All revenue streams · price only, volume unchanged",
-    current: `Current ${usd(plan.model.total)} / yr`, plan: Math.abs(priced) >= 0.5 ? `Price effect ${signedUsd(priced)} / yr` : "", planTone: null, amountLabel: "$ / yr",
+    current: `Current ${usd(plan.model.total)} / yr`, plan: Math.abs(priced) >= 0.5 ? `Price effect ${signedUsd(priced)} / yr` : "", planTone: null, units: sizes("$ / yr"),
   }] : [];
   for (const stream of body.streams) {
     stream.factors.forEach((factor, index) => {
@@ -479,7 +484,7 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
       revenueRows.push({
         rowKey: key, kind: "command", target: { kind: "factor", stream_id: stream.id, factor_id: factor.id }, direction: "up", ...withChange(key),
         label: factor.label || "Metric", sub: stream.name || "Revenue stream", current: `Current ${factorValue(factor, now)}`,
-        plan: Math.abs(then - now) > 1e-9 ? `Plan ${factorValue(factor, then)}` : "", planTone: null, amountLabel: factorAmountLabel(factor),
+        plan: Math.abs(then - now) > 1e-9 ? `Plan ${factorValue(factor, then)}` : "", planTone: null, units: sizes(factorAmountLabel(factor)),
       });
     });
   }
@@ -491,7 +496,7 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
     return {
       rowKey: `gr:${row.id}`, kind: "growth", itemId: row.id, item: row, target: null, direction: "up",
       label: row.name, sub: `Feeds ${stream?.name || "a revenue stream"}`, current: `Spend ${usd(spend)} / yr`,
-      plan: `Returns $${(spend ? (effect?.revenue ?? 0) / spend : 0).toFixed(2)} revenue per $1`, planTone: null, amountLabel: "",
+      plan: `Returns $${(spend ? (effect?.revenue ?? 0) / spend : 0).toFixed(2)} revenue per $1`, planTone: null, units: [],
       effect: effectView(result, row, planDebt ?? null),
       factorOptions: (stream?.factors ?? []).filter(factor => factor.volume).map(factor => ({ value: factor.id, label: factor.label || "Metric" })),
     };
@@ -512,7 +517,8 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
       rowKey: key, kind: "command", target: { kind: "line", line_id: line.id }, direction: "down", ...change,
       label: line.label || groupLabel(line.group), sub: `${groupLabel(line.group)} · ${follows}`, current: `Current ${usd(base)} / yr`,
       plan: moved ? `Plan ${usd(then)} / yr${change.itemId ? "" : " · follows its driver"}` : "", planTone: moved ? (then > base ? "bad" : "ok") : null,
-      amountLabel: effective === "fixed" ? "$ / yr" : effective === "unit" ? "$ / unit" : "pts",
+      // A cost that follows a driver is sized in dollars a year first: what an owner means by "cut this by $20,000".
+      units: effective === "fixed" ? sizes("$ / yr") : [{ value: "annual", label: "$ / yr" }, ...sizes(effective === "unit" ? "$ / unit" : "pts")],
     };
   };
   const groupRow = (group: string): ChangeRow => {
@@ -523,7 +529,7 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
     return {
       rowKey: `g:${group}`, kind: "command", target: { kind: "group", group }, direction: "down", ...withChange(`g:${group}`),
       label: `Whole group: ${groupLabel(group)}`, sub: `Applied proportionally to all ${members.length} items`, current: `Current ${usd(now)} / yr`,
-      plan: moved ? `Plan ${usd(then)} / yr` : "", planTone: moved ? (then > now ? "bad" : "ok") : null, amountLabel: "$ / yr",
+      plan: moved ? `Plan ${usd(then)} / yr` : "", planTone: moved ? (then > now ? "bad" : "ok") : null, units: sizes("$ / yr"),
     };
   };
   // A whole-group row appears where a group is split into items, or already carries a group change.
@@ -539,7 +545,7 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
 
   const activityRows: ChangeRow[] = body.activities.map((row: PlanActivity) => ({
     rowKey: `na:${row.id}`, kind: "activity", itemId: row.id, item: row, target: null, direction: "up",
-    label: row.name, sub: "New operating cost", current: "Current $0", plan: `Plan ${usd(number(row.monthly_amount) * 12)} / yr`, planTone: "bad", amountLabel: "",
+    label: row.name, sub: "New operating cost", current: "Current $0", plan: `Plan ${usd(number(row.monthly_amount) * 12)} / yr`, planTone: "bad", units: [],
     effect: effectView(result, row, planDebt ?? null),
   }));
 
@@ -556,14 +562,21 @@ export function changeSections(body: EarningsPlanBody, baseline: PlanBaseline, r
   }));
 }
 
-export type ReleasedView = { text: string; tag: Tag; available: boolean };
+/** `effect` says what the refinance itself does to the six figures, so nobody has to wonder whether released cash is counted. */
+export type ReleasedView = { text: string; tag: Tag; available: boolean; effect: string | null };
 
 export function releasedView(baseline: PlanBaseline, result: PlanResult, basis: DebtBasis): ReleasedView {
   const applied = basis === "with_terms";
   const cap = applied ? result.released.available_monthly : 0;
   const allocated = result.released.allocated_monthly;
+  const current = baseline.debt_service_current, terms = baseline.debt_service_with_terms;
+  // What the saved terms alone do to cash after debt: lower payments, less any operating cost the loan itself adds.
+  const costs = loanOperating(baseline);
+  const gained = applied && current != null && terms != null ? current - terms - costs : null;
   return {
     available: applied && cap > 0,
+    effect: gained == null || Math.abs(gained) < 0.5 ? null
+      : `The saved loan terms are already counted in the figures: annual debt service goes from ${usd(current)} to ${usd(terms)}, which ${gained > 0 ? "adds" : "takes"} ${usd(Math.abs(gained))} a year ${gained > 0 ? "to" : "from"} free cash flow${costs > 0 ? ` after the ${usd(costs)} a year of operating costs the loan itself adds,` : ""} and moves DSCR with it. It does not change EBITDA or NOI, because loan payments are not operating costs.`,
     text: baseline.debt_service_with_terms == null ? "No loan terms are saved on this file, so there is no released cash to assign."
       : !applied ? "Loan terms are not applied, so there is no released cash to assign."
       : `${baseline.terms_label || "The saved loan terms"} release ${usd(cap)} a month. Assign it to costs the plan relies on, a reserve, or leave it as cash.`,

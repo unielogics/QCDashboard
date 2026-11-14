@@ -121,14 +121,23 @@ describe("earnings plan screens: the design's file", () => {
       ["Operating expenses", "EBITDA +$71,793 / yr", 11], ["New activities", "EBITDA −$14,400 / yr", 1],
     ]);
     const rows = new Map(sections.flatMap(section => section.rows).map(row => [row.rowKey, row]));
-    expect(rows.get("pricing")).toMatchObject({ itemId: null, label: "Overall pricing", current: "Current $1,236,000 / yr", plan: "", amountLabel: "$ / yr", direction: "up" });
-    expect(rows.get("f:s1:f1")).toMatchObject({ label: "Price per unit", sub: "Detail packages", current: "Current $250.00", plan: "Plan $262.00", amountLabel: "$", itemId: "f:s1:1" });
+    expect(rows.get("pricing")).toMatchObject({ itemId: null, label: "Overall pricing", current: "Current $1,236,000 / yr", plan: "", direction: "up" });
+    const units = (key: string) => rows.get(key)!.units.map(unit => `${unit.value}:${unit.label}`);
+    // Prices, metrics, fixed costs and whole groups are sized in their own unit or a percent.
+    expect([units("pricing"), units("f:s1:f1"), units("f:s2:f0"), units("l:rent"), units("g:oth")]).toEqual([
+      ["amount:$ / yr", "percent:%"], ["amount:$", "percent:%"], ["amount:clients", "percent:%"], ["amount:$ / yr", "percent:%"], ["amount:$ / yr", "percent:%"],
+    ]);
+    // A cost that follows revenue or a stream takes dollars a year first, then its own rate, then a percent.
+    expect([units("l:o1"), units("l:c1")]).toEqual([["annual:$ / yr", "amount:pts", "percent:%"], ["annual:$ / yr", "amount:$ / unit", "percent:%"]]);
+    // A growth activity is sized by its own fields, not by this toggle.
+    expect(sections[1].rows[0].units).toEqual([]);
+    expect(rows.get("f:s1:f1")).toMatchObject({ label: "Price per unit", sub: "Detail packages", current: "Current $250.00", plan: "Plan $262.00", itemId: "f:s1:1" });
     expect(rows.get("f:s1:f1")!.effect).toMatchObject({ status: { label: "Reviewed", tone: "ok" }, needsNote: false, dimmed: false, positive: true });
     expect(rows.get("f:s1:f1")!.effect!.spark).toEqual([false, true, true, true, true, true, true, true, true, true, true, true]);
     // Units sold has no change of its own, yet the plan moves it: the growth activity adds 40 a month.
     expect(rows.get("f:s1:f0")).toMatchObject({ itemId: null, current: "Current 300 units / mo", plan: "Plan 340 units / mo" });
     expect(rows.get("f:s2:f0")!.effect).toMatchObject({ status: { label: "Explanation needed", tone: "warn" }, needsNote: true });
-    expect(rows.get("l:o1")).toMatchObject({ label: "Card processing", sub: "Other · 2.0% of all revenue", amountLabel: "pts", direction: "down" });
+    expect(rows.get("l:o1")).toMatchObject({ label: "Card processing", sub: "Other · 2.0% of all revenue", direction: "down" });
     expect(rows.get("l:o1")!.effect!.firstYear).toMatch(/^First year \+\$/);
     expect(rows.get("l:c2")).toMatchObject({ itemId: null, sub: "Cost of goods sold · 55.0% of Fleet maintenance contracts revenue", planTone: "bad" });
     expect(rows.get("l:c2")!.plan).toMatch(/· follows its driver$/);
@@ -143,8 +152,18 @@ describe("earnings plan screens: the design's file", () => {
   });
 
   it("accounts for released cash, the review list and the preparer handoff", () => {
-    expect(releasedView(baseline, result, basis)).toEqual({ available: true, text: "Client terms v3 release $50,000 a month. Assign it to costs the plan relies on, a reserve, or leave it as cash.", tag: { label: "$35,800 / mo stays as cash", tone: "mut" } });
-    expect(releasedView(baseline, result, "current_debt").tag.label).toBe("Over-allocated by $14,200 / mo");
+    expect(releasedView(baseline, result, basis)).toEqual({
+      available: true, text: "Client terms v3 release $50,000 a month. Assign it to costs the plan relies on, a reserve, or leave it as cash.", tag: { label: "$35,800 / mo stays as cash", tone: "mut" },
+      // What the refinance itself does to the figures is said in so many words: cash and coverage, never earnings.
+      effect: "The saved loan terms are already counted in the figures: annual debt service goes from $777,600 to $177,600, which adds $600,000 a year to free cash flow and moves DSCR with it. It does not change EBITDA or NOI, because loan payments are not operating costs.",
+    });
+    expect(releasedView(baseline, result, "current_debt")).toMatchObject({ tag: { label: "Over-allocated by $14,200 / mo" }, effect: null });
+    // Operating costs the loan itself adds are netted out of what it frees, and named so the two figures still add up.
+    expect(releasedView({ ...baseline, loan_operating_annual: 12_000 }, result, basis).effect)
+      .toContain("which adds $588,000 a year to free cash flow after the $12,000 a year of operating costs the loan itself adds, and moves DSCR with it.");
+    // Terms that cost more than today's payments take cash instead of freeing it.
+    expect(releasedView({ ...baseline, debt_service_with_terms: 800_000 }, result, basis).effect)
+      .toContain("goes from $777,600 to $800,000, which takes $22,400 a year from free cash flow and moves DSCR with it.");
     const review = reviewRows(body, result, []);
     expect(review).toHaveLength(11);
     expect(review.filter(row => row.status.label === "Approved").map(row => row.label)).toEqual(["Detail packages · Price per unit", "Rent", "Software"]);

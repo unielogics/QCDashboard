@@ -157,6 +157,20 @@ describe("earnings plan edits: source, model and costs", () => {
     expect(answerCategory(body, "ptx", "included").category_answers).toEqual({ ptx: "included" });
   });
 
+  it("keeps a change in dollars a year as dollars a year when its cost starts or stops following revenue", () => {
+    const body = referenceBody();
+    const mode = (next: typeof body, id: string) => next.changes.find(change => change.id === id)!.mode;
+    // Rent is a fixed cost with a change of $28,805 a year. Made a percent of revenue, that must not become 28,805 points.
+    expect([mode(body, "l:rent"), mode(setLineBehavior(body, "rent", "pct"), "l:rent"), mode(setLineBehavior(body, "rent", "unit"), "l:rent")]).toEqual(["amount", "annual", "annual"]);
+    // And back: on a fixed cost dollars a year is simply the amount.
+    const following = setLineBehavior(body, "rent", "pct");
+    expect(mode(setLineBehavior(following, "rent", "fixed"), "l:rent")).toBe("amount");
+    // A change sized as a percent, or in the rate's own unit, is left as it was written; other costs are not touched.
+    expect([mode(setLineBehavior(body, "ins", "pct"), "l:ins"), mode(setLineBehavior(body, "o1", "unit"), "l:o1"), mode(following, "l:sal")]).toEqual(["percent", "amount", "amount"]);
+    // Nothing to carry: the changes are the same list, so nothing is marked as edited for no reason.
+    expect(setLineBehavior(body, "mkt", "pct").changes).toBe(body.changes);
+  });
+
   it("puts revenue the named streams do not explain into one stream", () => {
     const short = referenceBody();
     short.streams[0].factors[0].value = "280";

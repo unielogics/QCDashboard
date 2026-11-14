@@ -294,13 +294,27 @@ export function balanceRevenue(body: EarningsPlanBody, baseline: PlanBaseline): 
 // Step 2: cost lines
 // ---------------------------------------------------------------------------
 
-/** Following a stream per unit needs a stream to follow. */
+/**
+ * Following a stream per unit needs a stream to follow.
+ *
+ * A change on the cost that is already sized in dollars a year keeps meaning dollars a year when the cost starts or
+ * stops following a driver, so $20,000 is never re-read as 20,000 points of revenue or $20,000 a unit.
+ */
 export function setLineBehavior(body: EarningsPlanBody, lineId: string, behavior: LineBehavior): EarningsPlanBody {
+  const before = body.lines.find(line => line.id === lineId)?.behavior ?? "fixed";
+  const carried = (change: PlanChange): PlanChange => {
+    if (change.target.kind !== "line" || change.target.line_id !== lineId) return change;
+    if (before === "fixed" && behavior !== "fixed" && change.mode === "amount") return { ...change, mode: "annual" };
+    if (before !== "fixed" && behavior === "fixed" && change.mode === "annual") return { ...change, mode: "amount" };
+    return change;
+  };
+  const changes = body.changes.map(carried);
   return {
     ...body,
     lines: body.lines.map(line => (line.id === lineId
       ? { ...line, behavior, link: behavior === "fixed" ? ALL : behavior === "unit" && line.link === ALL ? body.streams[0]?.id ?? ALL : line.link }
       : line)),
+    changes: changes.some((change, index) => change !== body.changes[index]) ? changes : body.changes,
   };
 }
 
