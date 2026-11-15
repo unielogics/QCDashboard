@@ -172,9 +172,19 @@ describe("earnings plan screens: the design's file", () => {
       effect: "The saved loan terms are already counted in the figures: annual debt service goes from $777,600 to $177,600, which adds $600,000 a year to free cash flow and moves DSCR with it. It does not change EBITDA or NOI, because loan payments are not operating costs.",
     });
     expect(releasedView(baseline, result, "current_debt")).toMatchObject({ tag: { label: "Over-allocated by $14,200 / mo" }, effect: null });
-    // Operating costs the loan itself adds are netted out of what it frees, and named so the two figures still add up.
-    expect(releasedView({ ...baseline, loan_operating_annual: 12_000 }, result, basis).effect)
-      .toContain("which adds $588,000 a year to free cash flow after the $12,000 a year of operating costs the loan itself adds, and moves DSCR with it.");
+    // Operating costs the loan itself adds are netted out of what it frees (the API nets them out of the release too), and
+    // named so the two figures still add up.
+    const costly = { ...baseline, loan_operating_annual: 12_000, released_monthly: 49_000 };
+    expect(releasedView(costly, evaluate(body, costly, { goal: REFERENCE.plan.noi_goal, questions: QUESTIONS }), basis).effect).toBe(
+      "The saved loan terms are already counted in the figures: annual debt service goes from $777,600 to $177,600, which adds $588,000 a year to free cash flow after the $12,000 a year of operating costs the loan itself adds, and moves DSCR with it. It does not change EBITDA or NOI, because loan payments are not operating costs.");
+    // Coverage counts the year as the loan's schedule sets it out, which is not always twelve regular payments. A file whose
+    // release is $54,706 a month while debt service falls $546,360 a year says so, instead of leaving two figures that look
+    // like a contradiction.
+    const stepped = { ...baseline, debt_service_current: 927_948, debt_service_with_terms: 381_588, released_monthly: 54_706 };
+    expect(releasedView(stepped, evaluate(body, stepped, { goal: REFERENCE.plan.noi_goal, questions: QUESTIONS }), basis)).toMatchObject({
+      text: "Client terms v3 release $54,706 a month. Assign it to costs the plan relies on, a reserve, or leave it as cash.",
+      effect: "The saved loan terms are already counted in the figures: annual debt service goes from $927,948 to $381,588, which adds $546,360 a year to free cash flow and moves DSCR with it. That is $45,530 a month, not the $54,706 above: the release is measured on the loan's regular payment, and coverage on the year as the loan's schedule sets it out. It does not change EBITDA or NOI, because loan payments are not operating costs.",
+    });
     // Terms that cost more than today's payments take cash instead of freeing it.
     expect(releasedView({ ...baseline, debt_service_with_terms: 800_000 }, result, basis).effect)
       .toContain("goes from $777,600 to $800,000, which takes $22,400 a year from free cash flow and moves DSCR with it.");

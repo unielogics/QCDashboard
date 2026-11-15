@@ -689,10 +689,18 @@ export function releasedView(baseline: PlanBaseline, result: PlanResult, basis: 
   // What the saved terms alone do to cash after debt: lower payments, less any operating cost the loan itself adds.
   const costs = loanOperating(baseline);
   const gained = applied && current != null && terms != null ? current - terms - costs : null;
+  // The release is measured on the loan's regular monthly payment. Coverage counts the year as the loan's schedule sets
+  // it out (its heaviest twelve months of payments), so the yearly figure is not always twelve releases. Where they
+  // differ the card says so, or the two figures read as a contradiction.
+  const monthly = gained == null ? null : gained / 12;
+  const differs = monthly != null && monthly > 0 && cap > 0 && Math.abs(monthly - cap) >= 1;
   return {
     available: applied && cap > 0,
-    effect: gained == null || Math.abs(gained) < 0.5 ? null
-      : `The saved loan terms are already counted in the figures: annual debt service goes from ${usd(current)} to ${usd(terms)}, which ${gained > 0 ? "adds" : "takes"} ${usd(Math.abs(gained))} a year ${gained > 0 ? "to" : "from"} free cash flow${costs > 0 ? ` after the ${usd(costs)} a year of operating costs the loan itself adds,` : ""} and moves DSCR with it. It does not change EBITDA or NOI, because loan payments are not operating costs.`,
+    effect: gained == null || Math.abs(gained) < 0.5 ? null : [
+      `The saved loan terms are already counted in the figures: annual debt service goes from ${usd(current)} to ${usd(terms)}, which ${gained > 0 ? "adds" : "takes"} ${usd(Math.abs(gained))} a year ${gained > 0 ? "to" : "from"} free cash flow${costs > 0 ? ` after the ${usd(costs)} a year of operating costs the loan itself adds,` : ""} and moves DSCR with it.`,
+      differs ? ` That is ${usd(monthly)} a month, not the ${usd(cap)} above: the release is measured on the loan's regular payment, and coverage on the year as the loan's schedule sets it out.` : "",
+      " It does not change EBITDA or NOI, because loan payments are not operating costs.",
+    ].join(""),
     text: baseline.debt_service_with_terms == null ? "No loan terms are saved on this file, so there is no released cash to assign."
       : !applied ? "Loan terms are not applied, so there is no released cash to assign."
       : `${baseline.terms_label || "The saved loan terms"} release ${usd(cap)} a month. Assign it to costs the plan relies on, a reserve, or leave it as cash.`,
