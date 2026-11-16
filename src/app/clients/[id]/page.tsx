@@ -43,7 +43,7 @@ import { ActiveAgentStrip } from "@/components/ActiveAgentStrip";
 import { useActiveProfile } from "@/store/role";
 import { QC_FMT } from "@/lib/fmt";
 import { parseIntStrict } from "@/lib/formCoerce";
-import { deriveExperienceMode } from "@/lib/experienceMode";
+import { deriveExperienceMode, experienceLockLabel, experienceReasonLabel } from "@/lib/experienceMode";
 import { canEditExperienceMode } from "@/lib/experienceModePermissions";
 import { DocUploadButton } from "@/app/documents/components/DocUploadButton";
 import { SmartIntakeModal } from "@/app/pipeline/components/SmartIntakeModal";
@@ -1099,22 +1099,6 @@ const MODE_LABEL: Record<"guided" | "self_directed", string> = {
   self_directed: "Self-Directed",
 };
 
-const LOCKED_BY_LABEL: Record<ClientExperienceModeLockedBy, string> = {
-  system: "system default",
-  agent: "Agent",
-  funding_team: "Funding Team",
-  super_admin: "Super Admin",
-};
-
-const REASON_LABEL: Record<ClientExperienceModeReason, string> = {
-  agent_referred: "Agent-referred",
-  self_signup: "Self sign-up",
-  funding_team_required: "Funding Team required",
-  underwriting_conditions: "Underwriting conditions",
-  user_preference: "Manual selection",
-  super_admin_override: "Super Admin override",
-};
-
 // AssignedAgentCard — surfaces the broker assignment alongside the
 // experience-mode controls. Operator-only (super_admin / loan_exec);
 // brokers can already see who owns their own clients implicitly.
@@ -1368,7 +1352,7 @@ function ExperienceModeCard({ client }: { client: Client }) {
               </Btn>
             ) : (
               <Btn onClick={() => setLock(lockTarget)} disabled={busy}>
-                Lock to {LOCKED_BY_LABEL[lockTarget]}
+                Lock to {experienceLockLabel(lockTarget)}
               </Btn>
             )
           )}
@@ -1382,9 +1366,9 @@ function ExperienceModeCard({ client }: { client: Client }) {
       )}
       {(reason || lockedBy) && (
         <div className="sub">
-          {reason ? REASON_LABEL[reason] : ""}
+          {experienceReasonLabel(reason)}
           {reason && lockedBy ? " · " : ""}
-          {lockedBy ? `Locked by ${LOCKED_BY_LABEL[lockedBy]}` : ""}
+          {lockedBy ? `Locked by ${experienceLockLabel(lockedBy)}` : ""}
         </div>
       )}
 
