@@ -1,19 +1,22 @@
 "use client";
 
-// Dashboard — operator + borrower overview. Containers (top→bottom):
-//   1. Greeting + header buttons
-//   2. KPI row (4 tiles, /reports/dashboard)
-//   3. Today's Overdue panel
-//   4. Today's Market Rates (4 product cards — for all roles, ported from mobile)
-//   5. ProTermsCard (CLIENT role only — soft-pull lock/unlock)
-//   6. Pipeline at a glance + Today (operator: 5-stage counters; borrower/broker: top-3 loan cards)
-//   7. Portfolio Health (3 stat tiles — for all roles, ported from mobile)
-//   8. Elara + Top brokers (renamed from Top exposures, source swapped)
+// Dashboard. Who sees what:
+//   Super admin / underwriter  the files desk (./components/OperatorFilesDesk):
+//                              every intake file under Files and its activity
+//   Agent                      the funding command center (./components/AgentHomeView)
+//   Other staff roles          the earlier operating view, kept as it was (OperatorDashboard)
+//   Borrower                   the overview below
 //
-// Restyled onto the class design system. The page is now a `.cg` twelve-column
-// grid whose children carry `.s12` / `.s7` / `.s5` / `.s6`, and every state
-// colour that used to be a theme-token lookup is a chip tone or a `.tone-*`
-// surface class. Data flow, role branching and every link target are unchanged.
+// Borrower overview containers (top→bottom):
+//   1. Greeting
+//   2. Needs attention (overdue and due-today items)
+//   3. Today's Market Rates (4 product cards)
+//   4. ProTermsCard (soft-pull lock/unlock)
+//   5. Your loans + Today
+//   6. Portfolio Health (3 stat tiles)
+//
+// The page is a `.cg` twelve-column grid whose children carry `.s12` / `.s7` /
+// `.s5`; state colour is a chip tone or a `.tone-*` surface class.
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -22,8 +25,6 @@ import { FredChart } from "@/components/FredChart";
 import { Icon } from "@/components/design-system/Icon";
 import {
   useAITasks,
-  useBrokerLeaderboard,
-  useBrokers,
   useCalendar,
   useCurrentUser,
   useDashboardReport,
@@ -34,7 +35,7 @@ import {
   useUnifiedOperatorFiles,
 } from "@/hooks/useApi";
 import { QC_FMT } from "@/lib/fmt";
-import type { AITask, Broker, CalendarEvent, DashboardReport, FredSeriesSummary, Loan } from "@/lib/types";
+import type { AITask, CalendarEvent, DashboardReport, FredSeriesSummary, Loan } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { RateDetailModal } from "@/components/RateDetailModal";
@@ -66,7 +67,9 @@ import { FUNDING_LADDER, VERTICAL_OPTIONS, formatUnifiedAmount, operatorFileHref
 import { usePinnedRows } from "@/lib/tablePinning";
 import { MARKETING_URL } from "@/lib/appUrl";
 import { FundingAmounts } from "@/components/file/FundingAmounts";
-import { capitalReadinessBandLabel, capitalReadinessBandTone, listReadinessSummary } from "@/lib/capitalReadiness";
+import { CapitalReadinessOverview } from "@/components/operator/CapitalReadinessOverview";
+import { OperatorFilesDesk } from "./components/OperatorFilesDesk";
+import { useUI } from "@/store/ui";
 
 const STAGE_KEYS = [
   "prequalified",
@@ -87,15 +90,6 @@ const STAGE_TONES: ChipTone[] = ["mut", "warn", "pet", "acc", "warn", "ok"];
 function StageChip({ stage }: { stage: string }) {
   const i = (STAGE_KEYS as readonly string[]).indexOf(stage);
   return <CellChip tone={STAGE_TONES[i] ?? "mut"}>{STAGE_LABELS[i] ?? "—"}</CellChip>;
-}
-
-/**
- * A KPI delta as a chip. Replaces the old KPI primitive's trend icon + tinted
- * pill: the sign still carries the direction, and the tone carries good/bad.
- */
-function deltaChip(v: number | null | undefined, suffix = "%"): { delta?: string; tone: ChipTone } {
-  if (v == null) return { tone: "mut" };
-  return { delta: `${v >= 0 ? "+" : ""}${v}${suffix}`, tone: v >= 0 ? "ok" : "bad" };
 }
 
 export default function DashboardPage() {
@@ -171,12 +165,28 @@ export default function DashboardPage() {
     return null;
   }
 
+  // Wait for the role: the two dashboards below read different things, and a
+  // guess would fire the wrong one's requests.
+  if (!user) return null;
+
+  // The desk works the intake files under Files; its home is those files.
+  if (user.role === Role.SUPER_ADMIN || user.role === Role.LOAN_EXEC) {
+    return (
+      <OperatorFilesDesk
+        firstName={firstName}
+        greeting={greeting}
+        locale={user.ui_locale === "es" ? "es" : "en"}
+        events={events}
+      />
+    );
+  }
+
   if (!isClient) {
     return (
       <OperatorDashboard
         firstName={firstName}
         greeting={greeting}
-        locale={user?.ui_locale === "es" ? "es" : "en"}
+        locale={user.ui_locale === "es" ? "es" : "en"}
         tasks={tasks}
         events={events}
         report={report}
@@ -196,52 +206,8 @@ export default function DashboardPage() {
         <PageHeader
           title={firstName ? `${greeting}, ${firstName}.` : greeting + "."}
           lede={`${highPriority.length} high-priority items, ${todayEvents.length} events today, ${inFlight.length} loans in flight.`}
-          actions={
-            !isClient ? (
-              <>
-                <Link href="/pipeline" className="btn">
-                  <Icon name="layers" size={14} /> Open Pipeline
-                </Link>
-                <Link href="/ai-inbox" className="btn pri">
-                  <Icon name="bolt" size={14} /> Review AI Tasks
-                </Link>
-              </>
-            ) : undefined
-          }
         />
       </div>
-
-      {/* KPI row — operator-only. Borrowers don't need (and shouldn't see)
-          firm-wide funded/pipeline/pull-through metrics. */}
-      {!isClient && (
-        <KpiRow className="s12">
-          <Kpi
-            label="Funded YTD"
-            value={report ? QC_FMT.short(report.funded_ytd) : "—"}
-            sub="vs. prior year"
-            {...deltaChip(report?.funded_ytd_delta)}
-          />
-          <Kpi
-            label="Pipeline"
-            value={report ? QC_FMT.short(report.pipeline_value) : "—"}
-            sub={report ? `${report.pipeline_count} loans` : undefined}
-          />
-          <Kpi
-            label="Avg close"
-            value={report?.avg_close_days ? `${report.avg_close_days}d` : "—"}
-            sub="from app to wire"
-            {...deltaChip(report?.avg_close_delta, "d")}
-          />
-          <Kpi
-            label="Pull-through"
-            value={report?.pull_through != null ? `${(report.pull_through * 100).toFixed(0)}%` : "—"}
-            sub="last 90d"
-            {...deltaChip(
-              report?.pull_through_delta != null ? Math.round(report.pull_through_delta * 100) : null,
-            )}
-          />
-        </KpiRow>
-      )}
 
       <TodaysOverduePanel tasks={tasks} events={events} loans={loans} isClient={isClient} />
 
@@ -368,45 +334,6 @@ export default function DashboardPage() {
           KPI/exposure surfaces (Reports, Top Brokers, Pipeline). */}
       {isClient && <PortfolioHealth loans={loans} />}
 
-      {/* AI tasks + Top brokers — operator-only. Borrowers don't have an
-          AI-task queue and shouldn't see the broker leaderboard. */}
-      {!isClient && (
-        <>
-          <Panel
-            className="s6"
-            title="Elara · pending approval"
-            actions={
-              <Link href="/ai-inbox" className="linky">
-                Queue <Icon name="arrowR" size={12} />
-              </Link>
-            }
-          >
-            {tasks
-              .filter((task) => task.status === "pending")
-              .slice(0, 3)
-              .map((task) => (
-                <Link key={task.id} href="/ai-inbox" className="pick">
-                  <Icon name="bolt" size={14} />
-                  <div className="grow">
-                    <div className="row">
-                      <CellChip tone={task.priority === "high" ? "bad" : "mut"}>{task.priority}</CellChip>
-                      <span className="tag">{task.source}</span>
-                    </div>
-                    <div>
-                      <b>{task.title}</b>
-                    </div>
-                    <div className="sub">{task.summary}</div>
-                  </div>
-                </Link>
-              ))}
-            {tasks.filter((task) => task.status === "pending").length === 0 && (
-              <div className="sub">Nothing pending — Elara is caught up.</div>
-            )}
-          </Panel>
-
-          {isRegionalManager ? <RegionalAgentsPanel /> : <TopBrokersPanel />}
-        </>
-      )}
     </CG>
   );
 }
@@ -427,6 +354,7 @@ function OperatorDashboard({
   report: DashboardReport | undefined;
 }) {
   const { data: unified, isLoading } = useUnifiedOperatorFiles({ limit: 500 });
+  const openElaraTasks = useUI((state) => state.openElaraTasks);
   const rows = unified?.items ?? [];
   const rollup = unified?.rollup;
   const now = new Date();
@@ -453,7 +381,7 @@ function OperatorDashboard({
             { label: "Open pipeline", href: "/pipeline" },
             { label: "Open Marketing", href: MARKETING_URL },
             { label: "Create a new file", href: "/pipeline?new=1" },
-            { label: "Open Elara approval queue", href: "/ai-inbox" },
+            { label: "Open Elara tasks", onSelect: openElaraTasks },
           ]} />
         </div>
         <div className="pagebar" style={{ paddingTop: 2 }}><span className="sub">AI Intake and Field Desk activity first, with pipeline value, closings, and earnings in one operating view.</span></div>
@@ -465,7 +393,7 @@ function OperatorDashboard({
         loading={isLoading}
       />
 
-      <CapitalReadinessDashboard rows={rows} locale={locale} />
+      <CapitalReadinessOverview rows={rows} locale={locale} />
 
       <section className="dashboard-primary-workspaces mt" aria-label="Primary workspaces">
         <Link href="/admin/ai-underwriter-leads" className="dashboard-workspace-card is-ai-intake">
@@ -509,9 +437,9 @@ function OperatorDashboard({
         </div>
 
         <div className="s4">
-          <Panel title="Elara · pending approval" actions={<Link className="linky" href="/ai-inbox">Queue</Link>}>
+          <Panel title="Elara · pending approval" actions={<button type="button" className="linky" onClick={openElaraTasks}>Queue</button>}>
             <div className="ladder">
-              {pendingTasks.slice(0, 3).map((task) => <Link className="queue-card" href="/ai-inbox" key={task.id}><span className="row"><CellChip tone={task.priority === "high" ? "bad" : task.priority === "medium" ? "warn" : "mut"}>{task.priority}</CellChip><CellChip tone="mut">{task.source}</CellChip></span><b>{task.title}</b><span className="sub">{task.summary}</span></Link>)}
+              {pendingTasks.slice(0, 3).map((task) => <button type="button" className="queue-card" style={{ textAlign: "left", font: "inherit", cursor: "pointer" }} onClick={openElaraTasks} key={task.id}><span className="row"><CellChip tone={task.priority === "high" ? "bad" : task.priority === "medium" ? "warn" : "mut"}>{task.priority}</CellChip><CellChip tone="mut">{task.source}</CellChip></span><b>{task.title}</b><span className="sub">{task.summary}</span></button>)}
               {!pendingTasks.length ? <div className="empty">No approvals are waiting.</div> : null}
             </div>
           </Panel>
@@ -547,43 +475,6 @@ function OperatorDashboard({
         </div>
       </Panel>
     </div>
-  );
-}
-
-function CapitalReadinessDashboard({ rows, locale }: { rows: UnifiedFileRow[]; locale: "en" | "es" }) {
-  const byProfile = new Map<string, { row: UnifiedFileRow; summary: NonNullable<ReturnType<typeof listReadinessSummary>> }>();
-  rows.forEach((row) => {
-    const summary = listReadinessSummary(row);
-    if (!summary) return;
-    const key = row.profile_id || row.id;
-    if (!byProfile.has(key)) byProfile.set(key, { row, summary });
-  });
-  const entries = [...byProfile.values()];
-  if (!entries.length) return null;
-  const summaries = entries.map((entry) => entry.summary!);
-  const counts = new Map<string, number>();
-  const values = new Map<string, number>();
-  summaries.forEach((item) => counts.set(item.band, (counts.get(item.band) ?? 0) + 1));
-  entries.forEach(({ row, summary }) => values.set(summary!.band, (values.get(summary!.band) ?? 0) + Number(row.requested_amount ?? row.amount ?? 0)));
-  const scores = summaries.map((item) => item.score).filter((score): score is number => score != null).sort((left, right) => left - right);
-  const median = scores.length ? scores.length % 2
-    ? scores[Math.floor(scores.length / 2)]
-    : (scores[scores.length / 2 - 1] + scores[scores.length / 2]) / 2
-    : null;
-  const bands = ["ready_soon", "three_to_six_months", "six_to_twelve_months", "one_plus_year"] as const;
-  const es = locale === "es";
-  const criticalBlockers = summaries.reduce((sum, item) => sum + Number(item.critical_blocker_count ?? 0), 0);
-  const overdueMilestones = summaries.reduce((sum, item) => sum + Number(item.overdue_milestone_count ?? 0), 0);
-  return (
-    <section className="capital-readiness-dashboard" aria-label={es ? "Resumen de preparación de capital" : "Capital Readiness overview"}>
-      <div className="dashboard-secondary-heading"><span className="lbl">{es ? "Preparación de capital" : "Capital Readiness"}</span><span className="sub">{es ? "Preparación financiera orientativa · separada de la documentación y las decisiones de crédito." : "Advisory financial preparation · separate from evidence completion and underwriting decisions."}</span></div>
-      <div className="capital-readiness-dashboard-grid">
-        {bands.map((band) => <Link href="/admin/ai-underwriter-leads" key={band}><CellChip tone={capitalReadinessBandTone(band)}>{capitalReadinessBandLabel(band, locale)}</CellChip><strong>{counts.get(band) ?? 0}</strong><span className="sub">{formatUnifiedAmount(values.get(band) ?? 0)} {es ? "solicitado" : "requested"}</span></Link>)}
-        <div><span className="lbl">{es ? "Puntaje mediano" : "Median score"}</span><strong>{median == null ? "—" : Math.round(median)}</strong><span className="sub">{scores.length} {es ? "con puntaje" : "scored"} · {counts.get("insufficient_evidence") ?? 0} {es ? "requieren evidencia" : "need evidence"}</span></div>
-        <div><span className="lbl">{es ? "Bloqueos críticos" : "Critical blockers"}</span><strong>{criticalBlockers}</strong><span className="sub">{es ? `En ${entries.length} expedientes cargados` : `Across ${entries.length} loaded files`}</span></div>
-        <div><span className="lbl">{es ? "Hitos vencidos" : "Overdue milestones"}</span><strong>{overdueMilestones}</strong><span className="sub">{es ? "Solo expedientes cargados" : "Loaded files only"}</span></div>
-      </div>
-    </section>
   );
 }
 
@@ -643,24 +534,6 @@ const CLOSING_COLS: Col[] = [
 // lookup made (closing = profit, doc = warn, ai = petrol, else = brand).
 function eventTone(kind: string): ChipTone {
   return kind === "closing" ? "ok" : kind === "doc" ? "warn" : kind === "ai" ? "pet" : "acc";
-}
-
-function RegionalAgentsPanel() {
-  return (
-    <Panel
-      className="s6"
-      title="Regional portfolio"
-      actions={
-        <Link href="/regional-agents" className="linky">
-          Agents <Icon name="arrowR" size={12} />
-        </Link>
-      }
-    >
-      <div className="sub">
-        View your assigned agents, invite new agents, and monitor portfolio metrics.
-      </div>
-    </Panel>
-  );
 }
 
 function isSameDay(a: Date, b: Date): boolean {
@@ -1066,57 +939,6 @@ function Stat({ label, value, sub }: { label: string; value: string; sub?: strin
   return <Kpi label={label} value={value} sub={sub} />;
 }
 
-// ── Top brokers (replaces Top exposures) ─────────────────────────────────
-function TopBrokersPanel() {
-  // Try the leaderboard first (super-admin only). Fall back to /brokers (broader
-  // access) so the panel still renders for AE/UW roles. The fallback hook is
-  // always wired but we only consume it when the leaderboard 403s.
-  const leaderboard = useBrokerLeaderboard();
-  const fallbackBrokers = useBrokers();
-  const data: Broker[] = leaderboard.data ?? fallbackBrokers.data ?? [];
-  const sorted = [...data]
-    .sort((a, b) => Number(b.funded_total ?? 0) - Number(a.funded_total ?? 0))
-    .slice(0, 5);
-
-  return (
-    <Panel
-      className="s6"
-      title="Top brokers"
-      actions={
-        <Link href="/rewards" className="linky">
-          Leaderboard <Icon name="arrowR" size={12} />
-        </Link>
-      }
-    >
-      {sorted.map((b) => {
-        const initials = (b.display_name ?? "?")
-          .split(" ")
-          .map((n) => n[0])
-          .slice(0, 2)
-          .join("");
-        return (
-          <div key={b.id} className="itemrow">
-            <span className="avatar">{initials}</span>
-            <div className="grow">
-              <b>{b.display_name}</b>
-              <div className="sub">
-                {b.tier ?? "—"}
-                {b.funded_count != null ? ` · ${b.funded_count} loans` : ""}
-                {b.lifetime_points != null ? ` · ${b.lifetime_points.toLocaleString()} pts` : ""}
-              </div>
-            </div>
-            <div className="align-r">
-              <b className="num">{QC_FMT.short(Number(b.funded_total ?? 0))}</b>
-              <div className="sub">funded</div>
-            </div>
-          </div>
-        );
-      })}
-      {sorted.length === 0 && <div className="sub">No brokers to show yet.</div>}
-    </Panel>
-  );
-}
-
 // ── Today's Overdue panel ────────────────────────────────────────────────
 
 // Urgency → chip tone. Same three-way split the inline `urgencyStyle` helper
@@ -1214,7 +1036,7 @@ function TodaysOverduePanel({
       sub: isClient
         ? taskFile ?? "Your file"
         : `${task.source} · conf ${(task.confidence * 100).toFixed(0)}%${task.loan_id && loansByLoanId[task.loan_id] ? ` · ${loansByLoanId[task.loan_id].deal_id}` : ""}`,
-      href: isClient ? clientHref(task.loan_id, tabForTask(task.source)) : "/ai-inbox",
+      href: isClient ? clientHref(task.loan_id, tabForTask(task.source)) : task.loan_id ? `/loans/${task.loan_id}` : "/pipeline",
     });
   }
 
@@ -1252,8 +1074,8 @@ function TodaysOverduePanel({
             My Files <Icon name="chevR" size={11} />
           </Link>
         ) : (
-          <Link href="/ai-inbox" className="btn sm">
-            Elara Inbox <Icon name="chevR" size={11} />
+          <Link href="/pipeline" className="btn sm">
+            Pipeline <Icon name="chevR" size={11} />
           </Link>
         )}
       </div>

@@ -1,0 +1,132 @@
+/* The desk's home. Sized to its container, not the viewport: this page sits in
+   a content area narrower than the screen, and Franco's renders about 1290px
+   wide, so every track is auto-fit and every label may wrap. */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+}
+
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+}
+
+a.tile:hover {
+  border-color: var(--accent-400);
+}
+
+.tile strong {
+  font-family: var(--fh);
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.tile small {
+  color: var(--muted);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.tileWarn {
+  border-color: var(--warn);
+}
+
+.stages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 8px;
+}
+
+.stage {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--sunken2);
+}
+
+.stage b {
+  font-family: var(--fh);
+  font-size: 20px;
+}
+
+.stage small {
+  color: var(--muted);
+  font-size: 11.5px;
+  overflow-wrap: anywhere;
+}
+
+.columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(300px, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.column {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+}
+
+.event {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  min-width: 0;
+}
+
+.event:last-child {
+  border-bottom: 0;
+}
+
+.eventIcon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: var(--sunken2);
+  color: var(--petrol);
+}
+
+.eventBody {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.eventBody b,
+.eventBody span {
+  overflow-wrap: anywhere;
+}
+
+.eventTime {
+  flex-shrink: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+@media (max-width: 1040px) {
+  .columns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
