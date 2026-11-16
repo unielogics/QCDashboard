@@ -18,6 +18,7 @@ import { Role } from "@/lib/enums.generated";
 export default function GlobalSearch() {
   const open = useUI((s) => s.searchOpen);
   const setOpen = useUI((s) => s.setSearchOpen);
+  const openElaraTasks = useUI((s) => s.openElaraTasks);
   const router = useRouter();
   const [q, setQ] = useState("");
   const dialogRef = useRef<HTMLDivElement | null>(null);
@@ -168,7 +169,7 @@ export default function GlobalSearch() {
                     else if (item.kind === "doc" && item.loan_id) router.push(`/loans/${item.loan_id}`);
                     else if (item.kind === "message") router.push("/messages");
                     else if (item.kind === "event") router.push("/calendar");
-                    else if (item.kind === "aiTask") router.push("/ai-inbox");
+                    else if (item.kind === "aiTask") openElaraTasks();
                   }}
                   className="pick cmdk-hit"
                 >

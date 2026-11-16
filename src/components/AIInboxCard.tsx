@@ -7,10 +7,11 @@
 //   2. Why does it matter?
 //   3. What will happen if I approve?
 //
-// Used inside /ai-inbox for cadence drafts (Phase 5), document
-// contradictions (Phase 6), and any other AITask with a
-// `cadence_*` / `confirm_*` action shape. Falls back gracefully on
-// older tasks that lack the new payload fields.
+// Used in the Elara rail's review step (components/shell/AIRail) for cadence
+// drafts (Phase 5), document contradictions (Phase 6), and any other AITask
+// with a `cadence_*` / `confirm_*` action shape. Falls back gracefully on
+// older tasks that lack the new payload fields. Rendered without its own
+// buttons there: the rail's review step carries the decision.
 
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import { Card } from "@/components/design-system/primitives";

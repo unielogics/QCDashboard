@@ -17,6 +17,7 @@ import { NewThreadDialog } from "./components/NewThreadDialog";
 import { ThreadChatView } from "@/components/messages/ThreadChatView";
 import type { AIChatThread, Loan } from "@/lib/types";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { useUI } from "@/store/ui";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { UnifiedMessagesInbox } from "@/components/communications/UnifiedMessagesInbox";
 import { ClientOfferInbox } from "@/components/client/ClientOfferInbox";
@@ -278,6 +279,7 @@ function ThreadRow({
 
 
 function OperatorMessagesView() {
+  const openElaraTasks = useUI((state) => state.openElaraTasks);
   const profile = useActiveProfile();
   const { data: loans = [] } = useLoans();
   const [activeLoan, setActiveLoan] = useState<string | null>(null);
@@ -346,7 +348,7 @@ function OperatorMessagesView() {
           <span className="sp" />
           <Btn variant="pri" size="sm" onClick={() => setNewThreadOpen(true)}><Icon name="plus" size={13} /> New thread</Btn>
           <PageActionMenu label="Message actions" items={[
-            { label: "Open Elara queue", href: "/ai-inbox" },
+            { label: "Open Elara tasks", onSelect: openElaraTasks },
             { label: "Open pipeline", href: "/pipeline" },
           ]} />
         </div>

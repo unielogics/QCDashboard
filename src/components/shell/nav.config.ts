@@ -17,7 +17,6 @@
 import { Role } from "@/lib/enums.generated";
 
 export type BadgeKey =
-  | "elaraTasks"
   | "myPipeline"
   | "dealerUnread"
   | "adminDealerUnread"
@@ -98,7 +97,6 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         items: [
           { label: "Dashboard", href: "/", icon: "home", match: "exact" },
           { label: "Pipeline", href: "/pipeline", icon: "layers" },
-          { label: "Elara inbox", href: "/ai-inbox", icon: "bolt", badge: "elaraTasks" },
           { label: "Clients", href: "/clients", icon: "clients" },
           { label: "Payments", href: "/payments", icon: "dollar" },
         ],
@@ -165,7 +163,6 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         items: [
           { label: "Dashboard", href: "/", icon: "home", match: "exact" },
           { label: "Pipeline", href: "/pipeline", icon: "layers" },
-          { label: "Elara inbox", href: "/ai-inbox", icon: "bolt", badge: "elaraTasks" },
           { label: "Clients", href: "/clients", icon: "clients" },
           { label: "Payments", href: "/payments", icon: "dollar" },
         ],
@@ -231,7 +228,6 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         id: "automation",
         label: "Automation",
         items: [
-          { label: "Elara inbox", href: "/ai-inbox", icon: "bolt", desc: "Suggestions awaiting approval" },
           { label: "AI outreach", href: "/ai-agents", icon: "spark", desc: "Cadences and sequences" },
         ],
       },

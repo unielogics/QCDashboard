@@ -3,6 +3,7 @@
 import { create } from "zustand";
 
 export type UITheme = "light" | "dark";
+export type ElaraRailTab = "chat" | "tasks" | "context";
 
 interface UIStore {
   theme: UITheme;
@@ -14,6 +15,12 @@ interface UIStore {
   /** The Elara suggestions rail. */
   aiOpen: boolean;
   setAiOpen: (v: boolean) => void;
+  /** Which of the rail's tabs is showing. Held here so a link elsewhere can
+   *  open the rail straight onto its task queue. */
+  aiTab: ElaraRailTab;
+  setAiTab: (v: ElaraRailTab) => void;
+  /** Open the rail on its queued tasks: where the Elara inbox's loan tasks live now. */
+  openElaraTasks: () => void;
   /**
    * The Elara chat slide-in — a DIFFERENT surface from the rail.
    *
@@ -84,6 +91,9 @@ export const useUI = create<UIStore>((set) => ({
     }),
   aiOpen: false, // closed by default per chat2.md final state
   setAiOpen: (v) => set({ aiOpen: v }),
+  aiTab: "chat",
+  setAiTab: (v) => set({ aiTab: v }),
+  openElaraTasks: () => set({ aiOpen: true, aiTab: "tasks" }),
   chatOpen: false,
   setChatOpen: (v) => set({ chatOpen: v }),
   searchOpen: false,

@@ -454,12 +454,21 @@ export function useUpdateAttentionItem() {
 }
 
 /** AI suggestions across every live room, oldest first — the Elara inbox. */
-export function useProposedActionItems(enabled = true, status: "proposed" | "approved" | "rejected" | "completed" = "proposed") {
+export function useProposedActionItems(
+  enabled = true,
+  status: "proposed" | "approved" | "rejected" | "completed" = "proposed",
+  /** Only this room's suggestions: how a file reads its own, past the cross-room cap. */
+  bucketId?: string | null,
+) {
   const devUser = useDevUser();
   const apiCall = useAuthedApi();
+  // The most the API returns in one read; the queue is oldest first, so a
+  // smaller page would hide the newest suggestions.
+  const params = new URLSearchParams({ status, limit: "500" });
+  if (bucketId) params.set("bucket_id", bucketId);
   return useQuery({
-    queryKey: ["ai-action-items", status, devUser],
-    queryFn: () => apiCall<BucketAIActionItemQueueItem[]>(`/buckets/admin/ai-action-items?status=${status}`),
+    queryKey: ["ai-action-items", status, bucketId ?? "all", devUser],
+    queryFn: () => apiCall<BucketAIActionItemQueueItem[]>(`/buckets/admin/ai-action-items?${params}`),
     enabled,
     refetchInterval: 60_000,
     refetchOnWindowFocus: true,
@@ -7538,6 +7547,147 @@ export type SmsMessageRow = {
   delivered_at: string | null;
   created_at: string;
 };
+
+// ── A client's files and messages, and the desk's view across files ────────
+// Backend: app/services/file_clients.py. Every file has a client; these read
+// the link back from the client's side, and across every file for the desk.
+
+/** One of a client's files, in the Files directory's own vocabulary. */
+export type ClientFileRow = {
+  id: string;
+  profile_id: string | null;
+  bucket_id: string;
+  variant: string;
+  full_name: string;
+  business_name: string | null;
+  loan_purpose: string | null;
+  status: string;
+  outcome_status: string;
+  underwriting_status: string | null;
+  workspace_state: "active" | "closed" | "archived";
+  workspace_state_reason: string | null;
+  requested_loan_amount: number | null;
+  file_count: number;
+  missing_required_count: number;
+  created_at: string;
+  updated_at: string;
+  last_message_at: string | null;
+  archived_at: string | null;
+};
+
+/** Every file opened for a client, archived and closed ones included. Desk roles only. */
+export function useClientFiles(clientId: string | null | undefined, options: { enabled?: boolean } = {}) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientFiles", clientId, devUser],
+    queryFn: () => apiCall<{ items: ClientFileRow[] }>(`/clients/${clientId}/files`).then((r) => r.items),
+    enabled: !!clientId && (options.enabled ?? true),
+    staleTime: 30_000,
+    retry: aiQueryRetry,
+  });
+}
+
+/** One text or email with a client, or about one of their files. */
+export type ClientCommunicationRow = {
+  id: string;
+  channel: "sms" | "email";
+  direction: "outbound" | "inbound";
+  occurred_at: string;
+  counterpart: string | null;
+  subject: string | null;
+  snippet: string | null;
+  status: string;
+  detail: string;
+  context: string;
+  actor_name: string | null;
+  delivered_at: string | null;
+  opened_at: string | null;
+  /** True when this viewer may read the full message in the communications log. */
+  can_open: boolean;
+  intake_id: string | null;
+  file_title: string | null;
+};
+
+export type ClientCommunications = {
+  items: ClientCommunicationRow[];
+  counts: { sms: number; email: number };
+  file_count: number;
+};
+
+/** Texts and emails with a client and about their files, newest first. Desk roles only. */
+export function useClientCommunications(clientId: string | null | undefined, options: { enabled?: boolean } = {}) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["clientCommunications", clientId, devUser],
+    queryFn: () => apiCall<ClientCommunications>(`/clients/${clientId}/communications?limit=200`),
+    enabled: !!clientId && (options.enabled ?? true),
+    ...LIVE_MESSAGE_QUERY_OPTIONS,
+    retry: aiQueryRetry,
+  });
+}
+
+/** The desk's headline numbers across every live intake file. */
+export type IntakeDeskSummary = {
+  generated_at: string;
+  active: number;
+  new_7d: number;
+  no_documents: number;
+  without_client: number;
+  stages: { key: string; count: number }[];
+};
+
+export function useIntakeDeskSummary(enabled = true) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  return useQuery({
+    queryKey: ["intake-desk-summary", devUser],
+    queryFn: () => apiCall<IntakeDeskSummary>("/operator-files/intake-summary"),
+    enabled,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchOnWindowFocus: true,
+    retry: aiQueryRetry,
+  });
+}
+
+export type FileActivityGroup = "documents" | "messages" | "status";
+
+/** One line of a file's timeline, with the file and the client it belongs to. */
+export type FileActivityItem = {
+  id: string;
+  occurred_at: string;
+  kind: string;
+  group: FileActivityGroup | "other";
+  title: string;
+  body: string | null;
+  actor_label: string | null;
+  visibility: "client" | "team" | "desk";
+  profile_id: string;
+  intake_id: string;
+  file_title: string;
+  client_id: string | null;
+  client_name: string | null;
+};
+
+/** What happened across every intake file, newest first. Desk roles only. */
+export function useFileActivity(group: FileActivityGroup | "all" = "all", options: { enabled?: boolean; limit?: number } = {}) {
+  const devUser = useDevUser();
+  const apiCall = useAuthedApi();
+  const limit = options.limit ?? 40;
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (group !== "all") params.set("group", group);
+  return useQuery({
+    queryKey: ["file-activity", group, limit, devUser],
+    queryFn: () => apiCall<{ items: FileActivityItem[]; next_before: string | null }>(`/operator-files/activity?${params}`),
+    enabled: options.enabled ?? true,
+    placeholderData: (previous) => previous,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: true,
+    retry: aiQueryRetry,
+  });
+}
 
 /** A client's SMS thread from the sms_messages ledger — both directions,
  * refused sends included, newest first. */

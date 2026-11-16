@@ -9,7 +9,8 @@ import { BucketIntakeLinkDrawer } from "@/components/operator/UnifiedOperator";
 import { LeadDetailPanel } from "@/components/file/LeadDetailPanel";
 import { useLeadFile } from "@/components/file/useLeadFile";
 import type { LinkLead } from "@/components/file/leadFile";
-import { useCurrentUser } from "@/hooks/useApi";
+import { useClient, useCurrentUser, useProposedActionItems } from "@/hooks/useApi";
+import { AiSuggestionsPanel } from "@/components/operator/AiSuggestionsPanel";
 import { Role } from "@/lib/enums.generated";
 import { SECTION_DEFINITIONS, parseFileSection } from "@/lib/fileRoutes";
 import { parseMarketplaceFinancialAction } from "@/lib/marketplaceIssues";
@@ -42,6 +43,16 @@ export default function FilePage() {
   // The server enforces the operator role. Start this permissioned factual
   // read alongside /auth/me instead of waiting an additional network roundtrip.
   const file = useLeadFile({ leadId, notify: setNotice, includeDerived: packageWorkspace || needsFullFileAnalysis(section) });
+  // Every file has a client; the file says whose it is and links to them.
+  const clientId = file.detail?.intake.client_id ?? null;
+  const { data: fileClient } = useClient(isDesk ? clientId : null);
+  // What this file's AI is waiting to be told. One line in the bar until opened:
+  // the inbox that used to hold these is gone, and the file is where they belong.
+  const bucketId = file.detail?.intake.bucket_id ?? null;
+  const roomSuggestions = useProposedActionItems(isDesk && Boolean(bucketId), "proposed", bucketId).data;
+  // Filtered here as well: a server that predates the room filter answers with every room's.
+  const fileSuggestions = (roomSuggestions ?? []).filter((item) => item.bucket_id === bucketId);
+  const [suggestionsOpen, setSuggestionsOpen] = useState(false);
 
   useEffect(() => {
     if (!meLoading && me && !isDesk) router.replace("/");
@@ -65,8 +76,22 @@ export default function FilePage() {
     <FileWorkspaceProvider value={{ intakeId: leadId, profileId: file.detail?.application_profile_id, pageMode: false }}><div className="file-page">
       <div className="file-page-bar">
         <Link href={LIST_HREF} className="linky file-page-back"><Icon name="chevL" size={14} /> All files</Link>
+        {fileSuggestions.length > 0 || suggestionsOpen ? (
+          <button type="button" className="linky file-page-back" aria-expanded={suggestionsOpen} onClick={() => setSuggestionsOpen((value) => !value)}>
+            <Icon name="spark" size={13} /> {fileSuggestions.length === 1 ? "1 AI suggestion waiting" : `${fileSuggestions.length} AI suggestions waiting`} · {suggestionsOpen ? "Hide" : "Review"}
+          </button>
+        ) : null}
+        {clientId ? (
+          <>
+            <span className="sp" style={{ flex: 1 }} />
+            <Link href={`/clients/${clientId}`} className="linky file-page-back" title="Open the client this file belongs to: their other files, texts and emails">
+              <Icon name="clients" size={13} /> Client: {fileClient?.name ?? file.detail?.intake.full_name ?? "open"}
+            </Link>
+          </>
+        ) : null}
       </div>
       {notice ? <WarnLine>{notice}</WarnLine> : null}
+      {suggestionsOpen && bucketId ? <AiSuggestionsPanel bucketId={bucketId} /> : null}
       <LeadDetailPanel
         key={`${leadId}:${section}:${packageWorkspace}`}
         detail={file.detail}

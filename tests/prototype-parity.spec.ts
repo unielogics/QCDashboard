@@ -14,7 +14,6 @@ const ROUTES = [
   ["clients", "/clients"],
   ["buckets", "/admin/buckets"],
   ["ai-intake", "/admin/ai-underwriter-leads"],
-  ["elara-inbox", "/ai-inbox"],
   ["messages", "/messages"],
   ["calendar", "/calendar"],
   ["vault", "/vault"],

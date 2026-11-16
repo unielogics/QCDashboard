@@ -29,9 +29,10 @@ import {
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
-import { useBrokers, useClient, useClientAccessDirectory, useClientActivity, useClientPaymentAuthorizationStatus, useClientSms, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
+import { useBrokers, useClient, useClientAccessDirectory, useClientActivity, useClientFiles, useClientPaymentAuthorizationStatus, useClientSms, useCreditSummary, useCurrentCredit, useCurrentUser, useDocumentsForClient, useEngagement, useLoans, useParsedReport, useRequestPrequalification, useSendIntakeLink, useStartFunding, useUpdateClient, useUpdateClientStage } from "@/hooks/useApi";
 import { EmailsBreadcrumbTab } from "@/components/email/EmailsBreadcrumbTab";
 import { SmsThreadTab } from "@/components/sms/SmsThreadTab";
+import { ClientFilesPanel, ClientMessagesPanel } from "@/components/client/ClientFilesAndMessages";
 import { MultiLoanReassignModal } from "@/components/MultiLoanReassignModal";
 import { FundingAmounts } from "@/components/file/FundingAmounts";
 import { CreditSummaryCard } from "@/components/CreditSummaryCard";
@@ -56,7 +57,11 @@ export default function ClientDetailPage() {
   const router = useRouter();
   const { id } = useParams<{ id: string }>();
   const canManageAccess = profile.role === "super_admin";
+  // The desk reads a client as its files and its messages; an agent keeps the
+  // relationship view of their own book.
+  const deskView = profile.role === "super_admin" || profile.role === "loan_exec";
   const { data: client } = useClient(id);
+  const { data: clientFiles } = useClientFiles(id, { enabled: deskView });
   const { data: accessDirectory } = useClientAccessDirectory(
     { q: id, page_size: 10 },
     { enabled: canManageAccess },
@@ -73,7 +78,9 @@ export default function ClientDetailPage() {
   const { data: engagement = [] } = useEngagement(id);
   // Tracked-email breadcrumbs (email.tracked) for this client — metadata only.
   const { data: clientActivity = [], isLoading: clientActivityLoading } = useClientActivity(id);
-  const { data: smsThread = [], isLoading: smsLoading } = useClientSms(id);
+  // The desk's Messages panel already carries every text; only the agent's
+  // view still reads the client's thread on its own.
+  const { data: smsThread = [], isLoading: smsLoading } = useClientSms(deskView ? null : id);
   const updateClient = useUpdateClient();
   const requestPrequal = useRequestPrequalification();
   const sendIntakeLink = useSendIntakeLink();
@@ -321,6 +328,9 @@ export default function ClientDetailPage() {
         }}
       />
 
+      {deskView ? <ClientFilesPanel clientId={client.id} clientName={client.name} /> : null}
+      {deskView ? <ClientMessagesPanel clientId={client.id} clientName={client.name} /> : null}
+
       <ClientStageCard client={client} canEdit={canEdit} clientLoans={clientLoans} onStartMca={canCreateMca ? () => setMcaFileOpen(true) : undefined} />
 
       {/* Realtor-phase AI Plan card. The Realtor Elara is for
@@ -414,6 +424,7 @@ export default function ClientDetailPage() {
       )}
 
       <KpiRow>
+        {deskView && clientFiles ? <Kpi label="Files" value={clientFiles.length} /> : null}
         <Kpi label="Exposure" value={QC_FMT.short(exposure)} />
         <Kpi label="Active loans" value={clientLoans.length} />
         <Kpi label="FICO" value={client.fico ?? "—"} />
@@ -505,24 +516,9 @@ export default function ClientDetailPage() {
 
       {/* SMS thread — the client's text history from the sms_messages ledger:
           both directions, delivery states, refused sends with their reason. */}
-      {profile.role !== "client" && (
+      {profile.role !== "client" && !deskView && (
         <SmsThreadTab rows={smsThread} isLoading={smsLoading} />
       )}
-
-      {/* Next Best Actions stub — populated by the shared Deal Intelligence
-          Core in P0B. Today renders a placeholder so the surface is visible. */}
-      <Panel title="Next Best Actions">
-        <div className="note">
-          <Icon name="spark" size={14} />
-          <span>
-            The Next Best Action engine ships in P0B (deterministic rules) and
-            P1 (LLM-driven). Tasks generated for this Borrower will route to the
-            Agent Inbox (relationship work) and the Funding Elara Inbox (lender
-            packaging, doc validation, escalations) per the shared Deal
-            Intelligence Core routing rules.
-          </span>
-        </div>
-      </Panel>
 
       {/* Vault — operator-side view of the same documents the client sees in
           their own /vault. Subject Property = docs tied to in-flight loans;
@@ -1461,7 +1457,7 @@ function LendingHandoffModal({
             <li>Identify missing lending items the Lending AI needs to collect</li>
             <li>Create a prequal quote in the funding queue</li>
             <li>Spawn a lending-side AI thread that already knows everything</li>
-            <li>Notify the funding team via Elara Inbox</li>
+            <li>Notify the funding team</li>
           </ul>
           {error && <div className="warnline mt">{error}</div>}
         </>

@@ -7,6 +7,8 @@ import { useAIChat, useAITaskDecision, useAITasks } from "@/hooks/useApi";
 import type { AITask, AIChatTurn } from "@/lib/types";
 import { Btn, Card, CellChip, Field, IconBtn, Input, Seg, Textarea } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
+import { AIInboxCard } from "@/components/AIInboxCard";
+import { DraftedArtifactView } from "./DraftedArtifactView";
 
 const TABS = [
   { id: "chat", label: "Chat", icon: "messages" as const },
@@ -32,7 +34,8 @@ export default function AIRail() {
   const { data: tasks = [] } = useAITasks();
   const aiChat = useAIChat();
   const taskDecision = useAITaskDecision();
-  const [tab, setTab] = useState<TabId>("chat");
+  const tab: TabId = useUI((s) => s.aiTab);
+  const setTab = useUI((s) => s.setAiTab);
   const [chatLog, setChatLog] = useState<ChatMsg[]>([SEED_GREETING]);
   const [input, setInput] = useState("");
   const [review, setReview] = useState<{ task: AITask; decision: "approved" | "dismissed"; edit: boolean } | null>(null);
@@ -180,6 +183,7 @@ export default function AIRail() {
                   </CellChip>
                 </div>
                 <b>{task.title}</b>
+                {task.summary ? <div className="sub" style={{ overflowWrap: "anywhere" }}>{task.summary}</div> : null}
                 <div className="sub">
                   conf {(task.confidence * 100).toFixed(0)}% · {task.agent}
                 </div>
@@ -258,6 +262,18 @@ export default function AIRail() {
         }
       >
         <div className="grid">
+          {/* What is being approved, readable first: a decision on a draft
+              nobody could read is not a decision. */}
+          {review ? (
+            <>
+              {review.task.action?.startsWith("cadence_") || review.task.action?.startsWith("confirm_") ? (
+                <AIInboxCard task={review.task} />
+              ) : review.task.summary ? (
+                <div style={{ overflowWrap: "anywhere" }}>{review.task.summary}</div>
+              ) : null}
+              {!review.edit ? <DraftedArtifactView payload={review.task.draft_payload} action={review.task.action} /> : null}
+            </>
+          ) : null}
           <div className="hintbox"><b>Effects</b><div className="sub">Updates this queued Elara task and records the signed-in operator decision immediately.</div></div>
           <div className="kv"><span>Action</span><b>{review?.decision === "dismissed" ? "Dismiss recommendation" : "Approve recommendation"}</b></div>
           <div className="kv"><span>Actor</span><b>Current signed-in operator</b></div>

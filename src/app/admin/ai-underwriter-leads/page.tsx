@@ -62,7 +62,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [notice, setNotice] = useState("");
   const [archivedSearchMatch, setArchivedSearchMatch] = useState<{ count: number; query: string } | null>(null);
   const [nonIntakeLeadMatches, setNonIntakeLeadMatches] = useState<Array<{ id: string; name: string }>>([]);
-  const [createOpen, setCreateOpen] = useState(false);
+  const [createOpen, setCreateOpen] = useState(searchParams.get("new") === "1");
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState("");
@@ -531,6 +531,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                       <div className="row" style={{ gap: 6, justifyContent: "flex-end", flexWrap: "nowrap" }}>
                         <span onClick={(event) => event.stopPropagation()}><PageActionMenu label={`Actions for ${row.business_name || row.full_name}`} items={[
                           { label: pinned ? "Unpin file" : "Pin file", onSelect: () => togglePin(row.id) },
+                          ...(row.client_id ? [{ label: "Open client", href: `/clients/${row.client_id}` }] : []),
                           ...(manuallyArchived ? [{ label: "Restore file", onSelect: () => void restoreLead(row.id) }] : [{ label: "Open file", onSelect: () => void openLead(row.id) }, ...(canDelete ? [{ label: "Archive file", tone: "danger" as const, onSelect: () => setDeleteRow(row) }] : [])]),
                         ]} /></span>
                       </div>

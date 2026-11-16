@@ -18,6 +18,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Icon } from "@/components/design-system/Icon";
 import { Btn, CellChip, Input, PageHeader, Select, cx } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
+import { useUI } from "@/store/ui";
 import { useAuthedApi } from "@/hooks/useApi";
 import { LIVE_MESSAGE_QUERY_OPTIONS, type UnifiedCommunicationThread, type UnifiedContactPage } from "@/lib/communications";
 import { NewMessageDrawer } from "./NewMessageDrawer";
@@ -49,6 +50,7 @@ function when(iso: string) {
 }
 
 export function UnifiedMessagesInbox() {
+  const openElaraTasks = useUI((state) => state.openElaraTasks);
   const apiCall = useAuthedApi();
   const route = useSearchParams();
   const router = useRouter();
@@ -116,7 +118,7 @@ export function UnifiedMessagesInbox() {
       <PageHeader
         title="Messages"
         lede="Every person you talk to — in-system chat, email, and SMS — grouped by contact, newest first."
-        actions={<div className="row"><Btn variant="pri" onClick={() => setComposeOpen(true)}><Icon name="plus" size={14} /> New message</Btn><PageActionMenu label="Message actions" items={[{ label: "Open Elara queue", href: "/ai-inbox" }, { label: "Open file", href: "/admin/ai-underwriter-leads" }, { label: "Open dealer messages", href: "/admin/dealer-messages" }]} /></div>}
+        actions={<div className="row"><Btn variant="pri" onClick={() => setComposeOpen(true)}><Icon name="plus" size={14} /> New message</Btn><PageActionMenu label="Message actions" items={[{ label: "Open Elara tasks", onSelect: openElaraTasks }, { label: "Open files", href: "/admin/ai-underwriter-leads" }, { label: "Open dealer messages", href: "/admin/dealer-messages" }]} /></div>}
         meta={<div className="row"><CellChip tone="acc">{contacts.data?.total ?? 0} contacts</CellChip><CellChip tone={(contacts.data?.unread_total ?? 0) ? "warn" : "mut"}>{contacts.data?.unread_total ?? 0} unread</CellChip></div>}
       />
       <div className="global-inbox">

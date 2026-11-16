@@ -18,6 +18,7 @@
 // used to be a token lookup is a chip tone. No data flow changed.
 
 import Link from "next/link";
+import { useUI } from "@/store/ui";
 import { Icon } from "@/components/design-system/Icon";
 import { QC_FMT } from "@/lib/fmt";
 import { CG, Callout, CellChip, Kpi, KpiRow, PageHeader, Panel, cx, type ChipTone } from "@/components/ds";
@@ -77,6 +78,7 @@ function sampleSub(stat: FunnelStat | undefined): string {
 }
 
 export function AgentHomeView() {
+  const openElaraTasks = useUI((state) => state.openElaraTasks);
   const { data: user } = useCurrentUser();
   // Scope assertion is now hook-driven — `useLoans("mine")` adds `?scope=mine`
   // to the request so the backend filters to this Agent's book before sending.
@@ -229,9 +231,9 @@ export function AgentHomeView() {
         className="s12"
         title="Next Best Actions"
         actions={
-          <Link href="/ai-inbox" className="linky">
-            View inbox →
-          </Link>
+          <button type="button" className="linky" onClick={openElaraTasks}>
+            Open Elara tasks →
+          </button>
         }
       >
         {nextActions.length === 0 ? (
