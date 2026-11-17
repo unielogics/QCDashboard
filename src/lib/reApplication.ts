@@ -58,6 +58,8 @@ export type ApplicationView = {
   needs_code?: boolean;
   /** Desk reads only: where signing stands. */
   signing?: SigningView;
+  /** Desk reads only: the signed copy that is relayed, and partner links made to it. */
+  relay?: RelayView;
 };
 
 export type FieldRef = { section: SectionSpec; path: string; spec: FieldSpec; role?: string };
@@ -190,6 +192,16 @@ export const TIER_WORDS: Record<Provenance["tier"], string> = {
   B: "From your credit check",
   C: "Please check",
 };
+
+export type RelayShare = { id: string; recipient: string; created_at: string | null; expires_at: string | null; active: boolean; views: number; downloads: number };
+
+export type RelayView = {
+  signed: { form_version: number | null; signed_at: string | null; file_name: string; sharing_consent: boolean } | null;
+  shares: RelayShare[];
+};
+
+/** A partner link, returned once: the code is never shown again. */
+export type PartnerShareResult = { share_id: string; share_url: string; passcode: string; expires_at: string; recipient: string; file_name: string; form_version: number | null };
 
 export type SigningConsent = { key: string; label: string; version: string; sha256: string; text: string; draft: boolean };
 

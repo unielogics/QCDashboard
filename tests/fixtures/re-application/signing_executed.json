@@ -1,0 +1,65 @@
+{
+ "status": "executed",
+ "version": {
+  "id": "19ab7c45-bf1f-4f66-a0b6-afc232e1f777",
+  "number": 1,
+  "body_sha256": "e9a4ff75491aed1d15844c49e4c7ace19faea5f713c511f468e23cbe1c9621f2"
+ },
+ "consents": [
+  {
+   "key": "business_purpose",
+   "label": "Business purpose",
+   "version": "draft-2026-11-17",
+   "sha256": "704af844c59b6eddc3fa7e59a98260dbc2521abf4934fea15eb2ae2132e801b4",
+   "text": "I certify that the financing requested is for business or investment purposes and not for personal, family or household purposes. If the property securing it is my residence, I certify the proceeds will be used only for the business purposes stated in this application.",
+   "draft": true
+  },
+  {
+   "key": "accuracy",
+   "label": "Accuracy",
+   "version": "draft-2026-11-17",
+   "sha256": "6b3f4faa779f1e04a7a75ccc0df17e74ed9c92ae6cec5fbb48ecc1746ab00a3f",
+   "text": "I certify that the information in this application is true and complete. I understand Qualified Commercial, its partners and any prospective lender will rely on it, and that knowingly false statements may lead to denial and may be a crime under federal law.",
+   "draft": true
+  },
+  {
+   "key": "credit_authorization",
+   "label": "Credit authorization",
+   "version": "2026-07-25-1",
+   "sha256": "df3ab4aa738aa9f252e1af7559b28a2b38837bdb856608c5aad0f240800bdb73",
+   "text": "Qualified Commercial LLC Credit Report Authorization and Electronic Signature Consent\n\nBy signing this authorization, I authorize QC - Qualified Commercial LLC and its\nunderwriting partners to obtain a soft credit inquiry (a \"soft pull\") on my consumer\ncredit file from one or more consumer reporting agencies, for the purpose of evaluating\nmy application for financing. I understand a soft pull does not affect my credit score.\n\nI certify that the identifying information I provide on this form (legal name, date of\nbirth, and address) is accurate and is my own information, provided for the purpose of\nthis credit inquiry.\n\nI consent to use electronic records and electronic signatures under the U.S. E-SIGN Act\nand UETA. I understand my typed legal name, checkbox acknowledgment, drawn signature,\ntimestamp, IP address, and device/browser information may be retained as evidence of\nthis authorization. I may request a copy of this authorization record.",
+   "draft": false
+  },
+  {
+   "key": "information_sharing",
+   "label": "Information sharing",
+   "version": "re-app-sharing-v1",
+   "sha256": "5b2bc51c52cd864799cccc11192234f52bb0f78b30a92c8c0ef848ce69fb601a",
+   "text": "I authorize Qualified Commercial LLC to share this application, the documents in my file and information about my request with its lending partners and associates, and with any prospective lender, investor, servicer, title company, attorney or appraiser involved in arranging or closing the financing I requested, so they can review and process it. They may contact me about this request. This does not authorize a hard credit inquiry or guarantee financing. I may revoke it in writing for future sharing.",
+   "draft": true
+  },
+  {
+   "key": "esign",
+   "label": "Electronic signature",
+   "version": "esign-2026-07-25-1",
+   "sha256": "bd1a90086ce597af9fbcecab45252a6bd2810e1ff61c34985ca2dfdd175e0d4a",
+   "text": "I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA.",
+   "draft": false
+  }
+ ],
+ "required_roles": [
+  "borrower"
+ ],
+ "signed": {
+  "borrower": {
+   "name": "Jordan Sample",
+   "signed_at": "2026-11-17T01:43:42.941691+00:00"
+  }
+ },
+ "role": "borrower",
+ "signer_name": "Jordan Sample",
+ "can_sign": false,
+ "held": false,
+ "signing_open": true,
+ "executed_file_id": "baac8a74-7a9b-47a6-853f-326161b64bee"
+}

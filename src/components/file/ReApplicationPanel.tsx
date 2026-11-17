@@ -8,7 +8,7 @@
 // client during a call; the client still reviews and signs.
 
 import { useCallback, useEffect, useState } from "react";
-import { Btn, Callout, Input, StatusLine } from "@/components/ds";
+import { Btn, Callout, Field, Input, StatusLine } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
@@ -16,7 +16,7 @@ import { ApiError, apiBase } from "@/lib/api";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { ReApplicationForm } from "@/components/application/ReApplicationForm";
 import { useApplicationDraft, type DraftPayload, type SaveError } from "@/components/application/useApplicationDraft";
-import type { ApplicationView, SigningView } from "@/lib/reApplication";
+import type { ApplicationView, PartnerShareResult, RelayView, SigningView } from "@/lib/reApplication";
 
 const ROLE_WORDS: Record<string, string> = { borrower: "Borrower", coborrower: "Co-borrower" };
 
@@ -49,6 +49,78 @@ function SigningStatus({ signing, formStatus, busy, onReopen }: { signing: Signi
         </div>
       ) : null}
     </Callout>
+  );
+}
+
+type ShareInput = { recipient_name: string; organization: string; recipient_email: string };
+
+function shortDate(value: string | null): string {
+  return value ? new Date(value).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "";
+}
+
+function copyText(text: string) {
+  void navigator.clipboard?.writeText(text).catch(() => undefined);
+}
+
+// Lenders the desk submits to receive the signed application in their
+// package. This is for anyone else the client's information-sharing consent
+// covers: a link to the signed application only, opened with a code, ending
+// after seven days, and logged on the client's timeline.
+function PartnerShare({ relay, busy, onShare }: { relay: RelayView; busy: boolean; onShare: (input: ShareInput) => Promise<PartnerShareResult | null> }) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<ShareInput>({ recipient_name: "", organization: "", recipient_email: "" });
+  const [made, setMade] = useState<PartnerShareResult | null>(null);
+  if (!relay.signed) return null;
+  if (!relay.signed.sharing_consent) {
+    return <Callout tone="acc"><strong>Sharing</strong> The signed application does not include the information-sharing consent, so it cannot be shared from here.</Callout>;
+  }
+  const email = draft.recipient_email.trim();
+  const valid = draft.recipient_name.trim().length >= 2 && (!email || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email));
+  async function submit() {
+    const reply = await onShare(draft);
+    if (reply) {
+      setMade(reply);
+      setOpen(false);
+      setDraft({ recipient_name: "", organization: "", recipient_email: "" });
+    }
+  }
+  return (
+    <section className="ra-relay" aria-label="Share with a partner">
+      <div className="ra-relay-head">
+        <strong>Share with a partner</strong>
+        <span className="sub">Lenders you submit to get the signed application in their package. For anyone else the client's consent covers, make a link to the signed application only. It opens with a code and ends after 7 days, and the client sees it on their timeline.</span>
+      </div>
+      {relay.shares.length ? (
+        <ul className="ra-relay-list">
+          {relay.shares.map((share) => (
+            <li key={share.id}>
+              <span className="ra-relay-who">{share.recipient}</span>
+              <span className="sub">{share.active ? `Open until ${shortDate(share.expires_at)}` : "Ended"} · {share.views} {share.views === 1 ? "view" : "views"} · {share.downloads} {share.downloads === 1 ? "download" : "downloads"}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {made ? (
+        <Callout tone="ok">
+          <div>Link for {made.recipient}, open until {shortDate(made.expires_at)}. Send the link and the code separately. The code is not shown again.</div>
+          <div className="ra-relay-secret"><span className="ra-relay-url">{made.share_url}</span><Btn size="sm" onClick={() => copyText(made.share_url)}><Icon name="copy" size={13} />Copy link</Btn></div>
+          <div className="ra-relay-secret"><span>Code <strong>{made.passcode}</strong></span><Btn size="sm" onClick={() => copyText(made.passcode)}><Icon name="copy" size={13} />Copy code</Btn></div>
+        </Callout>
+      ) : null}
+      {open ? (
+        <div className="ra-relay-form">
+          <Field label="Who receives it"><Input aria-label="Who receives it" autoFocus maxLength={180} value={draft.recipient_name} onChange={(event) => setDraft((value) => ({ ...value, recipient_name: event.target.value }))} placeholder="Full name" /></Field>
+          <Field label="Company (optional)"><Input aria-label="Company (optional)" maxLength={180} value={draft.organization} onChange={(event) => setDraft((value) => ({ ...value, organization: event.target.value }))} placeholder="For example: Bridge Lending Partners" /></Field>
+          <Field label="Their email (optional)"><Input aria-label="Their email (optional)" type="email" maxLength={320} value={draft.recipient_email} onChange={(event) => setDraft((value) => ({ ...value, recipient_email: event.target.value }))} placeholder="name@company.com" /></Field>
+          <div className="ra-relay-actions">
+            <Btn variant="pri" size="sm" disabled={busy || !valid} onClick={() => void submit()}>Make the link</Btn>
+            <Btn size="sm" disabled={busy} onClick={() => setOpen(false)}>Cancel</Btn>
+          </div>
+        </div>
+      ) : (
+        <div><Btn size="sm" disabled={busy} onClick={() => { setOpen(true); setMade(null); }}><Icon name="link" size={13} />Share with a partner</Btn></div>
+      )}
+    </section>
   );
 }
 
@@ -123,6 +195,24 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
     }
   }
 
+  async function share(input: ShareInput): Promise<PartnerShareResult | null> {
+    setBusy("share");
+    setNotice(null);
+    try {
+      const reply = await apiCall<PartnerShareResult>(`${PATH(profileId)}/share`, {
+        method: "POST",
+        body: JSON.stringify({ recipient_name: input.recipient_name.trim(), organization: input.organization.trim() || null, recipient_email: input.recipient_email.trim() || null }),
+      });
+      setView((current) => current?.relay ? { ...current, relay: { ...current.relay, shares: [{ id: reply.share_id, recipient: reply.recipient, created_at: new Date().toISOString(), expires_at: reply.expires_at, active: true, views: 0, downloads: 0 }, ...current.relay.shares] } } : current);
+      return reply;
+    } catch (error) {
+      setNotice({ tone: "bad", text: error instanceof Error ? error.message : "The link could not be made." });
+      return null;
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function openPdf(path: string) {
     setBusy("pdf");
     try {
@@ -160,6 +250,7 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
     >
       {notice ? <StatusLine tone={notice.tone}>{notice.text}</StatusLine> : null}
       {view?.signing ? <SigningStatus signing={view.signing} formStatus={view.status} busy={Boolean(busy)} onReopen={(reason) => void reopen(reason)} /> : null}
+      {view?.relay ? <PartnerShare relay={view.relay} busy={Boolean(busy)} onShare={share} /> : null}
       {link ? <Callout tone="acc"><span style={{ overflowWrap: "anywhere" }}>{link.url}</span></Callout> : null}
       {loading && !view ? <div className="empty"><span className="spinner solo" />Loading the application…</div> : null}
       {view ? (

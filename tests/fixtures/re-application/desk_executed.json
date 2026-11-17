@@ -1,0 +1,2005 @@
+{
+ "kind": "re_application",
+ "schema_version": "qc_rea.v1",
+ "body": {
+  "schema_version": "qc_rea.v1",
+  "has_coborrower": false,
+  "request": {
+   "loan_purpose": "heloc",
+   "occupancy": "primary_residence",
+   "business_purpose": true,
+   "purpose_description": "Sample answer",
+   "amount_requested": 300000.0,
+   "borrowing_as": "entity",
+   "use_of_funds": [
+    "property_purchase"
+   ]
+  },
+  "property": {
+   "street": "100 EXAMPLE ST",
+   "city": "CHARLOTTE",
+   "state": "NC",
+   "zip": "28202",
+   "property_type": "single_family",
+   "as_is_value": 550000.0,
+   "first_lien_balance": 184321.5,
+   "units": 3,
+   "original_purchase_price": 1000.0,
+   "original_purchase_date": "2001-02-03",
+   "annual_taxes": 1000.0,
+   "annual_insurance": 1000.0
+  },
+  "borrowers": {
+   "borrower": {
+    "first_name": "Jordan",
+    "last_name": "Sample",
+    "email": "jordan@example.com",
+    "mobile_phone": "+17045550123",
+    "street": "100 EXAMPLE ST",
+    "city": "CHARLOTTE",
+    "state": "NC",
+    "zip": "28202",
+    "dob": "2001-02-03",
+    "ssn_last4": "1234",
+    "citizenship": "us_citizen",
+    "marital_status": "married",
+    "housing": "own",
+    "years_at_address": 3,
+    "employer_name": "Sample",
+    "position": "Sample",
+    "employment_years": 3,
+    "self_employed": false,
+    "monthly_income": 1000.0,
+    "checking": 1000.0,
+    "decl_bankruptcy": false,
+    "decl_foreclosure": false,
+    "decl_judgments": false,
+    "decl_lawsuit": false,
+    "decl_federal_debt": false,
+    "decl_support": false,
+    "decl_comaker": false
+   },
+   "coborrower": {}
+  },
+  "entity": {
+   "legal_name": "Sample Holdings",
+   "street": "100 EXAMPLE ST",
+   "city": "CHARLOTTE",
+   "state": "NC",
+   "zip": "28202",
+   "entity_type": "llc",
+   "ein": "12-3456789",
+   "state_of_formation": "NC",
+   "date_established": "2001-02-03",
+   "good_standing": false,
+   "phone": "+17045550123",
+   "email": "sample@example.com",
+   "employees": 3,
+   "business_type": "Sample",
+   "ownership_pct": 50.0
+  },
+  "experience": {
+   "other_properties": [],
+   "projects_completed_36m": 3,
+   "properties_owned": 3
+  },
+  "financial": {
+   "cash_to_close": 1000.0,
+   "exit_strategy": "sale",
+   "credit_score_estimate": 712
+  },
+  "closing": {
+   "title_vesting": "individual",
+   "persons_on_title": "Sample"
+  },
+  "notes": {}
+ },
+ "provenance": {
+  "request.loan_purpose": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "request.occupancy": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "request.business_purpose": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "request.purpose_description": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "request.amount_requested": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "property.street": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "property.city": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "property.state": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "property.zip": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "property.property_type": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.as_is_value": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "property.first_lien_balance": {
+   "tier": "A",
+   "source": "Your application",
+   "confirmed": true
+  },
+  "borrowers.borrower.first_name": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "borrowers.borrower.last_name": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "borrowers.borrower.email": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "borrowers.borrower.mobile_phone": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "request.borrowing_as": {
+   "tier": "C",
+   "source": "Your application",
+   "confirmed": true
+  },
+  "entity.legal_name": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "entity.street": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "entity.city": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "entity.state": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "entity.zip": {
+   "tier": "A",
+   "source": "Your application"
+  },
+  "borrowers.borrower.street": {
+   "tier": "C",
+   "source": "Your property address",
+   "confirmed": true
+  },
+  "borrowers.borrower.city": {
+   "tier": "C",
+   "source": "Your property address",
+   "confirmed": true
+  },
+  "borrowers.borrower.state": {
+   "tier": "C",
+   "source": "Your property address",
+   "confirmed": true
+  },
+  "borrowers.borrower.zip": {
+   "tier": "C",
+   "source": "Your property address",
+   "confirmed": true
+  },
+  "request.use_of_funds": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.units": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.original_purchase_price": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.original_purchase_date": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.annual_taxes": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.annual_insurance": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.dob": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.ssn_last4": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.citizenship": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.marital_status": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.housing": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.years_at_address": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.employer_name": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.position": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.employment_years": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.self_employed": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.monthly_income": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.checking": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_bankruptcy": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_foreclosure": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_judgments": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_lawsuit": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_federal_debt": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_support": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "borrowers.borrower.decl_comaker": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.entity_type": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.ein": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.state_of_formation": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.date_established": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.good_standing": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.phone": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.email": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.employees": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.business_type": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "entity.ownership_pct": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "experience.projects_completed_36m": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "experience.properties_owned": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "financial.cash_to_close": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "financial.exit_strategy": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "financial.credit_score_estimate": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "closing.title_vesting": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "closing.persons_on_title": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  }
+ },
+ "completion": {
+  "sections": [
+   {
+    "key": "request",
+    "label": "Loan request",
+    "filled": 7,
+    "total": 7,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "property",
+    "label": "Subject property",
+    "filled": 12,
+    "total": 12,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "borrowers",
+    "label": "Borrowers",
+    "filled": 27,
+    "total": 27,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "entity",
+    "label": "Borrowing company",
+    "filled": 15,
+    "total": 15,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "experience",
+    "label": "Experience",
+    "filled": 2,
+    "total": 2,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "financial",
+    "label": "Liquidity and credit",
+    "filled": 3,
+    "total": 3,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "closing",
+    "label": "Title and closing contacts",
+    "filled": 2,
+    "total": 2,
+    "missing": [],
+    "applies": true
+   },
+   {
+    "key": "notes",
+    "label": "Additional information",
+    "filled": 0,
+    "total": 0,
+    "missing": [],
+    "applies": true
+   }
+  ],
+  "filled": 68,
+  "total": 68,
+  "missing": [],
+  "complete": true
+ },
+ "please_check": [],
+ "revision": 1,
+ "status": "submitted",
+ "warnings": [
+  {
+   "path": "financial.credit_score_estimate",
+   "label": "Estimated middle credit score",
+   "source": "Your application",
+   "message": "The credit estimate on file ('XXX') is not a score or a tier, so it was left blank for the client to answer."
+  },
+  {
+   "path": "entity.phone",
+   "label": "Main business phone",
+   "source": "Your application",
+   "message": "The main business phone on file ('Jordan Sample') is not valid, so it was left blank for the client to answer."
+  },
+  {
+   "path": "",
+   "label": "Letterhead",
+   "source": "Settings",
+   "message": "The firm letterhead still holds the placeholder address, so the application PDF prints no street address. Set it in Settings \u2192 Letterhead."
+  }
+ ],
+ "version": {
+  "id": "19ab7c45-bf1f-4f66-a0b6-afc232e1f777",
+  "number": 1,
+  "submitted_at": "2026-11-17T01:43:42",
+  "submitted_by": "client",
+  "body_sha256": "e9a4ff75491aed1d15844c49e4c7ace19faea5f713c511f468e23cbe1c9621f2",
+  "pdf_available": true
+ },
+ "schema": {
+  "kind": "re_application",
+  "schema_version": "qc_rea.v1",
+  "title": "Qualified Commercial Real Estate Loan Application",
+  "roles": [
+   {
+    "key": "borrower",
+    "label": "Borrower"
+   },
+   {
+    "key": "coborrower",
+    "label": "Co-borrower"
+   }
+  ],
+  "sections": [
+   {
+    "key": "request",
+    "label": "Loan request",
+    "fields": [
+     {
+      "key": "loan_purpose",
+      "label": "What is the loan for?",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "purchase",
+        "label": "Purchase"
+       },
+       {
+        "value": "rate_term_refi",
+        "label": "Refinance (rate and term)"
+       },
+       {
+        "value": "cash_out_refi",
+        "label": "Cash-out refinance"
+       },
+       {
+        "value": "heloc",
+        "label": "Home equity line (HELOC) for business"
+       },
+       {
+        "value": "bridge",
+        "label": "Bridge"
+       },
+       {
+        "value": "construction",
+        "label": "Construction"
+       }
+      ]
+     },
+     {
+      "key": "program_interest",
+      "label": "Type of financing",
+      "type": "select",
+      "required": false,
+      "options": [
+       {
+        "value": "dscr_rental",
+        "label": "DSCR rental"
+       },
+       {
+        "value": "fix_and_flip",
+        "label": "Fix and flip"
+       },
+       {
+        "value": "bridge",
+        "label": "Bridge"
+       },
+       {
+        "value": "ground_up",
+        "label": "Ground-up construction"
+       },
+       {
+        "value": "commercial",
+        "label": "Commercial property"
+       },
+       {
+        "value": "home_equity_business",
+        "label": "Home equity for a business"
+       },
+       {
+        "value": "not_sure",
+        "label": "Not sure"
+       }
+      ]
+     },
+     {
+      "key": "amount_requested",
+      "label": "Amount requested",
+      "type": "money",
+      "required": true
+     },
+     {
+      "key": "occupancy",
+      "label": "Who uses the property?",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "investment",
+        "label": "Investment property"
+       },
+       {
+        "value": "primary_residence",
+        "label": "Primary residence"
+       },
+       {
+        "value": "second_home",
+        "label": "Second home"
+       }
+      ]
+     },
+     {
+      "key": "business_purpose",
+      "label": "Is the loan for a business or investment purpose?",
+      "type": "yesno",
+      "required": true,
+      "help": "Qualified Commercial makes business-purpose loans only."
+     },
+     {
+      "key": "purpose_description",
+      "label": "What will the business use the money for?",
+      "type": "textarea",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "use_of_funds",
+      "label": "Use of funds",
+      "type": "multiselect",
+      "required": true,
+      "options": [
+       {
+        "value": "property_purchase",
+        "label": "Buy the property"
+       },
+       {
+        "value": "renovation",
+        "label": "Renovation or construction"
+       },
+       {
+        "value": "refinance_payoff",
+        "label": "Pay off the current loan"
+       },
+       {
+        "value": "business_working_capital",
+        "label": "Business working capital"
+       },
+       {
+        "value": "business_expansion",
+        "label": "Business expansion"
+       },
+       {
+        "value": "debt_consolidation",
+        "label": "Pay off business debt"
+       },
+       {
+        "value": "inventory_equipment",
+        "label": "Inventory or equipment"
+       },
+       {
+        "value": "other",
+        "label": "Other"
+       }
+      ]
+     },
+     {
+      "key": "use_of_funds_detail",
+      "label": "Detail on the use of funds",
+      "type": "textarea",
+      "required": false
+     },
+     {
+      "key": "borrowing_as",
+      "label": "Who is borrowing?",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "individual",
+        "label": "In my own name"
+       },
+       {
+        "value": "entity",
+        "label": "Through a company or trust"
+       }
+      ]
+     },
+     {
+      "key": "down_payment",
+      "label": "Down payment",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "purchase"
+       ]
+      }
+     },
+     {
+      "key": "down_payment_source",
+      "label": "Where the down payment comes from",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "savings",
+        "label": "Savings"
+       },
+       {
+        "value": "business_funds",
+        "label": "Business funds"
+       },
+       {
+        "value": "sale_of_property",
+        "label": "Sale of another property"
+       },
+       {
+        "value": "gift",
+        "label": "Gift"
+       },
+       {
+        "value": "borrowed",
+        "label": "Borrowed"
+       },
+       {
+        "value": "other",
+        "label": "Other"
+       }
+      ],
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "purchase"
+       ]
+      }
+     },
+     {
+      "key": "target_close_date",
+      "label": "Target closing date",
+      "type": "date",
+      "required": false
+     }
+    ]
+   },
+   {
+    "key": "property",
+    "label": "Subject property",
+    "fields": [
+     {
+      "key": "street",
+      "label": "Property street address",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "unit",
+      "label": "Unit",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "city",
+      "label": "City",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "state",
+      "label": "State",
+      "type": "state",
+      "required": true
+     },
+     {
+      "key": "zip",
+      "label": "ZIP code",
+      "type": "zip",
+      "required": true
+     },
+     {
+      "key": "county",
+      "label": "County",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "property_type",
+      "label": "Property type",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "single_family",
+        "label": "Single family"
+       },
+       {
+        "value": "multi_family",
+        "label": "Multifamily (2+ units)"
+       },
+       {
+        "value": "condo",
+        "label": "Condo"
+       },
+       {
+        "value": "townhouse",
+        "label": "Townhouse"
+       },
+       {
+        "value": "commercial",
+        "label": "Commercial"
+       },
+       {
+        "value": "mixed_use",
+        "label": "Mixed-use"
+       },
+       {
+        "value": "office",
+        "label": "Office"
+       },
+       {
+        "value": "retail",
+        "label": "Retail"
+       },
+       {
+        "value": "industrial",
+        "label": "Industrial"
+       },
+       {
+        "value": "hospitality",
+        "label": "Hospitality"
+       },
+       {
+        "value": "self_storage",
+        "label": "Self storage"
+       },
+       {
+        "value": "land",
+        "label": "Land"
+       },
+       {
+        "value": "other",
+        "label": "Other"
+       }
+      ]
+     },
+     {
+      "key": "units",
+      "label": "Number of units",
+      "type": "integer",
+      "required": true
+     },
+     {
+      "key": "square_feet",
+      "label": "Square feet",
+      "type": "integer",
+      "required": false
+     },
+     {
+      "key": "year_built",
+      "label": "Year built",
+      "type": "year",
+      "required": false
+     },
+     {
+      "key": "under_contract",
+      "label": "Is the property under contract?",
+      "type": "yesno",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "purchase"
+       ]
+      }
+     },
+     {
+      "key": "purchase_price",
+      "label": "Purchase price",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "purchase"
+       ]
+      }
+     },
+     {
+      "key": "contract_close_date",
+      "label": "Contract closing date",
+      "type": "date",
+      "required": false,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "purchase"
+       ]
+      }
+     },
+     {
+      "key": "original_purchase_price",
+      "label": "Original purchase price",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "original_purchase_date",
+      "label": "Original purchase date",
+      "type": "date",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "first_lien_balance",
+      "label": "First mortgage balance",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      },
+      "help": "Enter 0 if the property is owned free and clear."
+     },
+     {
+      "key": "first_lien_payment",
+      "label": "First mortgage monthly payment",
+      "type": "money",
+      "required": false,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "first_lien_rate",
+      "label": "First mortgage interest rate (%)",
+      "type": "percent",
+      "required": false,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "first_lien_lender",
+      "label": "First mortgage lender",
+      "type": "text",
+      "required": false,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "second_lien_balance",
+      "label": "Second mortgage or line balance",
+      "type": "money",
+      "required": false,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "second_lien_payment",
+      "label": "Second mortgage monthly payment",
+      "type": "money",
+      "required": false,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "heloc",
+        "bridge",
+        "construction"
+       ]
+      }
+     },
+     {
+      "key": "payoff_amount",
+      "label": "Payoff amount",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "rate_term_refi",
+        "cash_out_refi",
+        "bridge"
+       ]
+      }
+     },
+     {
+      "key": "as_is_value",
+      "label": "Estimated value today (as-is)",
+      "type": "money",
+      "required": true
+     },
+     {
+      "key": "rehab_budget",
+      "label": "Renovation or construction budget",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "any": [
+        {
+         "field": "request.program_interest",
+         "in": [
+          "fix_and_flip",
+          "ground_up"
+         ]
+        },
+        {
+         "field": "request.loan_purpose",
+         "in": [
+          "construction"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "key": "arv",
+      "label": "Estimated value after the work (ARV)",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "any": [
+        {
+         "field": "request.program_interest",
+         "in": [
+          "fix_and_flip",
+          "ground_up"
+         ]
+        },
+        {
+         "field": "request.loan_purpose",
+         "in": [
+          "construction"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "key": "monthly_rent_current",
+      "label": "Current monthly rent",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "investment"
+       ]
+      },
+      "help": "Enter 0 if the property is vacant."
+     },
+     {
+      "key": "monthly_rent_market",
+      "label": "Market monthly rent",
+      "type": "money",
+      "required": false,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "investment"
+       ]
+      }
+     },
+     {
+      "key": "annual_taxes",
+      "label": "Annual property taxes",
+      "type": "money",
+      "required": true
+     },
+     {
+      "key": "annual_insurance",
+      "label": "Annual insurance",
+      "type": "money",
+      "required": true
+     },
+     {
+      "key": "monthly_hoa",
+      "label": "Monthly HOA dues",
+      "type": "money",
+      "required": false
+     }
+    ]
+   },
+   {
+    "key": "borrowers",
+    "label": "Borrowers",
+    "per_role": true,
+    "fields": [
+     {
+      "key": "first_name",
+      "label": "Legal first name",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "middle_name",
+      "label": "Middle name",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "last_name",
+      "label": "Legal last name",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "suffix",
+      "label": "Suffix",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "dob",
+      "label": "Date of birth",
+      "type": "date",
+      "required": true,
+      "sensitive": true
+     },
+     {
+      "key": "ssn_last4",
+      "label": "Last 4 digits of SSN",
+      "type": "ssn_last4",
+      "required": true,
+      "help": "Only the last four digits. We never ask for or store a full Social Security number.",
+      "sensitive": true
+     },
+     {
+      "key": "email",
+      "label": "Email",
+      "type": "email",
+      "required": true
+     },
+     {
+      "key": "mobile_phone",
+      "label": "Mobile phone",
+      "type": "phone",
+      "required": true
+     },
+     {
+      "key": "home_phone",
+      "label": "Home phone",
+      "type": "phone",
+      "required": false
+     },
+     {
+      "key": "citizenship",
+      "label": "Citizenship",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "us_citizen",
+        "label": "U.S. citizen"
+       },
+       {
+        "value": "permanent_resident",
+        "label": "Permanent resident"
+       },
+       {
+        "value": "non_permanent_resident",
+        "label": "Non-permanent resident"
+       },
+       {
+        "value": "foreign_national",
+        "label": "Foreign national"
+       }
+      ]
+     },
+     {
+      "key": "marital_status",
+      "label": "Marital status",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "married",
+        "label": "Married"
+       },
+       {
+        "value": "unmarried",
+        "label": "Unmarried"
+       },
+       {
+        "value": "separated",
+        "label": "Separated"
+       }
+      ],
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "dependents_count",
+      "label": "Number of dependents",
+      "type": "integer",
+      "required": false,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "street",
+      "label": "Home street address",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "city",
+      "label": "City",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "state",
+      "label": "State",
+      "type": "state",
+      "required": true
+     },
+     {
+      "key": "zip",
+      "label": "ZIP code",
+      "type": "zip",
+      "required": true
+     },
+     {
+      "key": "housing",
+      "label": "Do you own or rent your home?",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "own",
+        "label": "Own"
+       },
+       {
+        "value": "rent",
+        "label": "Rent"
+       },
+       {
+        "value": "rent_free",
+        "label": "Live rent-free"
+       }
+      ]
+     },
+     {
+      "key": "monthly_housing_payment",
+      "label": "Monthly rent",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "$.housing",
+       "eq": "rent"
+      }
+     },
+     {
+      "key": "years_at_address",
+      "label": "Years at this address",
+      "type": "integer",
+      "required": true
+     },
+     {
+      "key": "prev_street",
+      "label": "Previous street address",
+      "type": "text",
+      "required": true,
+      "applies_when": {
+       "field": "$.years_at_address",
+       "lt": 2
+      }
+     },
+     {
+      "key": "prev_city",
+      "label": "Previous city",
+      "type": "text",
+      "required": true,
+      "applies_when": {
+       "field": "$.years_at_address",
+       "lt": 2
+      }
+     },
+     {
+      "key": "prev_state",
+      "label": "Previous state",
+      "type": "state",
+      "required": true,
+      "applies_when": {
+       "field": "$.years_at_address",
+       "lt": 2
+      }
+     },
+     {
+      "key": "prev_zip",
+      "label": "Previous ZIP code",
+      "type": "zip",
+      "required": true,
+      "applies_when": {
+       "field": "$.years_at_address",
+       "lt": 2
+      }
+     },
+     {
+      "key": "employer_name",
+      "label": "Current employer or business",
+      "type": "text",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "position",
+      "label": "Position or title",
+      "type": "text",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "employment_years",
+      "label": "Years in this role",
+      "type": "integer",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "self_employed",
+      "label": "Self-employed?",
+      "type": "yesno",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "monthly_income",
+      "label": "Monthly income",
+      "type": "money",
+      "required": true,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "prior_employer_name",
+      "label": "Prior employer",
+      "type": "text",
+      "required": true,
+      "applies_when": {
+       "all": [
+        {
+         "field": "request.occupancy",
+         "in": [
+          "primary_residence",
+          "second_home"
+         ]
+        },
+        {
+         "field": "$.employment_years",
+         "lt": 2
+        }
+       ]
+      }
+     },
+     {
+      "key": "other_income_monthly",
+      "label": "Other monthly income",
+      "type": "money",
+      "required": false,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "other_income_source",
+      "label": "Source of other income",
+      "type": "text",
+      "required": false,
+      "applies_when": {
+       "field": "request.occupancy",
+       "in": [
+        "primary_residence",
+        "second_home"
+       ]
+      }
+     },
+     {
+      "key": "checking",
+      "label": "Checking account balances",
+      "type": "money",
+      "required": true
+     },
+     {
+      "key": "savings",
+      "label": "Savings account balances",
+      "type": "money",
+      "required": false
+     },
+     {
+      "key": "retirement",
+      "label": "Retirement account balances",
+      "type": "money",
+      "required": false
+     },
+     {
+      "key": "decl_bankruptcy",
+      "label": "Bankruptcy in the last 7 years?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_foreclosure",
+      "label": "Foreclosure, short sale or deed in lieu in the last 7 years?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_judgments",
+      "label": "Outstanding judgments or liens?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_lawsuit",
+      "label": "A party to a lawsuit?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_federal_debt",
+      "label": "Delinquent or in default on federal debt?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_support",
+      "label": "Obligated to pay alimony, child support or separate maintenance?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_comaker",
+      "label": "A co-maker, co-signer or guarantor on another note?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "decl_down_payment_borrowed",
+      "label": "Is any part of the down payment borrowed or a gift?",
+      "type": "yesno",
+      "required": true,
+      "applies_when": {
+       "field": "request.loan_purpose",
+       "in": [
+        "purchase"
+       ]
+      }
+     },
+     {
+      "key": "decl_explanation",
+      "label": "Explain each yes above",
+      "type": "textarea",
+      "required": true,
+      "applies_when": {
+       "any": [
+        {
+         "field": "$.decl_bankruptcy",
+         "eq": true
+        },
+        {
+         "field": "$.decl_foreclosure",
+         "eq": true
+        },
+        {
+         "field": "$.decl_judgments",
+         "eq": true
+        },
+        {
+         "field": "$.decl_lawsuit",
+         "eq": true
+        },
+        {
+         "field": "$.decl_federal_debt",
+         "eq": true
+        },
+        {
+         "field": "$.decl_support",
+         "eq": true
+        },
+        {
+         "field": "$.decl_comaker",
+         "eq": true
+        }
+       ]
+      }
+     }
+    ]
+   },
+   {
+    "key": "entity",
+    "label": "Borrowing company",
+    "applies_when": {
+     "field": "request.borrowing_as",
+     "eq": "entity"
+    },
+    "fields": [
+     {
+      "key": "legal_name",
+      "label": "Legal name of the company",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "dba",
+      "label": "Doing business as",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "entity_type",
+      "label": "Company type",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "llc",
+        "label": "LLC"
+       },
+       {
+        "value": "corporation",
+        "label": "Corporation"
+       },
+       {
+        "value": "s_corporation",
+        "label": "S corporation"
+       },
+       {
+        "value": "partnership",
+        "label": "Partnership"
+       },
+       {
+        "value": "sole_proprietorship",
+        "label": "Sole proprietorship"
+       },
+       {
+        "value": "trust",
+        "label": "Trust"
+       },
+       {
+        "value": "other",
+        "label": "Other"
+       }
+      ]
+     },
+     {
+      "key": "ein",
+      "label": "Tax ID (EIN)",
+      "type": "ein",
+      "required": true
+     },
+     {
+      "key": "state_of_formation",
+      "label": "State of formation",
+      "type": "state",
+      "required": true
+     },
+     {
+      "key": "date_established",
+      "label": "Date established",
+      "type": "date",
+      "required": true
+     },
+     {
+      "key": "good_standing",
+      "label": "Is the company in good standing?",
+      "type": "yesno",
+      "required": true
+     },
+     {
+      "key": "street",
+      "label": "Business street address",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "city",
+      "label": "City",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "state",
+      "label": "State",
+      "type": "state",
+      "required": true
+     },
+     {
+      "key": "zip",
+      "label": "ZIP code",
+      "type": "zip",
+      "required": true
+     },
+     {
+      "key": "phone",
+      "label": "Main business phone",
+      "type": "phone",
+      "required": true
+     },
+     {
+      "key": "fax",
+      "label": "Fax",
+      "type": "phone",
+      "required": false
+     },
+     {
+      "key": "email",
+      "label": "Business email",
+      "type": "email",
+      "required": true
+     },
+     {
+      "key": "website",
+      "label": "Website",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "employees",
+      "label": "Number of employees",
+      "type": "integer",
+      "required": true
+     },
+     {
+      "key": "business_type",
+      "label": "Type of business",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "ownership_pct",
+      "label": "Your ownership (%)",
+      "type": "percent",
+      "required": true
+     }
+    ]
+   },
+   {
+    "key": "experience",
+    "label": "Experience",
+    "fields": [
+     {
+      "key": "projects_completed_36m",
+      "label": "Projects completed in the last 3 years",
+      "type": "integer",
+      "required": true,
+      "help": "Purchases, renovations, builds or rentals you completed."
+     },
+     {
+      "key": "properties_owned",
+      "label": "Investment properties you own today",
+      "type": "integer",
+      "required": true
+     },
+     {
+      "key": "experience_notes",
+      "label": "Anything else about your experience",
+      "type": "textarea",
+      "required": false
+     }
+    ],
+    "collections": {
+     "other_properties": [
+      {
+       "key": "address",
+       "label": "Address",
+       "type": "text",
+       "required": true
+      },
+      {
+       "key": "estimated_value",
+       "label": "Estimated value",
+       "type": "money",
+       "required": false
+      },
+      {
+       "key": "mortgage_balance",
+       "label": "Mortgage balance",
+       "type": "money",
+       "required": false
+      },
+      {
+       "key": "monthly_payment",
+       "label": "Monthly payment",
+       "type": "money",
+       "required": false
+      },
+      {
+       "key": "monthly_rent",
+       "label": "Monthly rent",
+       "type": "money",
+       "required": false
+      }
+     ]
+    }
+   },
+   {
+    "key": "financial",
+    "label": "Liquidity and credit",
+    "fields": [
+     {
+      "key": "cash_to_close",
+      "label": "Cash available to close",
+      "type": "money",
+      "required": true
+     },
+     {
+      "key": "exit_strategy",
+      "label": "How the loan will be repaid",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "sale",
+        "label": "Sell the property"
+       },
+       {
+        "value": "refinance",
+        "label": "Refinance into a long-term loan"
+       },
+       {
+        "value": "hold_and_rent",
+        "label": "Hold and rent"
+       },
+       {
+        "value": "business_cash_flow",
+        "label": "Repay from business cash flow"
+       },
+       {
+        "value": "other",
+        "label": "Other"
+       }
+      ],
+      "applies_when": {
+       "any": [
+        {
+         "field": "request.loan_purpose",
+         "in": [
+          "bridge",
+          "construction",
+          "heloc"
+         ]
+        },
+        {
+         "field": "request.program_interest",
+         "in": [
+          "fix_and_flip",
+          "ground_up",
+          "bridge"
+         ]
+        }
+       ]
+      }
+     },
+     {
+      "key": "credit_score_estimate",
+      "label": "Estimated middle credit score",
+      "type": "score",
+      "required": true,
+      "help": "Your best estimate; the soft credit check replaces it."
+     }
+    ]
+   },
+   {
+    "key": "closing",
+    "label": "Title and closing contacts",
+    "fields": [
+     {
+      "key": "title_vesting",
+      "label": "How title will be held",
+      "type": "select",
+      "required": true,
+      "options": [
+       {
+        "value": "individual",
+        "label": "Individual"
+       },
+       {
+        "value": "joint",
+        "label": "Jointly"
+       },
+       {
+        "value": "entity",
+        "label": "Company"
+       },
+       {
+        "value": "trust",
+        "label": "Trust"
+       }
+      ]
+     },
+     {
+      "key": "persons_on_title",
+      "label": "Names of everyone on title",
+      "type": "text",
+      "required": true
+     },
+     {
+      "key": "title_company",
+      "label": "Attorney or title company",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "title_contact_phone",
+      "label": "Attorney or title phone",
+      "type": "phone",
+      "required": false
+     },
+     {
+      "key": "title_contact_email",
+      "label": "Attorney or title email",
+      "type": "email",
+      "required": false
+     },
+     {
+      "key": "access_contact_name",
+      "label": "Appraisal and access contact",
+      "type": "text",
+      "required": false
+     },
+     {
+      "key": "access_contact_phone",
+      "label": "Access contact phone",
+      "type": "phone",
+      "required": false
+     }
+    ]
+   },
+   {
+    "key": "notes",
+    "label": "Additional information",
+    "fields": [
+     {
+      "key": "notes",
+      "label": "Anything else about the loan or the borrowers",
+      "type": "textarea",
+      "required": false
+     }
+    ]
+   }
+  ]
+ },
+ "signing": {
+  "status": "executed",
+  "version": {
+   "id": "19ab7c45-bf1f-4f66-a0b6-afc232e1f777",
+   "number": 1,
+   "body_sha256": "e9a4ff75491aed1d15844c49e4c7ace19faea5f713c511f468e23cbe1c9621f2"
+  },
+  "consents": [
+   {
+    "key": "business_purpose",
+    "label": "Business purpose",
+    "version": "draft-2026-11-17",
+    "sha256": "704af844c59b6eddc3fa7e59a98260dbc2521abf4934fea15eb2ae2132e801b4",
+    "text": "I certify that the financing requested is for business or investment purposes and not for personal, family or household purposes. If the property securing it is my residence, I certify the proceeds will be used only for the business purposes stated in this application.",
+    "draft": true
+   },
+   {
+    "key": "accuracy",
+    "label": "Accuracy",
+    "version": "draft-2026-11-17",
+    "sha256": "6b3f4faa779f1e04a7a75ccc0df17e74ed9c92ae6cec5fbb48ecc1746ab00a3f",
+    "text": "I certify that the information in this application is true and complete. I understand Qualified Commercial, its partners and any prospective lender will rely on it, and that knowingly false statements may lead to denial and may be a crime under federal law.",
+    "draft": true
+   },
+   {
+    "key": "credit_authorization",
+    "label": "Credit authorization",
+    "version": "2026-07-25-1",
+    "sha256": "df3ab4aa738aa9f252e1af7559b28a2b38837bdb856608c5aad0f240800bdb73",
+    "text": "Qualified Commercial LLC Credit Report Authorization and Electronic Signature Consent\n\nBy signing this authorization, I authorize QC - Qualified Commercial LLC and its\nunderwriting partners to obtain a soft credit inquiry (a \"soft pull\") on my consumer\ncredit file from one or more consumer reporting agencies, for the purpose of evaluating\nmy application for financing. I understand a soft pull does not affect my credit score.\n\nI certify that the identifying information I provide on this form (legal name, date of\nbirth, and address) is accurate and is my own information, provided for the purpose of\nthis credit inquiry.\n\nI consent to use electronic records and electronic signatures under the U.S. E-SIGN Act\nand UETA. I understand my typed legal name, checkbox acknowledgment, drawn signature,\ntimestamp, IP address, and device/browser information may be retained as evidence of\nthis authorization. I may request a copy of this authorization record.",
+    "draft": false
+   },
+   {
+    "key": "information_sharing",
+    "label": "Information sharing",
+    "version": "re-app-sharing-v1",
+    "sha256": "5b2bc51c52cd864799cccc11192234f52bb0f78b30a92c8c0ef848ce69fb601a",
+    "text": "I authorize Qualified Commercial LLC to share this application, the documents in my file and information about my request with its lending partners and associates, and with any prospective lender, investor, servicer, title company, attorney or appraiser involved in arranging or closing the financing I requested, so they can review and process it. They may contact me about this request. This does not authorize a hard credit inquiry or guarantee financing. I may revoke it in writing for future sharing.",
+    "draft": true
+   },
+   {
+    "key": "esign",
+    "label": "Electronic signature",
+    "version": "esign-2026-07-25-1",
+    "sha256": "bd1a90086ce597af9fbcecab45252a6bd2810e1ff61c34985ca2dfdd175e0d4a",
+    "text": "I consent to use electronic records and signatures under the U.S. E-SIGN Act and UETA.",
+    "draft": false
+   }
+  ],
+  "required_roles": [
+   "borrower"
+  ],
+  "signed": {
+   "borrower": {
+    "name": "Jordan Sample",
+    "signed_at": "2026-11-17T01:43:42.941691+00:00"
+   }
+  },
+  "role": null,
+  "signer_name": null,
+  "can_sign": false,
+  "held": false,
+  "signing_open": true,
+  "executed_file_id": "baac8a74-7a9b-47a6-853f-326161b64bee"
+ },
+ "relay": {
+  "signed": {
+   "form_version": 1,
+   "signed_at": "2026-11-17T01:43:43.471291+00:00",
+   "file_name": "Real Estate Loan Application v1 - Signed.pdf",
+   "sharing_consent": true
+  },
+  "shares": []
+ }
+}

@@ -123,6 +123,9 @@ export function ReApplicationForm({ view, body, problems, busy, audience, onValu
     return fields.filter((ref) => missing.has(ref.path) || (ref.spec.required && isBlank(getAt(body, ref.path))));
   }, [fields, view.completion.missing, view.please_check, sticky, body]);
   const neededPaths = new Set(needed.map((ref) => ref.path));
+  // Answered fields stay where they were typed for this sitting, but only the
+  // ones still open count as needed.
+  const stillOpen = needed.filter((ref) => view.completion.missing.includes(ref.path) || view.please_check.includes(ref.path) || (ref.spec.required && isBlank(getAt(body, ref.path)))).length;
   const answered = fields.filter((ref) => !neededPaths.has(ref.path) && !isBlank(getAt(body, ref.path)));
   const optional = fields.filter((ref) => !neededPaths.has(ref.path) && isBlank(getAt(body, ref.path)) && !ref.spec.required);
   const reopen = (path: string) => setSticky((current) => new Set([...current, path]));
@@ -133,7 +136,7 @@ export function ReApplicationForm({ view, body, problems, busy, audience, onValu
       <div className="fp-card ra-progress">
         <div className="ra-progress-row">
           <strong>{view.completion.filled} of {view.completion.total} answered</strong>
-          <span className="fp-hint">{needed.length ? `${needed.length} still needed` : "Everything required is answered"}</span>
+          <span className="fp-hint">{stillOpen ? `${stillOpen} still needed` : "Everything required is answered"}</span>
         </div>
         <div className="ra-bar" aria-hidden="true"><span style={{ width: `${view.completion.total ? Math.round((view.completion.filled / view.completion.total) * 100) : 100}%` }} /></div>
         <p className="fp-legend">Most of this came from your application. Answer what is left, check what we filled in for you, then review and submit.</p>

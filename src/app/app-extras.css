@@ -7445,3 +7445,13 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 @media (max-width: 560px) { .ra-answered-row { grid-template-columns: minmax(0, 1fr); } }
 .ra-consent { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13.5px; line-height: 1.5; color: var(--fp-ink, #101828); padding: 8px 0; border-bottom: 1px solid var(--fp-line, #e4e7ec); }
 .ra-consent input { margin-top: 3px; width: 16px; height: 16px; }
+.ra-relay { display: grid; gap: 10px; padding: 12px 14px; margin: 12px 0; border: 1px solid var(--line, #e4e7ec); border-radius: 10px; background: var(--surface, #fff); }
+.ra-relay-head { display: grid; gap: 4px; }
+.ra-relay-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 0; }
+.ra-relay-list li { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 12px; padding: 7px 0; border-bottom: 1px solid var(--line, #e4e7ec); }
+.ra-relay-list li:last-child { border-bottom: 0; }
+.ra-relay-who { font-weight: 550; overflow-wrap: anywhere; min-width: 0; }
+.ra-relay-secret { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 8px; }
+.ra-relay-url { overflow-wrap: anywhere; min-width: 0; flex: 1 1 220px; }
+.ra-relay-form { display: grid; gap: 10px; }
+.ra-relay-actions { display: flex; flex-wrap: wrap; gap: 8px; }
