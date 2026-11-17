@@ -798,6 +798,27 @@ export function LeadDetailPanel({
   const [requestOpen, setRequestOpen] = useState(false);
   const [requestSaving, setRequestSaving] = useState(false);
   const [requestResult, setRequestResult] = useState<RoomRequestResult | null>(null);
+  const [invitationStatus, setInvitationStatus] = useState<{ profileId: string; can_resend: boolean; recipient_email: string | null } | null>(null);
+  const [resendInvitationOpen, setResendInvitationOpen] = useState(false);
+  const [resendInvitationSaving, setResendInvitationSaving] = useState(false);
+  const [resendInvitationResult, setResendInvitationResult] = useState<RoomRequestResult | null>(null);
+  const invitationProfileId = detail?.application_profile_id ?? profileId;
+  useEffect(() => {
+    setInvitationStatus(null);
+    if (!invitationProfileId || !canUnderwrite) return;
+    let cancelled = false;
+    void (async () => {
+      try {
+        const authToken = await getToken();
+        const result = await api<{ can_resend: boolean; recipient_email: string | null }>(`/application-profiles/${invitationProfileId}/room/invitation`, { authToken: authToken ?? undefined });
+        if (!cancelled) setInvitationStatus({ ...result, profileId: invitationProfileId });
+      } catch {
+        // An unavailable access check must never offer a speculative send.
+        if (!cancelled) setInvitationStatus(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [invitationProfileId, canUnderwrite, getToken]);
   const [rotatePinOpen, setRotatePinOpen] = useState(false);
   const [rotatePinSaving, setRotatePinSaving] = useState(false);
   const [rotatePinDone, setRotatePinDone] = useState(false);
@@ -1808,6 +1829,24 @@ export function LeadDetailPanel({
     }
   }
 
+  async function resendClientInvitation() {
+    if (!invitationStatus?.can_resend || resendInvitationSaving) return;
+    setResendInvitationSaving(true);
+    try {
+      const authToken = await getToken();
+      const result = await api<RoomRequestResult>(`/application-profiles/${invitationStatus.profileId}/room/reminders`, {
+        method: "POST", authToken: authToken ?? undefined,
+        body: JSON.stringify({ purpose: "invitation", email_room_link: true, sms_reminder: false }),
+      });
+      setResendInvitationResult(result);
+      toast.show(result.overall_status === "success" ? "Invitation accepted for email delivery" : "The invitation email was not accepted. Review the delivery result.");
+    } catch (reason) {
+      toast.show(apiErrorMessage(reason, "The invitation could not be resent."));
+    } finally {
+      setResendInvitationSaving(false);
+    }
+  }
+
   function openRotatePin() {
     setRotatePin("");
     setRotatePinConfirm("");
@@ -1935,6 +1974,7 @@ export function LeadDetailPanel({
         ) : null}
         {detail && detail.intake.preferred_language === "es" ? <CellChip tone="acc" title="This client is written to in Spanish">Spanish client</CellChip> : null}
         <PageActionMenu label="More actions for this file" items={[
+          { label: "Resend invitation", onSelect: () => { setResendInvitationResult(null); setResendInvitationOpen(true); }, hidden: !detail || !invitationStatus?.can_resend || invitationStatus.profileId !== invitationProfileId },
           { label: detail?.intake.preferred_language === "es" ? "Write to this client in English" : "Write to this client in Español", onSelect: () => changeLanguage(detail?.intake.preferred_language === "es" ? "en" : "es"), hidden: !detail || languageBusy },
           { label: "Open underwriting chat", onSelect: () => navigateCommunication("underwriter"), hidden: !detail },
           { label: "View client conversation", onSelect: () => navigateCommunication("client"), hidden: !detail },
@@ -2352,6 +2392,20 @@ export function LeadDetailPanel({
         </>
       )}
 
+      <Drawer
+        open={resendInvitationOpen}
+        width="md"
+        closeOnBackdrop={!resendInvitationSaving}
+        onClose={() => { if (!resendInvitationSaving) setResendInvitationOpen(false); }}
+        title="Resend invitation"
+        footer={<><span className="sp" /><Btn disabled={resendInvitationSaving} onClick={() => setResendInvitationOpen(false)}>{resendInvitationResult ? "Done" : "Cancel"}</Btn>{!resendInvitationResult ? <Btn variant="pri" disabled={resendInvitationSaving || !invitationStatus?.can_resend} onClick={() => void resendClientInvitation()}>{resendInvitationSaving ? "Sending…" : "Resend invitation"}</Btn> : null}</>}
+      >
+        <div className="grid g12">
+          <p>This client has never signed in. Email their secure application invitation to <strong>{invitationStatus?.recipient_email}</strong>.</p>
+          <p className="sub">Their existing room link and PIN stay valid. Share the PIN separately.</p>
+          {resendInvitationResult ? <Callout tone={resendInvitationResult.overall_status === "success" ? "ok" : "warn"}>{resendInvitationResult.overall_status === "success" ? "The email provider accepted the invitation." : "The invitation was not accepted for delivery."}{resendInvitationResult.deliveries.map((receipt) => <div key={receipt.id}>{receipt.recipient_masked}: {receipt.detail}</div>)}</Callout> : null}
+        </div>
+      </Drawer>
       {detail && underwriting?.profile_id ? <OpenedWorkspace open={offerComposerOpen}><OfferDeliveryComposer
         profileId={underwriting.profile_id}
         clientName={detail.intake.full_name}
