@@ -37,6 +37,7 @@
 // sentence for a link that has stopped working. Recoverable save failures keep
 // the working entries visible; only a closed or unavailable link ends access.
 
+import { FormRoomHeader, FormRoomShell } from "@/components/room/FormRoom";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
@@ -298,14 +299,10 @@ function diffEdits(sheet: SheetKind, before: Values, after: Values): WorksheetCe
 
 function Shell({ children }: { children: ReactNode }) {
   return (
-    <div className="fp">
-      <header className="fp-header">
-        <div className="fp-header-inner">
-          <span className="fp-mark">Qualified Commercial</span>
-        </div>
-      </header>
+    <FormRoomShell>
+      <FormRoomHeader />
       {children}
-    </div>
+    </FormRoomShell>
   );
 }
 
@@ -758,19 +755,16 @@ export default function PublicWorksheetPage() {
   const businessName = payload.business_name;
 
   return (
-    <div className="fp">
+    <FormRoomShell wide>
       <style>{STYLE}</style>
-      <header className="fp-header">
-        <div className="fp-header-inner">
-          <span className="fp-mark">Qualified Commercial</span>
-          <h1>Financial worksheet{businessName ? ` for ${businessName}` : ""}</h1>
-          <p className="fp-for">
-            {canEdit
-              ? "Working changes save as you type. Choose Save version to submit a dated PDF."
-              : "You are looking at this worksheet. Nothing here can be changed from this link."}
-          </p>
-        </div>
-      </header>
+      <FormRoomHeader eyebrow="Financial worksheet">
+        <h1>Financial worksheet{businessName ? ` for ${businessName}` : ""}</h1>
+        <p className="fp-for">
+          {canEdit
+            ? "Working changes save as you type. Choose Save version to submit a dated PDF."
+            : "You are looking at this worksheet. Nothing here can be changed from this link."}
+        </p>
+      </FormRoomHeader>
 
       <main className="fp-main">
         {notice ? (
@@ -833,7 +827,7 @@ export default function PublicWorksheetPage() {
       <span className="fp-sr" aria-live="polite">
         {sheet ? TITLES[sheet.kind] : ""}
       </span>
-    </div>
+    </FormRoomShell>
   );
 }
 

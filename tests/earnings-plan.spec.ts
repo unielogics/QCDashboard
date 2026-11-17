@@ -796,7 +796,8 @@ test("a client link opens the plan without a sign-in, keeps what is typed and se
   const stand: LinkStand = { state: "ok", workspace: linkWorkspace(), requests: [] };
   const errors = await openLink(page, stand);
   await expect(page.getByRole("heading", { name: "Operating expenses and earnings plan", level: 1 })).toBeVisible();
-  await expect(page.locator(".fp-mark")).toHaveText("Qualified Commercial");
+  await expect(page.locator(".application-room-brand")).toContainText("QUALIFIED COMMERCIAL");
+  await expect(page.locator('.application-room-brand svg[aria-label="Qualified Commercial"]')).toBeVisible();
   const plan = page.locator("[data-earnings-plan]");
   await expect(plan).toHaveAttribute("data-earnings-plan", "client");
   await expect(plan).toContainText("Client view");

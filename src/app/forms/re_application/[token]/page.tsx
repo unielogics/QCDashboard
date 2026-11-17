@@ -8,14 +8,14 @@
 //
 // It is one journey with the secure application room, so the page wears the
 // room's own shell: the brand block with the mark, the room's header, tokens,
-// buttons and footer (app-extras.css, ".application-room" and ".ra-room"). A
+// buttons and footer (app-extras.css, ".application-room" and ".fp-room"). A
 // client who chose the room's Obsidian theme keeps it here, and one who came
 // from the room gets a way back to it.
 
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
-import { Icon } from "@/components/design-system/Icon";
+import { FormRoomFooter } from "@/components/room/FormRoom";
 import { RoomBrand } from "@/components/room/RoomBrand";
 import { ReApplicationForm, ReApplicationReview } from "@/components/application/ReApplicationForm";
 import { useApplicationDraft, type DraftPayload, type SaveError } from "@/components/application/useApplicationDraft";
@@ -207,13 +207,8 @@ export default function ReApplicationPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
-  const shell = `application-room ${theme === "obsidian" ? "is-obsidian" : "is-light"} ra-room`;
-  const footer = (
-    <footer className="application-room-footer">
-      <span><Icon name="lock" size={14} />Encrypted in transit and at rest</span>
-      <span>Qualified Commercial</span>
-    </footer>
-  );
+  const shell = `application-room ${theme === "obsidian" ? "is-obsidian" : "is-light"} fp-room`;
+  const footer = <FormRoomFooter />;
 
   if (gone) {
     return (
@@ -243,14 +238,14 @@ export default function ReApplicationPage() {
             <p>To keep your details private, we email a 6-digit code{gate.email_hint ? <> to <strong>{gate.email_hint}</strong></> : null}. It works once and expires in 15 minutes.</p>
           </div>
           {!sent ? (
-            <button type="button" className="application-room-primary ra-block" disabled={busy} onClick={() => void sendCode()}>{busy ? "Sending…" : "Email me a code"}</button>
+            <button type="button" className="application-room-primary fp-room-block" disabled={busy} onClick={() => void sendCode()}>{busy ? "Sending…" : "Email me a code"}</button>
           ) : (
             <>
               <label className="application-room-field">
                 <span>Code from the email</span>
                 <input id="ra-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} />
               </label>
-              <button type="button" className="application-room-primary ra-block" disabled={busy || code.length !== 6} onClick={() => void verify()}>{busy ? "Checking…" : "Open my application"}</button>
+              <button type="button" className="application-room-primary fp-room-block" disabled={busy || code.length !== 6} onClick={() => void verify()}>{busy ? "Checking…" : "Open my application"}</button>
               <button type="button" className="application-room-theme-link" disabled={busy} onClick={() => void sendCode()}>Send a new code</button>
             </>
           )}
@@ -264,7 +259,7 @@ export default function ReApplicationPage() {
     return (
       <main className={shell} aria-busy="true">
         <div className="application-room-topline" />
-        <section className="application-room-shell ra-shell">
+        <section className="application-room-shell fp-room-shell">
           <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /></div></header>
           <div className="fp-card"><span className="fp-skel fp-skel-line w60" /><span className="fp-skel fp-skel-line w90" /></div>
           {message ? <div className="application-room-alert bad" role="alert">{message}</div> : null}
@@ -311,7 +306,7 @@ export default function ReApplicationPage() {
     return (
       <main className={shell}>
         <div className="application-room-topline" />
-        <section className="application-room-shell ra-shell">
+        <section className="application-room-shell fp-room-shell">
           {heading("Review and sign", chip)}
           {content}
           <div className="ra-gate-actions">
@@ -332,7 +327,7 @@ export default function ReApplicationPage() {
   return (
     <main className={shell}>
       <div className="application-room-topline" />
-      <section className="application-room-shell ra-shell">
+      <section className="application-room-shell fp-room-shell">
         {heading(stage === "fill" ? "Real estate loan application" : "Review your application", chip)}
         {stage === "fill" ? (
           <ReApplicationForm view={view} body={draft.body} problems={draft.problems} busy={busy} audience="client" onValue={draft.setValue} onConfirm={draft.confirm} onCoborrower={draft.setCoborrower} />

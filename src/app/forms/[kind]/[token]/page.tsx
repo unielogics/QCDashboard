@@ -21,6 +21,7 @@
 // tells them they can close the window, which is the whole interaction. It does
 // not bounce them somewhere or leave them wondering whether it went through.
 
+import { FormRoomHeader, FormRoomShell } from "@/components/room/FormRoom";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
@@ -275,13 +276,10 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
 
   if (status === "loading") {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-            <span className="fp-skel fp-skel-title" />
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader>
+          <span className="fp-skel fp-skel-title" />
+        </FormRoomHeader>
         <main className="fp-main" aria-busy="true" aria-live="polite">
           <span className="fp-sr">Loading your form</span>
           <div className="fp-card">
@@ -294,18 +292,14 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
             </div>
           </div>
         </main>
-      </div>
+      </FormRoomShell>
     );
   }
 
   if (status === "gone") {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader />
         <main className="fp-main fp-centered">
           <div className="fp-card fp-terminal">
             <span className="fp-terminal-glyph" aria-hidden="true">
@@ -318,23 +312,20 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
             </p>
           </div>
         </main>
-      </div>
+      </FormRoomShell>
     );
   }
 
   if (status === "review" || status === "saving") {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-            <h1>Check this over</h1>
-            <p className="fp-for">
-              {title}
-              {state?.business_name ? ` · ${state.business_name}` : ""}
-            </p>
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader>
+          <h1>Check this over</h1>
+          <p className="fp-for">
+            {title}
+            {state?.business_name ? ` · ${state.business_name}` : ""}
+          </p>
+        </FormRoomHeader>
 
         <main className="fp-main">
           <div className="fp-intro">
@@ -385,18 +376,14 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
             <span className="fp-autosave">Your progress is a working draft until you save this version.</span>
           </div>
         </div>
-      </div>
+      </FormRoomShell>
     );
   }
 
   if (status === "done") {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader />
         <main className="fp-main fp-centered">
           <div className="fp-card fp-terminal">
             <span className="fp-check" aria-hidden="true">
@@ -419,19 +406,16 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
             <PublicFormVersionNotice workspace={state?.workspace} savedVersion={savedVersion} canEdit={canEdit} />
           </div>
         </main>
-      </div>
+      </FormRoomShell>
     );
   }
 
   return (
-    <div className="fp">
-      <header className="fp-header">
-        <div className="fp-header-inner">
-          <span className="fp-mark">Qualified Commercial</span>
-          <h1>{title}</h1>
-          {state?.business_name ? <p className="fp-for">For {state.business_name}</p> : null}
-        </div>
-      </header>
+    <FormRoomShell>
+      <FormRoomHeader>
+        <h1>{title}</h1>
+        {state?.business_name ? <p className="fp-for">For {state.business_name}</p> : null}
+      </FormRoomHeader>
 
       <main className="fp-main">
         <div className="fp-intro">
@@ -506,7 +490,7 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
           </span>
         </div>
       </div>
-    </div>
+    </FormRoomShell>
   );
 }
 

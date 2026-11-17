@@ -39,6 +39,7 @@
 // catcher that fight iOS Safari — and it is imported with `next/dynamic`, so a
 // phone downloads none of its code.
 
+import { FormRoomHeader, FormRoomShell } from "@/components/room/FormRoom";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
@@ -448,13 +449,10 @@ export default function FinancialPacketPage() {
 
   if (status === "loading") {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-            <span className="fp-skel fp-skel-title" />
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader eyebrow="Financial forms">
+          <span className="fp-skel fp-skel-title" />
+        </FormRoomHeader>
         <main className="fp-main" aria-busy="true" aria-live="polite">
           <span className="fp-sr">Loading your forms</span>
           <div className="fp-card">
@@ -467,18 +465,14 @@ export default function FinancialPacketPage() {
             </div>
           </div>
         </main>
-      </div>
+      </FormRoomShell>
     );
   }
 
   if (status === "gone") {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader />
         <main className="fp-main fp-centered">
           <div className="fp-card fp-terminal">
             <span className="fp-terminal-glyph" aria-hidden="true">
@@ -491,18 +485,14 @@ export default function FinancialPacketPage() {
             </p>
           </div>
         </main>
-      </div>
+      </FormRoomShell>
     );
   }
 
   if (allDone && !reviewing) {
     return (
-      <div className="fp">
-        <header className="fp-header">
-          <div className="fp-header-inner">
-            <span className="fp-mark">Qualified Commercial</span>
-          </div>
-        </header>
+      <FormRoomShell>
+        <FormRoomHeader />
         <main className="fp-main fp-centered">
           <div className="fp-card fp-terminal">
             <span className="fp-check" aria-hidden="true">
@@ -526,7 +516,7 @@ export default function FinancialPacketPage() {
             </button>
           </div>
         </main>
-      </div>
+      </FormRoomShell>
     );
   }
 
@@ -534,16 +524,13 @@ export default function FinancialPacketPage() {
   const ownerCount = child?.state.prefill?.owner_count ?? 0;
 
   return (
-    <div className="fp">
-      <header className="fp-header">
-        <div className="fp-header-inner">
-          <span className="fp-mark">Qualified Commercial</span>
-          <h1>Financial package{businessName ? ` for ${businessName}` : ""}</h1>
-          <p className="fp-for">
-            Four forms, one link. Each one saves as you type and is sent on its own.
-          </p>
-        </div>
-      </header>
+    <FormRoomShell>
+      <FormRoomHeader eyebrow="Financial forms">
+        <h1>Financial package{businessName ? ` for ${businessName}` : ""}</h1>
+        <p className="fp-for">
+          Four forms, one link. Each one saves as you type and is sent on its own.
+        </p>
+      </FormRoomHeader>
 
       <main className="fp-main">
         <div className="fp-intro">
@@ -708,6 +695,6 @@ export default function FinancialPacketPage() {
           </div>
         </div>
       ) : null}
-    </div>
+    </FormRoomShell>
   );
 }

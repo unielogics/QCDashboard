@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { clientPlanTransport, type PlanError } from "@/lib/earningsPlan/api";
+import { FormRoomHeader, FormRoomShell } from "@/components/room/FormRoom";
 import { EarningsPlanWorkspace } from "./EarningsPlanWorkspace";
 import styles from "./EarningsPlan.module.css";
 
@@ -31,19 +32,17 @@ function ended(error: PlanError, retry: () => void) {
 /**
  * The Earnings Plan as the business opens it from its own link: no sign-in,
  * the same four steps as staff, without staff review and without editing the
- * goal. It stands on the link pages' own ground and header, like the other
- * forms a business is sent.
+ * goal. It stands in the client room's shell (the brand block, the room's
+ * ground and footer), like the other forms a business is sent.
  */
 export function ClientEarningsPlan({ token }: { token: string }) {
   const transport = useMemo(() => clientPlanTransport(token), [token]);
   return (
-    <div className="fp">
-      <header className="fp-header" style={{ padding: "14px 24px" }}>
-        <div className="fp-header-inner" style={{ maxWidth: 1480 }}><span className="fp-mark">Qualified Commercial</span></div>
-      </header>
+    <FormRoomShell wide>
+      <FormRoomHeader />
       <main className={styles.clientMain}>
         <EarningsPlanWorkspace transport={transport} renderError={(error, retry) => { const page = ended(error, retry); return page ? <div className={styles.clientEnd}>{page}</div> : null; }} />
       </main>
-    </div>
+    </FormRoomShell>
   );
 }

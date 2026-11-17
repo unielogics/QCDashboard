@@ -180,7 +180,7 @@ async function passGate(page: Page) {
 
 // The page is part of the client's room: the same brand block (the mark, the firm's name, its line of business).
 async function expectRoomBrand(page: Page) {
-  await expect(page.locator(".application-room.ra-room")).toBeVisible();
+  await expect(page.locator(".application-room.fp-room")).toBeVisible();
   await expect(page.getByRole("img", { name: "Qualified Commercial" })).toBeVisible();
   await expect(page.getByText("QUALIFIED COMMERCIAL", { exact: true })).toBeVisible();
   await expect(page.getByText("Financing & Capital Advisory")).toBeVisible();

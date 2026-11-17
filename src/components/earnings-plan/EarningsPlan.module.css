@@ -331,6 +331,7 @@ textarea.input { min-height: 64px; padding: 8px; line-height: 1.45; resize: vert
 }
 
 /* ---------- the client link's page ---------- */
-.clientMain { padding: 20px 24px 64px; min-width: 0; }
+/* The room's shell around it supplies the side padding. */
+.clientMain { padding: 4px 0 64px; min-width: 0; }
 .clientEnd { display: grid; place-items: center; min-height: 50vh; }
-@media (max-width: 650px) { .clientMain { padding: 14px 12px 48px; } }
+@media (max-width: 650px) { .clientMain { padding: 4px 0 48px; } }
