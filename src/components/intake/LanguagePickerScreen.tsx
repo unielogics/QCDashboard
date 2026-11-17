@@ -8,15 +8,19 @@
 // language on both intake pages (dark hero card, gold accent) rather than
 // introducing a new look.
 
+import type { ReactNode } from "react";
 import type { Lang } from "@/lib/intakeCopy";
 import { QCMark } from "@/components/QCMark";
 
 export function LanguagePickerScreen({
   onPick,
   variant = "dark",
+  brand,
 }: {
   onPick: (lang: Lang) => void;
   variant?: "dark" | "institutional";
+  /** The page's own brand block, shown in place of the institutional one: a room that opens with its logo opens with the same one here. */
+  brand?: ReactNode;
 }) {
   return (
     // `.v-gate` and not the console vocabulary: these rooms are dark-ground and
@@ -24,7 +28,9 @@ export function LanguagePickerScreen({
     // institutional surface — which would render console chrome on a near-black
     // public page.
     <section className={`v-gate${variant === "institutional" ? " v-gate--institutional" : ""}`}>
-      {variant === "institutional" ? (
+      {brand ? (
+        <div className="v-gate-brand-own">{brand}</div>
+      ) : variant === "institutional" ? (
         <div className="v-gate-brand" aria-hidden="true">
           <span className="v-gate-brand-mark"><QCMark size={38} /></span>
           <span>

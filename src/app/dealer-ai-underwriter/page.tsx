@@ -1232,12 +1232,12 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
   }
 
   if (!mounted) {
-    return <main className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--equipment" : undefined} style={page} />;
+    return <main className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--light" : undefined} style={page} />;
   }
 
   return (
     <main
-      className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--equipment" : undefined}
+      className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--light" : undefined}
       style={response ? (compact ? appViewportMobile : appViewport) : (compact ? pageMobile : page)}
     >
       <section

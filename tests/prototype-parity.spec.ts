@@ -2941,7 +2941,7 @@ test("public client intake entry points retain the language and secure-start gat
     await expect(page.getByRole("button", { name: "Continuar en Español" })).toBeVisible();
     const gate = page.locator(".v-gate");
     if (route === "/equipment-financing-intake") {
-      await expect(page.locator("main.qc-public-intake-theme--equipment")).toBeVisible();
+      await expect(page.locator("main.qc-public-intake-theme--light")).toBeVisible();
       await expect(gate).toHaveClass(/v-gate--institutional/);
       await expect(gate).toHaveCSS("background-color", "rgb(255, 255, 255)");
       await expect(gate.locator(".v-gate-brand")).toBeVisible();
@@ -2951,6 +2951,13 @@ test("public client intake entry points retain the language and secure-start gat
       await expect(gate).toHaveClass(/v-gate--institutional/);
       await expect(gate).toHaveCSS("background-color", "rgb(255, 255, 255)");
       await expect(page.locator(".v-mca .vm-top")).toBeVisible();
+    } else if (route === "/funding-review") {
+      // The funding review room wears the secure application room's light look:
+      // a white gate that opens with the room's own brand block.
+      await expect(page.locator("main.qc-public-intake-theme--room")).toBeVisible();
+      await expect(gate).toHaveClass(/v-gate--institutional/);
+      await expect(gate).toHaveCSS("background-color", "rgb(255, 255, 255)");
+      await expect(gate.locator(".application-room-brand")).toBeVisible();
     } else {
       await expect(gate).not.toHaveClass(/v-gate--institutional/);
     }

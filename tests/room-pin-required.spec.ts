@@ -22,7 +22,7 @@ test.beforeAll(async () => {
     "@/components/ds": "export const Btn=({children,onClick,disabled})=><button onClick={onClick} disabled={disabled}>{children}</button>;export const Panel=({children,title})=><section><h1>{title}</h1>{children}</section>;export const StatusLine=({children})=><div>{children}</div>;export const PageHeader=()=>null;export const Field=({children,label})=><label>{label}{children}</label>;export const Input=props=><input {...props}/>;",
     "@/components/application/Pfs413Form": "export const Pfs413Form=({value,onChange})=>{window.formMounted=true;return <div>Fictional financial statement editor<label>Existing draft owner<input value={value.owner_name||''} onChange={event=>onChange({...value,owner_name:event.target.value})}/></label></div>};",
   };
-  const keep = new Set(["@/components/room/RoomPinFields", "@/components/room/RoomPinSetup", "@/components/QCMark", "@/components/design-system/Icon", "@/components/intake/OnboardingConsent", "@/components/intake/LanguagePickerScreen", "@/components/intake/IntelligenceCharts", "@/components/design-system/cssVars", "@/components/intake/chatActionTargets"]);
+  const keep = new Set(["@/components/room/RoomPinFields", "@/components/room/RoomPinSetup", "@/components/room/RoomBrand", "@/components/room/FormRoom", "@/components/QCMark", "@/components/design-system/Icon", "@/components/intake/OnboardingConsent", "@/components/intake/LanguagePickerScreen", "@/components/intake/IntelligenceCharts", "@/components/design-system/cssVars", "@/components/intake/chatActionTargets"]);
   const exports: Record<string, string[]> = {
     "@/components/InlineImages": ["InlineImageStrip"],
     "@/components/application/LockedEvidenceStatus": ["LockedEvidenceBadge"],
