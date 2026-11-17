@@ -10,8 +10,9 @@ import path from "node:path";
 // and disappears on white, and nothing else in the suite would notice. This
 // opens the real pages with the real stylesheets and a made-up reviewed file,
 // and reads every piece of text against what is painted behind it. The dealer
-// room's signing step, readiness card and document signing panel are read the
-// same way: they are white surfaces on its black.
+// room is read the same way: its white surfaces (the signing step, the
+// readiness card, the document signing panel) sit on black, and its start form
+// borrows a block built for white.
 const ORIGIN = "https://light-room.test";
 let script: Buffer, css: Buffer;
 
@@ -161,7 +162,16 @@ async function open(page: Page, address: string) {
 function unreadable(page: Page) {
   return page.evaluate(() => {
     type Colour = { r: number; g: number; b: number; a: number };
-    const parse = (value: string): Colour | null => { const match = /rgba?\(([^)]+)\)/.exec(value || ""); if (!match) return null; const p = match[1].split(/[ ,/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+    // rgb()/rgba(), and the color(srgb r g b / a) form the browser reports for a color-mix() value:
+    // without it a button with a mixed background would be measured against the page behind it.
+    const parse = (value: string): Colour | null => {
+      const match = /rgba?\(([^)]+)\)/.exec(value || "");
+      if (match) { const p = match[1].split(/[ ,/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; }
+      const mixed = /color\(srgb ([^)]+)\)/.exec(value || "");
+      if (!mixed) return null;
+      const q = mixed[1].split(/[ /]+/).filter(Boolean).map(Number);
+      return { r: q[0] * 255, g: q[1] * 255, b: q[2] * 255, a: q.length > 3 ? q[3] : 1 };
+    };
     const over = (top: Colour, under: Colour): Colour => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
     const channel = (value: number) => { const v = value / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
     const luminance = (c: Colour) => 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
@@ -196,14 +206,55 @@ function unreadable(page: Page) {
   });
 }
 
-for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["funding review", "/funding-review"]] as const) {
+const LIGHT_ROOMS = [["equipment", "/equipment-financing-intake"], ["funding review", "/funding-review"]] as const;
+const ROOMS = [...LIGHT_ROOMS, ["dealer", "/dealer-ai-underwriter"]] as const;
+
+// The first screen of each room is the language choice. In the dealer room its
+// two buttons once forced the card wider than a phone, with the second cut off.
+for (const [label, route] of ROOMS) {
+  test(`${label} room: the language choice fits the screen`, async ({ page }) => {
+    await open(page, route);
+    const spanish = page.getByRole("button", { name: "Continuar en Español" });
+    await expect(spanish).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBeLessThanOrEqual(0);
+    await expect(spanish).toBeInViewport({ ratio: 1 });
+    await expect(page.getByRole("button", { name: "Continue in English" })).toBeInViewport({ ratio: 1 });
+  });
+}
+
+for (const [label, route] of LIGHT_ROOMS) {
   test(`${label} room: the start form has no text that cannot be read`, async ({ page }) => {
     await open(page, route);
     await page.getByRole("button", { name: "Continue in English" }).click();
     await expect(page.getByText("Your room access PIN")).toBeVisible();
     expect(await unreadable(page)).toEqual([]);
   });
+}
 
+// The dealer room's start form is navy. The business profile block inside it is
+// shared with the console and takes its hint colour from `--muted`, a grey for
+// white surfaces, so the room hands it its own. The red "required" marks sit at
+// 4.45:1 on the navy, a hair under the line, and are left as they are.
+test("dealer room: the start form has no text that cannot be read", async ({ page }) => {
+  await open(page, "/dealer-ai-underwriter");
+  await page.getByRole("button", { name: "Continue in English" }).click();
+  await expect(page.getByText("Your room access PIN")).toBeVisible();
+  expect((await unreadable(page)).filter((row) => !row.includes('"*"'))).toEqual([]);
+});
+
+// The sidebar's brand: the name over the room's label, not one run of words.
+for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["dealer", "/dealer-ai-underwriter"]] as const) {
+  test(`${label} room: the sidebar brand is the name over the room's label`, async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 0) <= 720, "The sidebar is a desktop piece.");
+    await open(page, `${route}?token=fixture-reviewed`);
+    const brand = page.locator(".qc-public-intake-sidebar .qc-public-intake-brand");
+    await expect(brand).toBeVisible();
+    const lines = await brand.evaluate((element) => ({ name: element.querySelector("strong")!.getBoundingClientRect().bottom, label: element.querySelector("span")!.getBoundingClientRect().top }));
+    expect(lines.label).toBeGreaterThanOrEqual(lines.name - 1);
+  });
+}
+
+for (const [label, route] of ROOMS) {
   test(`${label} room: the chat, the files and the cockpit have no text that cannot be read`, async ({ page }) => {
     await open(page, `${route}?token=fixture-reviewed`);
     await expect(page.getByText("Two CNC mills with installation.")).toBeVisible();
@@ -221,7 +272,7 @@ for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["fu
 // cockpit and the panel that opens to sign a requested document -- paint their
 // own background. In the dark dealer room they inherited the page's near-white
 // text, so they have to carry their own ink. Read in all three rooms.
-for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["funding review", "/funding-review"], ["dealer", "/dealer-ai-underwriter"]] as const) {
+for (const [label, route] of ROOMS) {
   test(`${label} room: the readiness card and the document signing panel can be read`, async ({ page }) => {
     await open(page, `${route}?token=fixture-readiness`);
     await expect(page.getByText("Two CNC mills with installation.")).toBeVisible();

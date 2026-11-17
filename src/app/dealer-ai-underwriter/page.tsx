@@ -1683,7 +1683,7 @@ function ContactWidget({
 }) {
   const onb = onboardingCopy(language);
   return (
-    <div className="qc-public-intake-form" style={stepOneFormCard}>
+    <div className="qc-public-intake-form" style={equipmentDetails ? stepOneFormCard : stepOneFormCardDealer}>
       <div>
         <h2 style={stepOneFormTitle}>{c.startCardTitle}</h2>
         <p style={stepOneFormCopy}>{c.startCardSub}</p>
@@ -3331,6 +3331,11 @@ const stepOneFormCard: CSSProperties = {
   gap: 15,
   boxShadow: "0 22px 70px rgba(0,0,0,.38)",
 };
+// The business profile block is shared with the console and colours its hint
+// with `--muted`, the grey for white surfaces. On this navy card that grey is
+// too dim to read, so the dealer room hands it the room's own hint colour (the
+// one `fieldHint` uses). The equipment room is light and keeps the grey.
+const stepOneFormCardDealer = { ...stepOneFormCard, "--muted": "#9FB0C8" } as CSSProperties;
 const stepOneFormTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, letterSpacing: 0 };
 const stepOneFormCopy: CSSProperties = { margin: "6px 0 0", color: "#9DABC0", fontSize: 13, lineHeight: 1.4 };
 const stepOneFormGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 10 };

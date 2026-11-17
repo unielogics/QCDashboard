@@ -3876,6 +3876,11 @@ select.vm-in {
   background: linear-gradient(135deg, #f2e58f, #d8b533);
   color: #081122; font-family: inherit; font-weight: 900; font-size: 15px; cursor: pointer;
 }
+/* The dark gate's one column is as wide as the card, not as wide as its
+   widest child. Left to size itself, the column took the two buttons'
+   side-by-side width (454px), so on a phone the card ran past the screen with
+   the second button cut off. Now the buttons stack when there is no room. */
+.v-gate:not(.v-gate--institutional) { grid-template-columns: minmax(0, 1fr); }
 /* The gate had no focus style at all — the only two controls on a public page,
    and a keyboard user could not see which one they were on. */
 .v-gate-b:focus-visible { outline: 3px solid #f8fafc; outline-offset: 3px; }
@@ -4559,9 +4564,10 @@ select.vm-in {
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-error .qc-public-intake-progress-dot { background: #b42318 !important; }
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-complete .qc-public-intake-progress-dot { box-shadow: 0 0 0 4px rgba(37, 116, 73, .14) !important; }
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-error .qc-public-intake-progress-dot { box-shadow: 0 0 0 4px rgba(180, 35, 24, .12) !important; }
-/* The name and the room's label are two lines, not one run of words. */
-.qc-public-intake-theme--light .qc-public-intake-brand strong,
-.qc-public-intake-theme--light .qc-public-intake-brand span { display: block; }
+/* The name and the room's label are two lines, not one run of words -- in the
+   dealer room as well, so this one is not scoped to the light theme. */
+.qc-public-intake-brand strong,
+.qc-public-intake-brand span { display: block; }
 /* Consent wording is read, not skimmed: no dimming on top of the muted colour. */
 .qc-public-intake-theme--light .onb-consent-row b em,
 .qc-public-intake-theme--light .onb-consent-row small,
