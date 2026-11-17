@@ -9,6 +9,7 @@ import {
   useCurrentUser,
 } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { isReferralPartner } from "@/lib/roleAccess";
 import { usePrimaryShortcutLabel } from "@/lib/platformShortcuts";
 import { cx } from "@/components/ds";
 import { ConsoleSwitcher } from "./ConsoleSwitcher";
@@ -34,7 +35,7 @@ export default function TopBar() {
   // workflows of their own — suppress the operator Elara toggle for them too
   // (but they're not borrowers, so the "borrower-view" badge below stays
   // client-only).
-  const isDealerPartner = user?.role === Role.DEALER_PARTNER;
+  const isDealerPartner = isReferralPartner(user?.role);
   const pendingTasks = tasks.filter((task) => task.status === "pending").length;
 
   useEffect(() => {
@@ -69,7 +70,7 @@ export default function TopBar() {
         className={cx("btn topsearch", styles.search)}
       >
         <Icon name="search" size={14} />
-        <span className="grow">{isDealerPartner ? "Search dealer leads and document rooms…" : "Search loans, clients, properties…"}</span>
+        <span className="grow">{isDealerPartner ? "Search your files and document rooms…" : "Search loans, clients, properties…"}</span>
         {!isDealerPartner ? <span className="kbd">{searchShortcutLabel}</span> : null}
       </button>
 

@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Callout, CellChip, Input, PageHeader, Panel } from "@/components/ds";
 import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { useCurrentUser } from "@/hooks/useApi";
-import { Role } from "@/lib/enums.generated";
+import { canUseReferralIntake } from "@/lib/roleAccess";
 
 type DealerRoom = {
   id: string;
@@ -29,10 +29,10 @@ export default function DealerPartnerBucketsPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    if (userLoading || user?.role !== Role.DEALER_PARTNER) return;
+    if (userLoading || !canUseReferralIntake(user?.role)) return;
     let cancelled = false;
     setLoading(true);
-    call<DealerRoomPage>("/broker/ai-underwriter-leads?limit=100&offset=0")
+    call<DealerRoomPage>("/broker/ai-underwriter-leads?archived_filter=visible&limit=100&offset=0")
       .then((response) => { if (!cancelled) setRooms(response.items); })
       .catch((reason) => { if (!cancelled) setError(reason instanceof Error ? reason.message : "Documents are unavailable."); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -46,22 +46,22 @@ export default function DealerPartnerBucketsPage() {
       .some((value) => String(value || "").toLocaleLowerCase().includes(needle)));
   }, [query, rooms]);
 
-  if (!userLoading && user?.role !== Role.DEALER_PARTNER) {
-    return <Callout tone="bad">This workspace is available only to Auto Dealer Agent accounts.</Callout>;
+  if (!userLoading && !canUseReferralIntake(user?.role)) {
+    return <Callout tone="bad">This workspace is available only to Referral Partner accounts.</Callout>;
   }
 
   return <div className="grid">
     <PageHeader
-      eyebrow="Dealer AI Intake"
+      eyebrow="Referral workspace"
       title="Documents"
-      lede="Only the auto-industry leads assigned to your account"
+      lede="Your document rooms across all programs"
       actions={<Link className="btn pri" href="/broker/ai-underwriter-leads">Open AI intake</Link>}
     />
-    <Panel title="Your dealer files" sub={`${visible.length} of ${rooms.length} rooms`}>
+    <Panel title="Your files" sub={`${visible.length} of ${rooms.length} rooms`}>
       <Input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search dealership, client, or room…" aria-label="Search document rooms" />
       {error ? <Callout tone="bad">{error}</Callout> : null}
       {loading ? <div className="sub mt">Loading document rooms…</div> : null}
-      {!loading && !visible.length ? <div className="empty mt">No matching dealer document rooms.</div> : null}
+      {!loading && !visible.length ? <div className="empty mt">No matching document rooms.</div> : null}
       <div className="grid g8 mt">
         {visible.map((room) => <article key={room.id} className="pick">
           <div className="grow">

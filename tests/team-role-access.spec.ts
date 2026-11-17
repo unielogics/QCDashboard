@@ -250,19 +250,19 @@ test("team directory separates industry workspaces and exposes safe row actions"
   const realEstateRow = page.getByRole("row", { name: /Robin Realty/ });
   await expect(realEstateRow).toContainText("realestate@example.com");
   await expect(realEstateRow).toContainText("+19735550101");
-  await expect(realEstateRow).toContainText("Real Estate Agent");
+  await expect(realEstateRow).toContainText("Real Estate Originator");
   await expect(realEstateRow).toContainText("Real Estate Funding");
 
   const autoRow = page.getByRole("row", { name: /Avery Auto/ });
-  await expect(autoRow).toContainText("Auto Dealer Agent");
-  await expect(autoRow).toContainText("Dealer AI Intake");
+  await expect(autoRow).toContainText("Referral Partner");
+  await expect(autoRow).toContainText("All active programs");
   await autoRow.click();
 
   const drawer = page.getByRole("dialog", { name: "Avery Auto" });
-  await expect(drawer).toContainText("Only auto-industry leads referred by this user");
+  await expect(drawer).toContainText("Start files in any active program");
   await expect(drawer.getByRole("link", { name: "Open this agent’s auto files" })).toHaveAttribute(
     "href",
-    `/admin/ai-underwriter-leads?partner=${AUTO_AGENT_ID}&variant=dealer`,
+    `/admin/ai-underwriter-leads?partner=${AUTO_AGENT_ID}`,
   );
   await expect(drawer.getByRole("button", { name: "Email password reset" })).toBeVisible();
   await expect(drawer.getByRole("button", { name: "Revoke sessions" })).toBeVisible();

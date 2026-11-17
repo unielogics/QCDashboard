@@ -21,7 +21,8 @@ import {
   roleAccessProfile,
   roleRequiresPartnerCompany,
   roleUsesHouseProfile,
-  TEAM_ASSIGNABLE_ROLES,
+  teamRoleOptions,
+  canUseReferralIntake,
 } from "@/lib/roleAccess";
 import type { OperatorAccountAccessType, ReferralCompany, UserRow } from "@/lib/types";
 
@@ -280,10 +281,10 @@ export function TeamMemberDrawer({
         </div>
       </Panel>
 
-      <Panel title="Role and industry workspace" sub="Role controls authority; workspace describes the industry-specific experience.">
+      <Panel title="Role and file access" sub="Referral Partners work across programs. Real Estate Originators also have property pipeline and analysis tools.">
         <Field label="Access profile">
           <Select aria-label="Access profile" value={role} onChange={(event) => chooseRole(event.target.value as Role)} disabled={isSelf}>
-            {TEAM_ASSIGNABLE_ROLES.map((value) => {
+            {teamRoleOptions(user.role).map((value) => {
               const option = roleAccessProfile(value);
               return <option key={value} value={value}>{option.label} · {option.workspace}</option>;
             })}
@@ -349,9 +350,9 @@ export function TeamMemberDrawer({
           <Btn onClick={() => void run(() => revokeSessions.mutateAsync({ userId: user.id }))} disabled={busy || isSelf || user.login_state !== "active"}>Revoke sessions</Btn>
           <Btn className={suspend ? "c-bad" : undefined} onClick={() => void run(() => setStatus.mutateAsync({ userId: user.id, body: { account_status: suspend ? "suspended" : "active", reason: reason.trim() } }))} disabled={busy || isSelf || reason.trim().length < 8}>{suspend ? "Suspend login" : "Reactivate login"}</Btn>
         </Row>
-        {role === Role.DEALER_PARTNER ? <Row>
-          <Link className="btn" href={`/admin/ai-underwriter-leads?partner=${user.id}&variant=dealer`}>Open this agent’s auto files</Link>
-          <Link className="btn" href="/admin/ai-underwriter-leads?variant=dealer">Add files in Auto AI Intake</Link>
+        {canUseReferralIntake(role) ? <Row>
+          <Link className="btn" href={`/admin/ai-underwriter-leads?partner=${user.id}`}>Open this partner’s files</Link>
+          <Link className="btn" href="/admin/ai-underwriter-leads">Start a referral file</Link>
         </Row> : null}
         <div className="sub">Files belong to a specific intake, loan, or document room—not directly to a login. Choose the file first, then upload there.</div>
       </Panel>

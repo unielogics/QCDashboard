@@ -10,12 +10,13 @@
 // not be issuing admin inbox queries just because the hook exists.
 import { useDealerChannelInbox } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { isReferralPartner } from "@/lib/roleAccess";
 import type { BadgeKey } from "./nav.config";
 
 export type NavBadges = Partial<Record<BadgeKey, number>>;
 
 export function useNavBadges(role: string | undefined | null): NavBadges {
-  const isDealerPartner = role === Role.DEALER_PARTNER;
+  const isDealerPartner = isReferralPartner(role);
   const isSuperAdmin = role === Role.SUPER_ADMIN;
   const { data: dealerInbox } = useDealerChannelInbox(isDealerPartner);
   const { data: adminDealerInbox } = useDealerChannelInbox(isSuperAdmin, "admin");

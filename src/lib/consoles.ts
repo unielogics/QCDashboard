@@ -18,6 +18,8 @@ export const INHERITED_CONSOLES: Record<string, OperatorAccountAccessType[]> = {
   [Role.LOAN_EXEC]: ["funding", "field_desk", "audit", "capital"],
   [Role.REGIONAL_MANAGER]: ["funding"],
   [Role.BROKER]: ["funding"],
+  [Role.DEALER_PARTNER]: ["funding"],
+  [Role.PROFESSIONAL_REFERRAL_PARTNER]: ["funding"],
   [Role.FIELD_REP]: ["field_desk", "audit"],
   [Role.CAPITAL_PARTNER]: ["capital"],
 };
@@ -32,4 +34,4 @@ export const GRANTABLE_CONSOLES: Record<string, OperatorAccountAccessType[]> = {
 };
 
 /** The roles that live in the operator consoles at all. */
-export const OPERATOR_CONSOLE_ROLES = new Set<string>([Role.SUPER_ADMIN, Role.LOAN_EXEC, Role.REGIONAL_MANAGER, Role.BROKER, Role.FIELD_REP]);
+export const OPERATOR_CONSOLE_ROLES = new Set<string>([Role.SUPER_ADMIN, Role.LOAN_EXEC, Role.REGIONAL_MANAGER, Role.BROKER, Role.FIELD_REP, Role.DEALER_PARTNER, Role.PROFESSIONAL_REFERRAL_PARTNER]);

@@ -37,6 +37,7 @@ import {
 import { QC_FMT } from "@/lib/fmt";
 import type { AITask, CalendarEvent, DashboardReport, FredSeriesSummary, Loan } from "@/lib/types";
 import { Role } from "@/lib/enums.generated";
+import { isReferralPartner } from "@/lib/roleAccess";
 import { CreditPullModal } from "@/components/CreditPullModal";
 import { RateDetailModal } from "@/components/RateDetailModal";
 import { AgentHomeView } from "./components/AgentHomeView";
@@ -131,7 +132,7 @@ export default function DashboardPage() {
   // Role.DEALER_PARTNER's docstring in app/enums.py). Must never render
   // this firm-wide operator dashboard; redirect to their own portal, same
   // pattern as isVendor below.
-  const isDealerPartner = user?.role === Role.DEALER_PARTNER;
+  const isDealerPartner = isReferralPartner(user?.role);
   const showOperatorPipeline = !isClient && !isBroker;
   const closingLoans = loans.filter((loan) => loan.stage === "closing" || loan.stage === "processing");
   const {

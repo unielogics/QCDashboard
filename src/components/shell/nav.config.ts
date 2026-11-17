@@ -201,7 +201,7 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
   // ── Agent (broker) ─────────────────────────────────────────────────────
   [Role.BROKER]: {
     shellLabel: "Real Estate Funding",
-    roleLabel: "Real Estate Agent",
+    roleLabel: "Real Estate Originator",
     groups: [
       {
         id: "desk",
@@ -209,6 +209,8 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
         items: [
           { label: "Dashboard", href: "/", icon: "home", match: "exact" },
           { label: "My pipeline", href: "/pipeline", icon: "layers", badge: "myPipeline" },
+          { label: "Referral files", href: "/broker/ai-underwriter-leads", icon: "spark" },
+          { label: "Active programs", href: "/broker/programs", icon: "docCheck" },
           { label: "Clients", href: "/clients", icon: "clients" },
         ],
       },
@@ -326,14 +328,16 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
 
   // ── Dealer partner ─────────────────────────────────────────────────────
   [Role.DEALER_PARTNER]: {
-    shellLabel: "Dealer AI Intake",
-    roleLabel: "Auto Dealer Agent",
+    shellLabel: "Referral workspace",
+    roleLabel: "Referral Partner",
     groups: [
       {
         id: "referrals",
         label: "Referrals",
         items: [
           { label: "My files", href: "/broker/ai-underwriter-leads", icon: "spark", badge: "myLeads" },
+          { label: "My clients", href: "/broker/clients", icon: "clients" },
+          { label: "Foreclosure rescues", href: "/foreclosure-rescues", icon: "bolt" },
           { label: "Documents", href: "/broker/buckets", icon: "lock" },
           { label: "Messages", href: "/broker/messages", icon: "chat", badge: "dealerUnread" },
           { label: "Programs and resources", href: "/broker/programs", icon: "docCheck" },
@@ -342,24 +346,27 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
       },
     ],
     tools: [],
-    scopeNote: "Auto workspace: you can see only the dealer leads and document rooms you referred.",
+    scopeNote: "You can start files in any active program and see only your own clients, files, and document rooms.",
   },
 
   [Role.PROFESSIONAL_REFERRAL_PARTNER]: {
-    shellLabel: "Professional referral portal",
-    roleLabel: "Professional partner",
-    groups: [
-      {
-        id: "rescue",
-        label: "Commercial foreclosure",
-        items: [
-          { label: "Firm rescue files", href: "/foreclosure-rescues", icon: "bolt" },
-          { label: "Profile", href: "/profile", icon: "user" },
-        ],
-      },
-    ],
+    shellLabel: "Referral workspace",
+    roleLabel: "Referral Partner",
+    groups: [{
+      id: "referrals",
+      label: "Referrals",
+      items: [
+        { label: "My files", href: "/broker/ai-underwriter-leads", icon: "spark", badge: "myLeads" },
+        { label: "My clients", href: "/broker/clients", icon: "clients" },
+        { label: "Documents", href: "/broker/buckets", icon: "lock" },
+        { label: "Messages", href: "/broker/messages", icon: "chat", badge: "dealerUnread" },
+        { label: "Active programs", href: "/broker/programs", icon: "docCheck" },
+        { label: "Firm rescue files", href: "/foreclosure-rescues", icon: "bolt" },
+        { label: "Profile", href: "/profile", icon: "user" },
+      ],
+    }],
     tools: [],
-    scopeNote: "You can see every foreclosure rescue owned by your approved firm.",
+    scopeNote: "Own clients and files across programs. Existing firm access applies only to foreclosure rescues.",
   },
 
   [Role.FIELD_REP]: {

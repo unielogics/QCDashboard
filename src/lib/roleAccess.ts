@@ -26,9 +26,9 @@ export const ROLE_ACCESS: Record<string, RoleAccessProfile> = {
     kind: "internal",
   },
   [Role.BROKER]: {
-    label: "Real Estate Agent",
+    label: "Real Estate Originator",
     workspace: "Real Estate Funding",
-    scope: "Own clients, deals, funding pipeline, and real-estate analysis tools.",
+    scope: "Own clients and funding pipeline, plus real-estate deal analysis and origination tools. Can also refer files to any active program.",
     kind: "partner",
   },
   [Role.REGIONAL_MANAGER]: {
@@ -38,15 +38,15 @@ export const ROLE_ACCESS: Record<string, RoleAccessProfile> = {
     kind: "internal",
   },
   [Role.DEALER_PARTNER]: {
-    label: "Auto Dealer Agent",
-    workspace: "Dealer AI Intake",
-    scope: "Only auto-industry leads referred by this user, including their document rooms and AI review.",
+    label: "Referral Partner",
+    workspace: "All active programs",
+    scope: "Start files in any active program. See only their own clients, files, document rooms, and messages with the team.",
     kind: "partner",
   },
   [Role.PROFESSIONAL_REFERRAL_PARTNER]: {
-    label: "Professional Referral Partner",
-    workspace: "Foreclosure Rescue",
-    scope: "Rescue files owned by the user’s approved firm.",
+    label: "Referral Partner",
+    workspace: "All active programs",
+    scope: "Own clients and files across active programs, plus the existing approved firm foreclosure-rescue workspace.",
     kind: "partner",
   },
   [Role.FIELD_REP]: {
@@ -97,12 +97,11 @@ export function roleAccessProfile(role: Role | string): RoleAccessProfile {
 }
 
 export const TEAM_ASSIGNABLE_ROLES: Role[] = [
-  Role.BROKER,
   Role.DEALER_PARTNER,
+  Role.BROKER,
   Role.REGIONAL_MANAGER,
   Role.LOAN_EXEC,
   Role.FIELD_REP,
-  Role.PROFESSIONAL_REFERRAL_PARTNER,
   Role.SUPER_ADMIN,
 ];
 
@@ -126,4 +125,20 @@ export function roleRequiresPartnerCompany(role: Role): boolean {
 
 export function roleUsesHouseProfile(role: Role): boolean {
   return HOUSE_PROFILE_ROLES.has(role);
+}
+
+/** Legacy professional accounts share the Referral Partner experience. */
+export function isReferralPartner(role?: Role | string | null): boolean {
+  return role === Role.DEALER_PARTNER || role === Role.PROFESSIONAL_REFERRAL_PARTNER;
+}
+
+export function canUseReferralIntake(role?: Role | string | null): boolean {
+  return isReferralPartner(role) || role === Role.BROKER;
+}
+
+/** Keep a legacy assignment visible without offering it for new accounts. */
+export function teamRoleOptions(currentRole?: Role): Role[] {
+  return currentRole && !TEAM_ASSIGNABLE_ROLES.includes(currentRole)
+    ? [currentRole, ...TEAM_ASSIGNABLE_ROLES]
+    : TEAM_ASSIGNABLE_ROLES;
 }
