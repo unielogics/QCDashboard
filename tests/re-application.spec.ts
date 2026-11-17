@@ -175,7 +175,15 @@ async function passGate(page: Page) {
   await page.getByRole("button", { name: "Email me a code" }).click();
   await page.getByLabel("Code from the email").fill("246810");
   await page.getByRole("button", { name: "Open my application" }).click();
-  await expect(page.getByRole("heading", { name: "Qualified Commercial Real Estate Loan Application", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Real estate loan application", level: 1 })).toBeVisible();
+}
+
+// The page is part of the client's room: the same brand block (the mark, the firm's name, its line of business).
+async function expectRoomBrand(page: Page) {
+  await expect(page.locator(".application-room.ra-room")).toBeVisible();
+  await expect(page.getByRole("img", { name: "Qualified Commercial" })).toBeVisible();
+  await expect(page.getByText("QUALIFIED COMMERCIAL", { exact: true })).toBeVisible();
+  await expect(page.getByText("Financing & Capital Advisory")).toBeVisible();
 }
 
 test("a save that fails waits and tries again instead of looping, and an ended session returns to the code", async ({ page }) => {
@@ -216,11 +224,15 @@ for (const width of [1290, 390]) {
 
     // The emailed link asks for a code before anything about the person is shown.
     await expect(page.getByRole("heading", { name: "Open your application" })).toBeVisible();
+    await expectRoomBrand(page);
     expect(stand.sent.filter((row) => row.path === "").every((row) => row.session === null)).toBe(true);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
     await passGate(page);
 
     // The gaps come first; what onboarding already answered waits, folded, below them.
+    await expectRoomBrand(page);
+    await expect(page.getByText(/^Prepared for Jordan Sample/)).toBeVisible();
+    await expect(page.getByText("Encrypted in transit and at rest")).toBeVisible();
     await expect(page.getByText(/Already on your application \(\d+\)/)).toBeVisible();
     expect(stand.view.please_check.length).toBeGreaterThan(0);
     await expect(page.getByRole("button", { name: "Looks right" }).first()).toBeVisible();
@@ -256,6 +268,7 @@ for (const width of [1290, 390]) {
 
     // Signing shows the server's own words and sends back exactly what was shown.
     await expect(page.getByRole("heading", { name: "Review and sign" })).toBeVisible({ timeout: 15_000 });
+    await expectRoomBrand(page);
     await expect(page.getByText("What you agree to by signing")).toBeVisible();
     const consents = stand.signing.consents as Array<{ key: string; sha256: string; text: string }>;
     await expect(page.getByText(consents.find((item) => item.key === "information_sharing")!.text.slice(0, 60), { exact: false })).toBeVisible();

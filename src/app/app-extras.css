@@ -7424,7 +7424,8 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .ra-label { font-size: 12.5px; font-weight: 550; color: var(--fp-muted); }
 .ra-checks, .ra-yesno { display: flex; flex-wrap: wrap; gap: 8px 16px; }
 .ra-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fp-ink, #101828); }
-.ra-check input { width: 16px; height: 16px; }
+/* A checkbox or a radio is a native control that shows its tick: the text-field look (.fp-field input) is undone for it. */
+.ra-check input { width: 16px; height: 16px; flex: 0 0 auto; margin: 0; padding: 0; border: 0; border-radius: 0; background: none; box-shadow: none; -webkit-appearance: auto; appearance: auto; accent-color: var(--fp-accent, #173b7a); }
 .ra-check-field { display: grid; gap: 6px; padding: 8px; border-radius: var(--fp-r-sm, 8px); background: #fff8e6; border: 1px solid #f3d9a4; }
 .ra-check-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
 .ra-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: var(--fp-accent-soft, #eef2f8); color: var(--fp-accent, #173b7a); font-size: 11.5px; font-weight: 550; overflow-wrap: anywhere; }
@@ -7455,3 +7456,111 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .ra-relay-url { overflow-wrap: anywhere; min-width: 0; flex: 1 1 220px; }
 .ra-relay-form { display: grid; gap: 10px; }
 .ra-relay-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* ---------------------------------------------------------------------------
+   The real estate loan application in the client's room.
+   The room hands the client to this page and they come back to it, so it is
+   one journey: the page wears the room's own shell (the brand block with the
+   mark, the header, the footer, the buttons) and the form's pieces take their
+   colours and shapes from the room's tokens, in the light theme and in
+   Obsidian alike. Nothing here reaches the desk drawer, which renders the
+   same form inside the console without the .ra-room scope.
+   --------------------------------------------------------------------------- */
+.application-room.ra-room { padding-bottom: 132px; }
+.application-room.ra-room,
+.application-room.ra-room .fp-stack {
+  --fp-ground: var(--room-bg);
+  --fp-ground-2: var(--room-bg);
+  --fp-card: var(--room-surface);
+  --fp-field: var(--room-surface);
+  --fp-field-line: var(--room-line);
+  --fp-line: var(--room-line);
+  --fp-ink: var(--room-text);
+  --fp-muted: var(--room-muted);
+  --fp-accent: var(--room-accent);
+  --fp-accent-deep: var(--room-accent);
+  --fp-accent-soft: var(--room-accent-soft);
+  --fp-ok: var(--room-good);
+  --fp-danger: var(--room-bad);
+  --fp-r: 8px;
+  --fp-r-sm: 6px;
+}
+.ra-room .ra-shell { width: min(100%, 1120px); }
+.ra-room .application-room-header { flex-wrap: wrap; }
+.ra-room .application-room-header-main { flex-wrap: wrap; gap: 16px 28px; }
+.ra-room .application-room-header-actions { flex-wrap: wrap; }
+.ra-room .application-room-gate .application-room-field { margin-bottom: 2px; }
+.ra-room .application-room-gate .application-room-theme-link { display: flex; }
+.ra-room .application-room-alert { overflow-wrap: anywhere; }
+.ra-room .ra-block { width: 100%; }
+.ra-room .fp-card { border: 1px solid var(--room-line); border-radius: 8px; background: var(--room-surface); color: var(--room-text); box-shadow: 0 1px 2px rgba(15, 23, 42, .04); }
+.ra-room .ra-form { padding-bottom: 8px; }
+.ra-room .ra-section-title { font-size: 17px; font-weight: 750; color: var(--room-text); }
+.ra-room .ra-progress strong { color: var(--room-text); }
+.ra-room .fp-field label, .ra-room .ra-label { color: var(--room-muted); font-size: 12px; font-weight: 750; }
+/* Text-like controls only: a checkbox or a radio keeps its own small shape. */
+.ra-room .fp-field input:not([type="checkbox"]):not([type="radio"]), .ra-room .fp-field select, .ra-room .fp-field textarea {
+  border: 1px solid var(--room-line); border-radius: 6px; background: var(--room-surface); color: var(--room-text); font: inherit; box-shadow: none;
+}
+.ra-room .fp-field input:not([type="checkbox"]):not([type="radio"]), .ra-room .fp-field select { height: 44px; padding: 0 12px; }
+.ra-room .ra-check input[type="checkbox"], .ra-room .ra-check input[type="radio"] { width: 18px; height: 18px; flex: 0 0 18px; accent-color: var(--room-accent); }
+.ra-room .ra-checks, .ra-room .ra-yesno { gap: 10px 18px; padding: 4px 0; }
+.ra-room .fp-field textarea { padding: 11px 12px; }
+.ra-room .fp-field input:hover, .ra-room .fp-field select:hover, .ra-room .fp-field textarea:hover { border-color: var(--room-muted); }
+.ra-room .fp-field input:focus, .ra-room .fp-field select:focus, .ra-room .fp-field textarea:focus { outline: none; border-color: var(--room-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--room-accent) 18%, transparent); }
+.ra-room .fp-field input:disabled, .ra-room .fp-field select:disabled, .ra-room .fp-field textarea:disabled { background: var(--room-surface-2); color: var(--room-muted); }
+.ra-room .fp-field input::placeholder, .ra-room .fp-field textarea::placeholder { color: var(--room-muted); opacity: .7; }
+.ra-room .fp-field.is-invalid input, .ra-room .fp-field.is-invalid select, .ra-room .fp-field.is-invalid textarea { border-color: var(--room-bad); }
+.ra-room .fp-hint, .ra-room .fp-legend, .ra-room .fp-autosave { color: var(--room-muted); }
+.ra-room .fp-error, .ra-room .fp-field-problem { color: var(--room-bad); }
+.ra-room .ra-check { color: var(--room-text); }
+.ra-room .ra-check input, .ra-room .ra-consent input { accent-color: var(--room-accent); }
+.ra-room .ra-check-field { align-self: start; padding: 10px; border-radius: 8px; background: var(--room-warn-soft); border: 1px solid color-mix(in srgb, var(--room-warn) 35%, transparent); }
+.ra-room .ra-chip { background: var(--room-accent-soft); color: var(--room-accent); }
+.ra-room .ra-chip-check { background: color-mix(in srgb, var(--room-warn) 16%, transparent); color: var(--room-warn); }
+.ra-room .ra-bar { background: var(--room-line); }
+.ra-room .ra-bar > span { background: var(--room-accent); }
+.ra-room .ra-answered > summary, .ra-room .ra-optional > summary { color: var(--room-accent); }
+.ra-room .ra-answered-row { border-bottom-color: var(--room-line); }
+.ra-room .ra-answered-row dt, .ra-room .ra-answered-group h3 { color: var(--room-muted); }
+.ra-room .ra-answered-row dd { color: var(--room-text); }
+.ra-room .ra-consent { color: var(--room-text); border-bottom-color: var(--room-line); }
+/* The room's own buttons: a filled accent for the step forward, a quiet outline for everything else. */
+.ra-room .fp-submit {
+  min-height: 44px; padding: 0 18px; border: 1px solid var(--room-accent); border-radius: 6px; background: var(--room-accent); color: #fff;
+  font: inherit; font-weight: 750; box-shadow: none; transition: filter 120ms ease;
+}
+.ra-room .fp-submit:hover:not(:disabled) { filter: brightness(1.06); box-shadow: none; }
+.ra-room .fp-submit:active:not(:disabled) { transform: none; }
+.ra-room .fp-submit:disabled { opacity: .48; cursor: not-allowed; }
+.ra-room .fp-link-btn {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 38px; padding: 0 13px; border: 1px solid var(--room-line); border-radius: 6px;
+  background: var(--room-surface); color: var(--room-text); font: inherit; font-size: 13px; font-weight: 750;
+}
+.ra-room .fp-link-btn:hover:not(:disabled) { background: var(--room-surface-2); }
+/* Inside a card a button is as wide as its words, as in the room; it does not stretch across the card. */
+.ra-room .fp-card > .fp-submit, .ra-room .fp-card > .fp-link-btn, .ra-room .fp-field > .fp-link-btn { justify-self: start; }
+.ra-room .ra-check-row .fp-link-btn { min-height: 32px; border-color: color-mix(in srgb, var(--room-warn) 45%, transparent); }
+.ra-room .fp-actions { background: color-mix(in srgb, var(--room-surface) 94%, transparent); border-top: 1px solid var(--room-line); box-shadow: 0 -8px 24px rgba(15, 23, 42, .08); }
+.ra-room .fp-actions-inner { max-width: 1120px; }
+.ra-room .fp-terminal { text-align: left; justify-items: start; padding: 26px; gap: 8px; }
+.ra-room .fp-terminal h2 { margin: 0; font-size: 20px; color: var(--room-text); }
+.ra-room .fp-terminal p { margin: 0; max-width: 62ch; color: var(--room-muted); line-height: 1.5; }
+.ra-room .ra-gate-actions { margin: 14px 0 6px; }
+.ra-room .application-room-footer { margin-top: 26px; }
+.ra-room .sigpad { border: 1px solid var(--room-line); border-radius: 6px; }
+@media (max-width: 700px) {
+  .application-room.ra-room { padding-left: 14px; padding-right: 14px; }
+  .ra-room .application-room-topline { margin: 0 -14px; }
+  .ra-room .application-room-header { min-height: 0; padding: 16px 2px; gap: 12px; }
+  .ra-room .application-room-header h1 { font-size: 21px; }
+  .ra-room .application-room-header-actions { width: 100%; }
+  .ra-room .application-room-footer { flex-direction: column; gap: 6px; }
+  .ra-room .application-room-gate { margin-top: 5vh; padding: 22px; }
+  /* The bar on a phone: what is left on its own line, then the step forward beside the PDF. */
+  .ra-room .fp-actions { padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 0px)); }
+  .ra-room .fp-actions-inner { gap: 8px 10px; }
+  .ra-room .fp-autosave, .ra-room .fp-actions .fp-error { order: -1; flex: 1 0 100%; font-size: 12px; }
+  .ra-room .fp-submit { flex: 1 1 auto; justify-content: center; }
+  .ra-room .fp-card > .fp-submit { justify-self: stretch; }
+}

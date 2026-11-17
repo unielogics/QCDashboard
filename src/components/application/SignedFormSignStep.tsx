@@ -19,6 +19,10 @@ export type SignPayload = {
   body_sha256: string;
 };
 
+// The server's consent text is hard-wrapped at a fixed column. On screen each
+// paragraph flows to the width it is given: the same words in the same order.
+const readable = (text: string) => text.split(/\n\s*\n/).map((part) => part.replace(/\s*\n\s*/g, " ").trim()).join("\n\n");
+
 export function SignedFormSignStep({ signing, busy, error, onSign }: { signing: SigningView; busy: boolean; error: string; onSign: (payload: SignPayload) => void }) {
   const pad = useRef<SignaturePadHandle | null>(null);
   const [agreed, setAgreed] = useState<Set<string>>(new Set());
@@ -60,7 +64,7 @@ export function SignedFormSignStep({ signing, busy, error, onSign }: { signing: 
           <label key={consent.key} className="ra-consent">
             <input type="checkbox" checked={agreed.has(consent.key)} disabled={busy} onChange={(event) => toggle(consent.key, event.target.checked)} />
             <span>
-              <strong>{consent.label}.</strong> <span style={{ whiteSpace: "pre-line" }}>{consent.text}</span>
+              <strong>{consent.label}.</strong> <span style={{ whiteSpace: "pre-line" }}>{readable(consent.text)}</span>
               <span className="fp-hint"> Version {consent.version}</span>
             </span>
           </label>
@@ -80,7 +84,7 @@ export function SignedFormSignStep({ signing, busy, error, onSign }: { signing: 
         {esign ? (
           <label className="ra-consent">
             <input type="checkbox" checked={agreed.has("esign")} disabled={busy} onChange={(event) => toggle("esign", event.target.checked)} />
-            <span>{esign.text}</span>
+            <span>{readable(esign.text)}</span>
           </label>
         ) : null}
         {problem || error ? <p className="fp-error" role="alert">{problem || error}</p> : null}

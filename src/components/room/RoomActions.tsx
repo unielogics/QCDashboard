@@ -587,7 +587,10 @@ export function RoomActions({
       });
       if (!res.ok) throw new Error("The application could not be opened. Try again.");
       const body = (await res.json()) as { url: string };
-      window.location.assign(body.url);
+      // The application page wears this room's shell; a client on the Obsidian theme keeps it there.
+      const obsidian = new URLSearchParams(window.location.search).get("theme") === "obsidian";
+      const [address, fragment] = body.url.split("#");
+      window.location.assign(obsidian ? `${address}${address.includes("?") ? "&" : "?"}theme=obsidian${fragment ? `#${fragment}` : ""}` : body.url);
     } catch (e) {
       setSignError(e instanceof Error ? e.message : "The application could not be opened.");
     }

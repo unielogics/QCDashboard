@@ -5,18 +5,40 @@
 // hands over a session in the URL fragment, so no code). Everything the file
 // already knows is filled in; the client answers the rest, reviews the whole
 // application and submits it for signature.
+//
+// It is one journey with the secure application room, so the page wears the
+// room's own shell: the brand block with the mark, the room's header, tokens,
+// buttons and footer (app-extras.css, ".application-room" and ".ra-room"). A
+// client who chose the room's Obsidian theme keeps it here, and one who came
+// from the room gets a way back to it.
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
+import { Icon } from "@/components/design-system/Icon";
+import { RoomBrand } from "@/components/room/RoomBrand";
 import { ReApplicationForm, ReApplicationReview } from "@/components/application/ReApplicationForm";
 import { useApplicationDraft, type DraftPayload, type SaveError } from "@/components/application/useApplicationDraft";
 import { SignedFormSignStep, type SignPayload } from "@/components/application/SignedFormSignStep";
-import type { ApplicationView, SigningView } from "@/lib/reApplication";
+import { getAt, type ApplicationView, type SigningView } from "@/lib/reApplication";
 
 type Gate = { needs_code: true; title: string; email_hint: string | null };
 
 const storageKey = (token: string) => `re-application-session:${token}`;
+const returnKey = (token: string) => `re-application-return:${token}`;
+
+// Where the client came from, when that was one of our own rooms: the page offers the way back.
+function rememberRoom(token: string): string | null {
+  try {
+    const from = document.referrer ? new URL(document.referrer) : null;
+    if (from && from.origin === window.location.origin && (from.pathname.startsWith("/buckets/request/") || from.pathname.startsWith("/funding-review"))) {
+      window.sessionStorage.setItem(returnKey(token), from.toString());
+    }
+    return window.sessionStorage.getItem(returnKey(token));
+  } catch {
+    return null;
+  }
+}
 
 function readStored(token: string): string | null {
   try { return window.sessionStorage.getItem(storageKey(token)); } catch { return null; }
@@ -59,6 +81,8 @@ export default function ReApplicationPage() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [gone, setGone] = useState(false);
+  const [theme, setTheme] = useState<"light" | "obsidian">("light");
+  const [returnUrl, setReturnUrl] = useState<string | null>(null);
 
   const load = useCallback(async (current: string | null) => {
     try {
@@ -90,6 +114,8 @@ export default function ReApplicationPage() {
     }
     const current = fragment || readStored(token);
     setSession(current);
+    if (new URLSearchParams(window.location.search).get("theme") === "obsidian") setTheme("obsidian");
+    setReturnUrl(rememberRoom(token));
     void load(current);
   }, [token, load]);
 
@@ -181,49 +207,92 @@ export default function ReApplicationPage() {
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
-  const header = (
-    <header className="fp-header">
-      <div className="fp-header-inner">
-        <span className="fp-mark">Qualified Commercial</span>
-        <span className="fp-for">Real estate loan application</span>
-      </div>
-    </header>
+  const shell = `application-room ${theme === "obsidian" ? "is-obsidian" : "is-light"} ra-room`;
+  const footer = (
+    <footer className="application-room-footer">
+      <span><Icon name="lock" size={14} />Encrypted in transit and at rest</span>
+      <span>Qualified Commercial</span>
+    </footer>
   );
 
   if (gone) {
-    return <div className="fp">{header}<main className="fp-main fp-centered"><div className="fp-card fp-terminal"><h1>This link is no longer available</h1><p>Ask your advisor for a new link to your application.</p></div></main></div>;
+    return (
+      <main className={shell}>
+        <div className="application-room-topline" />
+        <section className="application-room-gate">
+          <RoomBrand />
+          <div className="application-room-gate-copy">
+            <span className="application-room-eyebrow">Real estate loan application</span>
+            <h1>This link is no longer available</h1>
+            <p>Ask your advisor for a new link to your application.</p>
+          </div>
+        </section>
+      </main>
+    );
   }
 
   if (gate) {
     return (
-      <div className="fp">
-        {header}
-        <main className="fp-main fp-centered">
-          <div className="fp-card ra-gate">
+      <main className={shell}>
+        <div className="application-room-topline" />
+        <section className="application-room-gate">
+          <RoomBrand />
+          <div className="application-room-gate-copy">
+            <span className="application-room-eyebrow">Real estate loan application</span>
             <h1>Open your application</h1>
-            <p className="fp-intro">To keep your details private, we email a 6-digit code{gate.email_hint ? <> to <strong>{gate.email_hint}</strong></> : null}. It works once and expires in 15 minutes.</p>
-            {!sent ? (
-              <button type="button" className="fp-submit" disabled={busy} onClick={() => void sendCode()}>{busy ? "Sending…" : "Email me a code"}</button>
-            ) : (
-              <div className="fp-field">
-                <label htmlFor="ra-code">Code from the email</label>
-                <input id="ra-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} />
-                <div className="ra-gate-actions">
-                  <button type="button" className="fp-submit" disabled={busy || code.length !== 6} onClick={() => void verify()}>{busy ? "Checking…" : "Open my application"}</button>
-                  <button type="button" className="fp-link-btn" disabled={busy} onClick={() => void sendCode()}>Send a new code</button>
-                </div>
-              </div>
-            )}
-            {message ? <p className="fp-error" role="alert">{message}</p> : null}
+            <p>To keep your details private, we email a 6-digit code{gate.email_hint ? <> to <strong>{gate.email_hint}</strong></> : null}. It works once and expires in 15 minutes.</p>
           </div>
-        </main>
-      </div>
+          {!sent ? (
+            <button type="button" className="application-room-primary ra-block" disabled={busy} onClick={() => void sendCode()}>{busy ? "Sending…" : "Email me a code"}</button>
+          ) : (
+            <>
+              <label className="application-room-field">
+                <span>Code from the email</span>
+                <input id="ra-code" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))} />
+              </label>
+              <button type="button" className="application-room-primary ra-block" disabled={busy || code.length !== 6} onClick={() => void verify()}>{busy ? "Checking…" : "Open my application"}</button>
+              <button type="button" className="application-room-theme-link" disabled={busy} onClick={() => void sendCode()}>Send a new code</button>
+            </>
+          )}
+          {message ? <div className="application-room-alert bad" role="alert">{message}</div> : null}
+        </section>
+      </main>
     );
   }
 
   if (!view) {
-    return <div className="fp">{header}<main className="fp-main" aria-busy="true"><div className="fp-card"><span className="fp-skel fp-skel-line w60" /><span className="fp-skel fp-skel-line w90" /></div>{message ? <p className="fp-error" role="alert">{message}</p> : null}</main></div>;
+    return (
+      <main className={shell} aria-busy="true">
+        <div className="application-room-topline" />
+        <section className="application-room-shell ra-shell">
+          <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /></div></header>
+          <div className="fp-card"><span className="fp-skel fp-skel-line w60" /><span className="fp-skel fp-skel-line w90" /></div>
+          {message ? <div className="application-room-alert bad" role="alert">{message}</div> : null}
+        </section>
+      </main>
+    );
   }
+
+  // The room's own header: the brand, what this page is, and who it was prepared for.
+  const borrower = [getAt(view.body, "borrowers.borrower.first_name"), getAt(view.body, "borrowers.borrower.last_name")].filter(Boolean).join(" ");
+  const property = [getAt(view.body, "property.street"), getAt(view.body, "property.city"), getAt(view.body, "property.state")].filter(Boolean).join(", ");
+  const preparedFor = borrower ? `Prepared for ${borrower}${property ? ` · ${property}` : ""}` : property || "What we already know is filled in for you.";
+  const heading = (title: string, chip: ReactNode) => (
+    <header className="application-room-header">
+      <div className="application-room-header-main">
+        <RoomBrand />
+        <div>
+          <span className="application-room-eyebrow">Secure application</span>
+          <h1>{title}</h1>
+          <p>{preparedFor}</p>
+        </div>
+      </div>
+      <div className="application-room-header-actions">
+        {chip}
+        {returnUrl ? <button type="button" className="application-room-secondary" onClick={() => window.location.assign(returnUrl)}>Back to your room</button> : null}
+      </div>
+    </header>
+  );
 
   if (stage === "sign") {
     const others = signing ? signing.required_roles.filter((role) => role !== signing.role && !signing.signed[role]) : [];
@@ -231,38 +300,47 @@ export default function ReApplicationPage() {
     const nobodySigned = !signing || Object.keys(signing.signed).length === 0;
     let content;
     if (!signing) content = <div className="fp-card"><span className="fp-skel fp-skel-line w60" /></div>;
-    else if (signing.status === "executed") content = <div className="fp-card fp-terminal"><h1>Your application is signed</h1><p>Everyone has signed. We emailed each signer a copy, and your advisor has the signed application.</p></div>;
-    else if (mine) content = <div className="fp-card fp-terminal"><h1>You signed</h1><p>{others.length ? "We emailed your co-borrower a link to review and sign. The signed application is filed once they sign." : "Thank you."}</p></div>;
-    else if (signing.held) content = <div className="fp-card fp-terminal"><h1>One more step with your advisor</h1><p>Your advisor needs to confirm a few details with you before you sign. They will be in touch.</p></div>;
-    else if (!signing.signing_open) content = <div className="fp-card fp-terminal"><h1>Your application is submitted</h1><p>Signing opens once our documents are finalized. Your advisor will let you know; nothing else is needed from you right now.</p></div>;
+    else if (signing.status === "executed") content = <div className="fp-card fp-terminal"><h2>Your application is signed</h2><p>Everyone has signed. We emailed each signer a copy, and your advisor has the signed application.</p></div>;
+    else if (mine) content = <div className="fp-card fp-terminal"><h2>You signed</h2><p>{others.length ? "We emailed your co-borrower a link to review and sign. The signed application is filed once they sign." : "Thank you."}</p></div>;
+    else if (signing.held) content = <div className="fp-card fp-terminal"><h2>One more step with your advisor</h2><p>Your advisor needs to confirm a few details with you before you sign. They will be in touch.</p></div>;
+    else if (!signing.signing_open) content = <div className="fp-card fp-terminal"><h2>Your application is submitted</h2><p>Signing opens once our documents are finalized. Your advisor will let you know; nothing else is needed from you right now.</p></div>;
     else if (signing.can_sign) content = <SignedFormSignStep signing={signing} busy={busy} error={message} onSign={(payload) => void sign(payload)} />;
-    else content = <div className="fp-card fp-terminal"><h1>Your application is submitted</h1><p>Version {view.version?.number ?? 1} is saved.</p></div>;
+    else content = <div className="fp-card fp-terminal"><h2>Your application is submitted</h2><p>Version {view.version?.number ?? 1} is saved.</p></div>;
+    const done = signing?.status === "executed";
+    const chip = <span className={`application-room-count${done || mine ? "" : " attention"}`}>{done ? "Signed" : mine ? "You signed" : signing?.can_sign ? "Ready to sign" : "Submitted"}</span>;
     return (
-      <div className="fp">
-        {header}
-        <main className="fp-main">
-          <h1 className="ra-title">Review and sign</h1>
+      <main className={shell}>
+        <div className="application-room-topline" />
+        <section className="application-room-shell ra-shell">
+          {heading("Review and sign", chip)}
           {content}
           <div className="ra-gate-actions">
             <button type="button" className="fp-link-btn" onClick={() => void openPreview()}>Read the whole application (PDF)</button>
             {nobodySigned && signing?.role !== "coborrower" ? <button type="button" className="fp-link-btn" onClick={() => setStage("fill")}>Change an answer</button> : null}
           </div>
-        </main>
-      </div>
+          {message && !signing?.can_sign ? <div className="application-room-alert bad" role="alert">{message}</div> : null}
+          {footer}
+        </section>
+      </main>
     );
   }
 
+  const left = view.completion.total - view.completion.filled;
+  const chip = stage === "review"
+    ? <span className="application-room-count">Ready to submit</span>
+    : <span className={`application-room-count${left || view.please_check.length ? " attention" : ""}`}>{left ? `${left} to answer` : view.please_check.length ? `${view.please_check.length} to check` : "Ready to review"}</span>;
   return (
-    <div className="fp">
-      {header}
-      <main className="fp-main">
-        <h1 className="ra-title">{view.schema.title}</h1>
+    <main className={shell}>
+      <div className="application-room-topline" />
+      <section className="application-room-shell ra-shell">
+        {heading(stage === "fill" ? "Real estate loan application" : "Review your application", chip)}
         {stage === "fill" ? (
           <ReApplicationForm view={view} body={draft.body} problems={draft.problems} busy={busy} audience="client" onValue={draft.setValue} onConfirm={draft.confirm} onCoborrower={draft.setCoborrower} />
         ) : (
           <ReApplicationReview view={view} body={draft.body} onEdit={() => setStage("fill")} />
         )}
-      </main>
+        {footer}
+      </section>
       <div className="fp-actions">
         <div className="fp-actions-inner">
           {stage === "fill" ? (
@@ -270,11 +348,11 @@ export default function ReApplicationPage() {
           ) : (
             <button type="button" className="fp-submit" disabled={busy || !draft.idle} onClick={() => void submit()}>{busy ? "Submitting…" : "Submit application"}</button>
           )}
-          <span className="fp-autosave" aria-live="polite">{draft.saving ? "Saving…" : draft.error || (stage === "fill" && !view.completion.complete ? `${view.completion.total - view.completion.filled} answers left` : stage === "fill" && view.please_check.length ? `${view.please_check.length} to check` : "All changes saved")}</span>
+          <span className="fp-autosave" aria-live="polite">{draft.saving ? "Saving…" : draft.error || (stage === "fill" && !view.completion.complete ? `${left} answers left` : stage === "fill" && view.please_check.length ? `${view.please_check.length} to check` : "All changes saved")}</span>
           {message ? <p className="fp-error" role="alert">{message}</p> : null}
           <button type="button" className="fp-link-btn" onClick={() => void openPreview()}>Preview PDF</button>
         </div>
       </div>
-    </div>
+    </main>
   );
 }
