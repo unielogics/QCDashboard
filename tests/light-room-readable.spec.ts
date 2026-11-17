@@ -9,7 +9,8 @@ import path from "node:path";
 // class the page gives it. A piece without its class keeps its dark-room colour
 // and disappears on white, and nothing else in the suite would notice. This
 // opens the real pages with the real stylesheets and a made-up reviewed file,
-// and reads every piece of text against what is painted behind it.
+// and reads every piece of text against what is painted behind it. The signing
+// step is read the same way in the dealer room as well.
 const ORIGIN = "https://light-room.test";
 let script: Buffer, css: Buffer;
 
@@ -99,10 +100,15 @@ const reviewed = {
 const signing = {
   ...reviewed, token: "fixture-signing",
   signing_gate: {
-    package_id: "p1", revision_id: "r1", revision_no: 1, stage: 1, document_key: "engagement", title: "Engagement agreement", document_version: "fixture-v1",
+    package_id: "p1", revision_id: "r2", revision_no: 2, stage: 2, document_key: "activation", title: "Program Activation and Production Agreement", document_version: "fixture-v2",
     content_sha256: "a".repeat(64), pdf_sha256: null, pdf_url: null, signer_name: "Jordan Sample", signer_title: "Managing Member", business_name: "Sample Fabrication", sent_at: "2026-11-15T16:00:00Z",
     esign_consent_text: "I agree to sign this document electronically.", esign_consent_version: "fixture-1",
-    already_signed: false, initials_expected: true, original: null, changes: [], review_clause: null, acknowledgement_text: null,
+    already_signed: false, initials_expected: true, review_clause: null, acknowledgement_text: null,
+    original: { title: "Production Commitment", revision_no: 1, executed_at: "2026-11-10T15:00:00Z", content_sha256: "c".repeat(64), pdf_url: null, executed_url: null },
+    changes: [
+      { section: "Addendum A", key: "advance_rate", label: "Advance rate", format: "pct", before: "80%", after: "82%", changed: true, original_blank: false, dealer_visible: true },
+      { section: "Addendum A", key: "term", label: "Term", format: "count", before: "36 months", after: "36 months", changed: false, original_blank: false, dealer_visible: true },
+    ],
   },
 };
 const rooms: Record<string, unknown> = { "fixture-reviewed": reviewed, "fixture-signing": signing };
@@ -174,17 +180,23 @@ for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["fu
   });
 }
 
-// The step where a client signs an agreement before the room opens: it has to
-// take the room's width and scroll, or the button under the fold is out of reach.
-test("equipment room: the signing step is full width and scrolls to its button", async ({ page }) => {
-  await open(page, "/equipment-financing-intake?token=fixture-signing");
-  const button = page.getByRole("button", { name: "Sign the agreement" });
-  await expect(button).toBeAttached();
-  expect(await unreadable(page)).toEqual([]);
-  const step = page.locator(".qc-public-intake-signing");
-  const measured = await step.evaluate((element) => ({ scrolls: /auto|scroll/.test(getComputedStyle(element).overflowY), width: element.getBoundingClientRect().width, window: window.innerWidth }));
-  expect(measured.scrolls).toBe(true);
-  expect(measured.width).toBeGreaterThan(measured.window * 0.9);
-  await button.scrollIntoViewIfNeeded();
-  await expect(button).toBeInViewport();
-});
+// The step where a client signs an agreement before the room opens. It is the
+// shell's only child, and the room's frame does not scroll: the step has to
+// take the room's width and scroll on its own, or the button under the fold is
+// out of reach. In the dealer room it sits on black, where the gate's own dark
+// ink cannot be read.
+for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["dealer", "/dealer-ai-underwriter"]] as const) {
+  test(`${label} room: the signing step is full width, can be read and scrolls to its button`, async ({ page }) => {
+    await open(page, `${route}?token=fixture-signing`);
+    const button = page.getByRole("button", { name: "Sign the agreement" });
+    await expect(button).toBeAttached();
+    await expect(page.getByText("What changed since your commitment")).toBeVisible();
+    expect(await unreadable(page)).toEqual([]);
+    const step = page.locator(".qc-public-intake-signing");
+    const measured = await step.evaluate((element) => ({ scrolls: /auto|scroll/.test(getComputedStyle(element).overflowY), width: element.getBoundingClientRect().width, window: window.innerWidth }));
+    expect(measured.scrolls).toBe(true);
+    expect(measured.width).toBeGreaterThan(measured.window * 0.9);
+    await button.scrollIntoViewIfNeeded();
+    await expect(button).toBeInViewport();
+  });
+}

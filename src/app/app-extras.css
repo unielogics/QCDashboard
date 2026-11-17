@@ -4355,14 +4355,9 @@ select.vm-in {
 }
 .qc-public-intake-theme--light .qc-public-intake-signing .pp-gate { color: var(--qci-ink); }
 .qc-public-intake-theme--light .qc-public-intake-signing .pp-panel { background: var(--qci-surface); border-color: var(--qci-border); }
-/* The signing step is the whole screen: it takes the shell's full width rather
-   than the sidebar's column, and it scrolls, so the Sign button can be reached. */
-.qc-public-intake-theme--light .qc-public-intake-main.qc-public-intake-signing {
-  grid-column: 1 / -1;
-  display: block !important;
-  overflow-y: auto !important;
-  padding: 28px 24px 44px;
-}
+/* The signing step scrolls on its own; the page sets that. On a phone the
+   rule below hides every main area's overflow, so the step is exempted here. */
+.qc-public-intake-theme--light .qc-public-intake-main.qc-public-intake-signing { overflow-y: auto !important; }
 .qc-public-intake-theme--light .qc-public-intake-signing .pp-hint:not(.bad):not(.warn):not(.ok) { color: var(--qci-muted); }
 
 @media (max-width: 720px) {
@@ -4378,10 +4373,21 @@ select.vm-in {
   .v-gate--institutional .v-gate-opts { grid-template-columns: 1fr; }
   .qc-public-intake-theme--light .qc-public-intake-shell--workspace { padding: 8px !important; }
   .qc-public-intake-theme--light .qc-public-intake-main { border-radius: 12px; overflow: hidden !important; }
-  .qc-public-intake-theme--light .qc-public-intake-main.qc-public-intake-signing { padding: 14px 12px 32px; }
   /* On a phone the Files tab is the whole screen, not a strip that cuts its own list off. */
   .qc-public-intake-theme--light .qc-public-intake-files { height: 100% !important; max-height: none !important; }
 }
+
+/* ---------- the dealer room's signing step ----------
+   The agreement's cards are light and bring their own ink. What stands outside
+   them -- the business name, the heading and the lead -- sits on the room's
+   black, so it takes the room's light ink and its gold eyebrow. */
+.qc-public-intake-signing--dark .pp-gate-head,
+.qc-public-intake-signing--dark .pp-gate-intro { color: #f6f8fb; }
+.qc-public-intake-signing--dark .pp-gate-head .pp-eyebrow,
+.qc-public-intake-signing--dark .pp-gate-intro .pp-eyebrow { color: #e9d58a; }
+.qc-public-intake-signing--dark .pp-gate-intro .pp-sub { color: #b8c4d6; }
+/* Inside the cards the small print is read before signing: the muted ink, not the faint one. */
+.qc-public-intake-signing--dark .pp-hint:not(.bad):not(.warn):not(.ok) { color: var(--muted); }
 
 /* ---------- the light intake theme: pieces with a hook of their own ----------
    The rules above reach an element by where it sits. These reach it by a class

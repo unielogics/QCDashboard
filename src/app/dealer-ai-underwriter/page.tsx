@@ -1350,7 +1350,10 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
             </section>
           </>
         ) : response.signing_gate ? (
-          <section className="qc-public-intake-main qc-public-intake-signing" style={compact ? appMainMobile : appMain}>
+          <section
+            className={`qc-public-intake-main qc-public-intake-signing${isEquipment ? "" : " qc-public-intake-signing--dark"}`}
+            style={compact ? signingStepMobile : signingStep}
+          >
             <ProductionSigningGate
               gate={response.signing_gate}
               compact={compact}
@@ -3580,6 +3583,18 @@ const appMainMobile: CSSProperties = {
   gap: 8,
   overflow: "hidden",
 };
+// The signing step is the only thing on screen. As the shell's one child it
+// used to land in the sidebar's 236px column, and the room's frame does not
+// scroll, so the Sign button sat under the fold out of reach. It spans the
+// shell and scrolls on its own.
+const signingStep: CSSProperties = {
+  gridColumn: "1 / -1",
+  height: "100%",
+  minHeight: 0,
+  overflowY: "auto",
+  padding: "28px 24px 44px",
+};
+const signingStepMobile: CSSProperties = { ...signingStep, padding: "14px 12px 32px" };
 const sideRail: CSSProperties = { minHeight: 0, height: "100%", display: "grid", gap: 14, alignSelf: "stretch", overflowY: "auto", paddingRight: 2 };
 const chatPanelModern: CSSProperties = {
   minHeight: 0,

@@ -225,7 +225,7 @@ export function ProductionSigningGate({ gate, onSign, onRefresh, onLogout, compa
 
   return (
     <section className="pp-gate" aria-labelledby="pp-gate-title">
-      <header className="pp-row" style={{ justifyContent: "space-between" }}>
+      <header className="pp-row pp-gate-head" style={{ justifyContent: "space-between" }}>
         <div className="pp-row"><QCMark size={30} /><div><div className="pp-eyebrow">Qualified Commercial</div><div style={{ fontWeight: 700 }}>{gate.business_name}</div></div></div>
         <button type="button" className="pp-btn s-sm" onClick={onLogout}>Log out</button>
       </header>
@@ -244,7 +244,7 @@ export function ProductionSigningGate({ gate, onSign, onRefresh, onLogout, compa
         </div></div>
       ) : (
         <>
-          <div>
+          <div className="pp-gate-intro">
             <div className="pp-eyebrow">Before you continue</div>
             <h2 id="pp-gate-title" className="pp-title">Sign your {gate.title}</h2>
             <p className="pp-sub">
