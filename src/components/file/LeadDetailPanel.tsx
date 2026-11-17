@@ -39,6 +39,7 @@ import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft } from "@/components/file/BusinessContactDetails";
 import { PersonalUseReviewBanner, type PersonalUseDecision } from "@/components/file/PersonalUseReviewBanner";
 import { ReApplicationPanel } from "@/components/file/ReApplicationPanel";
+import { applicationLinkWords, useApplicationLink } from "@/components/application/useApplicationLink";
 import type { OfferDeliveryReceipt, OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { FundingPackageWorkspace, type FundingPackageTab, type PackagePreparation } from "./FundingPackageWorkspace";
@@ -760,6 +761,9 @@ export function LeadDetailPanel({
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
   const [applicationOpen, setApplicationOpen] = useState(false);
+  const [applicationNotice, setApplicationNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
+  const [applicationLinkBusy, setApplicationLinkBusy] = useState(false);
+  const requestApplicationLink = useApplicationLink();
   const [workingFinancing, setWorkingFinancing] = useState<WorkingFinancing | null>(null);
   const [financingRefreshRevision, setFinancingRefreshRevision] = useState(0);
   const [marketplacePublication, setMarketplacePublication] = useState<MarketplacePublicationState | null>(null);
@@ -911,6 +915,22 @@ export function LeadDetailPanel({
   const evidenceFileCount = evidenceFiles.length;
   const prequalification = artifacts.find((artifact) => artifact.artifact_type === "prequalification");
   const isRealEstate = detail?.intake.variant === "real_estate_dscr_v1";
+  // The application is a requirement like any other: a real-estate file has it, and so does any file whose checklist asks for it.
+  const hasApplication = isRealEstate || Boolean(programReadiness?.requirements?.some((item) => item.requirement_key === "signed_re_application"));
+
+  // One click from the file: the application's own link on the clipboard, ready to paste into a text or an email.
+  async function copyApplicationLink() {
+    if (!profileId || applicationLinkBusy) return;
+    setApplicationLinkBusy(true);
+    try {
+      const result = await requestApplicationLink(profileId);
+      setApplicationNotice({ tone: result.copied ? "ok" : "bad", text: applicationLinkWords(result) });
+    } catch (reason) {
+      setApplicationNotice({ tone: "bad", text: reason instanceof Error ? reason.message : "The application link could not be made." });
+    } finally {
+      setApplicationLinkBusy(false);
+    }
+  }
   // "dealer_gatekeeper_v1" is the dealer marker, and the only one the backend
   // gates on. A second legacy value here would have let a package be sent to a
   // client the signing gate then refused to show, so there is exactly one.
@@ -1947,7 +1967,8 @@ export function LeadDetailPanel({
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
         {detail ? <ActionIcon icon="upload" tone={submissionStep === 2 ? "pri" : "default"} busy={headerUploading} label={headerUploading ? "Uploading..." : "Add evidence: upload files from this computer"} disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()} /> : null}
         {detail ? <ActionIcon icon="send" label="Request a document from the client" onClick={openDocumentRequest} /> : null}
-        {detail && canUnderwrite && isRealEstate && profileId ? <ActionIcon icon="doc" label="Real estate loan application" onClick={() => setApplicationOpen(true)} /> : null}
+        {detail && canUnderwrite && hasApplication && profileId ? <ActionIcon icon="doc" label="Real estate loan application" onClick={() => setApplicationOpen(true)} /> : null}
+        {detail && canUnderwrite && hasApplication && profileId ? <ActionIcon icon="link" busy={applicationLinkBusy} label={applicationLinkBusy ? "Copying the application link..." : "Copy the link to the real estate loan application"} disabled={applicationLinkBusy} onClick={() => void copyApplicationLink()} /> : null}
         {detail && canUnderwrite ? <ActionIcon icon="bell" label="Choose who is notified about this file" onClick={() => setNotificationRoutingOpen(true)} /> : null}
         {detail && canUnderwrite ? (
           <Select
@@ -1978,6 +1999,8 @@ export function LeadDetailPanel({
           { label: detail?.intake.preferred_language === "es" ? "Write to this client in English" : "Write to this client in Español", onSelect: () => changeLanguage(detail?.intake.preferred_language === "es" ? "en" : "es"), hidden: !detail || languageBusy },
           { label: "Open underwriting chat", onSelect: () => navigateCommunication("underwriter"), hidden: !detail },
           { label: "View client conversation", onSelect: () => navigateCommunication("client"), hidden: !detail },
+          { label: "Copy the loan application link", onSelect: () => void copyApplicationLink(), hidden: !detail || !canUnderwrite || !hasApplication || !profileId },
+          { label: "Open the loan application", onSelect: () => setApplicationOpen(true), hidden: !detail || !canUnderwrite || !hasApplication || !profileId },
           { label: "Attach another room", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
           { label: "Referral partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
@@ -2006,6 +2029,14 @@ export function LeadDetailPanel({
       </div> : null}
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
       {canUnderwrite ? <PersonalUseReviewBanner review={detail?.intake.personal_use_review} onDecide={onDecidePersonalUse} /> : null}
+      {applicationNotice ? (
+        <div style={{ padding: "8px 16px" }}>
+          <Callout tone={applicationNotice.tone === "ok" ? "ok" : "bad"}>
+            <span role="status" style={{ overflowWrap: "anywhere" }}>{applicationNotice.text}</span>{" "}
+            <button type="button" className="linky" onClick={() => setApplicationNotice(null)}>Dismiss</button>
+          </Callout>
+        </div>
+      ) : null}
       {canUnderwrite && profileId && applicationOpen ? <ReApplicationPanel profileId={profileId} open={applicationOpen} onClose={() => setApplicationOpen(false)} /> : null}
       {detail && (refreshing || detail.derived_pending) ? <div className="sub" role="status" style={{ padding: "8px 16px" }}>{refreshing ? "Refreshing file details… " : "File details are ready. "}Current financial calculations and package checks load in their workspace.</div> : null}
       {loading || !detail ? loading ? <PreparationProgress title="Opening file" description="Loading the application, linked evidence and financial workspace." /> : null : (

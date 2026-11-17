@@ -93,8 +93,21 @@ export default function ReApplicationPage() {
     void load(current);
   }, [token, load]);
 
+  // A session lasts twelve hours. When it ends mid-way the page goes back to the code, with what is saved intact.
+  const lostSession = useCallback(() => {
+    store(token, null);
+    setSession(null);
+    setView(null);
+    setSigning(null);
+    setStage("fill");
+    setSent(false);
+    setCode("");
+    setMessage("Your session ended. Ask for a new code to pick up where you left off.");
+    void load(null);
+  }, [token, load]);
+
   const save = useCallback((payload: DraftPayload) => call<ApplicationView>(`/${token}/draft`, { method: "PUT", body: JSON.stringify(payload), session }), [token, session]);
-  const draft = useApplicationDraft(view, save, setView, () => void load(session));
+  const draft = useApplicationDraft(view, save, setView, () => void load(session), lostSession);
 
   async function sendCode() {
     setBusy(true);
@@ -130,6 +143,7 @@ export default function ReApplicationPage() {
     try {
       setSigning(await call<SigningView>(`/${token}/sign`, { method: "POST", body: JSON.stringify(payload), session }));
     } catch (caught) {
+      if ((caught as SaveError).status === 401) { lostSession(); return; }
       setMessage((caught as Error).message);
       try { setSigning(await call<SigningView>(`/${token}/signing`, { session })); } catch { /* keep the last view */ }
     } finally {
@@ -148,6 +162,7 @@ export default function ReApplicationPage() {
       setSigning(await call<SigningView>(`/${token}/signing`, { session }));
     } catch (caught) {
       const failure = caught as SaveError;
+      if (failure.status === 401) { lostSession(); return; }
       const detail = failure.detail as { code?: string } | undefined;
       if (detail?.code === "incomplete") setStage("fill");
       setMessage(failure.message);
@@ -159,6 +174,7 @@ export default function ReApplicationPage() {
 
   async function openPreview() {
     const response = await fetch(`${apiBase}/api/v1/public/forms/${token}/preview.pdf`, { headers: session ? { "X-Form-Session": session } : {} });
+    if (response.status === 401) { lostSession(); return; }
     if (!response.ok) { setMessage("The PDF could not be opened. Try again."); return; }
     const url = URL.createObjectURL(await response.blob());
     window.open(url, "_blank", "noopener");

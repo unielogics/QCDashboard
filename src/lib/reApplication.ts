@@ -60,7 +60,16 @@ export type ApplicationView = {
   signing?: SigningView;
   /** Desk reads only: the signed copy that is relayed, and partner links made to it. */
   relay?: RelayView;
+  /** Desk reads only: the file's own address for this application, once one has been made. */
+  link?: { url: string; expires_at: string | null } | null;
+  /** Desk reads only, once submitted: answers on the file that no longer match the submitted version. */
+  changed_since_submission?: { path: string; label: string }[];
 };
+
+/** What the desk gets back when it copies or emails the application's link. */
+export type ApplicationLinkReply = { url: string; expires_at: string | null; email: string | null; emailed: boolean; role: "borrower" | "coborrower" };
+
+export const applicationLinkPath = (profileId: string) => `/application-profiles/${profileId}/forms/re_application/link`;
 
 export type FieldRef = { section: SectionSpec; path: string; spec: FieldSpec; role?: string };
 

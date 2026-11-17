@@ -12,6 +12,8 @@ import { Icon } from "@/components/design-system/Icon";
 import { validPhone } from "@/lib/formCoerce";
 import { CreateLeadPayload, LeadDetail, LeadVariant, formatSize } from "./leadFile";
 import { RE_TRANSACTION_TYPES } from "@/lib/realEstateVocabulary";
+import { useAuthedApi } from "@/hooks/useApi";
+import { applicationLinkWords, useApplicationLink } from "@/components/application/useApplicationLink";
 
 export type LeadCreationClient = {
   id: string;
@@ -65,6 +67,25 @@ export function CreateLeadModal({
   const [roomPinConfirm, setRoomPinConfirm] = useState("");
   const [created, setCreated] = useState<LeadDetail | null>(null);
   const [copied, setCopied] = useState("");
+  const apiCall = useAuthedApi();
+  const requestApplicationLink = useApplicationLink();
+  const [applicationLink, setApplicationLink] = useState("");
+  const [applicationLinkBusy, setApplicationLinkBusy] = useState(false);
+
+  // The link that leads straight to the real estate loan application (not the room): made for the new file and copied in one click.
+  async function copyApplicationLink(intakeId: string) {
+    setApplicationLinkBusy(true);
+    try {
+      const profile = await apiCall<{ id: string }>("/application-profiles/resolve", { method: "POST", body: JSON.stringify({ source_kind: "intake", source_id: intakeId }) });
+      const result = await requestApplicationLink(profile.id);
+      setApplicationLink(result.url);
+      setCopied(applicationLinkWords(result));
+    } catch (reason) {
+      setCopied(reason instanceof Error ? reason.message : "The application link could not be made.");
+    } finally {
+      setApplicationLinkBusy(false);
+    }
+  }
   const submitting = useRef(false);
   const evidencePicker = useRef<HTMLInputElement>(null);
 
@@ -170,6 +191,14 @@ export function CreateLeadModal({
             <div><span className="lbl">Direct application link</span><Input aria-label="Direct application link" readOnly value={roomUrl} onFocus={(event) => event.target.select()} /><Btn disabled={!roomUrl} onClick={() => void copy(roomUrl, "Link")}><Icon name="copy" size={14} />Copy link</Btn></div>
             <div><span className="lbl">Room PIN</span><b className="secure-room-pin num">{roomPin}</b><Btn onClick={() => void copy(roomPin, "PIN")}><Icon name="copy" size={14} />Copy PIN</Btn></div>
           </div>
+          {isRE ? (
+            <div className="grid g4">
+              <span className="lbl">Real estate loan application link</span>
+              <span className="sub">Leads straight to the loan application, with what this file already knows filled in. The client opens it with a code we email them, so it needs no PIN.</span>
+              {applicationLink ? <Input aria-label="Real estate loan application link" readOnly value={applicationLink} onFocus={(event) => event.target.select()} /> : null}
+              <div><Btn disabled={applicationLinkBusy} onClick={() => void copyApplicationLink(created.intake.id)}><Icon name="copy" size={14} />{applicationLinkBusy ? "Copying..." : "Copy application link"}</Btn></div>
+            </div>
+          ) : null}
           {copied ? <div role="status">{copied}</div> : null}
           <Callout tone="warn">Share the PIN separately from the application link. The client will need both to open the application.</Callout>
         </div>

@@ -21,9 +21,9 @@
   },
   "borrowers": {
    "borrower": {
+    "email": "jordan@example.com",
     "first_name": "Jordan",
     "last_name": "Sample",
-    "email": "jordan@example.com",
     "mobile_phone": "+17045550123",
     "street": "100 EXAMPLE ST",
     "city": "CHARLOTTE",
@@ -47,6 +47,10 @@
   "notes": {}
  },
  "provenance": {
+  "borrowers.borrower.email": {
+   "tier": "A",
+   "source": "Your application"
+  },
   "request.loan_purpose": {
    "tier": "A",
    "source": "Your application"
@@ -92,10 +96,6 @@
    "source": "Your application"
   },
   "borrowers.borrower.last_name": {
-   "tier": "A",
-   "source": "Your application"
-  },
-  "borrowers.borrower.email": {
    "tier": "A",
    "source": "Your application"
   },
@@ -763,6 +763,7 @@
       "label": "Original purchase date",
       "type": "date",
       "required": true,
+      "rule": "past",
       "applies_when": {
        "field": "request.loan_purpose",
        "in": [
@@ -1016,6 +1017,7 @@
       "label": "Date of birth",
       "type": "date",
       "required": true,
+      "rule": "adult",
       "sensitive": true
      },
      {
@@ -1504,7 +1506,8 @@
       "key": "date_established",
       "label": "Date established",
       "type": "date",
-      "required": true
+      "required": true,
+      "rule": "past"
      },
      {
       "key": "good_standing",

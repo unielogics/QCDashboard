@@ -16,6 +16,7 @@ import { ApiError, apiBase } from "@/lib/api";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { ReApplicationForm } from "@/components/application/ReApplicationForm";
 import { useApplicationDraft, type DraftPayload, type SaveError } from "@/components/application/useApplicationDraft";
+import { applicationLinkWords, useApplicationLink, type ApplicationLinkOptions } from "@/components/application/useApplicationLink";
 import type { ApplicationView, PartnerShareResult, RelayView, SigningView } from "@/lib/reApplication";
 
 const ROLE_WORDS: Record<string, string> = { borrower: "Borrower", coborrower: "Co-borrower" };
@@ -124,6 +125,52 @@ function PartnerShare({ relay, busy, onShare }: { relay: RelayView; busy: boolea
   );
 }
 
+// The file's own address for this application: the same one every time it is
+// copied, so the desk can paste it into a text or an email of its own. The
+// client opens it with a code emailed to them. A co-borrower has their own
+// link while the application waits for their signature.
+function ApplicationLinkSection({ link, waitingOnCoborrower, busy, onCopy, onReset, onCoborrower }: {
+  link: { url: string; expires_at: string | null } | null;
+  waitingOnCoborrower: boolean;
+  busy: boolean;
+  onCopy: () => void;
+  onReset: () => void;
+  onCoborrower: (email: boolean) => void;
+}) {
+  const [confirming, setConfirming] = useState(false);
+  return (
+    <section className="ra-relay" aria-label="Application link">
+      <div className="ra-relay-head">
+        <strong>Application link</strong>
+        <span className="sub">One address for this file, the same every time you copy it. The client opens it with a code we email them, so the link alone opens nothing.</span>
+      </div>
+      {link ? (
+        <div className="ra-relay-secret"><span className="ra-relay-url">{link.url}</span><Btn size="sm" variant="pri" disabled={busy} onClick={onCopy}><Icon name="copy" size={13} />Copy link</Btn></div>
+      ) : (
+        <div><Btn size="sm" variant="pri" disabled={busy} onClick={onCopy}><Icon name="link" size={13} />Copy the link</Btn></div>
+      )}
+      {link?.expires_at ? <span className="sub">Open until {shortDate(link.expires_at)}. Copying it again keeps it open for another 30 days.</span> : null}
+      {waitingOnCoborrower ? (
+        <div className="ra-relay-actions">
+          <Btn size="sm" disabled={busy} onClick={() => onCoborrower(false)}><Icon name="copy" size={13} />Copy the co-borrower&apos;s signing link</Btn>
+          <Btn size="sm" disabled={busy} onClick={() => onCoborrower(true)}><Icon name="send" size={13} />Email it to the co-borrower</Btn>
+        </div>
+      ) : null}
+      {link ? (
+        confirming ? (
+          <div className="ra-relay-actions">
+            <span className="sub">The current link stops working for everyone who has it.</span>
+            <Btn size="sm" disabled={busy} onClick={() => { setConfirming(false); onReset(); }}>Make a new link</Btn>
+            <Btn size="sm" disabled={busy} onClick={() => setConfirming(false)}>Cancel</Btn>
+          </div>
+        ) : (
+          <div><button type="button" className="linky" disabled={busy} onClick={() => setConfirming(true)}>Replace this link with a new one</button></div>
+        )
+      ) : null}
+    </section>
+  );
+}
+
 const PATH = (profileId: string) => `/application-profiles/${profileId}/forms/re_application`;
 
 function asSaveError(error: unknown): SaveError {
@@ -142,8 +189,8 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
   const [view, setView] = useState<ApplicationView | null>(null);
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
-  const [link, setLink] = useState<{ url: string; email: string | null; emailed: boolean } | null>(null);
   const [busy, setBusy] = useState("");
+  const requestLink = useApplicationLink();
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -167,14 +214,14 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
   }, [apiCall, profileId]);
   const draft = useApplicationDraft(view, save, setView, () => void load());
 
-  async function makeLink(sendEmail: boolean) {
-    setBusy(sendEmail ? "email" : "copy");
+  async function makeLink(options: ApplicationLinkOptions, working: string) {
+    setBusy(working);
     setNotice(null);
     try {
-      const reply = await apiCall<{ url: string; email: string | null; emailed: boolean }>(`${PATH(profileId)}/link`, { method: "POST", body: JSON.stringify({ send_email: sendEmail }) });
-      setLink(reply);
-      if (!sendEmail) await navigator.clipboard?.writeText(reply.url).catch(() => undefined);
-      setNotice({ tone: "ok", text: sendEmail ? (reply.emailed ? `Emailed the link to ${reply.email}.` : "The link was made, but the email did not send. Copy it below.") : "Link copied. The client opens it with a code emailed to them." });
+      const result = await requestLink(profileId, options);
+      if (result.role === "borrower") setView((current) => current ? { ...current, link: { url: result.url, expires_at: result.expires_at } } : current);
+      const sent = options.sendEmail ? result.emailed : result.copied;
+      setNotice({ tone: sent ? "ok" : "bad", text: options.sendEmail && !result.emailed ? "The email did not send. Copy the link and send it yourself." : applicationLinkWords(result) });
     } catch (error) {
       setNotice({ tone: "bad", text: error instanceof Error ? error.message : "The link could not be made." });
     } finally {
@@ -231,8 +278,8 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
 
   const footer = view ? (
     <div className="row" style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
-      <Btn variant="pri" disabled={Boolean(busy)} onClick={() => void makeLink(true)}><Icon name="send" size={14} />{busy === "email" ? "Sending…" : "Email the client a link"}</Btn>
-      <Btn disabled={Boolean(busy)} onClick={() => void makeLink(false)}><Icon name="copy" size={14} />Copy a link</Btn>
+      <Btn variant="pri" disabled={Boolean(busy)} onClick={() => void makeLink({ sendEmail: true }, "email")}><Icon name="send" size={14} />{busy === "email" ? "Sending…" : "Email the client a link"}</Btn>
+      <Btn disabled={Boolean(busy)} onClick={() => void makeLink({}, "copy")}><Icon name="copy" size={14} />Copy link</Btn>
       <Btn disabled={Boolean(busy)} onClick={() => void openPdf(`${PATH(profileId)}/preview.pdf`)}><Icon name="eye" size={14} />Preview PDF</Btn>
       {view.version?.pdf_available ? <Btn disabled={Boolean(busy)} onClick={() => void openPdf(`${PATH(profileId)}/versions/${view.version?.id}/pdf`)}><Icon name="download" size={14} />Version {view.version.number}</Btn> : null}
       <span className="sub">{draft.saving ? "Saving…" : draft.error || ""}</span>
@@ -251,7 +298,21 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
       {notice ? <StatusLine tone={notice.tone}>{notice.text}</StatusLine> : null}
       {view?.signing ? <SigningStatus signing={view.signing} formStatus={view.status} busy={Boolean(busy)} onReopen={(reason) => void reopen(reason)} /> : null}
       {view?.relay ? <PartnerShare relay={view.relay} busy={Boolean(busy)} onShare={share} /> : null}
-      {link ? <Callout tone="acc"><span style={{ overflowWrap: "anywhere" }}>{link.url}</span></Callout> : null}
+      {view?.changed_since_submission?.length ? (
+        <Callout tone="warn">
+          <strong>The file changed after this version was submitted.</strong> {view.changed_since_submission.map((item) => item.label).join(", ")}. The submitted application is unchanged; reopen it to include {view.changed_since_submission.length === 1 ? "the change" : "the changes"}.
+        </Callout>
+      ) : null}
+      {view ? (
+        <ApplicationLinkSection
+          link={view.link ?? null}
+          waitingOnCoborrower={Boolean(view.signing && view.signing.status === "in_progress" && view.signing.required_roles.includes("coborrower") && !view.signing.signed.coborrower)}
+          busy={Boolean(busy)}
+          onCopy={() => void makeLink({}, "copy")}
+          onReset={() => void makeLink({ reset: true }, "reset")}
+          onCoborrower={(email) => void makeLink({ role: "coborrower", sendEmail: email }, "coborrower")}
+        />
+      ) : null}
       {loading && !view ? <div className="empty"><span className="spinner solo" />Loading the application…</div> : null}
       {view ? (
         <ReApplicationForm view={view} body={draft.body} problems={draft.problems} busy={Boolean(busy)} audience="desk" onValue={draft.setValue} onConfirm={draft.confirm} onCoborrower={draft.setCoborrower} />

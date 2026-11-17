@@ -4,6 +4,12 @@
 // the revision the server last returned. Edits made while a save is in flight
 // are batched into the next one, so two quick answers never race each other
 // into a revision conflict.
+//
+// A save that fails is never retried in a tight loop. An answer the server
+// refuses for good (signing has started, the link cannot edit) is shown and
+// dropped; a session that ended sends the person back to the code; a dropped
+// connection or a busy server is tried again a few times, a little later each
+// time, and then waits for the person.
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { setAt, type ApplicationView } from "@/lib/reApplication";
@@ -14,8 +20,10 @@ export type SaveError = Error & { status?: number; detail?: unknown };
 type Pending = { changes: Record<string, unknown>; confirm: string[]; has_coborrower?: boolean };
 
 const EMPTY: Pending = { changes: {}, confirm: [] };
+const RETRY_AFTER_MS = [2_000, 5_000, 15_000, 30_000];
+const waiting = (batch: Pending) => Object.keys(batch.changes).length > 0 || batch.confirm.length > 0 || batch.has_coborrower !== undefined;
 
-export function useApplicationDraft(view: ApplicationView | null, save: (payload: DraftPayload) => Promise<ApplicationView>, onView: (view: ApplicationView) => void, onConflict: () => void) {
+export function useApplicationDraft(view: ApplicationView | null, save: (payload: DraftPayload) => Promise<ApplicationView>, onView: (view: ApplicationView) => void, onConflict: () => void, onAuthLost?: () => void) {
   const [problems, setProblems] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -23,19 +31,24 @@ export function useApplicationDraft(view: ApplicationView | null, save: (payload
   const queued = useRef<Pending>(EMPTY);
   const inFlight = useRef(false);
   const viewRef = useRef(view);
+  const attempts = useRef(0);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => { viewRef.current = view; }, [view]);
+  useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
 
   const run = useCallback(async () => {
     if (inFlight.current || !viewRef.current) return;
     const batch = queued.current;
-    if (!Object.keys(batch.changes).length && !batch.confirm.length && batch.has_coborrower === undefined) return;
+    if (!waiting(batch)) return;
     queued.current = EMPTY;
     inFlight.current = true;
     setSaving(true);
     setError("");
+    let later = false;
     try {
       const next = await save({ changes: batch.changes, confirm: batch.confirm, has_coborrower: batch.has_coborrower ?? null, revision: viewRef.current.revision });
       viewRef.current = next;
+      attempts.current = 0;
       onView(next);
       setProblems((current) => {
         const kept = { ...current };
@@ -45,27 +58,47 @@ export function useApplicationDraft(view: ApplicationView | null, save: (payload
     } catch (caught) {
       const failure = caught as SaveError;
       const detail = failure.detail as { code?: string; fields?: Record<string, string>; message?: string } | undefined;
-      if (failure.status === 422 && detail?.fields) {
-        setProblems((current) => ({ ...current, ...detail.fields }));
+      const refused = Object.keys(detail?.fields ?? {}).filter((path) => path in batch.changes);
+      if (failure.status === 422 && refused.length) {
+        setProblems((current) => ({ ...current, ...detail?.fields }));
         // Good answers in the same batch are sent again without the refused ones.
-        const retry = Object.fromEntries(Object.entries(batch.changes).filter(([path]) => !(path in (detail.fields ?? {}))));
+        const retry = Object.fromEntries(Object.entries(batch.changes).filter(([path]) => !refused.includes(path)));
         queued.current = { changes: { ...retry, ...queued.current.changes }, confirm: [...batch.confirm, ...queued.current.confirm], has_coborrower: queued.current.has_coborrower ?? batch.has_coborrower };
       } else if (failure.status === 409 && detail?.code === "revision_conflict") {
         setError("This application changed in another window, so it was reloaded. Check your last answer.");
         onConflict();
+      } else if (failure.status === 401) {
+        // The session ended: nothing more can be saved until the person opens the form again.
+        queued.current = EMPTY;
+        setError("Your session ended, so your last answer was not saved. Open the application again to continue.");
+        onAuthLost?.();
+      } else if (failure.status && failure.status >= 400 && failure.status < 500 && failure.status !== 408 && failure.status !== 429) {
+        // Refused for good (signing has started, this link cannot edit): show why, drop it and show what is saved.
+        setError(detail?.message || failure.message || "That change could not be saved.");
+        onConflict();
       } else {
-        setError(detail?.message || failure.message || "Your answer could not be saved. Try again.");
+        // No connection, a busy server or a throttle: keep the answers and try again later, never at once.
         queued.current = { changes: { ...batch.changes, ...queued.current.changes }, confirm: [...batch.confirm, ...queued.current.confirm], has_coborrower: queued.current.has_coborrower ?? batch.has_coborrower };
+        later = true;
       }
     } finally {
       inFlight.current = false;
       setSaving(false);
       setPending({ ...queued.current });
-      if (Object.keys(queued.current.changes).length || queued.current.confirm.length || queued.current.has_coborrower !== undefined) {
-        void run();
+      if (waiting(queued.current)) {
+        if (!later) {
+          void run();
+        } else if (attempts.current < RETRY_AFTER_MS.length) {
+          setError("Your last answer is not saved yet. Trying again…");
+          if (timer.current) clearTimeout(timer.current);
+          timer.current = setTimeout(() => { timer.current = null; void run(); }, RETRY_AFTER_MS[attempts.current]);
+          attempts.current += 1;
+        } else {
+          setError("Your last answers are not saved. Check your connection, then change an answer or reload the page to try again.");
+        }
       }
     }
-  }, [save, onView, onConflict]);
+  }, [save, onView, onConflict, onAuthLost]);
 
   const enqueue = useCallback((patch: Partial<Pending>) => {
     queued.current = {
@@ -74,6 +107,9 @@ export function useApplicationDraft(view: ApplicationView | null, save: (payload
       has_coborrower: patch.has_coborrower ?? queued.current.has_coborrower,
     };
     setPending({ ...queued.current });
+    // A new answer is the person asking again: any wait is over.
+    attempts.current = 0;
+    if (timer.current) { clearTimeout(timer.current); timer.current = null; }
     void run();
   }, [run]);
 

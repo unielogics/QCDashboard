@@ -8,9 +8,9 @@
    "loan_purpose": "heloc",
    "occupancy": "primary_residence",
    "business_purpose": true,
-   "purpose_description": "Sample answer",
    "amount_requested": 300000.0,
    "borrowing_as": "entity",
+   "purpose_description": "Sample answer",
    "use_of_funds": [
     "property_purchase"
    ]
@@ -20,9 +20,9 @@
    "city": "CHARLOTTE",
    "state": "NC",
    "zip": "28202",
-   "property_type": "single_family",
    "as_is_value": 550000.0,
    "first_lien_balance": 184321.5,
+   "property_type": "single_family",
    "units": 3,
    "original_purchase_price": 1000.0,
    "original_purchase_date": "2001-02-03",
@@ -31,9 +31,9 @@
   },
   "borrowers": {
    "borrower": {
+    "email": "jordan@example.com",
     "first_name": "Jordan",
     "last_name": "Sample",
-    "email": "jordan@example.com",
     "mobile_phone": "+17045550123",
     "street": "100 EXAMPLE ST",
     "city": "CHARLOTTE",
@@ -95,6 +95,10 @@
   "notes": {}
  },
  "provenance": {
+  "borrowers.borrower.email": {
+   "tier": "A",
+   "source": "Your application"
+  },
   "request.loan_purpose": {
    "tier": "A",
    "source": "Your application"
@@ -106,10 +110,6 @@
   "request.business_purpose": {
    "tier": "A",
    "source": "Your application"
-  },
-  "request.purpose_description": {
-   "tier": "A",
-   "source": "Entered by your advisor"
   },
   "request.amount_requested": {
    "tier": "A",
@@ -131,17 +131,13 @@
    "tier": "A",
    "source": "Your application"
   },
-  "property.property_type": {
-   "tier": "A",
-   "source": "Entered by your advisor"
-  },
   "property.as_is_value": {
    "tier": "A",
    "source": "Your application"
   },
   "property.first_lien_balance": {
-   "tier": "A",
-   "source": "Your application",
+   "tier": "C",
+   "source": "From our conversation",
    "confirmed": true
   },
   "borrowers.borrower.first_name": {
@@ -149,10 +145,6 @@
    "source": "Your application"
   },
   "borrowers.borrower.last_name": {
-   "tier": "A",
-   "source": "Your application"
-  },
-  "borrowers.borrower.email": {
    "tier": "A",
    "source": "Your application"
   },
@@ -205,7 +197,15 @@
    "source": "Your property address",
    "confirmed": true
   },
+  "request.purpose_description": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
   "request.use_of_funds": {
+   "tier": "A",
+   "source": "Entered by your advisor"
+  },
+  "property.property_type": {
    "tier": "A",
    "source": "Entered by your advisor"
   },
@@ -469,10 +469,11 @@
    "message": "The firm letterhead still holds the placeholder address, so the application PDF prints no street address. Set it in Settings \u2192 Letterhead."
   }
  ],
+ "changed_since_submission": [],
  "version": {
-  "id": "19ab7c45-bf1f-4f66-a0b6-afc232e1f777",
+  "id": "59114535-4731-486f-b0a1-762573939743",
   "number": 1,
-  "submitted_at": "2026-11-17T01:43:42",
+  "submitted_at": "2026-11-17T02:51:31",
   "submitted_by": "client",
   "body_sha256": "e9a4ff75491aed1d15844c49e4c7ace19faea5f713c511f468e23cbe1c9621f2",
   "pdf_available": true
@@ -905,6 +906,7 @@
       "label": "Original purchase date",
       "type": "date",
       "required": true,
+      "rule": "past",
       "applies_when": {
        "field": "request.loan_purpose",
        "in": [
@@ -1158,6 +1160,7 @@
       "label": "Date of birth",
       "type": "date",
       "required": true,
+      "rule": "adult",
       "sensitive": true
      },
      {
@@ -1646,7 +1649,8 @@
       "key": "date_established",
       "label": "Date established",
       "type": "date",
-      "required": true
+      "required": true,
+      "rule": "past"
      },
      {
       "key": "good_standing",
@@ -1931,7 +1935,7 @@
  "signing": {
   "status": "executed",
   "version": {
-   "id": "19ab7c45-bf1f-4f66-a0b6-afc232e1f777",
+   "id": "59114535-4731-486f-b0a1-762573939743",
    "number": 1,
    "body_sha256": "e9a4ff75491aed1d15844c49e4c7ace19faea5f713c511f468e23cbe1c9621f2"
   },
@@ -1983,7 +1987,7 @@
   "signed": {
    "borrower": {
     "name": "Jordan Sample",
-    "signed_at": "2026-11-17T01:43:42.941691+00:00"
+    "signed_at": "2026-11-17T02:51:31.445073+00:00"
    }
   },
   "role": null,
@@ -1991,15 +1995,16 @@
   "can_sign": false,
   "held": false,
   "signing_open": true,
-  "executed_file_id": "baac8a74-7a9b-47a6-853f-326161b64bee"
+  "executed_file_id": "583fc531-ff98-445d-8859-fde3c17d8da2"
  },
  "relay": {
   "signed": {
    "form_version": 1,
-   "signed_at": "2026-11-17T01:43:43.471291+00:00",
+   "signed_at": "2026-11-17T02:51:31.978294+00:00",
    "file_name": "Real Estate Loan Application v1 - Signed.pdf",
    "sharing_consent": true
   },
   "shares": []
- }
+ },
+ "link": null
 }

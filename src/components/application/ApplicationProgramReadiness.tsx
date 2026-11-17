@@ -39,6 +39,7 @@ import type {
 import { collectionTaskReadModelKey, type CollectionTask } from "@/lib/applicationCollection";
 import { groupRequirements, isDocumentRequirement, requirementIsComplete, type Triage, type TriageExtra, type TriageGroup } from "@/lib/evidenceTriage";
 import { formKindsOf, formLabel, type FormKind } from "@/lib/formAnswers";
+import { applicationLinkWords, useApplicationLink } from "@/components/application/useApplicationLink";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { semanticStatusClass } from "@/lib/semanticStatus";
@@ -178,6 +179,7 @@ export function ApplicationProgramReadiness({
 }) {
   const fileWorkspace = useFileWorkspace();
   const apiCall = useAuthedApi();
+  const requestApplicationLink = useApplicationLink();
   const queryClient = useQueryClient();
   const confirmAction = useConfirmAction();
   const selectionHeadingId = useId();
@@ -738,6 +740,21 @@ export function ApplicationProgramReadiness({
     }
   }
 
+  // The real estate loan application has its own page and its own link (opened with an emailed code).
+  async function applicationLink(sendEmail: boolean) {
+    setBusy("formlink:re_application");
+    setError(null);
+    try {
+      const result = await requestApplicationLink(profileId, { sendEmail });
+      if (sendEmail ? result.emailed : result.copied) onNotice?.(applicationLinkWords(result));
+      else setError(sendEmail ? "The email did not send. Copy the link and send it yourself." : applicationLinkWords(result));
+    } catch (reason) {
+      setError(errorMessage(reason));
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function copyFormLink(kind: FormKind) {
     setBusy(`formlink:${kind}`);
     setError(null);
@@ -919,6 +936,8 @@ export function ApplicationProgramReadiness({
           {allocation && canAddRequirements && supportingReviewFileIds.length ? <span title="Review the supporting files against the program conditions; this does not complete budget collection"><Btn size="sm" disabled={Boolean(busy) || identityPending} onClick={() => void reviewRequirementAction(requirement, "verify", supportingReviewFileIds)}><Icon name="shieldChk" size={14} />Sign off supporting evidence</Btn></span> : null}
           {askClient && !isDebt ? formKinds.map((kind) => <span key={`email-${kind}`} title={`Emails the client a link to fill in the ${formLabel(kind)} online, with the secure room as the way to upload a file instead`}><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailFormLink(kind)}><Icon name="mail" size={14} />{busy === `formlink:${kind}` ? "Working..." : formKinds.length === 1 ? "Email the link to fill it in" : `Email the ${formLabel(kind)} link`}</Btn></span>) : null}
           {askClient && !isDebt ? formKinds.map((kind) => <ActionIcon key={`copy-${kind}`} icon="link" label={`Copy the link to fill in the ${formLabel(kind)} (needs no sign-in)`} disabled={Boolean(busy)} onClick={() => void copyFormLink(kind)} />) : null}
+          {requirement.requirement_key === "signed_re_application" && triage.group !== "done" ? <span title="Emails the client the link to complete and sign the application online"><Btn size="sm" disabled={Boolean(busy)} onClick={() => void applicationLink(true)}><Icon name="mail" size={14} />{busy === "formlink:re_application" ? "Working..." : "Email the application link"}</Btn></span> : null}
+          {requirement.requirement_key === "signed_re_application" ? <ActionIcon icon="link" label="Copy the link to the real estate loan application" disabled={Boolean(busy)} onClick={() => void applicationLink(false)} /> : null}
           {askClient && !formKinds.length && requestable ? <span title="Emails the client the secure-room link for this item"><Btn variant="pri" size="sm" disabled={Boolean(busy)} onClick={() => void emailReminder(requirement)}><Icon name="mail" size={14} />Email the client</Btn></span> : null}
           {askClient && !isDebt && formKinds.length && !debtHasWork && onOpenForms ? <span title="Open the forms and type it in yourself">{fileWorkspace && !fileWorkspace.pageMode ? <FileWorkspaceLink tool="forms" kind={formKinds[0]}>Fill it in yourself</FileWorkspaceLink> : <Btn size="sm" onClick={onOpenForms}><Icon name="pencil" size={14} />Fill it in yourself</Btn>}</span> : null}
           {linkedEvidence.length && !(isDebt && debtHasWork) ? formKinds.map((kind) => <ActionIcon key={`answers-${kind}`} icon="docCheck" label={`See the ${formLabel(kind)}: what was filled in`} onClick={() => setAnswersFor({ kind, requirementKey: requirement.requirement_key })} />) : null}

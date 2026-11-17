@@ -95,7 +95,7 @@ function recount(view: View): View {
   return { ...view, completion: { sections, total: refs.length, filled: refs.length - missing.length, missing, complete: missing.length === 0 } };
 }
 
-type Stand = { view: View; signing: Json; executed: Json; sent: Sent[]; session: string };
+type Stand = { view: View; signing: Json; executed: Json; sent: Sent[]; session: string; failDrafts?: number };
 
 async function openClient(page: Page, stand: Stand) {
   const errors: string[] = [];
@@ -120,6 +120,7 @@ async function openClient(page: Page, stand: Stand) {
     }
     if (tail === "" && request.method() === "GET") return json(200, { ...stand.view, needs_code: false });
     if (tail === "/draft") {
+      if (stand.failDrafts) { stand.failDrafts -= 1; return json(503, { detail: "The service is busy." }); }
       if (payload?.revision !== stand.view.revision) return json(409, { detail: { code: "revision_conflict", message: "The application changed in another window. Reload to continue." } });
       let body = stand.view.body;
       for (const [key, value] of Object.entries((payload?.changes as Json) ?? {})) body = lib.setAt(body, key, value);
@@ -168,6 +169,42 @@ async function answer(page: Page, view: View, key: string) {
   else { await page.locator(id).fill(SAMPLE[spec.type] ?? "Sample"); await page.locator(id).blur(); }
 }
 
+async function passGate(page: Page) {
+  await page.getByRole("button", { name: "Email me a code" }).click();
+  await page.getByLabel("Code from the email").fill("246810");
+  await page.getByRole("button", { name: "Open my application" }).click();
+  await expect(page.getByRole("heading", { name: "Qualified Commercial Real Estate Loan Application", level: 1 })).toBeVisible();
+}
+
+test("a save that fails waits and tries again instead of looping, and an ended session returns to the code", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.setViewportSize({ width: 1290, height: 900 });
+  const stand: Stand = { view: await fixture<View>("client_initial"), signing: await fixture<Json>("signing_ready"), executed: await fixture<Json>("signing_executed"), sent: [], session: "session-1", failDrafts: 2 };
+  const errors = await openClient(page, stand);
+  await passGate(page);
+  const drafts = () => stand.sent.filter((row) => row.path === "/draft").length;
+
+  // The server is busy twice. The answer is kept and tried again later, not hammered.
+  const first = stand.view.completion.missing.find((key) => !stand.view.please_check.includes(key))!;
+  await answer(page, stand.view, first);
+  await expect(page.getByText("Your last answer is not saved yet. Trying again…")).toBeVisible();
+  await page.waitForTimeout(1_200);
+  expect(drafts()).toBe(1);
+  await expect.poll(() => stand.view.revision, { timeout: 20_000 }).toBeGreaterThan(0);
+  expect(drafts()).toBe(3);
+  await expect(page.getByText("Your last answer is not saved yet. Trying again…")).toHaveCount(0);
+
+  // The session ends (twelve hours, or the link was replaced): the page asks for a new code and stops saving.
+  stand.session = "session-2";
+  const before = drafts();
+  await answer(page, stand.view, stand.view.completion.missing.find((key) => !stand.view.please_check.includes(key))!);
+  await expect(page.getByRole("heading", { name: "Open your application" })).toBeVisible();
+  await expect(page.getByText(/Your session ended/)).toBeVisible();
+  await page.waitForTimeout(800);
+  expect(drafts()).toBe(before + 1);
+  expect(errors).toEqual([]);
+});
+
 for (const width of [1290, 390]) {
   test(`a client opens the application with a code, fills only the gaps, reviews, submits and signs (${width}px)`, async ({ page }) => {
     test.setTimeout(180_000);
@@ -179,12 +216,9 @@ for (const width of [1290, 390]) {
     await expect(page.getByRole("heading", { name: "Open your application" })).toBeVisible();
     expect(stand.sent.filter((row) => row.path === "").every((row) => row.session === null)).toBe(true);
     expect(await overflow(page)).toBeLessThanOrEqual(0);
-    await page.getByRole("button", { name: "Email me a code" }).click();
-    await page.getByLabel("Code from the email").fill("246810");
-    await page.getByRole("button", { name: "Open my application" }).click();
+    await passGate(page);
 
     // The gaps come first; what onboarding already answered waits, folded, below them.
-    await expect(page.getByRole("heading", { name: "Qualified Commercial Real Estate Loan Application", level: 1 })).toBeVisible();
     await expect(page.getByText(/Already on your application \(\d+\)/)).toBeVisible();
     expect(stand.view.please_check.length).toBeGreaterThan(0);
     await expect(page.getByRole("button", { name: "Looks right" }).first()).toBeVisible();
@@ -255,7 +289,7 @@ async function openDesk(page: Page, reply: Json, share?: Json) {
     if (url.pathname === "/globals.css") return route.fulfill({ contentType: "text/css", body: globalCss });
     if (url.pathname === "/extras.css") return route.fulfill({ contentType: "text/css", body: extrasCss });
     if (url.pathname === "/desk.css") return route.fulfill({ contentType: "text/css", body: deskCss });
-    if (url.pathname === "/") return route.fulfill({ contentType: "text/html", body: `<html data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/globals.css"><link rel="stylesheet" href="/extras.css"><link rel="stylesheet" href="/desk.css"></head><body style="margin:0"><div style="display:flex"><nav style="width:242px;flex:none;height:100vh;background:#f2f4f7"></nav><div style="flex:1;min-width:0"><div style="height:51px;border-bottom:1px solid #e4e7ec"></div><div id="root"></div></div></div><script>window.__sent=[];window.__reply=${JSON.stringify(reply)};window.__share=${JSON.stringify(share ?? null)};window.__api=async(path,opts={})=>{const method=opts.method||'GET';window.__sent.push({path,method,body:opts.body?JSON.parse(opts.body):null});if(method==='GET')return window.__reply;if(path.endsWith('/share'))return window.__share;throw new Error('Unexpected '+method+' '+path)};</script><script src="/desk.js"></script></body></html>` });
+    if (url.pathname === "/") return route.fulfill({ contentType: "text/html", body: `<html data-theme="light"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/globals.css"><link rel="stylesheet" href="/extras.css"><link rel="stylesheet" href="/desk.css"></head><body style="margin:0"><div style="display:flex"><nav style="width:242px;flex:none;height:100vh;background:#f2f4f7"></nav><div style="flex:1;min-width:0"><div style="height:51px;border-bottom:1px solid #e4e7ec"></div><div id="root"></div></div></div><script>window.__sent=[];window.__reply=${JSON.stringify(reply)};window.__share=${JSON.stringify(share ?? null)};window.__links=0;window.__api=async(path,opts={})=>{const method=opts.method||'GET';const body=opts.body?JSON.parse(opts.body):null;window.__sent.push({path,method,body});if(method==='GET')return window.__reply;if(path.endsWith('/share'))return window.__share;if(path.endsWith('/link')){if(body.reset)window.__links+=1;return{url:'https://app.qualifiedcommercial.com/forms/re_application/example-link-'+window.__links,expires_at:'2026-12-17T00:00:00Z',email:'j*****@example.com',emailed:Boolean(body.send_email),role:body.role}}throw new Error('Unexpected '+method+' '+path)};</script><script src="/desk.js"></script></body></html>` });
     return route.fulfill({ status: 404, body: "" });
   });
   await page.goto("https://desk.test/");
@@ -271,6 +305,20 @@ test("the desk sees a signed application, can start a new version and shares it 
   await expect(drawer.getByText(/Signed by everyone/)).toBeVisible();
   await expect(drawer.getByRole("button", { name: "Start a new version" })).toBeVisible();
   expect(await overflow(page)).toBeLessThanOrEqual(0);
+  expect(await drawer.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(0);
+
+  // The file's own link: one click copies it, it reads the same the next time, and it can be replaced.
+  await page.context().grantPermissions(["clipboard-read", "clipboard-write"]);
+  const link = drawer.getByRole("region", { name: "Application link" });
+  await link.getByRole("button", { name: "Copy the link" }).click();
+  await expect(drawer.getByText(/Application link copied\. The client opens it with a code we email to j\*+@example\.com/)).toBeVisible();
+  expect(await page.evaluate("navigator.clipboard.readText()")).toBe("https://app.qualifiedcommercial.com/forms/re_application/example-link-0");
+  await expect(link.getByText("https://app.qualifiedcommercial.com/forms/re_application/example-link-0")).toBeVisible();
+  await link.getByRole("button", { name: "Copy link" }).click();
+  expect(await page.evaluate("navigator.clipboard.readText()")).toBe("https://app.qualifiedcommercial.com/forms/re_application/example-link-0");
+  await link.getByRole("button", { name: "Replace this link with a new one" }).click();
+  await link.getByRole("button", { name: "Make a new link" }).click();
+  await expect(link.getByText("https://app.qualifiedcommercial.com/forms/re_application/example-link-1")).toBeVisible();
   expect(await drawer.evaluate((node) => node.scrollWidth - node.clientWidth)).toBeLessThanOrEqual(0);
 
   await drawer.getByRole("button", { name: "Share with a partner" }).click();
