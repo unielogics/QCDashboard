@@ -297,7 +297,6 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
     >
       {notice ? <StatusLine tone={notice.tone}>{notice.text}</StatusLine> : null}
       {view?.signing ? <SigningStatus signing={view.signing} formStatus={view.status} busy={Boolean(busy)} onReopen={(reason) => void reopen(reason)} /> : null}
-      {view?.relay ? <PartnerShare relay={view.relay} busy={Boolean(busy)} onShare={share} /> : null}
       {view?.changed_since_submission?.length ? (
         <Callout tone="warn">
           <strong>The file changed after this version was submitted.</strong> {view.changed_since_submission.map((item) => item.label).join(", ")}. The submitted application is unchanged; reopen it to include {view.changed_since_submission.length === 1 ? "the change" : "the changes"}.
@@ -313,6 +312,7 @@ export function ReApplicationPanel({ profileId, open, onClose }: { profileId: st
           onCoborrower={(email) => void makeLink({ role: "coborrower", sendEmail: email }, "coborrower")}
         />
       ) : null}
+      {view?.relay ? <PartnerShare relay={view.relay} busy={Boolean(busy)} onShare={share} /> : null}
       {loading && !view ? <div className="empty"><span className="spinner solo" />Loading the application…</div> : null}
       {view ? (
         <ReApplicationForm view={view} body={draft.body} problems={draft.problems} busy={Boolean(busy)} audience="desk" onValue={draft.setValue} onConfirm={draft.confirm} onCoborrower={draft.setCoborrower} />
