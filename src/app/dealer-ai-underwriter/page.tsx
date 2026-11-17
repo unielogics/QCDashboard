@@ -1392,11 +1392,11 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                   <div style={brandGroupMobile}>
                     <QCMark size={30} />
                     <div style={{ minWidth: 0 }}>
-                      <div style={eyebrowMobile}>{isEquipment ? equipmentC.roomEyebrow : "Qualified Commercial AI Funding Review"}</div>
+                      <div className="qc-public-intake-eyebrow" style={eyebrowMobile}>{isEquipment ? equipmentC.roomEyebrow : "Qualified Commercial AI Funding Review"}</div>
                       <h1 style={workspaceTitleMobile}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h1>
                     </div>
                   </div>
-                  <button type="button" style={ghostButton} onClick={logoutRoom}>Logout</button>
+                  <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={ghostButton} onClick={logoutRoom}>Logout</button>
                   <div style={mobileTabs} aria-label={`${isEquipment ? equipmentC.roomTitle : "Dealer AI room"} sections`}>
                     {(["chat", "files", "intelligence"] as WorkspaceTab[]).map((tab) => (
                       <button
@@ -1436,7 +1436,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                 {activeWorkspace === "chat" ? (
                 <section className="qc-public-intake-chat" style={compact ? chatPanelModernMobile : chatPanelModern}>
                   {dragging ? (
-                    <div style={dropHint}>
+                    <div className="qc-public-intake-drop" style={dropHint}>
                       <strong>Drop files to attach</strong>
                       <span>PDF, images, ZIP, CSV, XLSX, and text files are supported.</span>
                     </div>
@@ -1444,7 +1444,7 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                   <div className="qc-public-intake-chat-header" style={compact ? chatTopBarMobile : chatTopBar}>
                     <div>
                       <h2 style={sectionTitle}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h2>
-                      <p style={muted}>Ask questions and attach PDFs, images, ZIPs, spreadsheets, or statements directly in chat.</p>
+                      <p className="qc-public-intake-muted" style={muted}>Ask questions and attach PDFs, images, ZIPs, spreadsheets, or statements directly in chat.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
                       <span className="qc-public-intake-status" style={statusPill}>{reviewStatus}</span>
@@ -1687,14 +1687,14 @@ function ContactWidget({
       </div>
       <Field label={c.fieldFullName} value={contact.full_name} onChange={(value) => setContact({ ...contact, full_name: value })} required />
       <Field label={c.fieldEmail} value={contact.email} onChange={(value) => setContact({ ...contact, email: value })} onBlur={onEmailBlur} required />
-      {emailLookupBusy ? <div style={fieldHint}>{c.emailLookupChecking}</div> : null}
+      {emailLookupBusy ? <div className="qc-public-intake-muted" style={fieldHint}>{c.emailLookupChecking}</div> : null}
       <div style={stepOneFormGrid}>
         <Field label={c.fieldPhone} value={contact.phone} onChange={(value) => setContact({ ...contact, phone: value })} required />
         <Field label={c.fieldBusinessName} value={contact.business_name} onChange={(value) => setContact({ ...contact, business_name: value })} required={equipmentDetails !== null} />
       </div>
       <BusinessProfileFields value={contact} onChange={(patch) => setContact({ ...contact, ...patch })} language={language} includeWebsiteDescription={false} />
       <Field label={onb.fieldWebsite} value={contact.business_website} onChange={(value) => setContact({ ...contact, business_website: value })} placeholder={onb.fieldWebsitePlaceholder} inputMode="url" required />
-      <div style={fieldHint}>{onb.fieldWebsiteHint}</div>
+      <div className="qc-public-intake-muted" style={fieldHint}>{onb.fieldWebsiteHint}</div>
       <TextAreaField label={onb.fieldDescription} value={contact.business_description} onChange={(value) => setContact({ ...contact, business_description: value })} placeholder={onb.fieldDescriptionPlaceholder} required />
       {equipmentDetails ? (
         <section className="qc-public-intake-equipment-details" style={equipmentDetailsCard} aria-label={equipmentFieldsCopy.sectionTitle}>
@@ -1728,7 +1728,7 @@ function ContactWidget({
           />
           <div style={stepOneFormGrid}>
             <label style={fieldWrap}>
-              <span style={labelStyle}>{equipmentFieldsCopy.condition}<span style={requiredMark}>*</span></span>
+              <span style={labelStyle}>{equipmentFieldsCopy.condition}<span className="qc-public-intake-required" style={requiredMark}>*</span></span>
               <select
                 style={input}
                 value={equipmentDetails.condition}
@@ -1857,6 +1857,7 @@ function ChatTypingDots() {
       {[0, 1, 2].map((i) => (
         <span
           key={i}
+          className="qc-public-intake-typing-dot"
           style={{
             width: 7,
             height: 7,
@@ -1908,11 +1909,12 @@ function SecureRoomCta({
   onOpen: () => void;
 }) {
   return (
-    <div style={roomCard}>
+    <div className="qc-public-intake-room-card" style={roomCard}>
       <strong style={roomCardHeading}>{c.roomCardTitle}</strong>
       <span style={roomCardBody}>{c.roomCardSub}</span>
       <button
         type="button"
+        className="qc-public-intake-button qc-public-intake-button--primary"
         style={busy ? disabledRoomCardButton : roomCardButton}
         disabled={busy}
         onClick={onOpen}
@@ -1960,7 +1962,7 @@ function DealerSidebar({
   ];
   return (
     <aside className="qc-public-intake-sidebar" style={dealerSidebar}>
-      <div style={sidebarBrand}>
+      <div className="qc-public-intake-brand" style={sidebarBrand}>
         <QCMark size={30} />
         <div>
           <strong>Qualified Commercial</strong>
@@ -1982,7 +1984,7 @@ function DealerSidebar({
               onClick={() => onTabChange(tab.key)}
             >
               <span style={sidebarNavLabelRow}>
-                {isIntelligence ? <span style={intelligenceNavIcon}>◆</span> : null}
+                {isIntelligence ? <span className="qc-public-intake-nav-icon" style={intelligenceNavIcon}>◆</span> : null}
                 <span>{tab.label}</span>
               </span>
               <small>{tab.detail}</small>
@@ -1992,7 +1994,7 @@ function DealerSidebar({
       </nav>
 
       <div style={sidebarSection}>
-        <div style={sidebarSectionTitle}>Pinned</div>
+        <div className="qc-public-intake-section-title" style={sidebarSectionTitle}>Pinned</div>
         {/* First in the column: it is the only pinned item that is an action,
             and the two below it are read-only reminders. */}
         <SecureRoomCta c={c} busy={roomBusy} notice={roomNotice} onOpen={onOpenSecureRoom} />
@@ -2052,7 +2054,7 @@ function AttachmentTray({ files, compact, onRemove }: { files: QueuedFile[]; com
         {files.map((item) => (
           <div key={item.id} style={attachmentPill}>
             <span style={truncate}>{item.file.name}</span>
-            <span style={smallMuted}>{item.status}</span>
+            <span className="qc-public-intake-muted" style={smallMuted}>{item.status}</span>
             {item.status !== "uploading" ? (
               <button
                 type="button"
@@ -2146,7 +2148,7 @@ function FileDrawerPanel({
         <div>
           <div className="qc-public-intake-eyebrow" style={sideEyebrow}>Files</div>
           <h2 style={sideTitle}>Uploaded evidence</h2>
-          {!showReviewProgress && reviewCompletedAt ? <span style={smallMuted}>Last review {formatDate(reviewCompletedAt)}</span> : null}
+          {!showReviewProgress && reviewCompletedAt ? <span className="qc-public-intake-muted" style={smallMuted}>Last review {formatDate(reviewCompletedAt)}</span> : null}
         </div>
         <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={miniButton} onClick={() => onAttachFiles()}>Attach</button>
       </div>
@@ -2172,10 +2174,10 @@ function FileDrawerPanel({
               <div key={item.id} className="qc-public-intake-file-card" style={pendingFileCard}>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{item.file.name}</strong>
-                  <span style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
+                  <span className="qc-public-intake-muted" style={smallMuted}>{formatSize(item.file.size)} | {item.status}{item.message ? ` | ${item.message}` : ""}</span>
                 </div>
                 <div style={pendingControls}>
-                  <span style={smallMuted}>AI will classify after upload</span>
+                  <span className="qc-public-intake-muted" style={smallMuted}>AI will classify after upload</span>
                   {item.status !== "uploading" ? (
                     <button
                       type="button"
@@ -2201,7 +2203,7 @@ function FileDrawerPanel({
       <div style={sideSection}>
         <div style={sideSectionHeader}>
           <strong>All bucket files</strong>
-          <span style={smallMuted}>{response.files.length} submitted</span>
+          <span className="qc-public-intake-muted" style={smallMuted}>{response.files.length} submitted</span>
         </div>
         <div style={sideList}>
           {topLevelFiles.length ? topLevelFiles.map((file) => {
@@ -2217,10 +2219,10 @@ function FileDrawerPanel({
             const unlockedCopy = locked ? unlockedCopyActionState(file.unlocked_copy_request) : null;
             return (
               <div key={file.id} className="qc-public-intake-file-card" style={uploadedFileCard}>
-                <div style={fileTypeBadge}>{locked ? <span aria-label="Password required" title={locked.explanation}>🔒</span> : fileLabel(file)}</div>
+                <div className="qc-public-intake-file-badge" style={fileTypeBadge}>{locked ? <span aria-label="Password required" title={locked.explanation}>🔒</span> : fileLabel(file)}</div>
                 <div style={{ minWidth: 0 }}>
                   <strong style={truncate}>{file.file_name}</strong>
-                  <span style={smallMuted}>{locked ? `${locked.title} | ${unlockedCopy?.label ?? locked.badge}` : evidence?.classification || file.analysis_classification || doc?.name || "Let AI classify"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
+                  <span className="qc-public-intake-muted" style={smallMuted}>{locked ? `${locked.title} | ${unlockedCopy?.label ?? locked.badge}` : evidence?.classification || file.analysis_classification || doc?.name || "Let AI classify"} | {formatSize(file.size_bytes)} | {formatDate(file.created_at)}</span>
                   {file.extraction_status ? <span style={evidenceLine}>Archive extraction: {file.extraction_status}{extractedChildren.length ? ` | ${extractedChildren.length} file${extractedChildren.length === 1 ? "" : "s"} organized` : ""}</span> : null}
                   {evidence?.supports ? <span style={evidenceLine}>{evidence.supports}</span> : null}
                   {extractedChildren.length ? (
@@ -2235,10 +2237,10 @@ function FileDrawerPanel({
                         });
                         return (
                           <div key={child.id} className="qc-public-intake-file-card qc-public-intake-file-card--child" style={zipChildRow}>
-                            <span style={fileTypeBadgeSmall}>{childLocked ? <span aria-label="Password required" title={childLocked.explanation}>🔒</span> : fileLabel(child)}</span>
+                            <span className="qc-public-intake-file-badge" style={fileTypeBadgeSmall}>{childLocked ? <span aria-label="Password required" title={childLocked.explanation}>🔒</span> : fileLabel(child)}</span>
                             <div style={{ minWidth: 0 }}>
                               <strong style={truncate}>{child.zip_entry_path || child.file_name}</strong>
-                              <span style={smallMuted}>{childLocked ? childLocked.title : childEvidence?.classification || child.analysis_classification || "AI will classify"} | {formatSize(child.size_bytes)}</span>
+                              <span className="qc-public-intake-muted" style={smallMuted}>{childLocked ? childLocked.title : childEvidence?.classification || child.analysis_classification || "AI will classify"} | {formatSize(child.size_bytes)}</span>
                             </div>
                           </div>
                         );
@@ -2401,13 +2403,13 @@ function ReviewProgress({ stage, completedAt, compact }: { stage: ReviewProgress
     <div className={`qc-public-intake-review-progress${isError ? " is-error" : isComplete ? " is-complete" : ""}`} style={{ ...reviewProgressShell, ...(compact ? reviewProgressShellCompact : null), ...(isError ? reviewProgressShellError : null), ...(isComplete ? reviewProgressShellComplete : null) }}>
       <div style={reviewProgressTop}>
         <div style={reviewProgressLabelWrap}>
-          <span style={isError ? reviewProgressBarDotError : isComplete ? reviewProgressBarDotComplete : reviewProgressBarDot} />
+          <span className="qc-public-intake-progress-dot" style={isError ? reviewProgressBarDotError : isComplete ? reviewProgressBarDotComplete : reviewProgressBarDot} />
           <strong>{label}</strong>
         </div>
         <span style={reviewProgressDetail}>{detail}</span>
       </div>
-      <div style={reviewProgressTrack}>
-        <div style={{ ...reviewProgressFill, width: `${percent}%`, ...(isError ? reviewProgressFillError : null), ...(isComplete ? reviewProgressFillComplete : null) }} />
+      <div className="qc-public-intake-track" style={reviewProgressTrack}>
+        <div className="qc-public-intake-fill" style={{ ...reviewProgressFill, width: `${percent}%`, ...(isError ? reviewProgressFillError : null), ...(isComplete ? reviewProgressFillComplete : null) }} />
       </div>
     </div>
   );
@@ -2439,9 +2441,9 @@ function IntelligenceUnavailableCover({
 }) {
   return (
     <section className="qc-public-intake-intelligence qc-public-intake-intelligence--empty" style={intelligenceCover}>
-      <div style={intelligenceCoverGlow} />
+      <div className="qc-public-intake-cover-glow" style={intelligenceCoverGlow} />
       <div style={intelligenceCoverCard}>
-        <div style={intelligenceCoverIcon}>
+        <div className="qc-public-intake-cover-icon" style={intelligenceCoverIcon}>
           <span style={{ ...intelligenceCoverIconBar, height: "48%" }} />
           <span style={{ ...intelligenceCoverIconBar, height: "78%" }} />
           <span style={{ ...intelligenceCoverIconBar, height: "62%" }} />
@@ -2454,11 +2456,11 @@ function IntelligenceUnavailableCover({
           collateral, evidence coverage, risks, and exportable charts.
         </p>
         <div style={intelligenceCoverStats}>
-          <div style={intelligenceCoverStat}>
+          <div className="qc-public-intake-metric" style={intelligenceCoverStat}>
             <strong>{uploadedCount}</strong>
             <span>files uploaded</span>
           </div>
-          <div style={intelligenceCoverStat}>
+          <div className="qc-public-intake-metric" style={intelligenceCoverStat}>
             <strong>{missingDocs.length}</strong>
             <span>baseline items open</span>
           </div>
@@ -2467,7 +2469,7 @@ function IntelligenceUnavailableCover({
           <button type="button" className="qc-public-intake-button qc-public-intake-button--primary" style={primaryButton} onClick={onGoChat}>Return to chat</button>
           <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={coverSecondaryButton} onClick={() => onAttachFiles()}>Attach evidence</button>
         </div>
-        <div style={intelligenceCoverNeeds}>
+        <div className="qc-public-intake-note" style={intelligenceCoverNeeds}>
           <strong>Start with Stage 1 evidence</strong>
           <span>Business tax returns, YTD P&L, last 6 months of the main operating bank statements, and a detailed use-of-funds breakdown.</span>
         </div>
@@ -2496,7 +2498,7 @@ function IntelligencePanel({
         <div>
           <div className="qc-public-intake-eyebrow" style={sideEyebrow}>Underwriting intelligence</div>
           <h2 style={intelligenceTitle}>{response.intake.business_name || response.intake.full_name}</h2>
-          <p style={muted}>Visual cockpit derived from uploaded evidence, chat answers, and the latest AI screen.</p>
+          <p className="qc-public-intake-muted" style={muted}>Visual cockpit derived from uploaded evidence, chat answers, and the latest AI screen.</p>
         </div>
         <button type="button" className="qc-public-intake-button qc-public-intake-button--primary" style={primaryButton} onClick={onExport}>Export PDF</button>
       </div>
@@ -2529,7 +2531,7 @@ function IntelligencePanel({
             <span className={metricSourceClassName(model.dscr.source)} style={metricSourcePill(model.dscr.source)}>{model.dscr.source}</span>
           </div>
           <GaugeChart value={model.dscr.raw} language={language} />
-          <p style={smallMuted}>{model.dscr.detail || "Coverage will populate when cash flow and debt service evidence is available."}</p>
+          <p className="qc-public-intake-muted" style={smallMuted}>{model.dscr.detail || "Coverage will populate when cash flow and debt service evidence is available."}</p>
         </div>
 
         <div className="qc-public-intake-chart-card" style={chartCard}>
@@ -2538,13 +2540,13 @@ function IntelligencePanel({
             <span className={metricSourceClassName(model.ltv.source)} style={metricSourcePill(model.ltv.source)}>{model.ltv.source}</span>
           </div>
           <EquityChart equity={model.equity.raw} ltv={model.ltv.raw} language={language} />
-          <p style={smallMuted}>{model.equity.detail || "Collateral values and payoff balances are needed for equity and LTV."}</p>
+          <p className="qc-public-intake-muted" style={smallMuted}>{model.equity.detail || "Collateral values and payoff balances are needed for equity and LTV."}</p>
         </div>
 
         <div className="qc-public-intake-chart-card qc-public-intake-chart-card--wide" style={chartCardWide}>
           <div style={chartHeader}>
             <strong>Cash flow stack</strong>
-            <span style={smallMuted}>Revenue / cash flow / debt service</span>
+            <span className="qc-public-intake-muted" style={smallMuted}>Revenue / cash flow / debt service</span>
           </div>
           <CashFlowBars bars={model.cashFlowBars} language={language} />
         </div>
@@ -2552,7 +2554,7 @@ function IntelligencePanel({
         <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Month-to-month cash flow</strong>
-            <span style={smallMuted}>Bank statement trend</span>
+            <span className="qc-public-intake-muted" style={smallMuted}>Bank statement trend</span>
           </div>
           <MiniBarChart series={model.monthlySeries} emptyLabel="Awaiting six months of main operating bank statements." />
         </div>
@@ -2560,7 +2562,7 @@ function IntelligencePanel({
         <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Year-to-year performance</strong>
-            <span style={smallMuted}>Tax / P&L trend</span>
+            <span className="qc-public-intake-muted" style={smallMuted}>Tax / P&L trend</span>
           </div>
           <MiniBarChart series={model.yearlySeries} emptyLabel="Awaiting tax returns and YTD P&L figures." />
         </div>
@@ -2570,14 +2572,14 @@ function IntelligencePanel({
         <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Evidence coverage</strong>
-            <span style={smallMuted}>{response.files.length} files</span>
+            <span className="qc-public-intake-muted" style={smallMuted}>{response.files.length} files</span>
           </div>
           <EvidenceCoverageTable rows={model.coverage} language={language} />
         </div>
         <div className="qc-public-intake-chart-card" style={chartCard}>
           <div style={chartHeader}>
             <strong>Still needed</strong>
-            <span style={smallMuted}>{model.missing.length} items</span>
+            <span className="qc-public-intake-muted" style={smallMuted}>{model.missing.length} items</span>
           </div>
           <MissingTable rows={model.missing} language={language} />
         </div>
@@ -2588,7 +2590,7 @@ function IntelligencePanel({
         <RiskStrengthTable title="Risks" rows={model.risks} tone="amber" language={language} />
       </div>
 
-      <div style={intelligenceNextStep}>
+      <div className="qc-public-intake-next-step" style={intelligenceNextStep}>
         <span>Next underwriting move</span>
         <strong>{model.oneNextStep || probability}</strong>
       </div>
@@ -2619,12 +2621,12 @@ function GaugeChart({ value, language = "en" }: { value: number | null | undefin
   return (
     <div style={gaugeWrap}>
       <svg viewBox="0 0 200 120" style={gaugeSvg} aria-label="DSCR gauge">
-        <path d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="16" strokeLinecap="round" />
+        <path className="qc-public-intake-gauge-track" d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="16" strokeLinecap="round" />
         <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="#EF4444" strokeWidth="16" strokeLinecap="round" />
         <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="#F59E0B" strokeWidth="16" strokeLinecap="round" />
         <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="#34D399" strokeWidth="16" strokeLinecap="round" />
-        <line x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
-        <circle cx="100" cy="92" r="8" fill="#F8FAFC" />
+        <line className="qc-public-intake-gauge-needle" x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
+        <circle className="qc-public-intake-gauge-hub" cx="100" cy="92" r="8" fill="#F8FAFC" />
       </svg>
       <strong>{numeric === null ? cc.awaitingEvidence : `${numeric.toFixed(2)}x`}</strong>
       <span>{cc.dscrRange}</span>
@@ -2638,13 +2640,13 @@ function EquityChart({ equity, ltv, language = "en" }: { equity: number | null |
   const equityPct = ltvPct === null ? null : Math.max(0, 100 - ltvPct);
   return (
     <div style={equityChartWrap}>
-      <div style={equityTrack}>
-        <div style={{ ...equityDebtFill, width: `${ltvPct ?? 0}%` }} />
-        <div style={{ ...equityValueFill, width: `${equityPct ?? 0}%` }} />
+      <div className="qc-public-intake-track" style={equityTrack}>
+        <div className="qc-public-intake-fill qc-public-intake-fill--debt" style={{ ...equityDebtFill, width: `${ltvPct ?? 0}%` }} />
+        <div className="qc-public-intake-fill qc-public-intake-fill--equity" style={{ ...equityValueFill, width: `${equityPct ?? 0}%` }} />
       </div>
       <div style={equityLegend}>
-        <span><b style={legendDebtDot} /> {cc.debtProposedLtv} {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
-        <span><b style={legendEquityDot} /> {cc.equity} {typeof equity === "number" ? formatMoneyCompact(equity) : cc.awaitingEvidence}</span>
+        <span><b className="qc-public-intake-dot qc-public-intake-dot--debt" style={legendDebtDot} /> {cc.debtProposedLtv} {ltvPct === null ? "—" : `${ltvPct.toFixed(1)}%`}</span>
+        <span><b className="qc-public-intake-dot qc-public-intake-dot--equity" style={legendEquityDot} /> {cc.equity} {typeof equity === "number" ? formatMoneyCompact(equity) : cc.awaitingEvidence}</span>
       </div>
     </div>
   );
@@ -2664,8 +2666,8 @@ function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceModel["cash
               <span>{bar.label}</span>
               <strong>{value === null ? cc.awaitingEvidence : formatMoneyCompact(value)}</strong>
             </div>
-            <div style={cashFlowTrack}>
-              <div style={{ ...cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? "#EF4444" : "#21D3C7" }} />
+            <div className="qc-public-intake-track" style={cashFlowTrack}>
+              <div className={`qc-public-intake-fill${value !== null && value < 0 ? " is-negative" : ""}`} style={{ ...cashFlowFill, width: `${width}%`, background: value !== null && value < 0 ? "#EF4444" : "#21D3C7" }} />
             </div>
           </div>
         );
@@ -2676,7 +2678,7 @@ function CashFlowBars({ bars, language = "en" }: { bars: IntelligenceModel["cash
 
 function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; value: number | null }>; emptyLabel: string }) {
   const valid = series.filter((item) => typeof item.value === "number" && Number.isFinite(item.value));
-  if (!valid.length) return <div style={chartEmptyState}>{emptyLabel}</div>;
+  if (!valid.length) return <div className="qc-public-intake-empty" style={chartEmptyState}>{emptyLabel}</div>;
   const max = Math.max(...valid.map((item) => Math.abs(item.value || 0)), 1);
   return (
     <div style={miniChart}>
@@ -2686,7 +2688,7 @@ function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; v
         return (
           <div key={item.label} style={miniChartColumn}>
             <div style={miniChartBarWrap}>
-              <div style={{ ...miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
+              <div className="qc-public-intake-bar" style={{ ...miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
             </div>
             <span>{item.label}</span>
           </div>
@@ -2698,7 +2700,7 @@ function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; v
 
 function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceModel["coverage"]; language?: Lang }) {
   const cc = CHART_COPY[language];
-  if (!rows.length) return <div style={chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
+  if (!rows.length) return <div className="qc-public-intake-empty" style={chartEmptyState}>{cc.awaitingEvidenceMap}</div>;
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
@@ -2714,7 +2716,7 @@ function EvidenceCoverageTable({ rows, language = "en" }: { rows: IntelligenceMo
 
 function MissingTable({ rows, language = "en" }: { rows: IntelligenceModel["missing"]; language?: Lang }) {
   const cc = CHART_COPY[language];
-  if (!rows.length) return <div style={chartEmptyState}>{cc.noBlockingItems}</div>;
+  if (!rows.length) return <div className="qc-public-intake-empty" style={chartEmptyState}>{cc.noBlockingItems}</div>;
   return (
     <div style={intelligenceTable}>
       {rows.slice(0, 8).map((row) => (
@@ -2738,8 +2740,8 @@ function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: stri
       </div>
       <div style={riskList}>
         {rows.length ? rows.slice(0, 7).map((row, index) => (
-          <div key={`${title}-${index}`} style={tone === "green" ? strengthRow : riskRow}>{row}</div>
-        )) : <div style={chartEmptyState}>{cc.awaitingReviewExtraction}</div>}
+          <div key={`${title}-${index}`} className={`qc-public-intake-point ${tone === "green" ? "is-good" : "is-risk"}`} style={tone === "green" ? strengthRow : riskRow}>{row}</div>
+        )) : <div className="qc-public-intake-empty" style={chartEmptyState}>{cc.awaitingReviewExtraction}</div>}
       </div>
     </div>
   );
@@ -2748,8 +2750,8 @@ function RiskStrengthTable({ title, rows, tone, language = "en" }: { title: stri
 function WidgetBox({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
     <section className="qc-public-intake-widget" style={widgetBox}>
-      <h2 style={sectionTitle}>{title}</h2>
-      <p style={muted}>{description}</p>
+      <h2 className="qc-public-intake-widget-title" style={sectionTitle}>{title}</h2>
+      <p className="qc-public-intake-muted" style={muted}>{description}</p>
       <div style={{ display: "grid", gap: 12, marginTop: 14 }}>{children}</div>
     </section>
   );
@@ -2758,7 +2760,7 @@ function WidgetBox({ title, description, children }: { title: string; descriptio
 function Field({ label, value, onChange, placeholder, onBlur, required, inputMode }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; onBlur?: () => void; required?: boolean; inputMode?: "decimal" | "email" | "numeric" | "search" | "tel" | "text" | "url" }) {
   return (
     <label style={fieldWrap}>
-      <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
+      <span style={labelStyle}>{label}{required ? <span className="qc-public-intake-required" style={requiredMark}>*</span> : null}</span>
       <input style={input} value={value} onChange={(event) => onChange(event.target.value)} onBlur={onBlur} placeholder={placeholder} inputMode={inputMode} />
     </label>
   );
@@ -2767,7 +2769,7 @@ function Field({ label, value, onChange, placeholder, onBlur, required, inputMod
 function TextAreaField({ label, value, onChange, placeholder, required }: { label: string; value: string; onChange: (value: string) => void; placeholder?: string; required?: boolean }) {
   return (
     <label style={fieldWrap}>
-      <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
+      <span style={labelStyle}>{label}{required ? <span className="qc-public-intake-required" style={requiredMark}>*</span> : null}</span>
       <textarea style={textarea} value={value} onChange={(event) => onChange(event.target.value)} placeholder={placeholder} />
     </label>
   );
@@ -2775,7 +2777,7 @@ function TextAreaField({ label, value, onChange, placeholder, required }: { labe
 
 function Metric({ value, label }: { value: string; label: string }) {
   return (
-    <div style={metric}>
+    <div className="qc-public-intake-metric" style={metric}>
       <strong>{value}</strong>
       <span>{label}</span>
     </div>

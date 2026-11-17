@@ -4355,6 +4355,15 @@ select.vm-in {
 }
 .qc-public-intake-theme--light .qc-public-intake-signing .pp-gate { color: var(--qci-ink); }
 .qc-public-intake-theme--light .qc-public-intake-signing .pp-panel { background: var(--qci-surface); border-color: var(--qci-border); }
+/* The signing step is the whole screen: it takes the shell's full width rather
+   than the sidebar's column, and it scrolls, so the Sign button can be reached. */
+.qc-public-intake-theme--light .qc-public-intake-main.qc-public-intake-signing {
+  grid-column: 1 / -1;
+  display: block !important;
+  overflow-y: auto !important;
+  padding: 28px 24px 44px;
+}
+.qc-public-intake-theme--light .qc-public-intake-signing .pp-hint:not(.bad):not(.warn):not(.ok) { color: var(--qci-muted); }
 
 @media (max-width: 720px) {
   .qc-public-intake-theme--light { padding: 0 !important; }
@@ -4369,13 +4378,17 @@ select.vm-in {
   .v-gate--institutional .v-gate-opts { grid-template-columns: 1fr; }
   .qc-public-intake-theme--light .qc-public-intake-shell--workspace { padding: 8px !important; }
   .qc-public-intake-theme--light .qc-public-intake-main { border-radius: 12px; overflow: hidden !important; }
+  .qc-public-intake-theme--light .qc-public-intake-main.qc-public-intake-signing { padding: 14px 12px 32px; }
+  /* On a phone the Files tab is the whole screen, not a strip that cuts its own list off. */
+  .qc-public-intake-theme--light .qc-public-intake-files { height: 100% !important; max-height: none !important; }
 }
 
 /* ---------- the light intake theme: pieces with a hook of their own ----------
    The rules above reach an element by where it sits. These reach it by a class
    the page gives it, so a page opts in piece by piece and nothing here moves a
-   page that does not carry the class. The funding review room carries all of
-   them. */
+   page that does not carry the class. The funding review room and the
+   equipment room carry them; the dealer room carries the same class names and
+   no light theme, so none of this reaches it. */
 .qc-public-intake-sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 .qc-public-intake-theme--light .qc-public-intake-muted { color: var(--qci-muted) !important; }
 .qc-public-intake-theme--light .qc-public-intake-required { color: #b42318 !important; }
@@ -4489,6 +4502,23 @@ select.vm-in {
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-error .qc-public-intake-progress-dot { background: #b42318 !important; }
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-complete .qc-public-intake-progress-dot { box-shadow: 0 0 0 4px rgba(37, 116, 73, .14) !important; }
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-error .qc-public-intake-progress-dot { box-shadow: 0 0 0 4px rgba(180, 35, 24, .12) !important; }
+/* The name and the room's label are two lines, not one run of words. */
+.qc-public-intake-theme--light .qc-public-intake-brand strong,
+.qc-public-intake-theme--light .qc-public-intake-brand span { display: block; }
+/* Consent wording is read, not skimmed: no dimming on top of the muted colour. */
+.qc-public-intake-theme--light .onb-consent-row b em,
+.qc-public-intake-theme--light .onb-consent-row small,
+.qc-public-intake-theme--light .onb-consent-note { opacity: 1; }
+/* The assistant's bubble has a border here, so its words need room inside it. */
+.qc-public-intake-theme--light .qc-public-intake-bubble--assistant { padding: 11px 15px !important; }
+.qc-public-intake-theme--light .qc-public-intake-attachments { border-radius: 12px !important; }
+.qc-public-intake-theme--light .qc-public-intake-attachments strong { color: var(--qci-ink) !important; }
+.qc-public-intake-theme--light .qc-public-intake-attachments > div:last-child > div > span:first-child { color: var(--qci-ink-2) !important; }
+.qc-public-intake-theme--light .qc-public-intake-attachments button {
+  border-color: var(--qci-border-strong) !important;
+  background: var(--qci-surface) !important;
+  color: var(--qci-muted) !important;
+}
 
 /* ---------- a light intake room in the client room's chrome ----------
    `--room` on the page: the secure application room's top band, its brand
@@ -4527,18 +4557,6 @@ select.vm-in {
   letter-spacing: 0 !important;
   text-transform: none !important;
 }
-.qc-public-intake-theme--room .onb-consent-row b em,
-.qc-public-intake-theme--room .onb-consent-row small,
-.qc-public-intake-theme--room .onb-consent-note { opacity: 1; }
-.qc-public-intake-theme--room .qc-public-intake-bubble--assistant { padding: 11px 15px !important; }
-.qc-public-intake-theme--room .qc-public-intake-attachments { border-radius: 12px !important; }
-.qc-public-intake-theme--room .qc-public-intake-attachments strong { color: var(--qci-ink) !important; }
-.qc-public-intake-theme--room .qc-public-intake-attachments > div:last-child > div > span:first-child { color: var(--qci-ink-2) !important; }
-.qc-public-intake-theme--room .qc-public-intake-attachments button {
-  border-color: var(--qci-border-strong) !important;
-  background: var(--qci-surface) !important;
-  color: var(--qci-muted) !important;
-}
 .qc-public-intake-theme--room .qc-public-intake-kpi { align-content: start !important; }
 .qc-public-intake-theme--room .qc-public-intake-kpi .qc-public-intake-chip { justify-self: start; }
 .qc-public-intake-theme--room .qc-public-intake-sidebar-tab { box-shadow: none !important; }
@@ -4568,8 +4586,6 @@ select.vm-in {
   .qc-public-intake-theme--room .qc-public-intake-shell--workspace { grid-template-columns: 252px minmax(0, 1fr) !important; }
 }
 @media (max-width: 720px) {
-  /* On a phone the Files tab is the whole screen, not a strip under the chat. */
-  .qc-public-intake-theme--room .qc-public-intake-files { height: 100% !important; max-height: none !important; }
   .qc-public-intake-theme--room.qc-public-intake-pin-page { padding: 0 14px 22px !important; }
   .qc-public-intake-theme--room.qc-public-intake-pin-page form { padding: 20px 16px; }
   .qc-public-intake-theme--room .application-room-footer { flex-direction: column; gap: 6px; }

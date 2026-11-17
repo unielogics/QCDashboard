@@ -1,0 +1,190 @@
+import { expect, test, type Page } from "@playwright/test";
+import { createRequire } from "node:module";
+import { mkdtemp, readFile } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+// The two light client rooms -- Equipment Financing and the funding review --
+// are the dark dealer room's markup under a theme that reaches each piece by a
+// class the page gives it. A piece without its class keeps its dark-room colour
+// and disappears on white, and nothing else in the suite would notice. This
+// opens the real pages with the real stylesheets and a made-up reviewed file,
+// and reads every piece of text against what is painted behind it.
+const ORIGIN = "https://light-room.test";
+let script: Buffer, css: Buffer;
+
+test.beforeAll(async () => {
+  const root = process.cwd();
+  const projectRequire = createRequire(path.join(root, "package.json"));
+  const esbuild = createRequire(createRequire(projectRequire.resolve("vitest/package.json")).resolve("vite/package.json"))("esbuild");
+  const directory = await mkdtemp(path.join(os.tmpdir(), "qc-light-room-"));
+  const stubs: Record<string, string> = {
+    "@clerk/nextjs": "export const useAuth=()=>({getToken:async()=>null,isLoaded:true,isSignedIn:false,userId:null});export const useUser=()=>({user:null,isLoaded:true,isSignedIn:false});export const useClerk=()=>({signOut:async()=>{}});export const useSession=()=>({session:null});export const useSignIn=()=>({});export const useSignUp=()=>({});export const useOrganization=()=>({});export const ClerkProvider=({children})=>children;export const SignedIn=()=>null;export const SignedOut=({children})=>children;export const SignIn=()=>null;export const SignUp=()=>null;export const UserButton=()=>null;export const SignInButton=()=>null;export const SignOutButton=()=>null;",
+    "next/navigation": "export const useParams=()=>({});export const useSearchParams=()=>new URLSearchParams(location.search);export const useRouter=()=>({push(){},replace(){}});export const usePathname=()=>location.pathname;",
+    "next/link": "import React from'react';export default function Link({href,children,...rest}){return React.createElement('a',{href:typeof href==='string'?href:'#',...rest},children)}",
+    "next/image": "import React from'react';export default function Image({src,alt,width,height}){return React.createElement('img',{src:typeof src==='string'?src:'',alt,width,height})}",
+    "next/script": "export default function Script(){return null}",
+    "next/dynamic": "import React from'react';export default function dynamic(loader){const Lazy=React.lazy(()=>loader().then((m)=>({default:m.default||m})));return function Dynamic(props){return React.createElement(React.Suspense,{fallback:null},React.createElement(Lazy,props))}}",
+    "next/headers": "export const cookies=()=>({get(){return undefined}});export const headers=()=>new Map();",
+    "next/font/local": "export default function localFont(){return{className:'',variable:'',style:{}}}",
+  };
+  await esbuild.build({
+    stdin: { resolveDir: root, loader: "tsx", contents: `
+      import React from'react';import{createRoot}from'react-dom/client';
+      import{QueryClient,QueryClientProvider}from'@tanstack/react-query';
+      import Funding from'@/app/funding-review/page';import Dealer from'@/app/dealer-ai-underwriter/page';
+      import'@/app/globals.css';import'@/app/production-package.css';import'@/app/app-extras.css';
+      const Page=location.pathname.startsWith('/funding-review')?Funding:Dealer;
+      createRoot(document.getElementById('root')).render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><Page/></QueryClientProvider>);` },
+    outfile: path.join(directory, "app.js"), bundle: true, format: "iife", platform: "browser", jsx: "automatic",
+    nodePaths: [path.join(root, "node_modules")], alias: { "@": path.join(root, "src") },
+    define: { "process.env": "{}", "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(ORIGIN) },
+    loader: { ".module.css": "local-css", ".woff2": "dataurl" }, logLevel: "silent",
+    plugins: [{ name: "stubs", setup(build: { onResolve: (options: { filter: RegExp }, callback: (args: { path: string }) => { path: string; namespace: string } | undefined) => void; onLoad: (options: { filter: RegExp; namespace: string }, callback: (args: { path: string }) => { contents: string; loader: string; resolveDir: string }) => void }) {
+      build.onResolve({ filter: /^(@clerk\/nextjs|next\/.*)$/ }, (args) => ({ path: args.path, namespace: "stub" }));
+      build.onLoad({ filter: /.*/, namespace: "stub" }, (args) => ({ contents: stubs[args.path] ?? "export default {};", loader: "tsx", resolveDir: root }));
+    } }],
+  });
+  script = await readFile(path.join(directory, "app.js"));
+  css = await readFile(path.join(directory, "app.css"));
+});
+
+// ---------- a made-up reviewed file ----------
+const later = "2099-01-01T00:00:00Z";
+const files = [
+  { id: "f1", requested_document_id: "d5", file_name: "Vendor quote - CNC mills.pdf", content_type: "application/pdf", size_bytes: 284000, status: "uploaded", analysis_status: "completed", analysis_classification: "vendor_quote", created_at: "2026-11-15T15:00:00Z" },
+  { id: "f2", file_name: "Company documents.zip", content_type: "application/zip", size_bytes: 3_400_000, status: "uploaded", extraction_status: "completed", analysis_status: "completed", created_at: "2026-11-15T15:05:00Z" },
+  { id: "f2a", parent_zip_file_id: "f2", zip_entry_path: "formation/Operating agreement.pdf", file_name: "Operating agreement.pdf", content_type: "application/pdf", size_bytes: 410000, status: "uploaded", analysis_status: "completed", analysis_classification: "operating_agreement", created_at: "2026-11-15T15:05:00Z" },
+  { id: "f3", file_name: "Bank statement - September.pdf", content_type: "application/pdf", size_bytes: 512000, status: "uploaded", is_password_protected: true, analysis_status: "failed", analysis_reason_code: "password_protected", created_at: "2026-11-15T15:06:00Z" },
+];
+const reviewed = {
+  intake: { id: "i1", bucket_id: "b1", status: "reviewed", full_name: "Jordan Sample", email: "jordan@example.com", phone: "+17045550123", business_name: "Sample Fabrication", requested_loan_amount: 185000, intake_state: {}, preferred_language: "en", communication_locale: "en", asset_rows: [{ id: "a1", address: "200 Example Ave, Charlotte, NC 28202", estimated_loan_amount: 184000, estimated_property_value: 720000 }] },
+  token: "fixture-reviewed", resume_url: "https://app.example.com/resume", upload_url: "https://app.example.com/room",
+  assistant_message: "Upload the latest business tax return when you can.",
+  widget: { type: "book_call", title: "Book underwriting call", description: "Choose a time to go over the preliminary screen.", duration_min: 30, slots: [{ starts_at: "2026-11-18T15:00:00Z", label: "10:00 AM ET", date_label: "Wednesday, Nov 18" }] },
+  requested_documents: [
+    { id: "d1", name: "Last 3 months business bank statements", category: "Banking", required: true, status: "requested" },
+    { id: "d2", name: "Personal financial statement", category: "Personal Financials", description: "The figures from your latest personal tax return.", required: true, status: "requested", template_download_url: "https://app.example.com/templates/pfs.pdf" },
+    { id: "d5", name: "Vendor quote", category: "Equipment", required: true, status: "uploaded" },
+  ],
+  files,
+  latest_review: { status: "completed", result: {
+    probability_status: "Promising but needs one clarification", confidence: "Medium",
+    one_next_step: "Upload the latest business tax return so revenue can be verified.",
+    key_metrics: { requested_amount: 185000, ytd_annualized_revenue: 1240000, estimated_debt_burden: 96000, estimated_dscr: 1.32, estimated_ebitda_or_cash_flow: 126700 },
+    document_evidence_map: {
+      files: [{ file_id: "f1", ai_classification: "vendor_quote", supports: ["Purchase price"] }],
+      baseline_coverage: [
+        { category: "Bank statements", status: "partial", evidence: ["Bank statement - October.xlsx"], gap: "Two more months needed" },
+        { category: "Tax returns", status: "missing", evidence: [], gap: "No business tax return on file" },
+      ],
+    },
+    strengths: ["Deposits are steady across the last six months", "Credit estimate above 740"],
+    risks: ["Tax return not verified"],
+    missing_or_incomplete_items: [{ title: "Business tax return", detail: "Needed to verify annual revenue.", priority: "high" }],
+    monthly_cash_flow: [{ month: "Sep", value: -2400 }, { month: "Oct", value: 11200 }],
+    year_to_year_revenue: [{ year: "2025", value: 1170000 }, { year: "2026", value: 1240000 }],
+  } },
+  messages: [
+    { id: "m1", role: "assistant", content: "Welcome, Jordan. Tell me about the equipment.", created_at: "2026-11-15T14:55:00Z" },
+    { id: "m2", role: "user", content: "Two CNC mills with installation.", created_at: "2026-11-15T14:56:00Z" },
+    { id: "m3", role: "operator", content: "This is Alex from the desk.", created_at: "2026-11-15T14:58:00Z", sender_kind: "operator", author_name: "Alex Rivera" },
+  ],
+  chat_actions: [
+    { id: "c1", source_message_id: "m1", requirement_key: "bank_statements", action_type: "upload_own", label: "Upload bank statements", status: "available", expires_at: later },
+    { id: "c2", source_message_id: "m1", requirement_key: "old", action_type: "upload_own", label: "Old request", status: "expired", expires_at: "2026-11-01T00:00:00Z" },
+  ],
+  ai_paused_until: later, communication_locale: "en",
+};
+const signing = {
+  ...reviewed, token: "fixture-signing",
+  signing_gate: {
+    package_id: "p1", revision_id: "r1", revision_no: 1, stage: 1, document_key: "engagement", title: "Engagement agreement", document_version: "fixture-v1",
+    content_sha256: "a".repeat(64), pdf_sha256: null, pdf_url: null, signer_name: "Jordan Sample", signer_title: "Managing Member", business_name: "Sample Fabrication", sent_at: "2026-11-15T16:00:00Z",
+    esign_consent_text: "I agree to sign this document electronically.", esign_consent_version: "fixture-1",
+    already_signed: false, initials_expected: true, original: null, changes: [], review_clause: null, acknowledgement_text: null,
+  },
+};
+const rooms: Record<string, unknown> = { "fixture-reviewed": reviewed, "fixture-signing": signing };
+
+async function open(page: Page, address: string) {
+  await page.route(`${ORIGIN}/**`, (route) => {
+    const url = new URL(route.request().url());
+    if (url.pathname === "/app.js") return route.fulfill({ contentType: "text/javascript", body: script });
+    if (url.pathname === "/app.css") return route.fulfill({ contentType: "text/css", body: css });
+    if (!url.pathname.includes("/api/")) return route.fulfill({ contentType: "text/html", body: '<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script src="/app.js"></script></body></html>' });
+    const room = url.pathname.match(/\/public\/(?:funding-review|dealer-ai-intake)\/(fixture-[a-z]+)$/);
+    if (room) return route.fulfill({ contentType: "application/json", body: JSON.stringify(rooms[room[1]]) });
+    return route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ detail: "Not in this fixture" }) });
+  });
+  await page.goto(`${ORIGIN}${address}`);
+}
+
+// Text whose colour is too close to what is behind it: WCAG contrast below 4.5.
+// A switched-off control is dimmed on purpose and is left out.
+function unreadable(page: Page) {
+  return page.evaluate(() => {
+    type Colour = { r: number; g: number; b: number; a: number };
+    const parse = (value: string): Colour | null => { const match = /rgba?\(([^)]+)\)/.exec(value || ""); if (!match) return null; const p = match[1].split(/[ ,/]+/).filter(Boolean).map(Number); return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 }; };
+    const over = (top: Colour, under: Colour): Colour => ({ r: top.r * top.a + under.r * (1 - top.a), g: top.g * top.a + under.g * (1 - top.a), b: top.b * top.a + under.b * (1 - top.a), a: 1 });
+    const channel = (value: number) => { const v = value / 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const luminance = (c: Colour) => 0.2126 * channel(c.r) + 0.7152 * channel(c.g) + 0.0722 * channel(c.b);
+    const rows: string[] = [];
+    for (const element of document.querySelectorAll<HTMLElement>("body *")) {
+      if (element.closest("svg, script, style, option, :disabled")) continue;
+      const text = [...element.childNodes].filter((node) => node.nodeType === 3).map((node) => node.textContent!.trim()).join(" ").trim();
+      const style = getComputedStyle(element), box = element.getBoundingClientRect();
+      if (!text || style.visibility === "hidden" || box.width < 2 || box.height < 2) continue;
+      let ground: Colour = { r: 255, g: 255, b: 255, a: 1 }, opacity = 1;
+      const chain: Element[] = []; for (let node: Element | null = element; node; node = node.parentElement) chain.unshift(node);
+      for (const node of chain) {
+        const painted = getComputedStyle(node), fill = parse(painted.backgroundColor);
+        if (fill && fill.a > 0) ground = over(fill, ground);
+        const stops = [...painted.backgroundImage.matchAll(/rgba?\([^)]+\)/g)].map((match) => parse(match[0])!);
+        if (stops.length) ground = over({ r: stops.reduce((sum, c) => sum + c.r, 0) / stops.length, g: stops.reduce((sum, c) => sum + c.g, 0) / stops.length, b: stops.reduce((sum, c) => sum + c.b, 0) / stops.length, a: stops.reduce((sum, c) => sum + c.a, 0) / stops.length }, ground);
+        opacity *= Number(painted.opacity);
+      }
+      const ink = parse(style.color); if (!ink) continue;
+      const shown = over({ ...ink, a: ink.a * opacity }, ground), light = luminance(shown), dark = luminance(ground);
+      const ratio = (Math.max(light, dark) + 0.05) / (Math.min(light, dark) + 0.05);
+      if (ratio < 4.5) rows.push(`${ratio.toFixed(2)} "${text.slice(0, 50)}" in ${element.tagName.toLowerCase()}.${String(element.className).split(" ")[0]}`);
+    }
+    return [...new Set(rows)];
+  });
+}
+
+for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["funding review", "/funding-review"]] as const) {
+  test(`${label} room: the start form has no text that cannot be read`, async ({ page }) => {
+    await open(page, route);
+    await page.getByRole("button", { name: "Continue in English" }).click();
+    await expect(page.getByText("Your room access PIN")).toBeVisible();
+    expect(await unreadable(page)).toEqual([]);
+  });
+
+  test(`${label} room: the chat, the files and the cockpit have no text that cannot be read`, async ({ page }) => {
+    await open(page, `${route}?token=fixture-reviewed`);
+    await expect(page.getByText("Two CNC mills with installation.")).toBeVisible();
+    const tabs = page.locator(".qc-public-intake-sidebar-tab, .qc-public-intake-mobile-tab");
+    await expect(tabs).toHaveCount(3);
+    for (const index of [0, 1, 2]) {
+      await tabs.nth(index).click();
+      await expect(page.locator([".qc-public-intake-chat", ".qc-public-intake-files", ".qc-public-intake-intelligence"][index]).first()).toBeVisible();
+      expect(await unreadable(page), `tab ${index + 1}`).toEqual([]);
+    }
+  });
+}
+
+// The step where a client signs an agreement before the room opens: it has to
+// take the room's width and scroll, or the button under the fold is out of reach.
+test("equipment room: the signing step is full width and scrolls to its button", async ({ page }) => {
+  await open(page, "/equipment-financing-intake?token=fixture-signing");
+  const button = page.getByRole("button", { name: "Sign the agreement" });
+  await expect(button).toBeAttached();
+  expect(await unreadable(page)).toEqual([]);
+  const step = page.locator(".qc-public-intake-signing");
+  const measured = await step.evaluate((element) => ({ scrolls: /auto|scroll/.test(getComputedStyle(element).overflowY), width: element.getBoundingClientRect().width, window: window.innerWidth }));
+  expect(measured.scrolls).toBe(true);
+  expect(measured.width).toBeGreaterThan(measured.window * 0.9);
+  await button.scrollIntoViewIfNeeded();
+  await expect(button).toBeInViewport();
+});
