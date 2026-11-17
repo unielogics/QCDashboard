@@ -1,4 +1,5 @@
 import type { FundingProgramReviewCheck, FundingProgramScope } from "@/lib/fundingPrograms";
+import { defaultSignature, type FormKindInfo, type SignatureConfig } from "@/lib/formKinds";
 
 export type FitCondition = { field: string; op: string; value?: unknown };
 export type SimpleFit = { mode: "all" | "any"; conditions: FitCondition[] };
@@ -100,6 +101,42 @@ export function newRequirement(label: string, existing: Array<Record<string, unk
   let number = 2;
   while (existing.some((row) => row.requirement_key === unique)) unique = `${key}_${number++}`;
   return { requirement_key: unique, label, category, required_level: "required", blocks_stage: "underwriting", visibility: ["agent", "borrower", "underwriter"], can_underwriter_waive: true, verification_required: false, completion_mode: "ai_can_complete", display_order: existing.length, objective_text: "", completion_criteria: "" };
+}
+
+/** A requirement row that collects an online form (and, if configured, its signature). */
+export function newFormRequirement(kind: FormKindInfo, existing: Array<Record<string, unknown>>): Record<string, unknown> {
+  const row = newRequirement(kind.label, existing, kind.requirement_keys[0] || `form_${kind.key}`, kind.category || "financials");
+  return {
+    ...row,
+    requirement_kind: "form",
+    collection_config: { form_kind: kind.key, ...(kind.signable && kind.default_signature ? { signature: defaultSignature(kind) } : {}) },
+  };
+}
+
+export function formKindOf(row: Record<string, unknown>): string | null {
+  const config = objectValue(row.collection_config) ? (row.collection_config as Record<string, unknown>) : null;
+  return row.requirement_kind === "form" && typeof config?.form_kind === "string" ? config.form_kind : null;
+}
+
+export function signatureOf(row: Record<string, unknown>): SignatureConfig | null {
+  const config = objectValue(row.collection_config) ? (row.collection_config as Record<string, unknown>) : null;
+  const signature = config && objectValue(config.signature) ? (config.signature as Partial<SignatureConfig>) : null;
+  if (!signature || signature.required === false) return null;
+  return {
+    required: true,
+    signers: Array.isArray(signature.signers) && signature.signers.length ? signature.signers : ["borrower"],
+    consents: Array.isArray(signature.consents) ? signature.consents : ["esign"],
+    satisfies: Array.isArray(signature.satisfies) ? signature.satisfies : [],
+    ...(typeof signature.credit_reuse_days === "number" ? { credit_reuse_days: signature.credit_reuse_days } : {}),
+  };
+}
+
+/** Set or clear a form row's signature, keeping the rest of its collection settings. */
+export function withSignature(row: Record<string, unknown>, signature: SignatureConfig | null): Record<string, unknown> {
+  const config = objectValue(row.collection_config) ? { ...(row.collection_config as Record<string, unknown>) } : {};
+  if (signature) config.signature = signature;
+  else delete config.signature;
+  return { ...row, collection_config: config };
 }
 
 export function setRequirementCompletionMode(requirement: Record<string, unknown>, mode: string): Record<string, unknown> {

@@ -6,7 +6,9 @@ import { ValidatedField as Field, ValidationTarget } from "./FundingProgramValid
 import { Icon } from "@/components/design-system/Icon";
 import { useConfirmAction } from "@/components/design-system/ConfirmationProvider";
 import type { FundingProgramReviewCheck } from "@/lib/fundingPrograms";
-import { DOCUMENT_REVIEW_PRESETS, EVIDENCE_TEMPLATES, FIT_FIELDS, newCustomDocumentReviewCheck, newRequirement, objectValue, readDocumentReviewChecks, readSimpleFit, setRequirementCompletionMode, withDocumentReviewChecks, writeSimpleFit, type FitCondition } from "./fundingProgramEditorModel";
+import { DOCUMENT_REVIEW_PRESETS, EVIDENCE_TEMPLATES, FIT_FIELDS, formKindOf, newCustomDocumentReviewCheck, newFormRequirement, newRequirement, objectValue, readDocumentReviewChecks, readSimpleFit, setRequirementCompletionMode, signatureOf, withDocumentReviewChecks, withSignature, writeSimpleFit, type FitCondition } from "./fundingProgramEditorModel";
+import { useFormKinds } from "@/hooks/useFormKinds";
+import { CREDIT_SATISFIER, defaultSignature, setCoborrower, setCountsAsCredit, toggleConsent, type FormKindCatalog, type FormKindInfo } from "@/lib/formKinds";
 import styles from "./FundingProgramEditor.module.css";
 import documentStyles from "./FundingProgramDocuments.module.css";
 import { FundingProgramPreferencesEditor } from "./FundingProgramPreferencesEditor";
@@ -88,8 +90,30 @@ function DocumentChecks({ requirement, index, onChange }: { requirement: Record<
   </section>;
 }
 
+/** What the client agrees to when an online form ends in a signature. */
+function SignaturePanel({ row, index, kind, catalog, onChange }: { row: Record<string, unknown>; index: number; kind: FormKindInfo; catalog: FormKindCatalog; onChange: (row: Record<string, unknown>) => void }) {
+  const signature = signatureOf(row);
+  const reuse = signature?.credit_reuse_days;
+  return <section className={styles.stack} aria-label={`Requirement ${index + 1} signature`}>
+    <div className={styles.checks}><label><input type="checkbox" checked={Boolean(signature)} onChange={(event) => onChange(withSignature(row, event.target.checked ? defaultSignature(kind) : null))} />The client signs this form when it is complete</label></div>
+    {signature ? <>
+      <Field label="What the signer agrees to" target={`Requirement ${index + 1} consents`}><div role="group" aria-label={`Requirement ${index + 1} consents`} className={styles.checks}>{catalog.consents.map((consent) => <label key={consent.key}><input type="checkbox" checked={signature.consents.includes(consent.key)} disabled={consent.key === "esign"} onChange={(event) => onChange(withSignature(row, toggleConsent(signature, consent.key, event.target.checked)))} />{consent.label}{consent.draft ? " · draft wording, pending approval" : ""}</label>)}</div></Field>
+      <div className={styles.checks}>
+        <label><input type="checkbox" checked={signature.satisfies.includes(CREDIT_SATISFIER)} onChange={(event) => onChange(withSignature(row, setCountsAsCredit(signature, event.target.checked)))} />Also counts as the credit authorization (the soft pull runs on signing)</label>
+        <label><input type="checkbox" checked={signature.signers.includes("coborrower")} onChange={(event) => onChange(withSignature(row, setCoborrower(signature, event.target.checked)))} />A co-borrower signs from their own link too</label>
+      </div>
+      {signature.satisfies.includes(CREDIT_SATISFIER) ? <Field label="Reuse a soft pull younger than (days)" hint={`Blank uses the firm setting (Settings → Credit pulls). 0 always pulls; at most ${catalog.max_credit_reuse_days}.`}><Input aria-label={`Requirement ${index + 1} credit reuse days`} inputMode="numeric" value={reuse == null ? "" : String(reuse)} onChange={(event) => { const digits = event.target.value.replace(/\D/g, "").slice(0, 3); const next = { ...signature }; if (digits === "") delete next.credit_reuse_days; else next.credit_reuse_days = Math.min(Number(digits), catalog.max_credit_reuse_days); onChange(withSignature(row, next)); }} style={{ maxWidth: 120 }} /></Field> : null}
+    </> : null}
+  </section>;
+}
+
 function EvidenceBuilder({ requirements, onChange }: { requirements: Array<Record<string, unknown>>; onChange: (rows: Array<Record<string, unknown>>) => void }) {
   const [template, setTemplate] = useState("");
+  const [formTemplate, setFormTemplate] = useState("");
+  const formKinds = useFormKinds();
+  const catalog = formKinds.data;
+  const kindFor = (key: string | null) => (key ? catalog?.kinds.find((kind) => kind.key === key) : undefined);
+  const hasForm = (kind: FormKindInfo) => requirements.some((row) => formKindOf(row) === kind.key || (kind.requirement_keys[0] && row.requirement_key === kind.requirement_keys[0]));
   const [changedTypes, setChangedTypes] = useState<Set<string>>(new Set());
   const confirmAction = useConfirmAction();
   function savedDocumentType(row: Record<string, unknown>) { return !EVIDENCE_TEMPLATES.some((item) => item.key === row.requirement_key) && !String(row.requirement_key).startsWith("custom_requirement"); }
@@ -107,14 +131,16 @@ function EvidenceBuilder({ requirements, onChange }: { requirements: Array<Recor
     <div className={styles.row}><h4>Documents and information to collect</h4><span className={styles.muted}>{requirements.length} requirements</span></div>
     <p className={styles.muted}>Choose the documents to collect. Under each one, tell the AI what to inspect and which findings need staff attention. Instructions and extra checks are optional.</p>
     <div className={documentStyles.addDocument}><Field label="Add a required document"><Select aria-label="Choose a common document requirement" value={template} onChange={(event) => setTemplate(event.target.value)}><option value="">Choose a document…</option>{EVIDENCE_TEMPLATES.map((row) => <option key={row.key} value={row.key} disabled={requirements.some((requirement) => requirement.requirement_key === row.key)}>{row.label}{requirements.some((requirement) => requirement.requirement_key === row.key) ? " · already added" : ""}</option>)}</Select></Field><Btn disabled={!template || requirements.length >= 100 || requirements.some((row) => row.requirement_key === template)} onClick={() => { const item = EVIDENCE_TEMPLATES.find((row) => row.key === template); if (!item || requirements.some((row) => row.requirement_key === item.key)) return; onChange([...requirements, newRequirement(item.label, requirements, item.key, item.category)]); setTemplate(""); }}><Icon name="plus" size={15} />Add document</Btn><Btn disabled={requirements.length >= 100} onClick={() => onChange([...requirements, newRequirement("", requirements)])}>Other document</Btn></div>
+    {catalog?.kinds.length ? <div className={documentStyles.addDocument}><Field label="Add an online form"><Select aria-label="Choose an online form to collect" value={formTemplate} onChange={(event) => setFormTemplate(event.target.value)}><option value="">Choose a form…</option>{catalog.kinds.map((kind) => <option key={kind.key} value={kind.key} disabled={hasForm(kind)}>{kind.label}{kind.signable ? " · can end in a signature" : ""}{hasForm(kind) ? " · already added" : ""}</option>)}</Select></Field><Btn disabled={!formTemplate || requirements.length >= 100} onClick={() => { const kind = kindFor(formTemplate); if (!kind || hasForm(kind)) return; onChange([...requirements, newFormRequirement(kind, requirements)]); setFormTemplate(""); }}><Icon name="plus" size={15} />Add form</Btn></div> : null}
     {requirements.map((row, index) => <article key={`${String(row.requirement_key)}:${index}`} className={documentStyles.card} aria-label={`Document requirement ${index + 1}: ${String(row.label || "New document")}`}>
       <div className={documentStyles.cardHeader}>
-        <Field label="Required document"><Select aria-label={`Requirement ${index + 1} document type`} value={EVIDENCE_TEMPLATES.some((item) => item.key === row.requirement_key) ? String(row.requirement_key) : savedDocumentType(row) ? "__saved" : "__other"} onChange={(event) => void changeType(index, event.target.value)}>{savedDocumentType(row) ? <option value="__saved">{String(row.label || row.requirement_key)} · saved type</option> : null}{EVIDENCE_TEMPLATES.map((item) => <option key={item.key} value={item.key} disabled={requirements.some((other, otherIndex) => otherIndex !== index && other.requirement_key === item.key)}>{item.label}</option>)}<option value="__other">Other required document · named below</option></Select></Field>
+        {formKindOf(row) ? <Field label="Online form"><b>{kindFor(formKindOf(row))?.label || String(row.label || formKindOf(row))}</b></Field> : <Field label="Required document"><Select aria-label={`Requirement ${index + 1} document type`} value={EVIDENCE_TEMPLATES.some((item) => item.key === row.requirement_key) ? String(row.requirement_key) : savedDocumentType(row) ? "__saved" : "__other"} onChange={(event) => void changeType(index, event.target.value)}>{savedDocumentType(row) ? <option value="__saved">{String(row.label || row.requirement_key)} · saved type</option> : null}{EVIDENCE_TEMPLATES.map((item) => <option key={item.key} value={item.key} disabled={requirements.some((other, otherIndex) => otherIndex !== index && other.requirement_key === item.key)}>{item.label}</option>)}<option value="__other">Other required document · named below</option></Select></Field>}
         <Field label="Importance"><Select aria-label={`Requirement ${index + 1} importance`} value={String(row.required_level ?? "required")} onChange={(event) => update(index, { required_level: event.target.value })}><option value="required">Required</option><option value="recommended">Recommended</option><option value="optional">Optional</option></Select></Field>
         <Btn aria-label={`Remove ${String(row.label || "requirement")}`} onClick={() => onChange(requirements.filter((_, i) => i !== index))}><Icon name="x" size={16} /></Btn>
       </div>
       {String(row.requirement_key).startsWith("custom_requirement") ? <Field label="Document name"><Input aria-label={`Requirement ${index + 1} name`} value={String(row.label ?? "")} maxLength={200} placeholder="Give this required document a clear name" onChange={(event) => update(index, { label: event.target.value })} /></Field> : null}
       <p className={documentStyles.binding}>Applies only to files assigned as <strong>{EVIDENCE_TEMPLATES.find((item) => item.key === row.requirement_key)?.label || String(row.label || "this document")}</strong>.</p>
+      {(() => { const kind = kindFor(formKindOf(row)); return kind?.signable && catalog ? <SignaturePanel row={row} index={index} kind={kind} catalog={catalog} onChange={(next) => onChange(requirements.map((item, i) => i === index ? next : item))} /> : null; })()}
       {changedTypes.has(String(row.requirement_key)) ? <Callout tone="warn">Document type changed. The existing instructions and traits were kept—review their relevance to this type before saving.</Callout> : null}
       <div className={documentStyles.reviewAreas}>
         <section className={documentStyles.lookFor} aria-label={`Requirement ${index + 1} AI document instructions`}><div className={documentStyles.areaHeading}><h5>What the AI should look for</h5><small>Optional</small></div><Field><Textarea aria-label={`Requirement ${index + 1} completion criteria`} rows={4} maxLength={4000} value={String(row.completion_criteria ?? "")} placeholder="Describe the pages, periods, figures, names, or patterns to inspect in this document." onChange={(event) => update(index, { completion_criteria: event.target.value })} /></Field><p className={documentStyles.help}>For example: all pages, consecutive periods, and a business name matching the file. Leave blank to use the standard document review.</p></section>
