@@ -21,6 +21,7 @@ const isPublicPage = createRouteMatcher([
   "/funding-review(.*)",
   "/mca-refinance-intake(.*)",
   "/mca-funding-intake(.*)",
+  "/business-funding-intake(.*)",
   "/equipment-financing-intake(.*)",
   // The one-tap stop page for pre-call prep messages. It is reached from a
   // signed link in a client's email; that client has no account, so bouncing

@@ -12,10 +12,11 @@ const copy = {
   es: { title: "Su expediente MCA, con guía de IA", lead: "Cargue los tres documentos solicitados, complete su solicitud y pregunte sobre sus documentos. La revisión documental y la verificación del equipo determinan la elegibilidad.", needs: "Lo que necesita su expediente", documents: "Seis meses completos de estados bancarios, una relación actual de deudas y la declaración del negocio del año anterior.", pending: "Las respuestas desconocidas quedan pendientes. Sus declaraciones y la cantidad de archivos no confirman una aprobación.", loading: "Cargando su revisión…", starting: "Iniciando…", retry: "Reintentar revisión IA", run: "Revisar mis documentos", running: "Revisión en curso", summary: "Resultado de la revisión", conversation: "Su conversación con IA", you: "Usted", ai: "IA de Qualified Commercial", ask: "Pregunte sobre su solicitud MCA", askSub: "La IA puede ayudarle a entender qué cargar, qué encontró y qué necesita su atención.", refresh: "Actualizar revisión", message: "Mensaje a su revisor IA", placeholder: "Pregunte sobre un documento o el siguiente paso…", sending: "Enviando…", send: "Enviar", of: "de", files: "archivos", actions: { upload: "Cargar los documentos solicitados", debt_schedule: "Completar la relación de deudas", application: "Completar datos de la solicitud" }, statuses: { not_started: "Listo para sus documentos", queued: "Revisión en espera", running: "La IA está leyendo su expediente", completed: "Revisión documental completada", failed: "La revisión necesita un reintento" }, policies: { pending_review: "Pendiente de revisión documental", needs_information: "Se necesita más información", not_eligible: "Este producto MCA no corresponde a la información revisada", ready_for_staff_review: "Listo para revisión del equipo" } },
 };
 
-export function McaRoomReview({ token, passcode, active, refreshKey, onUpload, onApplication, onDebtSchedule, onPaymentMethods }: {
+export function McaRoomReview({ token, passcode, active, refreshKey, onUpload, onApplication, onDebtSchedule, onPaymentMethods, kind = "mca" }: {
   token: string; passcode: string; active: boolean; refreshKey: string;
   onUpload: () => void; onApplication: () => void; onDebtSchedule: () => void;
   onPaymentMethods: (enabled: boolean) => void;
+  kind?: "mca" | "business";
 }) {
   const [review, setReview] = useState<Review | null>(null);
   const [text, setText] = useState(""); const [busy, setBusy] = useState("");
@@ -24,21 +25,21 @@ export function McaRoomReview({ token, passcode, active, refreshKey, onUpload, o
   const reviewStatus = review?.status;
   const inFlight = useRef(false); const generation = useRef(0);
   const messagesEnd = useRef<HTMLDivElement>(null);
-  const root = `${apiBase}/api/v1/public/mca/room/${encodeURIComponent(token)}`;
+  const root = `${apiBase}/api/v1/public/${kind}/room/${encodeURIComponent(token)}`;
   const call = useCallback(async (action: "review" | "chat" | "run", fields: Record<string, unknown> = {}, signal?: AbortSignal) => {
     const response = await fetch(`${root}/${action}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...fields, passcode }), cache: "no-store", signal });
     const data = await response.json().catch(() => null);
-    if (!response.ok) throw new Error(clientApiErrorDetail(data, "Your MCA review could not be loaded. Try again.").message);
-    if (data?.funding_intent !== "merchant_cash_advance") throw new Error("This review is not available for this file.");
+    if (!response.ok) throw new Error(clientApiErrorDetail(data, "Your funding review could not be loaded. Try again.").message);
+    if (data?.funding_intent !== (kind === "business" ? "working_capital" : "merchant_cash_advance")) throw new Error("This review is not available for this file.");
     return data as Review;
-  }, [passcode, root]);
+  }, [passcode, root, kind]);
   useEffect(() => {
     const compact = window.matchMedia("(max-width: 850px)");
     const adapt = () => setEvidenceOpen(!compact.matches);
     adapt(); compact.addEventListener("change", adapt);
     return () => compact.removeEventListener("change", adapt);
   }, []);
-  useEffect(() => { generation.current += 1; setReview(null); setText(""); setError(""); }, [token, passcode]);
+  useEffect(() => { generation.current += 1; setReview(null); setText(""); setError(""); }, [token, passcode, kind]);
   useEffect(() => {
     const controller = new AbortController(); const current = generation.current;
     setLoading(true);
@@ -74,13 +75,21 @@ export function McaRoomReview({ token, passcode, active, refreshKey, onUpload, o
     finally { if (current === generation.current) setBusy(""); inFlight.current = false; }
   }
   const reviewing = Boolean(review && ["queued", "running"].includes(review.status));
-  const c = copy[review?.preferred_language === "es" ? "es" : "en"];
+  const es = review?.preferred_language === "es";
+  const baseCopy = copy[es ? "es" : "en"];
+  const c = kind === "business" ? { ...baseCopy,
+    title: es ? "Su expediente de negocio, con guía de IA" : "Your business file, with AI guidance",
+    lead: es ? "Agregue los documentos solicitados, complete su solicitud y converse con su revisor IA. El equipo verifica la información y revisa las opciones de financiamiento." : "Add the requested documents, complete your application, and talk with your AI reviewer. The team verifies the information and reviews financing options.",
+    documents: es ? "Estados bancarios completos, relación de deudas y declaración de impuestos del negocio. La lista muestra los requisitos de su expediente." : "Complete bank statements, the business debt schedule, and business tax returns. Your checklist shows the requirements for this file.",
+    ask: es ? "Pregunte sobre su solicitud de negocio" : "Ask about your business funding application",
+    policies: { ...baseCopy.policies, not_eligible: es ? "El equipo debe revisar otras opciones" : "The team needs to review other options" },
+  } : baseCopy;
   const progress = review?.progress.percent == null ? undefined : Math.max(0, Math.min(100, review.progress.percent));
-  return <section className="application-room-section" aria-label="MCA AI review">
-    <div className="application-room-section-head"><div><span className="application-room-eyebrow">Main Street / MCA</span><h2>{c.title}</h2><p>{c.lead}</p></div><span className="application-room-count">1.22–1.38× factor</span></div>
+  return <section className="application-room-section" aria-label={kind === "business" ? "Business funding AI review" : "MCA AI review"}>
+    <div className="application-room-section-head"><div><span className="application-room-eyebrow">{kind === "business" ? "Main Street / Business funding" : "Main Street / MCA"}</span><h2>{c.title}</h2><p>{c.lead}</p></div>{kind === "mca" ? <span className="application-room-count">1.22–1.38× factor</span> : null}</div>
     <div className={styles.layout}>
       <aside className={styles.evidence}>
-        <details open={evidenceOpen} onToggle={(event) => setEvidenceOpen(event.currentTarget.open)}><summary className={styles.evidenceToggle}>{c.needs}<span>3</span></summary><div>
+        <details open={evidenceOpen} onToggle={(event) => setEvidenceOpen(event.currentTarget.open)}><summary className={styles.evidenceToggle}>{c.needs}<span>{review?.requirements.length ?? "—"}</span></summary><div>
         <h3>{c.needs}</h3><p>{c.documents}</p>
         {review?.requirements.map((requirement) => <div className={styles.requirement} key={requirement.key}><b>{requirement.label}</b><span>{requirement.required > 0 ? `${requirement.received} ${c.of} ${requirement.required} ${requirement.unit}` : requirement.status.replaceAll("_", " ")}</span><small>{requirement.status.replaceAll("_", " ")}</small></div>)}
         <div className={styles.actions}>{review?.actions.map((action) => <button className="application-room-secondary" key={action.kind} onClick={action.kind === "upload" ? onUpload : action.kind === "application" ? onApplication : onDebtSchedule}><Icon name={action.kind === "upload" ? "upload" : "edit"} size={14} />{c.actions[action.kind]}</button>)}</div>

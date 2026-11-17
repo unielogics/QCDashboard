@@ -31,6 +31,8 @@ import {
 } from "@/components/intake/SignRequestedDocument";
 import { getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution, type PublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
+import { consumeResourceToken, loadResourceHandoff, resourceAnswerNumber, resourceTokenForEmail, type ResourceHandoff } from "@/lib/resourceHandoff";
+import { emitPublicIntakeConversion } from "@/lib/publicIntakeConversion";
 import { readIntakeToken, rememberIntakeToken } from "@/lib/intakeSession";
 import { validPhone } from "@/lib/formCoerce";
 import { DESCRIPTION_MAX, emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
@@ -718,6 +720,10 @@ export default function McaRefinanceIntakePage() {
   const messagesRef = useRef<HTMLDivElement | null>(null);
   const booted = useRef(false);
   const attributionRef = useRef<PublicIntakeAttribution>({});
+  const resourceTokenRef = useRef<string | null>(null);
+  const resourceHandoffRef = useRef<ResourceHandoff | null>(null);
+  const applicationStartTracked = useRef(false);
+  const [resourceNotice, setResourceNotice] = useState("");
   const uploadJobs = useRef<Array<{ docId: string; row: McaQueuedFile }>>([]);
   const uploading = useRef(false);
   const refreshBusy = useRef(false);
@@ -809,6 +815,7 @@ export default function McaRefinanceIntakePage() {
   useEffect(() => {
     if (typeof window === "undefined" || booted.current) return;
     booted.current = true;
+    const resourceToken = consumeResourceToken(window.location, window.history);
     const url = new URL(window.location.href);
     attributionRef.current = readPublicIntakeAttribution();
     const storedLang = getStoredLanguage("mca_refinance");
@@ -827,6 +834,27 @@ export default function McaRefinanceIntakePage() {
     const freq = (FREQS as readonly string[]).includes(freqParam) ? (freqParam as Freq) : null;
     if (payback !== null || months !== null || freq) setSeed({ payback, months, freq });
     setQualificationForm({ activeCount: declaredCount === null ? "" : String(declaredCount), requestedAmount: payback !== null && payback > 0 ? String(payback) : "", yearsInBusiness: "" });
+
+    if (resourceToken) {
+      void loadResourceHandoff(resourceToken, "mca_refinance").then((handoff) => {
+        resourceTokenRef.current = resourceToken;
+        resourceHandoffRef.current = handoff;
+        attributionRef.current = { ...attributionRef.current, ...handoff.attribution };
+        const { name, business_name, email, phone } = handoff.contact;
+        setStartForm(current => ({ ...current, full_name: name, business_name, email, phone,
+          ...(typeof handoff.answers.industry === "string" ? { industry: handoff.answers.industry } : {}),
+          ...(typeof handoff.answers.state === "string" ? { business_state: handoff.answers.state } : {}) }));
+        const count = resourceAnswerNumber(handoff.answers, "active_mca_count");
+        const amount = resourceAnswerNumber(handoff.answers, "requested_amount");
+        const years = resourceAnswerNumber(handoff.answers, "business_age_years");
+        setQualificationForm({ activeCount: count === null ? "" : String(count), requestedAmount: amount === null ? "" : String(amount), yearsInBusiness: years === null ? "" : String(years) });
+        setManualReviewHint(count !== null && count > 2 || amount !== null && amount > 350_000);
+        setLanguage(handoff.locale);
+        setResourceNotice(handoff.locale === "es" ? "Agregamos sus respuestas anteriores. Puede corregirlas; complete los datos que faltan para abrir su solicitud." : "Your previous answers are filled in and editable. Complete the remaining details to open your application.");
+      }).catch(() => setResourceNotice("Your saved resource answers could not be loaded. Complete the application below to continue."))
+        .finally(() => setPhase("start"));
+      return;
+    }
 
     if (storedLang) setLanguage(storedLang);
 
@@ -1065,6 +1093,7 @@ export default function McaRefinanceIntakePage() {
       preferred_language: language ?? "en",
       phone: startForm.phone.trim(),
       ...attributionRef.current,
+      resource_handoff_token: resourceTokenForEmail(resourceTokenRef.current, resourceHandoffRef.current, email),
     };
     if (startForm.business_name.trim()) body.business_name = startForm.business_name.trim();
     if (seed.payback !== null) body.remaining_payback = seed.payback;
@@ -1076,6 +1105,10 @@ export default function McaRefinanceIntakePage() {
     if (manualReviewHint) body.manual_review_requested = true;
     try {
       const payload = await call<McaIntakeResponse>("/start", { method: "POST", body: JSON.stringify(body) });
+      if (payload.intake?.id && !applicationStartTracked.current) {
+        applicationStartTracked.current = true;
+        emitPublicIntakeConversion("qc_application_start", { ...attributionRef.current, program: "mca_refinance", funding_intent: "mca_refinance", vertical: "business" }, language ?? "en");
+      }
       qualificationDirty.current = false;
       setRoomPin(""); setRoomPinConfirmation("");
       adopt(payload);
@@ -1134,8 +1167,12 @@ export default function McaRefinanceIntakePage() {
     try {
       const payload = await call<McaIntakeResponse>("/login/verify", {
         method: "POST",
-        body: JSON.stringify({ email, code }),
+        body: JSON.stringify({ email, code, resource_handoff_token: resourceTokenForEmail(resourceTokenRef.current, resourceHandoffRef.current, email) }),
       });
+      if (resourceTokenRef.current && payload.intake?.id && !applicationStartTracked.current) {
+        applicationStartTracked.current = true;
+        emitPublicIntakeConversion("qc_application_start", { ...attributionRef.current, program: "mca_refinance", funding_intent: "mca_refinance", vertical: "business" }, language ?? "en");
+      }
       adopt(payload);
       setCodeValue("");
       setPhase("room");
@@ -1589,6 +1626,7 @@ export default function McaRefinanceIntakePage() {
         </div>
         <form className="vm-card" aria-label={c.startTitle} onSubmit={(event) => { event.preventDefault(); void startIntake(); }}>
           <h2 className="vm-sect-t">{c.startTitle}</h2>
+          {resourceNotice ? <p className="vm-note" role="status">{resourceNotice}</p> : null}
           {seed.payback !== null || seed.months !== null || seed.freq ? (
             <div className="vm-note">{c.seededNote}</div>
           ) : null}

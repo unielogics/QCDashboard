@@ -63,7 +63,8 @@ export function emitPublicIntakeConversion(
   if (typeof window === "undefined") return;
   const detail = publicIntakeConversionPayload(event, attribution, locale);
   const browserWindow = window as Window & { dataLayer?: Array<Record<string, unknown>> };
-  browserWindow.dataLayer?.push(detail);
+  browserWindow.dataLayer ??= [];
+  browserWindow.dataLayer.push(detail);
   window.dispatchEvent(new CustomEvent("qc:conversion", { detail }));
 }
 

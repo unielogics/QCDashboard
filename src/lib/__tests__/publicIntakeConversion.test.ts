@@ -1,11 +1,25 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   canonicalEquipmentAttribution,
+  emitPublicIntakeConversion,
   isQualifiedEquipmentReview,
   publicIntakeConversionPayload,
 } from "@/lib/publicIntakeConversion";
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe("public equipment intake conversion signals", () => {
+  it("queues a successful application event before an analytics consumer loads", () => {
+    const browser = { dataLayer: undefined as unknown[] | undefined, dispatchEvent: vi.fn() };
+    vi.stubGlobal("window", browser);
+    emitPublicIntakeConversion("qc_application_start", { program: "term_loan", page: "/business-funding-check" }, "en");
+    expect(browser.dataLayer).toHaveLength(1);
+    expect(browser.dataLayer?.[0]).toMatchObject({ event: "qc_application_start", program: "term_loan" });
+    const prior = browser.dataLayer;
+    emitPublicIntakeConversion("qc_application_complete", { program: "term_loan" }, "en");
+    expect(browser.dataLayer).toBe(prior); expect(browser.dataLayer).toHaveLength(2);
+    expect(browser.dispatchEvent).toHaveBeenCalledTimes(2);
+  });
   it("canonicalizes the equipment handoff without dropping campaign context", () => {
     expect(canonicalEquipmentAttribution({ source: "academy", campaign: "fall-gear" })).toEqual({
       source: "academy",
