@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { canUseReferralIntake } from "@/lib/roleAccess";
+import { useSearchParams } from "next/navigation";
 import { Btn, Callout, CellChip, Input, Select, cx } from "@/components/ds";
 import { Drawer } from "@/components/ds/Drawer";
 import { PinRowButton, TableWorkspace } from "@/components/ds/TableWorkspace";
@@ -44,13 +46,14 @@ export default function ForeclosureRescuesPage() {
   const [applications, setApplications] = useState<PartnerApplication[]>([]);
   const [firmMembers, setFirmMembers] = useState<FirmMember[]>([]);
   const [selected, setSelected] = useState<Rescue | null>(null);
-  const [createOpen, setCreateOpen] = useState(false);
+  const searchParams = useSearchParams();
+  const [createOpen, setCreateOpen] = useState(searchParams.get("new") === "1");
   const [filter, setFilter] = useState("all");
   const [urgencyFilter, setUrgencyFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const isPartner = user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER;
+  const isPartner = canUseReferralIntake(user?.role);
   const canOperate = user?.role === Role.SUPER_ADMIN || user?.role === Role.LOAN_EXEC;
 
   const load = useCallback(async (): Promise<Rescue[]> => {
@@ -62,7 +65,7 @@ export default function ForeclosureRescuesPage() {
       const rescueRows = await api<Rescue[]>(path);
       setRows(rescueRows);
       if (selected) setSelected(rescueRows.find((row) => row.id === selected.id) ?? null);
-      if (isPartner) setFirmMembers(await api<FirmMember[]>("/professional/foreclosure-rescues/members"));
+      if (isPartner && user.referral_partner_company_admin) setFirmMembers(await api<FirmMember[]>("/professional/foreclosure-rescues/members"));
       if (canOperate) {
         const [members, apps] = await Promise.all([
           api<TeamMember[]>("/users/team"),

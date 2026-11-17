@@ -3,7 +3,7 @@
 import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem, type NewBusinessProfile } from "@/lib/businessProfile";
 import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 
-// Dealer-partner ("broker") portal: start dealer AI-intake applications on
+// Referral portal: start program-specific applications on
 // behalf of your own clients, chat/upload/run-review on them, and leave
 // internal notes with the underwriting team. Curated subset of the admin
 // "AI Underwriter Leads" cockpit — no credit-pull, program-fit, vendor-email,
@@ -39,7 +39,10 @@ import { IconButton } from "@/components/design-system/IconButton";
 import { ConfirmDialog } from "@/components/design-system/ConfirmDialog";
 import { useUI } from "@/store/ui";
 import { ApiError } from "@/lib/api";
-import { Role } from "@/lib/enums.generated";
+import { canUseReferralIntake } from "@/lib/roleAccess";
+import Link from "next/link";
+import { useReferralPrograms, REFERRAL_TYPE_LABELS } from "@/hooks/useReferralPrograms";
+import { MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
 import { useCurrentUser } from "@/hooks/useApi";
 import { useAuthedFetch } from "@/hooks/useAuthedFetch";
 import { LeadCockpit, type LeadCockpitAdapter } from "@/components/admin/LeadCockpit";
@@ -52,8 +55,9 @@ import { validPhone } from "@/lib/formCoerce";
 
 type LeadRow = {
   id: string;
-  // Partner leads are dealer-variant by construction.
+  // The server returns all intake variants owned by the current partner.
   variant?: string;
+  requested_program_name?: string | null;
   bucket_id: string;
   bucket_name: string;
   full_name: string;
@@ -80,8 +84,7 @@ type DetailTab = "files" | "messages" | "production" | "updates";
 type LeadFileProfile = { intakeId: string; id: string | null };
 
 function isDealerVariant(variant?: string | null): boolean {
-  // Partner-created leads carry no other variant; a missing value is treated as dealer.
-  return !variant || variant === "dealer_gatekeeper_v1";
+  return variant === "dealer_gatekeeper_v1";
 }
 
 type RequestedDoc = { id: string; name: string; description?: string | null; required: boolean; status: string };
@@ -98,6 +101,8 @@ type UploadedFile = {
 };
 
 type LeadDetail = {
+  upload_url?: string | null;
+  room_delivery_detail?: string | null;
   intake: LeadRow & {
     loan_purpose?: string | null;
     result_snapshot?: Record<string, unknown> | null;
@@ -110,11 +115,20 @@ type LeadDetail = {
 };
 
 type CreateLeadPayload = NewBusinessProfile & {
+  variant: string;
+  program_key: string;
   full_name: string;
   email: string;
   phone: string;
   business_name?: string;
+  investor_name?: string;
+  target_property_address?: string;
+  requested_amount?: number;
+  industry?: string;
+  intent?: string;
   notify_client: boolean;
+  invitation_channels: ("email" | "sms")[];
+  secure_room_pin: string;
   preferred_language: "en" | "es";
 };
 
@@ -123,19 +137,6 @@ const OUTCOME_COLUMNS: Array<{ key: "submitted" | "closed" | "denied"; label: st
   { key: "closed", label: "Closed" },
   { key: "denied", label: "Denied" },
 ];
-
-// Mirrors the program titles on /broker/programs -- keyed by the same slug
-// passed via ?program=. Purely a display label for the create-lead modal's
-// contextual note; BrokerLeadCreate has no program field to actually
-// persist this against yet (see broker/programs/page.tsx's header comment).
-const PROGRAM_TITLES: Record<string, string> = {
-  sba: "SBA 7(a) / 504 / Express",
-  "working-capital": "Dealer Working Capital Facility",
-  floorplan: "Dealer Floorplan / Dealer LOC",
-  "real-estate-backed": "Real Estate Backed Dealer Capital",
-  "reinsurance-backed": "Reinsurance-Backed Financing",
-  "bridge-private-credit": "Bridge / Private Credit Refinance",
-};
 
 // Relative "time ago" for lead cards — banking dashboards always show recency.
 function timeAgo(iso?: string | null): string {
@@ -193,7 +194,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
   const [notesPosting, setNotesPosting] = useState(false);
   const [notesError, setNotesError] = useState<string | null>(null);
   const [detailTab, setDetailTab] = useState<DetailTab>("files");
-  const [programLabel, setProgramLabel] = useState<string | null>(null);
+  const [programKey, setProgramKey] = useState("");
   const [deletionBusy, setDeletionBusy] = useState(false);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [fileProfile, setFileProfile] = useState<LeadFileProfile | null>(null);
@@ -214,12 +215,11 @@ export default function BrokerAIUnderwriterLeadsPage() {
   }, [detailTab, openIntakeId]);
 
   // Coming from a "Start" button on /broker/programs -- auto-open the
-  // create-lead modal with a contextual note naming the program. No
-  // fabricated backend field: this is display-only, not persisted.
+  // create-file modal. The selected canonical key is validated and saved.
   useEffect(() => {
     const slug = searchParams.get("program");
-    if (slug && PROGRAM_TITLES[slug]) {
-      setProgramLabel(PROGRAM_TITLES[slug]);
+    if (slug) {
+      setProgramKey(slug);
       setCreateOpen(true);
     }
   }, [searchParams]);
@@ -242,9 +242,16 @@ export default function BrokerAIUnderwriterLeadsPage() {
     setLoading(true);
     setNotice("");
     try {
-      const data = await call<LeadPage>("/broker/ai-underwriter-leads?limit=100&offset=0");
-      setRows(data.items);
-      setTotal(data.total);
+      const items: LeadRow[] = [];
+      let offset = 0;
+      while (true) {
+        const data = await call<LeadPage>(`/broker/ai-underwriter-leads?archived_filter=visible&limit=100&offset=${offset}`);
+        items.push(...data.items);
+        offset += data.items.length;
+        if (!data.items.length || offset >= data.total) break;
+      }
+      setRows(items);
+      setTotal(items.length);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "Leads are unavailable.");
     } finally {
@@ -304,10 +311,8 @@ export default function BrokerAIUnderwriterLeadsPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-      setCreateOpen(false);
-      setProgramLabel(null);
       await loadLeads();
-      await openLead(res.intake.id);
+      return res;
     } catch (error) {
       if (error instanceof ApiError && error.status === 409) {
         const body = (error.body as { detail?: { intake_id?: string; message?: string } } | undefined)?.detail;
@@ -396,6 +401,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
       intake: {
         id: detail.intake.id,
         bucket_id: detail.intake.bucket_id,
+        variant: detail.intake.variant,
         full_name: detail.intake.full_name,
         email: detail.intake.email,
         phone: detail.intake.phone ?? null,
@@ -455,8 +461,8 @@ export default function BrokerAIUnderwriterLeadsPage() {
       </Card>
     );
   }
-  if (me && me.role !== Role.DEALER_PARTNER) {
-    return <Card>This page is only available to dealer partner accounts.</Card>;
+  if (me && !canUseReferralIntake(me.role)) {
+    return <Card>This page is only available to referral partner accounts.</Card>;
   }
   if (!loaded && !loading) {
     loadLeads().catch(() => undefined);
@@ -486,11 +492,11 @@ export default function BrokerAIUnderwriterLeadsPage() {
   return (
     <div className="grid">
       <PageHeader
-        title="Auto AI Intake"
-        lede={`${total} dealer lead${total === 1 ? "" : "s"} and document room${total === 1 ? "" : "s"}`}
+        title="My referral files"
+        lede={`${total} client file${total === 1 ? "" : "s"} and document room${total === 1 ? "" : "s"}`}
         actions={
           <Btn variant="pri" onClick={() => setCreateOpen(true)}>
-            New lead
+            New file
           </Btn>
         }
       />
@@ -537,6 +543,7 @@ export default function BrokerAIUnderwriterLeadsPage() {
                         // context.
                         style={{ position: "relative", display: "grid", gap: 6 }}
                       >
+                        <span className="sub">{row.requested_program_name || ({ dealer_gatekeeper_v1: "Auto dealer", real_estate_dscr_v1: "Real estate", main_street_v1: "Operating business", mca_refi_v1: "MCA refinance", commercial_foreclosure_bailout_v1: "Foreclosure rescue" } as Record<string, string>)[row.variant || ""] || "Referral file"}</span>
                         {/* Left status stripe. Data-derived colour; it overlays
                             `.kcard`'s own left padding so no padding is
                             declared twice. */}
@@ -697,107 +704,107 @@ export default function BrokerAIUnderwriterLeadsPage() {
 
       {createOpen ? (
         <CreateBrokerLeadModal
-          onClose={() => { setCreateOpen(false); setProgramLabel(null); }}
+          onClose={() => { setCreateOpen(false); setProgramKey(""); }}
           onCreate={createLead}
           creating={creating}
-          programLabel={programLabel}
+          initialProgramKey={programKey}
+          initialVariant={searchParams.get("variant") || ""}
         />
       ) : null}
     </div>
   );
 }
 
-function CreateBrokerLeadModal({
-  onClose,
-  onCreate,
-  creating,
-  programLabel,
-}: {
+function CreateBrokerLeadModal({ onClose, onCreate, creating, initialProgramKey, initialVariant }: {
   onClose: () => void;
-  onCreate: (payload: CreateLeadPayload) => void | Promise<void>;
+  onCreate: (payload: CreateLeadPayload) => Promise<LeadDetail | undefined>;
   creating: boolean;
-  programLabel?: string | null;
+  initialProgramKey: string;
+  initialVariant: string;
 }) {
+  const programs = useReferralPrograms();
+  const [programKey, setProgramKey] = useState(initialProgramKey);
+  const [variant, setVariant] = useState(initialVariant);
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [businessName, setBusinessName] = useState("");
   const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
+  const [propertyAddress, setPropertyAddress] = useState("");
+  const [intent, setIntent] = useState("working_capital");
+  const [roomPin, setRoomPin] = useState("");
+  const [pinConfirm, setPinConfirm] = useState("");
   const [notifyClient, setNotifyClient] = useState(false);
   const [preferredLanguage, setPreferredLanguage] = useState<"en" | "es">("en");
   const [error, setError] = useState("");
+  const program = programs.data?.find((item) => item.program_key === programKey);
+  const selectedVariant = program?.variants.includes(variant) ? variant : program?.variants[0] || "";
+  const allowedIntents = program?.intent_keys_by_variant?.[selectedVariant] || [];
+  const selectedIntent = allowedIntents.length && !allowedIntents.includes(intent) ? allowedIntents[0] : intent;
+  const [created, setCreated] = useState<LeadDetail | null>(null);
 
-  function submit() {
+  async function submit() {
+    if (!program || !selectedVariant) { setError("Choose an active program and application type."); return; }
     if (!fullName.trim()) { setError("Client name is required."); return; }
-    if (!email.trim() || !email.includes("@")) { setError("A valid client email is required."); return; }
-    if (!phone.trim()) { setError("A client mobile number is required."); return; }
-    if (!validPhone(phone)) { setError("That number does not look complete. Enter a 10-digit US mobile, or include the country code for an international number."); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) { setError("A valid client email is required."); return; }
+    if (!validPhone(phone)) { setError("Enter a complete client mobile number."); return; }
+    if (!/^\d{6}$/.test(roomPin) || roomPin !== pinConfirm) { setError("Enter and confirm a matching six-digit room PIN."); return; }
     const profileProblem = newBusinessProfileProblem(businessProfile);
     if (profileProblem) { setError(profileProblem); return; }
     setError("");
-    onCreate({
-      full_name: fullName.trim(),
-      email: email.trim(),
-      phone: phone.trim(),
+    const result = await onCreate({
+      program_key: program.program_key,
+      variant: selectedVariant,
+      full_name: fullName.trim(), email: email.trim(), phone: phone.trim(),
       business_name: businessName.trim() || undefined,
       ...newBusinessProfileBody(businessProfile),
-      notify_client: notifyClient,
+      investor_name: selectedVariant === "real_estate" ? businessName.trim() || undefined : undefined,
+      target_property_address: selectedVariant === "real_estate" ? propertyAddress.trim() || undefined : undefined,
+      industry: businessProfile.industry,
+      intent: selectedVariant === "main_street" ? selectedIntent : undefined,
+      notify_client: false,
+      invitation_channels: notifyClient ? ["email"] : [],
+      secure_room_pin: roomPin,
       preferred_language: preferredLanguage,
     });
+    if (result) setCreated(result);
   }
 
-  return (
-    <Modal open onClose={onClose} title="Create a new lead" size="md">
-      <div className="grid g10">
-        <p className="sub" style={{ margin: 0, lineHeight: 1.45 }}>
-          Create a lead on behalf of your client and start underwriting now. Your client can log in later with this
-          email — they receive a secure code by email.
-        </p>
+  if (created) return <Modal open onClose={onClose} title="Referral file created" size="md"><div className="grid g10">
+    <Callout tone="ok">The file is saved under your account. {created.room_delivery_detail || "Share the secure room link and PIN separately with your client."}</Callout>
+    <Field label="Secure application link"><Input readOnly value={created.upload_url || ""} onFocus={(event) => event.target.select()} /></Field>
+    <Field label="Room PIN"><Input readOnly value={roomPin} /></Field>
+    <Link className="btn pri" href={`/broker/ai-underwriter-leads?lead=${created.intake.id}`} onClick={onClose}>Open file</Link>
+    <Btn onClick={onClose}>Done</Btn>
+  </div></Modal>;
 
-        {programLabel ? (
-          <Callout tone="acc">
-            Starting a lead for: <b>{programLabel}</b>
-          </Callout>
-        ) : null}
+  return <Modal open onClose={onClose} title="Start a referral file" size="md"><div className="grid g10">
+    <p className="sub">Choose an active program and start a secure file for your client. Eligibility and final program selection are reviewed by underwriting.</p>
+    {programs.isLoading ? <StatusLine>Loading active programs…</StatusLine> : null}
+    {programs.error ? <Callout tone="bad">Programs could not be loaded. <Btn onClick={() => void programs.refetch()}>Try again</Btn></Callout> : null}
+    <Field label="Program *"><Select aria-label="Program" value={programKey} onChange={(event) => { setProgramKey(event.target.value); setVariant(""); }}><option value="">Select an active program</option>{programs.data?.map((item) => <option key={item.program_key} value={item.program_key}>{item.name}</option>)}</Select></Field>
+    {initialProgramKey && programs.data && !program ? <Callout tone="warn">That program is no longer available. Choose an active program.</Callout> : null}
+    {program ? <Field label="Application type"><Select aria-label="Application type" value={selectedVariant} onChange={(event) => setVariant(event.target.value)}>{program.variants.map((item) => <option key={item} value={item}>{REFERRAL_TYPE_LABELS[item] || item}</option>)}</Select></Field> : null}
+    {selectedVariant === "foreclosure_rescue" ? <Link className="btn pri" href="/foreclosure-rescues?new=1">Continue to foreclosure rescue intake</Link> : <>
+      <div className="fldgrid two">
+        <Field label="Client full name *"><Input aria-label="Client full name" value={fullName} onChange={(event) => setFullName(event.target.value)} /></Field>
+        <Field label="Client email *"><Input aria-label="Client email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} /></Field>
+        <Field label="Client mobile *"><Input aria-label="Client mobile" type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} /></Field>
+        <Field label={selectedVariant === "real_estate" ? "Borrower entity / investor" : "Business name"}><Input value={businessName} onChange={(event) => setBusinessName(event.target.value)} /></Field>
+        {selectedVariant === "real_estate" ? <Field label="Property address"><Input aria-label="Property address" value={propertyAddress} onChange={(event) => setPropertyAddress(event.target.value)} /></Field> : null}
+        {selectedVariant === "main_street" ? <>
 
-        <div className="fldgrid two">
-          <Field label="Client full name *">
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Jane Doe" />
-          </Field>
-          <Field label="Client email *">
-            <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="client@example.com" />
-          </Field>
-          <Field label="Client mobile *">
-            <Input type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(973) 555-0148" />
-          </Field>
-          <Field label="Business name">
-            <Input value={businessName} onChange={(e) => setBusinessName(e.target.value)} placeholder="Dealership / business" />
-          </Field>
-          <Field label="Preferred language (client)">
-            <Select value={preferredLanguage} onChange={(e) => setPreferredLanguage(e.target.value as "en" | "es")}>
-              <option value="en">English</option>
-              <option value="es">Español (Spanish)</option>
-            </Select>
-          </Field>
-        </div>
-
-        <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} />
-
-        {/* `.row` owns the flex geometry; cursor is the one thing it does not. */}
-        <label className="row" style={{ cursor: "pointer" }}>
-          <input type="checkbox" checked={notifyClient} onChange={(e) => setNotifyClient(e.target.checked)} />
-          Email the client a secure login/resume link now
-        </label>
-
-        {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
-
-        <div className="row end">
-          <Btn onClick={onClose} disabled={creating}>Cancel</Btn>
-          <Btn variant="pri" onClick={submit} disabled={creating}>
-            {creating ? "Creating…" : "Create lead"}
-          </Btn>
-        </div>
+          <Field label="Funding need"><Select value={selectedIntent} onChange={(event) => setIntent(event.target.value)}>{(allowedIntents.length ? allowedIntents.map((slug) => ({ slug, label: MAIN_STREET_INTENTS.find((item) => item.slug === slug)?.label || slug.replaceAll("_", " ") })) : MAIN_STREET_INTENTS).map((item) => <option key={item.slug} value={item.slug}>{item.label}</option>)}</Select></Field>
+        </> : null}
+        <Field label="Six-digit room PIN *"><Input aria-label="Six-digit room PIN" inputMode="numeric" maxLength={6} value={roomPin} onChange={(event) => setRoomPin(event.target.value.replace(/\D/g, ""))} /></Field>
+        <Field label="Confirm room PIN *"><Input aria-label="Confirm room PIN" inputMode="numeric" maxLength={6} value={pinConfirm} onChange={(event) => setPinConfirm(event.target.value.replace(/\D/g, ""))} /></Field>
+        <Field label="Client language"><Select value={preferredLanguage} onChange={(event) => setPreferredLanguage(event.target.value as "en" | "es")}><option value="en">English</option><option value="es">Español</option></Select></Field>
       </div>
-    </Modal>
-  );
+      <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} />
+      <label className="row"><input type="checkbox" checked={notifyClient} onChange={(event) => setNotifyClient(event.target.checked)} />Email the secure room link to the client</label>
+      <p className="sub">Share the PIN separately. Invitations follow the client’s saved communication consent.</p>
+      {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+      <div className="row end"><Btn onClick={onClose} disabled={creating}>Cancel</Btn><Btn variant="pri" onClick={() => void submit()} disabled={creating || !program || !selectedVariant}>{creating ? "Creating…" : "Create file"}</Btn></div>
+    </>}
+  </div></Modal>;
 }

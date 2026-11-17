@@ -8,6 +8,7 @@ import { useUI } from "@/store/ui";
 import { useGlobalSearch } from "@/hooks/useApi";
 import { useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
+import { isReferralPartner } from "@/lib/roleAccess";
 
 // The ⌘K palette. Restyled onto `.panel` / `.panel-h` / `.pick` / `.kbd`;
 // the scrim and its top-anchored placement stay inline because a command
@@ -24,7 +25,7 @@ export default function GlobalSearch() {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const { data: user } = useCurrentUser();
-  const isDealerPartner = user?.role === Role.DEALER_PARTNER;
+  const isDealerPartner = isReferralPartner(user?.role);
   const { data: groups } = useGlobalSearch(isDealerPartner ? "" : q);
 
   useEffect(() => { if (!open) setQ(""); }, [open]);
@@ -126,7 +127,7 @@ export default function GlobalSearch() {
             ref={searchInputRef}
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder={isDealerPartner ? "Open an auto workspace…" : "Search loans, clients, documents, messages…"}
+            placeholder={isDealerPartner ? "Open your referral workspace…" : "Search loans, clients, documents, messages…"}
             className="grow cmdk-in"
             aria-label="Search"
           />
@@ -138,8 +139,10 @@ export default function GlobalSearch() {
         <div className="cmdk-b">
           {isDealerPartner ? (
             <div className="grid" style={{ padding: 14 }}>
-              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/ai-underwriter-leads"); }}><Icon name="spark" size={15} /><span className="grow"><b>Auto AI Intake</b><span className="sub">Dealer leads, uploads, and AI review</span></span><Icon name="chevR" size={13} /></button>
-              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/buckets"); }}><Icon name="lock" size={15} /><span className="grow"><b>Documents</b><span className="sub">Your assigned dealer files only</span></span><Icon name="chevR" size={13} /></button>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/ai-underwriter-leads"); }}><Icon name="spark" size={15} /><span className="grow"><b>Referral files</b><span className="sub">Your files, uploads, and AI review across programs</span></span><Icon name="chevR" size={13} /></button>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/clients"); }}><Icon name="clients" size={15} /><span className="grow"><b>My clients</b><span className="sub">Clients from your own referred files</span></span></button>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/programs"); }}><Icon name="docCheck" size={15} /><span className="grow"><b>Active programs</b><span className="sub">Start a file in any available program</span></span></button>
+              <button type="button" className="pick" onClick={() => { setOpen(false); router.push("/broker/buckets"); }}><Icon name="lock" size={15} /><span className="grow"><b>Documents</b><span className="sub">Your assigned files across programs</span></span><Icon name="chevR" size={13} /></button>
             </div>
           ) : q.trim().length < 2 && (
             <div className="cmdk-empty">
@@ -190,7 +193,7 @@ export default function GlobalSearch() {
           <KbdHint keys={["↑", "↓"]} label="Navigate" />
           <KbdHint keys={["↵"]} label="Open" />
           <KbdHint keys={["Esc"]} label="Close" />
-          <span className="cmdk-f-note">{isDealerPartner ? "Auto-industry workspace only" : "Searches loans, clients, documents, messages, events, AI tasks"}</span>
+          <span className="cmdk-f-note">{isDealerPartner ? "Your referral workspace" : "Searches loans, clients, documents, messages, events, AI tasks"}</span>
         </div>
       </div>
     </div>

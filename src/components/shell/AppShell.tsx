@@ -17,6 +17,7 @@ import { useLiveInvalidation } from "@/lib/liveInvalidation";
 import { SIGN_IN_URL, CAPITAL_APP_ORIGIN } from "@/lib/appUrl";
 import { _setActiveProfileFromUser } from "@/store/role";
 import { isPrimaryShortcut } from "@/lib/platformShortcuts";
+import { isReferralPartner } from "@/lib/roleAccess";
 import { Role, ContractType } from "@/lib/enums.generated";
 import { PlatformAccessGate } from "@/components/broker/PlatformAccessGate";
 import { PhoneRequiredGate, phoneGateSkipped } from "@/components/shell/PhoneRequiredGate";
@@ -143,13 +144,9 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // screen while a redirect races the deny. Hook must run unconditionally
   // (before the isBareRoute/auth early returns below) per Rules of Hooks.
   const isDealerPartnerConfinedRoute =
-    pathname.startsWith("/broker") || pathname.startsWith("/profile");
+    pathname.startsWith("/broker") || pathname.startsWith("/profile") || pathname.startsWith("/foreclosure-rescues") || isAccountRoute;
   const isDealerPartnerOutOfBounds =
-    user?.role === Role.DEALER_PARTNER && !isDealerPartnerConfinedRoute;
-  const isProfessionalPartnerConfinedRoute =
-    pathname.startsWith("/foreclosure-rescues") || pathname.startsWith("/profile");
-  const isProfessionalPartnerOutOfBounds =
-    user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER && !isProfessionalPartnerConfinedRoute;
+    isReferralPartner(user?.role) && !isDealerPartnerConfinedRoute;
   const isAuditOnlyClient = !!user
     && (user.role === Role.CLIENT || user.role === Role.DEALER)
     && user.can_access_audit
@@ -159,9 +156,6 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
       router.replace("/broker/ai-underwriter-leads");
     }
   }, [isDealerPartnerOutOfBounds, router]);
-  useEffect(() => {
-    if (isProfessionalPartnerOutOfBounds) router.replace("/foreclosure-rescues");
-  }, [isProfessionalPartnerOutOfBounds, router]);
   useEffect(() => {
     if (isAuditOnlyClient) {
       window.location.replace("https://audit.qualifiedcommercial.com");
@@ -260,15 +254,15 @@ function AuthenticatedAppShell({ children, pathname }: { children: ReactNode; pa
   // Enforcement also lives server-side (_require_dealer_partner on every
   // broker endpoint checks both this AND the company's Referral Protection
   // Agreement) — this is the UX half of that guarantee, not the only one.
-  if ((user?.role === Role.DEALER_PARTNER || user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER) && platformAccessStatus?.required) {
+  if (isReferralPartner(user?.role) && platformAccessStatus?.required) {
     return <PlatformAccessGate />;
   }
 
-  if (user?.role === Role.PROFESSIONAL_REFERRAL_PARTNER && referralProtectionStatus?.required) {
-    return <div className="bareshell" style={{ padding: "18vh 20px" }}><div className="card" style={{ maxWidth: 620, margin: "0 auto" }}><span className="eyebrow">Firm enrollment</span><h1>Referral Protection Agreement required</h1><p className="sub">An authorized firm representative must complete the company agreement before the shared foreclosure-rescue workspace can open.</p><a className="btn pri" href="/agreement/referral-protection">Review company agreement</a></div></div>;
+  if (isReferralPartner(user?.role) && referralProtectionStatus?.required) {
+    return <div className="bareshell" style={{ padding: "18vh 20px" }}><div className="card" style={{ maxWidth: 620, margin: "0 auto" }}><span className="eyebrow">Firm enrollment</span><h1>Referral Protection Agreement required</h1><p className="sub">An authorized firm representative must complete the company agreement before the referral workspace can open.</p><a className="btn pri" href="/agreement/referral-protection">Review company agreement</a></div></div>;
   }
 
-  if (isDealerPartnerOutOfBounds || isProfessionalPartnerOutOfBounds) {
+  if (isDealerPartnerOutOfBounds) {
     return <div className="bareshell" />;
   }
 

@@ -15,9 +15,9 @@ export default function AdminDealerMessagesPage() {
       apiPrefix="/admin/ai-underwriter-leads"
       fileHref={(id) => `${fileHref(id)}?notes=1`}
       selfRole="team"
-      subtitle="Your conversations with dealer partners, one per AI file."
-      panelSubtitle="Private channel with this lead's dealer partner — never visible to the client."
-      panelEmptyLabel="No messages yet. Start the conversation with this lead's dealer partner."
+      subtitle="Your conversations with referral partners, one per AI file."
+      panelSubtitle="Private channel with this lead's referral partner — never visible to the client."
+      panelEmptyLabel="No messages yet. Start the conversation with this lead's referral partner."
     />
   );
 }

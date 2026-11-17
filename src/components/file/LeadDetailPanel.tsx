@@ -1937,7 +1937,7 @@ export function LeadDetailPanel({
           { label: "View client conversation", onSelect: () => navigateCommunication("client"), hidden: !detail },
           { label: "Attach another room", onSelect: onLinkBucketIntake, hidden: !detail },
           { label: "Rotate room PIN", onSelect: openRotatePin, hidden: !detail },
-          { label: "Dealer partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
+          { label: "Referral partner messages", onSelect: () => navigateCommunication("partner"), hidden: !detail },
           { label: "Share production package with a rep", onSelect: () => { setPrototypeView("production"); setProductionShareOpen(true); }, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Record loan terms", href: fileWorkspace?.href({ tool: "terms" }), newTab: Boolean(fileWorkspace), onSelect: openTermSheet, hidden: !detail || !isDealerFile || !canUnderwrite },
           { label: "Review and publish offer", href: marketplaceEntryHref(marketplacePublication?.profileId === detail?.application_profile_id ? marketplacePublication?.listingId : null, fileWorkspace?.intakeId), newTab: Boolean(fileWorkspace), onSelect: () => { setPrototypeView("financials"); setPackageTab("marketplace"); setCockpitFocus("marketplace"); }, hidden: !detail || currentUser?.role !== Role.SUPER_ADMIN },
@@ -2511,8 +2511,8 @@ export function LeadDetailPanel({
         </div>
         <span className="sp" />
         <Btn
-          aria-label="Messages with the dealer partner"
-          title="Messages with the dealer partner"
+          aria-label="Messages with the referral partner"
+          title="Messages with the referral partner"
           onClick={() => setNotesOpen(true)}
         >
           <Icon name="chat" size={14} /> Messages
@@ -2653,8 +2653,8 @@ export function LeadDetailPanel({
                     onPost={postNote}
                     posting={notesPosting}
                     error={notesError}
-                    subtitle="Private channel with this lead's dealer partner — never visible to the client."
-                    emptyLabel="No messages yet. Start the conversation with this lead's dealer partner."
+                    subtitle="Private channel with this lead's referral partner — never visible to the client."
+                    emptyLabel="No messages yet. Start the conversation with this lead's referral partner."
                   />
                 </div>
               </div>

@@ -1,3 +1,5 @@
+import { roleAccessProfile } from "@/lib/roleAccess";
+
 // File updates: who is on a file and what happened on it.
 //
 // Shapes mirror /application-profiles/{id}/team and /timeline exactly
@@ -113,7 +115,7 @@ export function fileEventLabel(kind: string): string {
 export function agentDerivedFromLabel(source: string | null | undefined): string | null {
   switch (source) {
     case "intake.broker_id":
-      return "the dealer partner on the lead";
+      return "the referral partner on the lead";
     case "dealer.owner_user_id":
       return "the rep who opened the file";
     case "client.current_agent_id":
@@ -128,11 +130,10 @@ export function agentDerivedFromLabel(source: string | null | undefined): string
   }
 }
 
-/** `dealer_partner` → `Dealer partner`. */
+/** `dealer_partner` → `Referral partner`. */
 export function roleLabel(role: string | null | undefined): string {
   if (!role) return "";
-  const words = role.replace(/[._-]+/g, " ").trim();
-  return words.charAt(0).toUpperCase() + words.slice(1);
+  return roleAccessProfile(role).label;
 }
 
 /** "just now", "5m ago", "3h ago", "2d ago", then a short date. */

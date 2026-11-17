@@ -19,6 +19,8 @@ import {
 } from "@/components/ds";
 import { ApiError } from "@/lib/api";
 import { useAuthedFetch } from "@/hooks/useAuthedFetch";
+import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 
 type Partner = { id: string; name: string; email: string };
 type LeadRow = { id: string; business_name?: string | null; full_name: string; email: string };
@@ -40,7 +42,8 @@ export function DealerChannelComposeDialog({
   const [leadSearch, setLeadSearch] = useState("");
   const [selectedLeadId, setSelectedLeadId] = useState("");
   const [partnerId, setPartnerId] = useState("");
-  const [nf, setNf] = useState({ full_name: "", email: "", business_name: "", variant: "dealer" });
+  const [nf, setNf] = useState({ full_name: "", email: "", business_name: "", phone: "", secure_room_pin: "", variant: "dealer" });
+  const [businessProfile, setBusinessProfile] = useState(emptyBusinessProfile);
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +78,7 @@ export function DealerChannelComposeDialog({
 
   const canSend =
     !!message.trim() &&
-    (mode === "existing" ? !!selectedLeadId : !!nf.full_name.trim() && !!nf.email.trim());
+    (mode === "existing" ? !!selectedLeadId : !!nf.full_name.trim() && !!nf.email.trim() && !!nf.phone.trim() && /^\d{6}$/.test(nf.secure_room_pin) && !newBusinessProfileProblem(businessProfile));
 
   async function send() {
     if (!canSend || busy) return;
@@ -93,6 +96,9 @@ export function DealerChannelComposeDialog({
               variant: nf.variant,
               full_name: nf.full_name.trim(),
               email: nf.email.trim(),
+              phone: nf.phone.trim(),
+              secure_room_pin: nf.secure_room_pin,
+              ...newBusinessProfileBody(businessProfile),
               business_name: nf.business_name.trim() || null,
               broker_user_id: partnerId || null,
             }),
@@ -147,7 +153,7 @@ export function DealerChannelComposeDialog({
         <>
           <span className="sub">
             {partnerId
-              ? "The dealer partner will see this in their Messages."
+              ? "The referral partner will see this in their Messages."
               : "Assign a partner so it reaches them."}
           </span>
           <span className="grow" />
@@ -227,6 +233,8 @@ export function DealerChannelComposeDialog({
                   onChange={(e) => setNf({ ...nf, business_name: e.target.value })}
                 />
               </Field>
+              <Field label="Client mobile"><Input type="tel" value={nf.phone} onChange={(event) => setNf({ ...nf, phone: event.target.value })} /></Field>
+              <Field label="Six-digit room PIN"><Input inputMode="numeric" maxLength={6} value={nf.secure_room_pin} onChange={(event) => setNf({ ...nf, secure_room_pin: event.target.value.replace(/\D/g, "") })} /></Field>
               <Field label="Type">
                 <Select
                   value={nf.variant}
@@ -234,13 +242,16 @@ export function DealerChannelComposeDialog({
                 >
                   <option value="dealer">Dealer</option>
                   <option value="real_estate">Real estate</option>
+                  <option value="main_street">Operating business</option>
+                  <option value="mca_refinance">MCA refinance</option>
                 </Select>
               </Field>
             </div>
           </div>
         )}
 
-        <Field label="Dealer partner">
+        {mode === "new" ? <BusinessProfileFields value={businessProfile} onChange={(patch) => setBusinessProfile((current) => ({ ...current, ...patch }))} /> : null}
+        <Field label="Referral partner">
           <Select value={partnerId} onChange={(e) => setPartnerId(e.target.value)}>
             <option value="">— None (internal only) —</option>
             {partners.map((p) => (
@@ -256,7 +267,7 @@ export function DealerChannelComposeDialog({
               owns the vertical-only resize. */}
           <Textarea
             style={{ minHeight: 90 }}
-            placeholder="Write your message to the dealer partner…"
+            placeholder="Write your message to the referral partner…"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
           />

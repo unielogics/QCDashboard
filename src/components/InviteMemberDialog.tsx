@@ -36,7 +36,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
-  const [role, setRole] = useState<Role>(Role.BROKER);
+  const [role, setRole] = useState<Role>(Role.DEALER_PARTNER);
   const [companyId, setCompanyId] = useState("");
   const [accountTypes, setAccountTypes] = useState<OperatorAccountAccessType[]>([]);
   const [err, setErr] = useState<string | null>(null);
@@ -46,7 +46,7 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
       setEmail("");
       setName("");
       setPhone("");
-      setRole(Role.BROKER);
+      setRole(Role.DEALER_PARTNER);
       setCompanyId("");
       setAccountTypes([]);
       setErr(null);
@@ -67,6 +67,9 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
     const grantable = GRANTABLE_CONSOLES[next] ?? [];
     setAccountTypes((current) => current.filter((item) => grantable.includes(item)));
   };
+  useEffect(() => {
+    if (open && isStaff && !companyId && house) setCompanyId(house.id);
+  }, [open, isStaff, companyId, house]);
   const valid =
     /\S+@\S+\.\S+/.test(email) &&
     name.trim().length > 0 &&
@@ -154,14 +157,18 @@ export function InviteMemberDialog({ open, onClose, onInvited }: Props) {
             marginBottom: 8,
           }}
         >
-          Role
+          Access role
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <p className="sub">Use Referral Partner for external introductions in any program. Real Estate Originators also work their own property pipeline and analysis tools.</p>
+        <div role="radiogroup" aria-label="Access role" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {ROLE_OPTIONS.map((opt) => {
             const active = role === opt.value;
             return (
               <button
                 key={opt.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
                 onClick={() => chooseRole(opt.value)}
                 style={{
                   all: "unset",

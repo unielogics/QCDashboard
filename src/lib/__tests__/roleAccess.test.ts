@@ -5,17 +5,20 @@ import {
   roleRequiresPartnerCompany,
   roleUsesHouseProfile,
   TEAM_ASSIGNABLE_ROLES,
+  isReferralPartner,
+  canUseReferralIntake,
+  teamRoleOptions,
 } from "@/lib/roleAccess";
 
 describe("role access vocabulary", () => {
-  it("distinguishes real-estate agents from auto dealer agents", () => {
+  it("distinguishes property originators from program-independent referrals", () => {
     expect(roleAccessProfile(Role.BROKER)).toMatchObject({
-      label: "Real Estate Agent",
+      label: "Real Estate Originator",
       workspace: "Real Estate Funding",
     });
     expect(roleAccessProfile(Role.DEALER_PARTNER)).toMatchObject({
-      label: "Auto Dealer Agent",
-      workspace: "Dealer AI Intake",
+      label: "Referral Partner",
+      workspace: "All active programs",
     });
   });
 
@@ -32,5 +35,20 @@ describe("role access vocabulary", () => {
     expect(roleRequiresPartnerCompany(Role.DEALER_PARTNER)).toBe(true);
     expect(roleRequiresPartnerCompany(Role.PROFESSIONAL_REFERRAL_PARTNER)).toBe(true);
     expect(roleRequiresPartnerCompany(Role.BROKER)).toBe(false);
+  });
+});
+
+describe("legacy referral enrollment", () => {
+  it("offers one general referral role for new invitations", () => {
+    expect(TEAM_ASSIGNABLE_ROLES).toContain(Role.DEALER_PARTNER);
+    expect(TEAM_ASSIGNABLE_ROLES).not.toContain(Role.PROFESSIONAL_REFERRAL_PARTNER);
+    expect(teamRoleOptions(Role.PROFESSIONAL_REFERRAL_PARTNER)).toContain(Role.PROFESSIONAL_REFERRAL_PARTNER);
+    expect(roleAccessProfile(Role.PROFESSIONAL_REFERRAL_PARTNER).label).toBe("Referral Partner");
+  });
+  it("shares intake with legacy professionals and property originators without admitting clients", () => {
+    expect(isReferralPartner(Role.PROFESSIONAL_REFERRAL_PARTNER)).toBe(true);
+    expect(canUseReferralIntake(Role.BROKER)).toBe(true);
+    expect(canUseReferralIntake(Role.CLIENT)).toBe(false);
+    expect(canUseReferralIntake(Role.FIELD_REP)).toBe(false);
   });
 });
