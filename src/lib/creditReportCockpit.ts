@@ -1,4 +1,5 @@
 import type { ParsedReport, ParsedTradeAccount } from "@/lib/types";
+import { moneyDigits } from "@/lib/moneyDigits";
 
 export type CreditAccountFilter = "all" | "open" | "adverse" | "past_due";
 
@@ -28,13 +29,9 @@ export function creditNumber(raw?: string): number | null {
   return magnitude === 0 ? 0 : negative ? -magnitude : magnitude;
 }
 
-const money = new Intl.NumberFormat("en-US", {
-  style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2,
-});
-
 export function creditMoney(raw?: string): string {
   const value = creditNumber(raw);
-  return value === null ? raw?.trim() || "Not provided" : money.format(value);
+  return value === null ? raw?.trim() || "Not provided" : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", ...moneyDigits(value) }).format(value);
 }
 
 function normalizedFields(account: ParsedTradeAccount): Record<string, string> {

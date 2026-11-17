@@ -1,3 +1,4 @@
+import { moneyDigits } from "./moneyDigits";
 export type MarketplaceOperatingPoint = {
   status?: string; basis?: string;
   noi_annual: number | null; noi_currency: string | null; noi_delta_annual: number | null;
@@ -34,7 +35,7 @@ export function marketplaceOperatingRows(projection: MarketplaceOperatingProject
 export const marketplaceProjectionNumber = (value: unknown) => typeof value === "number" && Number.isFinite(value) ? value : null;
 export function marketplaceProjectionMoney(value: number | null | undefined, currency: string | null | undefined) {
   if (value == null || !Number.isFinite(value)) return "—";
-  return currency && /^[A-Z]{3}$/.test(currency) && currency !== "XXX" ? new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(value) : `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })} (currency unconfirmed)`;
+  return currency && /^[A-Z]{3}$/.test(currency) && currency !== "XXX" ? new Intl.NumberFormat("en-US", { style: "currency", currency, ...moneyDigits(value) }).format(value) : `${value.toLocaleString("en-US", { maximumFractionDigits: 2 })} (currency unconfirmed)`;
 }
 /** Formatting only; currencies and deltas come from the same canonical metric point. */
 export function marketplaceProjectionValue(point: MarketplaceOperatingPoint | undefined, row: MarketplaceProjectionRow, delta = false) {

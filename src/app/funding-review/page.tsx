@@ -33,6 +33,7 @@ import { chatActionStatusText, resolveChatActionTarget } from "@/components/inta
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import type { IntakeChatAction, IntakeChatActionResult } from "@/lib/intake";
 import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
+import { OWNER_OCCUPIED, RE_TRANSACTION_TYPES } from "@/lib/realEstateVocabulary";
 
 type RequestedDoc = {
   id: string;
@@ -262,7 +263,11 @@ const initialContact = {
   estimated_value_or_purchase_price: "",
   monthly_rent: "",
   estimated_credit_tier: "",
+  occupancy: "",
+  business_purpose: "",
+  purpose_description: "",
 };
+
 const initialEntity: EntityStructure = {
   primary_operating_entity: "",
   main_operating_bank_account: "",
@@ -519,6 +524,16 @@ export default function DealerAIUnderwriterPage() {
       setStatus(profileProblem);
       return;
     }
+    // TODO(compliance-review-es): Spanish wording for the occupancy and purpose
+    // questions is AI-assisted and not yet reviewed by a native-Spanish compliance reviewer.
+    if (!contact.occupancy || !contact.business_purpose) {
+      setStatus(language === "es" ? "Indique quién usa la propiedad y si el préstamo es para un negocio o inversión." : "Tell us who uses the property and whether the loan is for a business or investment purpose.");
+      return;
+    }
+    if (OWNER_OCCUPIED.has(contact.occupancy) && contact.business_purpose === "yes" && contact.purpose_description.trim().length < 10) {
+      setStatus(language === "es" ? "Describa en una frase para qué usará el negocio el dinero." : "Describe in a sentence what the business will use the money for.");
+      return;
+    }
     const pinProblem = chosenRoomPinProblem(roomPin, roomPinConfirmation, language ?? "en");
     if (pinProblem) { setStatus(pinProblem); return; }
     if (!sms.email || !sms.transactional || !/^\d+$/.test(contact.employee_count ?? "")) {
@@ -545,6 +560,9 @@ export default function DealerAIUnderwriterPage() {
           estimated_value_or_purchase_price: numericOrNull(contact.estimated_value_or_purchase_price),
           monthly_rent: numericOrNull(contact.monthly_rent),
           estimated_credit_tier: contact.estimated_credit_tier.trim() || null,
+          occupancy: contact.occupancy || null,
+          business_purpose: contact.business_purpose ? contact.business_purpose === "yes" : null,
+          purpose_description: contact.purpose_description.trim() || null,
           ...newBusinessProfileBody(contact),
           secure_room_pin: roomPin,
           terms_accepted: true,
@@ -1586,7 +1604,7 @@ function ContactWidget({
           label="Transaction type"
           value={contact.transaction_type}
           onChange={(value) => setContact({ ...contact, transaction_type: value })}
-          options={["Purchase", "Refinance", "Cash-out refinance", "Portfolio review", "Not sure yet"]}
+          options={[...RE_TRANSACTION_TYPES]}
         />
         <SelectField
           label="Estimated credit"
@@ -1595,6 +1613,45 @@ function ContactWidget({
           options={["Strong Credit", "Mid Credit", "Below Threshold", "Not sure yet"]}
         />
       </div>
+      <div style={stepOneFormGrid}>
+        <SelectField
+          label={language === "es" ? "¿Quién usa la propiedad?" : "Who uses the property?"}
+          value={contact.occupancy}
+          onChange={(value) => setContact({ ...contact, occupancy: value })}
+          options={[
+            { value: "investment", label: language === "es" ? "Propiedad de inversión" : "Investment property" },
+            { value: "primary_residence", label: language === "es" ? "Mi residencia principal" : "My primary residence" },
+            { value: "second_home", label: language === "es" ? "Mi segunda vivienda" : "My second home" },
+          ]}
+          required
+        />
+        <SelectField
+          label={language === "es" ? "¿Para qué es el préstamo?" : "What is the loan for?"}
+          value={contact.business_purpose}
+          onChange={(value) => setContact({ ...contact, business_purpose: value })}
+          options={[
+            { value: "yes", label: language === "es" ? "Un negocio o una inversión" : "A business or investment purpose" },
+            { value: "no", label: language === "es" ? "Uso personal o familiar" : "Personal or family use" },
+          ]}
+          required
+        />
+      </div>
+      {OWNER_OCCUPIED.has(contact.occupancy) && contact.business_purpose === "yes" ? (
+        <TextAreaField
+          label={language === "es" ? "¿Qué hará el negocio con el dinero?" : "What will the business use the money for?"}
+          value={contact.purpose_description}
+          onChange={(value) => setContact({ ...contact, purpose_description: value })}
+          placeholder={language === "es" ? "Por ejemplo: capital de trabajo para el concesionario" : "For example: working capital for the dealership"}
+          required
+        />
+      ) : null}
+      {contact.business_purpose === "no" ? (
+        <div style={fieldHint}>
+          {language === "es"
+            ? "Qualified Commercial financia préstamos con fines comerciales o de inversión. Un miembro del equipo revisará su solicitud."
+            : "Qualified Commercial funds business and investment loans. A team member will review your request."}
+        </div>
+      ) : null}
       <div style={stepOneFormGrid}>
         <Field label="Requested amount" value={contact.requested_amount} onChange={updateRequestedAmount} placeholder="500000" />
         <Field label="Value / purchase price" value={contact.estimated_value_or_purchase_price} onChange={updatePropertyValue} placeholder="750000" />
@@ -2844,15 +2901,16 @@ function Field({ label, value, onChange, placeholder, onBlur, required, inputMod
   );
 }
 
-function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (value: string) => void; options: string[] }) {
+function SelectField({ label, value, onChange, options, required }: { label: string; value: string; onChange: (value: string) => void; options: Array<string | { value: string; label: string }>; required?: boolean }) {
   return (
     <label style={fieldWrap}>
-      <span style={labelStyle}>{label}</span>
+      <span style={labelStyle}>{label}{required ? <span style={requiredMark}>*</span> : null}</span>
       <select style={select} value={value} onChange={(event) => onChange(event.target.value)}>
         <option value="">Select</option>
-        {options.map((option) => (
-          <option key={option} value={option}>{option}</option>
-        ))}
+        {options.map((option) => {
+          const item = typeof option === "string" ? { value: option, label: option } : option;
+          return <option key={item.value} value={item.value}>{item.label}</option>;
+        })}
       </select>
     </label>
   );

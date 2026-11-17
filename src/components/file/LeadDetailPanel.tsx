@@ -37,6 +37,7 @@ import type { MarketplaceFinancialAction } from "@/lib/marketplaceIssues";
 import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/communications/CommunicationUnreadBadge";
 import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft } from "@/components/file/BusinessContactDetails";
+import { PersonalUseReviewBanner, type PersonalUseDecision } from "@/components/file/PersonalUseReviewBanner";
 import type { OfferDeliveryReceipt, OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { FundingPackageWorkspace, type FundingPackageTab, type PackagePreparation } from "./FundingPackageWorkspace";
@@ -597,6 +598,7 @@ export function LeadDetailPanel({
   onUpdateOutcomeStatus,
   onUpdateLanguage,
   onUpdateContact,
+  onDecidePersonalUse,
   onFundingRequestSaved,
   onCancelDeletionRequest,
   onConfirmDeletion,
@@ -644,6 +646,7 @@ export function LeadDetailPanel({
   onUpdateOutcomeStatus: (status: string) => Promise<void>;
   onUpdateLanguage: (language: string) => Promise<void>;
   onUpdateContact: (payload: LeadContactUpdate) => Promise<void>;
+  onDecidePersonalUse?: (decision: PersonalUseDecision, note?: string) => Promise<void>;
   onFundingRequestSaved?: () => Promise<unknown> | void;
   onCancelDeletionRequest: () => Promise<void>;
   onConfirmDeletion: (confirmName: string) => Promise<void>;
@@ -1959,6 +1962,7 @@ export function LeadDetailPanel({
         {!detail.application_source.recorded ? <span className="sub">The original source was not captured for this older file.</span> : null}
       </div> : null}
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
+      {canUnderwrite ? <PersonalUseReviewBanner review={detail?.intake.personal_use_review} onDecide={onDecidePersonalUse} /> : null}
       {detail && (refreshing || detail.derived_pending) ? <div className="sub" role="status" style={{ padding: "8px 16px" }}>{refreshing ? "Refreshing file details… " : "File details are ready. "}Current financial calculations and package checks load in their workspace.</div> : null}
       {loading || !detail ? loading ? <PreparationProgress title="Opening file" description="Loading the application, linked evidence and financial workspace." /> : null : (
         <>

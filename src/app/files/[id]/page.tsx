@@ -146,6 +146,7 @@ export default function FilePage() {
         onUpdateOutcomeStatus={file.updateOutcomeStatus}
         onUpdateLanguage={file.updateLanguage}
         onUpdateContact={file.updateContact}
+        onDecidePersonalUse={file.decidePersonalUse}
         onFundingRequestSaved={() => file.reload()}
         onCancelDeletionRequest={file.cancelDeletionRequest}
         onConfirmDeletion={async (confirmName) => {

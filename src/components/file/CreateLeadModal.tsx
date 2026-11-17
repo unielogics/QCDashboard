@@ -11,6 +11,7 @@ import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields
 import { Icon } from "@/components/design-system/Icon";
 import { validPhone } from "@/lib/formCoerce";
 import { CreateLeadPayload, LeadDetail, LeadVariant, formatSize } from "./leadFile";
+import { RE_TRANSACTION_TYPES } from "@/lib/realEstateVocabulary";
 
 export type LeadCreationClient = {
   id: string;
@@ -248,10 +249,13 @@ export function CreateLeadModal({
             />
           </div>
           <Field label="Transaction type">
-            <Input value={transactionType} onChange={(e) => setTransactionType(e.target.value)} placeholder="purchase / refinance / cash-out" />
+            <Select aria-label="Transaction type" value={transactionType} onChange={(e) => setTransactionType(e.target.value)}>
+              <option value="">Choose a transaction</option>
+              {RE_TRANSACTION_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}
+            </Select>
           </Field>
-          <Field label="Estimated credit tier">
-            <Input value={creditTier} onChange={(e) => setCreditTier(e.target.value)} placeholder="e.g. 700+" />
+          <Field label="Estimated credit tier" hint="Strong / Mid / Below threshold, or a score like 720">
+            <Input value={creditTier} onChange={(e) => setCreditTier(e.target.value)} placeholder="Strong Credit, or 720" />
           </Field>
           <Field label="Requested amount ($)">
             <Input value={requestedAmount} onChange={(e) => setRequestedAmount(e.target.value)} inputMode="numeric" placeholder="500000" />

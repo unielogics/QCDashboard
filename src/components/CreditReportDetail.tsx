@@ -10,6 +10,7 @@ import {
   creditMoney, creditMonthlyPayment, creditPretty, creditReportSummary, filterCreditAccounts, type CreditAccountFilter,
 } from "@/lib/creditReportCockpit";
 import styles from "./CreditReportDetail.module.css";
+import { moneyDigits } from "@/lib/moneyDigits";
 
 type View = "accounts" | "scores" | "review" | "inquiries" | "identity" | "records" | "report";
 type RecordSelection = { kind: "collections" | "public_records"; index: number };
@@ -37,7 +38,7 @@ function CreditCockpit({ report, reportLink }: { report: ParsedReport; reportLin
   const visible = filterCreditAccounts(report.trade_accounts, filter, search);
   const account = selected == null ? undefined : report.trade_accounts[selected];
   const selectedPosition = visible.findIndex((item) => item.index === selected);
-  const displayTotal = (value: number | null) => value == null ? "Not provided" : value.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const displayTotal = (value: number | null) => value == null ? "Not provided" : value.toLocaleString("en-US", { style: "currency", currency: "USD", ...moneyDigits(value) });
 
   function openAccounts(next: CreditAccountFilter, metric: "balance" | "monthly" | null = null) {
     setView("accounts"); setFilter(next); setSearch(""); setSelected(null); setBasis(metric);

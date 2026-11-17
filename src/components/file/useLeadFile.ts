@@ -191,6 +191,17 @@ export function useLeadFile({ leadId, notify, onListChanged, includeDerived = fa
   const updateLanguage = (language: string) => patchAndRefresh("/language", { preferred_language: language });
   const updateContact = (payload: LeadContactUpdate) => patchAndRefresh("/contact", payload);
 
+  async function decidePersonalUse(decision: "hold" | "clear", note?: string) {
+    if (!leadId) return;
+    await call(`/admin/ai-underwriter-leads/${leadId}/personal-use-review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decision, note: note ?? null }),
+    });
+    await reload();
+    onListChanged?.();
+  }
+
   async function cancelDeletionRequest() {
     if (!leadId) return;
     await call(`/admin/ai-underwriter-leads/${leadId}/cancel-deletion-request`, { method: "POST" });
@@ -417,6 +428,7 @@ export function useLeadFile({ leadId, notify, onListChanged, includeDerived = fa
     updateOutcomeStatus,
     updateLanguage,
     updateContact,
+    decidePersonalUse,
     cancelDeletionRequest,
     deleteLead,
     restoreLead,

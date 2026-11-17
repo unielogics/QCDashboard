@@ -1,5 +1,6 @@
 import type { ApplicationRequirement, RoomRequestResult } from "./applicationProfile";
 import type { AuthedApi } from "./worksheetApi";
+import { moneyDigits } from "./moneyDigits";
 
 export function isUseOfProceedsRequirement(requirement: Pick<ApplicationRequirement, "requirement_key" | "canonical_key">): boolean {
   return (requirement.canonical_key || requirement.requirement_key) === "use_of_proceeds";
@@ -9,7 +10,7 @@ export function readUseOfFundsCollectionSummary(requirement: Pick<ApplicationReq
   const collection = requirement.collection_completion;
   if (collection?.source !== "use_of_funds" || !collection.summary) return null;
   const summary = collection.summary;
-  const money = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 }).format(amount);
+  const money = (amount: number) => new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", ...moneyDigits(amount) }).format(amount);
   return {
     ...summary,
     allocation: summary.requested_amount === null ? `${money(summary.allocated_amount)} allocated` : `${money(summary.allocated_amount)} of ${money(summary.requested_amount)} allocated`,

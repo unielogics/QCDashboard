@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { Field, Input, Select } from "@/components/ds";
 import { businessProfileFieldProblem, readWebsite } from "@/lib/businessProfile";
+import { validPhone } from "@/lib/formCoerce";
 import { MAIN_STREET_INDUSTRIES } from "@/lib/intakeIndustries";
 
 export type BusinessContactValues = {
@@ -19,6 +20,7 @@ export type BusinessContactValues = {
 };
 
 export type BusinessContactDraft = {
+  business_phone: string;
   business_street: string;
   business_city: string;
   business_state: string;
@@ -30,6 +32,7 @@ const clean = (value: string | null | undefined) => (value || "").trim();
 
 export function businessContactDraft(values: BusinessContactValues): BusinessContactDraft {
   return {
+    business_phone: values.business_phone || "",
     business_street: values.business_street || "",
     business_city: values.business_city || "",
     business_state: values.business_state || "",
@@ -52,6 +55,13 @@ export function businessContactChanges(
     industry: "industry", business_website: "website", business_description: "description",
   } as const;
   const changes: Partial<Record<keyof typeof draft, string>> = {};
+  // A name or a note in the phone slot is what the desk is here to correct;
+  // only a real number (or clearing it) goes back.
+  const phone = draft.business_phone.trim();
+  if (phone !== clean(original.business_phone)) {
+    if (phone && !validPhone(phone)) return { changes: {}, problem: "Enter a complete business phone number, like (704) 555-0123." };
+    changes.business_phone = phone;
+  }
   for (const key of Object.keys(fields) as Array<keyof typeof fields>) {
     const raw = draft[key].trim();
     // A phone/name correction must not turn untouched legacy values into new
@@ -90,6 +100,7 @@ export function BusinessContactDetails({ values }: { values: BusinessContactValu
 export function BusinessContactFields({ value, onChange }: { value: BusinessContactDraft; onChange: (patch: Partial<BusinessContactDraft>) => void }) {
   const legacyIndustry = value.industry && !MAIN_STREET_INDUSTRIES.some((option) => option.slug === value.industry);
   return <>
+    <Field label="Business phone"><Input aria-label="Business phone" type="tel" autoComplete="section-business tel" value={value.business_phone} onChange={(event) => onChange({ business_phone: event.target.value })} placeholder="(704) 555-0123" /></Field>
     <Field label="Business street address"><Input aria-label="Business street address" autoComplete="section-business street-address" maxLength={255} value={value.business_street} onChange={(event) => onChange({ business_street: event.target.value })} /></Field>
     <Field label="Business city"><Input aria-label="Business city" autoComplete="section-business address-level2" maxLength={120} value={value.business_city} onChange={(event) => onChange({ business_city: event.target.value })} /></Field>
     <Field label="Business state"><Input aria-label="Business state" autoComplete="section-business address-level1" maxLength={2} value={value.business_state} onChange={(event) => onChange({ business_state: event.target.value.toUpperCase() })} placeholder="FL" /></Field>

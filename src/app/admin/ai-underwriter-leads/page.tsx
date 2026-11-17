@@ -27,6 +27,7 @@ import { useConsoleAuth } from "@/lib/consoleAuth";
 import { CreateLeadPayload, DEFAULT_PAGE_SIZE, LeadDetail, LeadPage, LeadRow, PAGE_SIZES, PROBABILITY_FILTERS, STATUS_FILTERS, VARIANT_FILTERS, apiErrorMessage, formatMoney, intakeStatusPresentation, presentContact, probabilityTone, variantLabel } from "@/components/file/leadFile";
 import { ConfirmDeleteLeadModal, Stat } from "@/components/file/LeadDetailPanel";
 import { CreateLeadModal } from "@/components/file/CreateLeadModal";
+import { moneyDigits } from "@/lib/moneyDigits";
 import { fileHref, sectionFromLegacyParams } from "@/lib/fileRoutes";
 import { FileCommunicationCounts } from "@/components/communications/FileCommunicationCounts";
 
@@ -508,7 +509,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                       {row.business_name ? <div className="sub">Owner: {row.full_name}</div> : null}
                       {manuallyArchived ? <CellChip tone="mut">Archived{row.archived_at ? ` ${new Date(row.archived_at).toLocaleDateString()}` : ""}</CellChip> : null}
                     </td>
-                    <td className="r file-list-request">{requestedAmount == null ? <span className="sub">Not provided</span> : <b className="num">{requestedAmount.toLocaleString("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 0, maximumFractionDigits: 2 })}</b>}</td>
+                    <td className="r file-list-request">{requestedAmount == null ? <span className="sub">Not provided</span> : <b className="num">{requestedAmount.toLocaleString("en-US", { style: "currency", currency: "USD", ...moneyDigits(requestedAmount) })}</b>}</td>
                     <td className="lead-contact-cell">
                       <div className="lead-contact-line">{presentContact(row.email)}</div>
                       <div className="lead-contact-line sub">{presentContact(row.phone)}</div>

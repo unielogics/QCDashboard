@@ -7,6 +7,7 @@ import type { McaRefinancePolicy } from "@/lib/mcaRefinancePolicy";
 import { PIPELINE_LIFECYCLE, type UnderwritingLifecycleStatus } from "@/lib/unifiedOperator";
 import type { ApplicationUnderwritingState } from "@/lib/applicationProfile";
 import { isFundedIntakeStatus, isTerminalNegativeIntakeStatus, resolveIntakeDisplayStatus, type IntakeWorkspaceState } from "@/lib/intakeWorkspace";
+import type { PersonalUseReview } from "./PersonalUseReviewBanner";
 
 // Surface a FastAPI 422/400 `detail` (string or [{msg}]) instead of the bare
 // "422 Unprocessable Entity" so operators see WHY a send was rejected.
@@ -153,6 +154,8 @@ export type LeadDetail = {
     referral_source?: string | null;
     asset_rows?: Array<Record<string, unknown>> | null;
     result_snapshot?: Record<string, unknown> | null;
+    /** Desk views only: the business-purpose review of an owner-occupied personal-use request. */
+    personal_use_review?: PersonalUseReview | null;
   };
   requested_documents: RequestedDoc[];
   files: UploadedFile[];
@@ -300,6 +303,8 @@ export type LeadContactUpdate = {
   /** The desk's correction of the website ("N/A" for none) and the description. */
   business_website?: string | null;
   business_description?: string | null;
+  /** The desk's correction of the business phone; blank clears a value that was not a number. */
+  business_phone?: string | null;
   business_street?: string | null;
   business_city?: string | null;
   business_state?: string | null;

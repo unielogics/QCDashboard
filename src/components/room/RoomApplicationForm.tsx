@@ -6,6 +6,7 @@ import { clientApiErrorDetail } from "@/lib/clientRoomDocuments";
 import { newBusinessProfileProblem, type NewBusinessProfile } from "@/lib/businessProfile";
 import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { LENDING_INTENTS, MAIN_STREET_INTENTS } from "@/lib/intakeIndustries";
+import { RE_TRANSACTION_TYPES, isKnownTransactionType } from "@/lib/realEstateVocabulary";
 
 type Application = { [K in keyof NewBusinessProfile]: string | null } & {
   vertical: "dealer" | "main_street" | "real_estate" | "mca";
@@ -99,7 +100,7 @@ export function RoomApplicationForm({ token, passcode, onChanged, onContinue }: 
         {lending && application.requested_amount_editable === false ? <p className="application-room-note">Your advisor has reviewed this amount. Contact your advisor if it needs to change.</p> : null}
         {application.vertical === "real_estate" ? <>
           {field("target_property_address", "Target property address", { required: true, maxLength: 320 })}
-          {field("transaction_type", "Transaction type", { required: true, placeholder: "Purchase, refinance, or cash-out", maxLength: 80 })}
+          <label className="application-room-field"><span>Transaction type *</span><select value={answers.transaction_type || ""} onChange={(event) => setAnswers((current) => ({ ...current, transaction_type: event.target.value }))} required disabled={busy}><option value="">Choose a transaction</option>{answers.transaction_type && !isKnownTransactionType(answers.transaction_type) ? <option value={answers.transaction_type}>{answers.transaction_type}</option> : null}{RE_TRANSACTION_TYPES.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
           {field("estimated_value_or_purchase_price", "Property value / purchase price ($)", { type: "number", required: true })}
           {field("monthly_rent", "Monthly rent ($)", { type: "number" })}
         </> : null}
