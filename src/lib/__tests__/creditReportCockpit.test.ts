@@ -18,7 +18,8 @@ describe("provider currency values", () => {
     expect(creditNumber(raw)).toBeNull();
   });
   it("formats known dollars and preserves the provider's unparsed words", () => {
-    expect(creditMoney("00001234.50")).toBe("$1,234.5");
+    // Cents print both digits (lib/moneyDigits.ts); whole dollars print none.
+    expect(creditMoney("00001234.50")).toBe("$1,234.50");
     expect(creditMoney("0")).toBe("$0");
     expect(creditMoney("Not reported")).toBe("Not reported");
     expect(creditMoney()).toBe("Not provided");
