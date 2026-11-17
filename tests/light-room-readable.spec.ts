@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { mkdtemp, readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { dscrGaugePoint } from "../src/lib/dscrGauge";
 
 // The two light client rooms -- Equipment Financing and the funding review --
 // are the dark dealer room's markup under a theme that reaches each piece by a
@@ -142,7 +143,16 @@ const withReadiness = {
   ...reviewed, token: "fixture-readiness", capital_readiness: readiness,
   requested_documents: [...reviewed.requested_documents, { id: "d6", name: "Bank statement release authorization", category: "Banking", required: true, status: "requested", requires_signature: true, signature_kind: "document", signature_document_text: "I authorize Qualified Commercial to request copies of the business bank statements named in my file. This authorization stays in effect for ninety days." }],
 };
-const rooms: Record<string, unknown> = { "fixture-reviewed": reviewed, "fixture-signing": signing, "fixture-readiness": withReadiness };
+// A file that has just been opened: nothing reviewed, its first documents still to come.
+// The rooms differ on what counts as first evidence (bank statements and tax returns for a
+// business file, rent and payoff support for a property file), so it asks for one of each.
+const fresh = {
+  ...reviewed, token: "fixture-fresh", intake: { ...reviewed.intake, status: "collecting" }, files: [], latest_review: null, widget: null, chat_actions: [], ai_paused_until: null,
+  requested_documents: [...reviewed.requested_documents, { id: "d7", name: "Rent roll or lease", category: "Property", required: true, status: "requested" }],
+};
+// A file whose client has to choose a room PIN before anything else.
+const needsPin = { ...fresh, token: "fixture-pin", room_pin_setup_required: true };
+const rooms: Record<string, unknown> = { "fixture-reviewed": reviewed, "fixture-signing": signing, "fixture-readiness": withReadiness, "fixture-fresh": fresh, "fixture-pin": needsPin };
 
 async function open(page: Page, address: string) {
   await page.route(`${ORIGIN}/**`, (route) => {
@@ -305,5 +315,74 @@ for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["de
     expect(measured.width).toBeGreaterThan(measured.window * 0.9);
     await button.scrollIntoViewIfNeeded();
     await expect(button).toBeInViewport();
+  });
+}
+
+
+// The cockpit's charts say what the numbers say. The coverage dial is read left
+// to right and its needle once pointed into the green for nearly any figure; a
+// negative month stood among the others as if it were income.
+for (const [label, route] of ROOMS) {
+  test(`${label} room: the coverage needle and a negative month are drawn as what they are`, async ({ page }) => {
+    await open(page, `${route}?token=fixture-reviewed`);
+    await expect(page.getByText("Two CNC mills with installation.")).toBeVisible();
+    await page.locator(".qc-public-intake-sidebar-tab, .qc-public-intake-mobile-tab").nth(2).click();
+    const needle = page.locator(".qc-public-intake-gauge-needle");
+    await expect(needle).toHaveCount(1);
+    const tip = await needle.evaluate((line) => ({ x: Number(line.getAttribute("x2")), y: Number(line.getAttribute("y2")) }));
+    expect(tip).toEqual(dscrGaugePoint(1.32));
+    // 1.32x is comfortable: right of the 1.25x boundary, left of straight up, and above the hub.
+    expect(tip.x).toBeGreaterThan(dscrGaugePoint(1.25).x);
+    expect(tip.x).toBeLessThan(100);
+    expect(tip.y).toBeLessThan(92);
+    const negative = page.locator(".qc-public-intake-bar.is-negative");
+    await expect(negative).toHaveCount(1);
+    await expect(negative).toHaveAttribute("title", "-$2.4k");
+  });
+}
+
+// The status pill's colour follows its words: a file waiting on its first
+// documents is not shown in the "all good" green.
+for (const [label, route] of ROOMS) {
+  test(`${label} room: a file waiting on documents says so in the waiting tone`, async ({ page }) => {
+    await open(page, `${route}?token=fixture-fresh`);
+    const pill = page.locator(".qc-public-intake-status");
+    await expect(pill).toHaveText("Needs baseline");
+    await expect(pill).toHaveClass(/is-waiting/);
+    expect(await unreadable(page)).toEqual([]);
+  });
+}
+
+// The step a returning client meets before the room opens: on the room's own
+// ground, under the room's brand.
+for (const [label, route] of ROOMS) {
+  test(`${label} room: the PIN step carries the room's brand and can be read`, async ({ page }) => {
+    await open(page, `${route}?token=fixture-pin`);
+    await expect(page.getByRole("heading", { name: "Save your room PIN to continue" })).toBeVisible();
+    await expect(page.locator(".qc-public-intake-pin-brand").getByText("Qualified Commercial", { exact: false }).first()).toBeVisible();
+    expect(await unreadable(page)).toEqual([]);
+  });
+}
+
+// On a phone: the sign-out sits beside the brand instead of taking a row of its
+// own, and the Files panel ends inside the screen with its border showing.
+for (const [label, route] of ROOMS) {
+  test(`${label} room: the phone header and the Files panel fit the screen`, async ({ page }) => {
+    test.skip((page.viewportSize()?.width ?? 0) > 720, "A phone layout.");
+    await open(page, `${route}?token=fixture-reviewed`);
+    await expect(page.getByText("Two CNC mills with installation.")).toBeVisible();
+    const header = page.locator(".qc-public-intake-mobile-header");
+    const logout = await header.getByRole("button", { name: /^Log ?out$/ }).boundingBox();
+    const tabs = await header.locator(".qc-public-intake-mobile-tab").first().boundingBox();
+    const title = await header.locator("svg").first().boundingBox();
+    expect(logout && tabs && title).toBeTruthy();
+    // Same row as the brand mark, and above the tabs.
+    expect(logout!.y).toBeLessThan(title!.y + title!.height);
+    expect(logout!.y + logout!.height).toBeLessThanOrEqual(tabs!.y);
+    await page.locator(".qc-public-intake-mobile-tab").nth(1).click();
+    const panel = await page.locator(".qc-public-intake-files").boundingBox();
+    const width = page.viewportSize()!.width;
+    expect(panel!.x).toBeGreaterThanOrEqual(12);
+    expect(panel!.x + panel!.width).toBeLessThanOrEqual(width - 12);
   });
 }

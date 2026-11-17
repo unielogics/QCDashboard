@@ -16,6 +16,7 @@ import type { CSSProperties } from "react";
 import { V, type CssVars } from "@/components/design-system/cssVars";
 import type { IntelligenceModel, IntelligenceValue } from "@/lib/intake";
 import type { Lang } from "@/lib/intakeCopy";
+import { DSCR_GAUGE_BANDS, DSCR_GAUGE_HUB, DSCR_GAUGE_TRACK, DSCR_GAUGE_VIEWBOX, dscrGaugePoint, type DscrTone } from "@/lib/dscrGauge";
 
 // Chart-chrome copy for the small set of hardcoded strings in this file.
 // Defaults to English everywhere ("en" is the type default below and every
@@ -181,23 +182,27 @@ export function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValu
   );
 }
 
+// The dial's geometry and its three bands live in lib/dscrGauge: a half circle
+// read left to right, short below 1.00x, thin to 1.25x, comfortable above.
+const gaugeBandStroke: Record<DscrTone, string> = { bad: "var(--danger)", warn: "var(--warn)", good: "var(--ok)" };
+
 export function GaugeChart({ value, language = "en" }: { value: number | null | undefined; language?: Lang }) {
   const s = chartStyles();
   const cc = CHART_COPY[language];
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
-  const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
-  const angle = -90 + (clamped / 3) * 180;
-  const x = 100 + 70 * Math.cos((angle * Math.PI) / 180);
-  const y = 92 + 70 * Math.sin((angle * Math.PI) / 180);
+  const tip = dscrGaugePoint(numeric);
   return (
     <div style={s.gaugeWrap}>
-      <svg viewBox="0 0 200 120" style={s.gaugeSvg} aria-label="DSCR gauge">
-        <path d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke={s.gaugeTrackStroke} strokeWidth="16" strokeLinecap="round" />
-        <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="var(--danger)" strokeWidth="16" strokeLinecap="round" />
-        <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="var(--warn)" strokeWidth="16" strokeLinecap="round" />
-        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="var(--ok)" strokeWidth="16" strokeLinecap="round" />
-        <line x1="100" y1="92" x2={x} y2={y} stroke={s.gaugeNeedle} strokeWidth="4" strokeLinecap="round" />
-        <circle cx="100" cy="92" r="8" fill={s.gaugeNeedle} />
+      <svg viewBox={DSCR_GAUGE_VIEWBOX} style={s.gaugeSvg} aria-label="DSCR gauge">
+        <path d={DSCR_GAUGE_TRACK} fill="none" stroke={s.gaugeTrackStroke} strokeWidth="16" strokeLinecap="round" />
+        {DSCR_GAUGE_BANDS.map((band) => (
+          <path key={band.tone} d={band.path} fill="none" stroke={gaugeBandStroke[band.tone]} strokeWidth="16" strokeLinecap={band.cap} />
+        ))}
+        {/* No needle until there is a coverage figure to point at: at rest it would read as 0.00x. */}
+        {numeric === null ? null : (
+          <line x1={DSCR_GAUGE_HUB.x} y1={DSCR_GAUGE_HUB.y} x2={tip.x} y2={tip.y} stroke={s.gaugeNeedle} strokeWidth="4" strokeLinecap="round" />
+        )}
+        <circle cx={DSCR_GAUGE_HUB.x} cy={DSCR_GAUGE_HUB.y} r="8" fill={s.gaugeNeedle} />
       </svg>
       <strong>{numeric === null ? cc.awaitingEvidence : `${numeric.toFixed(2)}x`}</strong>
       <span>{cc.dscrRange}</span>
@@ -264,8 +269,12 @@ export function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: st
         return (
           <div key={item.label} style={s.miniChartColumn}>
             <div style={s.miniChartBarWrap}>
-              {/* Height is the data; the dim marks "no value at all". */}
-              <div style={{ ...s.miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
+              {/* Height is the size of the figure; the dim marks "no value at all"; a
+                  negative figure is the danger colour, as in the cash flow stack. */}
+              <div
+                style={{ ...s.miniChartBar, ...(value !== null && value < 0 ? { background: s.cashFlowNeg } : null), height: `${height}%`, opacity: value === null ? 0.22 : 1 }}
+                title={value === null ? undefined : formatMoneyCompactLocal(value)}
+              />
             </div>
             <span>{item.label}</span>
           </div>

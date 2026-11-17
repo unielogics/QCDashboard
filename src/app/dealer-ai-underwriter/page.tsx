@@ -24,6 +24,7 @@ import { chatActionStatusText, resolveChatActionTarget } from "@/components/inta
 import { CapitalReadinessSnapshotView } from "@/components/application/CapitalReadinessPanel";
 import { LanguagePickerScreen } from "@/components/intake/LanguagePickerScreen";
 import { CHART_COPY } from "@/components/intake/IntelligenceCharts";
+import { DSCR_GAUGE_BANDS, DSCR_GAUGE_HUB, DSCR_GAUGE_TRACK, DSCR_GAUGE_VIEWBOX, dscrGaugePoint, type DscrTone } from "@/lib/dscrGauge";
 import { dealerCopy, equipmentCopy, getStoredLanguage, resolveCommunicationLanguage, setStoredLanguage, type Lang } from "@/lib/intakeCopy";
 import { readPublicIntakeAttribution, type PublicIntakeAttribution } from "@/lib/publicIntakeAttribution";
 import {
@@ -477,6 +478,21 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
           : missingDocs.length
             ? "Needs baseline"
             : "Ready to review";
+  // The pill's colour says what its words say. It follows the same branches as
+  // the label: a review that failed is not green, and neither is a file that
+  // is still waiting on its first documents.
+  const reviewStatusTone: "ok" | "waiting" | "error" =
+    reviewProgress === "error"
+      ? "error"
+      : reviewProgress !== "idle" && reviewProgress !== "complete"
+        ? "ok"
+        : hasUploading || status.toLowerCase().includes("analyzing")
+          ? "ok"
+          : response?.latest_review?.status
+            ? response.latest_review.status === "failed" ? "error" : "ok"
+            : missingDocs.length
+              ? "waiting"
+              : "ok";
   const bankability = asRecord(response?.latest_review?.result?.bankability_assessment ?? response?.intake.result_snapshot?.bankability_assessment);
   const fundability = fundabilityBanner(currentResult, bankability);
   const intelligence = useMemo(
@@ -1225,7 +1241,10 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
   }
 
   if (mounted && response?.room_pin_setup_required) {
-    return <main className="qc-public-intake-theme"><IntakeRoomPinGate locale={language ?? "en"} onSave={async (pin) => {
+    // The step a returning client meets before the room wears the room's own
+    // ground and brand: light with a white card for equipment, the dealer
+    // room's navy for dealers. It used to be a bare page with neither.
+    return <main className={isEquipment ? "qc-public-intake-theme qc-public-intake-theme--light qc-public-intake-pin-page" : "qc-public-intake-theme qc-public-intake-pin-page qc-public-intake-pin-page--dark"} style={isEquipment ? undefined : (compact ? pageMobile : page)}><header className="qc-public-intake-pin-brand"><div className="qc-public-intake-pin-mark"><QCMark size={30} /><strong>Qualified Commercial</strong></div></header><IntakeRoomPinGate locale={language ?? "en"} onSave={async (pin) => {
       await call<SecureRoomHandoff>(`/public/dealer-ai-intake/${encodeURIComponent(token)}/secure-room`, { method: "POST", body: JSON.stringify({ new_passcode: pin }) });
       setResponse((current) => current ? { ...current, room_pin_setup_required: false } : current);
     }} /></main>;
@@ -1392,14 +1411,19 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
             >
               {compact ? (
                 <header className="qc-public-intake-mobile-header" style={workspaceHeaderMobile}>
-                  <div style={brandGroupMobile}>
-                    <QCMark size={30} />
-                    <div style={{ minWidth: 0 }}>
-                      <div className="qc-public-intake-eyebrow" style={eyebrowMobile}>{isEquipment ? equipmentC.roomEyebrow : "Qualified Commercial AI Funding Review"}</div>
-                      <h1 style={workspaceTitleMobile}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h1>
+                  {/* One row for the brand and the sign-out. Logout used to take a
+                      full-width row of its own above the tabs, on the screen with the
+                      least room to give. */}
+                  <div style={mobileBrandRow}>
+                    <div style={brandGroupMobile}>
+                      <QCMark size={30} />
+                      <div style={{ minWidth: 0 }}>
+                        <div className="qc-public-intake-eyebrow" style={eyebrowMobile}>{isEquipment ? equipmentC.roomEyebrow : "Qualified Commercial AI Funding Review"}</div>
+                        <h1 style={workspaceTitleMobile}>{isEquipment ? equipmentC.roomTitle : "Dealer AI Underwriter"}</h1>
+                      </div>
                     </div>
+                    <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={mobileLogoutButton} onClick={logoutRoom}>Logout</button>
                   </div>
-                  <button type="button" className="qc-public-intake-button qc-public-intake-button--secondary" style={ghostButton} onClick={logoutRoom}>Logout</button>
                   <div style={mobileTabs} aria-label={`${isEquipment ? equipmentC.roomTitle : "Dealer AI room"} sections`}>
                     {(["chat", "files", "intelligence"] as WorkspaceTab[]).map((tab) => (
                       <button
@@ -1450,7 +1474,12 @@ function DealerAIUnderwriterExperience({ experience }: { experience: IntakeExper
                       <p className="qc-public-intake-muted" style={muted}>Ask questions and attach PDFs, images, ZIPs, spreadsheets, or statements directly in chat.</p>
                     </div>
                     <div style={compact ? mobileActionRow : headerActionRow}>
-                      <span className="qc-public-intake-status" style={statusPill}>{reviewStatus}</span>
+                      <span
+                        className={`qc-public-intake-status${reviewStatusTone === "ok" ? "" : ` is-${reviewStatusTone}`}`}
+                        style={reviewStatusTone === "error" ? statusPillError : reviewStatusTone === "waiting" ? statusPillWaiting : statusPill}
+                      >
+                        {reviewStatus}
+                      </span>
                     </div>
                   </div>
                   {showReviewProgress ? <ReviewProgress stage={reviewProgress} completedAt={reviewCompletedAt} compact={compact} /> : null}
@@ -2614,22 +2643,26 @@ function IntelligenceKpi({ metric, emphasis }: { metric: IntelligenceValue; emph
   );
 }
 
+// The dial's geometry and its three bands live in lib/dscrGauge: a half circle
+// read left to right, short below 1.00x, thin to 1.25x, comfortable above.
+const gaugeBandStroke: Record<DscrTone, string> = { bad: "#EF4444", warn: "#F59E0B", good: "#34D399" };
+
 function GaugeChart({ value, language = "en" }: { value: number | null | undefined; language?: Lang }) {
   const cc = CHART_COPY[language];
   const numeric = typeof value === "number" && Number.isFinite(value) ? value : null;
-  const clamped = numeric === null ? 0 : Math.max(0, Math.min(numeric, 3));
-  const angle = -90 + (clamped / 3) * 180;
-  const x = 100 + 70 * Math.cos((angle * Math.PI) / 180);
-  const y = 92 + 70 * Math.sin((angle * Math.PI) / 180);
+  const tip = dscrGaugePoint(numeric);
   return (
     <div style={gaugeWrap}>
-      <svg viewBox="0 0 200 120" style={gaugeSvg} aria-label="DSCR gauge">
-        <path className="qc-public-intake-gauge-track" d="M30 92 A70 70 0 0 1 170 92" fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="16" strokeLinecap="round" />
-        <path d="M30 92 A70 70 0 0 1 73 28" fill="none" stroke="#EF4444" strokeWidth="16" strokeLinecap="round" />
-        <path d="M73 28 A70 70 0 0 1 116 28" fill="none" stroke="#F59E0B" strokeWidth="16" strokeLinecap="round" />
-        <path d="M116 28 A70 70 0 0 1 170 92" fill="none" stroke="#34D399" strokeWidth="16" strokeLinecap="round" />
-        <line className="qc-public-intake-gauge-needle" x1="100" y1="92" x2={x} y2={y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
-        <circle className="qc-public-intake-gauge-hub" cx="100" cy="92" r="8" fill="#F8FAFC" />
+      <svg viewBox={DSCR_GAUGE_VIEWBOX} style={gaugeSvg} aria-label="DSCR gauge">
+        <path className="qc-public-intake-gauge-track" d={DSCR_GAUGE_TRACK} fill="none" stroke="rgba(255,255,255,.10)" strokeWidth="16" strokeLinecap="round" />
+        {DSCR_GAUGE_BANDS.map((band) => (
+          <path key={band.tone} d={band.path} fill="none" stroke={gaugeBandStroke[band.tone]} strokeWidth="16" strokeLinecap={band.cap} />
+        ))}
+        {/* No needle until there is a coverage figure to point at: at rest it would read as 0.00x. */}
+        {numeric === null ? null : (
+          <line className="qc-public-intake-gauge-needle" x1={DSCR_GAUGE_HUB.x} y1={DSCR_GAUGE_HUB.y} x2={tip.x} y2={tip.y} stroke="#F8FAFC" strokeWidth="4" strokeLinecap="round" />
+        )}
+        <circle className="qc-public-intake-gauge-hub" cx={DSCR_GAUGE_HUB.x} cy={DSCR_GAUGE_HUB.y} r="8" fill="#F8FAFC" />
       </svg>
       <strong>{numeric === null ? cc.awaitingEvidence : `${numeric.toFixed(2)}x`}</strong>
       <span>{cc.dscrRange}</span>
@@ -2688,10 +2721,17 @@ function MiniBarChart({ series, emptyLabel }: { series: Array<{ label: string; v
       {series.map((item) => {
         const value = typeof item.value === "number" && Number.isFinite(item.value) ? item.value : null;
         const height = value === null ? 8 : Math.max(12, Math.min(100, (Math.abs(value) / max) * 100));
+        // The bar's height is the size of the figure. A negative one is red, the way the
+        // cash flow stack marks it, instead of standing among the others as if it were income.
+        const negative = value !== null && value < 0;
         return (
           <div key={item.label} style={miniChartColumn}>
             <div style={miniChartBarWrap}>
-              <div className="qc-public-intake-bar" style={{ ...miniChartBar, height: `${height}%`, opacity: value === null ? 0.22 : 1 }} />
+              <div
+                className={`qc-public-intake-bar${negative ? " is-negative" : ""}`}
+                style={{ ...miniChartBar, ...(negative ? miniChartBarNegative : null), height: `${height}%`, opacity: value === null ? 0.22 : 1 }}
+                title={value === null ? undefined : formatMoneyCompact(value)}
+              />
             </div>
             <span>{item.label}</span>
           </div>
@@ -3331,11 +3371,20 @@ const stepOneFormCard: CSSProperties = {
   gap: 15,
   boxShadow: "0 22px 70px rgba(0,0,0,.38)",
 };
-// The business profile block is shared with the console and colours its hint
-// with `--muted`, the grey for white surfaces. On this navy card that grey is
-// too dim to read, so the dealer room hands it the room's own hint colour (the
-// one `fieldHint` uses). The equipment room is light and keeps the grey.
-const stepOneFormCardDealer = { ...stepOneFormCard, "--muted": "#9FB0C8" } as CSSProperties;
+// The business profile block is shared with the console and reads the console's
+// variables: `--muted` for its hint, `--surface`, `--ink` and `--line` for its
+// fields. Left alone on this navy card the hint was too dim to read and its
+// fields were white boxes among the form's own navy ones. The dealer room hands
+// it the room's values: the hint colour `fieldHint` uses and the field colours
+// `input` paints (opaque, so a select's list keeps its light text on navy). The
+// equipment room is light and keeps the console's.
+const stepOneFormCardDealer = {
+  ...stepOneFormCard,
+  "--muted": "#9FB0C8",
+  "--surface": "#172740",
+  "--ink": "#F8FAFC",
+  "--line": "rgba(255,255,255,.16)",
+} as CSSProperties;
 const stepOneFormTitle: CSSProperties = { margin: 0, color: "#F8FAFC", fontFamily: "Georgia, 'Times New Roman', serif", fontSize: 22, letterSpacing: 0 };
 const stepOneFormCopy: CSSProperties = { margin: "6px 0 0", color: "#9DABC0", fontSize: 13, lineHeight: 1.4 };
 const stepOneFormGrid: CSSProperties = { display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(min(100%,150px),1fr))", gap: 10 };
@@ -3521,6 +3570,8 @@ const statusPill: CSSProperties = {
   fontWeight: 900,
   whiteSpace: "nowrap",
 };
+const statusPillWaiting: CSSProperties = { ...statusPill, border: "1px solid rgba(212,175,55,.38)", background: "rgba(212,175,55,.12)", color: "#F6E7A6" };
+const statusPillError: CSSProperties = { ...statusPill, border: "1px solid rgba(239,68,68,.45)", background: "rgba(239,68,68,.14)", color: "#FECACA" };
 const metricPill: CSSProperties = {
   ...statusPill,
   borderColor: "rgba(255,255,255,.12)",
@@ -4021,6 +4072,9 @@ const dropHint: CSSProperties = {
   alignItems: "center",
   justifyContent: "center",
   gap: 6,
+  // In a narrow window the second line wraps: keep it centred and off the edge.
+  padding: 16,
+  textAlign: "center",
   pointerEvents: "none",
   boxShadow: "inset 0 0 0 1px rgba(255,255,255,.06), 0 28px 90px rgba(0,0,0,.36)",
 };
@@ -4105,10 +4159,13 @@ const fileDrawerPanelFull: CSSProperties = {
   maxWidth: 1100,
   justifySelf: "center",
 };
+// On a phone the Files tab is the whole screen. The panel used to stop at 38% of
+// the screen's height, a leftover from when it sat under the chat, and cut its
+// own list off above empty space; and at 100% wide plus the side margins below,
+// its right edge and border ran 12px past the screen.
 const fileDrawerPanelMobile: CSSProperties = {
   ...fileDrawerPanel,
-  height: "auto",
-  maxHeight: "38dvh",
+  width: "auto",
   margin: "0 12px",
   borderRadius: 16,
 };
@@ -4421,6 +4478,10 @@ const kpiCard: CSSProperties = {
   padding: 14,
   display: "grid",
   gap: 8,
+  // Figures line up along the top of a row of tiles. Left to stretch, each
+  // tile spread its lines over its own height and the figures sat at
+  // different levels.
+  alignContent: "start",
   minHeight: 124,
 };
 const kpiCardEmphasis: CSSProperties = {
@@ -4469,6 +4530,7 @@ const miniChart: CSSProperties = { height: 180, display: "grid", gridAutoFlow: "
 const miniChartColumn: CSSProperties = { height: "100%", display: "grid", gridTemplateRows: "1fr auto", gap: 8, justifyItems: "center", minWidth: 0, color: "#8FA0B8", fontSize: 11 };
 const miniChartBarWrap: CSSProperties = { height: "100%", width: "100%", display: "flex", alignItems: "end", justifyContent: "center" };
 const miniChartBar: CSSProperties = { width: "72%", borderRadius: "10px 10px 2px 2px", background: "linear-gradient(180deg,#21D3C7,#D4AF37)" };
+const miniChartBarNegative: CSSProperties = { background: "#EF4444" };
 const chartEmptyState: CSSProperties = {
   border: "1px dashed rgba(255,255,255,.13)",
   borderRadius: 14,
@@ -4505,9 +4567,15 @@ const intelligenceNextStep: CSSProperties = {
   color: "#D9FFFB",
 };
 const fieldWrap: CSSProperties = { display: "grid", gap: 6 };
-const labelStyle: CSSProperties = { color: "#B8C4D6", fontSize: 12, fontWeight: 900, textTransform: "uppercase", letterSpacing: 0 };
+// One label voice down the start form. The form's own labels were small capitals
+// while the business profile block and the PIN fields beside them are sentence
+// case, so the form read as two forms stitched together. The light rooms set
+// this through their theme; the dealer room takes it from here.
+const labelStyle: CSSProperties = { color: "#E2E8F0", fontSize: 13, fontWeight: 600, letterSpacing: 0 };
 const fieldHint: CSSProperties = { color: "#9FB0C8", fontSize: 12, marginTop: -4 };
-const requiredMark: CSSProperties = { color: "#EF4444", marginLeft: 3 };
+// A red that still reads on the navy card (6.4:1; the old #EF4444 was 4.45:1).
+// The light rooms recolour the mark themselves.
+const requiredMark: CSSProperties = { color: "#F87171", marginLeft: 3 };
 const input: CSSProperties = {
   // An <input> carries an intrinsic minimum width from its default `size`
   // attribute — about 20 characters, ~242px with this padding. As a grid or
@@ -4561,6 +4629,8 @@ const secondaryButton: CSSProperties = {
   cursor: "pointer",
 };
 const ghostButton: CSSProperties = { ...secondaryButton, minHeight: 34, fontSize: 13 };
+const mobileBrandRow: CSSProperties = { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, minWidth: 0 };
+const mobileLogoutButton: CSSProperties = { ...ghostButton, flex: "none" };
 const smallGhostButton: CSSProperties = { ...ghostButton, justifySelf: "start", padding: "0 12px", minHeight: 32 };
 const ghostLink: CSSProperties = { ...ghostButton, display: "inline-flex", alignItems: "center", textDecoration: "none" };
 const missingBox: CSSProperties = {
@@ -4596,10 +4666,11 @@ const completeChip: CSSProperties = {
   background: "rgba(33,211,199,.08)",
   color: "#A7F3D0",
 };
-const verifiedSourcePill: CSSProperties = { ...completeChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const extractedSourcePill: CSSProperties = { ...statusPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const estimatedSourcePill: CSSProperties = { ...missingChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
-const unavailableSourcePill: CSSProperties = { ...metricPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase" };
+// `justifySelf: "start"`: in a tile's footer (a grid) the chip is as wide as its word, not the tile.
+const verifiedSourcePill: CSSProperties = { ...completeChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase", justifySelf: "start" };
+const extractedSourcePill: CSSProperties = { ...statusPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase", justifySelf: "start" };
+const estimatedSourcePill: CSSProperties = { ...missingChip, padding: "4px 8px", fontSize: 10, textTransform: "uppercase", justifySelf: "start" };
+const unavailableSourcePill: CSSProperties = { ...metricPill, minHeight: 0, padding: "4px 8px", fontSize: 10, textTransform: "uppercase", justifySelf: "start" };
 const queueRemoveButton: CSSProperties = {
   width: 34,
   height: 34,

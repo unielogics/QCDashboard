@@ -4429,8 +4429,6 @@ select.vm-in {
   .v-gate--institutional .v-gate-opts { grid-template-columns: 1fr; }
   .qc-public-intake-theme--light .qc-public-intake-shell--workspace { padding: 8px !important; }
   .qc-public-intake-theme--light .qc-public-intake-main { border-radius: 12px; overflow: hidden !important; }
-  /* On a phone the Files tab is the whole screen, not a strip that cuts its own list off. */
-  .qc-public-intake-theme--light .qc-public-intake-files { height: 100% !important; max-height: none !important; }
 }
 
 /* ---------- the dealer room's signing step ----------
@@ -4557,6 +4555,7 @@ select.vm-in {
 .qc-public-intake-theme--light .qc-public-intake-dot.qc-public-intake-dot--debt { background: var(--qci-blue) !important; }
 .qc-public-intake-theme--light .qc-public-intake-dot.qc-public-intake-dot--equity { background: var(--qci-green) !important; }
 .qc-public-intake-theme--light .qc-public-intake-bar { border-radius: 6px 6px 2px 2px !important; background: #2f5fb3 !important; }
+.qc-public-intake-theme--light .qc-public-intake-bar.is-negative { background: #b42318 !important; }
 .qc-public-intake-theme--light .qc-public-intake-progress-dot { background: var(--qci-blue) !important; box-shadow: 0 0 0 4px rgba(27, 75, 158, .12) !important; }
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-complete .qc-public-intake-fill,
 .qc-public-intake-theme--light .qc-public-intake-review-progress.is-complete .qc-public-intake-progress-dot { background: var(--qci-green) !important; }
@@ -4581,6 +4580,71 @@ select.vm-in {
   border-color: var(--qci-border-strong) !important;
   background: var(--qci-surface) !important;
   color: var(--qci-muted) !important;
+}
+/* One label voice down the start form: the page's own labels, the address search, the business profile and the PIN. */
+.qc-public-intake-theme--light .qc-public-intake-form label > span:first-child,
+.qc-public-intake-theme--light .qc-public-intake-form .lbl,
+.qc-public-intake-theme--light .qc-public-intake-form fieldset:not(.onb-consent) label {
+  color: var(--qci-ink-2) !important;
+  font-size: 13px !important;
+  font-weight: 650 !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+/* The dark room's glow under a tab has nothing to glow against here. */
+.qc-public-intake-theme--light .qc-public-intake-sidebar-tab { box-shadow: none !important; }
+.qc-public-intake-theme--light .qc-public-intake-resume > div > button {
+  min-height: 44px !important;
+  border: 1px solid var(--qci-border-strong) !important;
+  border-radius: 8px !important;
+  background: var(--qci-surface) !important;
+  color: var(--qci-blue) !important;
+}
+.qc-public-intake-theme--light .qc-public-intake-intelligence--empty > div:nth-child(2) { border-radius: 16px !important; }
+.qc-public-intake-theme--light .qc-public-intake-intelligence--empty h2 { font-size: clamp(24px, 3.2vw, 30px) !important; line-height: 1.15 !important; letter-spacing: -.02em !important; }
+/* The status pill says what its words say: waiting on documents is gold, a failed review is red. */
+.qc-public-intake-theme--light .qc-public-intake-status.is-waiting {
+  border-color: #e4d3a9 !important;
+  background: var(--qci-gold-soft) !important;
+  color: #6f5418 !important;
+}
+.qc-public-intake-theme--light .qc-public-intake-status.is-error {
+  border-color: #e8b8b8 !important;
+  background: #fff1f1 !important;
+  color: #8f2020 !important;
+}
+
+/* ---------- the PIN step a returning client meets before the room ----------
+   Every room shows it on its own ground with its own brand above the form: a
+   white card in the light rooms, the navy card in the dealer room. */
+.qc-public-intake-pin-brand { width: min(620px, 100%); margin: 0 auto; padding: 26px 0 0; }
+.qc-public-intake-pin-mark { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; }
+.qc-public-intake-theme--light.qc-public-intake-pin-page { padding: 0 24px 28px; }
+.qc-public-intake-theme--light.qc-public-intake-pin-page form {
+  margin-top: 22px;
+  padding: 28px;
+  border: 1px solid var(--qci-border);
+  border-radius: 12px;
+  background: var(--qci-surface);
+  box-shadow: 0 12px 34px rgba(21, 60, 126, .08);
+}
+.qc-public-intake-theme--light.qc-public-intake-pin-page form > p { color: var(--qci-muted); }
+.qc-public-intake-theme--light.qc-public-intake-pin-page form > button { background: var(--qci-blue); }
+.qc-public-intake-pin-page--dark form {
+  margin-top: 22px;
+  padding: 28px;
+  border: 1px solid rgba(212, 175, 55, .38);
+  border-radius: 20px;
+  background: rgba(12, 29, 55, .94);
+  box-shadow: 0 22px 70px rgba(0, 0, 0, .38);
+}
+.qc-public-intake-pin-page--dark form > h1 { color: #f8fafc; }
+.qc-public-intake-pin-page--dark form > p { color: #b8c4d6; }
+.qc-public-intake-pin-page--dark form > button { background: linear-gradient(135deg, #f2e58f, #d8b533); color: #081122; }
+@media (max-width: 720px) {
+  .qc-public-intake-theme--light.qc-public-intake-pin-page { padding: 0 14px 22px !important; }
+  .qc-public-intake-theme--light.qc-public-intake-pin-page form,
+  .qc-public-intake-pin-page--dark form { padding: 20px 16px; }
 }
 
 /* ---------- a light intake room in the client room's chrome ----------
@@ -4610,47 +4674,10 @@ select.vm-in {
 .qc-public-intake-theme--room .application-room-footer { margin-top: 6px; }
 /* The eyebrow is a line of text here, as it is in the room, not a tinted band. */
 .qc-public-intake-theme--room .qc-public-intake-heading > div > div:first-child { border: 0 !important; background: transparent !important; }
-/* One label voice down the start form: the page's own labels, the address search, the business profile and the PIN. */
-.qc-public-intake-theme--room .qc-public-intake-form label > span:first-child,
-.qc-public-intake-theme--room .qc-public-intake-form .lbl,
-.qc-public-intake-theme--room .qc-public-intake-form fieldset:not(.onb-consent) label {
-  color: var(--qci-ink-2) !important;
-  font-size: 13px !important;
-  font-weight: 650 !important;
-  letter-spacing: 0 !important;
-  text-transform: none !important;
-}
-.qc-public-intake-theme--room .qc-public-intake-kpi { align-content: start !important; }
-.qc-public-intake-theme--room .qc-public-intake-kpi .qc-public-intake-chip { justify-self: start; }
-.qc-public-intake-theme--room .qc-public-intake-sidebar-tab { box-shadow: none !important; }
-.qc-public-intake-theme--room .qc-public-intake-resume > div > button {
-  min-height: 44px !important;
-  border: 1px solid var(--qci-border-strong) !important;
-  border-radius: 8px !important;
-  background: var(--qci-surface) !important;
-  color: var(--qci-blue) !important;
-}
-.qc-public-intake-theme--room .qc-public-intake-intelligence--empty > div:nth-child(2) { border-radius: 16px !important; }
-.qc-public-intake-theme--room .qc-public-intake-intelligence--empty h2 { font-size: clamp(24px, 3.2vw, 30px) !important; line-height: 1.15 !important; letter-spacing: -.02em !important; }
-/* The step a returning client meets before the room: the same brand, the PIN form as a card. */
-.qc-public-intake-theme--room.qc-public-intake-pin-page { padding: 0 24px 28px; }
-.qc-public-intake-theme--room .qc-public-intake-pin-brand { width: min(620px, 100%); margin: 0 auto; padding: 26px 0 0; }
-.qc-public-intake-theme--room.qc-public-intake-pin-page form {
-  margin-top: 22px;
-  padding: 28px;
-  border: 1px solid var(--qci-border);
-  border-radius: 12px;
-  background: var(--qci-surface);
-  box-shadow: 0 12px 34px rgba(21, 60, 126, .08);
-}
-.qc-public-intake-theme--room.qc-public-intake-pin-page form > p { color: var(--qci-muted); }
-.qc-public-intake-theme--room.qc-public-intake-pin-page form > button { background: var(--qci-blue); }
 @media (min-width: 721px) {
   .qc-public-intake-theme--room .qc-public-intake-shell--workspace { grid-template-columns: 252px minmax(0, 1fr) !important; }
 }
 @media (max-width: 720px) {
-  .qc-public-intake-theme--room.qc-public-intake-pin-page { padding: 0 14px 22px !important; }
-  .qc-public-intake-theme--room.qc-public-intake-pin-page form { padding: 20px 16px; }
   .qc-public-intake-theme--room .application-room-footer { flex-direction: column; gap: 6px; }
 }
 /* ---------- secure application bank verification ---------- */

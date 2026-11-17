@@ -26,7 +26,9 @@ describe("business details in the Contact card", () => {
 
   it("keeps missing legacy answers distinct from an explicit no-website answer", () => {
     const empty = renderToStaticMarkup(createElement(BusinessContactDetails, { values: {} }));
-    expect(empty.match(/Not provided/g)).toHaveLength(3);
+    // Phone, employees, address, industry and website: the card gained the first two after this test was written.
+    for (const label of ["Business phone", "Number of employees", "Business address", "Declared industry"]) expect(empty).toContain(label);
+    expect(empty.match(/Not provided/g)).toHaveLength(5);
     const none = renderToStaticMarkup(createElement(BusinessContactDetails, { values: { business_website_none: true } }));
     expect(none).toContain("None (N/A)");
     expect(none).not.toContain("href=");

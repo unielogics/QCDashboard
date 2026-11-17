@@ -14,7 +14,11 @@ describe("required business profile fields", () => {
     expect(html).not.toContain('value="other" selected=""');
     expect(html).toContain("Select industry");
     expect(html).toContain("NAICS classification");
-    expect(html.match(/required=""/g)).toHaveLength(7);
+    // Phone and employee count joined the required answers after this test was written.
+    expect(html).toContain("Business phone");
+    expect(html).toContain("Number of employees");
+    // Phone, employees, street, city, state, ZIP, industry, website, description.
+    expect(html.match(/required=""/g)).toHaveLength(9);
     expect(html).toContain('maxLength="1000"');
   });
 
@@ -30,7 +34,8 @@ describe("required business profile fields", () => {
 
   it("adds only the missing address and industry controls to existing public forms", () => {
     const html = renderToStaticMarkup(createElement(BusinessProfileFields, { value: emptyBusinessProfile(), includeWebsiteDescription: false, onChange: () => {} }));
-    expect(html.match(/required=""/g)).toHaveLength(5);
+    // The same nine without the website and the description.
+    expect(html.match(/required=""/g)).toHaveLength(7);
     expect(html).not.toContain("<textarea");
     expect(html).not.toContain('autoComplete="section-business url"');
   });

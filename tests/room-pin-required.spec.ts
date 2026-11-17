@@ -18,6 +18,8 @@ test.beforeAll(async () => {
     "@/hooks/useApi": "export const useAuthedApi=()=>window.fixtureApi;export const useCurrentUser=()=>({data:{role:'client',ui_locale:'en'}});",
     "@clerk/nextjs": "export const useAuth=()=>({getToken:async()=>'fictional-token'});",
     "@/lib/businessProfile": "export const DESCRIPTION_MAX=1200;export const emptyBusinessProfile=()=>({});export const newBusinessProfileProblem=()=>null;export const newBusinessProfileBody=()=>({});",
+    // The start forms will not send without an employee count, so the stand-in keeps that one field.
+    "@/components/intake/BusinessProfileFields": "export const BusinessProfileFields=({value,onChange})=><label>Number of employees<input type='number' value={value.employee_count??''} onChange={event=>onChange({employee_count:event.target.value})} /></label>;",
     "@/components/property/GoogleAddressInput": "export const AddressInput=()=>null;export const formatAddressParts=()=>'';",
     "@/components/ds": "export const Btn=({children,onClick,disabled})=><button onClick={onClick} disabled={disabled}>{children}</button>;export const Panel=({children,title})=><section><h1>{title}</h1>{children}</section>;export const StatusLine=({children})=><div>{children}</div>;export const PageHeader=()=>null;export const Field=({children,label})=><label>{label}{children}</label>;export const Input=props=><input {...props}/>;",
     "@/components/application/Pfs413Form": "export const Pfs413Form=({value,onChange})=>{window.formMounted=true;return <div>Fictional financial statement editor<label>Existing draft owner<input value={value.owner_name||''} onChange={event=>onChange({...value,owner_name:event.target.value})}/></label></div>};",
@@ -49,7 +51,7 @@ test.beforeAll(async () => {
       else if(pathname.endsWith('/features'))data={precall:null};
       else if(pathname.includes('/buckets/request/'))data=minimal;
       else if(pathname.endsWith('/start')){status=422;data={detail:'Fictional start request reached the server'}}
-      else if(pathname.endsWith('/sms-disclosure')){status=503;data={detail:'No optional text disclosures in fixture'}}
+      else if(pathname.endsWith('/sms-disclosure'))data={version:'fixture-1',brand:'Fictional lender',transactional:'Fictional consent to application texts.',marketing:'Fictional consent to offers by text.',legal:'',terms_url:'/terms',privacy_url:'/privacy',support_email:'support@example.test'};
       return new Response(JSON.stringify(data),{status,headers:{'Content-Type':'application/json'}});
     };
     const route=location.pathname;const Component=route.includes('buckets/request')?Room:route.includes('financial-forms')?Pfs:route.includes('funding-review')?RealEstate:route.includes('mca-refinance')?Mca:Dealer;createRoot(document.getElementById('root')).render(<Component/>);
@@ -113,7 +115,16 @@ for (const pathname of ["dealer-ai-underwriter", "funding-review", "mca-refinanc
   await page.getByLabel("Mobile number", { exact: false }).fill("+13055550123");
   await page.getByLabel("Business website", { exact: false }).fill("https://business.example.test");
   await page.getByLabel("What does your business do?", { exact: false }).fill("Fictional operating business for a transport-only test.");
-  await page.getByRole("checkbox").first().check();
+  // What every start form asks for besides the PIN: an employee count and the three
+  // consents (terms, application emails, application texts; the fourth box is optional).
+  // The text consents appear once the disclosure has loaded.
+  await page.getByLabel("Number of employees", { exact: false }).fill("12");
+  await expect(page.getByText("Fictional consent to application texts.")).toBeVisible();
+  for (const box of await page.getByRole("checkbox").all()) await box.check();
+  if (pathname === "funding-review") {
+    await page.getByLabel("Who uses the property?", { exact: false }).selectOption("investment");
+    await page.getByLabel("What is the loan for?", { exact: false }).selectOption("yes");
+  }
   if (pathname === "mca-refinance-intake") {
     await page.getByLabel("Number of active MCAs", { exact: false }).fill("2");
     await page.getByLabel("Years in business", { exact: false }).fill("3");
