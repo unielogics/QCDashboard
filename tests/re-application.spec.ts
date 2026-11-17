@@ -163,8 +163,10 @@ async function answer(page: Page, view: View, key: string) {
   const spec = specFor(view, key);
   const id = dashed(key);
   if (spec.type === "select") await page.locator(id).selectOption({ index: 1 });
-  else if (spec.type === "yesno") await page.locator(`[role="radiogroup"][aria-labelledby="${id.slice(1)}"]`).getByLabel(key.endsWith("business_purpose") ? "Yes" : "No").check();
-  else if (spec.type === "multiselect") await page.locator(`[role="group"][aria-labelledby="${id.slice(1)}"] input[type="checkbox"]`).first().check();
+  // A click, not check(): the answer is saved at once, and the page may move on (a save, or the code gate
+  // when the session has ended) before a "stays checked" wait could be satisfied.
+  else if (spec.type === "yesno") await page.locator(`[role="radiogroup"][aria-labelledby="${id.slice(1)}"]`).getByLabel(key.endsWith("business_purpose") ? "Yes" : "No").click();
+  else if (spec.type === "multiselect") await page.locator(`[role="group"][aria-labelledby="${id.slice(1)}"] input[type="checkbox"]`).first().click();
   // Blur rather than Tab: Tab inside a date input moves between its month, day and year.
   else { await page.locator(id).fill(SAMPLE[spec.type] ?? "Sample"); await page.locator(id).blur(); }
 }
