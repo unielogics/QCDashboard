@@ -422,7 +422,11 @@
 /* Capital Readiness is financial preparedness, not evidence completion or a
    lending decision. The visual deliberately keeps the score, coverage and
    review state together so none can be read in isolation. */
-.capital-readiness-card { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius, 12px); background: var(--surface); box-shadow: var(--shadow-sm, none); }
+/* The card paints its own surface, so it carries its own ink -- the `.panel`
+   rule's reason. In the console it inherits `var(--ink)` anyway and this
+   changes nothing; in the dark dealer room it inherited the page's near-white
+   and every title and figure on the white card was white on white. */
+.capital-readiness-card { display: grid; gap: 16px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius, 12px); background: var(--surface); color: var(--ink); box-shadow: var(--shadow-sm, none); }
 .capital-readiness-card h3, .capital-readiness-card h4, .capital-readiness-card p { margin: 0; }
 .capital-readiness-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; }
 .capital-readiness-head h3 { margin-top: 4px; font-size: 20px; }

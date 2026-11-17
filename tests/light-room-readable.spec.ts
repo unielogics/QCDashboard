@@ -9,8 +9,9 @@ import path from "node:path";
 // class the page gives it. A piece without its class keeps its dark-room colour
 // and disappears on white, and nothing else in the suite would notice. This
 // opens the real pages with the real stylesheets and a made-up reviewed file,
-// and reads every piece of text against what is painted behind it. The signing
-// step is read the same way in the dealer room as well.
+// and reads every piece of text against what is painted behind it. The dealer
+// room's signing step, readiness card and document signing panel are read the
+// same way: they are white surfaces on its black.
 const ORIGIN = "https://light-room.test";
 let script: Buffer, css: Buffer;
 
@@ -111,7 +112,36 @@ const signing = {
     ],
   },
 };
-const rooms: Record<string, unknown> = { "fixture-reviewed": reviewed, "fixture-signing": signing };
+// A file with a reviewed capital readiness snapshot, and a document to sign in the room.
+const readiness = {
+  id: "s1", profile_id: "p1", snapshot_version: 3, policy_key: "main_street", policy_version: 2, formula_version: "score_v2", evidence_fingerprint: "f".repeat(16),
+  as_of: "2026-11-15T15:30:00Z", communication_locale: "en", display_locale: "en", review_status: "confirmed", score: 68, band: "three_to_six_months",
+  evidence_coverage_pct: 72, confidence_pct: 64,
+  pillars: [
+    { key: "revenue_earnings", label: "Revenue and earnings quality", weight: 25, score: 74, coverage_pct: 80, status: "acceptable" },
+    { key: "liquidity_banking", label: "Liquidity and banking behavior", weight: 20, score: 82, coverage_pct: 90, status: "healthy" },
+    { key: "bookkeeping_tax_integrity", label: "Bookkeeping and tax integrity", weight: 15, score: null, coverage_pct: 20, status: "unavailable" },
+  ],
+  metrics: [
+    { key: "gross_margin_pct", label: "Gross margin", value: 41.5, unit: "pct", status: "healthy", confidence_pct: 70 },
+    { key: "current_dscr", label: "Current DSCR", value: 1.32, unit: "ratio", status: "acceptable", confidence_pct: 65 },
+    { key: "average_daily_balance", label: "Average daily balance", value: 48200, unit: "usd", status: "healthy", confidence_pct: 85 },
+    { key: "cash_runway_days", label: "Cash runway", value: 22, unit: "days", status: "concerning", confidence_pct: 60 },
+  ],
+  strengths: [{ key: "s1", title: "Steady deposits", detail: "Deposits held within ten percent across six months." }],
+  blockers: [{ key: "b1", title: "Tax return not on file", detail: "Annual revenue cannot be verified without it.", severity: "high" }],
+  phases: [
+    { key: "baseline_health_check", label: "Baseline health check", status: "completed", actions: [] },
+    { key: "financial_restructuring", label: "Financial restructuring", status: "in_progress", actions: [{ id: "a1", action_key: "file_tax_return", title: "Upload the latest business tax return", detail: "The return verifies annual revenue.", status: "open", phase_key: "financial_restructuring" }] },
+  ],
+  program_opportunities: [{ program_key: "equipment_term", program_name: "Equipment term loan", status: "needs_evidence", detail: "A fit once the tax return is on file.", evidence_gaps: ["Business tax return"] }],
+  source_manifest: [], material_change: null, created_at: "2026-11-15T15:30:00Z", reviewed_at: "2026-11-15T16:00:00Z",
+};
+const withReadiness = {
+  ...reviewed, token: "fixture-readiness", capital_readiness: readiness,
+  requested_documents: [...reviewed.requested_documents, { id: "d6", name: "Bank statement release authorization", category: "Banking", required: true, status: "requested", requires_signature: true, signature_kind: "document", signature_document_text: "I authorize Qualified Commercial to request copies of the business bank statements named in my file. This authorization stays in effect for ninety days." }],
+};
+const rooms: Record<string, unknown> = { "fixture-reviewed": reviewed, "fixture-signing": signing, "fixture-readiness": withReadiness };
 
 async function open(page: Page, address: string) {
   await page.route(`${ORIGIN}/**`, (route) => {
@@ -148,6 +178,13 @@ function unreadable(page: Page) {
         if (fill && fill.a > 0) ground = over(fill, ground);
         const stops = [...painted.backgroundImage.matchAll(/rgba?\([^)]+\)/g)].map((match) => parse(match[0])!);
         if (stops.length) ground = over({ r: stops.reduce((sum, c) => sum + c.r, 0) / stops.length, g: stops.reduce((sum, c) => sum + c.g, 0) / stops.length, b: stops.reduce((sum, c) => sum + c.b, 0) / stops.length, a: stops.reduce((sum, c) => sum + c.a, 0) / stops.length }, ground);
+        // A positioned ::before that paints a surface under the text (the readiness score's
+        // white centre inside its ring) is what the text actually sits on.
+        const before = getComputedStyle(node, "::before"), cover = parse(before.backgroundColor);
+        if (before.content !== "none" && before.position === "absolute" && cover && cover.a > 0) {
+          const outer = node.getBoundingClientRect();
+          if (box.top >= outer.top + parseFloat(before.top) && box.left >= outer.left + parseFloat(before.left) && box.bottom <= outer.bottom - parseFloat(before.bottom) && box.right <= outer.right - parseFloat(before.right)) ground = over(cover, ground);
+        }
         opacity *= Number(painted.opacity);
       }
       const ink = parse(style.color); if (!ink) continue;
@@ -177,6 +214,25 @@ for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["fu
       await expect(page.locator([".qc-public-intake-chat", ".qc-public-intake-files", ".qc-public-intake-intelligence"][index]).first()).toBeVisible();
       expect(await unreadable(page), `tab ${index + 1}`).toEqual([]);
     }
+  });
+}
+
+// Two white surfaces inside the rooms -- the capital readiness card in the
+// cockpit and the panel that opens to sign a requested document -- paint their
+// own background. In the dark dealer room they inherited the page's near-white
+// text, so they have to carry their own ink. Read in all three rooms.
+for (const [label, route] of [["equipment", "/equipment-financing-intake"], ["funding review", "/funding-review"], ["dealer", "/dealer-ai-underwriter"]] as const) {
+  test(`${label} room: the readiness card and the document signing panel can be read`, async ({ page }) => {
+    await open(page, `${route}?token=fixture-readiness`);
+    await expect(page.getByText("Two CNC mills with installation.")).toBeVisible();
+    const tabs = page.locator(".qc-public-intake-sidebar-tab, .qc-public-intake-mobile-tab");
+    await tabs.nth(1).click();
+    await page.getByRole("button", { name: /^Sign: Bank statement release authorization/ }).click();
+    await expect(page.getByText("I authorize Qualified Commercial to request copies")).toBeVisible();
+    expect(await unreadable(page), "files, signing panel open").toEqual([]);
+    await tabs.nth(2).click();
+    await expect(page.locator(".capital-readiness-card")).toBeVisible();
+    expect(await unreadable(page), "cockpit with the readiness card").toEqual([]);
   });
 }
 

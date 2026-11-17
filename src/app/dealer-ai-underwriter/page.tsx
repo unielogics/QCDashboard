@@ -2333,7 +2333,7 @@ function FileDrawerPanel({
             const signingDoc = response.requested_documents.find((doc) => doc.id === signingDocId);
             if (!signingDoc) return null;
             return (
-              <div style={{ marginTop: 10, border: "1px solid #d1d5db", borderRadius: 12, padding: 14, background: "#fff" }}>
+              <div style={{ marginTop: 10, border: "1px solid #d1d5db", borderRadius: 12, padding: 14, background: "#fff", color: "#0f1720" }}>
                 <SignRequestedDocument
                   doc={signingDoc}
                   busy={Boolean(signBusy)}
