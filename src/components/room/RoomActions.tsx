@@ -575,6 +575,24 @@ export function RoomActions({
     setSigning(target);
   }, [features, focusRequestId]);
 
+  // The real-estate application is filled and signed on its own page; the
+  // room's PIN already identified the client, so it opens without a code.
+  async function openSignedForm() {
+    setSignError(null);
+    try {
+      const res = await fetch(`${apiBase}/api/v1/application-profiles/public/room/${token}/forms/re_application/open`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode }),
+      });
+      if (!res.ok) throw new Error("The application could not be opened. Try again.");
+      const body = (await res.json()) as { url: string };
+      window.location.assign(body.url);
+    } catch (e) {
+      setSignError(e instanceof Error ? e.message : "The application could not be opened.");
+    }
+  }
+
   async function sign(payload: SignRequestedDocumentPayload) {
     setSignBusy(true);
     setSignError(null);
@@ -703,15 +721,21 @@ export function RoomActions({
             {pending.map((d) => (
               <div key={d.id} className="filerow">
                 <b className="grow">{d.name}</b>
-                <Btn
-                  variant="pri"
-                  onClick={() => {
-                    setSigning(d);
-                    setSignError(null);
-                  }}
-                >
-                  Review and sign
-                </Btn>
+                {d.kind === "signed_form" ? (
+                  <Btn variant="pri" onClick={() => void openSignedForm()}>
+                    Complete and sign
+                  </Btn>
+                ) : (
+                  <Btn
+                    variant="pri"
+                    onClick={() => {
+                      setSigning(d);
+                      setSignError(null);
+                    }}
+                  >
+                    Review and sign
+                  </Btn>
+                )}
               </div>
             ))}
             {signed.map((d) => (

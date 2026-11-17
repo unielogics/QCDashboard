@@ -7407,3 +7407,41 @@ textarea.vm-in { min-height: 88px; resize: vertical; line-height: 1.45; }
 .fin-cockpit .fc-card { gap: 7px; padding: 10px 12px; box-shadow: none; }
 .fc-evidence-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr)); align-items: start; gap: 6px; }
 .fc-evidence-columns > div { display: grid; gap: 6px; min-width: 0; }
+
+/* ---- real-estate loan application (src/components/application/ReApplicationForm.tsx) ----
+   The borrower's form tokens (fp-*) with a few application pieces: a progress
+   bar, "please check" chips on values the AI suggested, and folded lists of
+   answers already on file. Everything sizes to its container (auto-fit grids,
+   wrapping rows) because the same form opens in the desk's narrow drawer. */
+.ra-title { margin: 0 0 14px; font-size: 22px; font-weight: 650; color: var(--fp-ink, #101828); overflow-wrap: anywhere; }
+.ra-form { display: grid; gap: 14px; padding-bottom: 96px; }
+.ra-progress { display: grid; gap: 8px; }
+.ra-progress-row { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; }
+.ra-bar { height: 6px; border-radius: 999px; background: var(--fp-line, #e4e7ec); overflow: hidden; }
+.ra-bar > span { display: block; height: 100%; background: var(--fp-accent, #173b7a); border-radius: inherit; transition: width 200ms ease; }
+.ra-section { display: grid; gap: 12px; }
+.ra-section-title { margin: 0; font-size: 15px; font-weight: 650; color: var(--fp-ink, #101828); }
+.ra-label { font-size: 12.5px; font-weight: 550; color: var(--fp-muted); }
+.ra-checks, .ra-yesno { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+.ra-check { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; color: var(--fp-ink, #101828); }
+.ra-check input { width: 16px; height: 16px; }
+.ra-check-field { display: grid; gap: 6px; padding: 8px; border-radius: var(--fp-r-sm, 8px); background: #fff8e6; border: 1px solid #f3d9a4; }
+.ra-check-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.ra-chip { display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 999px; background: var(--fp-accent-soft, #eef2f8); color: var(--fp-accent, #173b7a); font-size: 11.5px; font-weight: 550; overflow-wrap: anywhere; }
+.ra-chip-check { background: #fdf0d5; color: #8a5a00; }
+.ra-coborrower { padding-top: 12px; padding-bottom: 12px; }
+.ra-answered > summary, .ra-optional > summary { cursor: pointer; font-weight: 600; color: var(--fp-accent, #173b7a); }
+.ra-answered-group { display: grid; gap: 8px; margin-top: 12px; }
+.ra-answered-group h3 { margin: 0; font-size: 13px; font-weight: 650; color: var(--fp-muted); text-transform: none; }
+.ra-answered-group dl, .ra-review { margin: 0; display: grid; gap: 0; }
+.ra-answered-row { display: grid; grid-template-columns: minmax(140px, 0.9fr) minmax(0, 1.4fr); gap: 4px 14px; padding: 7px 0; border-bottom: 1px solid var(--fp-line, #e4e7ec); }
+.ra-answered-row dt { font-size: 13px; color: var(--fp-muted); }
+.ra-answered-row dd { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; font-size: 14px; overflow-wrap: anywhere; min-width: 0; }
+.ra-warnings { border-left: 3px solid #c99618; }
+.ra-warnings ul { margin: 6px 0 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; }
+.ra-gate { max-width: 460px; display: grid; gap: 14px; }
+.ra-gate h1 { margin: 0; font-size: 20px; }
+.ra-gate-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-top: 4px; }
+@media (max-width: 560px) { .ra-answered-row { grid-template-columns: minmax(0, 1fr); } }
+.ra-consent { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; font-size: 13.5px; line-height: 1.5; color: var(--fp-ink, #101828); padding: 8px 0; border-bottom: 1px solid var(--fp-line, #e4e7ec); }
+.ra-consent input { margin-top: 3px; width: 16px; height: 16px; }

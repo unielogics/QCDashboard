@@ -76,6 +76,7 @@ import { BookingPageSettingsSection } from "@/components/settings/BookingPageSet
 import { ClientAccessSection } from "@/components/settings/ClientAccessSection";
 import { FundingProgramsSection } from "@/components/settings/FundingProgramsSection";
 import { CreditLinkingSection } from "@/components/settings/CreditLinkingSection";
+import { SignedFormsApprovalSection } from "@/components/settings/SignedFormsApprovalSection";
 import { ChatgptProductFeedSection } from "@/components/settings/ChatgptProductFeedSection";
 import { canManageChatgptFeed } from "@/lib/chatgptProductFeed";
 import { usePinnedRows } from "@/lib/tablePinning";
@@ -92,6 +93,7 @@ const SECTIONS = [
   { id: "chatgpt_product_feed", label: "ChatGPT product feed", icon: "link" as const, hidden: false },
   { id: "file_updates", label: "File updates", icon: "bell" as const, hidden: false },
   { id: "credit_linking", label: "Credit pulls", icon: "shield" as const, hidden: false },
+  { id: "signed_forms", label: "Signed forms", icon: "doc" as const, hidden: false },
   { id: "referrals", label: "Referrals", icon: "user" as const, hidden: false },
   { id: "pricing", label: "Pricing", icon: "rates" as const, hidden: false },
   { id: "simulator", label: "Simulator", icon: "calc" as const, hidden: false },
@@ -449,6 +451,8 @@ export default function SettingsPage() {
         {section === "chatgpt_product_feed" ? <ChatgptProductFeedSection /> : null}
         {section === "credit_linking" && canEdit ? <CreditLinkingSection /> : null}
         {section === "credit_linking" && !canEdit ? <WarnLine>Super-admin access is required to decide how credit pulls link to owners.</WarnLine> : null}
+        {section === "signed_forms" && canEdit ? <SignedFormsApprovalSection /> : null}
+        {section === "signed_forms" && !canEdit ? <WarnLine>Super-admin access is required to record the signing approval.</WarnLine> : null}
 
         {section === "checklists" && (
           <ChecklistsSection

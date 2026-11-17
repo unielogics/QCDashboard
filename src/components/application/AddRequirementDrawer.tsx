@@ -206,11 +206,12 @@ export function AddRequirementDrawer({
   );
 }
 
-function formHint(kind: FormKind): string {
+function formHint(kind: FormKind | string): string {
   return ({
     debt_schedule: "The client can fill this in online from a link, or upload a file. A file we read becomes a table you can complete.",
     pfs: "The client can fill in the personal financial statement online from a link, or upload their own.",
     p_and_l: "The client can fill in the profit and loss online from a link, or upload their own.",
     balance_sheet: "The client can fill in the balance sheet online from a link, or upload their own.",
-  } as Record<FormKind, string>)[kind];
+    re_application: "The client completes and signs the real estate loan application online. What the file already knows is filled in for them.",
+  } as Record<string, string>)[kind] ?? "";
 }

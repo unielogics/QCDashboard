@@ -38,6 +38,7 @@ import { CommunicationUnreadBadge, CommunicationUnreadBar } from "@/components/c
 import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft } from "@/components/file/BusinessContactDetails";
 import { PersonalUseReviewBanner, type PersonalUseDecision } from "@/components/file/PersonalUseReviewBanner";
+import { ReApplicationPanel } from "@/components/file/ReApplicationPanel";
 import type { OfferDeliveryReceipt, OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
 import { FundingPackageWorkspace, type FundingPackageTab, type PackagePreparation } from "./FundingPackageWorkspace";
@@ -758,6 +759,7 @@ export function LeadDetailPanel({
   // read from `underwriting`, which only fills once the Underwriting tab has
   // been visited and its state has loaded.
   const [profileId, setProfileId] = useState<string | null>(null);
+  const [applicationOpen, setApplicationOpen] = useState(false);
   const [workingFinancing, setWorkingFinancing] = useState<WorkingFinancing | null>(null);
   const [financingRefreshRevision, setFinancingRefreshRevision] = useState(0);
   const [marketplacePublication, setMarketplacePublication] = useState<MarketplacePublicationState | null>(null);
@@ -1906,6 +1908,7 @@ export function LeadDetailPanel({
         <input ref={headerUploadRef} type="file" hidden multiple accept=".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic" onChange={(event) => void uploadFromHeader(Array.from(event.target.files ?? []))} />
         {detail ? <ActionIcon icon="upload" tone={submissionStep === 2 ? "pri" : "default"} busy={headerUploading} label={headerUploading ? "Uploading..." : "Add evidence: upload files from this computer"} disabled={headerUploading || !cockpitAdapter} onClick={() => headerUploadRef.current?.click()} /> : null}
         {detail ? <ActionIcon icon="send" label="Request a document from the client" onClick={openDocumentRequest} /> : null}
+        {detail && canUnderwrite && isRealEstate && profileId ? <ActionIcon icon="doc" label="Real estate loan application" onClick={() => setApplicationOpen(true)} /> : null}
         {detail && canUnderwrite ? <ActionIcon icon="bell" label="Choose who is notified about this file" onClick={() => setNotificationRoutingOpen(true)} /> : null}
         {detail && canUnderwrite ? (
           <Select
@@ -1963,6 +1966,7 @@ export function LeadDetailPanel({
       </div> : null}
       {mcaAutoReviewBlocked && mcaReview ? <Callout tone="warn"><strong>{mcaReview.title}</strong><p className="m-0">{mcaReview.description}</p></Callout> : null}
       {canUnderwrite ? <PersonalUseReviewBanner review={detail?.intake.personal_use_review} onDecide={onDecidePersonalUse} /> : null}
+      {canUnderwrite && profileId && applicationOpen ? <ReApplicationPanel profileId={profileId} open={applicationOpen} onClose={() => setApplicationOpen(false)} /> : null}
       {detail && (refreshing || detail.derived_pending) ? <div className="sub" role="status" style={{ padding: "8px 16px" }}>{refreshing ? "Refreshing file details… " : "File details are ready. "}Current financial calculations and package checks load in their workspace.</div> : null}
       {loading || !detail ? loading ? <PreparationProgress title="Opening file" description="Loading the application, linked evidence and financial workspace." /> : null : (
         <>

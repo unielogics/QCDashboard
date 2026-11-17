@@ -307,6 +307,23 @@ export default function DealerAIUnderwriterPage() {
   const [roomBusy, setRoomBusy] = useState(false);
   const [roomNotice, setRoomNotice] = useState("");
   const [signingDocId, setSigningDocId] = useState<string | null>(null);
+  // The real-estate application signs on its own page; the room's session
+  // carries over, so the client does not type a code again.
+  useEffect(() => {
+    if (!signingDocId || !response || !token) return;
+    const doc = response.requested_documents.find((item) => item.id === signingDocId);
+    if (doc?.signature_kind !== "signed_form") return;
+    setSigningDocId(null);
+    void (async () => {
+      try {
+        const reply = await call<{ url: string }>(`/public/funding-review/${token}/forms/re_application/open`, { method: "POST" });
+        window.location.assign(reply.url);
+      } catch (error) {
+        setStatus(error instanceof Error ? error.message : "The application could not be opened.");
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signingDocId, response, token]);
   const [signBusy, setSignBusy] = useState(false);
   const [signError, setSignError] = useState<string | null>(null);
   const [activeWorkspace, setActiveWorkspace] = useState<WorkspaceTab>("chat");
