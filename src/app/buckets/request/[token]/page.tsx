@@ -115,6 +115,7 @@ export default function BucketRequestPage() {
   const [structuredPending, setStructuredPending] = useState(0);
   const [hasApplication, setHasApplication] = useState(false);
   const [hasMcaReview, setHasMcaReview] = useState(false);
+  const [reviewKind, setReviewKind] = useState<"mca" | "business">("mca");
   const [hasMcaAgreements, setHasMcaAgreements] = useState(false);
   const [hasMcaPayments, setHasMcaPayments] = useState(false);
 
@@ -268,6 +269,7 @@ export default function BucketRequestPage() {
     hasTimeline: boolean;
     hasApplication: boolean;
     hasMcaReview: boolean;
+    reviewKind: "mca" | "business";
     hasAgreements: boolean;
   }> {
     const empty = {
@@ -277,6 +279,7 @@ export default function BucketRequestPage() {
       hasTimeline: false,
       hasApplication: false,
       hasMcaReview: false,
+      reviewKind: "mca" as const,
       hasAgreements: false,
     };
     if (roomKind === "basic") return empty;
@@ -299,8 +302,10 @@ export default function BucketRequestPage() {
         signable?: unknown[]; contracts?: unknown[]; envelopes?: unknown[];
       };
       const hasApplication = state.capabilities?.includes("application") ?? false;
-      const hasMcaReview = state.capabilities?.includes("mca_ai_review") ?? false;
-      if (hasMcaReview) return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication, hasMcaReview, hasAgreements: Boolean(state.signable?.length || state.contracts?.length || state.envelopes?.length) };
+      const hasBusinessReview = state.capabilities?.includes("business_ai_review") ?? false;
+      const hasMcaReview = hasBusinessReview || (state.capabilities?.includes("mca_ai_review") ?? false);
+      const reviewKind = hasBusinessReview ? "business" as const : "mca" as const;
+      if (hasMcaReview) return { ...empty, reviewKind, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication, hasMcaReview, hasAgreements: Boolean(state.signable?.length || state.contracts?.length || state.envelopes?.length) };
       if ((!state.precall || state.precall.status === "disabled") && !hasApplication) {
         return { ...empty, hasMerchantOffer: Boolean(state.merchant_offer), hasTimeline: true, hasApplication, hasMcaReview };
       }
@@ -311,6 +316,7 @@ export default function BucketRequestPage() {
         hasTimeline: true,
         hasApplication,
         hasMcaReview,
+        reviewKind,
         hasAgreements: false,
         precall: {
           enabled: true,
@@ -375,6 +381,7 @@ export default function BucketRequestPage() {
     setPrecall(loaded.precall);
     setHasApplication(loaded.hasApplication);
     setHasMcaReview(loaded.hasMcaReview);
+    setReviewKind(loaded.reviewKind);
     setHasMcaAgreements(loaded.hasAgreements);
     if (loaded.roomKind) setPrecallRoomKind(loaded.roomKind);
   }
@@ -391,6 +398,7 @@ export default function BucketRequestPage() {
     setPrecall(context.precall);
     setHasApplication(context.hasApplication);
     setHasMcaReview(context.hasMcaReview);
+    setReviewKind(context.reviewKind);
     setHasMcaAgreements(context.hasAgreements);
     if (context.roomKind) setPrecallRoomKind(context.roomKind);
     setOffer(nextOffer);
@@ -433,6 +441,7 @@ export default function BucketRequestPage() {
       setOffer(waitingOffer); setUpdates(fileUpdates);
       setHasApplication(context.hasApplication);
       setHasMcaReview(context.hasMcaReview);
+      setReviewKind(context.reviewKind);
       setHasMcaAgreements(context.hasAgreements);
       // A booked call lands on its checklist until it is done; the URL still wins.
       if (!searchParams.get("tab")) {
@@ -445,7 +454,7 @@ export default function BucketRequestPage() {
     } catch (error) { setStatus(error instanceof Error ? error.message : "The room PIN did not work."); }
     finally { setIsAccessing(false); }
   }
-  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (!hasMcaReview || !["precall", "budget"].includes(tab.id) && (tab.id !== "agreements" || hasMcaAgreements) && (tab.id !== "payments" || hasMcaPayments) && (tab.id !== "inbox" || Boolean(offer))) && (tab.id !== "ai-review" || hasMcaReview) && (tab.id !== "application" || hasApplication) && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)).map((tab) => tab.id === "precall" && precall?.scheduled === false ? { ...tab, label: "Owners and verification" } : tab), [hasApplication, hasMcaReview, hasMcaAgreements, hasMcaPayments, offerOnlyAccess, precall, offer, updates, session]);
+  const visibleTabs = useMemo(() => ROOM_TABS.filter((tab) => (!offerOnlyAccess || tab.id === "inbox") && (!hasMcaReview || !["precall", "budget"].includes(tab.id) && (tab.id !== "agreements" || hasMcaAgreements) && (tab.id !== "payments" || hasMcaPayments) && (tab.id !== "inbox" || Boolean(offer))) && (tab.id !== "ai-review" || hasMcaReview) && (tab.id !== "application" || hasApplication) && (tab.id !== "budget" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "payments" || Boolean(session && session.room_kind !== "basic")) && (tab.id !== "precall" || Boolean(precall)) && (tab.id !== "offer" || Boolean(offer)) && (tab.id !== "updates" || updates !== null)).map((tab) => tab.id === "ai-review" && reviewKind === "business" ? { ...tab, label: "Business AI review" } : tab.id === "precall" && precall?.scheduled === false ? { ...tab, label: "Owners and verification" } : tab), [hasApplication, hasMcaReview, reviewKind, hasMcaAgreements, hasMcaPayments, offerOnlyAccess, precall, offer, updates, session]);
 
   function addFiles(nextFiles: FileList | File[]) {
     setFiles((current) => {
@@ -540,7 +549,7 @@ export default function BucketRequestPage() {
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending || (hasApplication && !precall?.complete) ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : hasMcaReview ? "Source verification pending" : hasApplication && !precall?.complete ? "Application in progress" : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && totalPending ? <span>{totalPending}</span> : null}</button>)}</nav>
 
-      {hasMcaReview ? <div hidden={activeTab !== "ai-review"}><McaRoomReview key={token} token={token} passcode={passcode.trim()} active={activeTab === "ai-review"} onPaymentMethods={setHasMcaPayments} refreshKey={collectionTaskReadModelKey(session.evidence_banking_summary?.requirements ?? [], [processingFileCount, uploadedFiles.length, missingDocs.length])} onUpload={() => { setActiveRequestedDocumentId(""); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }} onApplication={() => setActiveTab("application")} onDebtSchedule={() => setActiveTab("todo")} /></div> : null}
+      {hasMcaReview ? <div hidden={activeTab !== "ai-review"}><McaRoomReview key={`${token}:${reviewKind}`} kind={reviewKind} token={token} passcode={passcode.trim()} active={activeTab === "ai-review"} onPaymentMethods={setHasMcaPayments} refreshKey={collectionTaskReadModelKey(session.evidence_banking_summary?.requirements ?? [], [processingFileCount, uploadedFiles.length, missingDocs.length])} onUpload={() => { setActiveRequestedDocumentId(""); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }} onApplication={() => setActiveTab("application")} onDebtSchedule={() => setActiveTab("todo")} /></div> : null}
 
       {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}
       {activeTab === "application" && hasApplication ? <RoomApplicationForm token={token} passcode={passcode.trim()} onChanged={refreshRoom} onContinue={() => setActiveTab(precall ? "precall" : "todo")} /> : null}

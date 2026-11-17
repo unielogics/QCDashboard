@@ -42,6 +42,7 @@ export const BARE_ROUTE_PREFIXES = [
   "/funding-review",
   "/mca-refinance-intake",
   "/mca-funding-intake",
+  "/business-funding-intake",
   "/equipment-financing-intake",
   "/buckets/request",
   "/lender-submissions",
@@ -57,6 +58,13 @@ export const BARE_ROUTE_PREFIXES = [
   // so it can be shot without the sidebar in frame.
   "/ds-gallery",
 ] as const;
+
+/** PIN/token rooms own their credentials independently of the Clerk session. */
+export function isPublicIntakeRoute(pathname: string | null | undefined): boolean {
+  if (!pathname) return false;
+  return ["/dealer-ai-underwriter", "/funding-review", "/mca-refinance-intake", "/mca-funding-intake", "/business-funding-intake", "/equipment-financing-intake", "/buckets/request"]
+    .some(path => pathname === path || pathname.startsWith(`${path}/`));
+}
 
 export function isBareRoute(
   pathname: string | null | undefined,

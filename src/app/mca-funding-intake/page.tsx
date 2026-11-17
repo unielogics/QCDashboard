@@ -12,6 +12,7 @@ import { emptyMcaIntakeAnswers, mcaDeclarationDoesNotFit, mcaIntakeRequest, mcaP
 import { BusinessProfileFields } from "@/components/intake/BusinessProfileFields";
 import { OnboardingConsent, NO_SMS_CHOICES, smsChoicesBody } from "@/components/intake/OnboardingConsent";
 import { emptyBusinessProfile, newBusinessProfileBody, newBusinessProfileProblem } from "@/lib/businessProfile";
+import { consumeResourceToken, loadResourceHandoff, resourceAnswerNumber, resourceAmountBand, resourceBusinessAgeBand, resourceTokenForEmail, type ResourceHandoff } from "@/lib/resourceHandoff";
 import styles from "./page.module.css";
 
 const ranges = ["under_25k", "25k_50k", "50k_100k", "100k_250k", "250k_plus"];
@@ -51,10 +52,37 @@ export default function McaFundingIntakePage() {
   const [consent, setConsent] = useState(false);
   const [busy, setBusy] = useState(false); const [error, setError] = useState("");
   const attempt = useRef(""); const submitting = useRef(false); const startTracked = useRef(false);
+  const booted = useRef(false);
+  const resourceTokenRef = useRef<string | null>(null); const resourceHandoffRef = useRef<ResourceHandoff | null>(null);
+  const [resourceLoading, setResourceLoading] = useState(false); const [resourceNotice, setResourceNotice] = useState("");
   useEffect(() => {
+    if (booted.current) return;
+    booted.current = true;
+    const resourceToken = consumeResourceToken(window.location, window.history);
     const params = new URLSearchParams(window.location.search);
     setLocale(params.get("locale") === "es" ? "es" : "en"); setResume(params.get("resume") === "1");
     try { setSavedRoom(safeMcaRoomUrl(window.sessionStorage.getItem(MCA_ROOM_STORAGE_KEY), window.location.origin) || ""); } catch { /* Session storage is optional. */ }
+    if (resourceToken) {
+      setResourceLoading(true);
+      void loadResourceHandoff(resourceToken, "merchant_cash_advance").then((handoff) => {
+        resourceTokenRef.current = resourceToken; resourceHandoffRef.current = handoff; setLocale(handoff.locale);
+        const count = resourceAnswerNumber(handoff.answers, "active_mca_count");
+        const income = resourceAnswerNumber(handoff.answers, "tax_income");
+        const matchingTaxPeriod = handoff.answers.tax_year === mcaPriorTaxYear() && handoff.answers.period_months === 12;
+        const annualRevenue = resourceAnswerNumber(handoff.answers, "annual_revenue");
+        const average = handoff.answers.period_months === 12 && annualRevenue !== null ? annualRevenue / 12 : null;
+        const negativeIncome = typeof handoff.answers.tax_income === "number" && handoff.answers.tax_income < 0;
+        setAnswers(current => ({ ...current, full_name: handoff.contact.name, business_name: handoff.contact.business_name, email: handoff.contact.email, phone: handoff.contact.phone,
+          active_mca_count: count === null ? "unknown" : count > 2 ? "3_plus" : String(count),
+          has_modified_mca: count === 0 ? "no" : handoff.answers.modified_mca === true ? "yes" : handoff.answers.modified_mca === false ? "no" : "unknown",
+          last_year_tax_earnings: !matchingTaxPeriod ? "unknown" : negativeIncome ? "negative" : income === null ? "unknown" : "nonnegative",
+          requested_amount: resourceAmountBand(resourceAnswerNumber(handoff.answers, "requested_amount")) || "not_sure",
+          monthly_revenue: resourceAmountBand(average) || "unknown", time_in_business: resourceBusinessAgeBand(resourceAnswerNumber(handoff.answers, "business_age_years")) || "unknown" }));
+        setProfile(current => ({ ...current, ...(typeof handoff.answers.industry === "string" ? { industry: handoff.answers.industry } : {}), ...(typeof handoff.answers.state === "string" ? { business_state: handoff.answers.state } : {}) }));
+        setResourceNotice(handoff.locale === "es" ? "Sus respuestas anteriores están completadas y se pueden corregir. Confírmelas y agregue los datos que faltan." : "Your previous answers are filled in and editable. Confirm them and add the remaining details.");
+      }).catch(() => setResourceNotice("Your saved resource answers could not be loaded. Complete the application below to continue."))
+        .finally(() => setResourceLoading(false));
+    }
   }, []);
   const c = copy[locale];
   const change = (key: keyof McaIntakeAnswers, value: string) => { setAnswers((current) => ({ ...current, [key]: value, ...(key === "active_mca_count" ? { has_modified_mca: value === "0" ? "no" : current.active_mca_count === "0" ? "" : current.has_modified_mca } : {}) })); setError(""); };
@@ -76,12 +104,13 @@ export default function McaFundingIntakePage() {
     try {
       attempt.current ||= crypto.randomUUID();
       const body = mcaIntakeRequest(answers, pin, locale, attempt.current, window.location.search);
-      const response = await fetch(`${apiBase}/api/v1/public/mca/intake/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({...body, ...newBusinessProfileBody(profile), ...smsChoicesBody(sms)}) });
+      const attribution = { ...body.attribution, ...resourceHandoffRef.current?.attribution, entry_page: resourceHandoffRef.current?.attribution.page ?? body.attribution.page, program: "merchant_cash_advance", funding_intent: "merchant_cash_advance", vertical: "main_street" };
+      const response = await fetch(`${apiBase}/api/v1/public/mca/intake/start`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({...body, attribution, ...newBusinessProfileBody(profile), ...smsChoicesBody(sms), resource_handoff_token: resourceTokenForEmail(resourceTokenRef.current, resourceHandoffRef.current, answers.email)}) });
       const data = await response.json().catch(() => null);
       if (!response.ok) throw new Error(clientApiErrorDetail(data, c.error).message);
       if (safeMcaRoomUrl(data?.room_url, window.location.origin) && !startTracked.current) {
         startTracked.current = true;
-        emitPublicIntakeConversion("qc_application_start", body.attribution, locale);
+        emitPublicIntakeConversion("qc_application_start", attribution, locale);
       }
       goToRoom(data?.room_url);
     } catch (reason) { setError(reason instanceof Error ? reason.message : c.error); }
@@ -104,6 +133,8 @@ export default function McaFundingIntakePage() {
     <header className={styles.header}><a href="https://qualifiedcommercial.com"><QCMark size={32} /><b>Qualified Commercial</b></a><select aria-label="Language / Idioma" value={locale} onChange={(event) => setLocale(event.target.value as McaIntakeLocale)}><option value="en">English</option><option value="es">Español</option></select></header>
     <div className={styles.workspace}><aside className={styles.intro}><span className={styles.eyebrow}>Main Street / MCA</span><h1>{c.title}</h1><p>{c.lead}</p><span className={styles.factor}>{c.pricing}</span><ol>{c.documents.map((item) => <li key={item}>{item}</li>)}</ol><p className={styles.note}>{c.review}</p><small>{c.safe}</small></aside>
       <section className={styles.card}>
+        {resourceNotice ? <p className={styles.notice} role="status">{resourceNotice}</p> : null}
+        {resourceLoading ? <p role="status">{locale === "es" ? "Cargando sus respuestas anteriores…" : "Loading your previous answers…"}</p> : null}
         {resume ? <><h2>{c.resume}</h2><p>{c.resumeLead}</p>{savedRoom ? <button className={styles.primary} onClick={() => goToRoom(savedRoom)}>{c.saved}</button> : null}<form onSubmit={(event) => { event.preventDefault(); setError(""); goToRoom(roomLink); }}><label className={styles.field}><span>{c.link}</span><input type="url" required value={roomLink} onChange={(event) => setRoomLink(event.target.value)} autoComplete="off" /></label><button className={styles.primary} type="submit">{c.openLink}</button></form><hr className={styles.separator} /><form onSubmit={(event) => void emailResume(event)}><label className={styles.field}><span>{c.email}</span><input type="email" required value={resumeEmail} onChange={(event) => setResumeEmail(event.target.value)} disabled={busy} autoComplete="off" /></label><button className={styles.secondary} type="submit" disabled={busy}>{busy ? c.sending : c.emailLink}</button></form>{notice ? <p className={styles.notice} role="status">{notice}</p> : null}<button className={styles.link} onClick={() => { setResume(false); setError(""); setNotice(""); }}>{c.start}</button></> : <form onSubmit={(event) => void submit(event)}>
           <div className={styles.steps} aria-label={locale === "es" ? "Progreso de solicitud" : "Application progress"}><b>{step} / 2</b><span>{step === 1 ? c.eligibility : c.details}</span></div><h2>{step === 1 ? c.eligibility : c.details}</h2>
           {step === 1 ? <><p>{c.eligibilitySub}</p>{select("active_mca_count", c.count, [["0", c.none], ["1", "1"], ["2", "2"], ["3_plus", "3+"], ["unknown", c.unknown]])}{answers.active_mca_count !== "0" ? select("has_modified_mca", c.modified, [["no", c.no], ["yes", c.yes], ["unknown", c.unknown]]) : null}{select("last_year_tax_earnings", `${c.taxes} (${mcaPriorTaxYear()})`, [["nonnegative", c.nonnegative], ["negative", c.negative], ["unknown", c.unknown]])}</> : <>
@@ -113,7 +144,7 @@ export default function McaFundingIntakePage() {
             <BusinessProfileFields value={profile} language={locale} onChange={patch => setProfile(current => ({...current, ...patch}))} />
             <OnboardingConsent language={locale} legalAccepted={consent} onLegalChange={setConsent} legalLabel={<> {c.consent} <a href="/terms" target="_blank" rel="noreferrer">{c.terms}</a> {c.and} <a href="/privacy" target="_blank" rel="noreferrer">{c.privacy}</a>. </>} sms={sms} onSmsChange={setSms} />
           </>}
-          {error ? <div className={styles.error} role="alert">{error}</div> : null}<div className={styles.actions}>{step === 2 ? <button type="button" className={styles.secondary} onClick={() => { setStep(1); setError(""); }} disabled={busy}>{c.back}</button> : null}<button className={styles.primary} type="submit" disabled={busy}>{busy ? c.opening : step === 1 ? c.next : c.open}</button></div><button className={styles.link} type="button" onClick={() => { setResume(true); setError(""); }} disabled={busy}>{c.resume}</button>
+          {error ? <div className={styles.error} role="alert">{error}</div> : null}<div className={styles.actions}>{step === 2 ? <button type="button" className={styles.secondary} onClick={() => { setStep(1); setError(""); }} disabled={busy}>{c.back}</button> : null}<button className={styles.primary} type="submit" disabled={busy || resourceLoading}>{busy ? c.opening : step === 1 ? c.next : c.open}</button></div><button className={styles.link} type="button" onClick={() => { setResume(true); setError(""); }} disabled={busy}>{c.resume}</button>
         </form>}{resume && error ? <div className={styles.error} role="alert">{error}</div> : null}
       </section>
     </div>

@@ -1,4 +1,5 @@
 import { APP_ORIGIN, CAPITAL_APP_ORIGIN } from "./appUrl";
+import { isResourceSourcePage } from "./resourceHandoff";
 
 export const MCA_ROOM_STORAGE_KEY = "qc.mcaFunding.room";
 export type McaIntakeLocale = "en" | "es";
@@ -23,7 +24,7 @@ export function mcaPublicAttribution(search: string, locale: McaIntakeLocale) {
   const paths = ["/", "/programs", "/main-street", "/business-funding", "/merchant-cash-advance", "/mca-funding-intake", "/programs/main-street", "/programs/merchant-cash-advance", "/industries/main-street", "/working-capital-loans", "/manufacturing-business-loans", "/medical-practice-financing", "/grocery-store-financing"];
   const allowedPages = new Set([...paths, ...paths.map((path) => path === "/" ? "/es" : `/es${path}`), "/es/"]);
   const incomingPage = params.get("page")?.trim() || "";
-  const page = allowedPages.has(incomingPage) ? incomingPage : locale === "es" ? "/es/merchant-cash-advance" : "/merchant-cash-advance";
+  const page = allowedPages.has(incomingPage) || isResourceSourcePage(incomingPage) ? incomingPage : locale === "es" ? "/es/merchant-cash-advance" : "/merchant-cash-advance";
   const result: Record<string, string> = { source: "public_site", page, entry_page: page, vertical: "main_street", program: "merchant_cash_advance", funding_intent: "merchant_cash_advance", profile: "main_street_v1" };
   for (const key of ["campaign", "cta"]) {
     const value = (params.get(key) || (key === "campaign" ? params.get("utm_campaign") : ""))?.trim();
@@ -64,7 +65,7 @@ export function safeMcaRoomUrl(value: unknown, currentOrigin: string): string | 
 }
 
 export type McaRoomReview = {
-  funding_intent: "merchant_cash_advance"; business_name: string | null;
+  funding_intent: "merchant_cash_advance" | "working_capital"; business_name: string | null;
   preferred_language?: "en" | "es";
   payment_methods_enabled?: boolean;
   status: "not_started" | "queued" | "running" | "completed" | "failed";

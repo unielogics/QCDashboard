@@ -8,10 +8,16 @@ import { AIReviewProvider } from "@/components/admin/AIReviewProvider";
 import StaleBuildReload from "@/components/shell/StaleBuildReload";
 import { isVisualQa, useConsoleAuth, visualQaUser } from "@/lib/consoleAuth";
 import { fileAuthScope } from "@/lib/fileOpening";
+import { usePathname } from "next/navigation";
+import { isPublicIntakeRoute } from "@/lib/shellRoutes";
 
 export default function Providers({ children }: { children: ReactNode }) {
   const auth = useConsoleAuth();
-  const scope = fileAuthScope(auth, isVisualQa ? visualQaUser("admin@qc.dev") : null);
+  const pathname = usePathname();
+  // Anonymous applications use their PIN/token, not a Clerk identity. A Clerk
+  // loading->signed-out transition must not erase a consumed resource handoff
+  // or typed form answers. Entering a console still creates its scoped cache.
+  const scope = isPublicIntakeRoute(pathname) ? "public-intake" : fileAuthScope(auth, isVisualQa ? visualQaUser("admin@qc.dev") : null);
   return <SessionProviders key={scope}>{children}</SessionProviders>;
 }
 
