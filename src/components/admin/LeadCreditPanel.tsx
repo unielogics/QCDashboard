@@ -24,6 +24,8 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
   const requestAuth = useRequestLeadCreditAuthorization(intakeId);
   const uploadTemplate = useUploadLeadCreditTemplate(intakeId);
   const runPull = useRunLeadCreditPull(intakeId);
+  // A pull inside the reuse window is not repeated without a person's say-so.
+  const [recentPull, setRecentPull] = useState<{ message: string } | null>(null);
   const summary = useCreditSummary(status.data?.pull_id);
   const [documentText, setDocumentText] = useState("");
   const [templateFile, setTemplateFile] = useState<File | null>(null);
@@ -77,13 +79,16 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
     }
   }
 
-  async function onRunPull() {
+  async function onRunPull(force = false) {
     setError(null);
+    setRecentPull(null);
     try {
-      await runPull.mutateAsync({ ssn: ssn.length === 9 ? ssn : undefined });
+      await runPull.mutateAsync({ ssn: ssn.length === 9 ? ssn : undefined, ...(force ? { force: true } : {}) });
       setSsn("");
     } catch (err) {
-      setError(readErrorMessage(err));
+      const recent = recentSoftPull(err);
+      if (recent) setRecentPull(recent);
+      else setError(readErrorMessage(err));
     }
   }
 
@@ -173,8 +178,15 @@ export function LeadCreditPanel({ intakeId }: { intakeId: string }) {
               </Field>
             </div>
             {error ? <StatusLine tone="bad">{error}</StatusLine> : null}
+            {recentPull ? (
+              <StatusLine tone="warn">
+                {recentPull.message}{" "}
+                <Btn size="sm" onClick={() => void onRunPull(true)} disabled={pending}>Pull again</Btn>{" "}
+                <Btn size="sm" onClick={() => setRecentPull(null)} disabled={pending}>Keep the recent pull</Btn>
+              </StatusLine>
+            ) : null}
             <div>
-              <Btn variant="pri" onClick={onRunPull} disabled={!authorizationSigned || pending}>
+              <Btn variant="pri" onClick={() => void onRunPull()} disabled={!authorizationSigned || pending}>
                 {runPull.isPending ? "Pulling…" : data?.pull_id ? "Re-run credit pull" : "Run credit pull"}
               </Btn>
             </div>
@@ -211,4 +223,16 @@ function readErrorMessage(err: unknown): string {
     }
   }
   return err instanceof Error ? err.message : "Request failed. Please retry.";
+}
+
+/** The 409 the backend returns when this person was pulled inside the reuse window. */
+export function recentSoftPull(err: unknown): { message: string; pulledAt: string | null } | null {
+  if (!(err instanceof ApiError) || err.status !== 409) return null;
+  const detail = (err.body as { detail?: unknown } | undefined)?.detail;
+  if (!detail || typeof detail !== "object" || (detail as { code?: unknown }).code !== "recent_soft_pull") return null;
+  const { message, pulled_at } = detail as { message?: unknown; pulled_at?: unknown };
+  return {
+    message: typeof message === "string" && message ? message : "This person was soft-pulled recently. Pull again?",
+    pulledAt: typeof pulled_at === "string" ? pulled_at : null,
+  };
 }

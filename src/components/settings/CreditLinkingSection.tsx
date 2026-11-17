@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Btn, Callout, CellChip, Sub, cx } from "@/components/ds";
+import { Btn, Callout, CellChip, Field, Input, Sub, cx } from "@/components/ds";
 import { Icon } from "@/components/design-system/Icon";
 import { useAuthedApi } from "@/hooks/useApi";
 import { fileHref } from "@/lib/fileRoutes";
@@ -89,6 +89,16 @@ export function CreditLinkingSection() {
     },
     onError: (reason) => setError(reason instanceof Error ? reason.message : "The mode could not be saved."),
   });
+  const [windowDraft, setWindowDraft] = useState<string | null>(null);
+  const saveWindow = useMutation({
+    mutationFn: (days: number) => apiCall<CreditLinkingSettings>("/credit-links/settings", { method: "PUT", body: JSON.stringify({ reuse_window_days: days }) }),
+    onSuccess: (data) => {
+      setError("");
+      setWindowDraft(null);
+      qc.setQueryData(["credit-linking-settings"], data);
+    },
+    onError: (reason) => setError(reason instanceof Error ? reason.message : "The reuse window could not be saved."),
+  });
   const run = useMutation({
     mutationFn: () => apiCall<CreditLinkRunReport>("/credit-links/run", { method: "POST" }),
     onSuccess: (data) => {
@@ -101,6 +111,10 @@ export function CreditLinkingSection() {
 
   const mode = settings.data?.mode ?? "manual";
   const lastRun = settings.data?.last_run ?? null;
+  const savedWindow = settings.data?.reuse_window_days ?? 30;
+  const windowValue = windowDraft ?? String(savedWindow);
+  const windowDays = Number(windowValue);
+  const windowValid = /^\d{1,3}$/.test(windowValue) && windowDays >= 0 && windowDays <= 365;
   return (
     <div className="grid g12">
       <div>
@@ -131,6 +145,20 @@ export function CreditLinkingSection() {
             </label>
           );
         })}
+      </div>
+      <div className="row g8" style={{ flexWrap: "wrap", alignItems: "flex-end" }}>
+        <Field label="Reuse a soft pull for (days)" hint="A signed authorization inside this window links the recent pull instead of pulling again. 0 always pulls.">
+          <Input
+            aria-label="Reuse a soft pull for (days)"
+            inputMode="numeric"
+            value={windowValue}
+            onChange={(event) => setWindowDraft(event.target.value.replace(/\D/g, "").slice(0, 3))}
+            style={{ maxWidth: 120 }}
+          />
+        </Field>
+        <Btn disabled={!windowValid || windowDays === savedWindow || saveWindow.isPending} onClick={() => saveWindow.mutate(windowDays)}>
+          {saveWindow.isPending ? "Saving..." : "Save window"}
+        </Btn>
       </div>
       <div className="row g8">
         <Btn variant="pri" disabled={run.isPending} onClick={() => run.mutate()}>

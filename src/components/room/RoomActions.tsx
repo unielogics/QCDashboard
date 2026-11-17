@@ -40,6 +40,8 @@ export type Signable = {
   signed: boolean;
   signable: boolean;
   document_text: string;
+  /** SHA-256 of document_text; echoed back so the server refuses a stale copy. */
+  document_sha256?: string | null;
 };
 
 export function pendingSignableForRequest(signable: Signable[], requestId?: string | null): Signable | null {
@@ -736,6 +738,7 @@ export function RoomActions({
                   name: signing.name,
                   signature_kind: signing.kind,
                   signature_document_text: signing.document_text,
+                  signature_document_sha256: signing.document_sha256 ?? null,
                 } as SignableDoc
               }
               busy={signBusy}

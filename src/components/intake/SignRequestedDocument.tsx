@@ -25,6 +25,8 @@ export type SignRequestedDocumentPayload = {
   applicant_city?: string;
   applicant_state?: string;
   applicant_zip?: string;
+  /** SHA-256 of the text shown; the server refuses the signature if what it certifies has changed since. */
+  document_sha256?: string | null;
 };
 
 export type SignableDoc = {
@@ -32,7 +34,9 @@ export type SignableDoc = {
   name: string;
   description?: string | null;
   signature_kind?: string | null;
+  /** The words signing certifies, as the server will certify them. */
   signature_document_text?: string | null;
+  signature_document_sha256?: string | null;
 };
 
 // TODO(compliance-review-es): Spanish translation of the default credit-pull
@@ -161,7 +165,12 @@ export function SignRequestedDocument({
   const s = SIGN_COPY[language];
   const isCreditAuth = doc.signature_kind === "credit_authorization";
   const allowsTypedSignature = requestedDocumentAllowsTypedSignature(doc.signature_kind);
-  const documentText = doc.signature_document_text || (isCreditAuth ? DEFAULT_CREDIT_AUTH_TEXT[language] : "");
+  // Sign what the server certifies. The short default only stands in for a
+  // server too old to send its text; in Spanish it is shown as a courtesy
+  // translation beside the English that governs.
+  const certifiedText = doc.signature_document_text || "";
+  const documentText = certifiedText || (isCreditAuth ? DEFAULT_CREDIT_AUTH_TEXT[language] : "");
+  const courtesyText = certifiedText && isCreditAuth && language === "es" ? DEFAULT_CREDIT_AUTH_TEXT.es : "";
   const sigPadRef = useRef<SignaturePadHandle | null>(null);
   const [typedName, setTypedName] = useState("");
   const [signatureMethod, setSignatureMethod] = useState<RequestedDocumentSignatureMethod>("typed");
@@ -193,6 +202,7 @@ export function SignRequestedDocument({
       typed_name: typedName.trim(),
       esign_consent: true,
       signature_data_url: needsDrawing ? sigPad?.getDataUrl() || null : null,
+      ...(doc.signature_document_sha256 ? { document_sha256: doc.signature_document_sha256 } : {}),
       ...(isCreditAuth
         ? {
             applicant_legal_first_name: firstName.trim(),
@@ -218,8 +228,14 @@ export function SignRequestedDocument({
         // The document being signed. Bounded and scrollable so a long
         // authorization cannot push the signature and the consent box off the
         // screen — the caller's page owns the surrounding layout.
-        <div className="docwell" style={{ maxHeight: 160 }}>
+        <div className="docwell" style={{ maxHeight: 160, whiteSpace: "pre-line" }}>
           {documentText}
+        </div>
+      ) : null}
+      {courtesyText ? (
+        <div className="docwell" style={{ maxHeight: 120 }}>
+          <div className="sub">Traducción de cortesía. El texto en inglés de arriba es el que se firma y prevalece.</div>
+          {courtesyText}
         </div>
       ) : null}
 

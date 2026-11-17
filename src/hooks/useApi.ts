@@ -1435,7 +1435,7 @@ export function useRunLeadCreditPull(intakeId: string) {
   const apiCall = useAuthedApi();
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (payload: { ssn?: string }) =>
+    mutationFn: (payload: { ssn?: string; force?: boolean }) =>
       apiCall<LeadCreditStatusResponse>(`/admin/ai-underwriter-leads/${intakeId}/credit-pull`, {
         method: "POST",
         body: JSON.stringify(payload),

@@ -28,6 +28,8 @@ export type CreditLinkingSettings = {
   mode: CreditLinkingMode;
   last_run: CreditLinkRunReport | null;
   sweep_minutes: number;
+  /** A completed soft pull younger than this is reused instead of pulling again (0 = always pull). */
+  reuse_window_days?: number;
 };
 
 export function shortDate(value: string | null | undefined): string {
