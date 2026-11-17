@@ -680,6 +680,53 @@
 .vfilter button:hover { border-color: var(--accent-400); color: var(--ink); }
 .vfilter button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
+/* Clients: one bar to find a client. The search box, then the filters and
+   Clear. It sits in the sticky page head so it stays in reach down a long
+   list. With room, everything is on one line and the search box takes what is
+   left; without it, the filters drop to a second line together and the search
+   box keeps the first to itself. */
+.client-finder { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 10px 0 2px; }
+/* The page head is an item of the page grid, and the stage tabs under the bar
+   do not wrap. Left to size itself, the head grew to the tabs' full width and
+   took the grid with it: on a phone it was twice the screen, with New client
+   off the edge. Allowed to shrink, it is the width of the screen and the tabs
+   scroll inside their own strip, which is what `.cktabs` is built to do. */
+.client-finder__head { min-width: 0; }
+.client-finder .field.box { min-height: 36px; }
+.client-finder .field.box:focus-within { border-color: var(--accent-400); box-shadow: 0 0 0 3px var(--accent-100); }
+.client-finder__search { flex: 1 1 300px; min-width: min(240px, 100%); }
+.client-finder__search > button {
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center; padding: 0;
+  border: 0; border-radius: 50%; background: var(--sunken); color: var(--muted); cursor: pointer;
+}
+.client-finder__search > button:hover { color: var(--ink); }
+.client-finder__filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+/* A filter: its name, then the choice, inside one box. */
+.client-finder__pick { flex: 0 1 auto; gap: 6px; padding-right: 6px; cursor: pointer; }
+.client-finder__pick > span { flex: none; color: var(--muted); font-size: 11.5px; font-weight: 650; white-space: nowrap; }
+.client-finder__pick > select {
+  flex: 1; min-width: 0; max-width: 210px; padding: 9px 0; border: 0; background: none; outline: none;
+  font: inherit; font-weight: 600; color: var(--ink); cursor: pointer; text-overflow: ellipsis;
+}
+/* The opened list is drawn by the browser; give it the surface it sits on. */
+.client-finder__pick option { background: var(--surface); color: var(--ink); font-weight: 400; }
+.client-finder__pick.on { border-color: var(--accent); background: var(--accent-100); }
+.client-finder__pick.on > span { color: var(--accent); }
+.client-finder__filters > .btn { min-height: 36px; }
+/* The Client column: never narrower than a name and its pin, so a tight
+   table scrolls sideways (as it always has) instead of folding names. */
+.client-finder__cell { min-width: 240px; }
+/* Under a client's name: the business, then how the client is reached. It is
+   one line and is cut short rather than wrapped, so a row keeps its height;
+   `contain` stops a long business name from widening the column to fit it. */
+.client-finder__who { display: block; contain: inline-size; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.client-finder__who > b { font-weight: 650; color: var(--ink2); }
+@media (max-width: 720px) {
+  .client-finder__filters { flex: 1 1 100%; }
+  .client-finder__pick { flex: 1 1 150px; }
+  .client-finder__pick > select { max-width: none; }
+}
+
 /* ---------- pipeline board ---------- */
 .kanban { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 12px; align-items: start; overflow-x: auto; }
 .kcol { background: var(--sunken2); border: 1px solid var(--line); border-radius: 12px; padding: 10px; min-width: 0; }

@@ -41,13 +41,28 @@ import type { Broker, Client, ClientAccessDirectoryRow, ClientStage, PaymentAuth
 import { QC_FMT } from "@/lib/fmt";
 import { AgentLeadModal } from "@/app/pipeline/components/AgentLeadModal";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
-import { VERTICAL_OPTIONS, verticalTone, type UnifiedVertical } from "@/lib/unifiedOperator";
+import { VERTICAL_OPTIONS, verticalTone } from "@/lib/unifiedOperator";
 import { usePinnedRows } from "@/lib/tablePinning";
+import {
+  EMPTY_FINDER,
+  digitsOf,
+  facetCounts,
+  findClients,
+  finderFromQuery,
+  finderToQuery,
+  isFinderActive,
+  searchText,
+  type AuthorizationState,
+  type ClientFinderState,
+  type FinderAccess,
+  type FinderAuthorization,
+  type FinderDesk,
+  type FinderFacet,
+  type FinderStage,
+} from "@/lib/clientFinder";
 
 // Stages-as-filter-chips shown above the table.
-type StageFilter = "all" | ClientStage;
-
-const STAGE_CHIPS: { value: StageFilter; label: string }[] = [
+const STAGE_CHIPS: { value: FinderStage; label: string }[] = [
   { value: "all", label: "All" },
   { value: "lead", label: "Leads" },
   { value: "contacted", label: "Nurturing" },
@@ -88,7 +103,7 @@ const CLIENT_COLS: ClientCol[] = [
   { label: "Record", width: 126, key: "_record_shape" },
   { label: "Vertical", width: 126, key: "_vertical_label" },
   { label: "Stage", width: 122, key: "_stage" },
-  { label: "Authorizations", width: 142, key: "_billing_auth" },
+  { label: "Authorizations", width: 142, key: "_authorization_rank" },
   { label: "Desk", width: 156, key: "broker_name" },
   { label: "Credit", width: 72, align: "r", key: "fico" },
   { label: "Files", width: 62, align: "r", key: "file_count" },
@@ -133,15 +148,60 @@ function SortLabel({
   );
 }
 
+const ACCESS_CHOICES: { value: FinderAccess; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "has", label: "Has access" },
+  { value: "funding", label: "Funding" },
+  { value: "audit", label: "Audit" },
+  { value: "none", label: "No access" },
+];
+
+const AUTHORIZATION_CHOICES: { value: FinderAuthorization; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "ready", label: "Ready" },
+  { value: "partial", label: "In progress" },
+  { value: "none", label: "Not started" },
+];
+
+const AUTHORIZATION_RANK: Record<AuthorizationState, number> = { none: 0, partial: 1, ready: 2 };
+
+function authorizationParts(row: PaymentAuthorizationClientSummaryRead | null) {
+  const signed = !!row?.signed_at || row?.authorization_status === "active";
+  const card = row?.card_status === "active" && !!row.card_last4;
+  return { signed, card, ready: !!row?.authorized };
+}
+
+function authorizationState(row: PaymentAuthorizationClientSummaryRead | null): AuthorizationState {
+  const { signed, card, ready } = authorizationParts(row);
+  return ready ? "ready" : signed || card ? "partial" : "none";
+}
+
+/** What the Access column says for a client; also what that column sorts by. */
+function accessLabel(row: ClientAccessDirectoryRow | null): string {
+  if (!row) return "No login";
+  const products = row.account_types.map((item) => (item === "funding" ? "Funding" : "Audit"));
+  return products.length ? products.join(" + ") : "No access";
+}
+
+/** Each business once, however many of the client's files name it. */
+function distinctNames(names: Array<string | null | undefined>): string[] {
+  const seen = new Map<string, string>();
+  for (const name of names) {
+    const trimmed = name?.trim();
+    if (trimmed && !seen.has(trimmed.toLowerCase())) seen.set(trimmed.toLowerCase(), trimmed);
+  }
+  return [...seen.values()];
+}
+
 export default function ClientsPage() {
   const { data: user } = useCurrentUser();
-  const { data: clients = [] } = useClients();
+  const { data: clients = [], isLoading: clientsLoading, isError: clientsFailed, refetch: reloadClients } = useClients();
   const { data: loans = [] } = useLoans();
   const { data: unifiedFiles } = useUnifiedOperatorFiles({ limit: 500 });
-  const [search, setSearch] = useState("");
-  const [stageFilter, setStageFilter] = useState<StageFilter>("all");
-  const [verticalFilter, setVerticalFilter] = useState<UnifiedVertical | "all">("all");
+  const [finder, setFinder] = useState<ClientFinderState>(EMPTY_FINDER);
+  const [addressRead, setAddressRead] = useState(false);
   const [intakeOpen, setIntakeOpen] = useState(false);
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
   const canCreate = user?.role !== Role.CLIENT;
   const isSuperAdmin = user?.role === Role.SUPER_ADMIN;
@@ -153,6 +213,48 @@ export default function ClientsPage() {
     { page_size: 200 },
     { enabled: isSuperAdmin },
   );
+
+  // The search and filters ride in the page address, so opening a client and
+  // coming back returns to the same list. Read them once on arrival…
+  useEffect(() => {
+    setFinder(finderFromQuery(window.location.search));
+    setAddressRead(true);
+  }, []);
+  // …and write them back shortly after they change. Browsers limit how often
+  // an address may be rewritten, so typing is not written a letter at a time.
+  useEffect(() => {
+    if (!addressRead) return;
+    const timer = window.setTimeout(() => {
+      const query = finderToQuery(finder, window.location.search);
+      const next = `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`;
+      if (next === `${window.location.pathname}${window.location.search}${window.location.hash}`) return;
+      try {
+        window.history.replaceState(null, "", next);
+      } catch {
+        // The list is already narrowed; only the address is left behind.
+      }
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [finder, addressRead]);
+
+  const setFacet = <F extends FinderFacet>(facet: F, value: ClientFinderState[F]) =>
+    setFinder((current) => ({ ...current, [facet]: value }));
+  const clearFinder = () => {
+    setFinder(EMPTY_FINDER);
+    searchRef.current?.focus();
+  };
+
+  // A filter this role is not shown cannot be left on by an address.
+  const applied = useMemo<ClientFinderState>(
+    () => ({
+      ...finder,
+      desk: isInternal ? finder.desk : "all",
+      access: isSuperAdmin ? finder.access : "all",
+      authorization: isInternal ? finder.authorization : "all",
+    }),
+    [finder, isInternal, isSuperAdmin],
+  );
+  const finderActive = isFinderActive(applied);
 
   const accessByClient = useMemo(() => {
     const map = new Map<string, NonNullable<typeof accessDirectory>["items"][number]>();
@@ -169,7 +271,8 @@ export default function ClientsPage() {
   }, [authRows]);
 
   // Compute exposure + active loans per client from the loans list, plus an
-  // effective-stage value used for filtering and rendering.
+  // effective-stage value used for filtering and rendering, and what the
+  // finder reads off each client.
   const enriched = useMemo(() => {
     const activeByClient = new Map<string, number>();
     const exposureByClient = new Map<string, number>();
@@ -190,11 +293,14 @@ export default function ClientsPage() {
     return clients.map((c) => {
       const active_loans = activeByClient.get(c.id) ?? 0;
       const files = filesByClient.get(c.id) ?? [];
+      const access = accessByClient.get(c.id) ?? null;
       const verticals = [...new Set(files.map((file) => file.vertical))];
-      const businesses = files.filter((file) => file.business_name).map((file) => file.business_name as string);
+      const businesses = distinctNames(files.map((file) => file.business_name));
       const logicalExposure = files.reduce((sum, file) => sum + Number(file.amount ?? 0), 0);
+      const authorization = authorizationState(authByClient.get(c.id) ?? null);
       return {
         ...c,
+        broker_id: c.broker_id ?? null,
         active_loans,
         exposure: files.length ? logicalExposure : exposureByClient.get(c.id) ?? Number(c.funded_total),
         _stage: inferredStage(c, active_loans),
@@ -203,31 +309,68 @@ export default function ClientsPage() {
         _verticals: verticals,
         _vertical_label: verticals.length === 1 ? files[0]?.vertical_label ?? "Unassigned" : verticals.length > 1 ? "Mixed" : "Unassigned",
         file_count: files.length,
+        // The agent's name is left out on purpose: the Desk filter narrows by
+        // agent, and a search for "john" should find people called John.
+        _search: searchText([
+          c.name,
+          c.email,
+          c.phone,
+          c.city,
+          c.address,
+          ...businesses,
+          ...files.map((file) => file.principal),
+        ]),
+        _phones: [c.phone, access?.phone, ...files.map((file) => file.phone)].map(digitsOf).filter(Boolean),
+        _access: access?.account_types ?? [],
+        _access_label: accessLabel(access),
+        _authorization: authorization,
+        _authorization_rank: AUTHORIZATION_RANK[authorization],
       };
     });
-  }, [clients, loans, unifiedFiles]);
+  }, [clients, loans, unifiedFiles, accessByClient, authByClient]);
 
-  const stageCounts = useMemo(() => {
-    const counts: Record<string, number> = { all: enriched.length };
-    for (const c of enriched) counts[c._stage] = (counts[c._stage] ?? 0) + 1;
-    return counts;
-  }, [enriched]);
-
-  const filtered = useMemo(() => {
-    let rows = enriched;
-    if (stageFilter !== "all") rows = rows.filter((c) => c._stage === stageFilter);
-    if (verticalFilter !== "all") rows = rows.filter((c) => c._verticals.includes(verticalFilter));
-    if (search.trim()) {
-      const q = search.trim().toLowerCase();
-      rows = rows.filter(
-        (c) =>
-          c.name.toLowerCase().includes(q) ||
-          (c.email ?? "").toLowerCase().includes(q) ||
-          (c.city ?? "").toLowerCase().includes(q),
-      );
+  // The number beside every choice is what picking it would show, given the
+  // search and the other filters as they stand.
+  const stageCounts = useMemo(
+    () => facetCounts(enriched, applied, "stage", STAGE_CHIPS.map((chip) => chip.value)),
+    [enriched, applied],
+  );
+  const verticalChoices = useMemo(() => {
+    const counts = facetCounts(enriched, applied, "vertical", VERTICAL_OPTIONS.map((option) => option.value));
+    return VERTICAL_OPTIONS.map((option) =>
+      option.value === "all" ? { value: option.value, label: "All" } : { ...option, count: counts[option.value] },
+    );
+  }, [enriched, applied]);
+  const deskChoices = useMemo(() => {
+    const agents = new Map<string, string>();
+    for (const c of enriched) {
+      if (c.broker_id) agents.set(c.broker_id, c.broker_name?.trim() || "Unnamed agent");
     }
-    return rows;
-  }, [enriched, stageFilter, search, verticalFilter]);
+    const listed = [...agents.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1], undefined, { sensitivity: "base" }))
+      .map(([id, label]) => ({ value: `agent:${id}` as FinderDesk, label }));
+    // An address can name an agent who no longer has clients here.
+    if (applied.desk.startsWith("agent:") && !listed.some((choice) => choice.value === applied.desk)) {
+      listed.push({ value: applied.desk, label: "An agent with no clients here" });
+    }
+    const values: FinderDesk[] = ["unassigned", ...listed.map((choice) => choice.value)];
+    const counts = facetCounts(enriched, applied, "desk", values);
+    return [
+      { value: "all" as FinderDesk, label: "All" },
+      { value: "unassigned" as FinderDesk, label: "Unassigned", count: counts.unassigned },
+      ...listed.map((choice) => ({ ...choice, count: counts[choice.value] })),
+    ];
+  }, [enriched, applied]);
+  const accessChoices = useMemo(() => {
+    const counts = facetCounts(enriched, applied, "access", ACCESS_CHOICES.map((choice) => choice.value));
+    return ACCESS_CHOICES.map((choice) => (choice.value === "all" ? choice : { ...choice, count: counts[choice.value] }));
+  }, [enriched, applied]);
+  const authorizationChoices = useMemo(() => {
+    const counts = facetCounts(enriched, applied, "authorization", AUTHORIZATION_CHOICES.map((choice) => choice.value));
+    return AUTHORIZATION_CHOICES.map((choice) => (choice.value === "all" ? choice : { ...choice, count: counts[choice.value] }));
+  }, [enriched, applied]);
+
+  const filtered = useMemo(() => findClients(enriched, applied), [enriched, applied]);
 
   const { sort, onSort, compare } = useSort("exposure", "desc");
   const sorted = useMemo(() => [...filtered].sort(compare), [filtered, compare]);
@@ -244,7 +387,7 @@ export default function ClientsPage() {
   });
 
   const visibleClientCols: ClientCol[] = isSuperAdmin
-    ? [...CLIENT_COLS.slice(0, 5), { label: "Access", width: 176 }, ...CLIENT_COLS.slice(5)]
+    ? [...CLIENT_COLS.slice(0, 5), { label: "Access", width: 176, key: "_access_label" }, ...CLIENT_COLS.slice(5)]
     : CLIENT_COLS;
   const cols: Col[] = visibleClientCols.map((c) => ({
     label: <SortLabel label={c.label} colKey={c.key} sortKey={sort.key} dir={sort.dir} onSort={onSort} />,
@@ -252,20 +395,16 @@ export default function ClientsPage() {
     width: c.width,
   }));
 
+  const typed = applied.q.trim();
+  const onlySearching = typed !== "" && !isFinderActive({ ...applied, q: "" });
+
   return (
     <div className="grid">
-      <div className="ckhead">
+      <div className="ckhead client-finder__head">
         <div className="ckrow">
           <h1>Clients</h1>
-          <span className="sub">· {filtered.length} of {enriched.length}</span>
+          <span className="sub" aria-live="polite">· {filtered.length} of {enriched.length}</span>
           <span className="sp" />
-          <Input
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search name, email, EIN, city..."
-            aria-label="Search clients"
-            style={{ width: 260 }}
-          />
           {canCreate ? <Btn variant="pri" size="sm" onClick={() => setIntakeOpen(true)}><Icon name="plus" size={14} /> New client</Btn> : null}
           {pinnedIds.length ? <Btn size="sm" onClick={clearPins}>Clear pinned ({pinnedIds.length})</Btn> : null}
           <PageActionMenu items={[
@@ -273,16 +412,53 @@ export default function ClientsPage() {
             { label: "Open prequalifications", href: "/admin/prequal-requests" },
           ]} label="Client book actions" />
         </div>
-        <div className="vfilter">
-          {VERTICAL_OPTIONS.map((vertical) => (
-            <button key={vertical.value} type="button" className={verticalFilter === vertical.value ? "on" : undefined} onClick={() => setVerticalFilter(vertical.value)}>
-              {vertical.label}
-            </button>
-          ))}
+        <div className="client-finder" role="search" aria-label="Find a client">
+          <label className="field box client-finder__search">
+            <Icon name="search" size={15} />
+            <input
+              ref={searchRef}
+              value={finder.q}
+              onChange={(event) => setFacet("q", event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Escape" && finder.q) {
+                  event.preventDefault();
+                  setFacet("q", "");
+                }
+              }}
+              placeholder="Search name, email, phone, business or city"
+              aria-label="Search clients"
+              autoComplete="off"
+              spellCheck={false}
+              maxLength={200}
+            />
+            {finder.q ? (
+              <button
+                type="button"
+                aria-label="Clear search"
+                title="Clear search"
+                onClick={() => {
+                  setFacet("q", "");
+                  searchRef.current?.focus();
+                }}
+              >
+                <Icon name="x" size={12} />
+              </button>
+            ) : null}
+          </label>
+          {/* One group, so that when the bar is too narrow for everything the
+              filters drop to a second line together and the search box keeps
+              the first line to itself. */}
+          <div className="client-finder__filters">
+            <FinderSelect label="Vertical" value={applied.vertical} onChange={(value) => setFacet("vertical", value)} options={verticalChoices} />
+            {isInternal ? <FinderSelect label="Desk" value={applied.desk} onChange={(value) => setFacet("desk", value)} options={deskChoices} /> : null}
+            {isSuperAdmin ? <FinderSelect label="Access" value={applied.access} onChange={(value) => setFacet("access", value)} options={accessChoices} /> : null}
+            {isInternal ? <FinderSelect label="Authorizations" value={applied.authorization} onChange={(value) => setFacet("authorization", value)} options={authorizationChoices} /> : null}
+            <Btn onClick={clearFinder} disabled={!finderActive} title="Clear the search and every filter">Clear</Btn>
+          </div>
         </div>
         <div className="cktabs" role="tablist" aria-label="Client stage">
           {STAGE_CHIPS.map((chip) => (
-            <button key={chip.value} type="button" role="tab" aria-selected={stageFilter === chip.value} className={stageFilter === chip.value ? "on" : undefined} onClick={() => setStageFilter(chip.value)}>
+            <button key={chip.value} type="button" role="tab" aria-selected={applied.stage === chip.value} className={applied.stage === chip.value ? "on" : undefined} onClick={() => setFacet("stage", chip.value)}>
               {chip.label} <span className="tag">{stageCounts[chip.value] ?? 0}</span>
             </button>
           ))}
@@ -293,12 +469,19 @@ export default function ClientsPage() {
         <Table cols={cols} caption="Clients">
           {orderedClients.map((c) => {
             const pinned = isPinned(c.id);
+            // Under the name: the business the client's files are opened for,
+            // then how the client is reached. One line, cut short if it must be.
+            const contact = c.email || c.city;
+            const business = c._businesses.length
+              ? `${c._businesses[0]}${c._businesses.length > 1 ? ` +${c._businesses.length - 1} more` : ""}`
+              : null;
+            const whoInFull = [...c._businesses, contact].filter(Boolean).join(" · ");
             return (
             <Tr key={c.id} onClick={() => (window.location.href = `/clients/${c.id}`)} className={pinned ? "table-row-pinned" : undefined}>
               <Td>
-                <div className="row" style={{ gap: 8, flexWrap: "nowrap" }}>
+                <div className="row client-finder__cell" style={{ gap: 8, flexWrap: "nowrap" }}>
                   <PinRowButton pinned={pinned} onToggle={() => togglePin(c.id)} label={c.name} />
-                  <span style={{ minWidth: 0 }}>
+                  <span style={{ minWidth: 0, flex: 1 }}>
                     <Linky
                       style={{ display: "block", textAlign: "left", fontWeight: 800 }}
                       onClick={(event) => {
@@ -308,7 +491,17 @@ export default function ClientsPage() {
                     >
                       {c.name}
                     </Linky>
-                    <span className="sub" style={{ display: "block" }}>{c.email || c.city || c.id}</span>
+                    <span className="sub client-finder__who" title={whoInFull || undefined}>
+                      {business || contact ? (
+                        <>
+                          {business ? <b>{business}</b> : null}
+                          {business && contact ? " · " : null}
+                          {contact}
+                        </>
+                      ) : (
+                        c.id
+                      )}
+                    </span>
                   </span>
                 </div>
               </Td>
@@ -350,17 +543,36 @@ export default function ClientsPage() {
           {orderedClients.length === 0 && (
             <tr>
               <td colSpan={visibleClientCols.length} style={{ textAlign: "center", padding: 24 }}>
-                <span className="sub">
-                  {search || stageFilter !== "all"
-                    ? "No clients match the current filters."
-                    : "No clients yet."}
-                </span>
-                {canCreate && !search && stageFilter === "all" && (
-                  <>
-                    {" "}
-                    <button type="button" className="linky" onClick={() => setIntakeOpen(true)}>
-                      Start a deal →
+                {clientsFailed ? (
+                  // Said plainly: an empty list here once hid a failing request for days.
+                  <span role="alert">
+                    <span className="sub">The client list could not be loaded.</span>{" "}
+                    <button type="button" className="linky" onClick={() => void reloadClients()}>
+                      Try again
                     </button>
+                  </span>
+                ) : clientsLoading ? (
+                  <span className="sub">Loading clients…</span>
+                ) : finderActive ? (
+                  <>
+                    <span className="sub">
+                      {onlySearching ? `No clients match “${typed}”.` : "No clients match this search and these filters."}
+                    </span>{" "}
+                    <button type="button" className="linky" onClick={clearFinder}>
+                      {onlySearching ? "Clear the search" : "Clear the search and filters"}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="sub">No clients yet.</span>
+                    {canCreate ? (
+                      <>
+                        {" "}
+                        <button type="button" className="linky" onClick={() => setIntakeOpen(true)}>
+                          Start a deal →
+                        </button>
+                      </>
+                    ) : null}
                   </>
                 )}
               </td>
@@ -370,6 +582,33 @@ export default function ClientsPage() {
       </Panel>
       <AgentLeadModal open={intakeOpen} onClose={() => setIntakeOpen(false)} />
     </div>
+  );
+}
+
+// One filter in the find bar: its name, then the choice, in one box. The name
+// stays visible once something is picked, so "Ready" is never ambiguous.
+function FinderSelect<T extends string>({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: T;
+  onChange: (value: T) => void;
+  options: Array<{ value: T; label: string; count?: number }>;
+}) {
+  return (
+    <label className={cx("field box client-finder__pick", value !== "all" && "on")}>
+      <span>{label}</span>
+      <select aria-label={label} value={value} onChange={(event) => onChange(event.target.value as T)}>
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.count === undefined ? option.label : `${option.label} (${option.count})`}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -555,9 +794,7 @@ function AssignBrokerCell({ client }: { client: Client & { broker_id?: string | 
 
 
 function BillingAuthPill({ row }: { row: PaymentAuthorizationClientSummaryRead | null }) {
-  const signed = !!row?.signed_at || row?.authorization_status === "active";
-  const card = row?.card_status === "active" && !!row.card_last4;
-  const ready = !!row?.authorized;
+  const { signed, card, ready } = authorizationParts(row);
   const label = ready ? "Ready" : signed && !card ? "Card missing" : !signed && card ? "Signature missing" : "Not started";
   const tone: ChipTone = ready ? "ok" : signed || card ? "warn" : "mut";
   const title = ready && row
@@ -572,12 +809,11 @@ function BillingAuthPill({ row }: { row: PaymentAuthorizationClientSummaryRead |
 }
 
 function ClientAccessPill({ row }: { row: ClientAccessDirectoryRow | null }) {
-  if (!row) return <CellChip tone="mut">No login</CellChip>;
-  const products = row.account_types.map((item) => item === "funding" ? "Funding" : "Audit");
+  if (!row) return <CellChip tone="mut">{accessLabel(null)}</CellChip>;
   const tone: ChipTone = row.login_state === "suspended" || row.login_state === "invite_failed"
     ? "bad"
     : row.login_state === "active"
       ? "ok"
       : "warn";
-  return <CellChip tone={tone}>{products.length ? products.join(" + ") : "No access"}</CellChip>;
+  return <CellChip tone={tone}>{accessLabel(row)}</CellChip>;
 }
