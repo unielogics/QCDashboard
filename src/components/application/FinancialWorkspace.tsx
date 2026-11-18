@@ -56,6 +56,8 @@ const rowsOf = (body: FinancialBody): FinancialDebtRow[] => (body.debts as Finan
 
 type WorkspaceProps = {
   open: boolean; onClose: () => void; profileId: string; initialKind?: SheetKind; initialView?: View; initialDebtId?: string;
+  /** Opens on one statement of the kind: one owner's personal financial statement, say. */
+  initialFamilyId?: string;
   onPublished?: () => void | Promise<void>; onUploadFiles?: (files: File[]) => Promise<void>;
   inline?: boolean;
   /** Shown in the earnings plan's header. */
@@ -75,7 +77,7 @@ export function FinancialWorkspace(props: WorkspaceProps) {
 }
 
 /** A draft has one body. Form fields, worksheet cells, and source review all edit that body. */
-function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, onPublished, onUploadFiles, inline = false, onOpenPlan }: WorkspaceProps & { onOpenPlan: () => void }) {
+function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt_schedule", initialView, initialDebtId, initialFamilyId, onPublished, onUploadFiles, inline = false, onOpenPlan }: WorkspaceProps & { onOpenPlan: () => void }) {
   const fileWorkspace = useFileWorkspace();
   const registerExit = fileWorkspace?.registerExit;
   const api = useAuthedApi();
@@ -209,10 +211,10 @@ function FinancialFormsWorkspace({ open, onClose, profileId, initialKind = "debt
     let cancelled = false;
     setLoading(true); setError(""); setView(financialWorkspaceEntryView(initialKind, initialView, initialDebtId));
     setSelectedDebt(initialDebtId ?? null); setShowExcluded(false);
-    void readFinancialWorkspace(api, profileId, initialKind).then((next) => { if (!cancelled) { accept(next, { resetSelection: true, rowId: initialDebtId }); const rowId = financialDebtEntrySelection(next.body, initialDebtId); if (next.kind === "debt_schedule" && rowId) setGridFocus({ rowKey: rowId, requestId: ++focusRequest.current }); } })
+    void readFinancialWorkspace(api, profileId, initialKind, initialFamilyId).then((next) => { if (!cancelled) { accept(next, { resetSelection: true, rowId: initialDebtId }); const rowId = financialDebtEntrySelection(next.body, initialDebtId); if (next.kind === "debt_schedule" && rowId) setGridFocus({ rowKey: rowId, requestId: ++focusRequest.current }); } })
       .catch((reason) => { if (!cancelled) setError(message(reason)); }).finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [accept, api, initialDebtId, initialKind, initialView, open, profileId]);
+  }, [accept, api, initialDebtId, initialFamilyId, initialKind, initialView, open, profileId]);
   useEffect(() => {
     if (!localDirty || conflict) return;
     const timer = setTimeout(() => { void flush().catch(() => undefined); }, 700);

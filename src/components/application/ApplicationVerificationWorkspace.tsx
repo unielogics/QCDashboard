@@ -16,6 +16,7 @@ import { CreditPullLinkDrawer } from "@/components/application/CreditPullLinkDra
 import { OwnerCreditReportDrawer } from "@/components/application/OwnerCreditReportDrawer";
 import { OwnerImportReview, canReviewOwnerCredit } from "@/components/application/OwnerImportReview";
 import { RequirementCreditEvidence } from "@/components/application/RequirementCreditEvidence";
+import { OwnerStatementsPanel } from "@/components/application/OwnerStatementsPanel";
 import { Btn, Callout, CellChip, IconBtn, Input, Row, Sub, TableWorkspace, cx } from "@/components/ds";
 import { ActionIcon } from "@/components/ds/ActionIcon";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
@@ -174,6 +175,8 @@ export function ApplicationVerificationWorkspace({
       qc.invalidateQueries({ queryKey: ["application-profile-verification", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-profile-banks", profileId] }),
       qc.invalidateQueries({ queryKey: ["application-evidence-workspace", profileId] }),
+      // A new owner, or a share that crosses 20%, changes who owes a statement.
+      qc.invalidateQueries({ queryKey: ["owner-statements", profileId] }),
     ]);
     if (programReadiness !== undefined && onProgramReadinessChange && profileId) {
       const next = await apiCall<ApplicationProgramReadiness>(`/application-profiles/${profileId}/program-readiness`);
@@ -222,6 +225,7 @@ export function ApplicationVerificationWorkspace({
           readinessError={creditReadinessError}
         />
       ) : null}
+      {(mode === "owners-credit" || (mode === "full" && view === "owners")) && profileId ? <OwnerStatementsPanel profileId={profileId} onChanged={refresh} /> : null}
       {mode === "owners-credit" || (mode === "full" && view === "owners") ? <div className="row" style={{ justifyContent: "flex-end" }}><Btn variant="pri" disabled={!ownershipReady} onClick={() => { if (mode === "full") setView("banking"); else onReadyForStep2?.(); }}>{mode === "full" ? "Continue to banking" : "Continue to evidence"}<Icon name="arrowR" size={14} /></Btn></div> : null}
       {(mode === "banking" || (mode === "full" && view === "banking")) ? <BankingPanel profileId={profileId} sourceKind={sourceKind} sourceId={sourceId} state={verification.data} banks={banks.data} loading={verification.isLoading || banks.isLoading} onRefresh={refresh} /> : null}
     </div>
@@ -342,7 +346,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   return (
     <section className="verification-section">
       <header className="verification-section-head">
-        <div><span className="lbl">Step 1</span><h3>Business ownership</h3><Sub>Every owner remains on the file. Owners at 20.00% or more require separate credit authorization.</Sub></div>
+        <div><span className="lbl">Step 1</span><h3>Business ownership</h3><Sub>Every owner remains on the file. Owners at 20.00% or more require separate credit authorization and their own personal financial statement.</Sub></div>
         <div className={cx("ownership-meter", total === 100 && "complete", total > 100 && "over")}>
           <strong className="num">{total.toFixed(2)}%</strong>
           <span>{total < 100 ? `${(100 - total).toFixed(2)}% remaining` : total > 100 ? `${(total - 100).toFixed(2)}% over` : "Fully allocated"}</span>

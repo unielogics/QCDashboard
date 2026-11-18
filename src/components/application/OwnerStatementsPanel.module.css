@@ -1,0 +1,199 @@
+/* Owner financial statements. The owner cards themselves wear the shared
+   credit-owner-box, so a statement card and a credit card read as one family. */
+
+.panel :global(.credit-owner-box dd) {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* Cards in one row are the same height; the actions sit on the bottom edge of each. */
+.panel :global(.credit-owner-box) {
+  display: flex;
+  flex-direction: column;
+}
+
+.panel :global(.credit-owner-box > footer) {
+  margin-top: auto;
+}
+
+.inline {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.inline :global(.credit-owner-grid) {
+  padding-top: 4px;
+}
+
+.inlineHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  padding: 12px 16px 0;
+}
+
+.inlineHead > div:first-child {
+  flex: 1;
+  min-width: 220px;
+}
+
+.inlineHead h3 {
+  margin: 0 0 3px;
+  font-size: 14px;
+}
+
+.lead {
+  margin: 0;
+  padding: 10px 16px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.panel > :global(.callout) {
+  margin: 0 16px 14px;
+}
+
+.unassigned {
+  display: grid;
+  gap: 8px;
+  margin: 14px 16px 0;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--warn) 38%, var(--line));
+  border-radius: var(--r);
+  background: color-mix(in srgb, var(--warn) 7%, var(--surface));
+  font-size: 12px;
+}
+
+.unassigned > strong {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--ink);
+  font-size: 13px;
+}
+
+.unassigned > span {
+  color: var(--muted);
+}
+
+.unassignedRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--line);
+}
+
+.unassignedRow > div:first-child {
+  display: grid;
+  flex: 1;
+  min-width: 180px;
+  gap: 2px;
+}
+
+.unassignedRow small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.unassignedRow :global(.field) {
+  width: auto;
+  min-width: 150px;
+}
+
+.notes {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0 12px 10px;
+  list-style: none;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.notes:empty {
+  display: none;
+}
+
+.notes li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+
+.warn {
+  color: var(--warn-ink, var(--warn));
+  font-weight: 650;
+}
+
+.history {
+  margin: 0 12px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  font-size: 12px;
+}
+
+.history summary {
+  padding: 7px 10px;
+  color: var(--ink);
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.history ol {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.history li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-top: 1px solid var(--line);
+}
+
+.history li > span:first-child {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+  gap: 1px;
+}
+
+.history small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.reason {
+  display: grid;
+  gap: 6px;
+  margin: 0 12px 10px;
+  font-size: 12px;
+}
+
+.reason label {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.reasonActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+@media (max-width: 760px) {
+  .unassignedRow :global(.field),
+  .unassignedRow :global(.btn) {
+    width: 100%;
+  }
+}

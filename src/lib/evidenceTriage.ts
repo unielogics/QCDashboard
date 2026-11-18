@@ -129,6 +129,7 @@ function readCoverage(source: Record<string, unknown> | null | undefined): { cur
 function unitLabel(unit: string, required: number): string {
   if (unit === "documents") return plural(required, "document");
   if (unit === "months") return plural(required, "month");
+  if (unit === "owner statements") return plural(required, "owner statement");
   return unit;
 }
 
@@ -325,7 +326,9 @@ export function triageRequirement(requirement: TriageInput, extra?: TriageExtra)
       group: "client", kind: "partial", label: "Waiting on the client", tone: "mut", owner: "client",
       progress: progressOf(matched),
       short: `${progressOf(matched)?.text} so far`,
-      next: `${progressOf(matched)?.text} accepted so far. The client still needs to send the rest.`,
+      // A row that waits on each owner says who is still missing, in the backend's own words.
+      next: (matched.unit === "owner statements" ? sentence(requirement.state_reason) : "")
+        || `${progressOf(matched)?.text} accepted so far. The client still needs to send the rest.`,
     };
   }
 

@@ -55,6 +55,8 @@ type FormBody = PfsBody & DebtBody & StatementBody & RealEstateBody;
 type FormState = PublicFinancialReply & {
   completed: boolean;
   business_name: string | null;
+  /** The owner a personal statement belongs to, when the link is one owner's own. */
+  statement_for?: string | null;
   prefill?: Prefill;
   body: FormBody;
 } & (
@@ -323,6 +325,7 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
           <h1>Check this over</h1>
           <p className="fp-for">
             {title}
+            {state?.statement_for ? ` · ${state.statement_for}` : ""}
             {state?.business_name ? ` · ${state.business_name}` : ""}
           </p>
         </FormRoomHeader>
@@ -414,7 +417,9 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
     <FormRoomShell>
       <FormRoomHeader>
         <h1>{title}</h1>
-        {state?.business_name ? <p className="fp-for">For {state.business_name}</p> : null}
+        {state?.statement_for
+          ? <p className="fp-for">For {state.statement_for}{state.business_name ? ` · ${state.business_name}` : ""}</p>
+          : state?.business_name ? <p className="fp-for">For {state.business_name}</p> : null}
       </FormRoomHeader>
 
       <main className="fp-main">
@@ -431,7 +436,15 @@ function OtherFinancialFormPage({ onEarningsPlan }: { onEarningsPlan: () => void
               </span>
             </p>
           ) : null}
-          {state?.kind === "pfs" && (state.prefill?.owner_count ?? 0) > 1 ? (
+          {state?.kind === "pfs" && state.statement_for && (state.prefill?.owner_count ?? 0) > 1 ? (
+            <p className="fp-note">
+              <span aria-hidden="true">◆</span>
+              <span>
+                This is {state.statement_for}&apos;s own statement. Each other owner gets a link of
+                their own, so please do not forward this one.
+              </span>
+            </p>
+          ) : state?.kind === "pfs" && (state.prefill?.owner_count ?? 0) > 1 ? (
             <p className="fp-note">
               <span aria-hidden="true">◆</span>
               <span>
