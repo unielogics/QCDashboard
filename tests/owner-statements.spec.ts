@@ -11,8 +11,9 @@ import { unreadable } from "./support/readable";
 // stand-in that keeps its own state, so a click changes what the next read
 // returns the way the backend would, and no application record is touched.
 //
-// The address picks the fixture: ?state=one|fresh|complete|unassigned|minor,
-// ?role=super_admin|broker, ?variant=inline.
+// The address picks the fixture: ?state=one|fresh|complete|unassigned|minor|quiet
+// (quiet: a file that asks for no personal statements), ?role=super_admin|broker,
+// ?variant=inline.
 let script: Buffer;
 let moduleCss: Buffer;
 let globalCss: Buffer;
@@ -38,8 +39,9 @@ const book={
   complete:{owners:[jordan,owner('owner-alex','Alex','Rivera',50,{status:'received',matched_by:'name',statement:statement('family-alex','Alex Rivera',[version('v-alex-1','family-alex',1,{is_current:true,by_staff:true,actor_name:'Sam Desk',figures:figures(120000,8000)})])})],unassigned:[],loose:[]},
   unassigned:{owners:[jordan,alex],unassigned:[upload],loose:[{file_id:'file-scan',file_name:'scan-0042.pdf',uploaded_at:'2026-11-14T12:00:00Z',applicant_name:null,figures:null}]},
   minor:{owners:[jordan,owner('owner-riley','Riley','Chen',40,{email:null}),owner('owner-morgan','Morgan','Lee',10)],unassigned:[],loose:[]},
+  quiet:{owners:[owner('owner-jordan','Jordan','Sample',50,{is_primary:true,required:false,reason:'not_asked',status:'not_required'}),owner('owner-alex','Alex','Rivera',50,{required:false,reason:'not_asked',status:'not_required'})],unassigned:[],loose:[]},
 }[state]||{owners:[jordan,alex],unassigned:[],loose:[]};
-const snapshot=()=>{const needed=book.owners.filter(o=>o.required);const got=needed.filter(o=>o.status==='received');return JSON.parse(JSON.stringify({profile_id:'profile-1',threshold_pct:20,required_count:needed.length,received_count:got.length,complete:needed.length>0&&got.length===needed.length,missing_owner_ids:needed.filter(o=>o.status!=='received').map(o=>o.owner_id),owners:book.owners,unassigned:book.unassigned,on_checklist:state!=='fresh',loose_files:book.loose}))};
+const snapshot=()=>{const needed=book.owners.filter(o=>o.required);const got=needed.filter(o=>o.status==='received');return JSON.parse(JSON.stringify({profile_id:'profile-1',needed:state!=='quiet',asked_by:state==='quiet'?[]:['SBA 7(a)'],threshold_pct:20,required_count:needed.length,received_count:got.length,complete:needed.length>0&&got.length===needed.length,missing_owner_ids:needed.filter(o=>o.status!=='received').map(o=>o.owner_id),owners:book.owners,unassigned:book.unassigned,on_checklist:state!=='fresh',loose_files:book.loose}))};
 const find=id=>book.owners.find(o=>o.owner_id===id);
 const send=o=>{o.status=o.status==='received'?'received':'sent';o.statement=o.statement||statement('family-'+o.owner_id,o.full_name,[]);o.statement.link={sent_at:'2026-11-18T15:00:00Z',sent_to:o.email,opened_at:null,use_count:0,completed_at:null,expires_at:'2026-12-18T15:00:00Z'};if(!o.required){o.required=true;o.reason='requested'}};
 window.__calls=[];window.__refreshed=0;window.__opened=[];window.open=(url)=>{window.__opened.push(String(url));return null};
@@ -107,7 +109,7 @@ const html = `<!doctype html><html data-theme="light"><head><meta charset="utf-8
 <body><main class="content content--wide" style="padding:16px;min-width:0"><div class="application-verification"><div id="root"></div></div></main>
 <style>body{margin:0}</style><script src="/app.js"></script></body></html>`;
 
-async function open(page: Page, query = "") {
+async function open(page: Page, query = "", { heading = true } = {}) {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.stack ?? error.message));
   page.on("console", (message) => { if (message.type() === "error") errors.push(message.text()); });
@@ -122,7 +124,7 @@ async function open(page: Page, query = "") {
   });
   await page.clock.setFixedTime(new Date("2026-11-18T15:00:00Z"));
   await page.goto(`http://owner-statements.test/file${query}`);
-  await expect(page.getByRole("heading", { name: "Owner financial statements" })).toBeVisible();
+  if (heading) await expect(page.getByRole("heading", { name: "Owner financial statements" })).toBeVisible();
   return errors;
 }
 
@@ -140,6 +142,7 @@ async function shot(page: Page, name: string) {
 test("each owner is tracked on their own: who is in, who is not, and what is still owed", async ({ page }) => {
   const errors = await open(page);
   await expect(page.getByText("1 of 2 statements received")).toBeVisible();
+  await expect(page.getByText(/^Asked for by SBA 7\(a\)\. Every owner at 20\.00% or more gives their own/)).toBeVisible();
   const mine = card(page, "Jordan Sample");
   await expect(mine.getByText("Received", { exact: true })).toBeVisible();
   await expect(mine.getByText("v2 · Filled in online by the owner · Nov 17")).toBeVisible();
@@ -312,5 +315,15 @@ test("inside the checklist row, and on a file nobody has been asked on yet", asy
   expect(await spill(page)).toBeLessThanOrEqual(0);
   expect(await unreadable(page)).toEqual([]);
   await shot(page, "inline-fresh");
+  expect(errors).toEqual([]);
+});
+
+test("a file that asks for no personal statements shows no block at all", async ({ page }) => {
+  const errors = await open(page, "?state=quiet", { heading: false });
+  // The tracker was read, and said the file asks for none.
+  await expect.poll(async () => (await calls(page)).length).toBeGreaterThan(0);
+  await expect(page.locator("#root")).toBeEmpty();
+  await expect(page.getByRole("heading", { name: "Owner financial statements" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Send missing links" })).toHaveCount(0);
   expect(errors).toEqual([]);
 });

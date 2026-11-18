@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  askedByWords,
   canDecideOwnerStatements,
   historyOf,
   linkWords,
@@ -58,7 +59,7 @@ const waiting = row({
 
 function read(changes: Partial<OwnerStatementsRead> = {}): OwnerStatementsRead {
   return {
-    profile_id: "profile-1", threshold_pct: 20, required_count: 2, received_count: 1, complete: false, missing_owner_ids: ["owner-2"],
+    profile_id: "profile-1", needed: true, asked_by: ["SBA 7(a)"], threshold_pct: 20, required_count: 2, received_count: 1, complete: false, missing_owner_ids: ["owner-2"],
     owners: [row(), waiting], unassigned: [], on_checklist: true, loose_files: [],
     ...changes,
   };
@@ -174,6 +175,13 @@ describe("small words", () => {
   it("writes money whole, and says so when a figure was not stated", () => {
     expect(moneyWords(510000)).toBe("$510,000");
     expect(moneyWords(null)).toBe("Not stated");
+  });
+
+  it("says who asks this file for statements, and nothing when nobody is named", () => {
+    expect(askedByWords(read())).toBe("Asked for by SBA 7(a).");
+    expect(askedByWords(read({ asked_by: ["SBA 7(a)", "Added by Sam Desk"] }))).toBe("Asked for by SBA 7(a) and Added by Sam Desk.");
+    expect(askedByWords(read({ asked_by: [] }))).toBe("");
+    expect(requirementWords(row({ reason: "not_asked", required: false }), 20)).toBe("Not asked for on this file");
   });
 
   it("joins names the way a sentence does", () => {

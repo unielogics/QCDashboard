@@ -66,7 +66,8 @@ export type OwnerStatementRow = {
   ownership_pct: number | null;
   is_primary: boolean;
   required: boolean;
-  reason: "ownership" | "requested" | "not_needed" | "under_threshold";
+  /** not_asked: the file asks for no statements at all. */
+  reason: "ownership" | "requested" | "not_needed" | "under_threshold" | "not_asked";
   request_note: string | null;
   request_by: string | null;
   request_at: string | null;
@@ -88,6 +89,14 @@ export type LooseStatementFile = {
 
 export type OwnerStatementsRead = {
   profile_id: string;
+  /**
+   * Whether the file asks for personal financial statements at all: a program
+   * or lender lists them as required or recommended, or the desk asked. While
+   * it does not, the desk shows no owner block.
+   */
+  needed: boolean;
+  /** Who asks, in the desk's words: program names, "Added by …", "A lender's checklist". */
+  asked_by: string[];
   threshold_pct: number;
   required_count: number;
   received_count: number;
@@ -183,7 +192,13 @@ export function requirementWords(row: OwnerStatementRow, thresholdPct: number): 
   if (row.reason === "not_needed") return `Marked not needed${row.request_by ? ` by ${row.request_by}` : ""}${row.request_note ? `: ${row.request_note}` : ""}`;
   if (row.reason === "requested") return `Under ${line}, asked by your team`;
   if (row.reason === "ownership") return `Owns ${line} or more`;
+  if (row.reason === "not_asked") return "Not asked for on this file";
   return `Under ${line}, so not required`;
+}
+
+/** Who asks this file for personal statements, as one line. */
+export function askedByWords(read: Pick<OwnerStatementsRead, "asked_by">): string {
+  return read.asked_by.length ? `Asked for by ${listOf(read.asked_by)}.` : "";
 }
 
 /** One saved version, in words: how it arrived and who saved it. */

@@ -346,7 +346,7 @@ function OwnershipTable({ profileId, owners, state, loading, onRefresh, onContin
   return (
     <section className="verification-section">
       <header className="verification-section-head">
-        <div><span className="lbl">Step 1</span><h3>Business ownership</h3><Sub>Every owner remains on the file. Owners at 20.00% or more require separate credit authorization and their own personal financial statement.</Sub></div>
+        <div><span className="lbl">Step 1</span><h3>Business ownership</h3><Sub>Every owner remains on the file. Owners at 20.00% or more require separate credit authorization. When the file asks for personal financial statements, each of those owners gives their own.</Sub></div>
         <div className={cx("ownership-meter", total === 100 && "complete", total > 100 && "over")}>
           <strong className="num">{total.toFixed(2)}%</strong>
           <span>{total < 100 ? `${(100 - total).toFixed(2)}% remaining` : total > 100 ? `${(total - 100).toFixed(2)}% over` : "Fully allocated"}</span>

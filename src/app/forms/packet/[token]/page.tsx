@@ -1,11 +1,13 @@
 "use client";
 
-// Four financial forms behind one link, for someone who is not signed in.
+// The file's financial forms behind one link, for someone who is not signed in.
 //
 // The desk copies one URL and forwards it to the borrower — or the borrower
-// forwards it to their accountant. Behind it are four ordinary form links
-// whose tokens derive from this one (`{base}.{kind}`), so this page is the
-// single-form page four times over: the same public endpoints, the same
+// forwards it to their accountant. Behind it are ordinary form links whose
+// tokens derive from this one (`{base}.{kind}`): the P&L, balance sheet and
+// debt schedule, and the personal financial statement only on a file that
+// asks for one (lib/formPacket.ts). So this page is the single-form page
+// several times over: the same public endpoints, the same
 // no-Authorization fetch (see forms/[kind]/[token] for why the `api<T>()`
 // wrapper must not be used here), the same four-second autosave and the same
 // "Save and send" per form. Nothing new on the server was needed for it.
@@ -68,11 +70,12 @@ import {
   type StatementBody,
   type StatementSchema,
 } from "@/components/application/BusinessStatementForm";
+import { PACKET_KINDS, formCountWords, packetKinds, type PacketKind } from "@/lib/formPacket";
 
-type Kind = "p_and_l" | "balance_sheet" | "debt_schedule" | "pfs";
+type Kind = PacketKind;
 
-/** The order the desk reads them in: the business first, the owner last. */
-const KINDS: Kind[] = ["p_and_l", "balance_sheet", "debt_schedule", "pfs"];
+/** Every form a packet can hold; `kinds` below is the ones this packet does. */
+const KINDS: Kind[] = PACKET_KINDS;
 
 const TITLES: Record<Kind, string> = {
   p_and_l: "Profit & loss",
@@ -192,6 +195,8 @@ export default function FinancialPacketPage() {
   childrenRef.current = children;
   const [status, setStatus] = useState<"loading" | "ready" | "gone">("loading");
   const [active, setActive] = useState<Kind>("p_and_l");
+  /** The forms this packet holds: three, or four on a file that asks for a personal statement. */
+  const [kinds, setKinds] = useState<Kind[]>(KINDS);
   // All four sent, and the person has chosen to look at them again.
   const [reviewing, setReviewing] = useState(false);
   const activeRef = useRef(active);
@@ -313,12 +318,15 @@ export default function FinancialPacketPage() {
           }),
         );
         if (cancelled) return;
-        // One missing child means the packet is closed or expired: the four
-        // links share a lifetime and are revoked together.
-        if (answers.some((answer) => answer === null)) {
+        // A missing core child means the packet is closed or expired: its
+        // links share a lifetime and are revoked together. A missing personal
+        // statement child is a packet minted for a file that asks for none.
+        const present = packetKinds(Object.fromEntries(KINDS.map((kind, index) => [kind, answers[index] !== null])));
+        if (present === null) {
           setStatus("gone");
           return;
         }
+        setKinds(present);
         const next: Partial<Record<Kind, Child>> = {};
         answers.forEach((answer, index) => {
           if (!answer) return;
@@ -336,7 +344,7 @@ export default function FinancialPacketPage() {
           };
         });
         setChildren(next);
-        setActive(KINDS.find((kind) => !next[kind]?.state.completed) ?? "p_and_l");
+        setActive(present.find((kind) => !next[kind]?.state.completed) ?? "p_and_l");
         setStatus("ready");
       } catch {
         if (!cancelled) setStatus("gone");
@@ -427,7 +435,7 @@ export default function FinancialPacketPage() {
       const reply = await writer.write("submit", child.body);
       acceptReply(kind, { ...reply, completed: true }, child.body);
       patch(kind, { submitting: false });
-      const remaining = KINDS.find((other) => other !== kind && (!childrenRef.current[other]?.state.completed || childrenRef.current[other]?.state.workspace?.dirty));
+      const remaining = kinds.find((other) => other !== kind && (!childrenRef.current[other]?.state.completed || childrenRef.current[other]?.state.workspace?.dirty));
       if (remaining) {
         setActive(remaining);
         window.scrollTo({ top: 0, behavior: "smooth" });
@@ -438,9 +446,10 @@ export default function FinancialPacketPage() {
   };
 
   const businessName =
-    KINDS.map((kind) => children[kind]?.state.business_name).find((name) => Boolean(name)) ?? null;
-  const doneCount = KINDS.filter((kind) => children[kind]?.state.completed && !children[kind]?.state.workspace?.dirty).length;
-  const allDone = status === "ready" && doneCount === KINDS.length;
+    kinds.map((kind) => children[kind]?.state.business_name).find((name) => Boolean(name)) ?? null;
+  const doneCount = kinds.filter((kind) => children[kind]?.state.completed && !children[kind]?.state.workspace?.dirty).length;
+  const allDone = status === "ready" && doneCount === kinds.length;
+  const formCount = formCountWords(kinds.length);
   /** The grid renders only when the screen is wide *and* this token actually
    *  opens a worksheet. Both halves matter: the first is the standing
    *  phone-first decision, the second is that a packet's child links and a
@@ -504,7 +513,7 @@ export default function FinancialPacketPage() {
             <h1>Thank you — you can close this window.</h1>
             <PublicFormVersionNotice workspace={children[active]?.state.workspace} savedVersion={children[active]?.savedVersion} canEdit={children[active]?.state.can_edit !== false && children[active]?.state.permission !== "view"} />
             <p>
-              All four forms have been received and added to{" "}
+              All {formCount.toLowerCase()} forms have been received and added to{" "}
               {businessName ? `the file for ${businessName}` : "your file"}. Nothing else is needed
               from you here.
             </p>
@@ -528,7 +537,7 @@ export default function FinancialPacketPage() {
       <FormRoomHeader eyebrow="Financial forms">
         <h1>Financial package{businessName ? ` for ${businessName}` : ""}</h1>
         <p className="fp-for">
-          Four forms, one link. Each one saves as you type and is sent on its own.
+          {formCount} forms, one link. Each one saves as you type and is sent on its own.
         </p>
       </FormRoomHeader>
 
@@ -537,14 +546,14 @@ export default function FinancialPacketPage() {
           <div className="fp-packet-progress">
             <span>
               <strong>
-                {doneCount} of {KINDS.length}
+                {doneCount} of {kinds.length}
               </strong>{" "}
               sent
             </span>
             <span>This link works for 30 days from when it was sent.</span>
           </div>
           <ol className="fp-packet-rail" aria-label="Forms in this package">
-            {KINDS.map((kind, index) => {
+            {kinds.map((kind, index) => {
               const step = children[kind];
               const done = !!step?.state.completed && !step.state.workspace?.dirty;
               const draft = !done && Boolean(step && (step.state.workspace?.dirty || step.savedAt || step.body !== step.loaded));

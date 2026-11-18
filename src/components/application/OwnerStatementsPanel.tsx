@@ -3,7 +3,8 @@
 // A personal financial statement for each owner: who owes one, where each one
 // stands, a private link per owner, and every saved version under the owner it
 // belongs to. One checklist row used to cover the whole file, so the first
-// statement in closed it and nobody could see whose was missing.
+// statement in closed it and nobody could see whose was missing. Only on a file
+// that asks for personal statements; on any other the block is not drawn.
 
 import dynamic from "next/dynamic";
 import { useState } from "react";
@@ -15,6 +16,7 @@ import { apiBase } from "@/lib/api";
 import { useConsoleAuth } from "@/lib/consoleAuth";
 import { financialVersionPdfPath } from "@/lib/financialWorkspaceApi";
 import {
+  askedByWords,
   assignStatementFile,
   assignStatementOwners,
   canDecideOwnerStatements,
@@ -174,13 +176,18 @@ export function OwnerStatementsPanel({ profileId, variant = "section", onChanged
   const waiting = data ? missingOwners(data) : { reachable: [], noEmail: [] };
   const loose = data ? data.unassigned.length + data.loose_files.length : 0;
 
+  // A file that asks for no personal statements shows no block at all. It
+  // appears once a program or lender lists them as required or recommended,
+  // or the desk asks (owner_statements.need on the server).
+  if (!statements.isError && !data?.needed) return null;
+
   const header = (
     <header className={variant === "section" ? "verification-section-head" : styles.inlineHead}>
       <div>
         <h3>Owner financial statements</h3>
         <Sub>
           {data
-            ? `Every owner at ${data.threshold_pct.toFixed(2)}% or more gives their own personal financial statement, from a private link. Each saved version stays under that owner.`
+            ? `${askedByWords(data)} Every owner at ${data.threshold_pct.toFixed(2)}% or more gives their own, from a private link. Each saved version stays under that owner.`.trim()
             : "Each owner gives their own personal financial statement, from a private link."}
         </Sub>
       </div>
