@@ -2,16 +2,19 @@
 
 // Capital readiness across the loaded files: how many sit in each band, the
 // median score, and what is blocking them. Read off the same file rows the
-// dashboard already has, so it costs no request of its own.
+// dashboard already has, so it costs no request of its own. A lost or denied
+// file has nothing left to prepare, so its blockers and milestones are not
+// counted here.
 
 import Link from "next/link";
 import { CellChip } from "@/components/ds";
 import { capitalReadinessBandLabel, capitalReadinessBandTone, listReadinessSummary } from "@/lib/capitalReadiness";
-import { formatUnifiedAmount, type UnifiedFileRow } from "@/lib/unifiedOperator";
+import { formatUnifiedAmount, isOpenFileRow, type UnifiedFileRow } from "@/lib/unifiedOperator";
 
 export function CapitalReadinessOverview({ rows, locale }: { rows: UnifiedFileRow[]; locale: "en" | "es" }) {
   const byProfile = new Map<string, { row: UnifiedFileRow; summary: NonNullable<ReturnType<typeof listReadinessSummary>> }>();
   rows.forEach((row) => {
+    if (!isOpenFileRow(row)) return;
     const summary = listReadinessSummary(row);
     if (!summary) return;
     const key = row.profile_id || row.id;

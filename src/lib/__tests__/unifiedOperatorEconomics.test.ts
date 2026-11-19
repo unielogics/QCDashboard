@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { derivePipelineEconomics, type UnifiedFileRow } from "@/lib/unifiedOperator";
+import { derivePipelineEconomics, isOpenFileRow, type UnifiedFileRow } from "@/lib/unifiedOperator";
 
 function row(fields: Partial<UnifiedFileRow>): UnifiedFileRow {
   return {
@@ -69,5 +69,21 @@ describe("derivePipelineEconomics", () => {
     ]);
 
     expect(result.underwriting).toMatchObject({ count: 1, value: 300_000, forecasted_count: 1, forecast_earnings: 4_500 });
+  });
+});
+
+describe("isOpenFileRow", () => {
+  it("leaves lost and denied files out and keeps every file still being worked", () => {
+    expect(isOpenFileRow(row({ pipeline_status: "closed_lost" }))).toBe(false);
+    expect(isOpenFileRow(row({ pipeline_status: "denied" }))).toBe(false);
+    for (const status of ["submitted", "collecting_docs", "in_underwriting", "term_sheet_provided", "approved", "closed_won"] as const) {
+      expect(isOpenFileRow(row({ pipeline_status: status }))).toBe(true);
+    }
+  });
+
+  it("reads the underwriting status when the pipeline has none, and counts a file with neither as open", () => {
+    expect(isOpenFileRow(row({ pipeline_status: null, underwriting_status: "closed_lost" }))).toBe(false);
+    expect(isOpenFileRow(row({ pipeline_status: null, underwriting_status: null }))).toBe(true);
+    expect(isOpenFileRow(row({}))).toBe(true);
   });
 });

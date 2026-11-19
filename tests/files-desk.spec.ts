@@ -50,6 +50,11 @@ window.__fx={
   activity:quiet?[]:activity,
   suggestions:quiet?[]:[suggestion('s1','Ask for the 2025 business tax return',16),suggestion('s2','Confirm the second owner on the application',3),suggestion('s3','Remind the client about the debt schedule',1,{route:'uploader',approvable_here:false,bucket_id:'bucket-b',client_name:'Northside Bakery & Catering Company of Greater Las Vegas',intake_id:'b'})],
   unread:[{intake_id:'a',sms:2,email:1},{intake_id:'b',sms:0,email:0},{intake_id:'c',sms:0,email:4},{intake_id:'d',sms:0,email:0},{intake_id:'e',sms:0,email:0}],
+  // Two files with capital readiness: one being worked, one lost. Only the first is counted.
+  unifiedRows:quiet?[]:[
+    {id:'u-a',source_kind:'intake',source_id:'a',profile_id:'profile-a',intake_id:'a',pipeline_status:'in_underwriting',requested_amount:250000,capital_readiness_band:'ready_soon',capital_readiness_score:72,capital_readiness_evidence_coverage_pct:80,capital_readiness_critical_blocker_count:1,capital_readiness_overdue_milestone_count:0},
+    {id:'u-lost',source_kind:'intake',source_id:'lost',profile_id:'profile-lost',intake_id:'lost',pipeline_status:'closed_lost',requested_amount:900000,capital_readiness_band:'one_plus_year',capital_readiness_score:31,capital_readiness_evidence_coverage_pct:80,capital_readiness_critical_blocker_count:4,capital_readiness_overdue_milestone_count:3},
+  ],
   economics:Object.fromEntries(['requested','underwriting','approved','funded'].map((key,index)=>[key,{count:[8,3,1,2][index],value:[1850000,920000,310000,640000][index],forecast_earnings:[0,27600,9300,19200][index],forecasted_count:[0,3,1,2][index],forecast_coverage_pct:[0,100,100,100][index]}])),
   events:quiet?[]:[{id:'cal-1',title:'Pre-call with Harbor Auto Detail',starts_at:new Date(new Date().setHours(14,30,0,0)).toISOString(),who:'Dana Ruiz',kind:'call',status:'pending'}],
   clientFiles:[
@@ -88,7 +93,7 @@ test.beforeAll(async () => {
     useUpdateAttentionItem: "()=>({isPending:false,variables:null,mutateAsync:async()=>({})})",
     useProposedActionItems: "(enabled,status,bucketId)=>{useVersion();return {data:enabled===false?undefined:window.__fx.suggestions.filter(item=>!bucketId||item.bucket_id===bucketId),isLoading:false,isError:false,refetch:async()=>{}}}",
     useDecideActionItem: "()=>({isPending:false,mutateAsync:async(args)=>{window.__fx.decided.push(args);window.__fx.suggestions=window.__fx.suggestions.filter(item=>item.id!==args.itemId);bump();return {}}})",
-    useUnifiedOperatorFiles: "()=>({data:{items:[],rollup:{total:14,working:9,pipeline_economics:window.__fx.economics}},isLoading:false})",
+    useUnifiedOperatorFiles: "()=>({data:{items:window.__fx.unifiedRows,rollup:{total:14,working:9,pipeline_economics:window.__fx.economics}},isLoading:false})",
     useClients: "()=>({data:window.__fx.clients})",
     useFileActivity: "(group,options)=>{const all=window.__fx.activity.filter(item=>group==='all'||item.group===group);const limit=options?.limit??40;return {data:{items:all.slice(0,limit),next_before:all.length>limit?all[limit-1].occurred_at:null},isLoading:false,isFetching:false,isError:false,refetch:async()=>{}}}",
     useIntakeCommunicationUnreadBatch: "()=>({data:{items:window.__fx.unread},isLoading:false,isError:false})",
@@ -183,12 +188,29 @@ test("the desk's home is the intake files and what happened on them", async ({ p
   await expect(page.getByRole("heading", { name: "Good morning, Franco." })).toBeVisible();
   await expect(page.getByText("14 files in flight · 3 need attention · 3 new this week")).toBeVisible();
 
+  // Deal economics leads the page: straight under the greeting, above the file counts.
+  const economics = page.getByRole("region", { name: "Pipeline value and expected earnings" });
+  await expect(economics).toContainText("Deal economics");
+  await expect(economics).toContainText("Requested");
+  const order = await page.evaluate(() => {
+    const strip = document.querySelector(".pipeline-economics");
+    const tiles = document.querySelector('[aria-label="Files at a glance"]');
+    return {
+      afterHead: strip?.previousElementSibling?.classList.contains("pagehead") ?? false,
+      beforeTiles: Boolean(strip && tiles && strip.compareDocumentPosition(tiles) & Node.DOCUMENT_POSITION_FOLLOWING),
+      gap: strip && tiles ? Math.round(tiles.getBoundingClientRect().top - strip.getBoundingClientRect().bottom) : -1,
+    };
+  });
+  expect(order.afterHead).toBe(true);
+  expect(order.beforeTiles).toBe(true);
+  expect(order.gap).toBeGreaterThan(0);
+
   const tiles = page.getByRole("region", { name: "Files at a glance" });
   await expect(tiles).toContainText("Active files14");
   await expect(tiles).toContainText("New this week3");
   await expect(tiles).toContainText("Need attention3");
   await expect(tiles).toContainText("No documents yet5");
-  await expect(tiles).toContainText("AI suggestions3");
+  await expect(tiles).toContainText("AI suggestions3Waiting for a decision on open files");
   // Every file has its client, so the page says nothing about it.
   await expect(tiles).not.toContainText("Without a client");
 
@@ -223,6 +245,12 @@ test("the desk's home is the intake files and what happened on them", async ({ p
   await expect(feed.getByRole("button", { name: "Show more" })).toBeVisible();
   await feed.getByRole("button", { name: "Show more" }).click();
   await expect(feed).toContainText("Document received 22");
+
+  // Capital readiness counts the file being worked, not the lost one.
+  const readiness = page.getByRole("region", { name: "Capital Readiness overview" });
+  await expect(readiness).toContainText("Across 1 loaded files");
+  await expect(readiness).toContainText("Critical blockers1");
+  await expect(readiness).toContainText("Overdue milestones0");
 
   // The stalled-file queue is still the desk's queue.
   await expect(page.getByText("Needs attention today")).toBeVisible();

@@ -9,7 +9,12 @@
 // page is those files and nothing else — how many there are and where they
 // stand, which ones are stuck, which moved most recently, what happened on
 // them, and what their AI is waiting to be told. Money and readiness stay,
-// because both are read off the same files.
+// because both are read off the same files, and the money leads: the deal
+// economics strip is the first thing under the greeting.
+//
+// Only open files are worked here. A file that was lost, denied, withdrawn or
+// archived drops out of every count, the queue, the suggestions and the
+// activity feed (the API filters each; the suggestions on it close).
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -146,7 +151,9 @@ export function OperatorFilesDesk({
         </div>
       </div>
 
-      <section className={styles.tiles} aria-label="Files at a glance">
+      <PipelineEconomicsStrip economics={unified?.rollup?.pipeline_economics} rows={unifiedRows} loading={unifiedLoading} />
+
+      <section className={`${styles.tiles} mt`} aria-label="Files at a glance">
         <Link href={FILES_HREF} className={styles.tile}>
           <span className="lbl">Active files</span>
           <strong className="num">{summary.data ? summary.data.active : "—"}</strong>
@@ -170,7 +177,7 @@ export function OperatorFilesDesk({
         <a href="#ai-suggestions" className={styles.tile}>
           <span className="lbl">AI suggestions</span>
           <strong className="num">{suggestions.data ? suggestions.data.length : "—"}</strong>
-          <small>Waiting for a decision</small>
+          <small>Waiting for a decision on open files</small>
         </a>
         {withoutClient > 0 ? (
           <div className={`${styles.tile} ${styles.tileWarn}`} role="status">
@@ -224,7 +231,6 @@ export function OperatorFilesDesk({
         </div>
       </div>
 
-      <PipelineEconomicsStrip className="mt" economics={unified?.rollup?.pipeline_economics} rows={unifiedRows} loading={unifiedLoading} />
       <CapitalReadinessOverview rows={unifiedRows} locale={locale} />
     </div>
   );

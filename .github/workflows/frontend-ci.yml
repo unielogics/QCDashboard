@@ -84,6 +84,8 @@ jobs:
           src/components/earnings-plan/__tests__/EarningsPlanScreens.test.ts
           src/lib/__tests__/debtTypes.test.ts
           src/lib/__tests__/roomPin.test.ts
+          src/lib/__tests__/unifiedOperatorEconomics.test.ts
+          src/app/components/__tests__/OperatorFilesDesk.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -93,6 +95,11 @@ jobs:
           pnpm exec eslint
           src/lib/roomPin.ts
           src/lib/__tests__/roomPin.test.ts
+          src/lib/unifiedOperator.ts
+          src/lib/__tests__/unifiedOperatorEconomics.test.ts
+          src/app/components/OperatorFilesDesk.tsx
+          src/components/operator/AiSuggestionsPanel.tsx
+          src/components/operator/CapitalReadinessOverview.tsx
           'src/app/admin/marketplace/[id]/page.tsx'
           'src/app/files/[id]/page.tsx'
           src/components/marketplace/MarketplacePublishStrip.tsx

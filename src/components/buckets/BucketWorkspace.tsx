@@ -337,6 +337,8 @@ const ACTIVITY_ACTION_OPTIONS = [
   "ai_action_approved",
   "ai_action_rejected",
   "ai_action_completed",
+  "ai_actions_closed",
+  "ai_actions_reopened",
 ];
 const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "vendor", "system"];
 const ACTIVITY_TARGET_OPTIONS = ["bucket", "requested_document", "upload_link", "share", "vendor_access", "file", "note", "annotation", "ai_action_item"];
@@ -5070,6 +5072,8 @@ function activityLabel(action: string) {
     ai_action_approved: "Action task approved",
     ai_action_rejected: "Action task rejected",
     ai_action_completed: "Action task completed",
+    ai_actions_closed: "AI suggestions closed with the file",
+    ai_actions_reopened: "AI suggestions reopened with the file",
     vendor_access_created: "Vendor access created",
     vendor_access_updated: "Vendor access updated",
     vendor_access_revoked: "Vendor access revoked",

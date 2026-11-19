@@ -395,6 +395,12 @@ export const PIPELINE_LIFECYCLE: Array<{ key: UnderwritingLifecycleStatus; label
 
 export const OPEN_PIPELINE_LIFECYCLE = PIPELINE_LIFECYCLE.filter((status) => status.open);
 
+/** A file still being worked: not lost or denied. A status nobody set counts as open. */
+export function isOpenFileRow(row: Pick<UnifiedFileRow, "pipeline_status" | "underwriting_status">): boolean {
+  const status = row.pipeline_status ?? row.underwriting_status;
+  return PIPELINE_LIFECYCLE.find((item) => item.key === status)?.open ?? true;
+}
+
 export function underwritingStatusLabel(status: UnderwritingLifecycleStatus | null | undefined): string {
   return PIPELINE_LIFECYCLE.find((item) => item.key === status)?.label ?? "Submitted";
 }
