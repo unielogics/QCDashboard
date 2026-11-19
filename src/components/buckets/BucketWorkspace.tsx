@@ -48,6 +48,7 @@ import { bucketFileRemovalError, bucketFileRetentionPresentation } from "@/lib/b
 import { archiveFileName, attachmentFileName, fileNamesPreview, removalSummary, saveBlobAs, type BucketFilesRemoveResult } from "@/lib/bucketFileSelection";
 import { bucketUploadIssue, type BucketUploadIssue } from "@/lib/bucketUploadError";
 import { clientQueuedUploadCanSubmit, isStaleRequestedDocumentError } from "@/lib/clientRoomDocuments";
+import { ACCESS_PIN_LENGTH, accessPinProblem, generateAccessPin, normalizeAccessPin } from "@/lib/roomPin";
 import { isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { usePinnedRows } from "@/lib/tablePinning";
 import { isVisualQa, useConsoleAuth } from "@/lib/consoleAuth";
@@ -378,7 +379,7 @@ function newShareViewerDraft(): ShareViewerDraft {
     id: crypto.randomUUID(),
     recipient_name: "",
     recipient_email: "",
-    passcode: generateAccessCode(),
+    passcode: generateAccessPin(),
     can_download: false,
     expires_days: 7,
     file_ids: [],
@@ -719,7 +720,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       const keep = new Set((row.upload_links ?? []).map((link) => link.id));
       return Object.fromEntries(Object.entries(codes).filter(([id]) => keep.has(id)));
     });
-    setUploadLinkDraft({ recipient_name: row.client_name || "", recipient_email: "", passcode: generateAccessCode() });
+    setUploadLinkDraft({ recipient_name: row.client_name || "", recipient_email: "", passcode: generateAccessPin() });
     setExpandedActivityId(null);
     setAdminUploadFiles([]);
     setAdminUploadStatus(null);
@@ -1218,6 +1219,13 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
 
   async function createBucketWorkflow() {
     if (!bucketForm.name.trim()) return;
+    // The room is created before its invites; a PIN the server refuses would
+    // leave a room with no invite, so check the half-typed one first.
+    const draftPinProblem = createInviteDraft.recipient_name.trim() ? accessPinProblem(createInviteDraft.passcode) : null;
+    if (draftPinProblem) {
+      setCreateStatus({ kind: "error", message: draftPinProblem });
+      return;
+    }
     setBusy(true);
     setNotice(null);
     setCreateStatus({ kind: "working", message: "Creating bucket..." });
@@ -1257,7 +1265,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       setCreateStatus({ kind: "working", message: "Refreshing room list..." });
       await loadBuckets();
       setBucketForm({ name: "", client_name: "", purpose: "", bucket_type: "general", description: "" });
-      setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+      setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessPin() });
       setCreateInvites([]);
       setCreateChecked({});
       setCustomDocs([]);
@@ -1279,17 +1287,17 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   }
 
   function addCreateInvite() {
-    if (!createInviteDraft.recipient_name.trim()) return;
+    if (!createInviteDraft.recipient_name.trim() || accessPinProblem(createInviteDraft.passcode)) return;
     setCreateInvites((rows) => [
       ...rows,
       {
         id: crypto.randomUUID(),
         recipient_name: createInviteDraft.recipient_name.trim(),
         recipient_email: createInviteDraft.recipient_email.trim(),
-        passcode: createInviteDraft.passcode.trim() || generateAccessCode(),
+        passcode: createInviteDraft.passcode.trim() || generateAccessPin(),
       },
     ]);
-    setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+    setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessPin() });
   }
 
   function toggleCreateDoc(docId: string) {
@@ -1328,7 +1336,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
   }
 
   function generateShareCode(id: string) {
-    updateShareViewer(id, { passcode: generateAccessCode() });
+    updateShareViewer(id, { passcode: generateAccessPin() });
   }
 
   function setShareViewerFileIds(id: string, fileIds: string[]) {
@@ -1546,7 +1554,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       });
       if (!confirmed) return;
     }
-    const passcode = uploadLinkDraft.passcode.trim() || generateAccessCode();
+    const passcode = uploadLinkDraft.passcode.trim() || generateAccessPin();
     const created = await call<UploadLink>(`/buckets/admin/${detail.id}/upload-links`, {
       method: "POST",
       body: JSON.stringify({
@@ -1557,7 +1565,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     });
     setUploadLinkPasscodes((codes) => ({ ...codes, [created.id]: created.passcode ?? passcode }));
     setDetail((current) => current ? { ...current, upload_links: [created, ...(current.upload_links ?? [])] } : current);
-    setUploadLinkDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+    setUploadLinkDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessPin() });
     setExpandedUploadLinkId(created.id);
     setNotice("Upload link created. Copy the invite from the Upload Links panel.");
   }
@@ -1757,6 +1765,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
     shareViewers.length > 0 &&
     shareViewers.every((viewer) => viewer.recipient_name.trim()) &&
     shareViewers.every((viewer) => viewer.file_ids.length > 0) &&
+    shareViewers.every((viewer) => !accessPinProblem(viewer.passcode)) &&
     !busy;
 
   async function createShareLinks() {
@@ -1766,7 +1775,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
       let createdCount = 0;
       const createdShares: Share[] = [];
       for (const viewer of shareViewers) {
-        const passcode = viewer.passcode.trim() || generateAccessCode();
+        const passcode = viewer.passcode.trim() || generateAccessPin();
         const res = await call<Share>(`/buckets/admin/${detail.id}/shares`, {
           method: "POST",
           body: JSON.stringify({
@@ -2367,7 +2376,7 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
           <Btn variant="pri" size="sm" onClick={() => {
             setCreateResult(null);
             setCreateStatus(null);
-            setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessCode() });
+            setCreateInviteDraft({ recipient_name: "", recipient_email: "", passcode: generateAccessPin() });
             setCreateInvites([]);
             setCustomDocs([]);
             setCustomDocDraft({ name: "", description: "", required: true, allow_multiple_files: false });
@@ -2861,16 +2870,26 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
               <div className="mt" style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) auto", gap: 10 }}>
                 <Input placeholder="Person or company name" value={createInviteDraft.recipient_name} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_name: e.target.value })} />
                 <Input placeholder="Email optional" value={createInviteDraft.recipient_email} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, recipient_email: e.target.value })} />
-                <Input placeholder="Upload access code" value={createInviteDraft.passcode} onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, passcode: e.target.value })} />
-                <Btn onClick={() => setCreateInviteDraft({ ...createInviteDraft, passcode: generateAccessCode() })}>
+                <Input
+                  placeholder="6-digit access code"
+                  aria-label="Upload access code (6 digits)"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={ACCESS_PIN_LENGTH}
+                  autoComplete="off"
+                  value={createInviteDraft.passcode}
+                  onChange={(e) => setCreateInviteDraft({ ...createInviteDraft, passcode: normalizeAccessPin(e.target.value) })}
+                />
+                <Btn onClick={() => setCreateInviteDraft({ ...createInviteDraft, passcode: generateAccessPin() })}>
                   Generate code
                 </Btn>
-                <Btn onClick={addCreateInvite} disabled={!createInviteDraft.recipient_name.trim()}>
+                <Btn onClick={addCreateInvite} disabled={!createInviteDraft.recipient_name.trim() || Boolean(accessPinProblem(createInviteDraft.passcode))}>
                   <Icon name="plus" size={14} />
                   Add invite
                 </Btn>
                 <span className="sub" style={{ alignSelf: "center" }}>Send this code with the upload link.</span>
               </div>
+              {accessPinProblem(createInviteDraft.passcode) ? <div className="warnline mt" role="alert">{accessPinProblem(createInviteDraft.passcode)}</div> : null}
               {createInvites.length ? (
                 <div className="grid g8 mt">
                   {createInvites.map((invite) => (
@@ -3047,9 +3066,19 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                             <Input placeholder="Viewer name" value={viewer.recipient_name} onChange={(event) => updateShareViewer(viewer.id, { recipient_name: event.target.value })} />
                             <Input placeholder="Viewer email optional" value={viewer.recipient_email} onChange={(event) => updateShareViewer(viewer.id, { recipient_email: event.target.value })} />
                             <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 8 }}>
-                              <Input placeholder="Access code" value={viewer.passcode} onChange={(event) => updateShareViewer(viewer.id, { passcode: event.target.value })} />
+                              <Input
+                                placeholder="6-digit access code"
+                                aria-label={`Access code for viewer ${index + 1} (6 digits)`}
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={ACCESS_PIN_LENGTH}
+                                autoComplete="off"
+                                value={viewer.passcode}
+                                onChange={(event) => updateShareViewer(viewer.id, { passcode: normalizeAccessPin(event.target.value) })}
+                              />
                               <Btn onClick={() => generateShareCode(viewer.id)}>Generate</Btn>
                             </div>
+                            {accessPinProblem(viewer.passcode) ? <div className="warnline" role="alert">{accessPinProblem(viewer.passcode)}</div> : null}
                             {/* Passcode-share permissions: `can_download` only.
                                 A passcode share has no notes and no task
                                 proposals — those belong to vendor access. */}
@@ -3741,17 +3770,23 @@ function BucketWorkspaceContent({ initialBucketId, embeddedBucketId, onClose, bu
                     onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, recipient_email: event.target.value })}
                   />
                   <Input
-                    placeholder="Upload access code"
+                    placeholder="6-digit access code"
+                    aria-label="Upload access code (6 digits)"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={ACCESS_PIN_LENGTH}
+                    autoComplete="off"
                     value={uploadLinkDraft.passcode}
-                    onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, passcode: event.target.value })}
+                    onChange={(event) => setUploadLinkDraft({ ...uploadLinkDraft, passcode: normalizeAccessPin(event.target.value) })}
                   />
                   <div className="row">
-                    <Btn onClick={() => setUploadLinkDraft({ ...uploadLinkDraft, passcode: generateAccessCode() })}>Generate</Btn>
-                    <Btn variant="pri" onClick={() => createBucketUploadLink().catch((e) => setNotice(String(e)))} disabled={!uploadLinkDraft.recipient_name.trim()}>
+                    <Btn onClick={() => setUploadLinkDraft({ ...uploadLinkDraft, passcode: generateAccessPin() })}>Generate</Btn>
+                    <Btn variant="pri" onClick={() => createBucketUploadLink().catch((e) => setNotice(readableError(e)))} disabled={!uploadLinkDraft.recipient_name.trim() || Boolean(accessPinProblem(uploadLinkDraft.passcode))}>
                       Create
                     </Btn>
                   </div>
                 </div>
+                {accessPinProblem(uploadLinkDraft.passcode) ? <div className="warnline" role="alert">{accessPinProblem(uploadLinkDraft.passcode)}</div> : null}
                 {(detail.upload_links ?? []).length === 0 ? (
                   <div className="hintbox">No upload links yet. Create one here to invite a client after bucket creation.</div>
                 ) : (detail.upload_links ?? []).map((link) => {
@@ -4944,7 +4979,7 @@ function normalizedUploadInvites(invites: UploadInvite[], draft: { recipient_nam
       id: "draft",
       recipient_name: draft.recipient_name.trim(),
       recipient_email: draft.recipient_email.trim(),
-      passcode: draft.passcode.trim() || generateAccessCode(),
+      passcode: draft.passcode.trim() || generateAccessPin(),
     });
   }
   return rows;
@@ -5129,13 +5164,6 @@ function saveAdminUploadDraft(bucketId: string, draft: { uploader_name: string; 
   } catch {
     // Local autosave is best-effort; uploads still use the current in-memory values.
   }
-}
-
-function generateAccessCode() {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i += 1) code += alphabet[Math.floor(Math.random() * alphabet.length)];
-  return code;
 }
 
 /**

@@ -83,6 +83,7 @@ jobs:
           src/lib/__tests__/financialWorkspace.test.ts
           src/components/earnings-plan/__tests__/EarningsPlanScreens.test.ts
           src/lib/__tests__/debtTypes.test.ts
+          src/lib/__tests__/roomPin.test.ts
 
       - name: Check TypeScript
         run: pnpm exec tsc --noEmit --pretty false
@@ -90,6 +91,8 @@ jobs:
       - name: Lint changed scope
         run: >-
           pnpm exec eslint
+          src/lib/roomPin.ts
+          src/lib/__tests__/roomPin.test.ts
           'src/app/admin/marketplace/[id]/page.tsx'
           'src/app/files/[id]/page.tsx'
           src/components/marketplace/MarketplacePublishStrip.tsx

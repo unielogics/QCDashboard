@@ -251,8 +251,8 @@ export function CreateLeadModal({
         </div>
       ) : null}</> : null}
       {step === 1 ? <div className="fldgrid two">
-        <Field label="Six-digit room PIN *"><Input aria-label="Six-digit room PIN" value={roomPin} onChange={(event) => setRoomPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
-        <Field label="Confirm room PIN *"><Input aria-label="Confirm room PIN" value={roomPinConfirm} onChange={(event) => setRoomPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" autoComplete="off" placeholder="000000" /></Field>
+        <Field label="Six-digit room PIN *"><Input aria-label="Six-digit room PIN" value={roomPin} onChange={(event) => setRoomPin(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" maxLength={6} autoComplete="off" placeholder="000000" /></Field>
+        <Field label="Confirm room PIN *"><Input aria-label="Confirm room PIN" value={roomPinConfirm} onChange={(event) => setRoomPinConfirm(event.target.value.replace(/\D/g, "").slice(0, 6))} inputMode="numeric" maxLength={6} autoComplete="off" placeholder="000000" /></Field>
         <p className="sub" style={{ gridColumn: "1 / -1" }}>The client enters this PIN in the application room. It cannot be recovered after creation; staff can rotate it later.</p>
       </div> : null}
 

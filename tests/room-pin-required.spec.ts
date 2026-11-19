@@ -97,6 +97,41 @@ for (const kind of ["basic", "dealer", "application"]) test(`${kind} room cannot
   expect(await page.evaluate(() => JSON.stringify([localStorage,sessionStorage,location.href]))).not.toContain("638274");
 });
 
+test("a room link issued with an older letters-and-numbers code still opens, then asks for a 6-digit PIN", async ({ page }) => {
+  await page.goto("https://required-pin.test/buckets/request/fictional-room?kind=application");
+  const pin = page.getByLabel("Room PIN", { exact: true }), open = page.getByRole("button", { name: "Open application room", exact: true });
+  await expect(pin).toHaveAttribute("inputmode", "numeric");
+  await expect(pin).toHaveAttribute("maxlength", "6");
+  // The PIN field keeps digits only (after maxlength cuts the input to six
+  // characters), so an older code cannot be typed there.
+  await pin.fill("AB12CD34");
+  await expect(pin).toHaveValue(/^[0-9]{0,6}$/);
+  await expect(open).toBeDisabled();
+  await page.getByRole("button", { name: "Have an older code with letters? Enter it here" }).click();
+  const older = page.getByLabel("Older access code", { exact: true });
+  await expect(older).toHaveValue("");
+  await older.fill("AB12CD34");
+  await open.click();
+  await expect(page.getByRole("heading", { name: "Create your 6-digit PIN" })).toBeVisible();
+  const sent = () => page.evaluate(() => (window as unknown as { requests: { path: string; body: { passcode?: string; new_passcode?: string } | null }[] }).requests);
+  expect((await sent()).find((request) => request.path.endsWith("/access"))?.body?.passcode).toBe("AB12CD34");
+  await page.getByLabel("Create a 6-digit room PIN", { exact: true }).fill("638274");
+  await page.getByLabel("Confirm room PIN", { exact: true }).fill("638274");
+  await page.getByRole("button", { name: "Save PIN and open my room" }).click();
+  await expect(page.getByRole("navigation", { name: "Application room sections" })).toBeVisible();
+  // The older code proves who is choosing; from here on the room uses the new PIN.
+  expect((await sent()).find((request) => request.path.endsWith("/passcode"))?.body).toEqual({ passcode: "AB12CD34", new_passcode: "638274" });
+});
+
+test("switching back to the PIN field clears an older code", async ({ page }) => {
+  await page.goto("https://required-pin.test/buckets/request/fictional-room?kind=application");
+  await page.getByRole("button", { name: "Have an older code with letters? Enter it here" }).click();
+  await page.getByLabel("Older access code", { exact: true }).fill("AB12CD34");
+  await page.getByRole("button", { name: "Use my 6-digit PIN instead" }).click();
+  await expect(page.getByLabel("Room PIN", { exact: true })).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Open application room", exact: true })).toBeDisabled();
+});
+
 for (const pathname of ["dealer-ai-underwriter", "equipment-financing-intake", "funding-review", "mca-refinance-intake"]) test(`${pathname} requires a confirmed PIN when starting a new file`, async ({ page }) => {
   await page.goto(`https://required-pin.test/${pathname}?locale=en`);
   const pin = page.getByLabel("Create a 6-digit room PIN", { exact: true }), confirmation = page.getByLabel("Confirm room PIN", { exact: true });

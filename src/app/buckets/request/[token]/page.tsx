@@ -13,6 +13,7 @@ import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
 import { RoomPinSetup } from "@/components/room/RoomPinSetup";
+import { OLDER_ACCESS_CODE_MAX_LENGTH, roomEntryCodeReady } from "@/lib/roomPin";
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
 import { RoomUseOfFunds } from "@/components/room/RoomUseOfFunds";
 import { RoomCollectionTasks } from "@/components/room/RoomCollectionTasks";
@@ -22,7 +23,7 @@ import { DocumentVersionControl } from "@/components/documents/DocumentVersionCo
 import { documentVersionService, latestDocumentFiles, type DocumentVersionMetadata, type DocumentVersionService } from "@/lib/documentVersions";
 import { RoomApplicationForm } from "@/components/room/RoomApplicationForm";
 import { McaRoomReview } from "@/components/room/McaRoomReview";
-import { clientActionNeeded, clientCoverageNeedsAnotherFile, clientRequirementProgress, type ClientRequirementCoverage, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, isValidRoomPin, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
+import { clientActionNeeded, clientCoverageNeedsAnotherFile, clientRequirementProgress, type ClientRequirementCoverage, clientApiErrorDetail, clientQueuedUploadCanSubmit, clientRequestedDocumentState, clientUploadTarget, hasDuplicateSingleUseUploadTargets, isUnlockedCopyRequestedDocument, normalizeRoomPin, roomPinSetupMode } from "@/lib/clientRoomDocuments";
 import { assertPdfUploadUnlocked, isPasswordProtectedPdfUploadError, passwordProtectedPdfUploadNotice } from "@/lib/documentUpload";
 import { lockedEvidencePresentation, unlockedCopyActionState } from "@/lib/lockedEvidence";
 
@@ -93,6 +94,10 @@ export default function BucketRequestPage() {
   const [files, setFiles] = useState<QueuedFile[]>([]);
   const [status, setStatus] = useState("Loading invite...");
   const [isAccessing, setIsAccessing] = useState(false);
+  // Rooms opened before every PIN was six digits may still hold an older
+  // letters-and-numbers code. It still opens the room once, then the room asks
+  // for a six-digit PIN.
+  const [olderCode, setOlderCode] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState<RoomTab>("documents");
@@ -406,7 +411,7 @@ export default function BucketRequestPage() {
   }
   async function refreshRoom() { return refreshRoomWithCode(passcode.trim()); }
   async function openInvite() {
-    if (!isValidRoomPin(passcode.trim())) return;
+    if (!roomEntryCodeReady(passcode, olderCode)) return;
     setIsAccessing(true); setStatus("");
     try {
       let data: UploadSession;
@@ -539,10 +544,13 @@ export default function BucketRequestPage() {
     <div className="application-room-topline" />
     {!session ? <section className="application-room-gate">
       <RoomBrand />
-      <div className="application-room-gate-copy"><span className="application-room-eyebrow">Secure application room</span><h1>Welcome{info?.recipient_name ? `, ${info.recipient_name}` : ""}</h1><p>{info ? <>Enter the six-digit room PIN for <strong>{info.bucket.name}</strong>.</> : "Opening your secure application room."}</p></div>
+      <div className="application-room-gate-copy"><span className="application-room-eyebrow">Secure application room</span><h1>Welcome{info?.recipient_name ? `, ${info.recipient_name}` : ""}</h1><p>{!info ? "Opening your secure application room." : olderCode ? <>Enter the access code you were sent for <strong>{info.bucket.name}</strong>. You will choose a six-digit PIN next.</> : <>Enter the six-digit room PIN for <strong>{info.bucket.name}</strong>.</>}</p></div>
       {info && !info.requires_passcode ? <div className="application-room-alert bad">Ask Qualified Commercial to regenerate this room with a PIN.</div> : null}
-      <label className="application-room-field"><span>Room PIN</span><input value={passcode} onChange={(event) => setPasscode(normalizeRoomPin(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="6-digit PIN" type="password" autoComplete="current-password" inputMode="numeric" maxLength={6} disabled={!info || !info.requires_passcode || isAccessing} /></label>
-      <button className="application-room-primary" onClick={() => void openInvite()} disabled={!info || !info.requires_passcode || !isValidRoomPin(passcode.trim()) || isAccessing}>{isAccessing ? "Checking PIN..." : "Open application room"}</button>
+      {olderCode
+        ? <label className="application-room-field"><span>Older access code</span><input value={passcode} onChange={(event) => setPasscode(event.target.value.slice(0, OLDER_ACCESS_CODE_MAX_LENGTH))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="Letters and numbers" type="password" autoComplete="current-password" autoCapitalize="characters" autoCorrect="off" spellCheck={false} maxLength={OLDER_ACCESS_CODE_MAX_LENGTH} disabled={!info || !info.requires_passcode || isAccessing} /></label>
+        : <label className="application-room-field"><span>Room PIN</span><input value={passcode} onChange={(event) => setPasscode(normalizeRoomPin(event.target.value))} onKeyDown={(event) => { if (event.key === "Enter") void openInvite(); }} placeholder="6-digit PIN" type="password" autoComplete="current-password" inputMode="numeric" pattern="[0-9]*" maxLength={6} disabled={!info || !info.requires_passcode || isAccessing} /></label>}
+      {info?.requires_passcode ? <button type="button" className="application-room-alt-link" onClick={() => { setOlderCode((value) => !value); setPasscode(""); setStatus(""); }} disabled={isAccessing}>{olderCode ? "Use my 6-digit PIN instead" : "Have an older code with letters? Enter it here"}</button> : null}
+      <button className="application-room-primary" onClick={() => void openInvite()} disabled={!info || !info.requires_passcode || !roomEntryCodeReady(passcode, olderCode) || isAccessing}>{isAccessing ? "Checking PIN..." : "Open application room"}</button>
       {status ? <div className={`application-room-status ${status.toLowerCase().includes("not") || status.toLowerCase().includes("unavailable") ? "bad" : ""}`}>{status}</div> : null}
       <button className="application-room-theme-link" onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={14} />{theme === "light" ? "Use Obsidian" : "Use light theme"}</button>
     </section> : <section className={`application-room-shell${pinSetup === "required" ? " is-pin-setup" : ""}`}>

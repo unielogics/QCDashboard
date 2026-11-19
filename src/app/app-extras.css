@@ -126,6 +126,8 @@
 .application-room-secondary { min-height: 38px; padding: 0 13px; border: 1px solid var(--room-line); background: var(--room-surface); color: var(--room-text); }
 .application-room-icon-button { width: 38px; height: 38px; flex: 0 0 38px; border: 1px solid var(--room-line); background: var(--room-surface); color: var(--room-text); }
 .application-room-theme-link { margin: 18px auto 0; border: 0; background: transparent; color: var(--room-muted); font-size: 12px; }
+.application-room-alt-link { display: block; margin: 8px 0 0; padding: 0; border: 0; background: transparent; color: var(--room-accent); font: inherit; font-size: 12px; font-weight: 700; text-align: left; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.application-room-alt-link:disabled { opacity: .48; cursor: not-allowed; }
 .application-room-status, .application-room-alert { margin-top: 12px; padding: 10px 12px; border-radius: 6px; color: var(--room-good); background: var(--room-good-soft); font-size: 13px; font-weight: 700; }
 .application-room-status.bad, .application-room-alert.bad { color: var(--room-bad); background: var(--room-bad-soft); }
 .application-room-shell { width: min(100%, 1440px); margin: 0 auto; }
