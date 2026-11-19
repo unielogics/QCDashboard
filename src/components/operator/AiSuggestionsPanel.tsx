@@ -12,7 +12,8 @@
 //
 // Only open files' suggestions wait here. When a file is lost, denied,
 // withdrawn or archived, the API drops its suggestions from the queue at once
-// and closes them; they come back if the file is reopened.
+// and closes them; they come back if the file is reopened. A suggestion nobody
+// answers in 90 days closes on its own and does not come back.
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
@@ -123,7 +124,7 @@ export function AiSuggestionsPanel({
           <Empty icon="check" title="Nothing is waiting">
             {bucketId
               ? "When this file's AI proposes a follow-up, it waits here for a decision."
-              : "When a file's AI proposes a follow-up, it waits here for a decision. Nothing is sent without one. A file that is lost, denied or archived takes its suggestions with it."}
+              : "When a file's AI proposes a follow-up, it waits here for a decision. Nothing is sent without one. A file that is lost, denied or archived takes its suggestions with it, and one left unanswered for 90 days closes on its own."}
           </Empty>
         ) : null}
         {items.slice(0, shown).map((item) => {

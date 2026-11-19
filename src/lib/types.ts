@@ -3619,11 +3619,11 @@ export type AttentionQueueActionResult = {
 export interface BucketAIActionItemQueueItem {
   id: string;
   bucket_id: string;
-  /** "closed": nobody answered it before its file was lost, denied, withdrawn or archived. */
+  /** "closed": nobody answered it before its file was lost, denied, withdrawn or archived, or within 90 days. */
   status: "proposed" | "approved" | "rejected" | "completed" | "closed" | string;
   closed_at?: string | null;
-  /** Why the system closed it; it reopens if the file comes back. */
-  closed_reason?: "file_closed" | "room_archived" | string | null;
+  /** Why the system closed it. file_closed and room_archived reopen if the file comes back; expired does not. */
+  closed_reason?: "file_closed" | "room_archived" | "expired" | string | null;
   route: "admin" | "uploader" | "share" | "vendor" | string;
   title: string;
   instructions: string;

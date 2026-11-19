@@ -338,6 +338,7 @@ const ACTIVITY_ACTION_OPTIONS = [
   "ai_action_rejected",
   "ai_action_completed",
   "ai_actions_closed",
+  "ai_actions_expired",
   "ai_actions_reopened",
 ];
 const ACTIVITY_ROLE_OPTIONS = ["super_admin", "uploader", "shared_user", "vendor", "system"];
@@ -5073,6 +5074,7 @@ function activityLabel(action: string) {
     ai_action_rejected: "Action task rejected",
     ai_action_completed: "Action task completed",
     ai_actions_closed: "AI suggestions closed with the file",
+    ai_actions_expired: "AI suggestions closed after 90 days unanswered",
     ai_actions_reopened: "AI suggestions reopened with the file",
     vendor_access_created: "Vendor access created",
     vendor_access_updated: "Vendor access updated",

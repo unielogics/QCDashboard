@@ -310,6 +310,8 @@ test("a desk with nothing on it says so plainly", async ({ page }, info) => {
   await expect(page.getByText("No active files")).toBeVisible();
   await expect(page.getByText("Nothing yet", { exact: true })).toBeVisible();
   await expect(page.getByText("Nothing is waiting")).toBeVisible();
+  // The empty queue says how suggestions leave it without a decision.
+  await expect(page.locator("#ai-suggestions")).toContainText("A file that is lost, denied or archived takes its suggestions with it, and one left unanswered for 90 days closes on its own.");
   await expect(page.getByText("Nothing is scheduled today.")).toBeVisible();
   await expectNoSpill(page);
   await shot(page, "desk-quiet", info.project.name);
