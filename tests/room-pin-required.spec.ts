@@ -24,7 +24,7 @@ test.beforeAll(async () => {
     "@/components/ds": "export const Btn=({children,onClick,disabled})=><button onClick={onClick} disabled={disabled}>{children}</button>;export const Panel=({children,title})=><section><h1>{title}</h1>{children}</section>;export const StatusLine=({children})=><div>{children}</div>;export const PageHeader=()=>null;export const Field=({children,label})=><label>{label}{children}</label>;export const Input=props=><input {...props}/>;",
     "@/components/application/Pfs413Form": "export const Pfs413Form=({value,onChange})=>{window.formMounted=true;return <div>Fictional financial statement editor<label>Existing draft owner<input value={value.owner_name||''} onChange={event=>onChange({...value,owner_name:event.target.value})}/></label></div>};",
   };
-  const keep = new Set(["@/components/room/RoomPinFields", "@/components/room/RoomPinSetup", "@/components/room/RoomBrand", "@/components/room/FormRoom", "@/components/QCMark", "@/components/design-system/Icon", "@/components/intake/OnboardingConsent", "@/components/intake/LanguagePickerScreen", "@/components/intake/IntelligenceCharts", "@/components/design-system/cssVars", "@/components/intake/chatActionTargets"]);
+  const keep = new Set(["@/components/room/SecureSsnPanel", "@/components/room/RoomPinFields", "@/components/room/RoomPinSetup", "@/components/room/RoomBrand", "@/components/room/FormRoom", "@/components/QCMark", "@/components/design-system/Icon", "@/components/intake/OnboardingConsent", "@/components/intake/LanguagePickerScreen", "@/components/intake/IntelligenceCharts", "@/components/design-system/cssVars", "@/components/intake/chatActionTargets"]);
   const exports: Record<string, string[]> = {
     "@/components/InlineImages": ["InlineImageStrip"],
     "@/components/application/LockedEvidenceStatus": ["LockedEvidenceBadge"],
@@ -37,12 +37,17 @@ test.beforeAll(async () => {
   await esbuild.build({ stdin: { resolveDir: root, loader: "tsx", contents: `
     import React from'react';import{createRoot}from'react-dom/client';import Room from'@/app/buckets/request/[token]/page';import Dealer from'@/app/dealer-ai-underwriter/page';import RealEstate from'@/app/funding-review/page';import Mca from'@/app/mca-refinance-intake/page';import Pfs from'@/app/client/financial-forms/page';
     window.requests=[];window.childrenMounted=[];window.chosen=new URLSearchParams(location.search).get('configured')==='1';window.failPin=false;window.formMounted=false;window.requirePinOnSubmit=false;
-    const minimal={room_kind:new URLSearchParams(location.search).get('kind')||'application',bucket:{name:'Fictional client file'},recipient_name:'Fictional client',requires_passcode:true,allow_notes:true,passcode_needs_setup:true,requested_documents:[],files:[]};
+    const ssnDemo=new URLSearchParams(location.search).has("ssns"); window.ssnReceipts=[];
+    const minimal={capabilities:ssnDemo?["secure_ssns"]:[],room_kind:new URLSearchParams(location.search).get('kind')||'application',bucket:{name:'Fictional client file'},recipient_name:'Fictional client',requires_passcode:true,allow_notes:true,passcode_needs_setup:!window.chosen,requested_documents:[],files:[]};
     const state={business_name:'Fictional client file',owners:[],verification:{ownership_complete:true,ownership_total:100,owner_contact_complete:true,business_banking_complete:true,bank_connection_count:1,bank_statement_months:6,owner_credit_complete:true,required_credit_owner_count:0,completed_credit_owner_count:0},precall:null,capabilities:['application']};
     window.fixtureApi=async(path,init={})=>{const response=await fetch(path.startsWith('/api/')?path:'/api/v1'+path,init);const data=await response.json();if(!response.ok){const error=new Error(typeof data.detail==='string'?data.detail:data.detail?.message||'Fictional request failed');error.body=data;throw error}return data};
     window.fetch=async(url,init={})=>{const pathname=new URL(url,location.origin).pathname;const method=init.method||'GET';const body=init.body?JSON.parse(init.body):null;window.requests.push({path:pathname,method,body});let status=200,data={};
       if(pathname.endsWith('/passcode')){if(window.failPin){window.failPin=false;status=503;data={detail:'Fictional retryable PIN save failure'}}else{window.chosen=true;data={ok:true}}}
       else if(pathname.endsWith('/secure-room')){if(method==='POST'){window.chosen=true;window.requirePinOnSubmit=false}data={room_pin_setup_required:!window.chosen,room_url:'/buckets/request/fictional-room'}}
+      else if(pathname==='/api/v1/secure-ssns/room/fictional-room'){
+        if(init.headers?.['X-Room-Pin']!=='638274'){status=403;data={detail:'PIN required'}}
+        else {window.ssnReceipts.push(...(body.entries||[]).map(row=>({id:row.id,person_name:row.person_name,last_four:row.ssn.slice(-4)})));data=window.ssnReceipts}
+      }
       else if(pathname.endsWith('/session')){status=401;data={detail:'Fictional first visit'}}
       else if(pathname.endsWith('/financial-statement')){if(method==='PUT'&&body?.submit&&window.requirePinOnSubmit){window.chosen=false;status=409;data={detail:{code:'room_pin_setup_required',message:'Set your replacement room PIN to continue'}}}else data={schema:{},body:{owner_name:'Existing saved draft'},statement_id:'statement-a',status:'draft'}}
       else if(pathname==='/api/v1/buckets/client/intakes')data=[{id:'intake-a',business_name:'Fictional client file'}];
@@ -73,6 +78,32 @@ test.beforeAll(async () => {
 test.beforeEach(async ({ page }) => {
   page.on("pageerror", error => console.log("Fictional PIN browser error:", error.message));
   await page.route("https://required-pin.test/**", route => route.fulfill({ contentType: route.request().url().endsWith("fixture.js") ? "application/javascript" : "text/html", body: route.request().url().endsWith("fixture.js") ? script : "<html><body><div id='root'></div><script src='/fixture.js'></script></body></html>" }));
+});
+
+test("a client shares two masked SSNs from the PIN room", async ({ page }) => {
+  await page.goto("https://required-pin.test/buckets/request/fictional-room?kind=application&configured=1&ssns=1");
+  await expect(page.getByRole("button", { name: "Open secure form" })).toHaveCount(0);
+  await page.getByLabel("Room PIN", { exact: true }).fill("638274");
+  await page.getByRole("button", { name: "Open application room", exact: true }).click();
+  await page.getByRole("button", { name: "Open secure form" }).click();
+  await page.getByRole("button", { name: "Add another person" }).click();
+  const names = page.getByLabel("Full legal name");
+  const numbers = page.getByLabel("Full SSN", { exact: true });
+  await expect(numbers).toHaveCount(2);
+  await expect(numbers.first()).toHaveAttribute("type", "password");
+  await names.nth(0).fill("Jordan Sample");
+  await numbers.nth(0).fill("000-00-0011");
+  await names.nth(1).fill("Alex Sample");
+  await numbers.nth(1).fill("000000022");
+  const submit = page.getByRole("button", { name: "Submit SSNs securely" });
+  await expect(submit).toBeDisabled();
+  await page.getByLabel("I am authorized to share").check();
+  await submit.click();
+  await expect(numbers).toHaveCount(0);
+  await expect(page.getByLabel("Received SSNs")).toContainText("ending in 0011");
+  await expect(page.getByLabel("Received SSNs")).toContainText("ending in 0022");
+  const browserState = await page.evaluate(() => JSON.stringify([document.body.innerHTML, sessionStorage, localStorage, location.href]));
+  expect(browserState).not.toMatch(/000-00-0011|000000022/);
 });
 
 for (const kind of ["basic", "dealer", "application"]) test(`${kind} room cannot skip PIN setup or mount other forms before successful save`, async ({ page }) => {

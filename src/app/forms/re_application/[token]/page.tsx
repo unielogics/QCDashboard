@@ -17,6 +17,7 @@ import { useParams } from "next/navigation";
 import { apiBase } from "@/lib/api";
 import { FormRoomFooter } from "@/components/room/FormRoom";
 import { RoomBrand } from "@/components/room/RoomBrand";
+import { SecureSsnPanel } from "@/components/room/SecureSsnPanel";
 import { ReApplicationForm, ReApplicationReview } from "@/components/application/ReApplicationForm";
 import { useApplicationDraft, type DraftPayload, type SaveError } from "@/components/application/useApplicationDraft";
 import { SignedFormSignStep, type SignPayload } from "@/components/application/SignedFormSignStep";
@@ -72,6 +73,7 @@ async function call<T>(path: string, init: RequestInit & { session?: string | nu
 export default function ReApplicationPage() {
   const { token } = useParams<{ token: string }>();
   const [session, setSession] = useState<string | null>(null);
+  const [ssnAccess, setSsnAccess] = useState(false);
   const [gate, setGate] = useState<Gate | null>(null);
   const [view, setView] = useState<ApplicationView | null>(null);
   const [stage, setStage] = useState<"fill" | "review" | "sign">("fill");
@@ -95,6 +97,7 @@ export default function ReApplicationPage() {
       } else {
         setGate(null);
         setView(reply as ApplicationView);
+        setSsnAccess((reply as ApplicationView).can_share_ssns === true);
         if ((reply as ApplicationView).status === "submitted") {
           setStage("sign");
           setSigning(await call<SigningView>(`/${token}/signing`, { session: current }));
@@ -289,6 +292,8 @@ export default function ReApplicationPage() {
     </header>
   );
 
+  const ssnPanel = ssnAccess && session ? <SecureSsnPanel key={token} endpoint={`/secure-ssns/application/${encodeURIComponent(token)}`} session={session} /> : null;
+
   if (stage === "sign") {
     const others = signing ? signing.required_roles.filter((role) => role !== signing.role && !signing.signed[role]) : [];
     const mine = signing?.role ? signing.signed[signing.role] : null;
@@ -309,6 +314,7 @@ export default function ReApplicationPage() {
         <section className="application-room-shell fp-room-shell">
           {heading("Review and sign", chip)}
           {content}
+          {ssnPanel}
           <div className="ra-gate-actions">
             <button type="button" className="fp-link-btn" onClick={() => void openPreview()}>Read the whole application (PDF)</button>
             {nobodySigned && signing?.role !== "coborrower" ? <button type="button" className="fp-link-btn" onClick={() => setStage("fill")}>Change an answer</button> : null}
@@ -329,6 +335,7 @@ export default function ReApplicationPage() {
       <div className="application-room-topline" />
       <section className="application-room-shell fp-room-shell">
         {heading(stage === "fill" ? "Real estate loan application" : "Review your application", chip)}
+        {ssnPanel}
         {stage === "fill" ? (
           <ReApplicationForm view={view} body={draft.body} problems={draft.problems} busy={busy} audience="client" onValue={draft.setValue} onConfirm={draft.confirm} onCoborrower={draft.setCoborrower} />
         ) : (

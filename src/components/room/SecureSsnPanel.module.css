@@ -1,0 +1,40 @@
+.card {
+  --ink: #123c3c;
+  --muted: #315958;
+  --edge: #85bcb7;
+  --paper: #fff;
+  background: #eaf8f5;
+  color: var(--ink);
+  border: 1px solid var(--edge);
+  border-inline-start: 5px solid #15746c;
+  padding: clamp(16px, 3vw, 26px);
+  border-radius: 12px;
+  text-align: left;
+}
+:global(.is-obsidian) .card {
+  --ink: #e3fbf6;
+  --muted: #b5d8d2;
+  --edge: #47847e;
+  --paper: #103532;
+  background: #123d39;
+  border-inline-start-color: #61cdbb;
+}
+.heading, .receipts li { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.heading > div { flex: 1 1 275px; }
+.card h2 { font-size: 1.17rem; color: var(--ink); margin: 0; }
+.card p { margin: 7px 0 0; color: var(--muted); line-height: 1.5; }
+.safety { font-size: .85rem; max-width: 88ch; }
+.action, .secondary { cursor: pointer; font: inherit; font-weight: 600; padding: 8px 13px; border-radius: 7px; }
+.action { color: white; background: #0b615b; border: 1px solid #09544e; }
+.secondary { background: var(--paper); color: var(--ink); border: 1px solid var(--edge); }
+.card button:disabled { opacity: .6; cursor: default; }
+.card :focus-visible { outline: 2px solid #29877c; outline-offset: 2px; }
+.card form { margin-top: 16px; }
+.row { display: flex; align-items: end; gap: 10px; flex-wrap: wrap; min-width: 0; margin: 0 0 12px; padding: 12px; border: 1px solid var(--edge); border-radius: 8px; }
+.row label { display: grid; gap: 5px; font-size: .9rem; flex: 1 1 160px; min-width: 0; }
+.row input { min-width: 0; width: 100%; box-sizing: border-box; color: var(--ink); background: var(--paper); border: 1px solid var(--edge); border-radius: 5px; padding: 9px; font: inherit; }
+.consent { display: flex; align-items: baseline; gap: 8px; font-size: .9rem; margin: 16px 0 12px; }
+.receipts { list-style: none; margin: 14px 0; padding: 0; }
+.receipts li { border-top: 1px solid var(--edge); padding: 8px 0; font-size: .9rem; }
+.card [role="alert"] { color: #8b2420; }
+:global(.is-obsidian) .card [role="alert"] { color: #ffbdb8; }

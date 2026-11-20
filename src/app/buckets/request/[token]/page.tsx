@@ -13,6 +13,7 @@ import { RoomActions, type RoomKind } from "@/components/room/RoomActions";
 import { MerchantOfferCard, type RoomMerchantOffer } from "@/components/room/MerchantOfferCard";
 import { PrecallChecklist, type RoomPrecall } from "@/components/room/PrecallChecklist";
 import { RoomPinSetup } from "@/components/room/RoomPinSetup";
+import { SecureSsnPanel } from "@/components/room/SecureSsnPanel";
 import { OLDER_ACCESS_CODE_MAX_LENGTH, roomEntryCodeReady } from "@/lib/roomPin";
 import { RoomTimeline, type RoomTimelineEvent } from "@/components/room/RoomTimeline";
 import { RoomUseOfFunds } from "@/components/room/RoomUseOfFunds";
@@ -54,7 +55,7 @@ type ClientEvidenceBankingSummary = {
   };
 };
 type ClientRoomKind = RoomKind | "basic";
-type UploadSession = { room_kind: ClientRoomKind; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; passcode_needs_setup?: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
+type UploadSession = { room_kind: ClientRoomKind; capabilities?: string[]; bucket: BucketSummary; recipient_name: string; recipient_email?: string | null; allow_notes: boolean; passcode_needs_setup?: boolean; requested_documents: RequestedDoc[]; files?: UploadedFile[]; evidence_banking_summary?: ClientEvidenceBankingSummary | null };
 type RoomTab = "ai-review" | "application" | "inbox" | "precall" | "offer" | "updates" | "todo" | "documents" | "budget" | "banking" | "agreements" | "payments";
 type QueuedFile = { id: string; file: File; requestedDocumentId: string; status: "ready" | "uploading" | "uploaded" | "error"; message?: string; requiresRetarget?: boolean };
 
@@ -556,10 +557,12 @@ export default function BucketRequestPage() {
     </section> : <section className={`application-room-shell${pinSetup === "required" ? " is-pin-setup" : ""}`}>
       <header className="application-room-header"><div className="application-room-header-main"><RoomBrand /><div><span className="application-room-eyebrow">Secure application room</span><h1>{session.bucket.name}</h1><p>{session.bucket.purpose || `Prepared for ${session.recipient_name}`}</p></div></div><div className="application-room-header-actions"><span className={`application-room-count ${totalPending || (hasApplication && !precall?.complete) ? "attention" : ""}`}>{totalPending ? `${totalPending} action${totalPending === 1 ? "" : "s"} needed` : hasMcaReview ? "Source verification pending" : hasApplication && !precall?.complete ? "Application in progress" : "Up to date"}</span><button className="application-room-icon-button" title={theme === "light" ? "Use Obsidian" : "Use light theme"} aria-label={theme === "light" ? "Use Obsidian" : "Use light theme"} onClick={() => chooseTheme(theme === "light" ? "obsidian" : "light")}><Icon name={theme === "light" ? "moon" : "sun"} size={17} /></button></div></header>
       <nav className="application-room-tabs" aria-label="Application room sections">{visibleTabs.map((tab) => <button key={tab.id} className={activeTab === tab.id ? "on" : undefined} onClick={() => setActiveTab(tab.id)}><Icon name={tab.icon} size={15} />{tab.label}{tab.id === "todo" && totalPending ? <span>{totalPending}</span> : null}</button>)}</nav>
+      {!offerOnlyAccess && session.capabilities?.includes("secure_ssns") && <SecureSsnPanel key={token} endpoint={`/secure-ssns/room/${encodeURIComponent(token)}`} pin={passcode.trim()} />}
 
       {hasMcaReview ? <div hidden={activeTab !== "ai-review"}><McaRoomReview key={`${token}:${reviewKind}`} kind={reviewKind} token={token} passcode={passcode.trim()} active={activeTab === "ai-review"} onPaymentMethods={setHasMcaPayments} refreshKey={collectionTaskReadModelKey(session.evidence_banking_summary?.requirements ?? [], [processingFileCount, uploadedFiles.length, missingDocs.length])} onUpload={() => { setActiveRequestedDocumentId(""); setRequiresExplicitUploadTarget(false); setActiveTab("documents"); }} onApplication={() => setActiveTab("application")} onDebtSchedule={() => setActiveTab("todo")} /></div> : null}
 
       {activeTab === "inbox" ? <ClientOfferInbox mode="room" token={token} passcode={passcode.trim()} defaultResponderName={name || session.recipient_name} focusDeliveryId={searchParams.get("delivery")} focusItemId={searchParams.get("item")} /> : null}
+
       {activeTab === "application" && hasApplication ? <RoomApplicationForm token={token} passcode={passcode.trim()} onChanged={refreshRoom} onContinue={() => setActiveTab(precall ? "precall" : "todo")} /> : null}
 
       {!hasMcaReview && !offerOnlyAccess && session.room_kind !== "basic" && activeTab === "todo" ? <section className="application-room-section application-room-section--teaser"><div className="application-room-section-head"><div><h2>How will you use the funds?</h2><p>Add a category and amount for each planned use so your team can review financing options.</p></div><button className="application-room-secondary" onClick={() => setActiveTab("budget")}><Icon name="dollar" size={14} />Review use of funds</button></div></section> : null}

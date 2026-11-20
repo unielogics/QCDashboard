@@ -39,6 +39,7 @@ import { EmailContact, PhoneContact } from "@/components/file/ContactActions";
 import { BusinessContactDetails, BusinessContactFields, businessContactChanges, businessContactDraft } from "@/components/file/BusinessContactDetails";
 import { PersonalUseReviewBanner, type PersonalUseDecision } from "@/components/file/PersonalUseReviewBanner";
 import { ReApplicationPanel } from "@/components/file/ReApplicationPanel";
+import { FileSsnPanel } from "@/components/file/FileSsnPanel";
 import { applicationLinkWords, useApplicationLink } from "@/components/application/useApplicationLink";
 import type { OfferDeliveryReceipt, OfferSelection } from "@/components/communications/OfferDeliveryComposer";
 import { PipelineApprovalFields } from "@/components/operator/PipelineApprovalFields";
@@ -2407,6 +2408,7 @@ export function LeadDetailPanel({
                   <Line label="Source" value={detail.intake.referral_source || "Direct"} />
                   <Line label="Vertical" value={variantLabel(detail.intake.variant)} />
                 </Panel>
+                {canUnderwrite && detail.application_profile_id && <FileSsnPanel key={detail.application_profile_id} profileId={detail.application_profile_id} />}
                 <FileTeamStrip profileId={profileId} canEdit={canUnderwrite} />
                 <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
                 <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet."} /></Panel>
@@ -3066,8 +3068,8 @@ export function LeadDetailPanel({
                   <div className="grid g10">
                     <span className="sub">
                       Assemble a normalized JSON payload — borrower, entity, key metrics, and program fit — for
-                      an admin to hand to the banker's own intake system. SSN / personal Tax ID are collected
-                      transiently in the modal and never stored.
+                      an admin to hand to the banker's own intake system. Identifiers entered in the submission modal
+                      are used only for that export.
                     </span>
                     <div>
                       <Btn variant="pri" onClick={() => setBankerModalOpen(true)}>
