@@ -124,7 +124,10 @@ export const NAV_BY_ROLE: Record<string, RoleNav> = {
           { label: "Transfers", href: "/admin/marketplace/transfers", icon: "trend" },
         ],
       },
-      COMMS,
+      {
+        ...COMMS,
+        items: [...COMMS.items, { label: "Email marketing", href: "/admin/email-marketing", icon: "mail" }],
+      },
     ],
     tools: [
       {

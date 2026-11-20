@@ -5,8 +5,8 @@ import { api } from "@/lib/api";
 import type { Lang } from "@/lib/businessProfile";
 import { onboardingCopy } from "@/lib/onboardingCopy";
 
-export type SmsChoices = { email: boolean; transactional: boolean; marketing: boolean };
-export const NO_SMS_CHOICES: SmsChoices = { email: false, transactional: false, marketing: false };
+export type SmsChoices = { email: boolean; emailMarketing: boolean; transactional: boolean; marketing: boolean };
+export const NO_SMS_CHOICES: SmsChoices = { email: false, emailMarketing: false, transactional: false, marketing: false };
 
 export type SmsDisclosure = {
   version: string;
@@ -32,9 +32,13 @@ export function loadSmsDisclosure(): Promise<SmsDisclosure> {
   return disclosureRequest;
 }
 
-/** The two consent fields as the start request carries them. */
 export function smsChoicesBody(choices: SmsChoices) {
-  return { application_email_consent: choices.email, sms_transactional_consent: choices.transactional, sms_marketing_consent: choices.marketing };
+  return {
+    application_email_consent: choices.email,
+    email_marketing_consent: choices.emailMarketing,
+    sms_transactional_consent: choices.transactional,
+    sms_marketing_consent: choices.marketing,
+  };
 }
 
 export function useSmsDisclosure(): SmsDisclosure | null {
@@ -81,6 +85,13 @@ export function OnboardingConsent({
         </span>
       </label>
       <label className="onb-consent-row"><input type="checkbox" required checked={sms.email} onChange={e => onSmsChange({...sms, email: e.target.checked})} /><span>{language === "es" ? "Acepto recibir correos electrónicos de Qualified Commercial sobre mi solicitud." : "I agree to receive emails from Qualified Commercial about my application."}</span></label>
+      <label className="onb-consent-row">
+        <input type="checkbox" checked={sms.emailMarketing} onChange={(event) => onSmsChange({ ...sms, emailMarketing: event.target.checked })} />
+        <span>
+          <b>{language === "es" ? "Consejos y novedades por correo electrónico" : "Email me financing tips and lending updates"}<em>{copy.consentOptional}</em></b>
+          <small>{language === "es" ? "Quiero recibir estos correos de Qualified Commercial. Puedo cancelar mi suscripción en cualquier momento." : "I want Qualified Commercial to send me these emails. I can unsubscribe at any time."}</small>
+        </span>
+      </label>
       {disclosure ? (
         <>
           <label className="onb-consent-row">

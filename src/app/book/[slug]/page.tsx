@@ -83,6 +83,7 @@ interface BookingForm {
   preferred_bank_method: "" | "plaid" | "statements" | "decide_later";
   notes: string;
   transactional_sms_consent: boolean;
+  email_marketing_consent: boolean;
 }
 
 /**
@@ -129,6 +130,7 @@ export default function PublicBookingPage() {
     preferred_bank_method: "",
     notes: "",
     transactional_sms_consent: false,
+    email_marketing_consent: false,
   });
   const [status, setStatus] = useState<"loading" | "ready" | "error" | "submitting" | "success">("loading");
   const sourceHint = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("source") : null;
@@ -615,6 +617,13 @@ export default function PublicBookingPage() {
                     </select>
                   </Field>
                 ) : null}
+                <label className="itemrow" style={{ alignItems: "flex-start", cursor: "pointer" }}>
+                  <input type="checkbox" checked={form.email_marketing_consent} style={{ marginTop: 3 }}
+                    onChange={(e) => setForm({ ...form, email_marketing_consent: e.target.checked })} />
+                  <span className="sub" style={{ lineHeight: 1.55 }}>
+                    Email me financing tips and lending updates from Qualified Commercial (optional). I can unsubscribe at any time.
+                  </span>
+                </label>
                 {form.phone.trim() && (
                   <label className="itemrow" style={{ alignItems: "flex-start", cursor: "pointer" }}>
                     <input
