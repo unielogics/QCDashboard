@@ -69,6 +69,7 @@ const isPublicPage = createRouteMatcher([
 //   - future `/admin/funding-inbox` — Funding Team (super-admin in P0,
 //     opens to processor / loan_officer / funding_coordinator later)
 const isSuperAdminOnlyPage = createRouteMatcher([
+  "/admin/email-marketing(.*)",
   "/admin/lenders(.*)",
   "/admin/borrowers(.*)",
   "/admin/capital-partner-applications(.*)",
