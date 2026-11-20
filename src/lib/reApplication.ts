@@ -56,6 +56,7 @@ export type ApplicationView = {
   version: { id: string; number: number; submitted_at: string | null; submitted_by: string; body_sha256: string; pdf_available: boolean } | null;
   warnings?: { path: string; label: string; source: string; message: string }[];
   needs_code?: boolean;
+  can_share_ssns?: boolean;
   /** Desk reads only: where signing stands. */
   signing?: SigningView;
   /** Desk reads only: the signed copy that is relayed, and partner links made to it. */

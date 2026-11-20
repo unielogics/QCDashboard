@@ -15,6 +15,7 @@ import { CapitalReadinessSnapshotView } from "@/components/application/CapitalRe
 import type { ApplicationCapitalReadinessSnapshot } from "@/lib/capitalReadiness";
 import { useCurrentUser } from "@/hooks/useApi";
 import { IntakeRoomPinGate } from "@/components/room/RoomPinFields";
+import { SecureSsnPanel } from "@/components/room/SecureSsnPanel";
 
 type Intake = {
   id: string;
@@ -293,6 +294,7 @@ export default function ClientDealerIntakesPage() {
                 <span style={statusPill()}>{detail.intake.status}</span>
               </div>
               {detail.capital_readiness ? <CapitalReadinessSnapshotView snapshot={detail.capital_readiness} locale={(detail.communication_locale ?? detail.intake.communication_locale ?? detail.intake.preferred_language ?? currentUser?.ui_locale) === "es" ? "es" : "en"} clientSafe /> : null}
+              <SecureSsnPanel key={detail.intake.id} endpoint={`/secure-ssns/account/${detail.intake.id}`} getToken={getToken} />
               <div style={twoCol}>
                 <div style={box()}>
                   <h3 style={smallTitle}>Required documents</h3>
