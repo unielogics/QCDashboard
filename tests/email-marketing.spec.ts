@@ -15,12 +15,13 @@ test.beforeAll(async () => {
   const directory = await mkdtemp(path.join(os.tmpdir(), "qc-marketing-review-"));
   const hooks = path.join(directory, "api.ts");
   await writeFile(hooks, `
+    import { ApiError } from "@/lib/api";
     export const useCurrentUser = () => ({
       authReady: true, authScope: "test", data: { id: "staff", role: location.search ? "loan_exec" : "super_admin" }
     });
     export const useAuthedApi = () => async (path, opts) => {
       const response = await fetch(path, opts);
-      if (!response.ok) throw new Error("Delivery request could not be confirmed");
+      if (!response.ok) throw new ApiError(response.status, (await response.text()) || "Delivery request could not be confirmed");
       return response.json();
     };
   `);
@@ -36,7 +37,7 @@ test.beforeAll(async () => {
     ` },
     outfile: path.join(directory, "app.js"), bundle: true, platform: "browser", jsx: "automatic",
     alias: { "@/hooks/useApi": hooks, "@": path.join(root, "src") },
-    loader: { ".module.css": "local-css" }, define: { "process.env.NODE_ENV": '"production"' },
+    loader: { ".module.css": "local-css" }, define: { "process.env.NODE_ENV": '"production"', "process.env.NEXT_PUBLIC_API_URL": JSON.stringify(origin) },
   });
   [script, css] = await Promise.all([readFile(path.join(directory, "app.js")), readFile(path.join(directory, "app.css"))]);
 });
@@ -54,8 +55,8 @@ test.beforeEach(async ({ page }) => {
 type Filters = { program?: string; outcome?: string; source?: string; locale?: string };
 type Selection = { mode: "explicit" | "all"; included_ids?: string[]; excluded_ids?: string[]; search?: string };
 type Audience = { filters: Filters; selection: Selection };
-type Message = Audience & { subject: string; body: string; body_html?: string; sample_id?: string };
-type CampaignRequest = Message & { id: string; name: string; scheduled_at: string | null };
+type Message = Audience & { subject: string; body: string; body_html?: string; sample_id?: string; sample_mode?: "recipient" | "example" };
+type CampaignRequest = Message & { id: string; name: string; scheduled_at: string | null; expected_recipient_count: number };
 type Contact = {
   id: string | null; name: string; email: string; source: string; eligible: boolean;
   reason: string | null; program: string; outcome: string; locale: string;
@@ -85,7 +86,7 @@ function recipients({ filters, selection }: Audience) {
 async function apiFixture(page: Page, failFirstSend = false) {
   const attempts: CampaignRequest[] = [];
   const previews: Message[] = [];
-  const directoryCalls: Array<Audience & {search?: string; page: number}> = [];
+  const directoryCalls: Array<Audience & {search?: string; page: number; selected_only?: boolean}> = [];
   let history: object[] = [];
   await page.route(origin + "/admin/email-marketing/**", async route => {
     const request = route.request();
@@ -115,8 +116,10 @@ async function apiFixture(page: Page, failFirstSend = false) {
       const input: Message = request.postDataJSON();
       previews.push(input);
       const eligible = recipients(input);
-      const sample = eligible.find(c => c.id === input.sample_id) ?? eligible[0];
-      const personalize = (s: string) => s.replaceAll("{{first_name}}", sample?.name.split(" ")[0] ?? "").replaceAll("{{full_name}}", sample?.name ?? "");
+      const sample = input.sample_mode === "example" ? {id:null, name:"Taylor Morgan", email:"taylor.morgan@example.invalid"}
+        : eligible.find(c => c.id === input.sample_id) ?? eligible[0];
+      const personalize = (s: string) => s.replaceAll("{{first_name}}", sample?.name.split(" ")[0] ?? "")
+        .replaceAll("{{full_name}}", sample?.name ?? "").replaceAll("{{business_name}}", input.sample_mode === "example" ? "Example Company" : "Test Company");
       return route.fulfill({json: {
         subject: personalize(input.subject), body_text: personalize(input.body),
         body_html: personalize(input.body_html || "<p>" + input.body + "</p>") + '<footer><a href="https://instagram.com/qualifiedcommercial/">Instagram</a></footer>',
@@ -229,6 +232,7 @@ test("renders a personalized HTML sample and schedules an explicitly selected au
   await expect(page.getByRole("status")).toContainText(/scheduled/i);
   expect(attempts).toHaveLength(2);
   expect(attempts[1]).toEqual(attempts[0]);
+  expect(attempts[0].expected_recipient_count).toBe(2);
   expect(attempts[0].selection.mode).toBe("explicit");
   expect(attempts[0].selection.included_ids).toEqual([contacts[0].id, contacts[1].id]);
   expect(new Date(attempts[0].scheduled_at!).toISOString()).toBe("2035-06-14T14:00:00.000Z");
@@ -272,5 +276,39 @@ test("retries a plain-text preview and queues all matches except an excluded row
   expect(attempts).toHaveLength(1);
   expect(attempts[0].filters).toEqual({program:"sba"});
   expect(attempts[0].scheduled_at).toBeNull();
+  expect(attempts[0].expected_recipient_count).toBe(26);
   expect(attempts[0].selection).toEqual({mode:"all", included_ids:[], excluded_ids:[contacts[1].id], search:""});
+});
+
+test("drafts with zero eligible contacts, then keeps the draft when switching to a selected recipient", async ({ page }) => {
+  const {directoryCalls, attempts, previews} = await apiFixture(page);
+  await page.goto(origin);
+  await page.getByLabel("Outcome").selectOption("declined");
+  await expect(page.getByText(/0 contacts.*0 eligible/)).toBeVisible();
+  await page.getByRole("button", {name:"Draft with an example contact"}).click();
+  await expect(page.getByText("Fictional contact preview", {exact:true})).toBeVisible();
+  await expect(page.getByRole("combobox", {name:"Preview recipient", exact:true})).toHaveCount(0);
+  await page.getByRole("button", {name:"HTML", exact:true}).click();
+  const markup = "<p>Hello <strong>{{full_name}}</strong> at {{business_name}}.</p>";
+  await page.getByLabel("Email HTML").fill(markup);
+  const frame = page.frameLocator('iframe[title="Email preview"]');
+  await expect(frame.locator("p")).toHaveText("Hello Taylor Morgan at Example Company.");
+  await expect(page.getByText("taylor.morgan@example.invalid", {exact:true})).toBeVisible();
+  expect(previews.at(-1)?.sample_mode).toBe("example");
+  expect(previews.at(-1)?.sample_id).toBeUndefined();
+  expect(directoryCalls.some(c => c.selected_only)).toBe(false);
+  await expect(page.getByRole("button", {name:"Next: Schedule"})).toBeDisabled();
+  await page.getByLabel("Campaign name").fill("Funding notes");
+  await page.getByLabel("Subject line").fill("Notes for {{first_name}}");
+  await expect(page.getByRole("button", {name:"Next: Schedule"})).toBeDisabled();
+  await page.getByRole("button", {name:"Back to audience"}).click();
+  await page.getByLabel("Outcome").selectOption("funded");
+  await setRow(page, contacts[0].email, true);
+  await page.getByRole("button", {name:"Next: Compose"}).click();
+  await expect(page.getByLabel("Campaign name")).toHaveValue("Funding notes");
+  await expect(page.getByLabel("Email HTML")).toHaveValue(markup);
+  await expect(frame.locator("p")).toHaveText("Hello Jordan Rivera at Test Company.");
+  expect(previews.at(-1)?.sample_mode).toBe("recipient");
+  await expect(page.getByRole("button", {name:"Next: Schedule"})).toBeEnabled();
+  expect(attempts).toHaveLength(0);
 });

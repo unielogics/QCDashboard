@@ -72,6 +72,11 @@ export default function Audience({ options, filters, selectFilters, view, setVie
       <div><Btn size="sm" disabled={loading || view.page <= 1} onClick={() => setView({ ...view, page: view.page - 1 })}>Previous</Btn><span>{view.page} / {pages}</span>
         <Btn size="sm" disabled={loading || view.page >= pages} onClick={() => setView({ ...view, page: view.page + 1 })}>Next page</Btn></div>
     </div>
-    <div className={styles.actions}><span>{recipients(selected)} selected for this campaign</span><Btn variant="pri" disabled={error || loading || !selected} onClick={next}>Next: Compose</Btn></div>
+    <div className={styles.actions}><span>{recipients(selected)} selected for this campaign</span>
+      <div className={styles.modes}>
+        {!error && !loading && !selected && <Btn onClick={next}>Draft with an example contact</Btn>}
+        <Btn variant="pri" disabled={error || loading || !selected} onClick={next}>Next: Compose</Btn>
+      </div>
+    </div>
   </section>;
 }

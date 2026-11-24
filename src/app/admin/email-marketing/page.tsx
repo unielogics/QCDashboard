@@ -58,15 +58,20 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
       })
     }), placeholderData: keepPreviousData,
   });
-  const message = JSON.stringify(content(draft));
+  const count = directory.data?.selected_count ?? 0;
+  const example = count === 0;
+  const previewMessage = content(draft);
+  if (example && !previewMessage.subject) previewMessage.subject = "Untitled email";
+  const message = JSON.stringify(previewMessage);
   const previewContent = useDebounced(message);
-  const previewReady = Boolean(draft.subject.trim() && (draft.format === "text" ? draft.body : draft.body_html).trim());
+  const previewReady = Boolean(previewMessage.subject && (draft.format === "text" ? draft.body : draft.body_html).trim());
   const preview = useQuery({
-    queryKey: [ROOT, scope, "render", filters, selection, sample, previewContent],
+    queryKey: [ROOT, scope, "render", filters, selection, example, sample, previewContent],
     enabled: step > 0 && previewReady && previewContent === message,
     queryFn: ({ signal }) => api<Preview>(ROOT + "/campaigns/preview", {
       method: "POST", signal, body: JSON.stringify({
-        ...JSON.parse(previewContent), filters, selection, ...(sample ? { sample_id: sample } : {}),
+        ...JSON.parse(previewContent), filters, selection,
+        ...(example ? { sample_mode: "example" } : { sample_mode: "recipient", ...(sample ? { sample_id: sample } : {}) }),
       })
     }), retry: false,
   });
@@ -74,7 +79,6 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
     queryKey: [ROOT, scope, "campaigns"], queryFn: ({ signal }) => api<Campaign[]>(ROOT + "/campaigns", { signal }),
     refetchInterval: q => q.state.data?.some(c => c.queued > 0 || c.sending > 0) ? 30_000 : false,
   });
-  const count = directory.data?.selected_count ?? 0;
   const pending = directory.isLoading || directory.isPlaceholderData || search !== view.search.trim();
   const rendered = previewReady && previewContent === message && preview.isSuccess ? preview.data : undefined;
 
@@ -89,7 +93,7 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
     select(none);
   }
   function openReview(scheduled_at: string | null) {
-    if (!rendered || count < 1) return;
+    if (!rendered?.sample_id || !rendered.eligible_count || count < 1) return;
     const payload = { name: draft.name.trim(), ...content(draft), filters, selection, scheduled_at, expected_recipient_count: count };
     const signature = JSON.stringify(payload);
     if (previous.current?.signature !== signature) previous.current = { signature, id: crypto.randomUUID() };
@@ -138,10 +142,10 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
     {step === 0 && <Audience options={options.data} filters={filters} selectFilters={changeFilters}
       view={view} setView={setView} data={directory.data} loading={pending || !options.isSuccess} error={directory.isError}
       refresh={() => { void directory.refetch(); }} selection={selection} select={select} next={() => setStep(1)} />}
-    {step === 1 && <Compose scope={scope} draft={draft} update={setDraft} filters={filters} selection={selection} sample={sample} setSample={setSample}
+    {step === 1 && <Compose scope={scope} example={example} draft={draft} update={setDraft} filters={filters} selection={selection} sample={sample} setSample={setSample}
       preview={rendered} loading={previewReady && (previewContent !== message || preview.isFetching)}
       error={previewReady && previewContent === message && preview.isError ? preview.error.message : ""} refresh={() => void preview.refetch()} back={() => setStep(0)} next={() => setStep(2)} />}
-    {step === 2 && <Schedule timing={timing} setTiming={setTiming} draft={draft} count={directory.isError || pending ? 0 : count} audience={describe(filters, options.data)} preview={rendered}
+    {step === 2 && <Schedule timing={timing} setTiming={setTiming} draft={draft} count={directory.isError || pending ? 0 : count} audience={describe(filters, options.data)} preview={rendered?.sample_id ? rendered : undefined}
       back={() => setStep(1)} review={openReview} />}
     {options.data?.sequence?.length ? <details className={styles.disclosure}><summary>Automatic enrollment follow-up</summary>
       <ol className={styles.sequence}>{options.data.sequence.map(s => <li key={s.day}><b>{s.day ? "Day " + s.day : "At enrollment"}</b>{s.subject}</li>)}</ol></details> : null}

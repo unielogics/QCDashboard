@@ -18,16 +18,18 @@ export function PreviewFrame({ preview }: { preview: Preview; }) {
     <iframe title="Email preview" sandbox="" referrerPolicy="no-referrer" srcDoc={policy + preview.body_html} /></div>;
 }
 type Props = {
+  example: boolean;
   scope: string; draft: Draft; update: (draft: Draft) => void; filters: Filters; selection: Selection; sample: string; setSample: (id: string) => void;
   preview?: Preview; loading: boolean; error: string; refresh: () => void; back: () => void; next: () => void;
 };
-export default function Compose({ scope, draft, update, filters, selection, sample, setSample, preview, loading, error, refresh, back, next }: Props) {
+export default function Compose({ scope, example, draft, update, filters, selection, sample, setSample, preview, loading, error, refresh, back, next }: Props) {
   const api = useAuthedApi();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [activeField, setActiveField] = useState<"subject" | "body">("body");
   const inputRef = useRef<HTMLFormElement>(null);
   const sampleQuery = useQuery({
+    enabled: !example,
     queryKey: [ROOT, scope, "preview-contacts", filters, selection, search, page],
     queryFn: ({ signal }) => api<Directory>(ROOT + "/directory", {
       method: "POST", signal, body: JSON.stringify({
@@ -45,7 +47,7 @@ export default function Compose({ scope, draft, update, filters, selection, samp
     update({ ...draft, [key]: draft[key].slice(0, start) + token + draft[key].slice(end) });
     requestAnimationFrame(() => { field.focus(); field.setSelectionRange(start + token.length, start + token.length); });
   }
-  const valid = Boolean(draft.name.trim() && draft.subject.trim() && draft[bodyKey].trim() && preview?.eligible_count && !loading && !error);
+  const valid = Boolean(!example && draft.name.trim() && draft.subject.trim() && draft[bodyKey].trim() && preview?.sample_id && preview.eligible_count && !loading && !error);
   return <section className={styles.panel} aria-labelledby="compose-heading">
     <div className={styles.sectionHead}><h2 id="compose-heading">Compose &amp; preview</h2></div>
     <div className={styles.composer}>
@@ -63,19 +65,19 @@ export default function Compose({ scope, draft, update, filters, selection, samp
         <div className={styles.tagList}><span>Insert merge tag</span>{tags.map(tag => <Btn size="sm" key={tag} onClick={() => insertTag(tag)}>{"{{" + tag + "}}"}</Btn>)}</div>
       </form>
       <div className={styles.sample}>
-        <div className={styles.sampleControls}>
+        {example ? <div><strong>Fictional contact preview</strong><p className="sub">See how your email looks for Taylor Morgan at Example Company. Select an eligible recipient in Audience to schedule delivery.</p></div> : <div className={styles.sampleControls}>
           <label><span>Find a preview recipient</span><Input type="search" placeholder="Search selected recipients" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} /></label>
           <label><span>Preview recipient</span><Select value={sample} onChange={e => setSample(e.target.value)}>
             <option value="">First selected recipient</option>
             {sample && !sampleQuery.data?.rows.some(r => r.id === sample) && <option value={sample}>{preview?.sample_email ?? "Selected recipient"}</option>}
             {sampleQuery.data?.rows.filter(r => r.id).map(r => <option key={r.id!} value={r.id!}>{r.name ? r.name + " · " : ""}{r.email}</option>)}
           </Select></label>
-        </div>
-        {sampleQuery.isError && <StatusLine tone="bad">Preview contacts could not be loaded. <Btn onClick={() => void sampleQuery.refetch()}>Retry</Btn></StatusLine>}
-        {sampleQuery.data && (page > 1 || sampleQuery.data.total_count > 25) && <div className={styles.toolbar}><Btn size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous contacts</Btn><Btn size="sm" disabled={page * 25 >= sampleQuery.data.total_count} onClick={() => setPage(page + 1)}>More contacts</Btn></div>}
+        </div>}
+        {!example && sampleQuery.isError && <StatusLine tone="bad">Preview contacts could not be loaded. <Btn onClick={() => void sampleQuery.refetch()}>Retry</Btn></StatusLine>}
+        {!example && sampleQuery.data && (page > 1 || sampleQuery.data.total_count > 25) && <div className={styles.toolbar}><Btn size="sm" disabled={page <= 1} onClick={() => setPage(page - 1)}>Previous contacts</Btn><Btn size="sm" disabled={page * 25 >= sampleQuery.data.total_count} onClick={() => setPage(page + 1)}>More contacts</Btn></div>}
         {error ? <StatusLine tone="bad">{error} <Btn onClick={refresh}>Retry preview</Btn></StatusLine>
           : loading ? <p role="status" className={styles.empty}>Updating preview…</p>
-            : preview ? <PreviewFrame preview={preview} /> : <p className={styles.empty}>Enter a subject and message to preview this email for a selected recipient.</p>}
+            : preview ? <PreviewFrame preview={preview} /> : <p className={styles.empty}>{example ? "Write a message or paste email HTML to preview it with the example contact." : "Enter a subject and message to preview this email for a selected recipient."}</p>}
       </div>
     </div>
     <div className={styles.actions}><Btn onClick={back}>Back to audience</Btn><Btn variant="pri" disabled={!valid} onClick={next}>Next: Schedule</Btn></div>
