@@ -343,7 +343,6 @@ export const STATUS_FILTERS = [
   { value: "reviewing", label: "Reviewing" },
   { value: "reviewed", label: "Reviewed" },
   { value: "approved", label: "Approved" },
-  { value: "funded", label: "Funded" },
   { value: "completed", label: "Review complete" },
   { value: "closed_lost", label: "Lost / withdrawn" },
   { value: "denied", label: "Denied / disqualified" },

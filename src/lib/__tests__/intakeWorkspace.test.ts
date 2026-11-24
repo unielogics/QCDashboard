@@ -14,10 +14,14 @@ describe("AI Intake workspace lifecycle", () => {
     },
   );
 
-  it("keeps verified funded files active", () => {
-    expect(resolveIntakeWorkspaceState({ underwritingStatus: "closed_won", intakeStatus: "completed" })).toBe("active");
+  it("files a verified funding under Funded, including records with an older outcome", () => {
+    expect(resolveIntakeWorkspaceState({ underwritingStatus: "closed_won", intakeStatus: "completed" })).toBe("funded");
     expect(resolveIntakeDisplayStatus({ underwritingStatus: "closed_won", intakeStatus: "completed" })).toBe("closed_won");
-    expect(resolveIntakeWorkspaceState({ underwritingStatus: "closed_won", outcomeStatus: "denied" })).toBe("active");
+    expect(resolveIntakeWorkspaceState({ underwritingStatus: "closed_won", outcomeStatus: "denied" })).toBe("funded");
+    const verified = { workspaceState: "funded", workspaceStateReason: "funded", underwritingStatus: "approved" };
+    expect(resolveIntakeWorkspaceState(verified)).toBe("funded");
+    expect(resolveIntakeDisplayStatus(verified)).toBe("funded");
+    expect(resolveIntakeWorkspaceState({ underwritingStatus: "approved" })).toBe("active");
   });
 
   it("does not treat legacy intake completion as funding", () => {

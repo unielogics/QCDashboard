@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { uploadFile } from "@/lib/fileUpload";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Btn, Callout, CellChip, cx, Input, Select, WarnLine } from "@/components/ds";
 import { PageActionMenu } from "@/components/ds/PageActionMenu";
 import { TableWorkspace } from "@/components/ds/TableWorkspace";
@@ -31,8 +31,16 @@ import { moneyDigits } from "@/lib/moneyDigits";
 import { fileHref, sectionFromLegacyParams } from "@/lib/fileRoutes";
 import { FileCommunicationCounts } from "@/components/communications/FileCommunicationCounts";
 
+type FileView = "active" | "funded" | "archived";
+const FILE_VIEW_TITLES: Record<FileView, string> = {
+  active: "Active files",
+  funded: "Funded files",
+  archived: "Closed & archived files",
+};
+
 export default function AdminAIUnderwriterLeadsPage() {
   const router = useRouter();
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const { getToken } = useConsoleAuth();
   const { data: me, isLoading: meLoading } = useCurrentUser();
@@ -56,12 +64,14 @@ export default function AdminAIUnderwriterLeadsPage() {
   const [query, setQuery] = useState("");
   const [submittedQuery, setSubmittedQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [archivedFilter, setArchivedFilter] = useState<"active" | "archived" | "all">("active");
+  const visibility = searchParams.get("visibility");
+  const archivedFilter: FileView = visibility === "archived" || visibility === "funded" ? visibility : "active";
   const [variantFilter, setVariantFilter] = useState(searchParams.get("variant") || "all");
   const [probabilityFilter, setProbabilityFilter] = useState("all");
   const [loading, setLoading] = useState(false);
   const [notice, setNotice] = useState("");
-  const [archivedSearchMatch, setArchivedSearchMatch] = useState<{ count: number; query: string } | null>(null);
+  const [listError, setListError] = useState("");
+  const [historyMatch, setHistoryMatch] = useState<{ funded: number; archived: number; query: string } | null>(null);
   const [nonIntakeLeadMatches, setNonIntakeLeadMatches] = useState<Array<{ id: string; name: string }>>([]);
   const [createOpen, setCreateOpen] = useState(searchParams.get("new") === "1");
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
@@ -71,6 +81,7 @@ export default function AdminAIUnderwriterLeadsPage() {
   const listShellRef = useRef<HTMLDivElement | null>(null);
   const leadListRequestRef = useRef(0);
   const leadListLoadingRequestRef = useRef(0);
+  const refreshCurrentPage = useRef<() => void>(() => {});
 
   async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
     const token = await getToken();
@@ -82,50 +93,64 @@ export default function AdminAIUnderwriterLeadsPage() {
     router.push(fileHref(id));
   }
 
+  function setArchivedFilter(view: FileView) {
+    const params = new URLSearchParams(searchParams.toString());
+    if (view === "active") params.delete("visibility");
+    else params.set("visibility", view);
+    setOffset(0);
+    router.replace(params.size ? `${pathname}?${params}` : pathname, { scroll: false });
+  }
+
   async function loadLeads(nextOffset = offset, options: { background?: boolean } = {}) {
     const requestId = ++leadListRequestRef.current;
-    setArchivedSearchMatch(null);
-    setNonIntakeLeadMatches([]);
     if (!options.background) {
       leadListLoadingRequestRef.current = requestId;
       setLoading(true);
+      setListError("");
+      setRows([]);
+      setTotal(0);
       setNotice("");
+      setHistoryMatch(null);
+      setNonIntakeLeadMatches([]);
     }
     try {
       const params = new URLSearchParams({
         limit: String(pageSize),
         offset: String(nextOffset),
-        status_filter: statusFilter,
+        status_filter: archivedFilter === "funded" ? "all" : statusFilter,
         probability_status: probabilityFilter,
         variant_filter: variantFilter,
         archived_filter: archivedFilter,
       });
       if (submittedQuery.trim()) params.set("q", submittedQuery.trim());
       if (partnerUserId) params.set("partner_user_id", partnerUserId);
-      const data = await call<LeadPage>(`/admin/ai-underwriter-leads?${params.toString()}`);
+      let data = await call<LeadPage>(`/admin/ai-underwriter-leads?${params.toString()}`);
       if (requestId !== leadListRequestRef.current) return;
-      let closedOrArchivedMatch: { count: number; query: string } | null = null;
+      if (!data.items.length && nextOffset > 0 && data.total > 0 && nextOffset >= data.total) {
+        params.set("offset", String(Math.floor((data.total - 1) / pageSize) * pageSize));
+        data = await call<LeadPage>(`/admin/ai-underwriter-leads?${params.toString()}`);
+        if (requestId !== leadListRequestRef.current) return;
+      }
+      let matchedHistory: typeof historyMatch = null;
       let clientLeadMatches: Array<{ id: string; name: string }> = [];
       const identityDiscoveryIsUnfiltered = statusFilter === "all"
         && probabilityFilter === "all"
         && variantFilter === "all";
       if (!data.items.length && archivedFilter === "active" && submittedQuery.trim() && identityDiscoveryIsUnfiltered) {
-        const archivedParams = new URLSearchParams(params);
-        archivedParams.set("limit", "1");
-        archivedParams.set("offset", "0");
-        archivedParams.set("status_filter", "all");
-        archivedParams.set("probability_status", "all");
-        archivedParams.set("variant_filter", "all");
-        archivedParams.set("archived_filter", "archived");
-        try {
-          const archived = await call<LeadPage>(`/admin/ai-underwriter-leads?${archivedParams.toString()}`);
-          if (requestId !== leadListRequestRef.current) return;
-          if (archived.total > 0) closedOrArchivedMatch = { count: archived.total, query: submittedQuery.trim() };
-        } catch {
-          // The primary list remains useful if this optional discovery check fails.
+        const [funded, archived] = await Promise.all(["funded", "archived"].map(async (view) => {
+          const historyParams = new URLSearchParams(params);
+          historyParams.set("limit", "1");
+          historyParams.set("offset", "0");
+          historyParams.set("archived_filter", view);
+          const match = await call<LeadPage>(`/admin/ai-underwriter-leads?${historyParams}`).catch(() => null);
+          return match?.total ?? 0;
+        }));
+        if (requestId !== leadListRequestRef.current) return;
+        if (funded || archived) {
+          matchedHistory = { funded, archived, query: submittedQuery.trim() };
         }
       }
-      if (!data.items.length && !closedOrArchivedMatch && archivedFilter === "active" && submittedQuery.trim() && identityDiscoveryIsUnfiltered && !partnerUserId) {
+      if (!data.items.length && !matchedHistory && archivedFilter === "active" && submittedQuery.trim() && identityDiscoveryIsUnfiltered && !partnerUserId) {
         try {
           const groups = await call<GroupedResults[]>(`/search?q=${encodeURIComponent(submittedQuery.trim())}`);
           if (requestId !== leadListRequestRef.current) return;
@@ -136,15 +161,15 @@ export default function AdminAIUnderwriterLeadsPage() {
         }
       }
       if (requestId !== leadListRequestRef.current) return;
+      setListError("");
       setRows(data.items);
       setTotal(data.total);
-      setOffset(data.offset);
-      setArchivedSearchMatch(closedOrArchivedMatch);
+      setOffset(data.total ? data.offset : 0);
+      setHistoryMatch(matchedHistory);
       setNonIntakeLeadMatches(clientLeadMatches);
-      if (!data.items.length && !closedOrArchivedMatch && !clientLeadMatches.length) setNotice("No AI Intake files match these filters.");
     } catch (error) {
       if (requestId === leadListRequestRef.current) {
-        setNotice(error instanceof Error ? error.message : "AI Intake files are unavailable.");
+        setListError(error instanceof Error ? error.message : "AI Intake files are unavailable.");
       }
     } finally {
       if (!options.background && requestId === leadListLoadingRequestRef.current) setLoading(false);
@@ -246,6 +271,35 @@ export default function AdminAIUnderwriterLeadsPage() {
   }, [isIntakeOperator, statusFilter, archivedFilter, variantFilter, probabilityFilter, submittedQuery, partnerUserId, pageSize]);
 
   useEffect(() => {
+    refreshCurrentPage.current = () => {
+      if (isIntakeOperator && !loading) void loadLeads(offset, { background: true });
+    };
+  });
+
+  useEffect(() => {
+    let refreshTimer: number;
+    const onVisible = () => {
+      if (document.visibilityState !== "visible") return;
+      window.clearTimeout(refreshTimer);
+      refreshTimer = window.setTimeout(() => refreshCurrentPage.current(), 100);
+    };
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) onVisible();
+    };
+    const interval = window.setInterval(onVisible, 60_000);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.clearInterval(interval);
+      window.clearTimeout(refreshTimer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("pageshow", onPageShow);
+    };
+  }, []);
+
+  useEffect(() => {
     // Legacy deep links (?lead=…&view=…&step=…) land on the file's page, at the matching section.
     if (isIntakeOperator && leadParam) {
       router.replace(fileHref(leadParam, sectionFromLegacyParams({ view: searchParams.get("view"), step: requestedStep, tab: searchParams.get("tab"), channel: searchParams.get("channel") })));
@@ -334,7 +388,7 @@ export default function AdminAIUnderwriterLeadsPage() {
 
       <div className="kpis ai-intake-stats" style={{ flexShrink: 0 }} aria-label="Files overview">
         <Stat
-          title={archivedFilter === "active" ? "Active files" : archivedFilter === "archived" ? "Closed & archived files" : "All files"}
+          title={FILE_VIEW_TITLES[archivedFilter]}
           value={String(counts.total)}
           sub="matching the current filters"
           tone="accent"
@@ -357,22 +411,21 @@ export default function AdminAIUnderwriterLeadsPage() {
             placeholder="Search name, owner, email, phone, dealership"
             aria-label="Search leads"
           />
-          <Select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} aria-label="Status">
-            {STATUS_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-          </Select>
+          {archivedFilter !== "funded" && (
+            <Select value={statusFilter} onChange={(event) => { setOffset(0); setStatusFilter(event.target.value); }} aria-label="Status">
+              {STATUS_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+            </Select>
+          )}
           <Select value={probabilityFilter} onChange={(event) => { setOffset(0); setProbabilityFilter(event.target.value); }} aria-label="Probability">
             {PROBABILITY_FILTERS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
           </Select>
           <Select
             value={archivedFilter}
-            onChange={(event) => {
-              setOffset(0);
-              setArchivedFilter(event.target.value as "active" | "archived" | "all");
-            }}
+            onChange={(event) => setArchivedFilter(event.target.value as FileView)}
             aria-label="Record visibility"
           >
-            <option value="all">All files</option>
             <option value="active">Active only</option>
+            <option value="funded">Funded</option>
             <option value="archived">Closed & archived</option>
           </Select>
           <Btn type="submit" variant="pri">Search</Btn>
@@ -380,28 +433,18 @@ export default function AdminAIUnderwriterLeadsPage() {
       </div>
 
       {notice ? <WarnLine>{notice}</WarnLine> : null}
-      {archivedSearchMatch ? (
+      {listError ? <WarnLine>{listError}</WarnLine> : null}
+      {historyMatch ? (
         <div role="status" aria-live="polite">
           <Callout tone="warn" icon={<Icon name="vault" size={16} />}>
             <div className="row" style={{ width: "100%", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
               <span className="grow">
-                <b>No active file matches “{archivedSearchMatch.query}.”</b>{" "}
-                {archivedSearchMatch.count === 1
-                  ? "One matching file is closed or archived."
-                  : `${archivedSearchMatch.count} matching files are closed or archived.`}
+                <b>No active file matches "{historyMatch.query}."</b>{" "}
+                {historyMatch.funded > 0 && (historyMatch.funded === 1 ? "One matching file is funded. " : `${historyMatch.funded} matching files are funded. `)}
+                {historyMatch.archived > 0 && (historyMatch.archived === 1 ? "One matching file is closed or archived." : `${historyMatch.archived} matching files are closed or archived.`)}
               </span>
-              <Btn
-                style={{ minHeight: 44 }}
-                onClick={() => {
-                  setOffset(0);
-                  setStatusFilter("all");
-                  setProbabilityFilter("all");
-                  setVariantFilter("all");
-                  setArchivedFilter("archived");
-                }}
-              >
-                View closed & archived
-              </Btn>
+              {historyMatch.funded > 0 && <Btn style={{ minHeight: 44 }} onClick={() => setArchivedFilter("funded")}>View funded</Btn>}
+              {historyMatch.archived > 0 && <Btn style={{ minHeight: 44 }} onClick={() => setArchivedFilter("archived")}>View closed & archived</Btn>}
             </div>
           </Callout>
         </div>
@@ -480,11 +523,12 @@ export default function AdminAIUnderwriterLeadsPage() {
                   intakeStatus: row.status,
                 });
                 const manuallyArchived = workspaceState === "archived";
+                const showArchivedStatus = manuallyArchived && archivedFilter !== "funded";
                 const statusPresentation = intakeStatusPresentation(
                   row.status,
                   row.underwriting_status ?? unified?.pipeline_status,
                   row.outcome_status,
-                  workspaceState,
+                  archivedFilter === "funded" ? "funded" : workspaceState,
                   row.workspace_state_reason,
                 );
                 const pinned = isPinned(row.id);
@@ -517,7 +561,7 @@ export default function AdminAIUnderwriterLeadsPage() {
                     <td><FileCommunicationCounts intakeId={row.id} name={row.business_name || row.full_name} counts={communicationCountsByIntake.get(row.id)} loading={communicationCounts.isPending} unavailable={communicationCounts.isError} /></td>
                     <td><CellChip tone={unified ? originTone(unified.origin) : "mut"}>{row.opened_by_name || unified?.rep_name || unified?.origin_label || "House desk"}</CellChip><div className="sub">{row.opened_by_role || "Internal"}</div><div className="sub">{row.referral_source || unified?.dealer_name || "Direct"}</div>{unified?.case_ref ? <small>{unified.case_ref}</small> : null}</td>
                     <td>{readiness ? <div className="capital-readiness-list-summary"><div><b>{readiness.score == null ? "—" : Math.round(readiness.score)}</b><CellChip tone={capitalReadinessBandTone(readiness.band)}>{capitalReadinessBandLabel(readiness.band)}</CellChip></div><small>{readiness.evidence_coverage_pct == null ? "Coverage unavailable" : `${Math.round(readiness.evidence_coverage_pct)}% evidence coverage`}</small></div> : <span className="sub">Not calculated</span>}<div className="sub">{mcaReview && mcaReview.mode !== "automated_review" ? mcaReview.title : row.probability_status || "Awaiting review"}</div></td>
-                    <td><CellChip tone={manuallyArchived ? "mut" : statusPresentation.tone}>{manuallyArchived ? "Archived" : statusPresentation.label}</CellChip></td>
+                    <td><CellChip tone={showArchivedStatus ? "mut" : statusPresentation.tone}>{showArchivedStatus ? "Archived" : statusPresentation.label}</CellChip></td>
                     <td>
                       {unified && hasEconomics ? (
                         <button type="button" className="linky" onClick={(event) => { event.stopPropagation(); setEconomicsRow(unified); }}>
