@@ -11,14 +11,28 @@ export type Options = Record<(typeof fields)[number]["options"], { value: string
   delivery_status: string;
   sequence?: { day: number; subject: string; }[];
 };
-export type Selection = { mode: "explicit" | "all"; included_ids: string[]; excluded_ids: string[]; search: string; };
-export const none: Selection = { mode: "explicit", included_ids: [], excluded_ids: [], search: "" };
+export type Eligibility = "all" | "eligible" | "ineligible" | "requestable" | "blocked";
+export type Selection = {
+  mode: "explicit" | "all";
+  included_emails: string[];
+  excluded_emails: string[];
+  included_ids: string[];
+  excluded_ids: string[];
+  eligibility: Eligibility;
+  search: string;
+};
+export const none: Selection = {
+  mode: "explicit", included_emails: [], excluded_emails: [], included_ids: [], excluded_ids: [], eligibility: "all", search: "",
+};
 export type Contact = {
   id: string | null; email: string; name: string | null; source: string; eligible: boolean;
-  selected: boolean; can_record_consent: boolean; reason: string | null;
+  selected: boolean; can_record_consent: boolean; reason: string | null; status: "eligible" | "requestable" | "blocked";
+  permission_status: string | null; task_event_id: string | null;
 };
 export type Directory = {
-  rows: Contact[]; total_count: number; eligible_count: number; selected_count: number; page: number; page_size: number;
+  rows: Contact[]; total_count: number; eligible_count: number; requestable_count: number; blocked_count: number;
+  selected_count: number; selected_eligible_count: number; selected_requestable_count: number; selected_blocked_count: number;
+  page: number; page_size: number;
 };
 export type Draft = { name: string; subject: string; body: string; body_html: string; format: "text" | "html"; };
 export const blank: Draft = { name: "", subject: "", body: "", body_html: "", format: "text" };

@@ -2694,6 +2694,7 @@ export interface PrequalRequest {
 }
 
 export interface PrequalRequestCreate {
+  email_marketing_consent?: boolean;
   target_property_address: string;
   purchase_price: number;
   requested_loan_amount: number;
