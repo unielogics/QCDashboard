@@ -312,3 +312,33 @@ test("drafts with zero eligible contacts, then keeps the draft when switching to
   await expect(page.getByRole("button", {name:"Next: Schedule"})).toBeEnabled();
   expect(attempts).toHaveLength(0);
 });
+
+test("reopens audience selection when a reviewed recipient becomes ineligible", async ({ page }) => {
+  await apiFixture(page);
+  let submissions = 0;
+  await page.route(origin + "/admin/email-marketing/directory", route => !submissions ? route.fallback() : route.fulfill({json:{
+    rows:[{...contacts[0], eligible:false, selected:false, can_record_consent:false, reason:"Unsubscribed"}],
+    total_count:1, eligible_count:0, selected_count:0, page:1, page_size:25,
+  }}));
+  await page.route(origin + "/admin/email-marketing/campaigns", route => {
+    if (route.request().method() !== "POST") return route.fallback();
+    submissions++;
+    expect(route.request().postDataJSON().expected_recipient_count).toBe(1);
+    return route.fulfill({status:409, body:"The audience changed. Review the updated recipient count and confirm again."});
+  });
+  await page.goto(origin);
+  await setRow(page, contacts[0].email, true);
+  await page.getByRole("button", {name:"Next: Compose"}).click();
+  await page.getByLabel("Campaign name").fill("Monthly program update");
+  await page.getByLabel("Subject line").fill("Funding updates");
+  await page.getByRole("textbox", {name:"Message", exact:true}).fill("Hello {{first_name}}.");
+  await page.getByRole("button", {name:"Next: Schedule"}).click();
+  await page.getByRole("button", {name:"Send now"}).click();
+  await page.getByRole("button", {name:"Review campaign"}).click();
+  await page.getByRole("dialog").getByRole("button", {name:"Confirm and queue"}).click();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.getByRole("status")).toContainText("Your audience changed");
+  await expect(rowCheck(page, contacts[0].email)).toBeDisabled();
+  await expect(page.getByRole("button", {name:"Next: Compose"})).toBeDisabled();
+  expect(submissions).toBe(1);
+});
