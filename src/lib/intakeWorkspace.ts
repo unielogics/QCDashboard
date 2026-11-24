@@ -1,4 +1,4 @@
-export type IntakeWorkspaceState = "active" | "closed" | "archived";
+export type IntakeWorkspaceState = "active" | "funded" | "closed" | "archived";
 
 export type IntakeWorkspaceRecord = {
   workspaceState?: string | null;
@@ -49,12 +49,13 @@ export function isFundedIntakeStatus(value?: string | null): boolean {
 export function resolveIntakeWorkspaceState(record: IntakeWorkspaceRecord): IntakeWorkspaceState {
   if (record.archivedAt) return "archived";
   const explicit = normalizeIntakeLifecycleStatus(record.workspaceState);
-  if (explicit === "active" || explicit === "closed" || explicit === "archived") return explicit;
+  if (explicit === "funded" || explicit === "closed" || explicit === "archived") return explicit;
 
   // A verified funding lifecycle is authoritative. A legacy intake status of
   // "completed" is only review/workflow completion and is deliberately not
   // included here.
-  if (isFundedIntakeStatus(record.underwritingStatus)) return "active";
+  if (isFundedIntakeStatus(record.underwritingStatus)) return "funded";
+  if (explicit === "active") return "active";
 
   if (
     isTerminalNegativeIntakeStatus(record.underwritingStatus)
@@ -78,6 +79,7 @@ export function resolveIntakeDisplayStatus(record: IntakeWorkspaceRecord): strin
     return [reason, outcome, underwriting, intake].find(isTerminalNegativeIntakeStatus) || "closed";
   }
   if (isFundedIntakeStatus(underwriting)) return underwriting;
+  if (workspaceState === "funded") return "funded";
   if (explicitWorkspaceState === "active") {
     // The API has already reconciled canonical underwriting, foreclosure, and
     // legacy fields. Do not let an old `outcome_status=closed` turn an active
