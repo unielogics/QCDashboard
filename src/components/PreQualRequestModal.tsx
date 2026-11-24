@@ -95,6 +95,7 @@ export function PreQualRequestModal({
   const [loanText, setLoanText] = useState("");
   const [closingDate, setClosingDate] = useState("");
   const [notes, setNotes] = useState("");
+  const [emailMarketing, setEmailMarketing] = useState(false);
   // LLC / entity name on the letter. The TBD toggle stores null on the
   // request; the underwriter can fill it in later when the borrower has
   // formed the entity, or the letter prints to the individual's name.
@@ -127,6 +128,7 @@ export function PreQualRequestModal({
       setSowItems([]);
       setStep(1);
       setError(null);
+      setEmailMarketing(false);
       setDoneFlash(false);
     }
   }, [open, initialAddress, initialLoanType]);
@@ -196,6 +198,7 @@ export function PreQualRequestModal({
           purchase_price: purchaseNum,
           requested_loan_amount: loanNum,
           loan_type: loanType,
+          email_marketing_consent: emailMarketing,
           expected_closing_date: closingDate || null,
           borrower_notes: notes.trim() || null,
           // Null on TBD — underwriter fills in or letter falls back to
@@ -517,6 +520,12 @@ export function PreQualRequestModal({
               </Panel>
             ) : null}
 
+            {(!isFixFlip || step === 2) && (
+              <label className="s12" style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <input type="checkbox" checked={emailMarketing} onChange={(e) => setEmailMarketing(e.target.checked)} />
+                Email me financing education and lending updates from Qualified Commercial at my account email. I can unsubscribe at any time.
+              </label>
+            )}
             {error ? (
               <div className="s12">
                 <StatusLine tone="bad" role="alert">

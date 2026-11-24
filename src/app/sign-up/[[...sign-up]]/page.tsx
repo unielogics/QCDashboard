@@ -25,6 +25,9 @@ export default function SignUpPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [accepted, setAccepted] = useState(false);
+  const [emailMarketing, setEmailMarketing] = useState(false);
+  const [updatesEmail, setUpdatesEmail] = useState("");
+  const [confirmedEmail, setConfirmedEmail] = useState("");
 
   useEffect(() => {
     const handoff = readCapitalReadinessHandoffFragment();
@@ -149,6 +152,24 @@ export default function SignUpPage() {
             file (reply STOP to opt out at any time).
           </span>
         </label>
+        <label style={{ display: "flex", gap: 10, alignItems: "flex-start", marginTop: 12, color: "#E2E8F0", fontSize: 13 }}>
+          <input type="checkbox" checked={emailMarketing} onChange={(e) => {
+            setEmailMarketing(e.target.checked);
+            setConfirmedEmail("");
+          }} />
+          Email me financing education and lending updates from Qualified Commercial. I can unsubscribe at any time.
+        </label>
+        {emailMarketing && (
+          <form onSubmit={(e) => { e.preventDefault(); setConfirmedEmail(updatesEmail.trim().toLowerCase()); }}
+            style={{ display: "grid", gap: 6, marginTop: 8, color: "#E2E8F0", fontSize: 13 }}>
+            <label htmlFor="signup-updates-email">Email address for updates and account creation</label>
+            <input id="signup-updates-email" type="email" autoComplete="email" required value={updatesEmail} onChange={(e) => {
+              setUpdatesEmail(e.target.value);
+              setConfirmedEmail("");
+            }} />
+            {!confirmedEmail && <button type="submit">Use this address</button>}
+          </form>
+        )}
         <div
           style={{
             marginTop: 10,
@@ -166,8 +187,17 @@ export default function SignUpPage() {
         </div>
       </div>
 
-      {accepted ? (
-        <SignUp appearance={CLERK_APPEARANCE} routing="path" path="/sign-up" />
+      {accepted && (!emailMarketing || confirmedEmail) ? (
+        <SignUp
+          appearance={CLERK_APPEARANCE}
+          routing="path"
+          path="/sign-up"
+          initialValues={emailMarketing ? { emailAddress: confirmedEmail } : undefined}
+          unsafeMetadata={emailMarketing ? {
+            qc_lending_updates_v1: true,
+            qc_lending_updates_email_v1: confirmedEmail,
+          } : {}}
+        />
       ) : (
         <div
           style={{
@@ -181,7 +211,7 @@ export default function SignUpPage() {
             textAlign: "center",
           }}
         >
-          The account creation form will appear once you accept the documents above.
+          {accepted ? "Confirm your email above or turn off optional updates to continue." : "The account creation form will appear once you accept the documents above."}
         </div>
       )}
     </AuthMarketingShell>

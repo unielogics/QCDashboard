@@ -7,7 +7,8 @@ import { Drawer } from "@/components/ds/Drawer";
 import { useAuthedApi, useCurrentUser } from "@/hooks/useApi";
 import { Role } from "@/lib/enums.generated";
 import { ApiError } from "@/lib/api";
-import Audience, { initialView } from "./Audience";
+import Audience, { initialView, firstView } from "./Audience";
+import { FollowUpTasks } from "./PermissionRequests";
 import Compose from "./Compose";
 import Schedule, { displayTime, type Timing } from "./Schedule";
 import { ROOT, blank, content, describe, none, recipients, type Campaign, type Directory, type Filters, type Options, type Preview, type Selection } from "./campaign";
@@ -35,7 +36,7 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
   const [step, setStep] = useState(0);
   const [filters, setFilters] = useState<Filters>({});
   const [selection, setSelection] = useState<Selection>(none);
-  const [view, setView] = useState(initialView);
+  const [view, setView] = useState(firstView);
   const [draft, setDraft] = useState(blank);
   const [sample, setSample] = useState("");
   const [timing, setTiming] = useState<Timing>({ now: false, date: "", time: "", zone: Intl.DateTimeFormat().resolvedOptions().timeZone, occurrence: 0 });
@@ -50,15 +51,15 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
     queryKey: [ROOT, scope, "options"], queryFn: ({ signal }) => api<Options>(ROOT + "/options", { signal }),
   });
   const directory = useQuery({
-    queryKey: [ROOT, scope, "directory", filters, selection, search, view.page, view.eligibility],
+    queryKey: [ROOT, scope, "directory", filters, selection, search, view.page, view.pageSize, view.eligibility],
     enabled: options.isSuccess,
     queryFn: ({ signal }) => api<Directory>(ROOT + "/directory", {
       method: "POST", signal, body: JSON.stringify({
-        filters, selection, search, page: view.page, page_size: 25, eligibility: view.eligibility,
+        filters, selection, search, page: view.page, page_size: view.pageSize, eligibility: view.eligibility,
       })
     }), placeholderData: keepPreviousData,
   });
-  const count = directory.data?.selected_count ?? 0;
+  const count = directory.data?.selected_eligible_count ?? 0;
   const example = count === 0;
   const previewMessage = content(draft);
   if (example && !previewMessage.subject) previewMessage.subject = "Untitled email";
@@ -139,7 +140,7 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
     <nav aria-label="Campaign steps"><ol className={styles.steps}>{stages.map((name, i) => <li key={name}>
       <button type="button" aria-current={step === i ? "step" : undefined} disabled={i > step} onClick={() => setStep(i)}><span>{i + 1}</span>{name}</button>
     </li>)}</ol></nav>
-    {step === 0 && <Audience options={options.data} filters={filters} selectFilters={changeFilters}
+    {step === 0 && <Audience scope={scope} options={options.data} filters={filters} selectFilters={changeFilters}
       view={view} setView={setView} data={directory.data} loading={pending || !options.isSuccess} error={directory.isError}
       refresh={() => { void directory.refetch(); }} selection={selection} select={select} next={() => setStep(1)} />}
     {step === 1 && <Compose scope={scope} example={example} draft={draft} update={setDraft} filters={filters} selection={selection} sample={sample} setSample={setSample}
@@ -149,6 +150,7 @@ function CampaignWorkspace({ scope }: { scope: string; }) {
       back={() => setStep(1)} review={openReview} />}
     {options.data?.sequence?.length ? <details className={styles.disclosure}><summary>Automatic enrollment follow-up</summary>
       <ol className={styles.sequence}>{options.data.sequence.map(s => <li key={s.day}><b>{s.day ? "Day " + s.day : "At enrollment"}</b>{s.subject}</li>)}</ol></details> : null}
+    <FollowUpTasks scope={scope}/>
     <Panel title="Campaign history" actions={<Btn size="sm" disabled={history.isFetching} onClick={() => void history.refetch()}>Refresh</Btn>}>
       {history.isLoading ? <Loading /> : history.isError ? <StatusLine tone="bad">Campaign history is unavailable. Use Refresh to try again.</StatusLine>
         : !history.data?.length ? <span className="sub">Scheduled and sent campaigns will appear here.</span>
