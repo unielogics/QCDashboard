@@ -13,6 +13,9 @@
 .railActions button:only-child {
   grid-column: 1 / -1;
 }
+.contextRail .railActions span {
+  transform: none;
+}
 .contextRail:global(.intake-file-context) {
   max-height: calc(100dvh - 124px);
   overflow-y: auto;
