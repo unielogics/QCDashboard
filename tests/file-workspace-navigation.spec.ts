@@ -63,7 +63,7 @@ test.beforeAll(async () => {
   [script, css] = await Promise.all([readFile(path.join(directory, "app.js")), readFile(path.join(directory, "app.css"))]);
 });
 
-async function fixture(page: Page, options: { role?: string; missingProfile?: boolean; conflict?: boolean; holdPlan?: boolean; existingListing?: boolean; lookupFailure?: boolean; simpleParent?: boolean; requirementActions?: boolean; linkedDebt?: boolean; url?: string } = {}) {
+async function fixture(page: Page, options: { role?: string; notesLayout?: boolean; missingProfile?: boolean; conflict?: boolean; holdPlan?: boolean; existingListing?: boolean; lookupFailure?: boolean; simpleParent?: boolean; requirementActions?: boolean; linkedDebt?: boolean; url?: string } = {}) {
   const requests: Array<{ method: string; path: string; body: Json }> = [], errors: string[] = [];
   let record = marketplacePlan(), current = workspaceFinancial(), plan = earningsPlan(), created = 0, lookupFailed = false, savedName = "Example workspace financing", savedSummary = "Operator summary retained";
   let releasePlan = () => {}; const planGate = options.holdPlan ? new Promise<void>(resolve => { releasePlan = resolve; }) : Promise.resolve();
@@ -72,10 +72,15 @@ async function fixture(page: Page, options: { role?: string; missingProfile?: bo
     const request = route.request(), url = new URL(request.url()), method = request.method();
     if (url.origin !== ORIGIN) throw new Error(`Unexpected workspace traffic: ${url.origin}`);
     if (url.pathname.startsWith("/admin/marketplace/")) return route.fulfill({ contentType: "text/html", body: "<!doctype html><html><head><meta name=viewport content=width=device-width></head><body>Intercepted synthetic marketplace editor destination</body></html>" });
-    if (!url.pathname.startsWith("/api/v1/")) return route.fulfill(url.pathname === "/app.js" ? { contentType: "text/javascript", body: script } : url.pathname === "/app.css" ? { contentType: "text/css", body: css } : { contentType: "text/html", body: `<!doctype html><html><head><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div><script>window.fixtureSimpleParent=${JSON.stringify(Boolean(options.simpleParent))};window.fixtureRequirementActions=${JSON.stringify(Boolean(options.requirementActions))};window.fixtureMessages=[];window.fixtureDeliveries=0;const RealChannel=window.BroadcastChannel;window.BroadcastChannel=class extends RealChannel{constructor(...args){super(...args);this.addEventListener('message',()=>window.fixtureDeliveries++)}postMessage(data){window.fixtureMessages.push(structuredClone(data));super.postMessage(data)}};window.fixtureRole=${JSON.stringify(options.role ?? "super_admin")};window.fixtureReadiness=${JSON.stringify({ profile_id: PROFILE, lending_applicable: true, selections: [], candidates: [], requirements: [], programs: [], evidence_policies: [], available_evidence_files: [], evidence_summary: {}, can_advance: false, automation: {} })};</script><script src="/app.js"></script></body></html>` });
+    if (!url.pathname.startsWith("/api/v1/")) return route.fulfill(url.pathname === "/app.js" ? { contentType: "text/javascript", body: script } : url.pathname === "/app.css" ? { contentType: "text/css", body: css } : { contentType: "text/html", body: `<!doctype html><html><head><meta name="viewport" content="width=device-width"><link rel="stylesheet" href="/app.css"></head><body><div id="root"></div>${options.notesLayout ? '<nav class="mobile-bottom-nav" aria-label="Primary mobile navigation"><div class="mobile-bottom-nav-scroll"><button type="button">Files</button><button type="button">Messages</button></div></nav>' : ""}<script>window.fixtureSimpleParent=${JSON.stringify(Boolean(options.simpleParent))};window.fixtureRequirementActions=${JSON.stringify(Boolean(options.requirementActions))};window.fixtureMessages=[];window.fixtureDeliveries=0;const RealChannel=window.BroadcastChannel;window.BroadcastChannel=class extends RealChannel{constructor(...args){super(...args);this.addEventListener('message',()=>window.fixtureDeliveries++)}postMessage(data){window.fixtureMessages.push(structuredClone(data));super.postMessage(data)}};window.fixtureRole=${JSON.stringify(options.role ?? "super_admin")};window.fixtureReadiness=${JSON.stringify({ profile_id: PROFILE, lending_applicable: true, selections: [], candidates: [], requirements: [], programs: [], evidence_policies: [], available_evidence_files: [], evidence_summary: {}, can_advance: false, automation: {} })};</script><script src="/app.js"></script></body></html>` });
     const p = url.pathname.slice(7), body = request.postData() ? request.postDataJSON() as Json : {}; requests.push({ method, path: p + url.search, body });
     expect(request.headers().authorization).toBe("Bearer synthetic-staff-token");
     const json = (value: unknown, status = 200) => route.fulfill({ status, json: value });
+    if (method === "GET" && decodeURIComponent(p) === `/communications/threads/intake:${INTAKE}:internal`) return json({
+      thread: { id: `intake:${INTAKE}:internal`, title: "Internal notes", participant_name: BUSINESS, participant_email: null, participant_phone: null,
+        participant_type: "client", source_kind: "intake", source_id: INTAKE, source_ref: null, source_label: BUSINESS, channel: "internal", transport: "internal",
+        unread_count: 0, message_count: 0, latest_snippet: null, latest_at: "2026-11-25T12:00:00Z", assigned_desk: null, href: `/files/${INTAKE}`, can_reply: true }, messages: [],
+    });
     if (p.startsWith("/admin/ai-underwriter-leads/")) return json(workspaceDetail(options.missingProfile ? null : PROFILE));
     if (p === "/application-profiles/resolve") return json({ id: PROFILE, intake_id: INTAKE, vertical: "mca", program_selections: [] });
     if (p.endsWith("/financial-forms")) return json({ forms: workspaceForms, packets: [] });
@@ -128,6 +133,39 @@ async function popup(page: Page, linkName: string) { const ready = page.waitForE
 
 // Cases below exercise actual page/context/editor trees; only auth/services and
 // the unrelated intake-detail adapter are synthetic. No replacement editor buttons.
+
+test("internal notes stay available in every standalone file workspace and preserve a collapsed draft", async ({ page }, info) => {
+  const f = await fixture(page, { notesLayout: true });
+  for (const tool of ["forms", "operating-plan", "coverage", "terms", "use-of-funds", "marketplace"]) {
+    await page.goto(`${ORIGIN}/files/${INTAKE}/workspace?tool=${tool}`);
+    const access = page.getByRole("complementary", { name: "File internal notes access", exact: true });
+    const toggle = access.getByRole("button", { name: "Internal notes", exact: true });
+    await expect(toggle).toBeVisible();
+    await toggle.click();
+    const panel = access.getByRole("region", { name: "Internal file notes", exact: true });
+    const draft = panel.getByRole("textbox", { name: "Write an internal note…", exact: true });
+    await draft.fill(`Example unsent ${tool} note.`);
+    const bounds = await panel.boundingBox();
+    expect(bounds!.x).toBeGreaterThanOrEqual(0);
+    expect(bounds!.y).toBeGreaterThanOrEqual(0);
+    expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(page.viewportSize()!.width + 1);
+    expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(page.viewportSize()!.height + 1);
+    const mobileNav = page.getByRole("navigation", { name: "Primary mobile navigation", exact: true });
+    if (await mobileNav.isVisible()) {
+      const navBounds = await mobileNav.boundingBox();
+      const toggleBounds = await access.getByRole("button", { name: "Close internal notes", exact: true }).boundingBox();
+      expect(bounds!.y + bounds!.height).toBeLessThanOrEqual(navBounds!.y);
+      expect(toggleBounds!.y + toggleBounds!.height).toBeLessThanOrEqual(navBounds!.y);
+    }
+    if (tool === "coverage") await page.screenshot({ path: info.outputPath("internal-notes-workspace.png") });
+    await panel.getByRole("button", { name: "Collapse internal notes", exact: true }).click();
+    await expect(panel).toBeHidden();
+    await access.getByRole("button", { name: "Internal notes", exact: true }).click();
+    await expect(draft).toHaveValue(`Example unsent ${tool} note.`);
+  }
+  expect(f.requests.filter(row => row.method === "POST" && row.path.startsWith("/communications/"))).toHaveLength(0);
+  expect(f.errors).toEqual([]);
+});
 
 test("actual file editor links open internal workspaces in new tabs without mutating", async ({ page }) => {
   const f = await fixture(page, { requirementActions: true, linkedDebt: true, existingListing: true }); await expect(page.getByRole("heading", { name: BUSINESS, exact: true })).toBeVisible();

@@ -1,0 +1,103 @@
+.contextRail {
+  min-width: 0;
+  align-self: start;
+  position: sticky;
+  top: 6px;
+  gap: 6px;
+}
+.railActions {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.railActions button:only-child {
+  grid-column: 1 / -1;
+}
+.contextRail:global(.intake-file-context) {
+  max-height: calc(100dvh - 124px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.contextRail:global(.intake-file-context) .railActions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  padding-bottom: 4px;
+  background: var(--bg);
+}
+.contextRail:global(.intake-file-context) .railActions button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 34px;
+  gap: 6px;
+  padding: 5px 7px;
+  box-shadow: none;
+}
+.contextRail:global(.intake-file-context) .railActions span {
+  writing-mode: initial;
+  transform: none;
+  font-size: 10px;
+  font-weight: 650;
+  text-transform: none;
+}
+.contextRail:global(.intake-file-context-collapsed) .railActions button {
+  min-height: 110px;
+  box-shadow: none;
+}
+.railActions button[aria-expanded=true] {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--accent-100);
+}
+.contactContents {
+  display: grid;
+  grid-auto-rows: max-content;
+  gap: 6px;
+  min-width: 0;
+}
+.notesSlot { min-width: 0; }
+.notesSlot[hidden] { display: none; }
+.notesExpanded:global(.intake-file-body) {
+  grid-template-columns: minmax(0, 1fr) 340px;
+}
+.notesExpanded:global(.intake-file-body.with-sequence) {
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) 340px;
+}
+@media (max-width: 1000px) {
+  .notesExpanded:global(.intake-file-body), .notesExpanded:global(.intake-file-body.with-sequence) {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .contextRail {
+    grid-row: 1;
+    position: static;
+    width: 100%;
+    justify-items: stretch;
+  }
+  .contextRail:global(.intake-file-context) {
+    max-height: none;
+    overflow: visible;
+  }
+  .railActions,
+  .contextRail:global(.intake-file-context) .railActions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .contextRail .railActions button,
+  .contextRail:global(.intake-file-context-collapsed) .railActions button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    min-height: 36px;
+    padding: 6px 8px;
+    gap: 6px;
+  }
+  .contextRail .railActions span {
+    writing-mode: initial;
+    transform: none;
+    text-transform: none;
+    font-size: 11px;
+  }
+}

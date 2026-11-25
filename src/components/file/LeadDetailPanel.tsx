@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { FileSection, useSectionState } from "./FileSection";
+import panelStyles from "./LeadDetailPanel.module.css";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 import { Card, useToast, Toast } from "@/components/design-system/primitives";
@@ -84,6 +85,7 @@ const AIIntakeEmailWorkspace = dynamic(() => import("@/components/communications
 const OfferDeliveryComposer = dynamic(() => import("@/components/communications/OfferDeliveryComposer").then(m => m.OfferDeliveryComposer));
 const OfferDeliveryHistory = dynamic(() => import("@/components/communications/OfferDeliveryHistory").then(m => m.OfferDeliveryHistory), { loading: sectionLoading });
 const LeadNotesPanel = dynamic(() => import("@/components/broker/LeadNotesPanel").then(m => m.LeadNotesPanel), { loading: sectionLoading });
+const FileInternalNotesPanel = dynamic(() => import("@/components/file/FileInternalNotesPanel").then(m => m.FileInternalNotesPanel), { loading: sectionLoading });
 const BucketWorkspaceOverlay = dynamic(() => import("@/components/buckets/BucketWorkspaceOverlay").then(m => m.BucketWorkspaceOverlay));
 const PaymentsWorkspace = dynamic(() => import("@/components/payments/PaymentsWorkspace").then(m => m.PaymentsWorkspace), { loading: sectionLoading });
 const FinancialCockpit = dynamic(() => import("@/components/file/cockpit/FinancialCockpit").then(m => m.FinancialCockpit), { loading: sectionLoading });
@@ -659,7 +661,8 @@ export function LeadDetailPanel({
   const { getToken } = useConsoleAuth();
   const movePipeline = useMoveOperatorPipelineFile();
   const bookingLink = useBookingLink();
-  const { data: currentUser } = useCurrentUser();
+  const currentUserState = useCurrentUser();
+  const currentUser = currentUserState.data;
   const canUnderwrite = currentUser?.role === Role.SUPER_ADMIN || currentUser?.role === Role.LOAN_EXEC;
   const communicationUnread = useIntakeCommunicationUnread(detail?.intake.id, { enabled: canUnderwrite });
   const smsUnread = communicationUnread.data?.sms ?? 0;
@@ -730,6 +733,12 @@ export function LeadDetailPanel({
   // capital-partners panel, which reads readiness before cutting a listing.
   const [cockpitFocus, setCockpitFocus] = useState<"marketplace" | null>(null);
   const [contextRailOpen, setContextRailOpen] = useState(false);
+  const internalNotesScope = `${currentUserState.authScope ?? currentUser?.id ?? "unresolved"}:${detail?.intake.id ?? ""}`;
+  const [internalNotesState, setInternalNotesState] = useState({ scope: internalNotesScope, open: false });
+  const internalNotesOpen = canUnderwrite && internalNotesState.scope === internalNotesScope && internalNotesState.open;
+  const setInternalNotesOpen = (open: boolean) => setInternalNotesState({ scope: internalNotesScope, open });
+  useEffect(() => { setInternalNotesState({ scope: internalNotesScope, open: false }); }, [internalNotesScope, canUnderwrite]);
+
   const [packageTab, setPackageTab] = useState<FundingPackageTab>("summary");
   // The package workspace folds away under the Financials grid; this asks the cockpit to unfold it and bring it into view.
   const [packageRequest, setPackageRequest] = useState(0);
@@ -2062,9 +2071,8 @@ export function LeadDetailPanel({
             // The submission sequence belongs to the file workspace. Every other tab drops
             // it and takes the freed 260px, so its own components get the room.
             prototypeView === "workspace" && "with-sequence",
-            !contextRailOpen && "context-collapsed",
-            // The cockpit takes the full width; the details rail has nothing to add there.
-            prototypeView === "financials" && "no-context",
+            !(contextRailOpen || internalNotesOpen) && "context-collapsed",
+            internalNotesOpen && panelStyles.notesExpanded,
           )}>
             {prototypeView === "workspace" ? (
               <aside className="submission-rail">
@@ -2375,14 +2383,19 @@ export function LeadDetailPanel({
                 </Panel>
               ) : null}
             </main>
-            {contextRailOpen ? (
-              <aside className="grid intake-file-context">
-                <div className="context-rail-toolbar">
-                  <span>File details</span>
-                  <IconBtn onClick={() => setContextRailOpen(false)} aria-label="Collapse file details" title="Collapse file details">
-                    <Icon name="chevR" size={15} />
-                  </IconBtn>
-                </div>
+            <aside className={cx(contextRailOpen || internalNotesOpen ? "grid intake-file-context" : "intake-file-context-collapsed", panelStyles.contextRail)} aria-label={canUnderwrite ? "File contact and internal notes" : "File contact details"}>
+              <div className={panelStyles.railActions}>
+                <button type="button" className="context-rail-expand" onClick={() => setContextRailOpen(open => !open)} aria-expanded={contextRailOpen} aria-label={contextRailOpen ? "Collapse file details" : "Expand file details"} title={contextRailOpen ? "Collapse file details" : "Expand file details"}>
+                  <Icon name={contextRailOpen ? "chevR" : "chevL"} size={15} /><span>Contact</span>
+                </button>
+                {canUnderwrite ? <button type="button" className="context-rail-expand" onClick={() => setInternalNotesOpen(!internalNotesOpen)} aria-expanded={internalNotesOpen} aria-controls={`internal-notes-${detail.intake.id}`} aria-label={internalNotesOpen ? "Collapse internal notes" : "Expand internal notes"} title={internalNotesOpen ? "Collapse internal notes" : "Expand internal notes"}>
+                  <Icon name="chat" size={15} /><span>Internal notes</span>
+                </button> : null}
+              </div>
+              {canUnderwrite ? <div id={`internal-notes-${detail.intake.id}`} className={panelStyles.notesSlot} hidden={!internalNotesOpen}>
+                <FileInternalNotesPanel key={internalNotesScope} intakeId={detail.intake.id} open={internalNotesOpen} />
+              </div> : null}
+              {contextRailOpen ? <div className={panelStyles.contactContents}>
                 <Panel
                   title="Contact"
                   actions={
@@ -2412,15 +2425,8 @@ export function LeadDetailPanel({
                 <FileTeamStrip profileId={profileId} canEdit={canUnderwrite} />
                 <ApplicationClassificationPanel sourceKind="intake" sourceId={detail.intake.id} />
                 <Panel title="Missing and blockers"><CompactList rows={missing.map((row) => ({ title: String(row.title || "Missing item"), body: String(row.detail || "") }))} empty={detail.latest_review ? "No blockers listed in the latest review." : "AI review has not run yet."} /></Panel>
-              </aside>
-            ) : (
-              <aside className="intake-file-context-collapsed">
-                <button type="button" className="context-rail-expand" onClick={() => setContextRailOpen(true)} aria-label="Expand file details" title="Expand file details">
-                  <Icon name="chevL" size={15} />
-                  <span>Details</span>
-                </button>
-              </aside>
-            )}
+              </div> : null}
+            </aside>
           </div>
         </>
       )}
@@ -2709,7 +2715,7 @@ export function LeadDetailPanel({
                   type="button"
                   className="btn"
                   onClick={() => setNotesOpen((v) => !v)}
-                  aria-label={notesOpen ? "Hide internal notes" : "Show internal notes"}
+                  aria-label={notesOpen ? "Hide referral partner messages" : "Show referral partner messages"}
                   style={{
                     position: "absolute",
                     top: "50%",
@@ -2722,7 +2728,7 @@ export function LeadDetailPanel({
                 >
                   <Icon name={notesOpen ? "chevR" : "chevL"} size={12} />
                   <span style={{ writingMode: "vertical-rl" }}>
-                    Notes{detail.notes?.length ? ` (${detail.notes.length})` : ""}
+                    Partner messages{detail.notes?.length ? ` (${detail.notes.length})` : ""}
                   </span>
                 </button>
                 <div
