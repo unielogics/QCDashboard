@@ -1,0 +1,83 @@
+.contextControl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 6px;
+  color: var(--muted, #667085);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.contextControl label,
+.newNoteContext {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+}
+
+.contextControl input,
+.newNoteContext input {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin: 0;
+  accent-color: var(--accent, #4054a0);
+}
+
+.contextControl label:has(input:disabled),
+.newNoteContext:has(input:disabled) {
+  cursor: default;
+}
+
+.contextError {
+  flex-basis: 100%;
+  color: var(--danger, #a43a32);
+}
+
+.newNoteContext {
+  flex: none;
+  padding: 10px 14px 0;
+  color: var(--muted, #667085);
+  font-size: 12px;
+}
+
+.internal :global(.bubble-row) {
+  align-self: stretch;
+  align-items: stretch;
+  max-width: 100%;
+}
+
+.internal :global(.bubble-row .bubble) {
+  border: 1px solid var(--line, #e2e6ec);
+  border-radius: 9px;
+  background: var(--surface, #fff);
+  color: var(--ink, #182333);
+}
+
+.internal :global(.bubble-who) {
+  color: var(--ink, #182333);
+}
+
+.internal :global(.bubble-meta) {
+  justify-content: flex-start;
+}
+
+.compact {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+}
+
+.compact :global(.unified-thread-messages) {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.compact :global(.chat-composer-hint) {
+  font-size: 10px;
+}

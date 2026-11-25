@@ -16,6 +16,7 @@ import { createProfileTermsClient } from "@/production-package/client";
 import styles from "./workspace.module.css";
 import type { CpSourceLookup } from "@/hooks/useCapitalPartners";
 import { marketplaceReviewHref } from "@/lib/marketplacePublication";
+import { FileInternalNotesPanel } from "@/components/file/FileInternalNotesPanel";
 
 const loading = () => <p role="status">Opening editor…</p>;
 const FinancialWorkspace = dynamic(() => import("@/components/application/FinancialWorkspace").then(module => module.FinancialWorkspace), { ssr: false, loading });
@@ -32,6 +33,7 @@ export default function FileWorkspacePage() {
 function Workspace({ intakeId, request, canPublish, authScope }: { authScope: string; intakeId: string; request: ReturnType<typeof parseFileWorkspaceRequest>; canPublish: boolean }) {
   const [notice, setNotice] = useState(""), [resolved, setResolved] = useState<string | null>(null), [error, setError] = useState("");
   const [creationProfile, setCreationProfile] = useState<string | null>(null);
+  const [notesOpen, setNotesOpen] = useState(false);
   const redirected = useRef<string | null>(null);
   const file = useLeadFile({ leadId: intakeId, notify: setNotice, includeDerived: request?.tool === "marketplace" }), api = useAuthedApi(), cache = useQueryClient();
   const knownProfile = file.detail?.application_profile_id, profileId = knownProfile ?? resolved;
@@ -76,6 +78,10 @@ function Workspace({ intakeId, request, canPublish, authScope }: { authScope: st
   const operatingPlan = request.tool === "operating-plan";
   const workspaceLinks = <nav className={styles.tools} aria-label="File workspaces">{FILE_WORKSPACE_TOOLS.filter(tool => !operatingPlan || tool !== "operating-plan").map(tool => <FileWorkspaceLink key={tool} tool={tool}>{FILE_WORKSPACE_LABELS[tool]}</FileWorkspaceLink>)}</nav>;
   return <FileWorkspaceProvider value={{ intakeId, profileId, pageMode: true, tool: request.tool }}><main className={`${styles.root}${operatingPlan ? ` ${styles.operatingPlan}` : ""}`}>
+    <aside className={styles.notesDock} aria-label="File internal notes access">
+      <FileInternalNotesPanel intakeId={intakeId} open={notesOpen} onOpenChange={setNotesOpen} className={styles.notesPanel} />
+      <button className={styles.notesToggle} type="button" aria-expanded={notesOpen} onClick={() => setNotesOpen(open => !open)}>{notesOpen ? "Close internal notes" : "Internal notes"}</button>
+    </aside>
     {/* The earnings plan draws its own header (the way back, the business, the save state); only the links to the other workspaces stay here. */}
     {operatingPlan ? <details className={styles.planTools} style={{ justifySelf: "end" }}><summary>Other file workspaces</summary>{workspaceLinks}</details> : <><header><FileWorkspaceBackLink /><div><h1>{FILE_WORKSPACE_LABELS[request.tool]}</h1><p>{title}</p><small>The original file stays open in its tab. This workspace starts from saved file data.</small></div></header>{workspaceLinks}</>}
     {request.tool === "marketplace" && creationMode ? <div className="row"><a className="btn btn-sm" href={`/files/${encodeURIComponent(intakeId)}?workspace=package#package-readiness`} target="_blank" rel="noopener noreferrer">Prepare / refresh investor package</a><span className="sub">{packageCurrent ? "Current package on file" : "Package readiness is checked before publication."}</span></div> : null}

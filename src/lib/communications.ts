@@ -15,6 +15,9 @@ export const LIVE_MESSAGE_QUERY_OPTIONS = {
   refetchOnReconnect: "always",
 } as const;
 
+export const unifiedCommunicationThreadKey = (threadId: string, authScope: string | null) => ["unified-communication-thread", threadId, authScope] as const;
+export const isIntakeInternalNotesThread = (threadId: string, channel?: string) => channel === "internal" && /^intake:[^:]+:internal$/.test(threadId);
+
 export type UnifiedCommunicationThread = {
   id: string;
   title: string;
@@ -49,6 +52,8 @@ export type UnifiedCommunicationMessage = {
   created_at: string;
   seen: boolean;
   delivery_status: string | null;
+  /** Only internal notes explicitly selected by staff may enter AI context. */
+  include_in_ai_context?: boolean;
   /** Authorized thumbnails for images received or attached to this message. */
   images?: InlineImage[];
 };
