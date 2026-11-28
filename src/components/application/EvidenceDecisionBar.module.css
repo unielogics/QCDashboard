@@ -1,0 +1,16 @@
+/* The decision strip between a file's header and the document. Each row is one
+   decision: a chip, one plain sentence, and its buttons straight after it, so
+   the question and its answers are read together even on a very wide screen.
+   It stays slim on purpose: the document under it is what the reviewer came to
+   read. */
+.bar { flex: 1 1 100%; width: 100%; min-width: 0; display: grid; gap: 8px; }
+.row { min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 8px 22px; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.asks { border-color: color-mix(in srgb, var(--warn) 42%, var(--line)); background: color-mix(in srgb, var(--warn-tint) 55%, var(--surface)); }
+.text { flex: 0 1 auto; min-width: 0; max-width: 112ch; display: grid; gap: 3px; }
+.lead { min-width: 0; display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px 10px; }
+.item { min-width: 0; display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; color: var(--muted); font-size: 12px; }
+.item select { max-width: min(100%, 420px); }
+.sentence { flex: 1 1 320px; min-width: 0; margin: 0; color: var(--ink); font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; }
+.note { margin: 0; color: var(--ink2); font-size: 12px; line-height: 1.5; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+.actions { flex: 0 0 auto; max-width: 100%; display: flex; flex-wrap: wrap; gap: 8px; }
+.actions :global(.btn) { white-space: nowrap; }

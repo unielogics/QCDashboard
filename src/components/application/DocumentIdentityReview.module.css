@@ -16,3 +16,11 @@
 .actions { display: flex; gap: 7px; flex-wrap: wrap; }
 .history { padding-left: 18px; margin: 8px 0 0; display: grid; gap: 8px; font-size: 12px; line-height: 1.6; }
 @media (max-width: 550px) { .facts { grid-template-columns: minmax(0, 1fr); } }
+/* The same review as the body of a dialog: no frame of its own, always open. */
+.panel { border: 0; border-radius: 0; background: transparent; display: grid; gap: 14px; }
+.panel p { margin: 0; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }
+.panel .facts { grid-template-columns: minmax(0, 1fr); gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--sunken2); }
+.panel .facts dd { font-size: 14px; font-weight: 600; }
+.panel .choices label, .panel .reason { font-size: 13px; }
+.panel .reason label { font-weight: 650; }
+.panel .hint, .hint { color: var(--muted); font-size: 12px; line-height: 1.5; }

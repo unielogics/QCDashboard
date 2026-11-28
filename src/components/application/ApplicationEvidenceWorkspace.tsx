@@ -13,7 +13,11 @@ import { PlaidRequestBar } from "@/components/application/PlaidRequestBar";
 import { LockedEvidenceBadge, UnlockedCopyRequestControl } from "@/components/application/LockedEvidenceStatus";
 import { EvidenceIdentityWarning } from "@/components/application/EvidenceIdentityWarning";
 import { EvidenceReviewDetails } from "@/components/application/EvidenceReviewDetails";
+import { EvidenceDecisionBar } from "@/components/application/EvidenceDecisionBar";
+import { BusinessNameDecision } from "@/components/application/BusinessNameDecision";
+import { QuickReasons } from "@/components/application/QuickReasons";
 import { evidenceReviewPresentation } from "@/lib/evidenceReviewPresentation";
+import { APPROVE_REASONS, MIN_REASON_LENGTH, REJECT_REASONS, reasonLongEnough, reviewDecisionState, type ReviewChoice } from "@/lib/evidenceReviewDecision";
 import { BucketWorkspaceOverlay } from "@/components/buckets/BucketWorkspaceOverlay";
 import {
   BucketFileReviewPanel,
@@ -39,7 +43,6 @@ import type {
 import {
   aggregateEvidenceDecisions,
   evidenceAnalysisLabel,
-  evidenceActorLabel,
   evidenceDecisionLabel,
   evidenceDecisionTone,
   evidenceUsabilityLabel,
@@ -70,13 +73,23 @@ type ReviewAction = {
 const ACCEPTED_UPLOADS = ".pdf,.csv,.xlsx,.xls,.doc,.docx,.zip,.png,.jpg,.jpeg,.webp,.heic";
 const REASON_OPTIONS = [
   ["wrong_document", "Wrong document"],
-  ["wrong_entity", "Wrong entity"],
+  ["wrong_entity", "Wrong business"],
   ["wrong_period", "Wrong period"],
   ["incomplete", "Incomplete"],
   ["unreadable", "Unreadable"],
   ["duplicate", "Duplicate"],
   ["other", "Other"],
 ] as const;
+
+/** What each review action is called on its panel, its button and its confirmation. */
+const ACTION_COPY: Record<ReviewActionKind, { title: string; confirm: string; note: string; done: (fileName: string) => string }> = {
+  reject: { title: "Reject this file", confirm: "Reject file", note: "The AI's own decision stays in the file's history.", done: (name) => `Rejected ${name}.` },
+  override: { title: "Approve this file", confirm: "Approve file", note: "The AI's own decision stays in the file's history.", done: (name) => `Approved ${name}.` },
+  verify: { title: "Approve this file", confirm: "Approve file", note: "This checklist item needs a person's approval on top of the AI's, which is why you are asked.", done: (name) => `Approved ${name}.` },
+  unverify: { title: "Remove the approval", confirm: "Remove approval", note: "The file stays on the checklist item. Only the person's approval is removed.", done: (name) => `Removed the approval on ${name}.` },
+  reassign: { title: "Move to another checklist item", confirm: "Move file", note: "The file itself stays in the room. Only the checklist item it counts for changes.", done: (name) => `Moved ${name}.` },
+  unlink: { title: "Remove from this checklist item", confirm: "Remove from item", note: "The file itself stays in the room. Only the checklist item it counts for changes.", done: (name) => `Removed ${name} from the checklist item.` },
+};
 
 function requirementComplete(requirement: ApplicationRequirement): boolean {
   return requirement.verified_coverage_complete || ["verified", "waived", "not_applicable"].includes(requirement.status);
@@ -173,6 +186,9 @@ export function ApplicationEvidenceWorkspace({
   const [identityPending, setIdentityPending] = useState(false);
   const [requestingUnlockedCopyFileId, setRequestingUnlockedCopyFileId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  // The review screen covers the page, so what goes wrong inside it is said inside it.
+  const [reviewError, setReviewError] = useState("");
+  const [businessNameRequest, setBusinessNameRequest] = useState(0);
   const [groupFocus, setGroupFocus] = useState<{ group: TriageGroup; requestId: number } | null>(null);
 
   const workspace = useQuery({
@@ -290,10 +306,6 @@ export function ApplicationEvidenceWorkspace({
   const statementEvidence = data?.banking.manual_statement_files?.length
     ? data.banking.manual_statement_files
     : bankRequirement?.evidence_files ?? [];
-  const assignmentDecisions = assignments.flatMap((requirement) => requirement.evidence_files.filter((file) => file.file_id === selectedFileId));
-  const assignmentAggregate = aggregateEvidenceDecisions(assignmentDecisions.map((decision) => decision.ai_decision));
-  const assignmentSummaryMixed = assignmentAggregate.mixed || evidenceDecisionDetailsMixed(assignmentDecisions);
-  const aggregateDecision = assignmentDecisions.find((decision) => decision.ai_decision === assignmentAggregate.decision) ?? currentDecision;
   const reviewFiles: BucketReviewFile[] = files.map((file) => ({
     id: file.id,
     file_name: file.file_name,
@@ -339,10 +351,12 @@ export function ApplicationEvidenceWorkspace({
     setSelectedPreviewHash(expectedContentHash ?? identity?.content_hash ?? undefined);
     setPreviewRequestId((current) => current + 1);
     setAction(null);
+    setReviewError("");
   }, [identityPending, files, requirements]);
 
   const startAction = useCallback((kind: ReviewActionKind) => {
     const requirement = currentAssignment;
+    setReviewError("");
     setAction({
       kind,
       requirementKey: requirement?.requirement_key ?? "",
@@ -356,10 +370,10 @@ export function ApplicationEvidenceWorkspace({
     if (!selectedFile || !action) return;
     const source = requirements.find((item) => item.requirement_key === action.requirementKey);
     if (action.kind !== "reassign" && !source) return;
-    if ((action.kind === "reject" || action.kind === "override") && action.reason.trim().length < 8) return;
+    if ((action.kind === "reject" || action.kind === "override") && !reasonLongEnough(action.reason)) return;
     if (action.kind === "reassign" && !action.targetKey) return;
     setActionBusy(true);
-    setError("");
+    setReviewError("");
     try {
       if (action.kind === "reject" || action.kind === "override") {
         const next = await apiCall<Readiness>(
@@ -386,10 +400,10 @@ export function ApplicationEvidenceWorkspace({
           evidence_file_ids: [selectedFile.id],
         });
       }
-      onNotice?.(`${selectedFile.file_name} evidence decision updated.`);
+      onNotice?.(action.kind === "reassign" && !assignments.length ? `Attached ${selectedFile.file_name}.` : ACTION_COPY[action.kind].done(selectedFile.file_name));
       setAction(null);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "The evidence decision could not be saved.");
+      setReviewError(reason instanceof Error ? reason.message : "The decision could not be saved.");
     } finally {
       setActionBusy(false);
     }
@@ -397,13 +411,13 @@ export function ApplicationEvidenceWorkspace({
 
   async function retryAnalysis(file: EvidenceWorkspaceFile) {
     setActionBusy(true);
-    setError("");
+    setReviewError("");
     try {
       await apiCall(`/application-profiles/${profileId}/evidence/${file.id}/reanalyze`, { method: "POST" });
       onNotice?.(`${file.file_name} was queued for AI reanalysis.`);
       await refresh();
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : "AI reanalysis could not be queued.");
+      setReviewError(reason instanceof Error ? reason.message : "The AI could not be asked to read this file again.");
     } finally {
       setActionBusy(false);
     }
@@ -421,6 +435,8 @@ export function ApplicationEvidenceWorkspace({
     }
     setRequestingUnlockedCopyFileId(fileId);
     setError("");
+    setReviewError("");
+    const failed = (message: string) => { setError(message); if (fileId === selectedFileId) setReviewError(message); };
     try {
       const request = unlockedCopyRequest(
         profileId,
@@ -439,10 +455,10 @@ export function ApplicationEvidenceWorkspace({
           await navigator.clipboard.writeText(receipt.room_url);
           onNotice?.(`Secure room link copied for ${fileName}.`);
         } catch {
-          setError(`Clipboard access was blocked. Secure room link: ${receipt.room_url}`);
+          failed(`Clipboard access was blocked. Secure room link: ${receipt.room_url}`);
         }
       } else if (!receipt.provider_accepted) {
-        setError(receipt.delivery_status === "created"
+        failed(receipt.delivery_status === "created"
           ? "The unlocked-copy request is recorded, but no email was sent. Retry email or use Copy room link."
           : receipt.delivery_status === "sending"
             ? "The unlocked-copy request is recorded and email delivery is still processing. You can also use Copy room link."
@@ -458,7 +474,7 @@ export function ApplicationEvidenceWorkspace({
       // immediately clears the stale lock badge instead of waiting for a page
       // reload.
       await refresh().catch(() => undefined);
-      setError(reason instanceof Error ? reason.message : "The unlocked-copy request could not be sent.");
+      failed(reason instanceof Error ? reason.message : "The unlocked-copy request could not be sent.");
     } finally {
       setRequestingUnlockedCopyFileId(null);
     }
@@ -492,9 +508,36 @@ export function ApplicationEvidenceWorkspace({
     action.kind === "reassign"
       ? action.targetKey
       : action.kind === "reject" || action.kind === "override"
-      ? action.requirementKey && action.reason.trim().length >= 8
+      ? action.requirementKey && reasonLongEnough(action.reason)
       : action.requirementKey
   ));
+
+  // What the review screen says about the open file, and what the reviewer can do.
+  const identityRecord = currentDecision?.identity_association ?? selectedFile?.identity_association ?? null;
+  const reviewEvidence = currentDecision && selectedFile ? { ...currentDecision, detected_classification: currentDecision.detected_classification ?? selectedFile.analysis_classification, analysis_confidence: currentDecision.analysis_confidence ?? selectedFile.analysis_confidence } : null;
+  const reviewIsDebtSchedule = Boolean(currentAssignment && formKindsOf(currentAssignment).includes("debt_schedule"));
+  const reviewPresentation = reviewEvidence ? evidenceReviewPresentation(reviewEvidence, currentAssignment?.label || "Supporting / Other", reviewIsDebtSchedule) : null;
+  const reviewState = selectedFile ? reviewDecisionState({
+    decision: currentDecision,
+    requirementLabel: currentAssignment?.label ?? null,
+    verificationRequired: Boolean(currentAssignment?.verification_required),
+    locked: selectedLockedEvidence,
+    headline: reviewPresentation?.headline,
+    explanation: reviewPresentation?.explanation,
+    analysisFailed: selectedFile.analysis_status === "failed",
+    analysisNote: [
+      evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code),
+      selectedFile.analysis_detail || selectedFile.analysis_summary,
+      selectedFile.analysis_classification ? `Read as ${selectedFile.analysis_classification.replaceAll("_", " ")}${selectedFile.analysis_confidence ? ` (${selectedFile.analysis_confidence} confidence)` : ""}` : null,
+    ].filter((part): part is string => Boolean(part)).map((part) => part.trim().replace(/[.\s]+$/, "")).join(". "),
+  }) : null;
+  const chooseReviewAction = (choice: ReviewChoice) => {
+    if (!selectedFile) return;
+    if (choice === "retry") { void retryAnalysis(selectedFile); return; }
+    startAction(choice === "approve" ? "verify" : choice === "approve_anyway" ? "override" : choice === "attach" ? "reassign" : "reject");
+  };
+  const actionCopy = action ? ACTION_COPY[action.kind] : null;
+  const attaching = action?.kind === "reassign" && !assignments.length;
 
   if (workspace.isLoading && !data) return <div className="empty">Loading evidence and banking...</div>;
   if (!data) return <Callout tone="bad">{workspace.error instanceof Error ? workspace.error.message : "Evidence and banking are unavailable."}</Callout>;
@@ -658,45 +701,69 @@ export function ApplicationEvidenceWorkspace({
       reviewKey={`${selectedFile.id}:${selectedPreviewHash || ""}`}
       loadReview={loadSelectedReview}
       annotationsEnabled={false}
-      onClose={() => { if (identityPending) return; setSelectedFileId(null); setSelectedRequirementKey(null); setSelectedPreviewPage(undefined); setSelectedPreviewHash(undefined); setAction(null); }}
-      reviewContext={<>
-        {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} detail review={{ profileId, fileId: selectedFile.id, canEdit: canAddRequirements, expectedContentHash: selectedPreviewHash, requirePreviewBinding: true, initialRecord: currentDecision?.identity_association ?? selectedFile.identity_association, onSaved: refresh, onPending: setIdentityPending, externallyBusy: identityPending }} /> : null}
-        {currentDecision?.usability_status ? <div className="row g8"><CellChip tone={currentDecision.usability_status === "usable" ? "ok" : "warn"}>{evidenceUsabilityLabel(currentDecision.usability_status)}</CellChip>{currentDecision.document_type_candidates?.length ? <Sub>{currentDecision.document_type_candidates.map((candidate) => candidate.classification.replaceAll("_", " ")).join(" · ")}</Sub> : null}</div> : null}
-        <div><b>{currentAssignment?.label || "Supporting / Other"}</b>{assignments.length > 1 ? <Select aria-label="Evidence requirement decision" value={currentAssignment?.requirement_key || ""} onChange={(event) => { setSelectedRequirementKey(event.target.value); setAction(null); }}>{assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}{decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}</option>; })}</Select> : null}<Sub>{currentDecision ? `${evidenceActorLabel(currentDecision.decision_actor)}${currentDecision.ai_confidence ? ` · ${currentDecision.ai_confidence} confidence` : ""}${currentDecision.verified ? " · Human verified" : ""}` : `${evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)} · This file is not assigned to a requirement.`}</Sub></div>
-        {selectedLockedEvidence ? <Callout tone="warn" icon={<Icon name="lock" size={16} aria-hidden="true" />}><div className="grid g4"><b>{selectedLockedEvidence.title}</b><span>{selectedLockedEvidence.explanation} AI cannot review its contents.</span><small>This file cannot satisfy {currentAssignment?.label || "an evidence requirement"} until an unlocked replacement is uploaded.</small></div></Callout> : currentDecision ? <EvidenceReviewDetails file={{ ...currentDecision, detected_classification: currentDecision.detected_classification ?? selectedFile.analysis_classification, analysis_confidence: currentDecision.analysis_confidence ?? selectedFile.analysis_confidence }} requirementLabel={currentAssignment?.label || "Supporting / Other"} isDebtSchedule={Boolean(currentAssignment && formKindsOf(currentAssignment).includes("debt_schedule"))} expanded /> : null}
-        {!selectedLockedEvidence && !currentDecision ? <Callout tone={selectedFile.analysis_status === "failed" ? "bad" : selectedFile.analysis_status === "skipped" ? "warn" : "mut"}><div className="grid g4"><b>{evidenceAnalysisLabel(selectedFile.analysis_status, selectedFile.analysis_reason_code)}</b><span>{selectedFile.analysis_detail || selectedFile.analysis_summary || "Analysis explanation not available."}</span>{selectedFile.analysis_classification ? <small>Classification: {selectedFile.analysis_classification.replaceAll("_", " ")}{selectedFile.analysis_confidence ? ` · ${selectedFile.analysis_confidence} confidence` : ""}</small> : null}</div></Callout> : null}
-      </>}
+      onClose={() => { if (identityPending) return; setSelectedFileId(null); setSelectedRequirementKey(null); setSelectedPreviewPage(undefined); setSelectedPreviewHash(undefined); setAction(null); setReviewError(""); }}
+      reviewContext={reviewState ? <EvidenceDecisionBar
+        state={reviewState}
+        requirementKey={currentAssignment?.requirement_key}
+        requirements={assignments.map((requirement) => { const decision = requirement.evidence_files.find((item) => item.file_id === selectedFile.id); return { key: requirement.requirement_key, label: `${requirement.label}${decision ? ` — ${evidenceDecisionLabel(decision.ai_decision, decision.decision_actor)}` : ""}` }; })}
+        onSelectRequirement={(key) => { setSelectedRequirementKey(key); setAction(null); setReviewError(""); }}
+        busy={actionBusy || identityPending}
+        onChoice={chooseReviewAction}
+        extraChip={currentDecision?.usability_status === "unsafe" || currentDecision?.usability_status === "needs_replacement" ? <CellChip tone={currentDecision.usability_status === "unsafe" ? "bad" : "warn"}>{evidenceUsabilityLabel(currentDecision.usability_status)}</CellChip> : null}
+        error={action ? undefined : reviewError}
+      >
+        {!selectedLockedEvidence ? <BusinessNameDecision
+          review={{ profileId, fileId: selectedFile.id, canEdit: canAddRequirements, expectedContentHash: selectedPreviewHash, requirePreviewBinding: true, initialRecord: identityRecord, onSaved: refresh, onPending: setIdentityPending, externallyBusy: identityPending }}
+          reasonCode={currentDecision?.ai_reason_code}
+          decision={currentDecision?.ai_decision}
+          fileName={selectedFile.file_name}
+          openRequest={businessNameRequest}
+          onNotice={onNotice}
+        /> : null}
+        {reviewEvidence && !selectedLockedEvidence ? <EvidenceReviewDetails
+          file={reviewEvidence}
+          requirementLabel={currentAssignment?.label || "Supporting / Other"}
+          isDebtSchedule={reviewIsDebtSchedule}
+          usability={reviewEvidence.usability_status ? evidenceUsabilityLabel(reviewEvidence.usability_status) : null}
+          alsoReadAs={(reviewEvidence.document_type_candidates ?? []).map((candidate) => candidate.classification).filter((classification) => classification !== reviewEvidence.detected_classification).map((classification) => classification.replaceAll("_", " "))}
+        /> : null}
+      </EvidenceDecisionBar> : null}
       lockedFileGuidance={<Sub>AI review can resume after the client uploads an unlocked replacement. The original remains in Evidence for the audit trail.</Sub>}
       lockedFileActions={<UnlockedCopyRequestControl request={selectedUnlockedCopyRequest} busy={requestingUnlockedCopyFileId === selectedFile.id} onRequest={(retryFailed) => requestUnlockedCopy(selectedFile.id, selectedFile.file_name, retryFailed, false, selectedUnlockedCopyRequirement?.requirement_key)} onCopyRoomLink={() => copyUnlockedRoomLink(selectedFile.id, selectedFile.file_name, selectedUnlockedCopyRequirement?.requirement_key)} />}
       headerActions={<>
         <DocumentVersionControl file={selectedFile} service={versions} onChanged={refresh} />
-        {selectedLockedEvidence ? <LockedEvidenceBadge presentation={selectedLockedEvidence} /> : <CellChip tone={evidenceDecisionTone(assignmentAggregate.decision)}>{assignmentSummaryMixed ? "Mixed decisions" : evidenceDecisionLabel(assignmentAggregate.decision, aggregateDecision?.decision_actor)}</CellChip>}
-        {!selectedLockedEvidence ? <EvidenceIdentityWarning reasonCode={currentDecision?.ai_reason_code} decision={currentDecision?.ai_decision} /> : null}
-        {assignments.length > 1 ? <CellChip tone="mut">{assignments.length} requirements</CellChip> : null}
-        {!selectedLockedEvidence && (currentDecision?.ai_decision === "failed" || (!currentDecision && selectedFile.analysis_status === "failed")) ? <ActionIcon icon="refresh" label="Retry the AI's reading of this file" disabled={actionBusy} onClick={() => void retryAnalysis(selectedFile)} /> : null}
-        {!selectedLockedEvidence && currentDecision && currentDecision.ai_decision !== "accepted" ? <ActionIcon icon="check" tone="ok" label="Accept this file anyway (override the AI)" disabled={actionBusy} onClick={() => startAction("override")} /> : null}
-        {currentAssignment?.verification_required ? <ActionIcon icon="shieldChk" tone={currentDecision?.verified ? "ok" : undefined} pressed={Boolean(currentDecision?.verified)} label={currentDecision?.verified ? "Remove human verification" : "Sign off: confirm the AI's acceptance"} disabled={actionBusy} onClick={() => startAction(currentDecision?.verified ? "unverify" : "verify")} /> : null}
-        {currentAssignment ? <ActionIcon icon="thumbsDown" tone="danger" label="Reject this file" disabled={actionBusy} onClick={() => startAction("reject")} /> : null}
+        {/* Approve and Reject are labelled buttons in the strip under this
+            header; the menu keeps what is done rarely. */}
         <PageActionMenu label={`More actions for ${selectedFile.file_name}`} items={[
-          { label: assignments.length ? "Move to another requirement..." : "Assign to a requirement...", onSelect: () => startAction("reassign") },
-          { label: "Unlink from this requirement", hidden: !currentAssignment, onSelect: () => startAction("unlink") },
+          { label: assignments.length ? "Move to another checklist item…" : "Attach to a checklist item…", onSelect: () => startAction("reassign") },
+          { label: "Remove from this checklist item", hidden: !currentAssignment, onSelect: () => startAction("unlink") },
+          { label: "Remove the approval", hidden: !(currentAssignment?.verification_required && currentDecision?.verified), onSelect: () => startAction("unverify") },
+          { label: "Business name on this document…", hidden: Boolean(selectedLockedEvidence) || !identityRecord, onSelect: () => setBusinessNameRequest((value) => value + 1) },
         ]} />
       </>}
     /> : null}
 
     <Drawer
       open={Boolean(action && selectedFile)}
-      onClose={() => { if (!actionBusy) setAction(null); }}
-      title={action ? action.kind === "reject" ? "Reject evidence" : action.kind === "override" ? "Override AI decision" : action.kind === "reassign" ? "Assign evidence" : action.kind === "unlink" ? "Unlink evidence" : action.kind === "verify" ? "Human verification" : "Remove human verification" : "Evidence action"}
+      onClose={() => { if (!actionBusy) { setAction(null); setReviewError(""); } }}
+      title={actionCopy ? attaching ? "Attach to a checklist item" : actionCopy.title : "File decision"}
       sub={selectedFile?.file_name}
-      footer={<><Btn onClick={() => setAction(null)} disabled={actionBusy}>Cancel</Btn><Btn variant="pri" disabled={!actionValid || actionBusy} onClick={() => void applyReviewAction()}>{actionBusy ? "Saving..." : "Confirm reviewed action"}</Btn></>}
+      width="md"
+      footer={<><Btn onClick={() => { setAction(null); setReviewError(""); }} disabled={actionBusy}>Cancel</Btn><Btn variant={action?.kind === "reject" ? "default" : "pri"} className={action?.kind === "reject" ? "pri-bad" : undefined} disabled={!actionValid || actionBusy} onClick={() => void applyReviewAction()}>{actionBusy ? "Saving..." : actionCopy ? attaching ? "Attach file" : actionCopy.confirm : "Save"}</Btn></>}
     >
-      {action ? <div className="grid">
-        {assignments.length ? <Field label="Current requirement"><Select value={action.requirementKey} onChange={(event) => setAction({ ...action, requirementKey: event.target.value })}>{assignments.map((requirement) => <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}</option>)}</Select></Field> : null}
-        {action.kind === "reassign" ? <Field label="Assign to requirement"><Select value={action.targetKey} onChange={(event) => setAction({ ...action, targetKey: event.target.value })}><option value="">Select a requirement...</option>{requirements.filter((item) => item.requirement_key !== action.requirementKey).map((requirement) => <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}</option>)}</Select></Field> : null}
-        {action.kind === "reject" ? <Field label="Reason"><Select value={action.reasonCode} onChange={(event) => setAction({ ...action, reasonCode: event.target.value })}>{REASON_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field> : null}
-        {(action.kind === "reject" || action.kind === "override") ? <Field label="Reviewed explanation"><Textarea rows={4} value={action.reason} onChange={(event) => setAction({ ...action, reason: event.target.value })} placeholder="Required for the immutable audit trail" /></Field> : null}
-        <Callout tone={action.kind === "reject" ? "warn" : "mut"}>{action.kind === "unlink" || action.kind === "reassign" ? "The source file stays in its bucket. Only its requirement assignment changes." : action.kind === "reject" || action.kind === "override" ? "The original AI decision remains in immutable history." : "This control appears only because the published requirement requires human verification."}</Callout>
+      {action && actionCopy ? <div className="grid">
+        {reviewError ? <Callout tone="bad">{reviewError}</Callout> : null}
+        {assignments.length ? <Field label="Checklist item"><Select aria-label="Checklist item" value={action.requirementKey} onChange={(event) => setAction({ ...action, requirementKey: event.target.value })}>{assignments.map((requirement) => <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}</option>)}</Select></Field> : null}
+        {action.kind === "reassign" ? <Field label={attaching ? "Attach it to" : "Move it to"}><Select aria-label={attaching ? "Attach it to" : "Move it to"} value={action.targetKey} onChange={(event) => setAction({ ...action, targetKey: event.target.value })}><option value="">Choose a checklist item...</option>{requirements.filter((item) => item.requirement_key !== action.requirementKey).map((requirement) => <option key={requirement.requirement_key} value={requirement.requirement_key}>{requirement.label}</option>)}</Select></Field> : null}
+        {action.kind === "reject" ? <Field label="What is wrong with it"><Select aria-label="What is wrong with it" value={action.reasonCode} onChange={(event) => setAction({ ...action, reasonCode: event.target.value })}>{REASON_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</Select></Field> : null}
+        {(action.kind === "reject" || action.kind === "override") ? <Field
+          label={action.kind === "reject" ? "Why" : "Why you are approving it"}
+          hint={reasonLongEnough(action.reason) ? undefined : `Pick a reason, or write one of at least ${MIN_REASON_LENGTH} characters.`}
+        >
+          <QuickReasons reasons={action.kind === "reject" ? [REJECT_REASONS[action.reasonCode]].filter(Boolean) : APPROVE_REASONS} value={action.reason} disabled={actionBusy} onPick={(reason) => setAction({ ...action, reason })} />
+          <Textarea aria-label="Reason" rows={4} maxLength={2000} value={action.reason} disabled={actionBusy} onChange={(event) => setAction({ ...action, reason: event.target.value })} placeholder="Pick a reason above or write your own. It is kept in the file's history." />
+        </Field> : null}
+        <Callout tone={action.kind === "reject" ? "warn" : "mut"}>{actionCopy.note}</Callout>
       </div> : null}
     </Drawer>
     <BucketWorkspaceOverlay bucketId={openBucketId} onClose={() => { setOpenBucketId(null); void refresh(); }} />

@@ -98,7 +98,7 @@ describe("numbers-first readiness presentation", () => {
     expect(accepted).toContain("Accepted by AI");
     expect(accepted).toContain("ok");
     expect(warning).toContain("warn");
-    expect(warning).toContain("Entity name needs review");
+    expect(warning).toContain("Business name needs review");
     const detail = renderToStaticMarkup(createElement(EvidenceIdentityWarning, { reasonCode: "entity_mismatch_warning", decision: "accepted", detail: true, locale: "es" }));
     expect(detail).toContain("documento fue aceptado");
     expect(detail).toContain("no combine resultados");

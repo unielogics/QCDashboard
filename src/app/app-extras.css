@@ -2592,10 +2592,15 @@ button.pick { width: 100%; text-align: left; }
 .locked-evidence-preview p { margin: 0 0 8px; color: var(--ink2); line-height: 1.5; }
 .locked-evidence-preview-actions { margin-top: 14px; }
 .locked-evidence-request-controls { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 7px; }
-.bucket-review-context { display: flex; align-items: flex-start; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface2); }
-.bucket-review-context > * { min-width: 0; }
-.bucket-review-context > div:first-child { flex: 1; }
-.bucket-review-context .callout { flex: 2; margin: 0; }
+/* The strip between a file's header and the document. Its blocks share a row
+   while each has room to read and wrap onto the next row when they do not; a
+   block is never squeezed to a column of single words. The strip is capped and
+   scrolls on its own, so whatever it holds the document keeps most of the
+   screen. */
+.bucket-review-context { flex: 0 0 auto; display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 12px; max-height: min(40dvh, 400px); overflow-y: auto; overscroll-behavior: contain; padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--surface2); }
+.bucket-review-context > * { flex: 1 1 320px; min-width: 0; }
+.bucket-review-context > .callout { flex: 2 1 380px; }
+.bucket-review-context .callout { margin: 0; }
 .bucket-review-comments { min-width: 0; min-height: 0; border-left: 1px solid var(--line); background: var(--surface); overflow-y: auto; padding: 14px; align-content: start; }
 .bucket-panel-collapsed .panel-b { display: none; }
 .bucket-panel-collapsed .panel-h { border-bottom: 0; }
@@ -6659,7 +6664,9 @@ select.vm-in {
   .supporting-document-group,
   .evidence-workspace-file-row { align-items: flex-start; flex-wrap: wrap; }
   .evidence-workspace-file-row > .grow { flex-basis: calc(100% - 44px); }
-  .bucket-review-context { display: grid; }
+  .bucket-review-context { display: grid; grid-template-columns: minmax(0, 1fr); max-height: 36dvh; }
+  /* With a strip above it the file list gives some of its height to the document. */
+  .bucket-review-workspace:has(> .bucket-review-context) .bucket-review-layout.with-navigator { grid-template-rows: minmax(104px, 15vh) minmax(0, 1fr); }
 }
 
 /* --- Program readiness and shared workflow status ---------------------- */

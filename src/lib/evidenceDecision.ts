@@ -2,10 +2,10 @@ import type { EvidenceDecisionStatus } from "@/lib/applicationProfile";
 
 const REASON_LABELS: Record<string, string> = {
   validated: "Validated",
-  wrong_entity: "Entity mismatch",
-  entity_unconfirmed: "Entity not confirmed",
-  entity_mismatch_warning: "Accepted with an entity-name warning",
-  entity_unconfirmed_warning: "Accepted with an unconfirmed-identity warning",
+  wrong_entity: "Different business name",
+  entity_unconfirmed: "Business name not confirmed",
+  entity_mismatch_warning: "Accepted; the business name differs",
+  entity_unconfirmed_warning: "Accepted; the business name is not confirmed",
   wrong_document: "Possible different document",
   wrong_period: "Period needs confirmation",
   incomplete: "Incomplete document",
@@ -28,8 +28,8 @@ const REASON_LABELS: Record<string, string> = {
 
 export function evidenceIdentityWarningLabel(reasonCode?: string | null, locale: "en" | "es" = "en"): string | null {
   const code = reasonCode?.trim().toLowerCase();
-  if (code === "entity_mismatch_warning") return locale === "es" ? "Nombre del negocio por revisar" : "Entity name needs review";
-  if (code === "entity_unconfirmed_warning") return locale === "es" ? "Identidad por confirmar" : "Identity needs confirmation";
+  if (code === "entity_mismatch_warning") return locale === "es" ? "Nombre del negocio por revisar" : "Business name needs review";
+  if (code === "entity_unconfirmed_warning") return locale === "es" ? "Identidad por confirmar" : "Business name not confirmed";
   return null;
 }
 

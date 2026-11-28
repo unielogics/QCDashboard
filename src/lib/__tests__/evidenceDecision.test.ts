@@ -12,8 +12,8 @@ import {
 
 describe("evidence decision presentation", () => {
   it("turns machine rejection codes into explicit operator-facing reasons", () => {
-    expect(evidenceReasonLabel("wrong_entity", "rejected")).toBe("Entity mismatch");
-    expect(evidenceReasonLabel("entity_unconfirmed", "needs_more")).toBe("Entity not confirmed");
+    expect(evidenceReasonLabel("wrong_entity", "rejected")).toBe("Different business name");
+    expect(evidenceReasonLabel("entity_unconfirmed", "needs_more")).toBe("Business name not confirmed");
     expect(evidenceReasonLabel("incomplete", "needs_more")).toBe("Incomplete document");
     expect(evidenceReasonLabel(null, "rejected")).toBe("Reason not provided");
   });
@@ -28,9 +28,9 @@ describe("evidence decision presentation", () => {
   });
 
   it("keeps accepted identity warnings separate from acceptance and rejection", () => {
-    expect(evidenceReasonLabel("entity_mismatch_warning", "accepted")).toBe("Accepted with an entity-name warning");
-    expect(evidenceReasonLabel("entity_unconfirmed_warning", "accepted")).toBe("Accepted with an unconfirmed-identity warning");
-    expect(evidenceIdentityWarningLabel("entity_mismatch_warning")).toBe("Entity name needs review");
+    expect(evidenceReasonLabel("entity_mismatch_warning", "accepted")).toBe("Accepted; the business name differs");
+    expect(evidenceReasonLabel("entity_unconfirmed_warning", "accepted")).toBe("Accepted; the business name is not confirmed");
+    expect(evidenceIdentityWarningLabel("entity_mismatch_warning")).toBe("Business name needs review");
     expect(evidenceIdentityWarningLabel("entity_unconfirmed_warning", "es")).toBe("Identidad por confirmar");
     expect(evidenceIdentityWarningLabel("wrong_entity")).toBeNull();
     expect(evidenceDecisionTone("accepted")).toBe("ok");
