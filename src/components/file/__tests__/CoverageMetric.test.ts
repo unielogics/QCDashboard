@@ -5,7 +5,7 @@ import { CoverageMetric } from "../cockpit/CoverageMetric";
 
 const render = (incomeAnnual: number | null, value: number | null, extra = {}) => renderToStaticMarkup(createElement(CoverageMetric, { incomeAnnual, value, ...extra }));
 describe("coverage with losses", () => {
-  it("keeps Body Good's signed ratios as context, with a loss as the primary status", () => {
+  it("keeps Sample Fabrication's signed ratios as context, with a loss as the primary status", () => {
     for (const ratio of [-0.26, -0.76]) {
       const html = render(-54369, ratio);
       expect(html).toContain("<strong>Negative earnings</strong>");

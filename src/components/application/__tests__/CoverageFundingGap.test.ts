@@ -8,7 +8,7 @@ const render = (income = -54369, before = 210939.12, after = 71738.04, comparabl
   value: coverageReview({ incomeAnnual: income, debtServiceAnnual: before }, { incomeAnnual: income, debtServiceAnnual: after }, comparable), basis: "Tax return 2025",
 }));
 describe("funding relief presentation", () => {
-  it("makes the real improvement explicit when Body Good's signed DSCR becomes more negative", () => {
+  it("makes the real improvement explicit when Sample Fabrication's signed DSCR becomes more negative", () => {
     const html = render();
     expect(html).toContain("The plan reduces the funding shortfall");
     expect(html).toContain("$139,201.08");

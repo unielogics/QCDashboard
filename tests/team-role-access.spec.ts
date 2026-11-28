@@ -46,7 +46,7 @@ async function mockTeam(page: Page, options: { failOutreachPatch?: boolean } = {
       contentType: "application/json",
       body: JSON.stringify([
         { id: HOUSE_ID, name: "Qualified Commercial LLC", kind: "house", signed: true },
-        { id: DEALER_COMPANY_ID, name: "Grace Auto Sales", kind: "referral_partner", signed: true },
+        { id: DEALER_COMPANY_ID, name: "Sample Auto Sales", kind: "referral_partner", signed: true },
       ]),
     });
   });
@@ -104,7 +104,7 @@ async function mockTeam(page: Page, options: { failOutreachPatch?: boolean } = {
           account_types: [],
           inherited_account_types: [],
           referral_partner_company_id: DEALER_COMPANY_ID,
-          referral_partner_company_name: "Grace Auto Sales",
+          referral_partner_company_name: "Sample Auto Sales",
           company_kind: "referral_partner",
           company_agreement_signed: true,
           platform_access_signed_at: "2026-09-11T12:00:00Z",

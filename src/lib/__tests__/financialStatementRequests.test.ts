@@ -16,13 +16,13 @@ describe("financial statement request entry points", () => {
   });
 
   it("prefills the requested form and business through the existing file-request contract", () => {
-    expect(financialStatementRequest("profit_and_loss", " Little Star ")).toMatchObject({ document_type: "profit_and_loss", name: "Profit and loss statement", subject: "Little Star", quantity: 1, unit: "files", period: "current" });
-    expect(financialStatementRequest("balance_sheet", "Little Star")).toMatchObject({ document_type: "balance_sheet", name: "Balance sheet", subject: "Little Star", quantity: 1 });
+    expect(financialStatementRequest("profit_and_loss", " Sample Therapy ")).toMatchObject({ document_type: "profit_and_loss", name: "Profit and loss statement", subject: "Sample Therapy", quantity: 1, unit: "files", period: "current" });
+    expect(financialStatementRequest("balance_sheet", "Sample Therapy")).toMatchObject({ document_type: "balance_sheet", name: "Balance sheet", subject: "Sample Therapy", quantity: 1 });
   });
 
   it("replaces the untouched bank default and combines unsent form requests without duplicates", () => {
-    const pl = financialStatementRequest("profit_and_loss", "Little Star");
-    const bs = financialStatementRequest("balance_sheet", "Little Star");
+    const pl = financialStatementRequest("profit_and_loss", "Sample Therapy");
+    const bs = financialStatementRequest("balance_sheet", "Sample Therapy");
     const initial = queueFileRequestPrefill([blank], pl, blank);
     expect(initial).toEqual([pl]);
     const edited = [{ ...pl, quantity: 2, instructions: "Two reporting periods" }];

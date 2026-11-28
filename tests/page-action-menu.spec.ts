@@ -20,8 +20,8 @@ test("bucket row actions escape the table overflow boundary", async ({ context, 
     } else if (path.endsWith("/buckets")) {
       body = [{
         id: "4f914953-0000-0000-0000-000000000001",
-        name: "Valentin Deheljan",
-        client_name: "Valentin Deheljan",
+        name: "Morgan Lee",
+        client_name: "Morgan Lee",
         bucket_type: "dealer_ai_intake",
         status: "collecting_documents",
         created_at: "2026-09-12T12:00:00Z",
@@ -64,11 +64,11 @@ test("bucket row actions escape the table overflow boundary", async ({ context, 
   });
 
   await page.goto("/admin/buckets", { waitUntil: "domcontentloaded" });
-  const actionButton = page.getByRole("button", { name: "Actions for Valentin Deheljan" });
+  const actionButton = page.getByRole("button", { name: "Actions for Morgan Lee" });
   await expect(actionButton).toBeVisible();
   await actionButton.click();
 
-  const menu = page.getByRole("menu", { name: "Actions for Valentin Deheljan" });
+  const menu = page.getByRole("menu", { name: "Actions for Morgan Lee" });
   await expect(menu).toBeVisible();
   await expect(menu.getByRole("menuitem", { name: "Open bucket" })).toBeVisible();
 
@@ -98,8 +98,8 @@ test("bucket row actions escape the table overflow boundary", async ({ context, 
   const workspace = page.getByRole("region", { name: "Bucket list" });
   await workspace.getByRole("button", { name: "Focus table" }).click();
   const focusedWorkspace = page.getByRole("dialog", { name: "Bucket list" });
-  await focusedWorkspace.getByRole("button", { name: "Actions for Valentin Deheljan" }).click();
-  const focusedMenu = focusedWorkspace.getByRole("menu", { name: "Actions for Valentin Deheljan" });
+  await focusedWorkspace.getByRole("button", { name: "Actions for Morgan Lee" }).click();
+  const focusedMenu = focusedWorkspace.getByRole("menu", { name: "Actions for Morgan Lee" });
   await expect(focusedMenu).toBeVisible();
   await expect(focusedMenu.getByRole("menuitem").first()).toBeFocused();
   await page.keyboard.press("ArrowDown");

@@ -32,7 +32,7 @@ describe("extracted fact groups", () => {
     );
     expect(
       canonicalExtractedFieldKey(
-        fact("1", "unknown_name", "Grace", {
+        fact("1", "unknown_name", "Jordan", {
           canonical_field_key: "legal_entity_name",
         }),
       ),
@@ -41,13 +41,13 @@ describe("extracted fact groups", () => {
 
   it("hides pending aliases after the logical field is accepted", () => {
     const groups = groupSuggestedExtractedFacts([
-      fact("accepted", "business_name", "Grace Auto Sales", {
+      fact("accepted", "business_name", "Sample Auto Sales", {
         status: "accepted",
       }),
       fact(
         "pending",
         "legal_entity_name",
-        "Grace Auto Sales and Service, Inc.",
+        "Sample Auto Sales and Service, Inc.",
       ),
       fact("entity", "entity_type", "Corporation"),
     ]);
@@ -59,19 +59,19 @@ describe("extracted fact groups", () => {
 
   it("shows one card per field and prefers a corroborated value", () => {
     const groups = groupSuggestedExtractedFacts([
-      fact("new-name", "legal_entity_name", "Grace Auto Sales", {
+      fact("new-name", "legal_entity_name", "Sample Auto Sales", {
         confidence: 0.99,
       }),
       fact(
         "legal-1",
         "business_name",
-        "Grace Auto Sales and Service, Inc.",
+        "Sample Auto Sales and Service, Inc.",
         { confidence: 0.92 },
       ),
       fact(
         "legal-2",
         "company_name",
-        "Grace Auto Sales and Service, Inc.",
+        "Sample Auto Sales and Service, Inc.",
         { confidence: 0.93 },
       ),
     ]);

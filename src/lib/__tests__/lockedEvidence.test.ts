@@ -10,7 +10,7 @@ import {
 describe("locked evidence presentation", () => {
   it("renders a password-protected PDF as a locked file that needs a new copy", () => {
     expect(lockedEvidencePresentation({
-      fileName: "Grace PFS 8-31-2026.pdf",
+      fileName: "Sample PFS 8-31-2026.pdf",
       analysisStatus: "skipped",
       analysisReasonCode: "password_protected",
     })).toEqual({

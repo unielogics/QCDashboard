@@ -4,7 +4,7 @@ import { archiveFileName, attachmentFileName, fileNamesPreview, removalSummary }
 
 describe("archiveFileName", () => {
   it("names the zip after the room, the way the API does", () => {
-    expect(archiveFileName("Little Star Therapy Services Inc")).toBe("Little Star Therapy Services Inc files.zip");
+    expect(archiveFileName("Sample Therapy Services Inc")).toBe("Sample Therapy Services Inc files.zip");
     expect(archiveFileName("Café ☕ / Nov")).toBe("Caf Nov files.zip");
     expect(archiveFileName(null)).toBe("room files.zip");
     expect(archiveFileName(".. ..")).toBe("room files.zip");
@@ -13,7 +13,7 @@ describe("archiveFileName", () => {
 
 describe("attachmentFileName", () => {
   it("prefers the UTF-8 name, then the quoted one, then a bare one", () => {
-    expect(attachmentFileName("attachment; filename=\"Little Star files.zip\"; filename*=UTF-8''Little%20Star%20files.zip")).toBe("Little Star files.zip");
+    expect(attachmentFileName("attachment; filename=\"Sample Therapy files.zip\"; filename*=UTF-8''Sample%20Therapy%20files.zip")).toBe("Sample Therapy files.zip");
     expect(attachmentFileName('attachment; filename="October \\"final\\".zip"')).toBe('October "final".zip');
     expect(attachmentFileName("attachment; filename=plain.zip")).toBe("plain.zip");
     expect(attachmentFileName("inline")).toBeNull();

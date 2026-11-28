@@ -3,7 +3,7 @@ import { coverageCurrencyComparable, coverageReview } from "../coverageReview";
 import type { FinancialCockpit } from "../financialCockpit";
 
 describe("signed earnings and debt funding needs", () => {
-  it("reconciles Body Good's exact saved schedule with the selected three payoffs", () => {
+  it("reconciles Sample Fabrication's exact saved schedule with the selected three payoffs", () => {
     const review = coverageReview({ incomeAnnual: -54369, debtServiceAnnual: 210939.12 }, { incomeAnnual: -54369, debtServiceAnnual: 71738.04 });
     expect(review.before.dscr).toBe(-0.26);
     expect(review.after.dscr).toBe(-0.76);
